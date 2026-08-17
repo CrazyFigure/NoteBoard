@@ -1,0 +1,57 @@
+# ---------- 依赖 ----------
+node_modules/
+.pnpm-store/
+
+# ---------- 前端构建产物 ----------
+dist/
+dist-ssr/
+build/
+*.local
+
+# ---------- Tauri / Rust ----------
+src-tauri/target/
+src-tauri/gen/schemas/
+# 注意：src-tauri/icons/ 需要提交（由 logo.ico 生成，见 docs/11-构建打包与文件关联.md）
+
+# ---------- 测试与覆盖率 ----------
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+blob-report/
+.vitest-cache/
+
+# ---------- 编辑器与工具 ----------
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.shared.json
+.idea/
+*.swp
+*.swo
+
+# ---------- 操作系统 ----------
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# ---------- 日志与临时 ----------
+*.log
+npm-debug.log*
+pnpm-debug.log*
+logs/
+tmp/
+.tmp/
+
+# ---------- 环境变量与签名密钥 ----------
+.env
+.env.*
+!.env.example
+# Tauri 自动更新的私钥，绝对不能提交
+*.key
+tauri-private.key
+
+# ---------- 开发期用户数据（避免误提交本机笔记）----------
+/sandbox/
+/.noteboard-dev/
