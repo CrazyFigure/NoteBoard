@@ -141,13 +141,12 @@ async function handleCloseRequested(): Promise<void> {
 }
 
 /**
- * 执行实际窗口关闭：注销文档 → 保存会话 → close_window
+ * 执行实际窗口关闭：注销文档 → 通知后端注销并关闭窗口/退出进程
  */
 export async function performWindowClose(label: string): Promise<void> {
   const tabStore = useWindowStore.getState();
-  const docStore = useDocumentStore.getState();
 
-  // 注销所有文档
+  // 注销本窗口所有文档的所有权
   for (const tab of tabStore.tabs) {
     try {
       await ipc.unregisterDocument(label, tab.key);
@@ -156,10 +155,7 @@ export async function performWindowClose(label: string): Promise<void> {
     }
   }
 
-  // 清理本地 store
-  docStore.clear();
-
-  // 通知 Rust 关闭窗口
+  // 通知 Rust 关闭本窗口并安全退出（不提前清空 store，避免出现全白空白画面滞留）
   try {
     await ipc.closeWindow(label);
   } catch (e) {

@@ -126,17 +126,17 @@ export function BlockDragHandle({ editor }: { editor: Editor | null }) {
         const selection = NodeSelection.create(editorState.doc, state.nodePos);
         view.dispatch(editorState.tr.setSelection(selection));
 
-        // 2. 注入 ProseMirror 原生拖拽 slice
-        (view as unknown as { dragging: unknown }).dragging = {
-          slice: selection.content(),
-          move: true,
-        };
+        // 2. 清理原生 dragging 状态，防止 ProseMirror-tables 拦截删除导致原表格残留空壳
+        (view as unknown as { dragging: unknown }).dragging = null;
 
-        // 3. 安全的数据传输设置（不传 text/plain 避免被作为普通文本插入）
+        // 3. 安全的数据传输设置（注入专用块拖拽标识与源节点位置）
         e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('application/x-prosemirror-drag', 'true');
+        e.dataTransfer.setData(
+          'application/x-noteboard-block-drag',
+          JSON.stringify({ pos: state.nodePos, nodeType: node.type.name }),
+        );
 
-        // 设置把手为拖拽图象
+        // 4. 设置把手为拖拽图象
         if (handleRef.current) {
           e.dataTransfer.setDragImage(handleRef.current, 10, 10);
         }

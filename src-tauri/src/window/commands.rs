@@ -92,12 +92,33 @@ pub fn notify_window_active(
 }
 
 /// 关闭窗口
-/// 使用 destroy() 而非 close()，绕过 CloseRequested 事件，
-/// 避免前端 handleCloseRequested → performWindowClose → close_window → close() → CloseRequested 的死循环
+/// 使用 destroy() 销毁窗口实例
+/// 若关闭的是最后一个窗口或主窗口，执行 std::process::exit(0) 彻底安全退出应用进程，杜绝 Win32 宿主窗口白屏残留
 #[tauri::command]
-pub fn close_window(app: tauri::AppHandle, label: String) -> Result<(), String> {
-    if let Some(win) = app.get_webview_window(&label) {
+pub fn close_window(
+    app: tauri::AppHandle,
+    state: State<'_, Mutex<AppState>>,
+    label: String,
+) -> Result<(), String> {
+    // 1. 从 AppState 中注销窗口
+    manager::unregister_window(&state, &label);
+
+    let remaining = app.webview_windows();
+    let has_other_windows = remaining.iter().any(|(k, _)| k.as_str() != label);
+
+    // 2. 如果还有其他独立窗口且关闭的不是主窗口，仅销毁本窗口
+    if has_other_windows && label != "nb-main" {
+        if let Some(win) = app.get_webview_window(&label) {
+            let _ = win.destroy();
+        }
+        return Ok(());
+    }
+
+    // 3. 若无其他窗口或为主窗口关闭，先隐藏并销毁所有窗口，然后立即彻底退出进程
+    for (_, win) in remaining {
+        let _ = win.hide();
         let _ = win.destroy();
     }
-    Ok(())
+    app.exit(0);
+    std::process::exit(0);
 }
