@@ -22,34 +22,48 @@ export function WelcomeScreen({ onOpenFile, onOpenFolder, onNewMarkdown, onNewBo
   return (
     <div
       style={{
-        flex: 1,
+        width: '100%',
+        height: '100%',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
+        // 整体下移偏移量，使视觉重心更居中平衡
+        paddingTop: 48,
+        boxSizing: 'border-box',
         background: 'var(--editor-bg)',
         color: 'var(--editor-text)',
         fontFamily: 'var(--content-font-family)',
-        gap: 32,
+        gap: 36,
       }}
     >
       {/* Logo + 名称 */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-        <img src="/logo.ico" alt="NoteBoard" width={64} height={64} />
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+        <img
+          src="/logo.ico"
+          alt="NoteBoard"
+          width={72}
+          height={72}
+          style={{ filter: 'drop-shadow(0 4px 12px rgba(0, 0, 0, 0.15))' }}
+        />
         <h1
           style={{
-            fontSize: 28,
+            fontSize: 30,
             fontWeight: 600,
             color: 'var(--editor-heading)',
             margin: 0,
+            letterSpacing: '-0.02em',
           }}
         >
           NoteBoard
         </h1>
+        <span style={{ fontSize: 13, color: 'var(--editor-text-muted)' }}>
+          轻量双模笔记与画板工具
+        </span>
       </div>
 
-      {/* 四个动作 */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {/* 四个动作按钮 */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {actions.map((action, i) => (
           <button
             key={i}
@@ -57,37 +71,50 @@ export function WelcomeScreen({ onOpenFile, onOpenFolder, onNewMarkdown, onNewBo
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 12,
-              padding: '8px 16px',
+              gap: 14,
+              padding: '10px 18px',
               border: '1px solid var(--editor-border)',
-              borderRadius: 6,
+              borderRadius: 8,
               background: 'var(--editor-surface)',
               cursor: 'pointer',
-              minWidth: 320,
+              minWidth: 340,
               fontSize: 14,
               color: 'var(--editor-text)',
-              transition: 'background var(--transition-fast), border-color var(--transition-fast)',
+              boxShadow: 'var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.05))',
+              transition: 'all var(--transition-fast, 150ms ease)',
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = 'var(--toolbar-hover)';
               e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = 'var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.1))';
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = 'var(--editor-surface)';
               e.currentTarget.style.borderColor = 'var(--editor-border)';
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = 'var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.05))';
             }}
           >
             <action.icon size={20} color="var(--editor-accent)" />
-            <span style={{ flex: 1, textAlign: 'left' }}>{action.label}</span>
+            <span style={{ flex: 1, textAlign: 'left', fontWeight: 500 }}>{action.label}</span>
             {action.shortcut && (
-              <span style={{ color: 'var(--editor-text-muted)', fontSize: 12 }}>
+              <span
+                style={{
+                  color: 'var(--editor-text-muted)',
+                  fontSize: 12,
+                  padding: '2px 6px',
+                  background: 'var(--editor-bg)',
+                  borderRadius: 4,
+                  border: '1px solid var(--editor-border)',
+                }}
+              >
                 {action.shortcut}
               </span>
             )}
           </button>
         ))}
       </div>
-
     </div>
   );
 }
