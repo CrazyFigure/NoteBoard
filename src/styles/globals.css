@@ -1,0 +1,666 @@
+/* NoteBoard 全局样式
+ * 三套主题 Token + 排版 + 重置
+ * 色值来源：docs/06-主题与设计规范.md
+ */
+
+@import "tailwindcss";
+
+/* ═════════════════════════════════════════════════════════
+ * 重置
+ * ═════════════════════════════════════════════════════════ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Noto Sans SC', Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+}
+
+/* 焦点环 */
+:focus-visible {
+  outline: 2px solid var(--editor-border-focus);
+  outline-offset: 2px;
+}
+
+/* data-tauri-drag-region */
+*[data-tauri-drag-region] {
+  app-region: drag;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb);
+  opacity: 0.8;
+}
+
+/* ═════════════════════════════════════════════════════════
+ * 尺度层（三套主题共用）
+ * ═════════════════════════════════════════════════════════ */
+
+:root {
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  --transition-fast: 150ms ease;
+  --transition-normal: 200ms ease;
+  --transition-slow: 300ms ease;
+
+  /* 排版默认值 */
+  --content-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Noto Sans SC', Roboto, sans-serif;
+  --mono-font-family: 'Consolas', 'Microsoft YaHei Mono', monospace;
+  --content-font-size: 16px;
+  --mono-font-size: 14px;
+  --content-line-height: 1.7;
+  --content-max-width: 960px;
+
+  /* 通用兼容别名 */
+  --editor-selection-background: var(--editor-selection);
+  --editor-hover-background: var(--toolbar-hover);
+  --cm-background: var(--editor-bg);
+  --cm-gutter-background: var(--cm-gutter-bg);
+  --cm-foreground: var(--editor-text);
+  --ui-font-family: var(--content-font-family);
+  --ui-font-size: 13px;
+}
+
+/* 亮色阴影 */
+:root[data-theme="chen-guang"],
+:root[data-theme="hu-po"] {
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / .05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / .1), 0 2px 4px -2px rgb(0 0 0 / .1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / .1), 0 4px 6px -4px rgb(0 0 0 / .1);
+}
+
+/* 暗色阴影 */
+:root[data-theme="mo-ye"] {
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / .2);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / .3), 0 2px 4px -2px rgb(0 0 0 / .2);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / .3), 0 4px 6px -4px rgb(0 0 0 / .2);
+}
+
+/* ═════════════════════════════════════════════════════════
+ * 晨光 · chen-guang
+ * ═════════════════════════════════════════════════════════ */
+
+:root[data-theme="chen-guang"] {
+  /* 色板层 */
+  --primary-50: #f0f4f8;  --primary-100: #d9e2ec;  --primary-200: #bcccdc;
+  --primary-300: #9fb3c8;  --primary-400: #829ab1;  --primary-500: #627d98;
+  --primary-600: #486581;  --primary-700: #334e68;  --primary-800: #243b53;  --primary-900: #102a43;
+
+  --accent-50: #eff6ff;  --accent-100: #dbeafe;  --accent-200: #bfdbfe;
+  --accent-300: #93c5fd;  --accent-400: #60a5fa;  --accent-500: #3b82f6;
+  --accent-600: #2563eb;  --accent-700: #1d4ed8;  --accent-800: #1e40af;
+
+  --success-500: #22c55e;  --success-600: #16a34a;
+  --warning-500: #f59e0b;  --warning-600: #d97706;
+  --error-500: #ef4444;    --error-600: #dc2626;
+
+  /* 语义层 */
+  --editor-bg: #ffffff;
+  --editor-surface: #ffffff;
+  --editor-text: #1e293b;
+  --editor-text-secondary: #64748b;
+  --editor-text-muted: #94a3b8;
+  --editor-border: #e5e7eb;
+  --editor-border-focus: #3b82f6;
+  --editor-heading: #0f172a;
+  --editor-accent: #3b82f6;
+  --accent-strong: #3b82f6;
+  --editor-link: #2563eb;
+  --editor-quote-bg: rgba(59,130,246,0.08);
+  --editor-selection: rgba(59,130,246,0.15);
+  --editor-code-bg: #f8fafc;
+
+  --code-inline-bg: #eff6ff;
+  --code-inline-text: #1d4ed8;
+  --code-block-bg: #f8fafc;
+  --code-block-container-bg: transparent;
+  --code-block-text: #1e293b;
+
+  /* 语法高亮 */
+  --hljs-comment: #6a737d;
+  --hljs-keyword: #bf1f2e;
+  --hljs-string: #032f62;
+  --hljs-number: #005cc5;
+  --hljs-title: #6f42c1;
+  --hljs-function: #6f42c1;
+  --hljs-params: #24292e;
+  --hljs-variable: #b04300;
+  --hljs-class: #005cc5;
+  --hljs-meta: #24292e;
+  --hljs-addition: #137333;
+  --hljs-deletion: #bf1f2e;
+  --hljs-regexp: #032f62;
+  --hljs-selector-class: #6f42c1;
+  --hljs-selector-id: #005cc5;
+  --hljs-link: #032f62;
+  --hljs-attr: #032f62;
+
+  /* 组件层 */
+  --titlebar-bg: #ffffff;
+  --toolbar-hover: #f1f5f9;
+  --toolbar-active: #e5e7eb;
+
+  --tab-bg: #ffffff;
+  --tab-active-bg: #ffffff;
+  --tab-inactive-bg: #f9fafb;
+  --tab-hover-bg: #e5e7eb;
+  --tab-border: #e5e7eb;
+  --tab-active-indicator: #3b82f6;
+  --tab-dirty-dot: #3b82f6;
+
+  --explorer-bg: #ffffff;
+  --explorer-surface: #ffffff;
+  --explorer-text: #334155;
+  --explorer-text-muted: #94a3b8;
+  --explorer-hover: #f9fafb;
+  --explorer-active: #e5e7eb;
+  --explorer-border: #e5e7eb;
+  --explorer-indent-guide: #e5e7eb;
+
+  --outline-bg: #ffffff;
+  --outline-item-active-bg: #eff6ff;
+  --outline-item-hover-bg: #f9fafb;
+  --outline-item-active-text: #1d4ed8;
+
+  --rail-bg: #ffffff;
+  --rail-fg: #64748b;
+  --rail-hover-bg: #f1f5f9;
+
+  --statusbar-bg: #ffffff;
+  --statusbar-text: #64748b;
+
+  --scrollbar-track: #f8f8f8;
+  --scrollbar-thumb: #c0c0c0;
+
+  /* CodeMirror */
+  --cm-gutter-bg: #ffffff;
+  --cm-gutter-text: #7d8b9e;
+  --cm-gutter-active-text: #1e293b;
+  --cm-active-line-bg: rgba(59,130,246,0.05);
+  --cm-selection-bg: rgba(59,130,246,0.18);
+  --cm-cursor: #1e293b;
+  --cm-bracket-bg: rgba(59,130,246,0.18);
+  --cm-bracket-outline: #3b82f6;
+  --cm-search-match-bg: rgba(245,158,11,0.28);
+  --cm-search-active-bg: #f59e0b;
+  --cm-indent-guide: #e5e7eb;
+  --cm-fold-placeholder-bg: #eff6ff;
+  --cm-lint-error: #dc2626;
+  --cm-lint-warning: #d97706;
+
+  /* GitHub Alerts */
+  --alert-note-border: #0969da;
+  --alert-note-bg: rgba(9,105,218,0.10);
+  --alert-tip-border: #1a7f37;
+  --alert-tip-bg: rgba(26,127,55,0.10);
+  --alert-important-border: #8250df;
+  --alert-important-bg: rgba(130,80,223,0.10);
+  --alert-warning-border: #9a6700;
+  --alert-warning-bg: rgba(154,103,0,0.10);
+  --alert-caution-border: #cf222e;
+  --alert-caution-bg: rgba(207,34,46,0.10);
+
+  /* 画板 */
+  --board-canvas-bg: #ffffff;
+  --board-panel-bg: #ffffff;
+  --board-panel-border: #e5e7eb;
+  --board-icon-fg: #334155;
+  --board-button-hover-bg: #f9fafb;
+  --board-button-active-bg: #eff6ff;
+  --board-selection-outline: #3b82f6;
+}
+
+/* ═════════════════════════════════════════════════════════
+ * 琥珀 · hu-po
+ * ═════════════════════════════════════════════════════════ */
+
+:root[data-theme="hu-po"] {
+  /* 色板层（暖灰） */
+  --primary-50: #FAF9F5;  --primary-100: #F0EDE4;  --primary-200: #DDD9CC;
+  --primary-300: #C4BFAD;  --primary-400: #A9A28E;  --primary-500: #8E866F;
+  --primary-600: #7A725E;  --primary-700: #665D4D;  --primary-800: #524A3D;  --primary-900: #3E372F;
+
+  --accent-50: #FFF5F0;  --accent-100: #FEE8DD;  --accent-200: #FDCFB5;
+  --accent-300: #FBAF82;  --accent-400: #F8894F;  --accent-500: #D97757;
+  --accent-600: #C4623E;  --accent-700: #A34D2E;  --accent-800: #833C23;
+
+  --success-500: #22c55e;  --success-600: #16a34a;
+  --warning-500: #f59e0b;  --warning-600: #d97706;
+  --error-500: #ef4444;    --error-600: #dc2626;
+
+  /* 语义层 */
+  --editor-bg: #FAF9F5;
+  --editor-surface: #F5F4EF;
+  --editor-text: #141413;
+  --editor-text-secondary: #6B6860;
+  --editor-text-muted: #9B978F;
+  --editor-border: #E2DFD3;
+  --editor-border-focus: #C4623E;
+  --editor-heading: #1A1918;
+  --editor-accent: #D97757;
+  --accent-strong: #C4623E;
+  --editor-link: #A34D2E;
+  --editor-quote-bg: rgba(217,119,87,0.08);
+  --editor-selection: rgba(217,119,87,0.15);
+  --editor-code-bg: #EFEEE9;
+
+  --code-inline-bg: #FDF0EB;
+  --code-inline-text: #C2410C;
+  --code-block-bg: #EFEEE9;
+  --code-block-container-bg: transparent;
+  --code-block-text: #141413;
+
+  /* 语法高亮（自研暖调） */
+  --hljs-comment: #736B5B;
+  --hljs-keyword: #A34D2E;
+  --hljs-string: #5B6E2F;
+  --hljs-number: #8A5A16;
+  --hljs-title: #833C23;
+  --hljs-function: #9A4B21;
+  --hljs-params: #524A3D;
+  --hljs-variable: #AD3A0B;
+  --hljs-class: #7A5230;
+  --hljs-meta: #6B6860;
+  --hljs-addition: #276749;
+  --hljs-deletion: #C53030;
+  --hljs-regexp: #5B6E2F;
+  --hljs-selector-class: #9A4B21;
+  --hljs-selector-id: #8A5A16;
+  --hljs-link: #5B6E2F;
+  --hljs-attr: #5B6E2F;
+
+  /* 组件层 */
+  --titlebar-bg: #FAF9F5;
+  --toolbar-hover: #EFEEE9;
+  --toolbar-active: #E2DFD3;
+
+  --tab-bg: #F5F4EF;
+  --tab-active-bg: #FAF9F5;
+  --tab-inactive-bg: #EFEEE9;
+  --tab-hover-bg: #E2DFD3;
+  --tab-border: #E2DFD3;
+  --tab-active-indicator: #C4623E;
+  --tab-dirty-dot: #C4623E;
+
+  --explorer-bg: #F5F4EF;
+  --explorer-surface: #FFFFFF;
+  --explorer-text: #141413;
+  --explorer-text-muted: #9B978F;
+  --explorer-hover: #EFEEE9;
+  --explorer-active: #E2DFD3;
+  --explorer-border: #E2DFD3;
+  --explorer-indent-guide: #E2DFD3;
+
+  --outline-bg: #F5F4EF;
+  --outline-item-active-bg: #FDF0EB;
+  --outline-item-hover-bg: #EFEEE9;
+  --outline-item-active-text: #A34D2E;
+
+  --rail-bg: #FAF9F5;
+  --rail-fg: #6B6860;
+  --rail-hover-bg: #EFEEE9;
+
+  --statusbar-bg: #FAF9F5;
+  --statusbar-text: #6B6860;
+
+  --scrollbar-track: #EFEEE9;
+  --scrollbar-thumb: #9B978F;
+
+  /* CodeMirror */
+  --cm-gutter-bg: #FAF9F5;
+  --cm-gutter-text: #8E8A80;
+  --cm-gutter-active-text: #141413;
+  --cm-active-line-bg: rgba(217,119,87,0.06);
+  --cm-selection-bg: rgba(217,119,87,0.20);
+  --cm-cursor: #141413;
+  --cm-bracket-bg: rgba(217,119,87,0.20);
+  --cm-bracket-outline: #C4623E;
+  --cm-search-match-bg: rgba(151,90,22,0.28);
+  --cm-search-active-bg: #975A16;
+  --cm-indent-guide: #E2DFD3;
+  --cm-fold-placeholder-bg: #FDF0EB;
+  --cm-lint-error: #C53030;
+  --cm-lint-warning: #975A16;
+
+  /* GitHub Alerts（柔和版） */
+  --alert-note-border: #2B6CB0;
+  --alert-note-bg: rgba(43,108,176,0.10);
+  --alert-tip-border: #276749;
+  --alert-tip-bg: rgba(39,103,73,0.10);
+  --alert-important-border: #6B46C1;
+  --alert-important-bg: rgba(107,70,193,0.10);
+  --alert-warning-border: #975A16;
+  --alert-warning-bg: rgba(151,90,22,0.10);
+  --alert-caution-border: #C53030;
+  --alert-caution-bg: rgba(197,48,48,0.10);
+
+  /* 画板 */
+  --board-canvas-bg: #FAF9F5;
+  --board-panel-bg: #F5F4EF;
+  --board-panel-border: #E2DFD3;
+  --board-icon-fg: #141413;
+  --board-button-hover-bg: #EFEEE9;
+  --board-button-active-bg: #FDF0EB;
+  --board-selection-outline: #C4623E;
+}
+
+/* ═════════════════════════════════════════════════════════
+ * 墨夜 · mo-ye
+ * ═════════════════════════════════════════════════════════ */
+
+:root[data-theme="mo-ye"] {
+  /* 色板层（反向递进） */
+  --primary-50: #0f172a;  --primary-100: #1e293b;  --primary-200: #334155;
+  --primary-300: #475569;  --primary-400: #64748b;  --primary-500: #94a3b8;
+  --primary-600: #cbd5e1;  --primary-700: #e2e8f0;  --primary-800: #f1f5f9;  --primary-900: #f8fafc;
+
+  --accent-50: #eff6ff;  --accent-100: #dbeafe;  --accent-200: #bfdbfe;
+  --accent-300: #93c5fd;  --accent-400: #60a5fa;  --accent-500: #60a5fa;
+  --accent-600: #2563eb;  --accent-700: #1d4ed8;  --accent-800: #1e40af;
+
+  --success-500: #22c55e;  --success-600: #16a34a;
+  --warning-500: #f59e0b;  --warning-600: #d97706;
+  --error-500: #ef4444;    --error-600: #dc2626;
+
+  /* 语义层 */
+  --editor-bg: #0f172a;
+  --editor-surface: #1e293b;
+  --editor-text: #e2e8f0;
+  --editor-text-secondary: #94a3b8;
+  --editor-text-muted: #64748b;
+  --editor-border: #334155;
+  --editor-border-focus: #60a5fa;
+  --editor-heading: #f8fafc;
+  --editor-accent: #60a5fa;
+  --accent-strong: #60a5fa;
+  --editor-link: #60a5fa;
+  --editor-quote-bg: rgba(96,165,250,0.10);
+  --editor-selection: rgba(96,165,250,0.20);
+  --editor-code-bg: #1e293b;
+
+  --code-inline-bg: #1e3a5f;
+  --code-inline-text: #93c5fd;
+  --code-block-bg: #1e293b;
+  --code-block-container-bg: #0f172a;
+  --code-block-text: #e2e8f0;
+
+  /* 语法高亮 */
+  --hljs-comment: #8496ad;
+  --hljs-keyword: #f472b6;
+  --hljs-string: #a5d6ff;
+  --hljs-number: #dab55f;
+  --hljs-title: #60a5fa;
+  --hljs-function: #93c5fd;
+  --hljs-params: #94a3b8;
+  --hljs-variable: #fbbf24;
+  --hljs-class: #86efac;
+  --hljs-meta: #e2e8f0;
+  --hljs-addition: #3fb950;
+  --hljs-deletion: #fca5a5;
+  --hljs-regexp: #67e8f9;
+  --hljs-selector-class: #fda4af;
+  --hljs-selector-id: #c4b5fd;
+  --hljs-link: #93c5fd;
+  --hljs-attr: #a5d6ff;
+
+  /* 组件层 */
+  --titlebar-bg: #1e293b;
+  --toolbar-hover: #334155;
+  --toolbar-active: #475569;
+
+  --tab-bg: #1e293b;
+  --tab-active-bg: #0f172a;
+  --tab-inactive-bg: #1a2332;
+  --tab-hover-bg: #243044;
+  --tab-border: #334155;
+  --tab-active-indicator: #60a5fa;
+  --tab-dirty-dot: #60a5fa;
+
+  --explorer-bg: #1e293b;
+  --explorer-surface: #334155;
+  --explorer-text: #e2e8f0;
+  --explorer-text-muted: #64748b;
+  --explorer-hover: #334155;
+  --explorer-active: #475569;
+  --explorer-border: #334155;
+  --explorer-indent-guide: #334155;
+
+  --outline-bg: #1e293b;
+  --outline-item-active-bg: #1e3a5f;
+  --outline-item-hover-bg: #334155;
+  --outline-item-active-text: #93c5fd;
+
+  --rail-bg: #1e293b;
+  --rail-fg: #94a3b8;
+  --rail-hover-bg: #334155;
+
+  --statusbar-bg: #1e293b;
+  --statusbar-text: #94a3b8;
+
+  --scrollbar-track: #2d2d2d;
+  --scrollbar-thumb: #666666;
+
+  /* CodeMirror */
+  --cm-gutter-bg: #0f172a;
+  --cm-gutter-text: #7688a0;
+  --cm-gutter-active-text: #e2e8f0;
+  --cm-active-line-bg: rgba(96,165,250,0.08);
+  --cm-selection-bg: rgba(96,165,250,0.25);
+  --cm-cursor: #e2e8f0;
+  --cm-bracket-bg: rgba(96,165,250,0.25);
+  --cm-bracket-outline: #60a5fa;
+  --cm-search-match-bg: rgba(210,153,34,0.35);
+  --cm-search-active-bg: #d29922;
+  --cm-indent-guide: #334155;
+  --cm-fold-placeholder-bg: #1e3a5f;
+  --cm-lint-error: #f85149;
+  --cm-lint-warning: #d29922;
+
+  /* GitHub Alerts（GitHub Dark 风格） */
+  --alert-note-border: #4493f8;
+  --alert-note-bg: rgba(68,147,248,0.10);
+  --alert-tip-border: #3fb950;
+  --alert-tip-bg: rgba(63,185,80,0.10);
+  --alert-important-border: #a371f7;
+  --alert-important-bg: rgba(163,113,247,0.10);
+  --alert-warning-border: #d29922;
+  --alert-warning-bg: rgba(210,153,34,0.10);
+  --alert-caution-border: #f85149;
+  --alert-caution-bg: rgba(248,81,73,0.10);
+
+  /* 画板 */
+  --board-canvas-bg: #0f172a;
+  --board-panel-bg: #1e293b;
+  --board-panel-border: #334155;
+  --board-icon-fg: #e2e8f0;
+  --board-button-hover-bg: #334155;
+  --board-button-active-bg: #1e3a5f;
+  --board-selection-outline: #60a5fa;
+}
+
+/* ═════════════════════════════════════════════════════════
+ * Markdown 正文排版
+ * ═════════════════════════════════════════════════════════ */
+
+.ProseMirror {
+  font-family: var(--content-font-family);
+  font-size: var(--content-font-size);
+  line-height: var(--content-line-height);
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: 0 24px 0 48px;
+  color: var(--editor-text);
+}
+
+.ProseMirror:focus {
+  outline: none;
+}
+
+/* 标题 */
+.ProseMirror h1 { font-size: 1.75em; font-weight: 600; line-height: 1.25; margin: 24px 0 16px; color: var(--editor-heading); padding-bottom: .3em; border-bottom: 1px solid var(--editor-border); }
+.ProseMirror h2 { font-size: 1.55em; font-weight: 600; line-height: 1.25; margin: 24px 0 16px; color: var(--editor-heading); padding-bottom: .3em; border-bottom: 1px solid var(--editor-border); }
+.ProseMirror h3 { font-size: 1.38em; font-weight: 600; line-height: 1.25; margin: 24px 0 16px; color: var(--editor-heading); }
+.ProseMirror h4 { font-size: 1.25em; font-weight: 600; line-height: 1.25; margin: 24px 0 16px; color: var(--editor-heading); }
+.ProseMirror h5 { font-size: 1.13em; font-weight: 600; line-height: 1.25; margin: 24px 0 16px; color: var(--editor-heading); }
+.ProseMirror h6 { font-size: 1em; font-weight: 600; line-height: 1.25; margin: 24px 0 16px; color: var(--editor-heading); }
+
+/* 段落 */
+.ProseMirror p { margin-bottom: 16px; }
+.ProseMirror p:last-child { margin-bottom: 0; }
+
+/* 列表 */
+.ProseMirror ul, .ProseMirror ol { padding-left: 2em; margin-bottom: 16px; }
+.ProseMirror ul { list-style: disc; }
+.ProseMirror ol { list-style: decimal; }
+.ProseMirror ul ul { list-style: circle; }
+.ProseMirror ul ul ul { list-style: square; }
+.ProseMirror ol ol { list-style: upper-alpha; }
+.ProseMirror ol ol ol { list-style: lower-roman; }
+
+/* 引用 */
+.ProseMirror blockquote {
+  border-left: 4px solid var(--accent-500);
+  background: var(--editor-quote-bg);
+  color: var(--editor-text-secondary);
+  padding: 8px 16px;
+  border-radius: 0 4px 4px 0;
+  margin-bottom: 16px;
+}
+
+/* 表格 */
+.ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 16px;
+}
+.ProseMirror th, .ProseMirror td {
+  border: 1px solid var(--editor-border);
+  padding: 6px 13px;
+}
+.ProseMirror th {
+  background: var(--editor-code-bg);
+  font-weight: 600;
+}
+
+/* 分割线 */
+.ProseMirror hr {
+  height: 2px;
+  margin: 24px 0;
+  border: none;
+  background: var(--editor-border);
+}
+
+/* 代码块与行内代码 */
+.ProseMirror pre {
+  background: var(--code-block-bg);
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  overflow-x: auto;
+  margin: 16px 0;
+  font-family: var(--mono-font-family);
+  font-size: var(--mono-font-size);
+  line-height: 1.5;
+  tab-size: 2;
+}
+.ProseMirror pre code {
+  background: transparent !important;
+  color: var(--code-block-text);
+  font-family: var(--mono-font-family);
+  font-size: inherit;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  border: none !important;
+}
+.ProseMirror code:not(pre code) {
+  background: var(--code-inline-bg);
+  color: var(--code-inline-text);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-family: var(--mono-font-family);
+  font-size: 0.88em;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  vertical-align: baseline;
+  word-break: break-word;
+}
+
+/* 语法高亮 token */
+.ProseMirror .hljs-comment, .ProseMirror .hljs-quote { color: var(--hljs-comment); font-style: italic; }
+.ProseMirror .hljs-keyword, .ProseMirror .hljs-selector-tag { color: var(--hljs-keyword); }
+.ProseMirror .hljs-addition { color: var(--hljs-addition); }
+.ProseMirror .hljs-deletion { color: var(--hljs-deletion); }
+.ProseMirror .hljs-string, .ProseMirror .hljs-template-variable { color: var(--hljs-string); }
+.ProseMirror .hljs-attr { color: var(--hljs-attr); }
+.ProseMirror .hljs-number, .ProseMirror .hljs-literal, .ProseMirror .hljs-type, .ProseMirror .hljs-built_in { color: var(--hljs-number); }
+.ProseMirror .hljs-title, .ProseMirror .hljs-section, .ProseMirror .hljs-name { color: var(--hljs-title); }
+.ProseMirror .hljs-function { color: var(--hljs-function); }
+.ProseMirror .hljs-params { color: var(--hljs-params); }
+.ProseMirror .hljs-variable { color: var(--hljs-variable); }
+.ProseMirror .hljs-class .hljs-title, .ProseMirror .hljs-symbol, .ProseMirror .hljs-bullet { color: var(--hljs-class); }
+.ProseMirror .hljs-meta, .ProseMirror .hljs-subst { color: var(--hljs-meta); }
+.ProseMirror .hljs-regexp, .ProseMirror .hljs-attribute { color: var(--hljs-regexp); }
+.ProseMirror .hljs-selector-class { color: var(--hljs-selector-class); }
+.ProseMirror .hljs-selector-id { color: var(--hljs-selector-id); }
+.ProseMirror .hljs-link { color: var(--hljs-link); }
+.ProseMirror .hljs-emphasis { font-style: italic; }
+.ProseMirror .hljs-strong { font-weight: bold; }
+
+/* GitHub Alerts */
+.ProseMirror .github-alert {
+  border-left: 3px solid var(--alert-note-border);
+  background: var(--alert-note-bg);
+  padding: 8px 16px;
+  border-radius: 0 4px 4px 0;
+  margin-bottom: 16px;
+}
+.ProseMirror .github-alert-note { border-left-color: var(--alert-note-border); background: var(--alert-note-bg); }
+.ProseMirror .github-alert-tip { border-left-color: var(--alert-tip-border); background: var(--alert-tip-bg); }
+.ProseMirror .github-alert-important { border-left-color: var(--alert-important-border); background: var(--alert-important-bg); }
+.ProseMirror .github-alert-warning { border-left-color: var(--alert-warning-border); background: var(--alert-warning-bg); }
+.ProseMirror .github-alert-caution { border-left-color: var(--alert-caution-border); background: var(--alert-caution-bg); }
+
+/* CodeMirror */
+.ProseMirror code, .cm-editor {
+  font-family: var(--mono-font-family);
+  font-size: var(--mono-font-size);
+}
+
+/* prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}

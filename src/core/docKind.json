@@ -1,0 +1,14 @@
+{
+  "md": "markdown",
+  "markdown": "markdown",
+  "txt": "code",
+  "log": "code",
+  "sql": "code",
+  "json": "code",
+  "yaml": "code",
+  "yml": "code",
+  "xml": "code",
+  "excalidraw": "board",
+  "board": "board",
+  "canvas": "board"
+}

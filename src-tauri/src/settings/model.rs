@@ -1,0 +1,257 @@
+// NoteBoard 设置模型
+// 持久化在 %APPDATA%\NoteBoard\settings.json
+// 读取容错：任一字段缺失用默认值填充，不整体丢弃
+
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+
+fn app_data_dir() -> PathBuf {
+    let base = std::env::var("APPDATA")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_else(|_| ".".to_string());
+    PathBuf::from(base).join("NoteBoard")
+}
+
+fn settings_path() -> PathBuf {
+    app_data_dir().join("settings.json")
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Settings {
+    #[serde(default = "default_schema_version")]
+    pub schema_version: u32,
+    #[serde(default)]
+    pub revision: u64,
+
+    #[serde(default)]
+    pub appearance: AppearanceSettings,
+    #[serde(default)]
+    pub typography: TypographySettings,
+    #[serde(default)]
+    pub editor: EditorSettings,
+    #[serde(default)]
+    pub file: FileSettings,
+    #[serde(default)]
+    pub layout: LayoutSettings,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            schema_version: 1,
+            revision: 0,
+            appearance: AppearanceSettings::default(),
+            typography: TypographySettings::default(),
+            editor: EditorSettings::default(),
+            file: FileSettings::default(),
+            layout: LayoutSettings::default(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AppearanceSettings {
+    #[serde(default = "default_theme_mode")]
+    pub theme_mode: String,
+    #[serde(default = "default_light_theme")]
+    pub system_light_theme: String,
+    #[serde(default = "default_dark_theme")]
+    pub system_dark_theme: String,
+}
+
+impl Default for AppearanceSettings {
+    fn default() -> Self {
+        Self {
+            theme_mode: "system".to_string(),
+            system_light_theme: "chen-guang".to_string(),
+            system_dark_theme: "mo-ye".to_string(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TypographySettings {
+    #[serde(default)]
+    pub content_font_family: String,
+    #[serde(default = "default_mono_font")]
+    pub mono_font_family: String,
+    #[serde(default = "default_content_font_size")]
+    pub content_font_size: u32,
+    #[serde(default = "default_mono_font_size")]
+    pub mono_font_size: u32,
+    #[serde(default = "default_line_height")]
+    pub content_line_height: f64,
+    #[serde(default = "default_content_width")]
+    pub content_width: String,
+}
+
+impl Default for TypographySettings {
+    fn default() -> Self {
+        Self {
+            content_font_family: String::new(),
+            mono_font_family: "Consolas, 'Microsoft YaHei Mono', monospace".to_string(),
+            content_font_size: 16,
+            mono_font_size: 14,
+            content_line_height: 1.7,
+            content_width: "standard".to_string(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct EditorSettings {
+    #[serde(default = "default_view_mode")]
+    pub default_view_mode: String,
+    #[serde(default = "default_true")]
+    pub soft_wrap: bool,
+    #[serde(default = "default_true")]
+    pub show_line_numbers: bool,
+    #[serde(default = "default_true")]
+    pub show_indent_guides: bool,
+    #[serde(default = "default_tab_size")]
+    pub tab_size: u32,
+    #[serde(default = "default_true")]
+    pub insert_spaces: bool,
+    #[serde(default = "default_true")]
+    pub enable_math: bool,
+    #[serde(default = "default_true")]
+    pub enable_mermaid: bool,
+    #[serde(default = "default_true")]
+    pub enable_alerts: bool,
+    #[serde(default = "default_true")]
+    pub enable_block_handle: bool,
+}
+
+impl Default for EditorSettings {
+    fn default() -> Self {
+        Self {
+            default_view_mode: "visual".to_string(),
+            soft_wrap: true,
+            show_line_numbers: true,
+            show_indent_guides: true,
+            tab_size: 2,
+            insert_spaces: true,
+            enable_math: true,
+            enable_mermaid: true,
+            enable_alerts: true,
+            enable_block_handle: true,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct FileSettings {
+    #[serde(default)]
+    pub force_manual_save: bool,
+    #[serde(default)]
+    pub show_hidden_files: bool,
+    #[serde(default = "default_true")]
+    pub restore_session: bool,
+    #[serde(default = "default_image_dir")]
+    pub image_dir_name: String,
+    #[serde(default = "default_large_file_mb")]
+    pub large_file_confirm_mb: u32,
+}
+
+impl Default for FileSettings {
+    fn default() -> Self {
+        Self {
+            force_manual_save: false,
+            show_hidden_files: false,
+            restore_session: true,
+            image_dir_name: "assets".to_string(),
+            large_file_confirm_mb: 50,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct LayoutSettings {
+    #[serde(default = "default_true")]
+    pub status_bar_visible: bool,
+    #[serde(default = "default_ui_scale")]
+    pub ui_scale: u32,
+}
+
+impl Default for LayoutSettings {
+    fn default() -> Self {
+        Self {
+            status_bar_visible: true,
+            ui_scale: 100,
+        }
+    }
+}
+
+// 默认值函数
+fn default_schema_version() -> u32 { 1 }
+fn default_theme_mode() -> String { "system".to_string() }
+fn default_light_theme() -> String { "chen-guang".to_string() }
+fn default_dark_theme() -> String { "mo-ye".to_string() }
+fn default_mono_font() -> String { "Consolas, 'Microsoft YaHei Mono', monospace".to_string() }
+fn default_content_font_size() -> u32 { 16 }
+fn default_mono_font_size() -> u32 { 14 }
+fn default_line_height() -> f64 { 1.7 }
+fn default_content_width() -> String { "standard".to_string() }
+fn default_view_mode() -> String { "visual".to_string() }
+fn default_true() -> bool { true }
+fn default_tab_size() -> u32 { 2 }
+fn default_image_dir() -> String { "assets".to_string() }
+fn default_large_file_mb() -> u32 { 50 }
+fn default_ui_scale() -> u32 { 100 }
+
+/// 读取设置（容错：缺字段填默认，损坏文件不 panic）
+pub fn load() -> Settings {
+    let path = settings_path();
+    if !path.exists() {
+        return Settings::default();
+    }
+
+    let content = match std::fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(_) => return Settings::default(),
+    };
+
+    // 尝试解析，失败则备份 + 返回默认
+    match serde_json::from_str::<Settings>(&content) {
+        Ok(s) => s,
+        Err(_) => {
+            // 损坏文件备份
+            let backup = path.with_extension(format!("corrupt-{}.json",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs()));
+            let _ = std::fs::rename(&path, &backup);
+            Settings::default()
+        }
+    }
+}
+
+/// 保存设置（原子写 + revision 递增）
+pub fn save(settings: &mut Settings) -> Result<u64, String> {
+    // 确保 APPDATA 目录存在
+    let dir = app_data_dir();
+    if !dir.exists() {
+        std::fs::create_dir_all(&dir).map_err(|e| format!("创建数据目录失败: {}", e))?;
+    }
+
+    // revision 递增
+    settings.revision = settings.revision.max(0) + 1;
+
+    let json = serde_json::to_string_pretty(settings)
+        .map_err(|e| format!("序列化设置失败: {}", e))?;
+
+    let path = settings_path();
+
+    // 原子写
+    crate::fsio::write::atomic_write(&path, json.as_bytes())
+        .map_err(|e| e.to_string())?;
+
+    Ok(settings.revision)
+}
