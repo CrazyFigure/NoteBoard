@@ -5,6 +5,8 @@
 import { useEffect, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Minus, Square, Copy, X } from 'lucide-react';
+import { useWindowStore } from '../../stores/windowStore';
+import { performWindowClose } from '../../features/window/windowManager';
 
 export function WindowControls() {
   const [isMaximized, setIsMaximized] = useState(false);
@@ -23,7 +25,16 @@ export function WindowControls() {
 
   const handleMinimize = () => getCurrentWindow().minimize();
   const handleMaximize = () => getCurrentWindow().toggleMaximize();
-  const handleClose = () => getCurrentWindow().close();
+  const handleClose = async () => {
+    const tabStore = useWindowStore.getState();
+    const label = getCurrentWindow().label;
+    const dirtyTabs = tabStore.tabs.filter((t) => t.isDirty);
+    if (dirtyTabs.length > 0) {
+      tabStore.requestCloseBatch(dirtyTabs.map((t) => t.key));
+      return;
+    }
+    await performWindowClose(label);
+  };
 
   const btnStyle: React.CSSProperties = {
     width: 46,

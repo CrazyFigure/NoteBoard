@@ -18,6 +18,7 @@
 import { describe, it, expect } from 'vitest';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
+import { TaskList, TaskItem } from '@tiptap/extension-list';
 import { Markdown } from '@tiptap/markdown';
 import { serializeMarkdown, parseMarkdown } from '../../src/features/editor-md/serialize';
 
@@ -25,7 +26,12 @@ import { serializeMarkdown, parseMarkdown } from '../../src/features/editor-md/s
 // 用最小扩展集，专注验证 Markdown 扩展注册与序列化往返
 function createEditor(): Editor {
   return new Editor({
-    extensions: [StarterKit, Markdown],
+    extensions: [
+      StarterKit,
+      TaskList,
+      TaskItem.configure({ nested: true }),
+      Markdown,
+    ],
     content: '',
   });
 }
@@ -129,6 +135,16 @@ describe('serialize 真实往返集成（真实 TipTap Editor）', () => {
     parseMarkdown(editor, md);
     const out = serializeMarkdown(editor);
     expect(out).toMatch(/^---$/m);
+    editor.destroy();
+  });
+
+  it('任务列表往返不丢未完成与已完成状态标记', () => {
+    const editor = createEditor();
+    const md = '- [ ] 未完成任务\n- [x] 已完成任务\n';
+    parseMarkdown(editor, md);
+    const out = serializeMarkdown(editor);
+    expect(out).toMatch(/-\s+\[\s*\]\s+未完成任务/);
+    expect(out).toMatch(/-\s+\[x\]\s+已完成任务/i);
     editor.destroy();
   });
 });

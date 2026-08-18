@@ -10,8 +10,7 @@ import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import CharacterCount from '@tiptap/extension-character-count';
 import Typography from '@tiptap/extension-typography';
-import TaskList from '@tiptap/extension-task-list';
-import { TaskItem } from '@tiptap/extension-list';
+import { TaskList, TaskItem } from '@tiptap/extension-list';
 import { Table } from '@tiptap/extension-table';
 import { TableRow } from '@tiptap/extension-table';
 import { TableCell } from '@tiptap/extension-table';
@@ -29,6 +28,112 @@ import { slashSuggestion } from '../slashCommand';
 
 import Suggestion from '@tiptap/suggestion';
 import { Extension, type Extensions } from '@tiptap/core';
+import { Plugin, NodeSelection } from '@tiptap/pm/state';
+
+/**
+ * 顶层块拖拽安全重排序扩展
+ * 拦截来自 BlockDragHandle 的拖拽 drop 事件
+ * 确保永远只在顶层块之间进行重排序，坚决杜绝任何内容掉入表格单元格（td）或破坏列表结构
+ */
+const BlockReorder = Extension.create({
+  name: 'blockReorder',
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        props: {
+          handleDrop(view, event) {
+            const dragData = event.dataTransfer?.getData('application/x-noteboard-block-drag');
+            if (!dragData) {
+              return false;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            const { state, dispatch } = view;
+            const { doc, selection } = state;
+
+            // 1. 获取被拖拽的源节点与范围
+            let fromPos: number | null = null;
+            try {
+              const parsed = JSON.parse(dragData);
+              fromPos = typeof parsed.pos === 'number' ? parsed.pos : null;
+            } catch {
+              // ignore
+            }
+
+            if (fromPos === null && selection instanceof NodeSelection) {
+              fromPos = selection.from;
+            }
+
+            if (fromPos === null || fromPos < 0) return false;
+            const sourceNode = doc.nodeAt(fromPos);
+            if (!sourceNode) return false;
+            const sourceSize = sourceNode.nodeSize;
+            const toPos = fromPos + sourceSize;
+
+            // 2. 解析 drop 屏幕坐标对应的顶层块元素
+            const clientX = event.clientX;
+            const clientY = event.clientY;
+            const editorDom = view.dom;
+
+            let targetEl = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+            if (!targetEl || !editorDom.contains(targetEl)) return false;
+
+            // 向上追溯到 ProseMirror 的直接顶层子节点
+            while (targetEl && targetEl.parentElement && targetEl.parentElement !== editorDom) {
+              targetEl = targetEl.parentElement;
+            }
+            if (!targetEl || targetEl === editorDom) return false;
+
+            let targetTopPos: number;
+            try {
+              const domPos = view.posAtDOM(targetEl, 0);
+              const $p = doc.resolve(domPos);
+              targetTopPos = $p.depth === 0 ? domPos : $p.before(1);
+            } catch {
+              return false;
+            }
+
+            const targetNode = doc.nodeAt(targetTopPos);
+            if (!targetNode) return false;
+
+            // 3. 计算在目标顶层块上方还是下方插入
+            const targetRect = targetEl.getBoundingClientRect();
+            const isAfter = clientY > targetRect.top + targetRect.height / 2;
+            const insertPos = isAfter ? targetTopPos + targetNode.nodeSize : targetTopPos;
+
+            // 如果 drop 的位置就是原节点内部或原位置，无需移动
+            if (insertPos >= fromPos && insertPos <= toPos) {
+              (view as unknown as { dragging: unknown }).dragging = null;
+              return true;
+            }
+
+            // 4. 构建原子事务安全移动（统一先物理删除旧节点，再在目标位置精确插入）
+            const tr = state.tr;
+            if (insertPos < fromPos) {
+              // 向上移动：先删除原位置节点，再在新位置插入
+              tr.delete(fromPos, toPos);
+              tr.insert(insertPos, sourceNode);
+              tr.setSelection(NodeSelection.create(tr.doc, insertPos));
+            } else {
+              // 向下移动：先物理删除原位置节点，由于原节点已被移除，目标插入点前移 sourceSize
+              tr.delete(fromPos, toPos);
+              const mappedInsertPos = insertPos - sourceSize;
+              tr.insert(mappedInsertPos, sourceNode);
+              tr.setSelection(NodeSelection.create(tr.doc, mappedInsertPos));
+            }
+
+            dispatch(tr);
+            (view as unknown as { dragging: unknown }).dragging = null;
+            view.focus();
+            return true;
+          },
+        },
+      }),
+    ];
+  },
+});
 
 /**
  * 构建 TipTap 扩展列表
@@ -60,7 +165,10 @@ export function buildExtensions(): Extensions {
       inline: true,
       allowBase64: false,
     }),
-    Highlight,
+    // 文本高亮扩展（支持多色配置）
+    Highlight.configure({
+      multicolor: true,
+    }),
 
     // 占位符
     Placeholder.configure({
@@ -75,6 +183,9 @@ export function buildExtensions(): Extensions {
     TaskList,
     TaskItem.configure({
       nested: true,
+      HTMLAttributes: {
+        'data-type': 'taskItem',
+      },
     }),
 
     // 表格
@@ -87,6 +198,9 @@ export function buildExtensions(): Extensions {
     TableRow,
     TableCell,
     TableHeader,
+
+    // 顶层块拖拽安全重排序扩展
+    BlockReorder,
 
     // 代码块（自定义 NodeView，带语言选择和复制按钮）
     CodeBlockView.configure({

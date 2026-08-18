@@ -538,13 +538,130 @@ body {
 .ProseMirror p:last-child { margin-bottom: 0; }
 
 /* 列表 */
-.ProseMirror ul, .ProseMirror ol { padding-left: 2em; margin-bottom: 16px; }
-.ProseMirror ul { list-style: disc; }
+.ProseMirror ul:not([data-type="taskList"]),
+.ProseMirror ol {
+  padding-left: 1.8em;
+  margin-top: 0.3em;
+  margin-bottom: calc(0.6em * var(--content-line-height, 1.7));
+}
+.ProseMirror ul:not([data-type="taskList"]) { list-style: disc; }
 .ProseMirror ol { list-style: decimal; }
-.ProseMirror ul ul { list-style: circle; }
-.ProseMirror ul ul ul { list-style: square; }
+.ProseMirror ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) { list-style: circle; }
+.ProseMirror ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) ul:not([data-type="taskList"]) { list-style: square; }
 .ProseMirror ol ol { list-style: upper-alpha; }
 .ProseMirror ol ol ol { list-style: lower-roman; }
+
+/* 列表项与嵌套列表紧凑排版（完全继承并适配动态字号与行高） */
+.ProseMirror li {
+  margin-bottom: 0.25em;
+  line-height: var(--content-line-height);
+  font-size: inherit;
+}
+
+.ProseMirror li > p {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  line-height: var(--content-line-height) !important;
+  font-size: inherit;
+}
+
+.ProseMirror li > ul,
+.ProseMirror li > ol {
+  margin-top: 0.15em !important;
+  margin-bottom: 0.15em !important;
+  padding-left: 1.5em;
+}
+
+/* 任务列表 TaskList & TaskItem（高度与纵向中心精确对准动态行高） */
+.ProseMirror ul[data-type="taskList"] {
+  list-style: none !important;
+  padding-left: 0 !important;
+  margin-top: 0.3em;
+  margin-bottom: calc(0.6em * var(--content-line-height, 1.7));
+}
+
+.ProseMirror ul[data-type="taskList"] > li,
+.ProseMirror ul[data-type="taskList"] li,
+.ProseMirror li[data-type="taskItem"],
+.ProseMirror li[data-checked] {
+  list-style: none !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start !important;
+  gap: 0.5em !important;
+  margin-bottom: 0.25em;
+  line-height: var(--content-line-height);
+  font-size: inherit;
+}
+
+.ProseMirror ul[data-type="taskList"] > li:last-child,
+.ProseMirror li[data-type="taskItem"]:last-child,
+.ProseMirror li[data-checked]:last-child {
+  margin-bottom: 0;
+}
+
+/* 复选框容器高度与正文首行行高严格一致，实现无论字号/行高如何调节均垂直居中对齐 */
+.ProseMirror ul[data-type="taskList"] > li > label,
+.ProseMirror ul[data-type="taskList"] li > label,
+.ProseMirror li[data-type="taskItem"] > label,
+.ProseMirror li[data-checked] > label {
+  flex: 0 0 auto !important;
+  user-select: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: calc(1em * var(--content-line-height, 1.7)) !important;
+  margin: 0 !important;
+  cursor: pointer !important;
+  line-height: 1 !important;
+}
+
+/* 复选框随当前字号自适应等比缩放 */
+.ProseMirror ul[data-type="taskList"] > li > label input[type="checkbox"],
+.ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"],
+.ProseMirror li[data-type="taskItem"] > label input[type="checkbox"],
+.ProseMirror li[data-checked] > label input[type="checkbox"] {
+  cursor: pointer;
+  width: 1em;
+  height: 1em;
+  margin: 0;
+  accent-color: var(--editor-accent, #3b82f6);
+  border-radius: 3px;
+  vertical-align: middle;
+}
+
+.ProseMirror ul[data-type="taskList"] > li > div,
+.ProseMirror ul[data-type="taskList"] li > div,
+.ProseMirror li[data-type="taskItem"] > div,
+.ProseMirror li[data-checked] > div {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+}
+
+.ProseMirror ul[data-type="taskList"] > li > div > p,
+.ProseMirror ul[data-type="taskList"] li > div > p,
+.ProseMirror li[data-type="taskItem"] > div > p,
+.ProseMirror li[data-checked] > div > p {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  line-height: var(--content-line-height) !important;
+  font-size: inherit;
+}
+
+/* 嵌套任务列表缩进与边距 */
+.ProseMirror ul[data-type="taskList"] ul[data-type="taskList"] {
+  padding-left: 1.6em !important;
+  margin-top: 0.15em !important;
+  margin-bottom: 0.15em !important;
+}
+
+/* 勾选完成状态文本删除线与浅色显示 */
+.ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div > p,
+.ProseMirror li[data-type="taskItem"][data-checked="true"] > div > p,
+.ProseMirror li[data-checked="true"] > div > p {
+  text-decoration: line-through;
+  color: var(--editor-text-muted, #94a3b8);
+}
 
 /* 引用 */
 .ProseMirror blockquote {
@@ -556,19 +673,73 @@ body {
   margin-bottom: 16px;
 }
 
-/* 表格 */
+/* 表格与单元格选区 */
 .ProseMirror table {
   border-collapse: collapse;
+  table-layout: fixed;
   width: 100%;
-  margin-bottom: 16px;
+  margin: 16px 0;
+  overflow: hidden;
 }
 .ProseMirror th, .ProseMirror td {
+  min-width: 1.5em;
   border: 1px solid var(--editor-border);
-  padding: 6px 13px;
+  padding: 8px 12px;
+  vertical-align: top;
+  box-sizing: border-box;
+  position: relative;
 }
 .ProseMirror th {
   background: var(--editor-code-bg);
   font-weight: 600;
+  text-align: left;
+}
+
+/* 单元格多选与跨行跨列选区高亮 */
+.ProseMirror .selectedCell {
+  background: rgba(59, 130, 246, 0.12) !important;
+  position: relative;
+}
+.ProseMirror .selectedCell::after {
+  z-index: 2;
+  position: absolute;
+  content: "";
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  pointer-events: none;
+}
+
+/* 表格列宽调整指示手柄 */
+.ProseMirror .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: -2px;
+  width: 4px;
+  background-color: var(--accent-500, #3b82f6);
+  pointer-events: none;
+  z-index: 20;
+}
+.ProseMirror.resize-cursor {
+  cursor: col-resize;
+}
+.ProseMirror .tableWrapper {
+  overflow-x: auto;
+  margin: 16px 0;
+}
+
+/* 文本高亮标记 */
+.ProseMirror mark {
+  background-color: #fef08a;
+  color: inherit;
+  padding: 1px 4px;
+  border-radius: 3px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 
 /* 分割线 */
