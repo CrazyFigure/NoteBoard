@@ -2,7 +2,7 @@
 // 三栏布局：资源管理器 | 编辑区 | 大纲
 // 详见 docs/07-UI布局与交互规范.md §1
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import type { PanelSize } from 'react-resizable-panels';
 import type { Editor } from '@tiptap/core';
@@ -99,35 +99,33 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
   const confirmCloseBatch = useWindowStore((s) => s.confirmCloseBatch);
   const clearPendingClose = useWindowStore((s) => s.clearPendingClose);
 
-  // 窗口级关闭的拦截对话框
+  // 窗口级关闭的拦截对话框状态计算（使用 useMemo 避免 Zustand selector 每次返回新数组引发无限重渲染崩溃）
   const isWindowClose = pendingCloseKeys.length > 0;
-  const windowDirtyTabs = useWindowStore((s) =>
-    s.pendingCloseKeys.length > 0
-      ? s.tabs.filter((t) => s.pendingCloseKeys.includes(t.key) && t.isDirty)
-      : dirtyPendingTabs
-  );
+  const windowDirtyTabs = useMemo(() => {
+    if (pendingCloseKeys.length === 0) return dirtyPendingTabs;
+    return tabs.filter((t) => pendingCloseKeys.includes(t.key) && t.isDirty);
+  }, [pendingCloseKeys, tabs, dirtyPendingTabs]);
 
   // 窗口级关闭的保存+关闭
   const handleWindowSaveAndClose = async (keys: string[]) => {
+    // 逐个保存待关闭的脏文档
     for (const key of keys) {
-      await saveDocument(key);
+      const ok = await saveDocument(key);
+      if (!ok) {
+        // 用户在另存为对话框中取消了保存，中断关闭流程
+        return;
+      }
     }
     confirmCloseBatch(keys);
-    // 所有 tab 关闭后 → 关窗口
-    const remaining = useWindowStore.getState().tabs;
-    if (remaining.length === 0 ||
-        remaining.every((t) => keys.includes(t.key))) {
-      await performWindowClose(getCurrentWindow().label);
-    }
+    // 处理完脏文档保存后，直接执行窗口关闭流程
+    await performWindowClose(getCurrentWindow().label);
   };
 
   // 窗口级关闭的丢弃+关闭
-  const handleWindowDiscardAndClose = (keys: string[]) => {
+  const handleWindowDiscardAndClose = async (keys: string[]) => {
     confirmCloseBatch(keys);
-    const remaining = useWindowStore.getState().tabs;
-    if (remaining.length === 0) {
-      performWindowClose(getCurrentWindow().label);
-    }
+    // 丢弃修改后，直接执行窗口关闭流程
+    await performWindowClose(getCurrentWindow().label);
   };
 
   // 窗口级关闭的取消

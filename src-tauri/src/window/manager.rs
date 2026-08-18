@@ -101,9 +101,23 @@ pub fn unregister_window(state: &State<'_, Mutex<AppState>>, label: &str) {
 pub fn on_window_event(window: &Window, event: &WindowEvent) {
     match event {
         WindowEvent::CloseRequested { api, .. } => {
+            let label = window.label().to_string();
+            let app = window.app_handle();
+            let state = app.state::<Mutex<AppState>>();
+
+            // 检查窗口是否已被标记为主动关闭状态
+            let is_closing = {
+                let s = state.lock().unwrap();
+                s.is_closing(&label)
+            };
+
+            // 若已由前端确认或系统流程触发关闭，放行系统默认关闭流程
+            if is_closing {
+                return;
+            }
+
             // 阻止默认关闭，让前端处理未保存拦截
             api.prevent_close();
-            let label = window.label().to_string();
             // 🔴 Tauri v2 陷阱：window.emit() 也是广播！
             // close-requested 只发给本窗口，必须用 emit_to
             let _ = window.app_handle().emit_to(&label, "nb://close-requested", &label);

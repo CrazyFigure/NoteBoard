@@ -5,7 +5,7 @@
 use crate::dto::WindowIntent;
 use crate::registry::documents::DocumentRecord;
 use crate::window::manager::WindowRecord;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// 全局应用状态
 pub struct AppState {
@@ -14,6 +14,9 @@ pub struct AppState {
 
     /// 窗口注册表：label → WindowRecord
     pub windows: HashMap<String, WindowRecord>,
+
+    /// 正在被主动关闭的窗口集合（避免 prevent_close 拦截导致的死循环与白屏）
+    pub closing_windows: HashSet<String>,
 
     /// 待取意图：label → WindowIntent
     pub intents: HashMap<String, WindowIntent>,
@@ -30,6 +33,7 @@ impl Default for AppState {
         Self {
             documents: HashMap::new(),
             windows: HashMap::new(),
+            closing_windows: HashSet::new(),
             intents: HashMap::new(),
             next_window_seq: 1, // nb-main 是 0，后续从 1 开始
             settings_revision: 0,
@@ -50,10 +54,21 @@ impl AppState {
         self.windows.insert(label, record);
     }
 
+    /// 标记窗口正在被主动关闭
+    pub fn mark_closing(&mut self, label: &str) {
+        self.closing_windows.insert(label.to_string());
+    }
+
+    /// 检查窗口是否正在被主动关闭
+    pub fn is_closing(&self, label: &str) -> bool {
+        self.closing_windows.contains(label)
+    }
+
     /// 注销窗口及其名下所有文档
     pub fn unregister_window(&mut self, label: &str) {
         self.windows.remove(label);
         self.intents.remove(label);
+        self.closing_windows.remove(label);
         // 清理该窗口名下的所有文档
         self.documents.retain(|_, doc| doc.owner_window != label);
     }
