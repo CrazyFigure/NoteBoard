@@ -92,33 +92,48 @@ pub fn notify_window_active(
 }
 
 /// 关闭窗口
-/// 使用 destroy() 销毁窗口实例
-/// 若关闭的是最后一个窗口或主窗口，执行 std::process::exit(0) 彻底安全退出应用进程，杜绝 Win32 宿主窗口白屏残留
+/// 1. 标记窗口为 closing，使 on_window_event 放行 CloseRequested
+/// 2. 使用 win.close() 走系统标准关闭管线（触发 window-state 保存并安全销毁 HWND 与 WebView2）
+/// 3. 若为最后一个窗口或主窗口，执行应用安全退出
 #[tauri::command]
 pub fn close_window(
     app: tauri::AppHandle,
     state: State<'_, Mutex<AppState>>,
     label: String,
 ) -> Result<(), String> {
-    // 1. 从 AppState 中注销窗口
-    manager::unregister_window(&state, &label);
+    // 1. 标记本窗口为主动关闭状态
+    {
+        let mut s = state.lock().unwrap();
+        s.mark_closing(&label);
+    }
 
     let remaining = app.webview_windows();
     let has_other_windows = remaining.iter().any(|(k, _)| k.as_str() != label);
 
-    // 2. 如果还有其他独立窗口且关闭的不是主窗口，仅销毁本窗口
+    // 2. 如果还有其他独立窗口且关闭的不是主窗口，仅关闭本窗口
     if has_other_windows && label != "nb-main" {
         if let Some(win) = app.get_webview_window(&label) {
-            let _ = win.destroy();
+            let _ = win.hide();
+            let _ = win.close();
         }
+        // 从 AppState 注销窗口
+        manager::unregister_window(&state, &label);
         return Ok(());
     }
 
-    // 3. 若无其他窗口或为主窗口关闭，先隐藏并销毁所有窗口，然后立即彻底退出进程
+    // 3. 若无其他窗口或为主窗口关闭，标记所有窗口并优雅退出应用
+    {
+        let mut s = state.lock().unwrap();
+        for (k, _) in &remaining {
+            s.mark_closing(k);
+        }
+    }
+
+    // 先隐藏窗口避免视觉残留，再执行标准关闭与状态保存，最后退出应用
     for (_, win) in remaining {
         let _ = win.hide();
-        let _ = win.destroy();
+        let _ = win.close();
     }
     app.exit(0);
-    std::process::exit(0);
+    Ok(())
 }

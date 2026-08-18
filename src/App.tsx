@@ -1,9 +1,7 @@
-// NoteBoard 应用根组件
-// 初始化主题系统 + 窗口握手 + 应用外壳 + 全局设置模态层
-
 import { useEffect } from 'react';
 import { AppShell } from './components/AppShell';
 import { SettingsModal } from './components/settings/SettingsModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { useSettingsStore } from './stores/settingsStore';
 import { useLayoutStore } from './stores/layoutStore';
 import { useWindowStore } from './stores/windowStore';
@@ -143,12 +141,14 @@ export default function App() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', position: 'relative' }}>
-      <AppShell />
-      <SettingsModal
-        isOpen={settingsModalVisible}
-        onClose={() => setSettingsModalVisible(false)}
-      />
-    </div>
+    <ErrorBoundary>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', position: 'relative' }}>
+        <AppShell />
+        <SettingsModal
+          isOpen={settingsModalVisible}
+          onClose={() => setSettingsModalVisible(false)}
+        />
+      </div>
+    </ErrorBoundary>
   );
 }
