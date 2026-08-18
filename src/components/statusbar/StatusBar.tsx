@@ -1,0 +1,147 @@
+// NoteBoard StatusBar
+// 底部状态栏：光标位置、字数/行数、编码、行尾符、类型、保存状态
+// 详见 docs/07-UI布局与交互规范.md §8
+
+import { useWindowStore } from '../../stores/windowStore';
+import { useDocumentStore } from '../../stores/documentStore';
+
+export function StatusBar() {
+  const activeKey = useWindowStore((s) => s.activeKey);
+  const doc = useDocumentStore((s) => (activeKey ? s.documents.get(activeKey) : undefined));
+
+  if (!doc) {
+    return (
+      <div
+        style={{
+          height: 24,
+          display: 'flex',
+          alignItems: 'center',
+          paddingLeft: 12,
+          paddingRight: 12,
+          background: 'var(--statusbar-bg)',
+          borderTop: '1px solid var(--editor-border)',
+          color: 'var(--statusbar-text)',
+          fontSize: 12,
+          flexShrink: 0,
+        }}
+      >
+        <span style={{ color: 'var(--statusbar-text)' }}>NoteBoard</span>
+      </div>
+    );
+  }
+
+  const sectionStyle: React.CSSProperties = {
+    padding: '0 10px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    height: '100%',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  };
+
+  const dividerStyle: React.CSSProperties = {
+    width: 1,
+    height: 14,
+    background: 'var(--editor-border)',
+  };
+
+  // 保存状态
+  const saveStatus =
+    doc.savePolicy === 'auto'
+      ? doc.isDirty
+        ? '保存中…'
+        : '自动保存'
+      : doc.isDirty
+        ? '未保存'
+        : '已保存';
+
+  const saveStatusColor = doc.isDirty && doc.savePolicy === 'manual'
+    ? 'var(--accent-strong)'
+    : 'var(--statusbar-text)';
+
+  // 类型显示
+  const typeLabel =
+    doc.kind === 'markdown'
+      ? 'Markdown'
+      : doc.kind === 'board'
+        ? '画板'
+        : doc.language === 'sql'
+          ? 'SQL'
+          : doc.language === 'json'
+            ? 'JSON'
+            : doc.language === 'yaml'
+              ? 'YAML'
+              : doc.language === 'xml'
+                ? 'XML'
+                : doc.language === 'markdown'
+                  ? 'Markdown'
+                  : '纯文本';
+
+  return (
+    <div
+      style={{
+        height: 24,
+        display: 'flex',
+        alignItems: 'center',
+        background: 'var(--statusbar-bg)',
+        borderTop: '1px solid var(--editor-border)',
+        color: 'var(--statusbar-text)',
+        fontSize: 12,
+        flexShrink: 0,
+        overflow: 'hidden',
+      }}
+      role="status"
+    >
+      {/* 光标位置 */}
+      <div style={sectionStyle}>
+        <span>行 1, 列 1</span>
+      </div>
+      <div style={dividerStyle} />
+
+      {/* 字数/行数 */}
+      <div style={sectionStyle}>
+        <span>
+          {doc.content?.length.toLocaleString() ?? 0} 字 · {(doc.content?.split('\n').length ?? 0).toLocaleString()} 行
+        </span>
+      </div>
+      <div style={dividerStyle} />
+
+      {/* 编码 */}
+      <div style={sectionStyle}>
+        <span>{doc.encoding === 'utf8' ? 'UTF-8' : doc.encoding === 'utf8-bom' ? 'UTF-8 BOM' : 'GBK'}</span>
+      </div>
+      <div style={dividerStyle} />
+
+      {/* 行尾符 */}
+      <div style={sectionStyle}>
+        <span>{doc.eol === 'crlf' ? 'CRLF' : 'LF'}</span>
+      </div>
+      <div style={dividerStyle} />
+
+      {/* 类型 */}
+      <div style={sectionStyle}>
+        <span>{typeLabel}</span>
+      </div>
+      <div style={dividerStyle} />
+
+      {/* 保存状态 */}
+      <div style={{ ...sectionStyle, color: saveStatusColor }}>
+        <span>{saveStatus}</span>
+      </div>
+
+      {/* 右侧空白 */}
+      <div style={{ flex: 1 }} />
+
+      {/* 只读标记 */}
+      {doc.readonly && (
+        <>
+          <div style={dividerStyle} />
+          <div style={sectionStyle}>
+            <span style={{ color: 'var(--warning-600)' }}>只读</span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
