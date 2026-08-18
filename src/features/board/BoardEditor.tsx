@@ -6,6 +6,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import '@excalidraw/excalidraw/index.css';
 import { parseScene, serializeScene, createEmptyScene, isVersionSupported, getElementCount, type ExcalidrawScene } from './sceneIo';
 import { mapTheme } from './excalidrawTheme';
+import { FlowchartQuickConnect } from './FlowchartQuickConnect';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -74,6 +75,7 @@ const ExcalidrawCanvas = React.memo(
         initialData={initialData}
         onChange={onChange}
         theme={theme}
+        langCode="zh-CN"
         UIOptions={UI_OPTIONS}
         excalidrawAPI={onApi}
       />
@@ -97,6 +99,9 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
   const [readOnly, setReadOnly] = useState(false);
   const [elementCount, setElementCount] = useState(0);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
+  // 实时画板状态与元素列表（仅用于快捷连接浮层，ExcalidrawCanvas 本身由 React.memo 隔离不会触发内部重绘）
+  const [liveAppState, setLiveAppState] = useState<ExcalidrawScene['appState'] | null>(null);
+  const [liveElements, setLiveElements] = useState<ExcalidrawScene['elements']>([]);
   const storeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const diskTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const apiRef = useRef<{ updateScene: (scene: Partial<ExcalidrawScene>) => void } | null>(null);
@@ -142,6 +147,8 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
 
     sceneRef.current = parsed;
     setInitialData(parsed);
+    setLiveAppState(parsed.appState);
+    setLiveElements(parsed.elements);
     setElementCount(getElementCount(parsed));
   }, [docKey, theme]);
 
@@ -164,6 +171,10 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
       };
 
       sceneRef.current = newScene;
+
+      // 实时更新浮层所依赖的状态
+      setLiveAppState(appState);
+      setLiveElements(elements);
 
       // 仅在 tab 未标记为 dirty 时才触发一次更新，避免频繁通知 store
       const tab = useWindowStore.getState().getTab(key);
@@ -251,6 +262,7 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
             initialData={stableInitialData as unknown as Record<string, unknown>}
             viewMode={true}
             theme={theme}
+            langCode="zh-CN"
           />
         </div>
       </div>
@@ -268,6 +280,23 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
           onChange={handleChange}
           onApi={handleApi}
         />
+        {/* 流程图快速连线与节点延伸悬浮层 */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            overflow: 'hidden',
+            zIndex: 5,
+          }}
+        >
+          <FlowchartQuickConnect
+            api={apiRef.current}
+            appState={liveAppState ?? initialData?.appState}
+            elements={liveElements.length > 0 ? liveElements : (initialData?.elements ?? [])}
+            theme={theme}
+          />
+        </div>
       </div>
 
       {/* 状态栏画板区段 */}

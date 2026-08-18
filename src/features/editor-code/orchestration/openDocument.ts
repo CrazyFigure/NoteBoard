@@ -5,26 +5,84 @@
 import * as ipc from '../../../core/ipc/commands';
 import { useDocumentStore } from '../../../stores/documentStore';
 import { useWindowStore, type Tab } from '../../../stores/windowStore';
-import { kindFromPath, languageFromPath, savePolicyOf } from '../../../core/docKind';
+import { useExplorerStore } from '../../explorer/explorerStore';
+import { useLayoutStore } from '../../../stores/layoutStore';
+import { kindFromPath, languageFromPath } from '../../../core/docKind';
+import { showToast } from '../../../stores/toastStore';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
 // ── 打开文件 ──
 
 export async function openDocument(path: string): Promise<void> {
-  // 1. 先 probe，检查大文件
+  const fileName = path.split(/[\\/]/).pop() ?? path;
+  const dirPath =
+    path.substring(0, Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/'))) || path;
+
+  // 1. 先 probe，检查文件可读性与类型
+  let isUnsupported = false;
+  let fileSize = 0;
   try {
     const probe = await ipc.probeDocument(path);
+    fileSize = probe.size;
     if (probe.size > 50 * 1024 * 1024) {
       // 阶段11会加确认框
       console.warn('文件较大，但当前阶段暂不拦截:', path);
     }
-    if (!probe.isText) {
-      // 阶段13会显示 unsupported 信息页
-      console.warn('非文本文件:', path);
-      return;
+    if (!probe.isText || probe.kind === 'unsupported') {
+      isUnsupported = true;
     }
   } catch {
     // probe 失败则继续尝试读取
+  }
+
+  // 1.1 若为不适配/非文本文件，建立 unsupported Tab 并在主区域和悬浮层提示
+  if (isUnsupported) {
+    showToast(`文件格式不受支持: ${fileName}，无法直接编辑`, 'warning');
+
+    // 建 Document 记录元信息
+    const docStore = useDocumentStore.getState();
+    docStore.upsertFromPayload({
+      key: path,
+      displayName: fileName,
+      dirPath,
+      kind: 'unsupported',
+      language: 'plaintext',
+      content: null,
+      encoding: 'utf8',
+      eol: 'lf',
+      size: fileSize,
+      mtime: 0,
+      readonly: true,
+    });
+
+    // 建 Tab 并激活
+    const tabStore = useWindowStore.getState();
+    const tab: Tab = {
+      key: path,
+      displayName: fileName,
+      path,
+      kind: 'unsupported',
+      language: 'plaintext',
+      isDirty: false,
+      isPreview: false,
+      viewMode: null,
+      externalStatus: null,
+      isDetached: false,
+    };
+    tabStore.openTab(tab);
+
+    // 确保左侧栏展开并展示父文件夹目录
+    if (dirPath) {
+      useLayoutStore.getState().setExplorerVisible(true);
+      try {
+        const nodes = await ipc.readDir(dirPath, false);
+        useExplorerStore.getState().setRoot(dirPath, nodes);
+        useExplorerStore.getState().setRevealed(path);
+      } catch (e) {
+        console.error('加载父文件夹目录失败:', e);
+      }
+    }
+    return;
   }
 
   // 2. 读盘
@@ -33,6 +91,7 @@ export async function openDocument(path: string): Promise<void> {
     payload = await ipc.readDocument(path);
   } catch (e) {
     console.error('打开文件失败:', e);
+    showToast(`无法打开文件: ${fileName}`, 'error');
     return;
   }
 
@@ -69,7 +128,19 @@ export async function openDocument(path: string): Promise<void> {
   };
   tabStore.openTab(tab);
 
-  // 6. 推送到最近打开
+  // 6. 确保左侧栏展开并展示父文件夹目录
+  if (payload.dirPath) {
+    useLayoutStore.getState().setExplorerVisible(true);
+    try {
+      const nodes = await ipc.readDir(payload.dirPath, false);
+      useExplorerStore.getState().setRoot(payload.dirPath, nodes);
+      useExplorerStore.getState().setRevealed(payload.key);
+    } catch (e) {
+      console.error('加载父文件夹目录失败:', e);
+    }
+  }
+
+  // 7. 推送到最近打开
   try {
     await ipc.pushRecent(path, false);
   } catch {

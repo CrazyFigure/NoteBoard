@@ -9,8 +9,12 @@ import type { Editor } from '@tiptap/core';
 import { TitleBar } from './titlebar/TitleBar';
 import { StatusBar } from './statusbar/StatusBar';
 import { WelcomeScreen } from './WelcomeScreen';
+import { UnsupportedView } from './UnsupportedView';
+import { ToastContainer } from './Toast';
 import { RailToggle } from './rail/RailToggle';
 import { useWindowStore } from '../stores/windowStore';
+import { useDocumentStore } from '../stores/documentStore';
+import { useReveal } from '../features/explorer/useReveal';
 import {
   useLayoutStore,
   EXPLORER_MIN,
@@ -63,6 +67,10 @@ function ResizeHandle() {
 export function AppShell({ children }: { children?: React.ReactNode }) {
   const tabs = useWindowStore((s) => s.tabs);
   const activeKey = useWindowStore((s) => s.activeKey);
+  const activeDoc = useDocumentStore((s) => (activeKey ? s.documents.get(activeKey) : undefined));
+
+  // 纯跟随 + Reveal：全局跟随活跃 Tab 切换左侧资源管理器目录
+  useReveal();
 
   const {
     explorerVisible,
@@ -249,7 +257,15 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
               />
 
               {/* 编辑器内容 */}
-              <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+              <div
+                style={{
+                  flex: 1,
+                  overflow: 'hidden',
+                  position: 'relative',
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}
+              >
                 {tabs.length === 0 ? (
                   <WelcomeScreen
                     onOpenFile={openFileDialog}
@@ -258,7 +274,14 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                     onNewBoard={newBoard}
                   />
                 ) : activeTab ? (
-                  activeTab.kind === 'code' ? (
+                  activeTab.kind === 'unsupported' ? (
+                    <UnsupportedView
+                      key={activeTab.key}
+                      filePath={activeTab.path ?? activeTab.key}
+                      fileName={activeTab.displayName}
+                      fileSize={activeDoc?.size}
+                    />
+                  ) : activeTab.kind === 'code' ? (
                     <CodeEditor key={activeTab.key} docKey={activeTab.key} />
                   ) : activeTab.kind === 'markdown' ? (
                     <TipTapEditor key={activeTab.key} docKey={activeTab.key} onEditorReady={setActiveEditor} />
@@ -339,6 +362,9 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
         onDiscard={isWindowClose ? handleWindowDiscardAndClose : discardAndClose}
         onCancel={isWindowClose ? handleWindowCancelClose : cancelClose}
       />
+
+      {/* 全局 Toast 提示 */}
+      <ToastContainer />
     </div>
   );
 }

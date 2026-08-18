@@ -43,11 +43,13 @@ interface ExplorerStore {
   clear: () => void;
 }
 
-/** 路径规范化比较（大小写不敏感） */
+/** 路径规范化比较（大小写不敏感，统一反斜杠并去除末尾斜杠） */
 function sameKey(a: string | null, b: string | null): boolean {
   if (a === null && b === null) return true;
   if (a === null || b === null) return false;
-  return a.toLowerCase() === b.toLowerCase();
+  const normA = a.replace(/[/\\]+/g, '\\').replace(/\\+$/, '').toLowerCase();
+  const normB = b.replace(/[/\\]+/g, '\\').replace(/\\+$/, '').toLowerCase();
+  return normA === normB;
 }
 
 export const useExplorerStore = create<ExplorerStore>((set, get) => ({
