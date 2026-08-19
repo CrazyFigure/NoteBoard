@@ -94,7 +94,7 @@ pub fn notify_window_active(
 /// 关闭窗口
 /// 1. 标记窗口为 closing，使 on_window_event 放行 CloseRequested
 /// 2. 使用 win.close() 走系统标准关闭管线（触发 window-state 保存并安全销毁 HWND 与 WebView2）
-/// 3. 若为最后一个窗口或主窗口，执行应用安全退出
+/// 3. 所有窗口平等独立：若还有其他存活窗口，仅关闭本窗口；若为最后一个窗口，关闭后退出应用
 #[tauri::command]
 pub fn close_window(
     app: tauri::AppHandle,
@@ -110,28 +110,17 @@ pub fn close_window(
     let remaining = app.webview_windows();
     let has_other_windows = remaining.iter().any(|(k, _)| k.as_str() != label);
 
-    // 2. 如果还有其他独立窗口且关闭的不是主窗口，仅关闭本窗口
-    if has_other_windows && label != "nb-main" {
+    // 2. 如果还有其他独立窗口，仅关闭本窗口
+    if has_other_windows {
         if let Some(win) = app.get_webview_window(&label) {
             let _ = win.hide();
             let _ = win.close();
         }
-        // 从 AppState 注销窗口
-        manager::unregister_window(&state, &label);
         return Ok(());
     }
 
-    // 3. 若无其他窗口或为主窗口关闭，标记所有窗口并优雅退出应用
-    {
-        // 标记所有窗口进入正在关闭状态
-        let mut s = state.lock().unwrap();
-        for k in remaining.keys() {
-            s.mark_closing(k);
-        }
-    }
-
-    // 先隐藏窗口避免视觉残留，再执行标准关闭与状态保存，最后退出应用
-    for (_, win) in remaining {
+    // 3. 若为最后一个窗口，关闭并优雅退出应用
+    if let Some(win) = app.get_webview_window(&label) {
         let _ = win.hide();
         let _ = win.close();
     }
