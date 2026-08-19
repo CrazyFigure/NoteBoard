@@ -13,8 +13,8 @@ export function searchReplaceExtension() {
   return SearchAndReplace.configure({
     // 结果样式
     searchResultClass: 'nb-search-result',
-    // 正则模式默认关闭
-    disableRegex: true,
+    // 允许底层正则解析（由 searchController 安全转义与控制）
+    disableRegex: false,
   });
 }
 

@@ -19,7 +19,8 @@ export const nbEditorTheme: Extension = EditorView.theme(
     },
     '.cm-scroller': {
       overflow: 'auto',
-      lineHeight: 'var(--content-line-height)',
+      // 代码与纯文本行高由 --mono-line-height 驱动
+      lineHeight: 'var(--mono-line-height, 1.5)',
     },
     // 行号槽
     '.cm-gutters': {
@@ -95,6 +96,28 @@ export const nbEditorTheme: Extension = EditorView.theme(
     },
     '.cm-lintRange-warning': {
       textDecoration: 'underline wavy var(--cm-lint-warning)',
+    },
+    // 换行符号标记
+    '.cm-newline-marker': {
+      color: 'var(--editor-text-muted)',
+      opacity: '0.45',
+      userSelect: 'none',
+      pointerEvents: 'none',
+      fontFamily: 'inherit',
+      marginLeft: '2px',
+    },
+    // 空白字符与制表符标记
+    '.cm-highlightSpace': {
+      color: 'var(--editor-text-muted)',
+      opacity: '0.45',
+    },
+    '.cm-highlightTab': {
+      color: 'var(--editor-text-muted)',
+      opacity: '0.45',
+    },
+    // 隐藏 CM 默认搜索替换面板（统一由自研悬浮组件提供）
+    '.cm-panel.cm-search': {
+      display: 'none !important',
     },
     // 通知面板
     '.cm-panels': {

@@ -10,6 +10,8 @@ import { useWindowStore } from '../../../stores/windowStore';
 import { getEditorView } from '../CodeEditor';
 import { getActiveTipTapEditor } from '../../editor-md/TipTapEditor';
 import { serializeMarkdown } from '../../editor-md/serialize';
+import { getActiveBoardScene } from '../../board/BoardEditor';
+import { serializeScene } from '../../board/sceneIo';
 import { kindFromPath, languageFromPath } from '../../../core/docKind';
 import type { WriteError } from '../../../core/ipc/types';
 
@@ -39,6 +41,19 @@ export async function saveDocument(docKey: string): Promise<boolean> {
   if (view && doc.kind === 'code') {
     const latest = view.state.doc.toString();
     store.setContent(docKey, latest);
+  }
+
+  // 3. 如果是画板，从活跃画板实例取最新场景并序列化
+  if (doc.kind === 'board') {
+    const scene = getActiveBoardScene(docKey);
+    if (scene) {
+      try {
+        const latest = serializeScene(scene);
+        store.setContent(docKey, latest);
+      } catch {
+        // ignore
+      }
+    }
   }
 
   const updatedDoc = useDocumentStore.getState().getDocument(docKey);

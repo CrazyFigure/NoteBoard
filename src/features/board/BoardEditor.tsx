@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import '@excalidraw/excalidraw/index.css';
-import { parseScene, serializeScene, createEmptyScene, isVersionSupported, getElementCount, type ExcalidrawScene } from './sceneIo';
+import { parseScene, serializeScene, createEmptyScene, cleanAppState, isVersionSupported, getElementCount, type ExcalidrawScene } from './sceneIo';
 import { mapTheme } from './excalidrawTheme';
 import { FlowchartQuickConnect } from './FlowchartQuickConnect';
 import { useDocumentStore } from '../../stores/documentStore';
@@ -14,6 +14,15 @@ import * as ipc from '../../core/ipc/commands';
 
 interface BoardEditorProps {
   docKey: string;
+}
+
+/** 活动画板场景全局获取注册表（供快捷保存与另存为立即取值） */
+const activeBoardScenes = new Map<string, () => ExcalidrawScene | null>();
+
+/** 获取指定文档当前处于内存中的最新画板场景对象 */
+export function getActiveBoardScene(docKey: string): ExcalidrawScene | null {
+  const getter = activeBoardScenes.get(docKey);
+  return getter ? getter() : null;
 }
 
 /** Excalidraw 组件（延迟加载） */
@@ -35,8 +44,8 @@ async function loadExcalidraw() {
 
 export function BoardEditor({ docKey }: BoardEditorProps) {
   return (
-    <BoardErrorBoundary docKey={docKey}>
-      <BoardEditorInner docKey={docKey} />
+    <BoardErrorBoundary key={docKey} docKey={docKey}>
+      <BoardEditorInner key={docKey} docKey={docKey} />
     </BoardErrorBoundary>
   );
 }
@@ -218,6 +227,14 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
     apiRef.current = api;
   }, []);
 
+  // 注册全局场景获取器，供 saveDocument 快捷保存时获取最新内存数据
+  useEffect(() => {
+    activeBoardScenes.set(docKey, () => sceneRef.current);
+    return () => {
+      activeBoardScenes.delete(docKey);
+    };
+  }, [docKey]);
+
   // 清理计时器
   useEffect(() => {
     return () => {
@@ -230,7 +247,7 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
     if (!initialData) return null;
     return {
       elements: initialData.elements ?? [],
-      appState: initialData.appState ?? {},
+      appState: cleanAppState(initialData.appState),
       files: initialData.files ?? {},
     };
   }, [initialData]);

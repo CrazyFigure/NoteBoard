@@ -27,21 +27,11 @@ export default function App() {
       startEventListeners();
     });
 
-    // 全局禁用原生浏览器右键菜单与 F12 开发者工具
+    // 全局禁用原生浏览器右键菜单
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
     };
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.key === 'F12' ||
-        (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i' || e.key === 'C' || e.key === 'c' || e.key === 'J' || e.key === 'j')) ||
-        (e.ctrlKey && (e.key === 'U' || e.key === 'u'))
-      ) {
-        e.preventDefault();
-      }
-    };
     window.addEventListener('contextmenu', handleContextMenu);
-    window.addEventListener('keydown', handleKeyDown);
 
     // Ctrl+Shift+N 新建空窗口
     const unregNewWindow = registerShortcut({
@@ -94,7 +84,6 @@ export default function App() {
     return () => {
       cleanup();
       window.removeEventListener('contextmenu', handleContextMenu);
-      window.removeEventListener('keydown', handleKeyDown);
       stopEventListeners();
       unregNewWindow();
       unregOpenFile();

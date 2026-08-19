@@ -39,7 +39,9 @@ interface WindowStore {
   openTab: (tab: Tab) => void;
   closeTab: (key: string) => void;
   closeOtherTabs: (key: string) => void;
+  closeTabsLeft: (key: string) => void;
   closeTabsRight: (key: string) => void;
+  closeAllTabs: () => void;
   activateTab: (key: string) => void;
   setTabDirty: (key: string, isDirty: boolean) => void;
   setTabPreview: (key: string, isPreview: boolean) => void;
@@ -97,6 +99,7 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
     });
   },
 
+  // 关闭除目标标签页外的所有其他标签页
   closeOtherTabs: (key) => {
     set((state) => ({
       tabs: state.tabs.filter((t) => t.key === key),
@@ -104,12 +107,39 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
     }));
   },
 
+  // 关闭目标标签页左侧的所有标签页
+  closeTabsLeft: (key) => {
+    set((state) => {
+      const idx = state.tabs.findIndex((t) => t.key === key);
+      if (idx <= 0) return {};
+      const newTabs = state.tabs.slice(idx);
+      let newActive = state.activeKey;
+      // 若原激活项已被关闭，则自动切换到当前目标标签页
+      if (state.activeKey && !newTabs.some((t) => t.key === state.activeKey)) {
+        newActive = key;
+      }
+      return { tabs: newTabs, activeKey: newActive };
+    });
+  },
+
+  // 关闭目标标签页右侧的所有标签页
   closeTabsRight: (key) => {
     set((state) => {
       const idx = state.tabs.findIndex((t) => t.key === key);
       if (idx < 0) return {};
-      return { tabs: state.tabs.slice(0, idx + 1) };
+      const newTabs = state.tabs.slice(0, idx + 1);
+      let newActive = state.activeKey;
+      // 若原激活项已被关闭，则自动切换到当前目标标签页
+      if (state.activeKey && !newTabs.some((t) => t.key === state.activeKey)) {
+        newActive = key;
+      }
+      return { tabs: newTabs, activeKey: newActive };
     });
+  },
+
+  // 关闭全部标签页
+  closeAllTabs: () => {
+    set({ tabs: [], activeKey: null });
   },
 
   activateTab: (key) => {

@@ -76,17 +76,21 @@ export const TreeNode = memo(function TreeNode({
   node,
   depth,
 }: TreeNodeProps) {
-  const { toggle, isExpanded, getChildren, loadChildren } = useTreeData();
-  const revealed = useExplorerStore((s) => s.revealed);
+  const { toggle, loadChildren } = useTreeData();
+  const nodeKey = node.path.toLowerCase();
+
+  // 精确响应式订阅：当前节点的展开状态、子节点缓存及高亮状态
+  const isNodeExpanded = useExplorerStore((s) => s.expanded.has(nodeKey));
+  const children = useExplorerStore((s) => s.children.get(nodeKey));
+  const isRevealed = useExplorerStore((s) => s.revealed?.toLowerCase() === nodeKey);
+  const setRevealed = useExplorerStore((s) => s.setRevealed);
   const root = useExplorerStore((s) => s.root);
   const setRoot = useExplorerStore((s) => s.setRoot);
 
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const expanded = node.isDir ? isExpanded(node.path) : false;
-  const children = node.isDir ? getChildren(node.path) : undefined;
-  const isRevealed = revealed?.toLowerCase() === node.path.toLowerCase();
+  const expanded = node.isDir ? isNodeExpanded : false;
 
   const paddingLeft = depth * 12 + 8;
 
@@ -102,8 +106,10 @@ export const TreeNode = memo(function TreeNode({
     return () => document.removeEventListener('mousedown', handleDown);
   }, [menuPos]);
 
+  // 树节点行样式（通过 CSS 变量动态响应排版设置与 Ctrl+滚轮缩放）
   const rowStyle: React.CSSProperties = {
-    height: 24,
+    height: 'var(--explorer-item-height, 24px)',
+    minHeight: 'var(--explorer-item-height, 24px)',
     display: 'flex',
     alignItems: 'center',
     gap: 4,
@@ -114,7 +120,8 @@ export const TreeNode = memo(function TreeNode({
     background: isRevealed ? 'var(--explorer-active)' : 'transparent',
     borderLeft: isRevealed ? '2px solid var(--accent-strong)' : '2px solid transparent',
     color: 'var(--explorer-text)',
-    fontSize: 13,
+    fontSize: 'var(--explorer-font-size, 13px)',
+    fontFamily: 'var(--explorer-font-family, inherit)',
     whiteSpace: 'nowrap',
   };
 
@@ -130,17 +137,35 @@ export const TreeNode = memo(function TreeNode({
     }
   };
 
-  const handleClick = () => {
+  // 单击条目：文件则仅选中高亮（不打开文件）；文件夹则选中并展开/收起目录
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRevealed(node.path);
     if (node.isDir) {
       toggle(node.path);
-    } else {
+    }
+  };
+
+  // 双击条目：文件则打开文档并激活 Tab
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!node.isDir) {
       openDocument(node.path);
     }
   };
 
+  // 单击展开/折叠箭头图标
+  const handleArrowClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRevealed(node.path);
+    toggle(node.path);
+  };
+
+  // 右键条目：先将条目设为选中，再弹出菜单
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    setRevealed(node.path);
     setMenuPos({ x: e.clientX, y: e.clientY });
   };
 
@@ -158,12 +183,14 @@ export const TreeNode = memo(function TreeNode({
         onMouseEnter={handleHover}
         onMouseLeave={handleLeave}
         onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
         onContextMenu={handleContextMenu}
         title={node.path}
       >
         {/* 展开箭头 */}
         {node.isDir ? (
           <span
+            onClick={handleArrowClick}
             style={{
               width: 12,
               height: 12,

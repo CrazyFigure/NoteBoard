@@ -35,6 +35,30 @@ export function EditorPanel() {
         </select>
       </div>
 
+      <div style={{ margin: '16px 0 8px', fontWeight: 600, fontSize: 13, color: 'var(--accent-strong)' }}>
+        代码与纯文本展示 (.sql / .txt / .json 等)
+      </div>
+
+      {/* 显示空格（显示为点） */}
+      <div style={rowStyle}>
+        <span style={labelStyle}>显示空格（点）</span>
+        <input
+          type="checkbox"
+          checked={settings.editor.showWhitespace ?? false}
+          onChange={(e) => setEditor({ showWhitespace: e.target.checked })}
+        />
+      </div>
+
+      {/* 显示换行符（↵） */}
+      <div style={rowStyle}>
+        <span style={labelStyle}>显示换行符 (↵)</span>
+        <input
+          type="checkbox"
+          checked={settings.editor.showLineEndings ?? false}
+          onChange={(e) => setEditor({ showLineEndings: e.target.checked })}
+        />
+      </div>
+
       {/* 软换行 */}
       <div style={rowStyle}>
         <span style={labelStyle}>软换行</span>
@@ -86,6 +110,10 @@ export function EditorPanel() {
           checked={settings.editor.insertSpaces}
           onChange={(e) => setEditor({ insertSpaces: e.target.checked })}
         />
+      </div>
+
+      <div style={{ margin: '16px 0 8px', fontWeight: 600, fontSize: 13, color: 'var(--accent-strong)' }}>
+        Markdown 渲染增强
       </div>
 
       {/* 渲染增强开关 */}
