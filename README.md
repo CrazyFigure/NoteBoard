@@ -42,17 +42,6 @@ NoteBoard 是一个 Windows 桌面应用，把三件事合在一个窗口里：
 
 Tauri v2 · React 19 · TypeScript · Vite · Tailwind CSS v4 · Zustand · TipTap 3 · CodeMirror 6 · Excalidraw · lowlight
 
-## 开发文档
-
-**所有设计决策与实现细节都在 [`docs/`](docs/) 下。开工前请先读 [文档索引](docs/00-文档索引.md)。**
-
-最短上手路径：
-
-1. [需求规格说明](docs/01-需求规格说明.md) — 要做什么，以及明确不做什么
-2. [技术架构设计](docs/04-技术架构设计.md) — 分层、模块、目录结构
-3. [ADR 决策记录](docs/05-ADR/) — 每个关键选择的理由与被否方案
-4. [开发路线图](docs/09-开发路线图.md) — **从空仓库到可发布的完整分阶段计划**
-
 ## 快速开始
 
 > 环境要求：Node.js ≥ 20、pnpm ≥ 9、Rust stable、Windows 10 1809+（含 WebView2 Runtime）
@@ -62,8 +51,6 @@ pnpm install
 pnpm tauri dev        # 开发模式
 pnpm tauri build      # 生产打包（NSIS 安装包）
 ```
-
-详见 [构建打包与文件关联](docs/11-构建打包与文件关联.md)。
 
 ## 开源协议与致谢
 
@@ -77,4 +64,4 @@ NoteBoard 采用 **GPL-3.0-only**。
 | [KoniKee/TMD_Type-Markdown](https://github.com/KoniKee/TMD_Type-Markdown) | MIT | `晨光` / `琥珀` / `墨夜` 三套主题配色与 CSS 变量体系 |
 | [excalidraw/excalidraw](https://github.com/excalidraw/excalidraw) | MIT | 画板引擎 |
 
-NoteBoard 选择 GPL-3.0 正是为了能够合法复用 note-gen 的 GPL 代码。移植的每个文件都保留原始版权声明，详见 [ADR-002](docs/05-ADR/ADR-002-开源协议与代码复用边界.md)。
+NoteBoard 选择 GPL-3.0 正是为了能够合法复用 note-gen 的 GPL 代码。移植的每个文件都保留原始版权声明，详见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。

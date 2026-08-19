@@ -11,7 +11,7 @@ build/
 # ---------- Tauri / Rust ----------
 src-tauri/target/
 src-tauri/gen/schemas/
-# 注意：src-tauri/icons/ 需要提交（由 logo.ico 生成，见 docs/11-构建打包与文件关联.md）
+# 注意：src-tauri/icons/ 需要提交（由 logo.ico 生成）
 
 # ---------- 测试与覆盖率 ----------
 coverage/
@@ -26,6 +26,11 @@ blob-report/
 !.vscode/extensions.json
 !.vscode/settings.shared.json
 .idea/
+.workbuddy/
+.agents/
+.claude/
+/CLAUDE.md
+/AGENTS.md
 *.swp
 *.swo
 
