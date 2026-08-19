@@ -140,7 +140,10 @@ export function formatFontFamily(
   }
 
   if (genericFallback === 'monospace') {
+    // 等宽字体回退链（优先内置优质中西文等宽字体）
     const monoFallbacks = [
+      '"JetBrains Mono"',
+      '"Maple Mono Normal NF CN"',
       'Consolas',
       '"Cascadia Code"',
       '"Microsoft YaHei Mono"',
@@ -174,11 +177,12 @@ export function formatFontFamily(
   return list.join(', ');
 }
 
+// 默认排版参数（代码字体初始默认采用内置的 JetBrains Mono 与 Maple Mono Normal NF CN）
 const DEFAULT_TYPOGRAPHY: TypographySettings = {
   contentFontFamily: '',
   contentFontFamilyZh: '',
-  monoFontFamily: 'Consolas',
-  monoFontFamilyZh: 'Microsoft YaHei UI',
+  monoFontFamily: 'JetBrains Mono',
+  monoFontFamilyZh: 'Maple Mono Normal NF CN',
   contentFontSize: 16,
   monoFontSize: 14,
   contentLineHeight: 1.7,

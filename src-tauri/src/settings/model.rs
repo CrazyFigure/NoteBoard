@@ -125,8 +125,10 @@ impl Default for TypographySettings {
         Self {
             content_font_family: String::new(),
             content_font_family_zh: String::new(),
-            mono_font_family: "Consolas".to_string(),
-            mono_font_family_zh: "Microsoft YaHei UI".to_string(),
+            // 默认代码西文字体：内置 JetBrains Mono
+            mono_font_family: "JetBrains Mono".to_string(),
+            // 默认代码中文字体：内置 Maple Mono Normal NF CN
+            mono_font_family_zh: "Maple Mono Normal NF CN".to_string(),
             content_font_size: 16,
             mono_font_size: 14,
             content_line_height: 1.7,
@@ -253,8 +255,10 @@ fn default_schema_version() -> u32 { 1 }
 fn default_theme_mode() -> String { "system".to_string() }
 fn default_light_theme() -> String { "chen-guang".to_string() }
 fn default_dark_theme() -> String { "mo-ye".to_string() }
-fn default_mono_font() -> String { "Consolas".to_string() }
-fn default_mono_font_zh() -> String { "Microsoft YaHei UI".to_string() }
+// 默认代码西文字体：JetBrains Mono
+fn default_mono_font() -> String { "JetBrains Mono".to_string() }
+// 默认代码中文字体：Maple Mono Normal NF CN
+fn default_mono_font_zh() -> String { "Maple Mono Normal NF CN".to_string() }
 fn default_content_font_size() -> u32 { 16 }
 fn default_mono_font_size() -> u32 { 14 }
 fn default_line_height() -> f64 { 1.7 }
