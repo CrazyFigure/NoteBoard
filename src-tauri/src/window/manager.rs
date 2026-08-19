@@ -122,13 +122,12 @@ pub fn on_window_event(window: &Window, event: &WindowEvent) {
             // close-requested 只发给本窗口，必须用 emit_to
             let _ = window.app_handle().emit_to(&label, "nb://close-requested", &label);
         }
-        WindowEvent::Focused(focused) => {
-            if *focused {
-                let label = window.label().to_string();
-                let app = window.app_handle();
-                let state = app.state::<Mutex<AppState>>();
-                touch_window(&state, &label);
-            }
+        // 窗口获得焦点时更新活跃时间戳
+        WindowEvent::Focused(focused) if *focused => {
+            let label = window.label().to_string();
+            let app = window.app_handle();
+            let state = app.state::<Mutex<AppState>>();
+            touch_window(&state, &label);
         }
         _ => {}
     }

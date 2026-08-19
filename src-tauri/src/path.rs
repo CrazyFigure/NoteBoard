@@ -32,10 +32,11 @@ pub fn normalize_key(p: &str) -> String {
 
     // 盘符大写
     if result.len() >= 2 && result.as_bytes()[1] == b':' {
+        // 盘符小写转大写
         let mut bytes = result.into_bytes();
         let c = bytes[0];
-        if c >= b'a' && c <= b'z' {
-            bytes[0] = c - 32;
+        if c.is_ascii_lowercase() {
+            bytes[0] = c.to_ascii_uppercase();
         }
         result = String::from_utf8(bytes).unwrap_or_default();
     }

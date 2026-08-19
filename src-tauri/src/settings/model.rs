@@ -311,7 +311,7 @@ pub fn save(settings: &mut Settings) -> Result<u64, String> {
     }
 
     // revision 递增
-    settings.revision = settings.revision.max(0) + 1;
+    settings.revision += 1;
 
     let json = serde_json::to_string_pretty(settings)
         .map_err(|e| format!("序列化设置失败: {}", e))?;

@@ -317,9 +317,9 @@ fn spawn_update_installer(path: &Path) -> std::io::Result<()> {
 
     // 等待 100ms 验证子进程是否正常启动
     std::thread::sleep(std::time::Duration::from_millis(100));
+    // 检查子进程状态
     match child.try_wait()? {
-        Some(status) if !status.success() => Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        Some(status) if !status.success() => Err(std::io::Error::other(
             format!("安装器启动失败，退出码：{}", status.code().unwrap_or(-1)),
         )),
         _ => Ok(()),

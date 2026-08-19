@@ -8,11 +8,12 @@ use tauri::{Emitter, Manager};
 
 /// 处理第二实例
 pub fn handle_second_instance(app: &tauri::AppHandle, argv: Vec<String>) {
+    // 过滤并收集命令行文件路径参数
     let paths: Vec<String> = argv
         .iter()
         .skip(1) // argv[0] 是 exe 自身
         .filter(|a| !a.starts_with('-'))
-        .map(|s| s.clone())
+        .cloned()
         .collect();
 
     let state = app.state::<Mutex<AppState>>();

@@ -123,8 +123,9 @@ pub fn close_window(
 
     // 3. 若无其他窗口或为主窗口关闭，标记所有窗口并优雅退出应用
     {
+        // 标记所有窗口进入正在关闭状态
         let mut s = state.lock().unwrap();
-        for (k, _) in &remaining {
+        for k in remaining.keys() {
             s.mark_closing(k);
         }
     }
