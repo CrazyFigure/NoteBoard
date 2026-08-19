@@ -5,6 +5,7 @@
 
 import { create } from 'zustand';
 import type { FileTreeNode } from '../../core/ipc/types';
+import { sameKey, isSubPath, normalizePath, getPathChain } from './pathUtils';
 
 interface ExplorerStore {
   /** 当前根路径（null = 未打开任何目录） */
@@ -13,6 +14,8 @@ interface ExplorerStore {
   expanded: Map<string, FileTreeNode[]>;
   /** 当前定位的文件路径（高亮） */
   revealed: string | null;
+  /** 定位触发版本计数器（用于通知节点执行滚动） */
+  revealCount: number;
   /** 子节点缓存（按目录路径索引） */
   children: Map<string, FileTreeNode[]>;
   /** 是否正在加载 */
@@ -31,8 +34,8 @@ interface ExplorerStore {
   collapse: (path: string) => void;
   /** 设置根路径（跨目录时清空一切） */
   setRoot: (root: string, rootChildren: FileTreeNode[]) => void;
-  /** 定位到文件（高亮） */
-  setRevealed: (path: string) => void;
+  /** 定位到文件（高亮并可选择触发滚动） */
+  setRevealed: (path: string | null, shouldScroll?: boolean) => void;
   /** 增量更新子节点（监听刷新用） */
   updateChildren: (path: string, children: FileTreeNode[]) => void;
   /** 全量重扫（Flag::Rescan 降级） */
@@ -43,28 +46,20 @@ interface ExplorerStore {
   clear: () => void;
 }
 
-/** 路径规范化比较（大小写不敏感，统一反斜杠并去除末尾斜杠） */
-function sameKey(a: string | null, b: string | null): boolean {
-  if (a === null && b === null) return true;
-  if (a === null || b === null) return false;
-  const normA = a.replace(/[/\\]+/g, '\\').replace(/\\+$/, '').toLowerCase();
-  const normB = b.replace(/[/\\]+/g, '\\').replace(/\\+$/, '').toLowerCase();
-  return normA === normB;
-}
-
 export const useExplorerStore = create<ExplorerStore>((set, get) => ({
   root: null,
   expanded: new Map(),
   revealed: null,
+  revealCount: 0,
   children: new Map(),
   loading: false,
 
-  isExpanded: (path) => get().expanded.has(path.toLowerCase()),
+  isExpanded: (path) => get().expanded.has(normalizePath(path).toLowerCase()),
 
-  getChildren: (path) => get().children.get(path.toLowerCase()),
+  getChildren: (path) => get().children.get(normalizePath(path).toLowerCase()),
 
   toggleExpand: (path, children) => {
-    const key = path.toLowerCase();
+    const key = normalizePath(path).toLowerCase();
     set((state) => {
       const newExpanded = new Map(state.expanded);
       if (newExpanded.has(key)) {
@@ -77,7 +72,7 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
   },
 
   expand: (path, children) => {
-    const key = path.toLowerCase();
+    const key = normalizePath(path).toLowerCase();
     set((state) => {
       const newExpanded = new Map(state.expanded);
       newExpanded.set(key, children);
@@ -88,7 +83,7 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
   },
 
   collapse: (path) => {
-    const key = path.toLowerCase();
+    const key = normalizePath(path).toLowerCase();
     set((state) => {
       const newExpanded = new Map(state.expanded);
       newExpanded.delete(key);
@@ -97,7 +92,7 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
   },
 
   setRoot: (root, rootChildren) => {
-    const key = root.toLowerCase();
+    const key = normalizePath(root).toLowerCase();
     set(() => {
       const newExpanded = new Map<string, FileTreeNode[]>();
       const newChildren = new Map<string, FileTreeNode[]>();
@@ -111,10 +106,15 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
     });
   },
 
-  setRevealed: (path) => set({ revealed: path }),
+  // 设置高亮项并选择是否累加定位计数器触发平滑滚动
+  setRevealed: (path, shouldScroll = true) =>
+    set((state) => ({
+      revealed: path,
+      revealCount: shouldScroll ? state.revealCount + 1 : state.revealCount,
+    })),
 
   updateChildren: (path, children) => {
-    const key = path.toLowerCase();
+    const key = normalizePath(path).toLowerCase();
     set((state) => {
       const newChildren = new Map(state.children);
       newChildren.set(key, children);
@@ -128,7 +128,7 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
     set((state) => {
       // 全量重扫：清空所有缓存，只重新加载根
       const newChildren = new Map<string, FileTreeNode[]>();
-      newChildren.set(root.toLowerCase(), rootChildren);
+      newChildren.set(normalizePath(root).toLowerCase(), rootChildren);
       // 保留 expanded 但清空 children，按需重新加载
       return { children: newChildren };
     });
@@ -141,9 +141,10 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
       root: null,
       expanded: new Map(),
       revealed: null,
+      revealCount: 0,
       children: new Map(),
       loading: false,
     }),
 }));
 
-export { sameKey };
+export { sameKey, isSubPath, normalizePath, getPathChain };
