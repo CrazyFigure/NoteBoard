@@ -39,6 +39,8 @@ import {
   Boxes,
   Sparkles,
 } from 'lucide-react';
+import { insertLocalImageWithDialog } from './imagePaste';
+import { useWindowStore } from '../../stores/windowStore';
 
 /** 叶子具体执行命令项 */
 export interface LeafCommandItem {
@@ -391,13 +393,28 @@ const STANDALONE_LEAFS: LeafCommandItem[] = [
   },
   {
     id: 'image',
-    label: '插入图片',
-    description: '通过网络 URL 插入图片',
+    label: '插入本地图片',
+    description: '选择本地图片并自动保存到文档 /img 目录',
     icon: <ImageIcon size={17} />,
-    aliases: ['tupian', 'tp', 'image', 'img', 'photo', 'picture'],
-    keywords: '图片 插入图片 image img photo picture tupian tp',
+    aliases: ['tupian', 'tp', 'image', 'img', 'photo', 'picture', 'bendi'],
+    keywords: '图片 插入图片 本地图片 image img photo picture tupian tp bendi',
     action: (editor, range) => {
-      const url = window.prompt('请输入图片链接 URL:');
+      editor.chain().focus().deleteRange(range).run();
+      const activeKey = useWindowStore.getState().activeKey;
+      if (activeKey) {
+        insertLocalImageWithDialog(editor, activeKey);
+      }
+    },
+  },
+  {
+    id: 'imageUrl',
+    label: '插入网络图片',
+    description: '通过在线网络 URL 插入图片',
+    icon: <ImageIcon size={17} style={{ opacity: 0.7 }} />,
+    aliases: ['urltp', 'wangluotp', 'imgurl', 'imageurl'],
+    keywords: '网络图片 图片链接 image url img photo wangluo',
+    action: (editor, range) => {
+      const url = window.prompt('请输入图片网络 URL:');
       if (url) {
         editor.chain().focus().deleteRange(range).setImage({ src: url }).run();
       }

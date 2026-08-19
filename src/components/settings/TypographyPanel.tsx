@@ -322,7 +322,7 @@ export function TypographyPanel() {
           }}
           style={{ ...inputStyle, width: 70 }}
         />
-        <span style={{ color: 'var(--editor-text-muted)' }}>px (支持 Ctrl+滚轮)</span>
+        <span style={{ color: 'var(--editor-text-muted)' }}>px</span>
       </div>
 
       {/* 目录条目行高 */}

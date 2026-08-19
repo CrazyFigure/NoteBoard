@@ -226,7 +226,7 @@ impl Default for FileSettings {
             force_manual_save: false,
             show_hidden_files: false,
             restore_session: true,
-            image_dir_name: "assets".to_string(),
+            image_dir_name: "img".to_string(),
             large_file_confirm_mb: 50,
         }
     }
@@ -270,7 +270,7 @@ fn default_content_width() -> String { "standard".to_string() }
 fn default_view_mode() -> String { "visual".to_string() }
 fn default_true() -> bool { true }
 fn default_tab_size() -> u32 { 2 }
-fn default_image_dir() -> String { "assets".to_string() }
+fn default_image_dir() -> String { "img".to_string() }
 fn default_large_file_mb() -> u32 { 50 }
 fn default_ui_scale() -> u32 { 100 }
 

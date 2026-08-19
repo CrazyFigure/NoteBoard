@@ -541,6 +541,26 @@ body {
 .ProseMirror p { margin-bottom: 16px; }
 .ProseMirror p:last-child { margin-bottom: 0; }
 
+/* 超链接（支持主题响应与清晰下划线格式展示） */
+.ProseMirror a {
+  color: var(--editor-link, #2563eb);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1.2px;
+  cursor: pointer;
+  word-break: break-word;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
+}
+
+.ProseMirror a:hover {
+  opacity: 0.82;
+  text-decoration-thickness: 1.8px;
+}
+
+.ProseMirror a:active {
+  opacity: 0.95;
+}
+
 /* 列表 */
 .ProseMirror ul:not([data-type="taskList"]),
 .ProseMirror ol {

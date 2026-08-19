@@ -3,7 +3,7 @@
 // 详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
 import { useState, useEffect } from 'react';
-import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, SlidersHorizontal, LayoutTemplate, RefreshCw, ExternalLink, Save } from 'lucide-react';
+import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, SlidersHorizontal, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon } from 'lucide-react';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { THEMES } from '../../core/theme/themes';
 import { contentWidthToPercent, CONTENT_WIDTH_PERCENT_MAP } from '../../core/theme/applyTheme';
@@ -553,7 +553,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <Folder size={15} color="var(--accent-strong)" />
                       <span>文件树排版 (左侧资源管理器)</span>
                     </div>
-                    <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>支持 Ctrl + 滚轮 快速缩放</span>
                   </div>
 
                   {/* 文件树中西双字体配置 */}
@@ -1015,20 +1014,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     />
                   </label>
 
-                  {/* 图片资源目录名 */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13 }}>
-                    <div>
-                      <div>图片资源目录名</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>插入/粘贴图片时自动保存到的本地文件夹名称</div>
-                    </div>
-                    <input
-                      type="text"
-                      value={settings.file.imageDirName ?? 'assets'}
-                      onChange={(e) => setFile({ imageDirName: e.target.value })}
-                      style={{ ...inputStyle, width: 120, textAlign: 'center' }}
-                    />
-                  </div>
-
                   {/* 大文件确认阈值 */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13 }}>
                     <div>
@@ -1039,9 +1024,31 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       type="number"
                       min="1"
                       max="100"
-                      value={settings.file.largeFileConfirmMb ?? 5}
-                      onChange={(e) => setFile({ largeFileConfirmMb: parseInt(e.target.value, 10) || 5 })}
+                      value={settings.file.largeFileConfirmMb ?? 50}
+                      onChange={(e) => setFile({ largeFileConfirmMb: parseInt(e.target.value, 10) || 50 })}
                       style={{ ...inputStyle, width: 60, textAlign: 'center' }}
+                    />
+                  </div>
+                </div>
+
+                {/* ── 4.3 图片目录设置 ── */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '12px 14px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, color: 'var(--editor-text)' }}>
+                    <ImageIcon size={15} color="var(--accent-strong)" />
+                    <span>图片目录设置</span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--editor-text)' }}>图片目录名称</div>
+                    <div style={{ fontSize: 11, color: 'var(--editor-text-muted)', marginBottom: 2 }}>
+                      插入或粘贴本地图片时，自动在当前 Markdown 文档所在目录同一层创建的子文件夹名称（默认 <code>img</code>）
+                    </div>
+                    <input
+                      type="text"
+                      value={settings.file.imageDirName ?? 'img'}
+                      onChange={(e) => setFile({ imageDirName: e.target.value })}
+                      placeholder="img"
+                      style={{ ...inputStyle, width: '100%', maxWidth: 280, padding: '6px 10px' }}
                     />
                   </div>
                 </div>
@@ -1083,13 +1090,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     全局与文件操作
                   </div>
                   <ShortcutItem keyCombo="Ctrl + O" label="打开文件" />
-                  <ShortcutItem keyCombo="Ctrl + K, Ctrl + O" label="打开文件夹" />
+                  <ShortcutItem keyCombo="Ctrl + Shift + O" label="打开文件夹" />
                   <ShortcutItem keyCombo="Ctrl + N" label="新建 Markdown 笔记" />
                   <ShortcutItem keyCombo="Ctrl + Shift + N" label="新建空窗口" />
                   <ShortcutItem keyCombo="Ctrl + S" label="保存当前文档" />
                   <ShortcutItem keyCombo="Ctrl + Shift + S" label="文档另存为" />
                   <ShortcutItem keyCombo="Ctrl + W" label="关闭当前标签页" />
-                  <ShortcutItem keyCombo="Ctrl + ," label="打开设置中心" />
                 </div>
 
                 {/* Markdown 与编辑 */}
@@ -1099,7 +1105,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                   <ShortcutItem keyCombo="Ctrl + /" label="切换 Markdown 可视化 / 源码模式" />
                   <ShortcutItem keyCombo="/" label="Markdown 中触发斜杠快捷插入" />
-                  <ShortcutItem keyCombo="Ctrl + 滚轮" label="实时缩放编辑器代码字号 / 文件树字号" />
+                  <ShortcutItem keyCombo="Ctrl + 滚轮" label="实时缩放代码编辑器字号" />
                 </div>
               </div>
             )}

@@ -16,7 +16,7 @@ export function WelcomeScreen({ onOpenFile, onOpenFolder, onNewMarkdown, onNewTe
   // 欢迎页主要快捷操作入口
   const actions = [
     { icon: FileSearch, label: '打开文件', shortcut: 'Ctrl+O', onClick: onOpenFile },
-    { icon: FolderOpen, label: '打开文件夹', shortcut: 'Ctrl+K Ctrl+O', onClick: onOpenFolder },
+    { icon: FolderOpen, label: '打开文件夹', shortcut: 'Ctrl+Shift+O', onClick: onOpenFolder },
     { icon: FilePlus, label: '新建 Markdown', shortcut: 'Ctrl+N', onClick: onNewMarkdown },
     { icon: FileText, label: '新建文本文档', shortcut: '', onClick: onNewText },
     { icon: PencilRuler, label: '新建画板', shortcut: '', onClick: onNewBoard },

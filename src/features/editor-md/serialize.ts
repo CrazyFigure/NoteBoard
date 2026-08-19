@@ -53,13 +53,33 @@ export function parseMarkdown(editor: Editor, markdown: string): void {
     editor.commands.clearContent(false);
     return;
   }
-  editor.commands.setContent(markdown, {
-    contentType: 'markdown',
-    parseOptions: {
-      // 保持原有格式
-      preserveWhitespace: 'full',
-    },
-  });
+  try {
+    editor.commands.setContent(markdown, {
+      contentType: 'markdown',
+      parseOptions: {
+        // 保持原有格式
+        preserveWhitespace: 'full',
+      },
+    });
+  } catch (err) {
+    console.error('[NoteBoard] Markdown 解析出现容错，执行安全降级加载:', err);
+    try {
+      editor.commands.setContent(
+        {
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [{ type: 'text', text: markdown }],
+            },
+          ],
+        },
+        { contentType: 'json' },
+      );
+    } catch {
+      editor.commands.clearContent(false);
+    }
+  }
 }
 
 // ── 换行符规整工具 ──

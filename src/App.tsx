@@ -53,8 +53,9 @@ export default function App() {
       description: '打开文件',
     });
 
+    // Ctrl+Shift+O 打开文件夹
     const unregOpenFolder = registerShortcut({
-      key: 'Ctrl+K Ctrl+O',
+      key: 'Ctrl+Shift+O',
       action: () => {
         openFolderDialog();
       },
@@ -71,16 +72,6 @@ export default function App() {
       description: '新建 Markdown',
     });
 
-    // Ctrl+, 打开设置中心
-    const unregOpenSettings = registerShortcut({
-      key: 'Ctrl+,',
-      action: () => {
-        toggleSettingsModal();
-      },
-      scope: 'global',
-      description: '打开设置中心',
-    });
-
     return () => {
       cleanup();
       window.removeEventListener('contextmenu', handleContextMenu);
@@ -89,9 +80,8 @@ export default function App() {
       unregOpenFile();
       unregOpenFolder();
       unregNewMarkdown();
-      unregOpenSettings();
     };
-  }, [init, toggleSettingsModal]);
+  }, [init]);
 
   // Ctrl+Shift+S 另存为
   useEffect(() => {

@@ -53,6 +53,7 @@ pub fn run() {
             fsio::commands::read_document,
             fsio::commands::probe_document,
             fsio::commands::write_document,
+            fsio::commands::save_binary_file,
             fsio::commands::read_dir,
             fsio::commands::create_file,
             fsio::commands::create_dir,

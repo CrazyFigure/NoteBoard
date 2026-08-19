@@ -97,6 +97,17 @@ export function writeDocument(
   return invoke<WriteResult>('write_document', { path, content, encoding, eol });
 }
 
+// 保存二进制文件（如粘贴或插入的图片数据）
+export function saveBinaryFile(
+  path: string,
+  data: Uint8Array | number[],
+): Promise<WriteResult> {
+  return invoke<WriteResult>('save_binary_file', {
+    path,
+    data: Array.from(data),
+  });
+}
+
 export function readDir(path: string, showHidden: boolean): Promise<FileTreeNode[]> {
   return invoke<FileTreeNode[]>('read_dir', { path, showHidden });
 }
