@@ -25,10 +25,50 @@ import { MathInline, MathBlock } from '../katexExtensions';
 import { MermaidBlock } from '../mermaidExtension';
 import { GitHubAlert } from '../alertExtension';
 import { slashSuggestion } from '../slashCommand';
+import { handleLinkClick, resolveRelativeDocPath } from '../linkHandler';
+import { useDocumentStore } from '../../../stores/documentStore';
+import { useWindowStore } from '../../../stores/windowStore';
+import { useExplorerStore } from '../../explorer/explorerStore';
+import { convertFileSrc } from '@tauri-apps/api/core';
 
 import Suggestion from '@tiptap/suggestion';
 import { Extension, type Extensions } from '@tiptap/core';
 import { Plugin, NodeSelection } from '@tiptap/pm/state';
+
+/**
+ * 链接点击分发扩展
+ * 统一拦截编辑区 a 标签的点击事件，外部链接调用系统默认浏览器，本地文件链接在 NoteBoard 内部打开
+ */
+const LinkClickHandler = Extension.create({
+  name: 'linkClickHandler',
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        props: {
+          handleClick(_view, _pos, event) {
+            const target = event.target as HTMLElement | null;
+            const anchor = target?.closest('a');
+            if (anchor) {
+              const href = anchor.getAttribute('href');
+              if (href) {
+                event.preventDefault();
+                event.stopPropagation();
+                const activeKey = useWindowStore.getState().activeKey;
+                if (activeKey) {
+                  handleLinkClick(href, activeKey);
+                }
+                return true;
+              }
+            }
+            return false;
+          },
+        },
+      }),
+    ];
+  },
+});
+
+import { EnhancedImageBlock } from '../imageNodeView';
 
 /**
  * 顶层块拖拽安全重排序扩展
@@ -160,11 +200,11 @@ export function buildExtensions(): Extensions {
       },
     }),
 
-    // 基础标记（StarterKit 不含的）
-    Image.configure({
-      inline: true,
-      allowBase64: false,
-    }),
+    // 链接点击分发处理器（阻止原生页面跳失与错误，支持外部与本地文件无缝打开）
+    LinkClickHandler,
+
+    // 本地图片增强扩展（支持 Base64、本地相对路径 Asset 解析、大图预览与排版调节）
+    EnhancedImageBlock,
     // 文本高亮扩展（支持多色配置）
     Highlight.configure({
       multicolor: true,

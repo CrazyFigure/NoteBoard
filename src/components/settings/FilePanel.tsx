@@ -82,11 +82,12 @@ export function FilePanel() {
 
       {/* 图片目录名 */}
       <div style={rowStyle}>
-        <span style={labelStyle}>图片目录名</span>
+        <span style={labelStyle}>图片目录名称</span>
         <input
           type="text"
-          value={settings.file.imageDirName}
+          value={settings.file.imageDirName ?? 'img'}
           onChange={(e) => setFile({ imageDirName: e.target.value })}
+          placeholder="img"
           style={inputStyle}
         />
       </div>

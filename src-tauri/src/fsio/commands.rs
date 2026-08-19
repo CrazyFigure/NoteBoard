@@ -102,6 +102,40 @@ pub fn write_document(
     }
 }
 
+/// 保存二进制文件（如粘贴或插入的图片，自动创建父级目录）
+#[tauri::command]
+pub fn save_binary_file(path: String, data: Vec<u8>) -> Result<WriteResult, String> {
+    let p = Path::new(&path);
+
+    // 确保目标父级目录存在
+    if let Some(parent) = p.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("创建图片存储目录失败: {}", e))?;
+        }
+    }
+
+    // 写入二进制字节数据
+    std::fs::write(p, &data).map_err(|e| format!("写入二进制文件失败: {}", e))?;
+
+    let metadata = std::fs::metadata(p).map_err(|e| e.to_string())?;
+    let mtime = metadata
+        .modified()
+        .map(|t| {
+            t.duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64
+        })
+        .unwrap_or(0);
+
+    Ok(WriteResult {
+        ok: true,
+        mtime: mtime as i64,
+        size: metadata.len(),
+        error: None,
+    })
+}
+
 /// 读取目录
 #[tauri::command]
 pub fn read_dir(path: String, show_hidden: bool) -> Result<Vec<FileTreeNode>, String> {

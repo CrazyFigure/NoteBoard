@@ -34,6 +34,7 @@ import { EditorBubbleMenu, TableToolbar } from './bubbleMenu';
 import { BlockDragHandle } from './blockDragHandle';
 import { ExternalChangeBanner } from './ExternalChangeBanner';
 import { EditorContextMenu } from './EditorContextMenu';
+import { handlePastedImageFile } from './imagePaste';
 
 // 活跃 TipTap 实例表（供保存编排即时读取最新内容）
 const activeTipTapEditors = new Map<string, Editor>();
@@ -138,6 +139,35 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       attributes: {
         class: 'nb-prose',
         style: 'outline: none; max-width: var(--content-max-width); margin: 0 auto; padding: 16px 24px; min-height: 100%; font-size: var(--content-font-size); line-height: var(--content-line-height); font-family: var(--content-font-family); color: var(--editor-text);',
+      },
+      handlePaste: (_view, event) => {
+        const items = event.clipboardData?.items;
+        if (!items) return false;
+        for (const item of Array.from(items)) {
+          if (item.type.startsWith('image/')) {
+            const file = item.getAsFile();
+            if (file && editor) {
+              event.preventDefault();
+              handlePastedImageFile(editor, file, docKey);
+              return true;
+            }
+          }
+        }
+        return false;
+      },
+      handleDrop: (_view, event) => {
+        const files = event.dataTransfer?.files;
+        if (!files || files.length === 0) return false;
+        for (const file of Array.from(files)) {
+          if (file.type.startsWith('image/')) {
+            if (editor) {
+              event.preventDefault();
+              handlePastedImageFile(editor, file, docKey);
+              return true;
+            }
+          }
+        }
+        return false;
       },
     },
   }, [docKey]);
@@ -248,6 +278,9 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     }
   }, []);
 
+  // 模式切换函数引用（供 CodeMirror keymap 调用）
+  const toggleViewModeRef = useRef<() => void>(() => {});
+
   // 初始化 source 模式编辑器（CM6 + markdown）
   const initSourceEditor = useCallback((content: string) => {
     if (!sourceDivRef.current) return;
@@ -285,7 +318,18 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
         markdown(),
         nbSyntaxHighlighting,
         nbEditorTheme,
-        keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+        keymap.of([
+          ...defaultKeymap,
+          ...historyKeymap,
+          indentWithTab,
+          {
+            key: 'Mod-/',
+            run: () => {
+              toggleViewModeRef.current();
+              return true;
+            },
+          },
+        ]),
         EditorView.lineWrapping,
         updateListener,
       ],
@@ -324,7 +368,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     activeSourceViews.set(docKey, view);
   }, [docKey, autoSave]);
 
-  // 切换模式
+  // 切换可视化 / 源码模式
   const toggleViewMode = useCallback(() => {
     if (!editor) return;
 
@@ -361,19 +405,24 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     }
   }, [editor, viewMode, docKey, initSourceEditor]);
 
-  // Ctrl+/ 模式切换
+  toggleViewModeRef.current = toggleViewMode;
+
+  // Ctrl+/ 模式切换（全局捕获，仅当当前标签页是本 Markdown 文档时执行）
   useEffect(() => {
     if (!editor) return;
     const unreg = registerShortcut({
       key: 'Ctrl+/',
       action: () => {
-        toggleViewMode();
+        const activeKey = useWindowStore.getState().activeKey;
+        if (activeKey === docKey) {
+          toggleViewMode();
+        }
       },
-      scope: 'editor',
+      scope: 'global',
       description: '切换 Markdown 视图模式',
     });
     return () => unreg();
-  }, [editor, toggleViewMode]);
+  }, [editor, toggleViewMode, docKey]);
 
   // 组件卸载时清理（注意：不要删除基线，以便切回 Tab 时仍能保持正确的脏态判定）
   useEffect(() => {

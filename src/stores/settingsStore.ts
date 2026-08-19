@@ -71,7 +71,7 @@ const DEFAULT_SETTINGS: Settings = {
     forceManualSave: false,
     showHiddenFiles: false,
     restoreSession: true,
-    imageDirName: 'assets',
+    imageDirName: 'img',
     largeFileConfirmMb: 50,
   },
   layout: {

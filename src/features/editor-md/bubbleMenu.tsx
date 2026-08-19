@@ -19,7 +19,10 @@ import {
   Split,
   ChevronDown,
   X,
+  ExternalLink,
 } from 'lucide-react';
+import { handleLinkClick } from './linkHandler';
+import { useWindowStore } from '../../stores/windowStore';
 
 interface BubbleButtonProps {
   icon: ReactNode;
@@ -325,11 +328,11 @@ export function EditorBubbleMenu({ editor }: { editor: Editor }) {
         <MenuDivider />
 
         <BubbleButton
-          title="超链接"
+          title="设置/修改超链接"
           icon={<Link2 size={16} />}
           onClick={() => {
             const previousUrl = editor.getAttributes('link').href || '';
-            const url = window.prompt('输入链接 URL:', previousUrl);
+            const url = window.prompt('输入链接 URL (支持网络链接或本地相对文件路径):', previousUrl);
             if (url === null) return;
             if (url === '') {
               editor.chain().focus().extendMarkRange('link').unsetLink().run();
@@ -339,6 +342,20 @@ export function EditorBubbleMenu({ editor }: { editor: Editor }) {
           }}
           active={editor.isActive('link')}
         />
+
+        {editor.isActive('link') && (
+          <BubbleButton
+            title={`打开链接: ${editor.getAttributes('link').href || ''}`}
+            icon={<ExternalLink size={15} />}
+            onClick={() => {
+              const href = editor.getAttributes('link').href;
+              const activeKey = useWindowStore.getState().activeKey;
+              if (href && activeKey) {
+                handleLinkClick(href, activeKey);
+              }
+            }}
+          />
+        )}
 
         <BubbleButton
           title="清除格式"
