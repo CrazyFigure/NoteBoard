@@ -184,6 +184,117 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     };
   }, [editor, docKey, onEditorReady]);
 
+  // 自动保存（声明在模式切换前供引用）
+  const autoSave = useCallback(async (key: string, content: string) => {
+    const dStore = useDocumentStore.getState();
+    const targetDoc = dStore.getDocument(key);
+    if (!targetDoc) return;
+
+    // 只有 auto 策略才自动保存
+    if (targetDoc.savePolicy !== 'auto') return;
+
+    // 外部变更/断开状态不自动保存
+    if (targetDoc.externalStatus === 'modified' || targetDoc.externalStatus === 'deleted') return;
+
+    // 比较内容是否与基线不同
+    const baseline = getBaseline(key);
+    if (baseline.isClean(content)) {
+      // 内容与基线一致 → 不需要保存
+      dStore.setDirty(key, false);
+      useWindowStore.getState().setTabDirty(key, false);
+      return;
+    }
+
+    try {
+      const result = await ipc.writeDocument(key, content, targetDoc.encoding, targetDoc.eol);
+      if (result.ok) {
+        dStore.updateBaseline(key, result.mtime, result.size);
+        baseline.updateBaseline(content);
+        useWindowStore.getState().setTabDirty(key, false);
+        // 同步注册表脏态
+        await ipc.setDocumentDirty(key, false);
+      }
+    } catch (e) {
+      console.error('自动保存失败:', e);
+    }
+  }, []);
+
+  // 初始化 source 模式编辑器（CM6 + markdown）
+  const initSourceEditor = useCallback((content: string) => {
+    if (!sourceDivRef.current) return;
+
+    // 销毁旧实例
+    if (sourceViewRef.current) {
+      sourceViewRef.current.destroy();
+      activeSourceViews.delete(docKey);
+    }
+
+    // 源码模式输入监听与自动标脏
+    const updateListener = EditorView.updateListener.of((update) => {
+      if (!update.docChanged) return;
+      const newContent = update.state.doc.toString();
+      const baseline = getBaseline(docKey).getBaseline() ?? useDocumentStore.getState().getDocument(docKey)?.baselineContent ?? '';
+      const isDirty = normalizeEol(newContent) !== normalizeEol(baseline);
+      useWindowStore.getState().setTabDirty(docKey, isDirty);
+      useDocumentStore.getState().setDirty(docKey, isDirty);
+
+      if (storeTimerRef.current) clearTimeout(storeTimerRef.current);
+      storeTimerRef.current = setTimeout(() => {
+        useDocumentStore.getState().setContent(docKey, newContent);
+      }, 500);
+
+      if (diskTimerRef.current) clearTimeout(diskTimerRef.current);
+      diskTimerRef.current = setTimeout(async () => {
+        await autoSave(docKey, newContent);
+      }, 800);
+    });
+
+    const state = EditorState.create({
+      doc: content,
+      extensions: [
+        ...createBaseExtensions(),
+        markdown(),
+        nbSyntaxHighlighting,
+        nbEditorTheme,
+        keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+        EditorView.lineWrapping,
+        updateListener,
+      ],
+    });
+
+    const view = new EditorView({
+      state,
+      parent: sourceDivRef.current,
+    });
+
+    // 注入源码模式排版配置
+    const typographyExt = EditorView.theme({
+      '&': {
+        fontFamily: 'var(--mono-font-family)',
+        fontSize: 'var(--mono-font-size)',
+        height: '100%',
+      },
+      '.cm-scroller': {
+        lineHeight: 'var(--mono-line-height, 1.5)',
+        fontFamily: 'var(--mono-font-family)',
+        fontSize: 'var(--mono-font-size)',
+      },
+      '.cm-content, .cm-line': {
+        fontFamily: 'var(--mono-font-family)',
+        fontSize: 'var(--mono-font-size)',
+      },
+      '.cm-content': {
+        padding: '16px 24px',
+      },
+    });
+    view.dispatch({
+      effects: typographyCompartment.reconfigure(typographyExt),
+    });
+
+    sourceViewRef.current = view;
+    activeSourceViews.set(docKey, view);
+  }, [docKey, autoSave]);
+
   // 初始化内容 + 大文档判定（仅在 docKey 变更或初次加载时执行，不可随 doc.content 变化重复 parse）
   useEffect(() => {
     if (!editor) return;
@@ -236,137 +347,15 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
 
     // 设置 viewMode（从 tab 恢复）
     const tab = useWindowStore.getState().getTab(docKey);
-    if (tab?.viewMode) {
-      setViewMode(tab.viewMode);
-    } else if (!verdict.isLarge) {
-      setViewMode(settings.editor.defaultViewMode);
+    const initialMode = tab?.viewMode ?? (verdict.isLarge ? 'source' : settings.editor.defaultViewMode);
+    setViewMode(initialMode);
+    if (initialMode === 'source') {
+      // 延迟确保 DOM 容器挂载后初始化 CodeMirror
+      setTimeout(() => {
+        initSourceEditor(content);
+      }, 0);
     }
-  }, [editor, docKey, settings.editor.defaultViewMode]);
-
-  // 自动保存（声明在模式切换前供引用）
-  const autoSave = useCallback(async (key: string, content: string) => {
-    const dStore = useDocumentStore.getState();
-    const targetDoc = dStore.getDocument(key);
-    if (!targetDoc) return;
-
-    // 只有 auto 策略才自动保存
-    if (targetDoc.savePolicy !== 'auto') return;
-
-    // 外部变更/断开状态不自动保存
-    if (targetDoc.externalStatus === 'modified' || targetDoc.externalStatus === 'deleted') return;
-
-    // 比较内容是否与基线不同
-    const baseline = getBaseline(key);
-    if (baseline.isClean(content)) {
-      // 内容与基线一致 → 不需要保存
-      dStore.setDirty(key, false);
-      useWindowStore.getState().setTabDirty(key, false);
-      return;
-    }
-
-    try {
-      const result = await ipc.writeDocument(key, content, targetDoc.encoding, targetDoc.eol);
-      if (result.ok) {
-        dStore.updateBaseline(key, result.mtime, result.size);
-        baseline.updateBaseline(content);
-        useWindowStore.getState().setTabDirty(key, false);
-        // 同步注册表脏态
-        await ipc.setDocumentDirty(key, false);
-      }
-    } catch (e) {
-      console.error('自动保存失败:', e);
-    }
-  }, []);
-
-  // 模式切换函数引用（供 CodeMirror keymap 调用）
-  const toggleViewModeRef = useRef<() => void>(() => {});
-
-  // 初始化 source 模式编辑器（CM6 + markdown）
-  const initSourceEditor = useCallback((content: string) => {
-    if (!sourceDivRef.current) return;
-
-    // 销毁旧实例
-    if (sourceViewRef.current) {
-      sourceViewRef.current.destroy();
-      activeSourceViews.delete(docKey);
-    }
-
-    // 源码模式输入监听与自动标脏
-    const updateListener = EditorView.updateListener.of((update) => {
-      if (!update.docChanged) return;
-      const newContent = update.state.doc.toString();
-      const baseline = getBaseline(docKey).getBaseline() ?? useDocumentStore.getState().getDocument(docKey)?.baselineContent ?? '';
-      const isDirty = normalizeEol(newContent) !== normalizeEol(baseline);
-      useWindowStore.getState().setTabDirty(docKey, isDirty);
-      useDocumentStore.getState().setDirty(docKey, isDirty);
-
-      if (storeTimerRef.current) clearTimeout(storeTimerRef.current);
-      storeTimerRef.current = setTimeout(() => {
-        useDocumentStore.getState().setContent(docKey, newContent);
-      }, 500);
-
-      if (diskTimerRef.current) clearTimeout(diskTimerRef.current);
-      diskTimerRef.current = setTimeout(async () => {
-        await autoSave(docKey, newContent);
-      }, 800);
-    });
-
-    const state = EditorState.create({
-      doc: content,
-      extensions: [
-        ...createBaseExtensions(),
-        markdown(),
-        nbSyntaxHighlighting,
-        nbEditorTheme,
-        keymap.of([
-          ...defaultKeymap,
-          ...historyKeymap,
-          indentWithTab,
-          {
-            key: 'Mod-/',
-            run: () => {
-              toggleViewModeRef.current();
-              return true;
-            },
-          },
-        ]),
-        EditorView.lineWrapping,
-        updateListener,
-      ],
-    });
-
-    const view = new EditorView({
-      state,
-      parent: sourceDivRef.current,
-    });
-
-    // 注入源码模式排版配置
-    const typographyExt = EditorView.theme({
-      '&': {
-        fontFamily: 'var(--mono-font-family)',
-        fontSize: 'var(--mono-font-size)',
-        height: '100%',
-      },
-      '.cm-scroller': {
-        lineHeight: 'var(--mono-line-height, 1.5)',
-        fontFamily: 'var(--mono-font-family)',
-        fontSize: 'var(--mono-font-size)',
-      },
-      '.cm-content, .cm-line': {
-        fontFamily: 'var(--mono-font-family)',
-        fontSize: 'var(--mono-font-size)',
-      },
-      '.cm-content': {
-        padding: '16px 24px',
-      },
-    });
-    view.dispatch({
-      effects: typographyCompartment.reconfigure(typographyExt),
-    });
-
-    sourceViewRef.current = view;
-    activeSourceViews.set(docKey, view);
-  }, [docKey, autoSave]);
+  }, [editor, docKey, settings.editor.defaultViewMode, initSourceEditor]);
 
   // 切换可视化 / 源码模式
   const toggleViewMode = useCallback(() => {
@@ -379,6 +368,10 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       initSourceEditor(md);
       setViewMode('source');
       useWindowStore.getState().setTabViewMode(docKey, 'source');
+      setTimeout(() => {
+        sourceViewRef.current?.focus();
+        sourceViewRef.current?.requestMeasure();
+      }, 20);
     } else {
       // source → visual
       if (sourceViewRef.current) {
@@ -402,27 +395,11 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       }
       setViewMode('visual');
       useWindowStore.getState().setTabViewMode(docKey, 'visual');
+      setTimeout(() => {
+        editor.commands.focus();
+      }, 20);
     }
   }, [editor, viewMode, docKey, initSourceEditor]);
-
-  toggleViewModeRef.current = toggleViewMode;
-
-  // Ctrl+/ 模式切换（全局捕获，仅当当前标签页是本 Markdown 文档时执行）
-  useEffect(() => {
-    if (!editor) return;
-    const unreg = registerShortcut({
-      key: 'Ctrl+/',
-      action: () => {
-        const activeKey = useWindowStore.getState().activeKey;
-        if (activeKey === docKey) {
-          toggleViewMode();
-        }
-      },
-      scope: 'global',
-      description: '切换 Markdown 视图模式',
-    });
-    return () => unreg();
-  }, [editor, toggleViewMode, docKey]);
 
   // 组件卸载时清理（注意：不要删除基线，以便切回 Tab 时仍能保持正确的脏态判定）
   useEffect(() => {
@@ -483,20 +460,84 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
             仍要使用可视化编辑
           </button>
         </div>
-        {renderSourceMode()}
+        <div
+          style={{
+            flex: 1,
+            overflow: 'hidden',
+            background: 'var(--editor-bg)',
+            display: 'flex',
+            justifyContent: 'center',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && sourceViewRef.current) {
+              sourceViewRef.current.focus();
+            }
+          }}
+        >
+          <div
+            ref={sourceDivRef}
+            style={{
+              width: '100%',
+              maxWidth: 'var(--content-max-width)',
+              height: '100%',
+            }}
+          />
+        </div>
       </div>
     );
   }
 
-  // 渲染 source 模式（外层 Flex 居中，内层容器遵循 --content-max-width）
-  function renderSourceMode() {
-    return (
+  return (
+    <div style={{ height: '100%', overflow: 'hidden', position: 'relative' }} ref={editorRef}>
+      <ExternalChangeBanner docKey={docKey} />
+      {/* 可视化模式容器 */}
+      <div
+        style={{
+          height: '100%',
+          overflow: 'auto',
+          position: 'relative',
+          display: viewMode === 'visual' ? 'block' : 'none',
+        }}
+        onContextMenu={(e) => {
+          if (!editor) return;
+          e.preventDefault();
+          e.stopPropagation();
+
+          const { empty } = editor.state.selection;
+          if (empty) {
+            const pos = editor.view.posAtCoords({ left: e.clientX, top: e.clientY });
+            if (pos) {
+              editor.commands.setTextSelection(pos.pos);
+            }
+          }
+          setContextMenu({
+            x: e.clientX,
+            y: e.clientY,
+            hasSelection: !empty,
+          });
+        }}
+      >
+        {editor && <EditorBubbleMenu editor={editor} />}
+        {editor && <TableToolbar editor={editor} />}
+        {editor && <BlockDragHandle editor={editor} />}
+        {contextMenu && editor && (
+          <EditorContextMenu
+            editor={editor}
+            position={{ x: contextMenu.x, y: contextMenu.y }}
+            hasSelection={contextMenu.hasSelection}
+            onClose={() => setContextMenu(null)}
+          />
+        )}
+        <EditorContent editor={editor} style={{ height: '100%' }} />
+      </div>
+
+      {/* 源码模式容器（常驻 DOM，确保 sourceDivRef.current 始终有效挂载） */}
       <div
         style={{
           height: '100%',
           overflow: 'hidden',
           background: 'var(--editor-bg)',
-          display: 'flex',
+          display: viewMode === 'source' ? 'flex' : 'none',
           justifyContent: 'center',
         }}
         onClick={(e) => {
@@ -514,50 +555,6 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
           }}
         />
       </div>
-    );
-  }
-
-  return (
-    <div style={{ height: '100%', overflow: 'hidden', position: 'relative' }} ref={editorRef}>
-      <ExternalChangeBanner docKey={docKey} />
-      {viewMode === 'visual' ? (
-        <div
-          style={{ height: '100%', overflow: 'auto', position: 'relative' }}
-          onContextMenu={(e) => {
-            if (!editor) return;
-            e.preventDefault();
-            e.stopPropagation();
-
-            const { empty } = editor.state.selection;
-            if (empty) {
-              const pos = editor.view.posAtCoords({ left: e.clientX, top: e.clientY });
-              if (pos) {
-                editor.commands.setTextSelection(pos.pos);
-              }
-            }
-            setContextMenu({
-              x: e.clientX,
-              y: e.clientY,
-              hasSelection: !empty,
-            });
-          }}
-        >
-          {editor && <EditorBubbleMenu editor={editor} />}
-          {editor && <TableToolbar editor={editor} />}
-          {editor && <BlockDragHandle editor={editor} />}
-          {contextMenu && editor && (
-            <EditorContextMenu
-              editor={editor}
-              position={{ x: contextMenu.x, y: contextMenu.y }}
-              hasSelection={contextMenu.hasSelection}
-              onClose={() => setContextMenu(null)}
-            />
-          )}
-          <EditorContent editor={editor} style={{ height: '100%' }} />
-        </div>
-      ) : (
-        renderSourceMode()
-      )}
     </div>
   );
 }

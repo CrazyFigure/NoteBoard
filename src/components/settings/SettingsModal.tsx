@@ -1103,7 +1103,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-strong)', marginBottom: 2 }}>
                     Markdown 与排版
                   </div>
-                  <ShortcutItem keyCombo="Ctrl + /" label="切换 Markdown 可视化 / 源码模式" />
                   <ShortcutItem keyCombo="/" label="Markdown 中触发斜杠快捷插入" />
                   <ShortcutItem keyCombo="Ctrl + 滚轮" label="实时缩放代码编辑器字号" />
                 </div>
