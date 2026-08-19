@@ -333,6 +333,7 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
       >
         <span>📊 {elementCount} 图元</span>
         <button
+          type="button"
           onClick={() => {
             const currentScene = sceneRef.current;
             if (apiRef.current && currentScene) {
@@ -350,13 +351,33 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
           style={{
             background: 'transparent',
             border: '1px solid var(--editor-border)',
-            borderRadius: 3,
-            padding: '0 6px',
+            borderRadius: 4,
+            padding: '2px 8px',
             cursor: 'pointer',
             color: 'inherit',
             fontSize: 11,
+            transition: 'all var(--transition-fast)',
           }}
-          title="重置缩放"
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
+            e.currentTarget.style.color = 'var(--editor-text)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.borderColor = 'var(--editor-border)';
+            e.currentTarget.style.color = 'inherit';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          onMouseDown={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-active)';
+            e.currentTarget.style.transform = 'scale(0.92)';
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          title="重置缩放 (100%)"
         >
           {Math.round(zoomLevel * 100)}%
         </button>
@@ -425,15 +446,11 @@ class BoardErrorBoundary extends React.Component<
           </div>
           <button
             type="button"
+            className="nb-btn-primary"
             onClick={() => this.setState({ hasError: false, error: null })}
             style={{
-              padding: '6px 16px',
-              borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--editor-border)',
-              background: 'var(--accent-strong)',
-              color: '#ffffff',
+              padding: '8px 20px',
               fontSize: 13,
-              cursor: 'pointer',
             }}
           >
             重试加载画板

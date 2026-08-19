@@ -122,31 +122,36 @@ export function Explorer() {
       <div style={containerStyle}>
         <div
           style={{
-            padding: '24px 16px',
-            fontSize: 12,
+            padding: '36px 16px',
+            fontSize: 13,
             color: 'var(--explorer-text-muted)',
             textAlign: 'center',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: 12,
+            gap: 16,
           }}
         >
           <span>打开文件夹以浏览文件</span>
+          {/* 打开文件夹卡片式动作按钮，与主欢迎页风格一致 */}
           <button
             type="button"
             onClick={openFolderDialog}
+            className="nb-btn-card"
             style={{
-              padding: '6px 12px',
-              border: '1px solid var(--editor-border)',
-              borderRadius: 'var(--radius-sm)',
-              background: 'var(--editor-surface)',
-              color: 'var(--editor-text)',
-              fontSize: 12,
-              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              padding: '8px 16px',
+              fontSize: 13,
+              fontWeight: 500,
+              borderRadius: 8,
+              minWidth: 140,
             }}
           >
-            打开文件夹
+            <FolderOpen size={16} color="var(--editor-accent)" />
+            <span>打开文件夹</span>
           </button>
         </div>
       </div>
@@ -184,6 +189,8 @@ export function Explorer() {
             style={actionBtnStyle}
             onMouseEnter={handleBtnMouseEnter}
             onMouseLeave={handleBtnMouseLeave}
+            onMouseDown={handleBtnMouseDown}
+            onMouseUp={handleBtnMouseUp}
             title="定位当前打开的文件与目录"
           >
             <LocateFixed size={15} />
@@ -198,6 +205,8 @@ export function Explorer() {
             style={actionBtnStyle}
             onMouseEnter={handleBtnMouseEnter}
             onMouseLeave={handleBtnMouseLeave}
+            onMouseDown={handleBtnMouseDown}
+            onMouseUp={handleBtnMouseUp}
             title="新建文件"
           >
             <FilePlus size={15} />
@@ -212,6 +221,8 @@ export function Explorer() {
             style={actionBtnStyle}
             onMouseEnter={handleBtnMouseEnter}
             onMouseLeave={handleBtnMouseLeave}
+            onMouseDown={handleBtnMouseDown}
+            onMouseUp={handleBtnMouseUp}
             title="新建文件夹"
           >
             <FolderPlus size={15} />
@@ -223,6 +234,8 @@ export function Explorer() {
             style={actionBtnStyle}
             onMouseEnter={handleBtnMouseEnter}
             onMouseLeave={handleBtnMouseLeave}
+            onMouseDown={handleBtnMouseDown}
+            onMouseUp={handleBtnMouseUp}
             title="刷新目录"
           >
             <RotateCw size={15} />
@@ -234,6 +247,8 @@ export function Explorer() {
             style={actionBtnStyle}
             onMouseEnter={handleBtnMouseEnter}
             onMouseLeave={handleBtnMouseLeave}
+            onMouseDown={handleBtnMouseDown}
+            onMouseUp={handleBtnMouseUp}
             title="打开文件夹"
           >
             <FolderOpen size={15} />
@@ -327,8 +342,8 @@ export function Explorer() {
 }
 
 const actionBtnStyle: React.CSSProperties = {
-  width: 22,
-  height: 22,
+  width: 24,
+  height: 24,
   border: 'none',
   background: 'transparent',
   cursor: 'pointer',
@@ -338,17 +353,30 @@ const actionBtnStyle: React.CSSProperties = {
   justifyContent: 'center',
   padding: 0,
   borderRadius: 4,
-  transition: 'background var(--transition-fast), color var(--transition-fast)',
+  transition: 'all var(--transition-fast)',
 };
 
 function handleBtnMouseEnter(e: React.MouseEvent<HTMLButtonElement>) {
   e.currentTarget.style.background = 'var(--toolbar-hover)';
   e.currentTarget.style.color = 'var(--explorer-text)';
+  e.currentTarget.style.transform = 'scale(1.05)';
 }
 
 function handleBtnMouseLeave(e: React.MouseEvent<HTMLButtonElement>) {
   e.currentTarget.style.background = 'transparent';
   e.currentTarget.style.color = 'var(--explorer-text-muted)';
+  e.currentTarget.style.transform = 'scale(1)';
 }
+
+function handleBtnMouseDown(e: React.MouseEvent<HTMLButtonElement>) {
+  e.currentTarget.style.background = 'var(--toolbar-active)';
+  e.currentTarget.style.transform = 'scale(0.92)';
+}
+
+function handleBtnMouseUp(e: React.MouseEvent<HTMLButtonElement>) {
+  e.currentTarget.style.background = 'var(--toolbar-hover)';
+  e.currentTarget.style.transform = 'scale(1.05)';
+}
+
 
 

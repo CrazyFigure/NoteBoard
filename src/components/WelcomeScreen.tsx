@@ -70,6 +70,7 @@ export function WelcomeScreen({ onOpenFile, onOpenFolder, onNewMarkdown, onNewTe
         {actions.map((action, i) => (
           <button
             key={i}
+            className="nb-btn-card"
             onClick={action.onClick ?? (() => {})}
             style={{
               display: 'flex',
@@ -97,6 +98,16 @@ export function WelcomeScreen({ onOpenFile, onOpenFolder, onNewMarkdown, onNewTe
               e.currentTarget.style.borderColor = 'var(--editor-border)';
               e.currentTarget.style.transform = 'translateY(0)';
               e.currentTarget.style.boxShadow = 'var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.05))';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-active)';
+              e.currentTarget.style.transform = 'translateY(0) scale(0.985)';
+              e.currentTarget.style.boxShadow = 'var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.05))';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = 'var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.1))';
             }}
           >
             <action.icon size={20} color="var(--editor-accent)" />

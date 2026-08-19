@@ -245,9 +245,19 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.transform = 'scale(1.1)';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          onMouseDown={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-active)';
+            e.currentTarget.style.transform = 'scale(0.9)';
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.transform = 'scale(1.1)';
           }}
           aria-label={`关闭 ${tab.displayName}`}
         >
@@ -283,6 +293,8 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
             }}
             onMouseEnter={handleMenuItemMouseEnter}
             onMouseLeave={handleMenuItemMouseLeave}
+            onMouseDown={handleMenuItemMouseDown}
+            onMouseUp={handleMenuItemMouseUp}
           >
             <X size={13} />
             <span>关闭标签页</span>
@@ -300,6 +312,8 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
             }}
             onMouseEnter={handleMenuItemMouseEnter}
             onMouseLeave={handleMenuItemMouseLeave}
+            onMouseDown={handleMenuItemMouseDown}
+            onMouseUp={handleMenuItemMouseUp}
           >
             <ChevronLeft size={13} />
             <span>关闭左侧</span>
@@ -317,6 +331,8 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
             }}
             onMouseEnter={handleMenuItemMouseEnter}
             onMouseLeave={handleMenuItemMouseLeave}
+            onMouseDown={handleMenuItemMouseDown}
+            onMouseUp={handleMenuItemMouseUp}
           >
             <ChevronRight size={13} />
             <span>关闭右侧</span>
@@ -334,6 +350,8 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
             }}
             onMouseEnter={handleMenuItemMouseEnter}
             onMouseLeave={handleMenuItemMouseLeave}
+            onMouseDown={handleMenuItemMouseDown}
+            onMouseUp={handleMenuItemMouseUp}
           >
             <X size={13} />
             <span>关闭其他</span>
@@ -349,6 +367,8 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
             }}
             onMouseEnter={handleMenuItemMouseEnter}
             onMouseLeave={handleMenuItemMouseLeave}
+            onMouseDown={handleMenuItemMouseDown}
+            onMouseUp={handleMenuItemMouseUp}
           >
             <Trash2 size={13} />
             <span>关闭全部</span>
@@ -366,6 +386,8 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
             }}
             onMouseEnter={handleMenuItemMouseEnter}
             onMouseLeave={handleMenuItemMouseLeave}
+            onMouseDown={handleMenuItemMouseDown}
+            onMouseUp={handleMenuItemMouseUp}
           >
             <ExternalLink size={13} />
             <span>在独立新窗口中打开</span>
@@ -383,6 +405,8 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
                 }}
                 onMouseEnter={handleMenuItemMouseEnter}
                 onMouseLeave={handleMenuItemMouseLeave}
+                onMouseDown={handleMenuItemMouseDown}
+                onMouseUp={handleMenuItemMouseUp}
               >
                 <Copy size={13} />
                 <span>复制文件完整路径</span>
@@ -398,6 +422,8 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
                 }}
                 onMouseEnter={handleMenuItemMouseEnter}
                 onMouseLeave={handleMenuItemMouseLeave}
+                onMouseDown={handleMenuItemMouseDown}
+                onMouseUp={handleMenuItemMouseUp}
               >
                 <FolderOpen size={13} />
                 <span>在文件管理器中定位</span>
@@ -426,7 +452,7 @@ function getMenuItemStyle(disabled = false): React.CSSProperties {
     fontSize: 12,
     color: disabled ? 'var(--editor-text-muted)' : 'var(--editor-text)',
     opacity: disabled ? 0.45 : 1,
-    transition: 'background var(--transition-fast)',
+    transition: 'all var(--transition-fast)',
   };
 }
 
@@ -440,6 +466,23 @@ function handleMenuItemMouseEnter(e: React.MouseEvent<HTMLButtonElement>) {
 // 菜单项鼠标移出还原
 function handleMenuItemMouseLeave(e: React.MouseEvent<HTMLButtonElement>) {
   e.currentTarget.style.background = 'transparent';
+  e.currentTarget.style.transform = 'scale(1)';
+}
+
+// 菜单项鼠标按下按压反馈
+function handleMenuItemMouseDown(e: React.MouseEvent<HTMLButtonElement>) {
+  if (!e.currentTarget.disabled) {
+    e.currentTarget.style.background = 'var(--toolbar-active)';
+    e.currentTarget.style.transform = 'scale(0.98)';
+  }
+}
+
+// 菜单项鼠标松开还原
+function handleMenuItemMouseUp(e: React.MouseEvent<HTMLButtonElement>) {
+  if (!e.currentTarget.disabled) {
+    e.currentTarget.style.background = 'var(--toolbar-hover)';
+    e.currentTarget.style.transform = 'scale(1)';
+  }
 }
 
 // ── TabBar ──
@@ -574,11 +617,21 @@ export function TabBar() {
           e.currentTarget.style.background = 'var(--toolbar-hover)';
           e.currentTarget.style.borderColor = 'var(--tab-border)';
           e.currentTarget.style.color = 'var(--editor-text)';
+          e.currentTarget.style.transform = 'scale(1.08)';
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.background = 'transparent';
           e.currentTarget.style.borderColor = 'transparent';
           e.currentTarget.style.color = 'var(--editor-text-secondary)';
+          e.currentTarget.style.transform = 'scale(1)';
+        }}
+        onMouseDown={(e) => {
+          e.currentTarget.style.background = 'var(--toolbar-active)';
+          e.currentTarget.style.transform = 'scale(0.92)';
+        }}
+        onMouseUp={(e) => {
+          e.currentTarget.style.background = 'var(--toolbar-hover)';
+          e.currentTarget.style.transform = 'scale(1.08)';
         }}
         title="新建 Markdown 笔记 (Ctrl+N) · 右键更多"
         aria-label="新建标签页"
@@ -614,6 +667,8 @@ export function TabBar() {
             }}
             onMouseEnter={handleMenuItemMouseEnter}
             onMouseLeave={handleMenuItemMouseLeave}
+            onMouseDown={handleMenuItemMouseDown}
+            onMouseUp={handleMenuItemMouseUp}
           >
             <FileText size={13} color="var(--editor-accent)" />
             <span>新建 Markdown 笔记</span>
@@ -628,6 +683,8 @@ export function TabBar() {
             }}
             onMouseEnter={handleMenuItemMouseEnter}
             onMouseLeave={handleMenuItemMouseLeave}
+            onMouseDown={handleMenuItemMouseDown}
+            onMouseUp={handleMenuItemMouseUp}
           >
             <FileText size={13} color="#64748b" />
             <span>新建文本文档 (.txt)</span>
@@ -642,6 +699,8 @@ export function TabBar() {
             }}
             onMouseEnter={handleMenuItemMouseEnter}
             onMouseLeave={handleMenuItemMouseLeave}
+            onMouseDown={handleMenuItemMouseDown}
+            onMouseUp={handleMenuItemMouseUp}
           >
             <PencilRuler size={13} color="var(--accent-strong)" />
             <span>新建自由画板</span>
@@ -656,6 +715,8 @@ export function TabBar() {
             }}
             onMouseEnter={handleMenuItemMouseEnter}
             onMouseLeave={handleMenuItemMouseLeave}
+            onMouseDown={handleMenuItemMouseDown}
+            onMouseUp={handleMenuItemMouseUp}
           >
             <File size={13} />
             <span>打开文件… (Ctrl+O)</span>
@@ -669,6 +730,8 @@ export function TabBar() {
             }}
             onMouseEnter={handleMenuItemMouseEnter}
             onMouseLeave={handleMenuItemMouseLeave}
+            onMouseDown={handleMenuItemMouseDown}
+            onMouseUp={handleMenuItemMouseUp}
           >
             <FolderOpen size={13} />
             <span>打开文件夹… (Ctrl+K Ctrl+O)</span>

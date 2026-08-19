@@ -50,8 +50,8 @@ export function ExternalChangeBanner({ docKey }: ExternalChangeBannerProps) {
       >
         <span>⚠</span>
         <span>文件已被外部程序修改。当前有未保存的更改。</span>
-        <button onClick={handleOverwrite} style={btnStyle}>覆盖磁盘文件</button>
-        <button onClick={handleReload} style={btnStyle}>重新加载</button>
+        <button onClick={handleOverwrite} className="nb-btn-secondary" style={{ ...btnStyle, marginLeft: 'auto' }}>覆盖磁盘文件</button>
+        <button onClick={handleReload} className="nb-btn-secondary" style={btnStyle}>重新加载</button>
       </div>
     );
   }
@@ -73,8 +73,8 @@ export function ExternalChangeBanner({ docKey }: ExternalChangeBannerProps) {
       >
         <span>🗑</span>
         <span>文件已被外部删除。当前内容仍保留在标签页中。</span>
-        <button onClick={handleSaveAs} style={btnStyle}>另存为</button>
-        <button onClick={() => useWindowStore.getState().closeTab(docKey)} style={btnStyle}>关闭标签</button>
+        <button onClick={handleSaveAs} className="nb-btn-secondary" style={{ ...btnStyle, marginLeft: 'auto' }}>另存为</button>
+        <button onClick={() => useWindowStore.getState().closeTab(docKey)} className="nb-btn-secondary" style={btnStyle}>关闭标签</button>
       </div>
     );
   }

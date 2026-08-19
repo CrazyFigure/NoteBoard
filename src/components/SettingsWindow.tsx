@@ -45,25 +45,47 @@ export function SettingsWindow() {
           background: 'var(--editor-surface)',
         }}
       >
-        {PANELS.map((p) => (
-          <button
-            key={p.key}
-            onClick={() => setActivePanel(p.key)}
-            style={{
-              display: 'block',
-              width: '100%',
-              padding: '8px 16px',
-              textAlign: 'left',
-              border: 'none',
-              background: activePanel === p.key ? 'var(--editor-selection-background)' : 'transparent',
-              color: activePanel === p.key ? 'var(--editor-accent)' : 'var(--editor-text)',
-              cursor: 'pointer',
-              fontSize: 13,
-            }}
-          >
-            {p.label}
-          </button>
-        ))}
+        {PANELS.map((p) => {
+          const isActive = activePanel === p.key;
+          return (
+            <button
+              key={p.key}
+              onClick={() => setActivePanel(p.key)}
+              style={{
+                display: 'block',
+                width: '100%',
+                padding: '8px 16px',
+                textAlign: 'left',
+                border: 'none',
+                background: isActive ? 'var(--editor-selection)' : 'transparent',
+                color: isActive ? 'var(--accent-strong)' : 'var(--editor-text)',
+                fontWeight: isActive ? 600 : 400,
+                cursor: 'pointer',
+                fontSize: 13,
+                transition: 'all var(--transition-fast)',
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.background = 'var(--toolbar-hover)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.background = 'transparent';
+                }
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+              onMouseDown={(e) => {
+                e.currentTarget.style.transform = 'scale(0.97)';
+              }}
+              onMouseUp={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+            >
+              {p.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* 主内容区 */}

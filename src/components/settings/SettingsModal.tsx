@@ -131,8 +131,28 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               color: 'var(--editor-text-muted)',
               display: 'flex',
               alignItems: 'center',
+              justifyContent: 'center',
               padding: 4,
               borderRadius: 'var(--radius-sm)',
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.color = 'var(--editor-text)';
+              e.currentTarget.style.transform = 'scale(1.08)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = 'var(--editor-text-muted)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-active)';
+              e.currentTarget.style.transform = 'scale(0.92)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.transform = 'scale(1.08)';
             }}
           >
             <X size={16} />
@@ -298,6 +318,26 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 color: 'var(--editor-text)',
                                 cursor: 'pointer',
                                 transition: 'all var(--transition-fast)',
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!isSelected) {
+                                  e.currentTarget.style.background = 'var(--toolbar-hover)';
+                                  e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
+                                }
+                                e.currentTarget.style.transform = 'translateY(-1px)';
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!isSelected) {
+                                  e.currentTarget.style.background = 'var(--editor-bg)';
+                                  e.currentTarget.style.borderColor = 'var(--editor-border)';
+                                }
+                                e.currentTarget.style.transform = 'translateY(0)';
+                              }}
+                              onMouseDown={(e) => {
+                                e.currentTarget.style.transform = 'translateY(0) scale(0.96)';
+                              }}
+                              onMouseUp={(e) => {
+                                e.currentTarget.style.transform = 'translateY(-1px)';
                               }}
                             >
                               {labels[w]}
@@ -903,46 +943,102 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
                   <button
                     type="button"
+                    className="nb-btn-secondary"
                     disabled={checkingUpdate}
                     onClick={handleCheckForUpdates}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: 6,
-                      padding: '7px 16px',
-                      fontSize: 12,
+                      gap: 8,
+                      padding: '8px 18px',
+                      fontSize: 13,
                       fontWeight: 500,
-                      borderRadius: 'var(--radius-sm)',
+                      borderRadius: 8,
                       border: '1px solid var(--editor-border)',
                       background: 'var(--editor-surface)',
                       color: 'var(--accent-strong)',
                       cursor: checkingUpdate ? 'not-allowed' : 'pointer',
-                      transition: 'background var(--transition-fast)',
+                      boxShadow: 'var(--shadow-sm)',
+                      transition: 'all var(--transition-fast)',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!checkingUpdate) {
+                        e.currentTarget.style.background = 'var(--toolbar-hover)';
+                        e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
+                        e.currentTarget.style.transform = 'translateY(-1px)';
+                        e.currentTarget.style.boxShadow = 'var(--shadow-md)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!checkingUpdate) {
+                        e.currentTarget.style.background = 'var(--editor-surface)';
+                        e.currentTarget.style.borderColor = 'var(--editor-border)';
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
+                      }
+                    }}
+                    onMouseDown={(e) => {
+                      if (!checkingUpdate) {
+                        e.currentTarget.style.background = 'var(--toolbar-active)';
+                        e.currentTarget.style.transform = 'translateY(0) scale(0.97)';
+                        e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
+                      }
+                    }}
+                    onMouseUp={(e) => {
+                      if (!checkingUpdate) {
+                        e.currentTarget.style.background = 'var(--toolbar-hover)';
+                        e.currentTarget.style.transform = 'translateY(-1px)';
+                        e.currentTarget.style.boxShadow = 'var(--shadow-md)';
+                      }
                     }}
                   >
-                    <RefreshCw size={14} className={checkingUpdate ? 'spin' : ''} style={checkingUpdate ? { animation: 'spin 1s linear infinite' } : undefined} />
+                    <RefreshCw size={15} className={checkingUpdate ? 'spin' : ''} style={checkingUpdate ? { animation: 'spin 1s linear infinite' } : undefined} />
                     <span>{checkingUpdate ? '正在检查...' : '检测更新'}</span>
                   </button>
 
                   <button
                     type="button"
+                    className="nb-btn-secondary"
                     onClick={handleOpenGithub}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: 6,
-                      padding: '7px 16px',
-                      fontSize: 12,
+                      gap: 8,
+                      padding: '8px 18px',
+                      fontSize: 13,
                       fontWeight: 500,
-                      borderRadius: 'var(--radius-sm)',
+                      borderRadius: 8,
                       border: '1px solid var(--editor-border)',
                       background: 'var(--editor-surface)',
                       color: 'var(--editor-text)',
                       cursor: 'pointer',
-                      transition: 'background var(--transition-fast)',
+                      boxShadow: 'var(--shadow-sm)',
+                      transition: 'all var(--transition-fast)',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'var(--toolbar-hover)';
+                      e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                      e.currentTarget.style.boxShadow = 'var(--shadow-md)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'var(--editor-surface)';
+                      e.currentTarget.style.borderColor = 'var(--editor-border)';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
+                    }}
+                    onMouseDown={(e) => {
+                      e.currentTarget.style.background = 'var(--toolbar-active)';
+                      e.currentTarget.style.transform = 'translateY(0) scale(0.97)';
+                      e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
+                    }}
+                    onMouseUp={(e) => {
+                      e.currentTarget.style.background = 'var(--toolbar-hover)';
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                      e.currentTarget.style.boxShadow = 'var(--shadow-md)';
                     }}
                   >
-                    <ExternalLink size={14} />
+                    <ExternalLink size={15} />
                     <span>GitHub 仓库</span>
                   </button>
                 </div>
@@ -983,7 +1079,24 @@ function NavBtn({ active, icon, label, onClick }: { active: boolean; icon: React
         fontSize: 12,
         cursor: 'pointer',
         textAlign: 'left',
-        transition: 'background var(--transition-fast)',
+        transition: 'all var(--transition-fast)',
+      }}
+      onMouseEnter={(e) => {
+        if (!active) {
+          e.currentTarget.style.background = 'var(--toolbar-hover)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!active) {
+          e.currentTarget.style.background = 'transparent';
+        }
+        e.currentTarget.style.transform = 'scale(1)';
+      }}
+      onMouseDown={(e) => {
+        e.currentTarget.style.transform = 'scale(0.97)';
+      }}
+      onMouseUp={(e) => {
+        e.currentTarget.style.transform = 'scale(1)';
       }}
     >
       {icon}
@@ -1023,7 +1136,26 @@ function ThemeCard({
         display: 'flex',
         flexDirection: 'column',
         gap: 8,
-        transition: 'border-color var(--transition-fast)',
+        boxShadow: selected ? 'var(--shadow-sm)' : 'none',
+        transition: 'all var(--transition-fast)',
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = selected ? 'var(--accent-strong)' : 'var(--editor-border-focus)';
+        e.currentTarget.style.transform = 'translateY(-2px)';
+        e.currentTarget.style.boxShadow = 'var(--shadow-md)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = selected ? 'var(--accent-strong)' : 'var(--editor-border)';
+        e.currentTarget.style.transform = 'translateY(0)';
+        e.currentTarget.style.boxShadow = selected ? 'var(--shadow-sm)' : 'none';
+      }}
+      onMouseDown={(e) => {
+        e.currentTarget.style.transform = 'translateY(0) scale(0.98)';
+        e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
+      }}
+      onMouseUp={(e) => {
+        e.currentTarget.style.transform = 'translateY(-2px)';
+        e.currentTarget.style.boxShadow = 'var(--shadow-md)';
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

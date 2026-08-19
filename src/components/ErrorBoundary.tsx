@@ -59,14 +59,11 @@ export class ErrorBoundary extends Component<Props, State> {
             {this.state.error?.message || '未知错误'}
           </div>
           <button
+            type="button"
+            className="nb-btn-primary"
             onClick={() => this.setState({ hasError: false, error: null })}
             style={{
-              padding: '6px 16px',
-              borderRadius: 4,
-              border: '1px solid var(--editor-border, #e5e7eb)',
-              background: 'var(--accent-strong, #3b82f6)',
-              color: '#ffffff',
-              cursor: 'pointer',
+              padding: '8px 20px',
               fontSize: 13,
             }}
           >

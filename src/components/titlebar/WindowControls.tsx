@@ -44,7 +44,7 @@ export function WindowControls() {
     justifyContent: 'center',
     border: 'none',
     cursor: 'pointer',
-    transition: 'background var(--transition-fast)',
+    transition: 'all var(--transition-fast)',
     color: 'var(--editor-text-secondary)',
   };
 
@@ -63,6 +63,15 @@ export function WindowControls() {
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.background = 'transparent';
+          e.currentTarget.style.transform = 'scale(1)';
+        }}
+        onMouseDown={(e) => {
+          e.currentTarget.style.background = 'var(--toolbar-active)';
+          e.currentTarget.style.transform = 'scale(0.92)';
+        }}
+        onMouseUp={(e) => {
+          e.currentTarget.style.background = 'var(--toolbar-hover)';
+          e.currentTarget.style.transform = 'scale(1)';
         }}
         aria-label="最小化"
       >
@@ -76,6 +85,15 @@ export function WindowControls() {
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.background = 'transparent';
+          e.currentTarget.style.transform = 'scale(1)';
+        }}
+        onMouseDown={(e) => {
+          e.currentTarget.style.background = 'var(--toolbar-active)';
+          e.currentTarget.style.transform = 'scale(0.92)';
+        }}
+        onMouseUp={(e) => {
+          e.currentTarget.style.background = 'var(--toolbar-hover)';
+          e.currentTarget.style.transform = 'scale(1)';
         }}
         aria-label={isMaximized ? '还原' : '最大化'}
       >
@@ -91,6 +109,15 @@ export function WindowControls() {
         onMouseLeave={(e) => {
           e.currentTarget.style.background = 'transparent';
           e.currentTarget.style.color = 'var(--editor-text-secondary)';
+          e.currentTarget.style.transform = 'scale(1)';
+        }}
+        onMouseDown={(e) => {
+          e.currentTarget.style.background = '#c4101e';
+          e.currentTarget.style.transform = 'scale(0.92)';
+        }}
+        onMouseUp={(e) => {
+          e.currentTarget.style.background = '#e81123';
+          e.currentTarget.style.transform = 'scale(1)';
         }}
         aria-label="关闭"
       >

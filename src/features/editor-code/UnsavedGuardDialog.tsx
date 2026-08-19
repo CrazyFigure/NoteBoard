@@ -111,33 +111,36 @@ export function UnsavedGuardDialog({
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
           <button
+            type="button"
+            className="nb-btn-secondary"
             onClick={onCancel}
             style={{
-              ...buttonBase,
-              background: 'transparent',
-              color: 'var(--editor-text-secondary)',
+              padding: '6px 14px',
+              fontSize: 13,
             }}
           >
             取消
           </button>
           <button
+            type="button"
+            className="nb-btn-secondary"
             onClick={handleDiscard}
             style={{
-              ...buttonBase,
-              background: 'transparent',
-              color: 'var(--editor-text-secondary)',
+              padding: '6px 14px',
+              fontSize: 13,
             }}
           >
             不保存
           </button>
           <button
+            type="button"
+            className="nb-btn-primary"
             onClick={handleSave}
             disabled={saving}
             style={{
-              ...buttonBase,
-              background: 'var(--accent-strong)',
-              color: '#ffffff',
-              border: '1px solid var(--accent-strong)',
+              padding: '6px 16px',
+              fontSize: 13,
+              fontWeight: 500,
               opacity: saving ? 0.6 : 1,
             }}
           >
