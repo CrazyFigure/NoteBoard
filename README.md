@@ -63,3 +63,7 @@ NoteBoard 采用 **GPL-3.0-only**。
 | [excalidraw/excalidraw](https://github.com/excalidraw/excalidraw) | MIT | 画板引擎 |
 
 第三方依赖与许可证详情请参阅 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+
+## Star 走势
+
+[![Star 走势图](./assets/star-history.svg)](https://github.com/CrazyFigure/NoteBoard/stargazers)
