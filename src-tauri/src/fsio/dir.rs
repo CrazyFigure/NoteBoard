@@ -1,7 +1,7 @@
 // NoteBoard 目录读取 — 自然排序
 // FR-704: 目录在前、文件在后，各自按名称自然排序（数字按数值比较）
 
-use crate::dto::{FileTreeNode, DocumentKind, LanguageId};
+use crate::dto::{FileTreeNode, LanguageId};
 use crate::dto::{ext_from_path, kind_by_ext};
 use std::fs;
 use std::path::Path;
