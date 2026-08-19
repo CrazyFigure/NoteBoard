@@ -188,7 +188,12 @@ export function startEventListeners(): void {
   }
 
   if (!unlistenCloseRequested) {
-    onCloseRequested(() => {
+    onCloseRequested((targetLabel) => {
+      // 仅当目标窗口为当前窗口时才处理关闭拦截，避免多窗口间广播误触发
+      const currentLabel = getCurrentWindow().label;
+      if (targetLabel && targetLabel !== currentLabel) {
+        return;
+      }
       handleCloseRequested();
     }).then((fn) => {
       unlistenCloseRequested = fn;

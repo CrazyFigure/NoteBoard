@@ -129,6 +129,13 @@ pub fn on_window_event(window: &Window, event: &WindowEvent) {
             let state = app.state::<Mutex<AppState>>();
             touch_window(&state, &label);
         }
+        // 窗口被销毁时统一注销窗口记录与状态
+        WindowEvent::Destroyed => {
+            let label = window.label().to_string();
+            let app = window.app_handle();
+            let state = app.state::<Mutex<AppState>>();
+            unregister_window(&state, &label);
+        }
         _ => {}
     }
 }
