@@ -9,7 +9,7 @@ import { useDocumentStore } from '../../../stores/documentStore';
 import { useWindowStore } from '../../../stores/windowStore';
 import { getEditorView } from '../CodeEditor';
 import { getActiveTipTapEditor } from '../../editor-md/TipTapEditor';
-import { serializeMarkdown } from '../../editor-md/serialize';
+import { serializeMarkdown, getBaseline } from '../../editor-md/serialize';
 import { getActiveBoardScene } from '../../board/BoardEditor';
 import { serializeScene } from '../../board/sceneIo';
 import { kindFromPath, languageFromPath } from '../../../core/docKind';
@@ -75,6 +75,8 @@ export async function saveDocument(docKey: string): Promise<boolean> {
     if (result.ok) {
       // 更新基线
       store.updateBaseline(docKey, result.mtime, result.size);
+      // 同步更新 Markdown 基线管理器
+      getBaseline(docKey).updateBaseline(updatedDoc.content ?? '');
       useWindowStore.getState().setTabDirty(docKey, false);
       await ipc.setDocumentDirty(docKey, false);
       return true;
@@ -159,6 +161,9 @@ export async function saveAs(originalKey: string, content: string): Promise<bool
         mtime: result.mtime,
         readonly: false,
       });
+
+      // 同步更新 Markdown 基线管理器
+      getBaseline(selectedPath).updateBaseline(content);
 
       // 更新 WindowStore
       tabStore.updateTabPath(originalKey, selectedPath, displayName);

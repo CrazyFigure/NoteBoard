@@ -6,7 +6,7 @@
 // 不变式 I-14: 打开 → visual → source → tab 不出现脏圆点
 
 import { describe, it, expect, vi } from 'vitest';
-import { BaselineManager, getBaseline, removeBaseline } from '../../src/features/editor-md/serialize';
+import { BaselineManager, getBaseline, removeBaseline, normalizeEol } from '../../src/features/editor-md/serialize';
 
 // 样本 Markdown（含非标准 HTML 块、混合缩进列表、行尾空格、setext 标题、嵌套引用、表格对齐符、任务列表、代码围栏内的 #）
 const SAMPLES: { name: string; md: string }[] = [
@@ -88,6 +88,19 @@ describe('serialize 往返保真', () => {
       const mgr = new BaselineManager('test-doc');
       mgr.setBaseline('hello');
       expect(mgr.isClean('hello')).toBe(true);
+    });
+
+    it('CRLF 与 LF 换行符差异不应误标脏', () => {
+      const mgr = new BaselineManager('test-doc');
+      mgr.setBaseline('line1\r\nline2\r\n');
+      expect(mgr.isClean('line1\nline2\n')).toBe(true);
+    });
+
+    it('normalizeEol 正确转换各类换行符', () => {
+      expect(normalizeEol('a\r\nb\r\nc')).toBe('a\nb\nc');
+      expect(normalizeEol('a\nb\nc')).toBe('a\nb\nc');
+      expect(normalizeEol(null)).toBe('');
+      expect(normalizeEol(undefined)).toBe('');
     });
 
     it('内容与基线不一致 → isClean=false', () => {

@@ -20,7 +20,7 @@ import { syntaxHighlighting } from '@codemirror/language';
 
 import { buildExtensions } from './extensions';
 import { lowlight } from './lowlight';
-import { serializeMarkdown, parseMarkdown, getBaseline, removeBaseline } from './serialize';
+import { serializeMarkdown, parseMarkdown, getBaseline, normalizeEol } from './serialize';
 import { judgeLargeDoc } from './largeDoc';
 import { nbEditorTheme } from '../editor-code/theme';
 import { nbSyntaxHighlighting } from '../editor-code/highlightStyle';
@@ -64,6 +64,8 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   const storeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const diskTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initializedDocKeyRef = useRef<string | null>(null);
+  // 初始化锁：在初次加载和程序化设置内容期间阻止 onUpdate 误标为脏
+  const isInitializingRef = useRef<boolean>(true);
 
   const docStore = useDocumentStore();
   const doc = docStore.getDocument(docKey);
@@ -74,17 +76,27 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   const editor = useEditor({
     extensions: buildExtensions(),
     content: '',
-    onUpdate: ({ editor }) => {
-      const content = serializeMarkdown(editor);
-      tabStore.setTabDirty(docKey, true);
+    onUpdate: ({ editor, transaction }) => {
+      // 若处于初始化流程或事务未引起文档实际变更，则直接跳过
+      if (isInitializingRef.current || !transaction.docChanged) {
+        return;
+      }
 
-      // 500ms → store（防抖）
+      const content = serializeMarkdown(editor);
+      const baseline = getBaseline(docKey).getBaseline() ?? useDocumentStore.getState().getDocument(docKey)?.baselineContent ?? '';
+      // 规范化换行符后比对是否真正改变
+      const isDirty = normalizeEol(content) !== normalizeEol(baseline);
+
+      tabStore.setTabDirty(docKey, isDirty);
+      useDocumentStore.getState().setDirty(docKey, isDirty);
+
+      // 500ms → store（防抖更新内存镜像）
       if (storeTimerRef.current) clearTimeout(storeTimerRef.current);
       storeTimerRef.current = setTimeout(() => {
-        docStore.setContent(docKey, content);
+        useDocumentStore.getState().setContent(docKey, content);
       }, 500);
 
-      // 800ms → 盘（auto 策略）
+      // 800ms → 盘（auto 策略，仅在脏且为 auto 策略时自动写入）
       if (diskTimerRef.current) clearTimeout(diskTimerRef.current);
       diskTimerRef.current = setTimeout(async () => {
         await autoSave(docKey, content);
@@ -133,12 +145,33 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       // 不设置内容到 TipTap（太大会卡）
     } else {
       setShowLargeBanner(false);
+      // 开启初始化防抖锁
+      isInitializingRef.current = true;
+
       // 正常文档：设置内容到编辑器
       const baseline = getBaseline(docKey);
       if (!baseline.getBaseline()) {
         baseline.setBaseline(content);
       }
       parseMarkdown(editor, content);
+
+      // 若文档当前为未修改状态，确保基线与初始解析序列化结果对齐
+      const initialSerialized = serializeMarkdown(editor);
+      if (!currentDoc.isDirty) {
+        baseline.setBaseline(initialSerialized);
+        if (normalizeEol(currentDoc.baselineContent) === normalizeEol(initialSerialized)) {
+          docStore.setContent(docKey, initialSerialized);
+          docStore.setDirty(docKey, false);
+          tabStore.setTabDirty(docKey, false);
+        }
+      }
+
+      // 初始化完成，延迟解除初始化锁
+      const initTimer = setTimeout(() => {
+        isInitializingRef.current = false;
+      }, 50);
+
+      return () => clearTimeout(initTimer);
     }
 
     // 设置 viewMode（从 tab 恢复）
@@ -149,6 +182,129 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       setViewMode(settings.editor.defaultViewMode);
     }
   }, [editor, docKey, docStore, tabStore, settings.editor.defaultViewMode]);
+
+  // 自动保存（声明在模式切换前供引用）
+  const autoSave = useCallback(async (key: string, content: string) => {
+    const dStore = useDocumentStore.getState();
+    const targetDoc = dStore.getDocument(key);
+    if (!targetDoc) return;
+
+    // 只有 auto 策略才自动保存
+    if (targetDoc.savePolicy !== 'auto') return;
+
+    // 外部变更/断开状态不自动保存
+    if (targetDoc.externalStatus === 'modified' || targetDoc.externalStatus === 'deleted') return;
+
+    // 比较内容是否与基线不同
+    const baseline = getBaseline(key);
+    if (baseline.isClean(content)) {
+      // 内容与基线一致 → 不需要保存
+      dStore.setDirty(key, false);
+      tabStore.setTabDirty(key, false);
+      return;
+    }
+
+    try {
+      const result = await ipc.writeDocument(key, content, targetDoc.encoding, targetDoc.eol);
+      if (result.ok) {
+        dStore.updateBaseline(key, result.mtime, result.size);
+        baseline.updateBaseline(content);
+        tabStore.setTabDirty(key, false);
+        // 同步注册表脏态
+        await ipc.setDocumentDirty(key, false);
+      }
+    } catch (e) {
+      console.error('自动保存失败:', e);
+    }
+  }, [tabStore]);
+
+  // 初始化 source 模式编辑器（CM6 + markdown）
+  const initSourceEditor = useCallback((content: string) => {
+    if (!sourceDivRef.current) return;
+
+    // 销毁旧实例
+    if (sourceViewRef.current) {
+      sourceViewRef.current.destroy();
+      activeSourceViews.delete(docKey);
+    }
+
+    // 源码模式输入监听与自动标脏
+    const updateListener = EditorView.updateListener.of((update) => {
+      if (!update.docChanged) return;
+      const newContent = update.state.doc.toString();
+      const baseline = getBaseline(docKey).getBaseline() ?? useDocumentStore.getState().getDocument(docKey)?.baselineContent ?? '';
+      const isDirty = normalizeEol(newContent) !== normalizeEol(baseline);
+      useWindowStore.getState().setTabDirty(docKey, isDirty);
+      useDocumentStore.getState().setDirty(docKey, isDirty);
+
+      if (storeTimerRef.current) clearTimeout(storeTimerRef.current);
+      storeTimerRef.current = setTimeout(() => {
+        useDocumentStore.getState().setContent(docKey, newContent);
+      }, 500);
+
+      if (diskTimerRef.current) clearTimeout(diskTimerRef.current);
+      diskTimerRef.current = setTimeout(async () => {
+        await autoSave(docKey, newContent);
+      }, 800);
+    });
+
+    const state = EditorState.create({
+      doc: content,
+      extensions: [
+        ...createBaseExtensions(),
+        markdown(),
+        nbSyntaxHighlighting,
+        nbEditorTheme,
+        keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+        EditorView.lineWrapping,
+        updateListener,
+      ],
+    });
+
+    const view = new EditorView({
+      state,
+      parent: sourceDivRef.current,
+    });
+    sourceViewRef.current = view;
+    activeSourceViews.set(docKey, view);
+  }, [docKey, autoSave]);
+
+  // 切换模式
+  const toggleViewMode = useCallback(() => {
+    if (!editor) return;
+
+    if (viewMode === 'visual') {
+      // visual → source
+      const md = serializeMarkdown(editor);
+      useDocumentStore.getState().setContent(docKey, md);
+      initSourceEditor(md);
+      setViewMode('source');
+      tabStore.setTabViewMode(docKey, 'source');
+    } else {
+      // source → visual
+      if (sourceViewRef.current) {
+        const md = sourceViewRef.current.state.doc.toString();
+        isInitializingRef.current = true;
+        parseMarkdown(editor, md);
+        setTimeout(() => {
+          isInitializingRef.current = false;
+        }, 50);
+
+        // 不变式 I-14 检查：切回 visual 后内容是否与基线一致
+        const baseline = getBaseline(docKey);
+        const serialized = serializeMarkdown(editor);
+        if (baseline.isClean(serialized)) {
+          // 不脏
+          useDocumentStore.getState().setDirty(docKey, false);
+          tabStore.setTabDirty(docKey, false);
+        } else {
+          useDocumentStore.getState().setContent(docKey, serialized);
+        }
+      }
+      setViewMode('visual');
+      tabStore.setTabViewMode(docKey, 'visual');
+    }
+  }, [editor, viewMode, docKey, tabStore, initSourceEditor]);
 
   // Ctrl+/ 模式切换
   useEffect(() => {
@@ -162,104 +318,9 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       description: '切换 Markdown 视图模式',
     });
     return () => unreg();
-  }, [editor]);
+  }, [editor, toggleViewMode]);
 
-  // 切换模式
-  const toggleViewMode = useCallback(() => {
-    if (!editor) return;
-
-    if (viewMode === 'visual') {
-      // visual → source
-      const md = serializeMarkdown(editor);
-      initSourceEditor(md);
-      setViewMode('source');
-      tabStore.setTabViewMode(docKey, 'source');
-    } else {
-      // source → visual
-      if (sourceViewRef.current) {
-        const md = sourceViewRef.current.state.doc.toString();
-        parseMarkdown(editor, md);
-
-        // 不变式 I-14 检查：切回 visual 后内容是否与基线一致
-        const baseline = getBaseline(docKey);
-        const serialized = serializeMarkdown(editor);
-        if (baseline.isClean(serialized)) {
-          // 不脏
-          docStore.setDirty(docKey, false);
-          tabStore.setTabDirty(docKey, false);
-        }
-      }
-      setViewMode('visual');
-      tabStore.setTabViewMode(docKey, 'visual');
-    }
-  }, [editor, viewMode, docKey]);
-
-  // 初始化 source 模式编辑器（CM6 + markdown）
-  const initSourceEditor = useCallback((content: string) => {
-    if (!sourceDivRef.current) return;
-
-    // 销毁旧实例
-    if (sourceViewRef.current) {
-      sourceViewRef.current.destroy();
-      activeSourceViews.delete(docKey);
-    }
-
-    const state = EditorState.create({
-      doc: content,
-      extensions: [
-        ...createBaseExtensions(),
-        markdown(),
-        nbSyntaxHighlighting,
-        nbEditorTheme,
-        keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
-        EditorView.lineWrapping,
-      ],
-    });
-
-    const view = new EditorView({
-      state,
-      parent: sourceDivRef.current,
-    });
-    sourceViewRef.current = view;
-    activeSourceViews.set(docKey, view);
-  }, [docKey]);
-
-  // 自动保存
-  const autoSave = useCallback(async (key: string, content: string) => {
-    const docStore = useDocumentStore.getState();
-    const doc = docStore.getDocument(key);
-    if (!doc) return;
-
-    // 只有 auto 策略才自动保存
-    if (doc.savePolicy !== 'auto') return;
-
-    // 外部变更/断开状态不自动保存
-    if (doc.externalStatus === 'modified' || doc.externalStatus === 'deleted') return;
-
-    // 比较内容是否与基线不同
-    const baseline = getBaseline(key);
-    if (baseline.isClean(content)) {
-      // 内容与基线一致 → 不需要保存
-      docStore.setDirty(key, false);
-      tabStore.setTabDirty(key, false);
-      return;
-    }
-
-    try {
-      const result = await ipc.writeDocument(key, content, doc.encoding, doc.eol);
-      if (result.ok) {
-        docStore.updateBaseline(key, result.mtime, result.size);
-        baseline.updateBaseline(content);
-        tabStore.setTabDirty(key, false);
-        // 同步注册表脏态
-        await ipc.setDocumentDirty(key, false);
-      }
-    } catch (e) {
-      console.error('自动保存失败:', e);
-    }
-  }, [tabStore]);
-
-  // 组件卸载时清理
+  // 组件卸载时清理（注意：不要删除基线，以便切回 Tab 时仍能保持正确的脏态判定）
   useEffect(() => {
     return () => {
       initializedDocKeyRef.current = null;
@@ -270,7 +331,6 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
         sourceViewRef.current = null;
       }
       activeSourceViews.delete(docKey);
-      removeBaseline(docKey);
     };
   }, [docKey]);
 

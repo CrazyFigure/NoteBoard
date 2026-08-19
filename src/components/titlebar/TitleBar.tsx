@@ -70,6 +70,7 @@ export function TitleBar() {
         style={{
           flex: 1,
           height: '100%',
+          minWidth: 0,
         }}
       />
 

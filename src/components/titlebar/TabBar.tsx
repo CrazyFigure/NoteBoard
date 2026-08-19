@@ -501,7 +501,7 @@ export function TabBar() {
     }
   };
 
-  // Tab 栏横向滚动容器（右侧预留充足安全边距，彻底防止最右侧 Tab 的边框和阴影被裁切遮挡）
+  // Tab 栏横向滚动容器
   const containerStyle: React.CSSProperties = {
     display: 'flex',
     alignItems: 'center',
@@ -510,8 +510,8 @@ export function TabBar() {
     overflowY: 'hidden',
     scrollbarWidth: 'none',
     flex: '0 1 auto',
-    maxWidth: 'calc(100% - 40px)',
-    padding: '0 8px 0 4px',
+    minWidth: 0,
+    padding: '0 4px',
     boxSizing: 'border-box',
   };
 
@@ -555,7 +555,7 @@ export function TabBar() {
   };
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', height: '100%', maxWidth: 'calc(100% - 36px - 46px * 3 - 160px)' }}>
+    <div style={{ display: 'flex', alignItems: 'center', height: '100%', minWidth: 0, flex: '0 1 auto', maxWidth: 'calc(100vw - 210px)' }}>
       <div
         ref={scrollRef}
         style={containerStyle}

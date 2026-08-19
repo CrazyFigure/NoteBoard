@@ -67,6 +67,11 @@ interface DocumentStore {
   clear: () => void;
 }
 
+function normalizeEol(text: string | null | undefined): string {
+  if (text == null) return '';
+  return text.replace(/\r\n/g, '\n');
+}
+
 export const useDocumentStore = create<DocumentStore>((set, get) => ({
   documents: new Map(),
 
@@ -90,7 +95,7 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
       isDirty: existing?.isDirty ?? false,
       savePolicy:
         payload.kind === 'markdown' || payload.kind === 'board' ? 'auto' : 'manual',
-      baselineContent: payload.content,
+      baselineContent: existing?.baselineContent ?? payload.content,
       externalStatus: 'clean',
       largeDocVerdict: existing?.largeDocVerdict ?? null,
     };
@@ -109,8 +114,8 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
       const doc = state.documents.get(key);
       if (!doc) return {};
       const newMap = new Map(state.documents);
-      // 判断脏态：内容与基线不同 = 脏
-      const isDirty = content !== doc.baselineContent;
+      // 判断脏态：规范化换行符后内容与基线不同 = 脏（杜绝 Windows CRLF 导致假脏态）
+      const isDirty = normalizeEol(content) !== normalizeEol(doc.baselineContent);
       newMap.set(key, { ...doc, content, isDirty });
       return { documents: newMap };
     });
