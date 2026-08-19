@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="440" viewBox="0 0 860 440" role="img" aria-labelledby="title desc">
+  <title id="title">Star History for CrazyFigure/NoteBoard</title>
+  <desc id="desc">Generated from observed repository star-count snapshots; changes between observations are unavailable.</desc>
+  <style>
+    .chart-bg { fill: #ffffff; }
+    .title { fill: #111827; font: 700 26px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .subtitle { fill: #4b5563; font: 500 14px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .axis-label { fill: #64748b; font: 12px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .grid { stroke: #e5e7eb; stroke-width: 1; }
+    .axis { stroke: #94a3b8; stroke-width: 1.2; }
+    .area { fill: url(#starGradient); opacity: 0.28; }
+    .line { fill: none; stroke: #2563eb; stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; }
+    .dot { fill: #2563eb; stroke: #ffffff; stroke-width: 3; }
+    .badge { fill: #eff6ff; stroke: #bfdbfe; }
+    .badge-text { fill: #1d4ed8; font: 700 14px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .status { fill: #6b7280; font: 12px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    @media (prefers-color-scheme: dark) {
+      .chart-bg { fill: #0d1117; }
+      .title { fill: #f8fafc; }
+      .subtitle { fill: #cbd5e1; }
+      .axis-label { fill: #94a3b8; }
+      .grid { stroke: #1f2937; }
+      .axis { stroke: #475569; }
+      .dot { stroke: #0d1117; }
+      .badge { fill: #172554; stroke: #1d4ed8; }
+      .badge-text { fill: #bfdbfe; }
+      .status { fill: #94a3b8; }
+    }
+  </style>
+  <defs>
+    <linearGradient id="starGradient" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#2563eb" stop-opacity="0.72" />
+      <stop offset="100%" stop-color="#2563eb" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect class="chart-bg" width="860" height="440" rx="18" />
+  <text class="title" x="68" y="42">Star History</text>
+  <text class="subtitle" x="68" y="64">CrazyFigure/NoteBoard</text>
+  <g>
+    <line class="grid" x1="68" y1="368" x2="812" y2="368" />
+    <line class="grid" x1="68" y1="74" x2="812" y2="74" />
+    <line class="axis" x1="68" y1="74" x2="68" y2="368" />
+    <line class="axis" x1="68" y1="368" x2="812" y2="368" />
+    <text class="axis-label" x="54" y="372" text-anchor="end">0</text>
+    <text class="axis-label" x="54" y="78" text-anchor="end">1</text>
+    <text class="axis-label" x="68" y="410" text-anchor="middle">2026-08-19</text>
+    <text class="axis-label" x="254" y="410" text-anchor="middle">2026-08-19</text>
+    <text class="axis-label" x="440" y="410" text-anchor="middle">2026-08-19</text>
+    <text class="axis-label" x="626" y="410" text-anchor="middle">2026-08-19</text>
+    <text class="axis-label" x="812" y="410" text-anchor="middle">2026-08-19</text>
+  </g>
+  <path class="area" d="M 68 368 H 812 V 368 L 812 368 L 68 368 Z" />
+  <path class="line" d="M 68 368 H 812 V 368" />
+  <circle class="dot" cx="812" cy="368" r="6" />
+  <rect class="badge" x="682" y="28" width="130" height="34" rx="17" />
+  <text class="badge-text" x="747" y="50" text-anchor="middle">0 stars</text>
+  <text class="status" x="812" y="428" text-anchor="end">Observed snapshots: 2026-08-19 – 2026-08-19</text>
+</svg>
