@@ -135,6 +135,10 @@ export interface TypographySettings {
   explorerFontSize?: number;
   // 文件树条目行高 (px)
   explorerLineHeight?: number;
+  // 软件界面 UI 字体（留空跟随系统）
+  uiFontFamily?: string;
+  // 软件界面 UI 字号 (px)
+  uiFontSize?: number;
 }
 
 export interface EditorSettings {

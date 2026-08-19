@@ -22,8 +22,8 @@ html, body, #root {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Noto Sans SC', Roboto, sans-serif;
-  font-size: 14px;
+  font-family: var(--ui-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Noto Sans SC', Roboto, sans-serif);
+  font-size: var(--ui-font-size, 13px);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -72,7 +72,9 @@ body {
   --transition-normal: 200ms ease;
   --transition-slow: 300ms ease;
 
-  /* 排版默认值 */
+  /* 全局界面与排版默认值 */
+  --ui-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Noto Sans SC', Roboto, sans-serif;
+  --ui-font-size: 13px;
   --content-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Noto Sans SC', Roboto, sans-serif;
   --mono-font-family: 'Consolas', 'Microsoft YaHei Mono', monospace;
   --content-font-size: 16px;
@@ -90,8 +92,6 @@ body {
   --cm-background: var(--editor-bg);
   --cm-gutter-background: var(--cm-gutter-bg);
   --cm-foreground: var(--editor-text);
-  --ui-font-family: var(--content-font-family);
-  --ui-font-size: 13px;
 }
 
 /* 亮色阴影 */

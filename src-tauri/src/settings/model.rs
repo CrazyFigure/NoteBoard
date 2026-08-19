@@ -98,6 +98,12 @@ pub struct TypographySettings {
     // 文件树条目行高
     #[serde(default = "default_explorer_line_height")]
     pub explorer_line_height: u32,
+    // 软件界面 UI 字体族（留空跟随系统）
+    #[serde(default)]
+    pub ui_font_family: String,
+    // 软件界面 UI 字号
+    #[serde(default = "default_ui_font_size")]
+    pub ui_font_size: u32,
 }
 
 impl Default for TypographySettings {
@@ -113,6 +119,8 @@ impl Default for TypographySettings {
             explorer_font_family: String::new(),
             explorer_font_size: 13,
             explorer_line_height: 24,
+            ui_font_family: String::new(),
+            ui_font_size: 13,
         }
     }
 }
@@ -224,6 +232,7 @@ fn default_line_height() -> f64 { 1.7 }
 fn default_mono_line_height() -> f64 { 1.5 }
 fn default_explorer_font_size() -> u32 { 13 }
 fn default_explorer_line_height() -> u32 { 24 }
+fn default_ui_font_size() -> u32 { 13 }
 fn default_content_width() -> String { "standard".to_string() }
 fn default_view_mode() -> String { "visual".to_string() }
 fn default_true() -> bool { true }

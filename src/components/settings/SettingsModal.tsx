@@ -2,8 +2,8 @@
 // 外观主题切换（晨光/琥珀/墨夜/跟随系统） + 排版设置（字体/字号/行高/内容宽度） + 快捷键与关于
 // 详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
-import { useState } from 'react';
-import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, SlidersHorizontal } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, SlidersHorizontal, LayoutTemplate } from 'lucide-react';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { THEMES } from '../../core/theme/themes';
 import { contentWidthToPercent, CONTENT_WIDTH_PERCENT_MAP } from '../../core/theme/applyTheme';
@@ -20,6 +20,18 @@ type TabType = 'appearance' | 'typography' | 'editor' | 'shortcuts' | 'about';
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('appearance');
   const { settings, resolvedTheme, setThemeMode, setTypography, setEditor } = useSettingsStore();
+
+  // 监听 Esc 键快速关闭设置模态弹窗
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -40,13 +52,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         background: 'rgba(0, 0, 0, 0.45)',
         backdropFilter: 'blur(4px)',
       }}
-      onClick={onClose}
     >
       <div
         style={{
-          width: 640,
-          maxWidth: '90vw',
-          maxHeight: '85vh',
+          width: 780,
+          maxWidth: '92vw',
+          height: 620,
+          maxHeight: '88vh',
           background: 'var(--editor-bg)',
           border: '1px solid var(--editor-border)',
           borderRadius: 'var(--radius-lg)',
@@ -55,7 +67,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           flexDirection: 'column',
           overflow: 'hidden',
           color: 'var(--editor-text)',
-          fontFamily: 'var(--content-font-family)',
+          fontFamily: 'var(--ui-font-family)',
+          fontSize: 'var(--ui-font-size)',
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -77,6 +90,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           <button
             type="button"
             onClick={onClose}
+            title="关闭设置 (Esc)"
             style={{
               background: 'transparent',
               border: 'none',
@@ -97,10 +111,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           {/* 左侧导航栏 */}
           <div
             style={{
-              width: 140,
+              width: 155,
               borderRight: '1px solid var(--editor-border)',
               background: 'var(--editor-surface)',
-              padding: '12px 6px',
+              padding: '12px 8px',
               display: 'flex',
               flexDirection: 'column',
               gap: 4,
@@ -281,7 +295,47 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </div>
 
-                {/* ── 2.2 Markdown 正文排版 ── */}
+                {/* ── 2.2 软件界面 UI 排版 ── */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 14px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
+                      <LayoutTemplate size={15} color="var(--accent-strong)" />
+                      <span>软件界面 UI 排版 (全局界面 / 弹窗 / 提示 / 菜单)</span>
+                    </div>
+                    <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>作用于标题栏、设置中心、提示与全局 UI</span>
+                  </div>
+
+                  {/* 界面 UI 字体 */}
+                  <div style={formRowStyle}>
+                    <label style={labelStyle}>界面 UI 字体</label>
+                    <FontSelect
+                      value={settings.typography.uiFontFamily ?? ''}
+                      placeholder="系统默认界面字体 (如: Microsoft YaHei UI, Segoe UI)"
+                      onChange={(font) => setTypography({ uiFontFamily: font })}
+                    />
+                  </div>
+
+                  {/* 界面 UI 字号 */}
+                  <div style={formRowStyle}>
+                    <label style={labelStyle}>界面 UI 基础字号 ({settings.typography.uiFontSize ?? 13}px)</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <input
+                        type="range"
+                        min="12"
+                        max="18"
+                        step="1"
+                        value={settings.typography.uiFontSize ?? 13}
+                        onChange={(e) => setTypography({ uiFontSize: parseInt(e.target.value, 10) })}
+                        style={{ flex: 1, cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: 12, color: 'var(--editor-text-muted)', minWidth: 36, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                        {settings.typography.uiFontSize ?? 13}px
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── 2.3 Markdown 正文排版 ── */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 14px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
                     <FileText size={15} color="var(--accent-strong)" />
@@ -327,7 +381,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </div>
 
-                {/* ── 2.3 代码与纯文本排版 ── */}
+                {/* ── 2.4 代码与纯文本排版 ── */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 14px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
@@ -377,7 +431,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </div>
 
-                {/* ── 2.4 文件树排版（资源管理器） ── */}
+                {/* ── 2.5 文件树排版（资源管理器） ── */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 14px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
@@ -426,7 +480,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </div>
 
-                {/* ── 2.5 实时排版效果预览 ── */}
+                {/* ── 2.6 实时排版效果预览 ── */}
                 <div>
                   <label style={{ ...labelStyle, marginBottom: 6, display: 'block' }}>实时排版预览</label>
                   <div
@@ -440,6 +494,40 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       borderRadius: 'var(--radius-md)',
                     }}
                   >
+                    {/* 软件界面 UI 效果预览 */}
+                    <div>
+                      <p style={{ margin: '0 0 6px', fontWeight: 600, fontSize: 12, color: 'var(--editor-text-muted)' }}>
+                        软件界面 UI 与提示效果：
+                      </p>
+                      <div
+                        style={{
+                          fontFamily: settings.typography.uiFontFamily || 'var(--ui-font-family)',
+                          fontSize: settings.typography.uiFontSize ?? 13,
+                          padding: '10px 14px',
+                          background: 'var(--editor-bg)',
+                          border: '1px solid var(--editor-border)',
+                          borderRadius: 'var(--radius-sm)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 12,
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontWeight: 600 }}>NoteBoard 界面</span>
+                          <span style={{ fontSize: '0.88em', color: 'var(--editor-text-muted)' }}>提示信息：文件已就绪</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <span style={{ padding: '3px 8px', background: 'var(--editor-selection)', color: 'var(--accent-strong)', borderRadius: 'var(--radius-sm)', fontSize: '0.88em', fontWeight: 500 }}>
+                            活动标签
+                          </span>
+                          <span style={{ padding: '3px 8px', background: 'var(--editor-surface)', border: '1px solid var(--editor-border)', borderRadius: 'var(--radius-sm)', fontSize: '0.88em' }}>
+                            普通按钮
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Markdown 正文预览 */}
                     <div
                       style={{

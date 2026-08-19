@@ -112,7 +112,7 @@ export function FontSelect({
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
-            fontFamily: value ? `${value}, var(--content-font-family)` : 'inherit',
+            fontFamily: value ? `${value}, var(--ui-font-family)` : 'inherit',
           }}
         >
           {value || placeholder}

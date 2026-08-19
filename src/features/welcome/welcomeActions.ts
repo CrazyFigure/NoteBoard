@@ -8,6 +8,7 @@ import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
 import { useExplorerStore } from '../explorer/explorerStore';
 import { openDocument } from '../editor-code/orchestration/openDocument';
+import type { DocumentKind, LanguageId } from '../../core/ipc/types';
 
 let untitledCounter = 0;
 
@@ -62,10 +63,27 @@ export async function openFolderDialog(): Promise<void> {
 }
 
 /** 创建未命名文档与 tab */
-function createUntitledDocument(kind: 'markdown' | 'board'): void {
-  const key = nextUntitledKey(kind);
-  const isMarkdown = kind === 'markdown';
-  const displayName = isMarkdown ? '未命名.md' : '未命名.excalidraw';
+function createUntitledDocument(type: 'markdown' | 'board' | 'txt'): void {
+  const key = nextUntitledKey(type);
+  let kind: DocumentKind;
+  let language: LanguageId = 'plaintext';
+  let displayName = '未命名.txt';
+
+  // 根据新建类型决定文档模型、语言标识与默认文件名
+  if (type === 'markdown') {
+    kind = 'markdown';
+    language = 'markdown';
+    displayName = '未命名.md';
+  } else if (type === 'board') {
+    kind = 'board';
+    language = 'plaintext';
+    displayName = '未命名.excalidraw';
+  } else {
+    // 纯文本 (TXT) 使用代码编辑器与纯文本语法模式
+    kind = 'code';
+    language = 'plaintext';
+    displayName = '未命名.txt';
+  }
 
   const docStore = useDocumentStore.getState();
   docStore.upsertFromPayload({
@@ -73,7 +91,7 @@ function createUntitledDocument(kind: 'markdown' | 'board'): void {
     displayName,
     dirPath: '',
     kind,
-    language: isMarkdown ? 'markdown' : 'plaintext',
+    language,
     content: '',
     encoding: 'utf8',
     eol: 'lf',
@@ -87,7 +105,7 @@ function createUntitledDocument(kind: 'markdown' | 'board'): void {
     displayName,
     path: null,
     kind,
-    language: isMarkdown ? 'markdown' : 'plaintext',
+    language,
     isDirty: false,
     isPreview: false,
     viewMode: null,
@@ -100,6 +118,11 @@ function createUntitledDocument(kind: 'markdown' | 'board'): void {
 /** 新建 Markdown 文档 */
 export function newMarkdown(): void {
   createUntitledDocument('markdown');
+}
+
+/** 新建纯文本 (TXT) 文档 */
+export function newText(): void {
+  createUntitledDocument('txt');
 }
 
 /** 新建画板文档 */

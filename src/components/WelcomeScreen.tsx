@@ -2,20 +2,23 @@
 // 无 tab 时的欢迎页：四个动作 + 最近打开列表
 // 详见 docs/07-UI布局与交互规范.md §11
 
-import { FolderOpen, FilePlus, PencilRuler, FileSearch } from 'lucide-react';
+import { FolderOpen, FilePlus, PencilRuler, FileSearch, FileText } from 'lucide-react';
 
 interface WelcomeScreenProps {
   onOpenFile?: () => void;
   onOpenFolder?: () => void;
   onNewMarkdown?: () => void;
+  onNewText?: () => void;
   onNewBoard?: () => void;
 }
 
-export function WelcomeScreen({ onOpenFile, onOpenFolder, onNewMarkdown, onNewBoard }: WelcomeScreenProps) {
+export function WelcomeScreen({ onOpenFile, onOpenFolder, onNewMarkdown, onNewText, onNewBoard }: WelcomeScreenProps) {
+  // 欢迎页主要快捷操作入口
   const actions = [
     { icon: FileSearch, label: '打开文件', shortcut: 'Ctrl+O', onClick: onOpenFile },
     { icon: FolderOpen, label: '打开文件夹', shortcut: 'Ctrl+K Ctrl+O', onClick: onOpenFolder },
     { icon: FilePlus, label: '新建 Markdown', shortcut: 'Ctrl+N', onClick: onNewMarkdown },
+    { icon: FileText, label: '新建文本文档', shortcut: '', onClick: onNewText },
     { icon: PencilRuler, label: '新建画板', shortcut: '', onClick: onNewBoard },
   ];
 
