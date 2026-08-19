@@ -2,7 +2,7 @@
 // 为代码块提供语法高亮（基于 highlight.js）
 // 详见 docs/09-开发路线图.md 7.9/7.10
 //
-// 魔法值来自 note-gen 的经验值，非推导值：
+// 参数限制：
 // - highlightAuto 上限 5k 字符
 // - 单块 >20k 跳过高亮
 // - ±2000 position 裁剪
@@ -115,7 +115,7 @@ export function normalizeLanguage(lang: string | null): string {
   return LANGUAGE_ALIASES[normalized] ?? normalized;
 }
 
-/** highlightAuto 的字符上限（来自 note-gen 经验值） */
+/** highlightAuto 的字符上限 */
 export const HIGHLIGHT_AUTO_LIMIT = 5000;
 
 /** 单个代码块高亮的字符上限（超过则跳过） */

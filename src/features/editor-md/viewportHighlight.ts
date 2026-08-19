@@ -2,7 +2,7 @@
 // ±2000 position 裁剪、rAF 批处理、addToHistory: false、记忆化、单块 >20k 跳过、highlightAuto ≤5k
 // 详见 docs/09-开发路线图.md 7.9/7.10
 //
-// 移植自 note-gen 的 viewport highlight 逻辑，但精简实现：
+// viewport highlight 精简实现：
 // 1. 只高亮视口内可见的代码块（±2000 position 裁剪）
 // 2. 用 rAF 批处理，避免每次 update 都跑
 // 3. lowlight 延迟加载（首帧 double-rAF 后）

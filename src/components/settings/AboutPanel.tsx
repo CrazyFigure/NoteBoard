@@ -175,8 +175,6 @@ export function AboutPanel() {
       <div style={sectionStyle}>
         <h3 style={headingStyle}>第三方致谢</h3>
         <ul style={listStyle}>
-          <li>• note-gen — TipTap Markdown 编辑器灵感来源</li>
-          <li>• TMD (Taolang Markdown) — 主题配色方案</li>
           <li>• Excalidraw — 画板组件</li>
           <li>• TipTap — 富文本编辑框架</li>
           <li>• CodeMirror 6 — 代码编辑器</li>
