@@ -187,7 +187,8 @@ const DEFAULT_TYPOGRAPHY: TypographySettings = {
   monoFontSize: 14,
   contentLineHeight: 1.7,
   monoLineHeight: 1.5,
-  contentWidth: 'standard',
+  contentWidth: 'wide',
+  monoContentWidth: 'full',
   explorerFontFamily: '',
   explorerFontFamilyZh: '',
   explorerFontSize: 13,
@@ -214,7 +215,7 @@ export function applyTypography(t: Partial<TypographySettings>): void {
   root.style.setProperty('--content-font-family', contentFontFamilyCss);
   root.style.setProperty('--content-font-size', `${merged.contentFontSize}px`);
   root.style.setProperty('--content-line-height', `${merged.contentLineHeight}`);
-  // 内容区域最大宽度（支持预设与自定义百分比）
+  // Markdown 正文内容区域最大宽度（默认 wide 宽屏 92%）
   root.style.setProperty('--content-max-width', resolveContentWidth(merged.contentWidth));
 
   // 2. 代码 / 纯文本排版（.sql / .txt / .json 等及代码块）(西文等宽 + 中文等宽)
@@ -226,6 +227,8 @@ export function applyTypography(t: Partial<TypographySettings>): void {
   root.style.setProperty('--mono-font-family', monoFontFamilyCss);
   root.style.setProperty('--mono-font-size', `${merged.monoFontSize}px`);
   root.style.setProperty('--mono-line-height', `${merged.monoLineHeight ?? 1.5}`);
+  // 代码与纯文本编辑区域最大宽度（默认 full 全宽 100%）
+  root.style.setProperty('--mono-max-width', resolveContentWidth(merged.monoContentWidth ?? 'full'));
 
   // 3. 文件树排版（资源管理器）
   const explorerFontFamilyCss = formatFontFamily(

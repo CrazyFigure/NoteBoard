@@ -81,7 +81,8 @@ body {
   --mono-font-size: 14px;
   --content-line-height: 1.7;
   --mono-line-height: 1.5;
-  --content-max-width: 960px;
+  --content-max-width: 92%;
+  --mono-max-width: 100%;
   --explorer-font-family: var(--ui-font-family);
   --explorer-font-size: 13px;
   --explorer-item-height: 24px;

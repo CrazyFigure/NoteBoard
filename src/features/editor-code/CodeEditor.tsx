@@ -325,11 +325,12 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
         }
       }}
     >
+      {/* 代码/纯文本编辑器内部容器（宽度受 --mono-max-width 约束） */}
       <div
         ref={containerRef}
         style={{
           width: '100%',
-          maxWidth: 'var(--content-max-width)',
+          maxWidth: 'var(--mono-max-width, 100%)',
           height: '100%',
         }}
       />
