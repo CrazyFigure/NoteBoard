@@ -2,7 +2,7 @@
 // 外观主题切换（晨光/琥珀/墨夜/跟随系统） + 排版设置（字体/字号/行高/内容宽度） + 快捷键与关于
 // 详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, SlidersHorizontal, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon } from 'lucide-react';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { THEMES } from '../../core/theme/themes';
@@ -53,6 +53,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       console.error('无法打开 GitHub 链接:', err);
     });
   };
+
+  // 设置右侧内容区域的容器引用
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // 切换设置 Tab 栏目或重新打开设置时，重置右侧内容区域的竖向滚动条至顶部
+  useEffect(() => {
+    if (contentRef.current) {
+      contentRef.current.scrollTop = 0;
+    }
+  }, [activeTab, isOpen]);
 
   // 监听 Esc 键快速关闭设置模态弹窗
   useEffect(() => {
@@ -213,7 +223,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </div>
 
           {/* 右侧设置面板 */}
-          <div style={{ flex: 1, padding: '20px 24px', overflowY: 'auto' }}>
+          <div ref={contentRef} style={{ flex: 1, padding: '20px 24px', overflowY: 'auto' }}>
             {/* 1. 外观主题 */}
             {activeTab === 'appearance' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

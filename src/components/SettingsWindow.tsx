@@ -2,7 +2,7 @@
 // 独立窗口，label nb-settings，5 个分组
 // 详见 docs/09-开发路线图.md 12.1-12.11
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSettingsStore } from '../stores/settingsStore';
 import { AppearancePanel } from './settings/AppearancePanel';
 import { TypographyPanel } from './settings/TypographyPanel';
@@ -23,6 +23,15 @@ const PANELS: { key: PanelKey; label: string }[] = [
 
 export function SettingsWindow() {
   const [activePanel, setActivePanel] = useState<PanelKey>('appearance');
+  // 设置主内容区引用
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // 切换设置 Tab 栏目时，重置主内容区域的竖向滚动条至顶部
+  useEffect(() => {
+    if (contentRef.current) {
+      contentRef.current.scrollTop = 0;
+    }
+  }, [activePanel]);
 
   return (
     <div
@@ -89,7 +98,7 @@ export function SettingsWindow() {
       </div>
 
       {/* 主内容区 */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '16px 24px' }}>
+      <div ref={contentRef} style={{ flex: 1, overflow: 'auto', padding: '16px 24px' }}>
         {activePanel === 'appearance' && <AppearancePanel />}
         {activePanel === 'typography' && <TypographyPanel />}
         {activePanel === 'editor' && <EditorPanel />}
