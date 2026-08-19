@@ -4,7 +4,7 @@
 // 详见 docs/09-开发路线图.md 12.3-12.5
 
 import { useSettingsStore } from '../../stores/settingsStore';
-import { applyTypography } from '../../core/theme/applyTheme';
+import { applyTypography, contentWidthToPercent, CONTENT_WIDTH_PERCENT_MAP } from '../../core/theme/applyTheme';
 
 export function TypographyPanel() {
   const settings = useSettingsStore((s) => s.settings);
@@ -24,8 +24,56 @@ export function TypographyPanel() {
     <div style={{ paddingBottom: 20 }}>
       <h2 style={{ fontSize: 16, marginTop: 0, marginBottom: 16 }}>排版设置</h2>
 
-      {/* ── 1. Markdown 正文排版 ── */}
-      <div style={sectionTitleStyle}>1. Markdown 正文排版</div>
+      {/* ── 1. 编辑区域宽度 ── */}
+      <div style={sectionTitleStyle}>1. 编辑区域宽度 (全局版心)</div>
+
+      {/* 内容宽度 */}
+      <div style={{ ...rowStyle, alignItems: 'flex-start' }}>
+        <span style={{ ...labelStyle, marginTop: 4 }}>版心最大宽度</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, maxWidth: 260 }}>
+          <select
+            value={['narrow', 'standard', 'wide', 'full'].includes(settings.typography.contentWidth) ? settings.typography.contentWidth : 'custom'}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v !== 'custom') {
+                useSettingsStore.getState().setTypography({ contentWidth: v });
+                applyTypography({ ...settings.typography, contentWidth: v });
+              }
+            }}
+            style={selectStyle}
+          >
+            <option value="narrow">窄 (65%)</option>
+            <option value="standard">标准 (80%)</option>
+            <option value="wide">宽屏 (92%)</option>
+            <option value="full">全宽 (100%)</option>
+            {!['narrow', 'standard', 'wide', 'full'].includes(settings.typography.contentWidth) && (
+              <option value="custom">自定义 ({contentWidthToPercent(settings.typography.contentWidth)}%)</option>
+            )}
+          </select>
+          {/* 滑动条自定义宽度调节 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <input
+              type="range"
+              min="40"
+              max="100"
+              step="1"
+              value={contentWidthToPercent(settings.typography.contentWidth)}
+              onChange={(e) => {
+                const val = `${e.target.value}%`;
+                useSettingsStore.getState().setTypography({ contentWidth: val });
+                applyTypography({ ...settings.typography, contentWidth: val });
+              }}
+              style={{ flex: 1, cursor: 'pointer' }}
+            />
+            <span style={{ width: 35, fontSize: 12, color: 'var(--editor-text-muted)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+              {contentWidthToPercent(settings.typography.contentWidth)}%
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 2. Markdown 正文排版 ── */}
+      <div style={sectionTitleStyle}>2. Markdown 正文排版</div>
 
       {/* 正文字体族 */}
       <div style={rowStyle}>
@@ -79,27 +127,8 @@ export function TypographyPanel() {
         <span style={{ width: 30 }}>{settings.typography.contentLineHeight.toFixed(1)}</span>
       </div>
 
-      {/* 内容宽度 */}
-      <div style={rowStyle}>
-        <span style={labelStyle}>编辑区宽度</span>
-        <select
-          value={settings.typography.contentWidth}
-          onChange={(e) => {
-            const v = e.target.value as 'narrow' | 'standard' | 'wide' | 'full';
-            useSettingsStore.getState().setTypography({ contentWidth: v });
-            applyTypography({ ...settings.typography, contentWidth: v });
-          }}
-          style={selectStyle}
-        >
-          <option value="narrow">窄 (65%)</option>
-          <option value="standard">标准 (80%)</option>
-          <option value="wide">宽屏 (92%)</option>
-          <option value="full">全宽 (100%)</option>
-        </select>
-      </div>
-
-      {/* ── 2. 代码与纯文本排版 ── */}
-      <div style={sectionTitleStyle}>2. 代码与纯文本排版 (.sql / .txt / .json 等)</div>
+      {/* ── 3. 代码与纯文本排版 ── */}
+      <div style={sectionTitleStyle}>3. 代码与纯文本排版 (.sql / .txt / .json 等)</div>
 
       {/* 等宽字体族 */}
       <div style={rowStyle}>
@@ -152,8 +181,8 @@ export function TypographyPanel() {
         <span style={{ width: 30 }}>{(settings.typography.monoLineHeight ?? 1.5).toFixed(1)}</span>
       </div>
 
-      {/* ── 3. 文件树排版 ── */}
-      <div style={sectionTitleStyle}>3. 文件树排版 (左侧资源管理器)</div>
+      {/* ── 4. 文件树排版 ── */}
+      <div style={sectionTitleStyle}>4. 文件树排版 (左侧资源管理器)</div>
 
       {/* 文件树字体族 */}
       <div style={rowStyle}>

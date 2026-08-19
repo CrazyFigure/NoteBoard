@@ -17,6 +17,7 @@ export async function openDocument(path: string): Promise<void> {
   const fileName = path.split(/[\\/]/).pop() ?? path;
   const dirPath =
     path.substring(0, Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/'))) || path;
+  const kind = kindFromPath(path);
 
   // 1. 先 probe，检查文件可读性与类型
   let isUnsupported = false;
@@ -25,17 +26,78 @@ export async function openDocument(path: string): Promise<void> {
     const probe = await ipc.probeDocument(path);
     fileSize = probe.size;
     if (probe.size > 50 * 1024 * 1024) {
-      // 阶段11会加确认框
-      console.warn('文件较大，但当前阶段暂不拦截:', path);
+      console.warn('文件较大:', path);
     }
-    if (!probe.isText || probe.kind === 'unsupported') {
+    if ((!probe.isText || probe.kind === 'unsupported') && kind !== 'image' && probe.kind !== 'image') {
       isUnsupported = true;
     }
   } catch {
     // probe 失败则继续尝试读取
   }
 
-  // 1.1 若为不适配/非文本文件，建立 unsupported Tab 并在主区域和悬浮层提示
+  // 1.1 若为图片文件，直接创建 image Tab 并激活图片查看器
+  if (kind === 'image') {
+    const docStore = useDocumentStore.getState();
+    docStore.upsertFromPayload({
+      key: path,
+      displayName: fileName,
+      dirPath,
+      kind: 'image',
+      language: 'plaintext',
+      content: null,
+      encoding: 'utf8',
+      eol: 'lf',
+      size: fileSize,
+      mtime: 0,
+      readonly: true,
+    });
+
+    const label = getCurrentWindow().label;
+    try {
+      const regResult = await ipc.registerDocument(label, path, 'image');
+      if (regResult.type === 'already-open') {
+        await ipc.focusWindow(regResult.ownerLabel);
+        return;
+      }
+    } catch (e) {
+      console.error('注册图片文档失败:', e);
+    }
+
+    const tabStore = useWindowStore.getState();
+    const tab: Tab = {
+      key: path,
+      displayName: fileName,
+      path,
+      kind: 'image',
+      language: 'plaintext',
+      isDirty: false,
+      isPreview: false,
+      viewMode: null,
+      externalStatus: null,
+      isDetached: false,
+    };
+    tabStore.openTab(tab);
+
+    if (dirPath) {
+      useLayoutStore.getState().setExplorerVisible(true);
+      try {
+        const nodes = await ipc.readDir(dirPath, false);
+        useExplorerStore.getState().setRoot(dirPath, nodes);
+        useExplorerStore.getState().setRevealed(path);
+      } catch (e) {
+        console.error('加载父文件夹目录失败:', e);
+      }
+    }
+
+    try {
+      await ipc.pushRecent(path, false);
+    } catch {
+      // 非关键路径
+    }
+    return;
+  }
+
+  // 1.2 若为不适配/非文本文件，建立 unsupported Tab 并在主区域和悬浮层提示
   if (isUnsupported) {
     showToast(`文件格式不受支持: ${fileName}，无法直接编辑`, 'warning');
 

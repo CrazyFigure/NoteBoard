@@ -55,6 +55,7 @@ export function savePolicyOf(kind: DocumentKind): SavePolicy {
     case 'board':
       return 'auto';
     case 'code':
+    case 'image':
     case 'unsupported':
       return 'manual';
   }
@@ -62,5 +63,6 @@ export function savePolicyOf(kind: DocumentKind): SavePolicy {
 
 /** 判断是否为受支持的可编辑类型 */
 export function isEditable(kind: DocumentKind): boolean {
-  return kind !== 'unsupported';
+  // 图片为专用预览查看模式，不支持直接文本/画板编辑
+  return kind !== 'unsupported' && kind !== 'image';
 }

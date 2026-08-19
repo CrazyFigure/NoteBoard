@@ -10,6 +10,9 @@ import {
   findPrevious as cmFindPrevious,
   replaceNext as cmReplaceNext,
   replaceAll as cmReplaceAll,
+  openSearchPanel,
+  closeSearchPanel,
+  searchPanelOpen,
 } from '@codemirror/search';
 
 export interface SearchOptions {
@@ -64,6 +67,9 @@ export function executeSearch(
   if (target.type === 'codemirror') {
     const { view } = target;
     if (!searchText) {
+      if (searchPanelOpen(view.state)) {
+        closeSearchPanel(view);
+      }
       view.dispatch({
         effects: setSearchQuery.of(new SearchQuery({ search: '' })),
       });
@@ -79,12 +85,18 @@ export function executeSearch(
         wholeWord,
       });
 
+      // 确保 CodeMirror 搜索高亮插件激活
+      if (!searchPanelOpen(view.state)) {
+        openSearchPanel(view);
+      }
+
       view.dispatch({
         effects: setSearchQuery.of(query),
       });
 
       let count = 0;
       let current = 0;
+      let firstMatch: { from: number; to: number } | null = null;
       const cursor = query.getCursor(view.state.doc);
       let iter = cursor.next();
       const selFrom = view.state.selection.main.from;
@@ -92,12 +104,25 @@ export function executeSearch(
 
       while (!iter.done) {
         count++;
+        if (!firstMatch) {
+          firstMatch = { from: iter.value.from, to: iter.value.to };
+        }
         if (iter.value.from === selFrom && iter.value.to === selTo) {
           current = count;
         } else if (current === 0 && iter.value.from <= selFrom && iter.value.to >= selFrom) {
           current = count;
         }
         iter = cursor.next();
+      }
+
+      // 如果当前没有选中任何匹配项且存在匹配项，默认选中首个匹配项并滚动居中
+      if (count > 0 && current === 0 && firstMatch) {
+        current = 1;
+        view.dispatch({
+          selection: { anchor: firstMatch.from, head: firstMatch.to },
+          effects: [EditorView.scrollIntoView(firstMatch.from, { y: 'center' })],
+          userEvent: 'select.search',
+        });
       }
 
       return { matchIndex: current > 0 ? current : count > 0 ? 1 : 0, matchCount: count };
@@ -147,6 +172,9 @@ export function executeFindNext(
 
   if (target.type === 'codemirror') {
     const { view } = target;
+    if (!searchPanelOpen(view.state)) {
+      openSearchPanel(view);
+    }
     cmFindNext(view);
     return executeSearch(target, options);
   } else if (target.type === 'tiptap') {
@@ -177,6 +205,9 @@ export function executeFindPrev(
 
   if (target.type === 'codemirror') {
     const { view } = target;
+    if (!searchPanelOpen(view.state)) {
+      openSearchPanel(view);
+    }
     cmFindPrevious(view);
     return executeSearch(target, options);
   } else if (target.type === 'tiptap') {

@@ -24,6 +24,7 @@ import {
 import { CodeEditor } from '../features/editor-code/CodeEditor';
 import { TipTapEditor } from '../features/editor-md/TipTapEditor';
 import { BoardEditor } from '../features/board/BoardEditor';
+import { ImageViewer } from '../features/image-viewer/ImageViewer';
 import { OutlinePanel } from '../features/outline/OutlinePanel';
 import { UnsavedGuardDialog, useUnsavedGuard } from '../features/editor-code/UnsavedGuardDialog';
 import { Explorer } from '../features/explorer/Explorer';
@@ -456,6 +457,13 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                     <TipTapEditor key={activeTab.key} docKey={activeTab.key} onEditorReady={setActiveEditor} />
                   ) : activeTab.kind === 'board' ? (
                     <BoardEditor key={activeTab.key} docKey={activeTab.key} />
+                  ) : activeTab.kind === 'image' ? (
+                    <ImageViewer
+                      key={activeTab.key}
+                      filePath={activeTab.path ?? activeTab.key}
+                      fileName={activeTab.displayName}
+                      fileSize={activeDoc?.size}
+                    />
                   ) : (
                     children ?? (
                       <div

@@ -46,12 +46,56 @@ export function applyTheme(themeId: ThemeId): void {
 
 // ── 排版变量注入 ──
 
-const CONTENT_WIDTH_MAP: Record<ContentWidth, string> = {
+// 预设宽度与 CSS 值的映射
+export const CONTENT_WIDTH_MAP: Record<string, string> = {
   narrow: '65%',
   standard: '80%',
   wide: '92%',
   full: '100%',
 };
+
+// 预设宽度与百分比数值的映射（供滑动条读取）
+export const CONTENT_WIDTH_PERCENT_MAP: Record<string, number> = {
+  narrow: 65,
+  standard: 80,
+  wide: 92,
+  full: 100,
+};
+
+/**
+ * 将 contentWidth 解析为合法的 CSS 宽度值 (如 '80%', '75%')
+ */
+export function resolveContentWidth(width: string | ContentWidth | undefined): string {
+  if (!width) return '80%';
+  if (CONTENT_WIDTH_MAP[width]) return CONTENT_WIDTH_MAP[width];
+  if (typeof width === 'string') {
+    if (width.endsWith('%') || width.endsWith('px') || width.endsWith('vw') || width.endsWith('rem')) {
+      return width;
+    }
+    const num = Number(width);
+    if (!isNaN(num) && num > 0) {
+      return `${num}%`;
+    }
+  }
+  return '80%';
+}
+
+/**
+ * 将 contentWidth 解析为数值百分比 (供滑动条使用，40~100)
+ */
+export function contentWidthToPercent(width: string | ContentWidth | undefined): number {
+  if (!width) return 80;
+  if (CONTENT_WIDTH_PERCENT_MAP[width] !== undefined) {
+    return CONTENT_WIDTH_PERCENT_MAP[width];
+  }
+  if (typeof width === 'string') {
+    const num = parseInt(width.replace('%', ''), 10);
+    if (!isNaN(num)) {
+      return Math.max(40, Math.min(100, num));
+    }
+  }
+  return 80;
+}
 
 const DEFAULT_TYPOGRAPHY: TypographySettings = {
   contentFontFamily: '',
@@ -86,7 +130,8 @@ export function applyTypography(t: Partial<TypographySettings>): void {
   }
   root.style.setProperty('--content-font-size', `${merged.contentFontSize}px`);
   root.style.setProperty('--content-line-height', `${merged.contentLineHeight}`);
-  root.style.setProperty('--content-max-width', CONTENT_WIDTH_MAP[merged.contentWidth] ?? '960px');
+  // 内容区域最大宽度（支持预设与自定义百分比）
+  root.style.setProperty('--content-max-width', resolveContentWidth(merged.contentWidth));
 
   // 2. 代码 / 纯文本排版（.sql / .txt / .json 等及代码块）
   root.style.setProperty('--mono-font-family', merged.monoFontFamily);

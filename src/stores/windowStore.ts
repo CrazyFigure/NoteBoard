@@ -3,6 +3,7 @@
 // 详见 docs/05-ADR/ADR-010-状态管理与跨窗口同步.md §2
 
 import { create } from 'zustand';
+import type { DocumentKind } from '../core/ipc/types';
 
 export interface Tab {
   /** 唯一 ID（用文件路径规范化 key） */
@@ -12,7 +13,7 @@ export interface Tab {
   /** 文档路径，null 表示未命名 */
   path: string | null;
   /** 文档类型 */
-  kind: 'markdown' | 'code' | 'board' | 'unsupported';
+  kind: DocumentKind;
   /** 语言 ID */
   language: string;
   /** 是否脏（有未保存修改） */

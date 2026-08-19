@@ -383,17 +383,32 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     );
   }
 
-  // 渲染 source 模式
+  // 渲染 source 模式（外层 Flex 居中，内层容器遵循 --content-max-width）
   function renderSourceMode() {
     return (
       <div
-        ref={sourceDivRef}
         style={{
           height: '100%',
           overflow: 'hidden',
           background: 'var(--editor-bg)',
+          display: 'flex',
+          justifyContent: 'center',
         }}
-      />
+        onClick={(e) => {
+          if (e.target === e.currentTarget && sourceViewRef.current) {
+            sourceViewRef.current.focus();
+          }
+        }}
+      >
+        <div
+          ref={sourceDivRef}
+          style={{
+            width: '100%',
+            maxWidth: 'var(--content-max-width)',
+            height: '100%',
+          }}
+        />
+      </div>
     );
   }
 

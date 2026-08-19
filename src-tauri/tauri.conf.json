@@ -30,10 +30,10 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: data: blob:; font-src 'self' data:; connect-src 'none'; worker-src 'self' blob:",
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost https://asset.localhost data: blob:; font-src 'self' data:; connect-src 'none'; worker-src 'self' blob:",
       "assetProtocol": {
         "enable": true,
-        "scope": []
+        "scope": ["**"]
       }
     }
   },
@@ -82,6 +82,11 @@
         "ext": ["excalidraw", "board", "canvas"],
         "name": "NoteBoard.Board",
         "description": "NoteBoard 画板"
+      },
+      {
+        "ext": ["png", "jpg", "jpeg", "gif", "webp", "ico", "svg", "bmp"],
+        "name": "NoteBoard.Image",
+        "description": "NoteBoard 图片"
       }
     ],
     "windows": {
