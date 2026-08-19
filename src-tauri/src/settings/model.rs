@@ -74,10 +74,18 @@ impl Default for AppearanceSettings {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct TypographySettings {
+    // 正文西文字体（留空跟随系统）
     #[serde(default)]
     pub content_font_family: String,
+    // 正文中文字体（留空跟随系统）
+    #[serde(default)]
+    pub content_font_family_zh: String,
+    // 代码西文等宽字体
     #[serde(default = "default_mono_font")]
     pub mono_font_family: String,
+    // 代码中文等宽/中文字体
+    #[serde(default = "default_mono_font_zh")]
+    pub mono_font_family_zh: String,
     #[serde(default = "default_content_font_size")]
     pub content_font_size: u32,
     #[serde(default = "default_mono_font_size")]
@@ -89,18 +97,24 @@ pub struct TypographySettings {
     pub mono_line_height: f64,
     #[serde(default = "default_content_width")]
     pub content_width: String,
-    // 文件树字体族（留空跟随系统）
+    // 文件树西文字体（留空跟随系统）
     #[serde(default)]
     pub explorer_font_family: String,
+    // 文件树中文字体（留空跟随系统）
+    #[serde(default)]
+    pub explorer_font_family_zh: String,
     // 文件树字号
     #[serde(default = "default_explorer_font_size")]
     pub explorer_font_size: u32,
     // 文件树条目行高
     #[serde(default = "default_explorer_line_height")]
     pub explorer_line_height: u32,
-    // 软件界面 UI 字体族（留空跟随系统）
+    // 软件界面 UI 西文字体（留空跟随系统）
     #[serde(default)]
     pub ui_font_family: String,
+    // 软件界面 UI 中文字体（留空跟随系统）
+    #[serde(default)]
+    pub ui_font_family_zh: String,
     // 软件界面 UI 字号
     #[serde(default = "default_ui_font_size")]
     pub ui_font_size: u32,
@@ -110,16 +124,20 @@ impl Default for TypographySettings {
     fn default() -> Self {
         Self {
             content_font_family: String::new(),
-            mono_font_family: "Consolas, 'Microsoft YaHei Mono', monospace".to_string(),
+            content_font_family_zh: String::new(),
+            mono_font_family: "Consolas".to_string(),
+            mono_font_family_zh: "Microsoft YaHei UI".to_string(),
             content_font_size: 16,
             mono_font_size: 14,
             content_line_height: 1.7,
             mono_line_height: 1.5,
             content_width: "standard".to_string(),
             explorer_font_family: String::new(),
+            explorer_font_family_zh: String::new(),
             explorer_font_size: 13,
             explorer_line_height: 24,
             ui_font_family: String::new(),
+            ui_font_family_zh: String::new(),
             ui_font_size: 13,
         }
     }
@@ -225,7 +243,8 @@ fn default_schema_version() -> u32 { 1 }
 fn default_theme_mode() -> String { "system".to_string() }
 fn default_light_theme() -> String { "chen-guang".to_string() }
 fn default_dark_theme() -> String { "mo-ye".to_string() }
-fn default_mono_font() -> String { "Consolas, 'Microsoft YaHei Mono', monospace".to_string() }
+fn default_mono_font() -> String { "Consolas".to_string() }
+fn default_mono_font_zh() -> String { "Microsoft YaHei UI".to_string() }
 fn default_content_font_size() -> u32 { 16 }
 fn default_mono_font_size() -> u32 { 14 }
 fn default_line_height() -> f64 { 1.7 }

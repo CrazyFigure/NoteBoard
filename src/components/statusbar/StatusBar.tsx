@@ -21,7 +21,8 @@ export function StatusBar() {
           background: 'var(--statusbar-bg)',
           borderTop: '1px solid var(--editor-border)',
           color: 'var(--statusbar-text)',
-          fontSize: 12,
+          fontFamily: 'var(--ui-font-family, inherit)',
+          fontSize: 'calc(var(--ui-font-size, 13px) - 1px)',
           flexShrink: 0,
         }}
       >
@@ -87,7 +88,8 @@ export function StatusBar() {
         background: 'var(--statusbar-bg)',
         borderTop: '1px solid var(--editor-border)',
         color: 'var(--statusbar-text)',
-        fontSize: 12,
+        fontFamily: 'var(--ui-font-family, inherit)',
+        fontSize: 'calc(var(--ui-font-size, 13px) - 1px)',
         flexShrink: 0,
         overflow: 'hidden',
       }}

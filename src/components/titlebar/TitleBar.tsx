@@ -33,6 +33,8 @@ export function TitleBar() {
     borderBottom: '1px solid var(--editor-border)',
     userSelect: 'none',
     flexShrink: 0,
+    fontFamily: 'var(--ui-font-family, inherit)',
+    fontSize: 'var(--ui-font-size, 13px)',
   };
 
   return (
