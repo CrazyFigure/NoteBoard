@@ -34,6 +34,7 @@ import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { normalizeEol } from '../editor-md/serialize';
+import * as ipc from '../../core/ipc/commands';
 
 // ── 编辑器实例管理 ──
 
@@ -95,8 +96,9 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
     const lang = currentDoc.language;
     const initialEditorSettings = useSettingsStore.getState().settings.editor;
 
-    // 内容变更监听 → 更新 store（防抖 500ms）
+    // 内容变更监听 → 更新 store（防抖 500ms）及自动保存（800ms，仅在 auto 策略时）
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
     const updateListener = EditorView.updateListener.of((update) => {
       if (!update.docChanged) return;
 
@@ -112,6 +114,27 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
       debounceTimer = setTimeout(() => {
         setContent(key, newContent);
       }, 500);
+
+      // 若处于 auto 自动保存策略，800ms 防抖写入磁盘
+      if (targetDoc?.savePolicy === 'auto') {
+        if (autoSaveTimer) clearTimeout(autoSaveTimer);
+        autoSaveTimer = setTimeout(async () => {
+          const cur = useDocumentStore.getState().getDocument(key);
+          if (cur?.savePolicy !== 'auto') return;
+          if (cur.externalStatus === 'modified' || cur.externalStatus === 'deleted') return;
+          if (normalizeEol(newContent) === normalizeEol(cur.baselineContent)) return;
+          try {
+            const result = await ipc.writeDocument(key, newContent, cur.encoding, cur.eol);
+            if (result.ok) {
+              useDocumentStore.getState().updateBaseline(key, result.mtime, result.size);
+              useWindowStore.getState().setTabDirty(key, false);
+              await ipc.setDocumentDirty(key, false);
+            }
+          } catch (e) {
+            console.error('代码/文本文件自动保存失败:', e);
+          }
+        }, 800);
+      }
     });
 
     // JSON 与代码操作快捷键（展开、压缩、校验）
@@ -232,6 +255,7 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
 
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer);
+      if (autoSaveTimer) clearTimeout(autoSaveTimer);
       container.removeEventListener('wheel', handleWheel);
       view.destroy();
       editorView = null;

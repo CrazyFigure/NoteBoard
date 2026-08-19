@@ -51,19 +51,30 @@ interface WindowStore {
   setTabDetached: (key: string, isDetached: boolean) => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
   updateTabPath: (key: string, newPath: string, newDisplayName: string) => void;
-  /** 窗口级关闭：批量请求关闭多个 tab */
-  requestCloseBatch: (keys: string[]) => void;
-  /** 窗口级关闭的 pending keys */
+  // ── 安全关闭拦截操作（若含未保存修改则弹窗确认） ──
+  requestCloseTab: (key: string) => void;
+  requestCloseOther: (key: string) => void;
+  requestCloseLeft: (key: string) => void;
+  requestCloseRight: (key: string) => void;
+  requestCloseAll: () => void;
+  /** 窗口级关闭请求 */
+  requestWindowClose: (keys: string[]) => void;
+  /** 窗口级关闭标记 */
+  isWindowClosing: boolean;
+  /** 批量待关闭 keys */
   pendingCloseKeys: string[];
+  /** 批量请求关闭多个 tab */
+  requestCloseBatch: (keys: string[]) => void;
   /** 清除 pendingCloseKeys */
   clearPendingClose: () => void;
-  /** 标记关闭完成后真正关 tab */
+  /** 标记关闭完成后真正关 tab 并清理 documentStore */
   confirmCloseBatch: (keys: string[]) => void;
 }
 
 export const useWindowStore = create<WindowStore>((set, get) => ({
   tabs: [],
   activeKey: null,
+  isWindowClosing: false,
   pendingCloseKeys: [],
 
   activeTab: () => {
@@ -98,49 +109,139 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
       }
       return { tabs: newTabs, activeKey: newActive };
     });
+    // 异步清理 documentStore 对应文档
+    import('./documentStore').then(({ useDocumentStore }) => {
+      useDocumentStore.getState().remove(key);
+    }).catch(() => {});
   },
 
   // 关闭除目标标签页外的所有其他标签页
   closeOtherTabs: (key) => {
+    const { tabs } = get();
+    const removedKeys = tabs.filter((t) => t.key !== key).map((t) => t.key);
     set((state) => ({
       tabs: state.tabs.filter((t) => t.key === key),
       activeKey: key,
     }));
+    import('./documentStore').then(({ useDocumentStore }) => {
+      const dStore = useDocumentStore.getState();
+      removedKeys.forEach((k) => dStore.remove(k));
+    }).catch(() => {});
   },
 
   // 关闭目标标签页左侧的所有标签页
   closeTabsLeft: (key) => {
+    const { tabs } = get();
+    const idx = tabs.findIndex((t) => t.key === key);
+    if (idx <= 0) return;
+    const removedKeys = tabs.slice(0, idx).map((t) => t.key);
     set((state) => {
-      const idx = state.tabs.findIndex((t) => t.key === key);
-      if (idx <= 0) return {};
       const newTabs = state.tabs.slice(idx);
       let newActive = state.activeKey;
-      // 若原激活项已被关闭，则自动切换到当前目标标签页
       if (state.activeKey && !newTabs.some((t) => t.key === state.activeKey)) {
         newActive = key;
       }
       return { tabs: newTabs, activeKey: newActive };
     });
+    import('./documentStore').then(({ useDocumentStore }) => {
+      const dStore = useDocumentStore.getState();
+      removedKeys.forEach((k) => dStore.remove(k));
+    }).catch(() => {});
   },
 
   // 关闭目标标签页右侧的所有标签页
   closeTabsRight: (key) => {
+    const { tabs } = get();
+    const idx = tabs.findIndex((t) => t.key === key);
+    if (idx < 0) return;
+    const removedKeys = tabs.slice(idx + 1).map((t) => t.key);
     set((state) => {
-      const idx = state.tabs.findIndex((t) => t.key === key);
-      if (idx < 0) return {};
       const newTabs = state.tabs.slice(0, idx + 1);
       let newActive = state.activeKey;
-      // 若原激活项已被关闭，则自动切换到当前目标标签页
       if (state.activeKey && !newTabs.some((t) => t.key === state.activeKey)) {
         newActive = key;
       }
       return { tabs: newTabs, activeKey: newActive };
     });
+    import('./documentStore').then(({ useDocumentStore }) => {
+      const dStore = useDocumentStore.getState();
+      removedKeys.forEach((k) => dStore.remove(k));
+    }).catch(() => {});
   },
 
   // 关闭全部标签页
   closeAllTabs: () => {
+    const { tabs } = get();
+    const removedKeys = tabs.map((t) => t.key);
     set({ tabs: [], activeKey: null });
+    import('./documentStore').then(({ useDocumentStore }) => {
+      const dStore = useDocumentStore.getState();
+      removedKeys.forEach((k) => dStore.remove(k));
+    }).catch(() => {});
+  },
+
+  // ── 安全关闭拦截操作（若含未保存修改则弹窗确认） ──
+
+  requestCloseTab: (key) => {
+    const { tabs, closeTab } = get();
+    const target = tabs.find((t) => t.key === key);
+    if (!target) return;
+    if (target.isDirty) {
+      set({ pendingCloseKeys: [key], isWindowClosing: false });
+    } else {
+      closeTab(key);
+    }
+  },
+
+  requestCloseOther: (key) => {
+    const { tabs, closeOtherTabs } = get();
+    const targetTabs = tabs.filter((t) => t.key !== key);
+    const hasDirty = targetTabs.some((t) => t.isDirty);
+    if (hasDirty) {
+      set({ pendingCloseKeys: targetTabs.map((t) => t.key), isWindowClosing: false });
+    } else {
+      closeOtherTabs(key);
+    }
+  },
+
+  requestCloseLeft: (key) => {
+    const { tabs, closeTabsLeft } = get();
+    const idx = tabs.findIndex((t) => t.key === key);
+    if (idx <= 0) return;
+    const targetTabs = tabs.slice(0, idx);
+    const hasDirty = targetTabs.some((t) => t.isDirty);
+    if (hasDirty) {
+      set({ pendingCloseKeys: targetTabs.map((t) => t.key), isWindowClosing: false });
+    } else {
+      closeTabsLeft(key);
+    }
+  },
+
+  requestCloseRight: (key) => {
+    const { tabs, closeTabsRight } = get();
+    const idx = tabs.findIndex((t) => t.key === key);
+    if (idx < 0 || idx >= tabs.length - 1) return;
+    const targetTabs = tabs.slice(idx + 1);
+    const hasDirty = targetTabs.some((t) => t.isDirty);
+    if (hasDirty) {
+      set({ pendingCloseKeys: targetTabs.map((t) => t.key), isWindowClosing: false });
+    } else {
+      closeTabsRight(key);
+    }
+  },
+
+  requestCloseAll: () => {
+    const { tabs, closeAllTabs } = get();
+    const hasDirty = tabs.some((t) => t.isDirty);
+    if (hasDirty) {
+      set({ pendingCloseKeys: tabs.map((t) => t.key), isWindowClosing: false });
+    } else {
+      closeAllTabs();
+    }
+  },
+
+  requestWindowClose: (keys) => {
+    set({ pendingCloseKeys: keys, isWindowClosing: true });
   },
 
   activateTab: (key) => {
@@ -201,11 +302,11 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
   },
 
   requestCloseBatch: (keys) => {
-    set({ pendingCloseKeys: keys });
+    set({ pendingCloseKeys: keys, isWindowClosing: false });
   },
 
   clearPendingClose: () => {
-    set({ pendingCloseKeys: [] });
+    set({ pendingCloseKeys: [], isWindowClosing: false });
   },
 
   confirmCloseBatch: (keys) => {
@@ -215,7 +316,11 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
       if (state.activeKey && keys.includes(state.activeKey)) {
         newActive = newTabs[0]?.key ?? null;
       }
-      return { tabs: newTabs, activeKey: newActive, pendingCloseKeys: [] };
+      return { tabs: newTabs, activeKey: newActive, pendingCloseKeys: [], isWindowClosing: false };
     });
+    import('./documentStore').then(({ useDocumentStore }) => {
+      const dStore = useDocumentStore.getState();
+      keys.forEach((k) => dStore.remove(k));
+    }).catch(() => {});
   },
 }));

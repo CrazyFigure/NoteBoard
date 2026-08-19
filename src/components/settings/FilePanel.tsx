@@ -22,14 +22,42 @@ export function FilePanel() {
     <div>
       <h2 style={{ fontSize: 16, marginTop: 0 }}>文件</h2>
 
-      {/* 强制手动保存 */}
+      <div style={{ margin: '16px 0 8px', fontWeight: 600, fontSize: 13, color: 'var(--accent-strong)' }}>
+        自动保存设置（关闭时使用 Ctrl+S 手动保存，关闭未保存标签页时将提示确认）
+      </div>
+
+      {/* Markdown 笔记自动保存 */}
       <div style={rowStyle}>
-        <span style={labelStyle}>强制手动保存</span>
+        <span style={labelStyle}>Markdown 自动保存</span>
         <input
           type="checkbox"
-          checked={settings.file.forceManualSave}
-          onChange={(e) => setFile({ forceManualSave: e.target.checked })}
+          checked={settings.file.autoSaveMarkdown ?? false}
+          onChange={(e) => setFile({ autoSaveMarkdown: e.target.checked })}
         />
+      </div>
+
+      {/* 自由画板自动保存 */}
+      <div style={rowStyle}>
+        <span style={labelStyle}>自由画板自动保存</span>
+        <input
+          type="checkbox"
+          checked={settings.file.autoSaveBoard ?? false}
+          onChange={(e) => setFile({ autoSaveBoard: e.target.checked })}
+        />
+      </div>
+
+      {/* 代码与文本文档自动保存 */}
+      <div style={rowStyle}>
+        <span style={labelStyle}>代码与文本自动保存</span>
+        <input
+          type="checkbox"
+          checked={settings.file.autoSaveOther ?? false}
+          onChange={(e) => setFile({ autoSaveOther: e.target.checked })}
+        />
+      </div>
+
+      <div style={{ margin: '16px 0 8px', fontWeight: 600, fontSize: 13, color: 'var(--accent-strong)' }}>
+        通用文件设置
       </div>
 
       {/* 显示隐藏文件 */}

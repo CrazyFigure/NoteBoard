@@ -84,7 +84,7 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
 
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const { tabs, closeOtherTabs, closeTabsLeft, closeTabsRight, closeAllTabs } = useWindowStore();
+  const { tabs, requestCloseOther, requestCloseLeft, requestCloseRight, requestCloseAll } = useWindowStore();
 
   // 计算当前标签页索引与各方向关闭操作可用状态
   const currentIndex = tabs.findIndex((t) => t.key === tab.key);
@@ -308,7 +308,7 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
             onClick={() => {
               if (!hasLeft) return;
               setMenuPos(null);
-              closeTabsLeft(tab.key);
+              requestCloseLeft(tab.key);
             }}
             onMouseEnter={handleMenuItemMouseEnter}
             onMouseLeave={handleMenuItemMouseLeave}
@@ -327,7 +327,7 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
             onClick={() => {
               if (!hasRight) return;
               setMenuPos(null);
-              closeTabsRight(tab.key);
+              requestCloseRight(tab.key);
             }}
             onMouseEnter={handleMenuItemMouseEnter}
             onMouseLeave={handleMenuItemMouseLeave}
@@ -346,7 +346,7 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
             onClick={() => {
               if (!hasOther) return;
               setMenuPos(null);
-              closeOtherTabs(tab.key);
+              requestCloseOther(tab.key);
             }}
             onMouseEnter={handleMenuItemMouseEnter}
             onMouseLeave={handleMenuItemMouseLeave}
@@ -363,7 +363,7 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
             style={getMenuItemStyle(false)}
             onClick={() => {
               setMenuPos(null);
-              closeAllTabs();
+              requestCloseAll();
             }}
             onMouseEnter={handleMenuItemMouseEnter}
             onMouseLeave={handleMenuItemMouseLeave}
@@ -489,7 +489,7 @@ function handleMenuItemMouseUp(e: React.MouseEvent<HTMLButtonElement>) {
 // ── TabBar ──
 
 export function TabBar() {
-  const { tabs, activeKey, activateTab, closeTab, reorderTabs } = useWindowStore();
+  const { tabs, activeKey, activateTab, requestCloseTab, reorderTabs } = useWindowStore();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [newMenuPos, setNewMenuPos] = useState<{ x: number; y: number } | null>(null);
   const newMenuRef = useRef<HTMLDivElement>(null);
@@ -597,7 +597,7 @@ export function TabBar() {
                 tab={tab}
                 isActive={tab.key === activeKey}
                 onActivate={() => handleActivateTab(tab.key)}
-                onClose={() => closeTab(tab.key)}
+                onClose={() => requestCloseTab(tab.key)}
               />
             ))}
           </SortableContext>

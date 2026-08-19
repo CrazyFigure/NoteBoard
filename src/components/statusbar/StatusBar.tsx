@@ -4,6 +4,7 @@
 
 import { useWindowStore } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
+import { saveDocument } from '../../features/editor-code/orchestration/saveDocument';
 
 export function StatusBar() {
   const activeKey = useWindowStore((s) => s.activeKey);
@@ -47,19 +48,22 @@ export function StatusBar() {
     background: 'var(--editor-border)',
   };
 
-  // 保存状态
-  const saveStatus =
-    doc.savePolicy === 'auto'
-      ? doc.isDirty
-        ? '保存中…'
-        : '自动保存'
-      : doc.isDirty
-        ? '未保存'
-        : '已保存';
+  // 保存状态判定
+  let saveStatus = '已保存';
+  let saveStatusColor = 'var(--statusbar-text)';
+  let saveStatusTitle = doc.savePolicy === 'auto' ? '自动保存已启用 · 文件已保存' : '文件已保存';
 
-  const saveStatusColor = doc.isDirty && doc.savePolicy === 'manual'
-    ? 'var(--accent-strong)'
-    : 'var(--statusbar-text)';
+  if (doc.isDirty) {
+    if (doc.savePolicy === 'auto') {
+      saveStatus = '保存中…';
+      saveStatusColor = 'var(--accent-strong)';
+      saveStatusTitle = '正在自动保存…';
+    } else {
+      saveStatus = '未保存';
+      saveStatusColor = 'var(--accent-strong)';
+      saveStatusTitle = '有未保存的修改，点击或按 Ctrl+S 保存';
+    }
+  }
 
   // 类型显示
   const typeLabel =
@@ -128,7 +132,15 @@ export function StatusBar() {
       <div style={dividerStyle} />
 
       {/* 保存状态 */}
-      <div style={{ ...sectionStyle, color: saveStatusColor }}>
+      <div
+        style={{ ...sectionStyle, color: saveStatusColor }}
+        title={saveStatusTitle}
+        onClick={() => {
+          if (doc.isDirty && activeKey) {
+            saveDocument(activeKey);
+          }
+        }}
+      >
         <span>{saveStatus}</span>
       </div>
 

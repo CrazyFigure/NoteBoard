@@ -121,6 +121,7 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
 
   const themeMode = useSettingsStore((s) => s.settings.appearance.themeMode);
   const theme = mapTheme(themeMode);
+  const initialMountHandledRef = useRef<boolean>(false);
 
   // 加载 Excalidraw 组件
   useEffect(() => {
@@ -137,6 +138,7 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
   useEffect(() => {
     if (initializedDocKeyRef.current === docKey) return;
     initializedDocKeyRef.current = docKey;
+    initialMountHandledRef.current = false;
 
     const doc = useDocumentStore.getState().getDocument(docKey);
     const content = doc?.content?.trim() ?? '';
@@ -181,27 +183,52 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
 
       sceneRef.current = newScene;
 
-      // 实时更新浮层所依赖的状态
+      // 实时更新浮层所依赖的状态（连线箭头、节点扩展等交互）
       setLiveAppState(appState);
       setLiveElements(elements);
 
-      // 仅在 tab 未标记为 dirty 时才触发一次更新，避免频繁通知 store
+      // 初次加载挂载触发的第一次 onChange 忽略标脏
+      if (!initialMountHandledRef.current) {
+        initialMountHandledRef.current = true;
+        return;
+      }
+
+      // 检查场景内容（元素、背景色或嵌入文件资源）是否发生实质变更
+      // 过滤鼠标移动、光标悬停、选区变动、平移缩放等非持久化操作
+      const contentChanged =
+        !prev ||
+        prev.elements !== elements ||
+        prev.files !== files ||
+        prev.appState?.viewBackgroundColor !== appState.viewBackgroundColor;
+
+      if (!contentChanged) {
+        return;
+      }
+
+      // 标记脏态（同步 windowStore 和 documentStore）
       const tab = useWindowStore.getState().getTab(key);
       if (tab && !tab.isDirty) {
         useWindowStore.getState().setTabDirty(key, true);
+        useDocumentStore.getState().setDirty(key, true);
       }
 
-      // 300ms 防抖更新 Store
+      // 300ms 防抖更新 Store 内存镜像
       if (storeTimerRef.current) clearTimeout(storeTimerRef.current);
       storeTimerRef.current = setTimeout(() => {
         const content = serializeScene(newScene);
         useDocumentStore.getState().setContent(key, content);
+        const doc = useDocumentStore.getState().getDocument(key);
+        // 如果内容与基线一致，自动解除脏态
+        if (doc && content.trim() === (doc.baselineContent?.trim() ?? '')) {
+          useWindowStore.getState().setTabDirty(key, false);
+          useDocumentStore.getState().setDirty(key, false);
+        }
         setElementCount(elements.length);
         const zoom = typeof appState.zoom === 'number' ? appState.zoom : (appState.zoom as { value?: number })?.value ?? 1;
         setZoomLevel(zoom);
       }, 300);
 
-      // 800ms 防抖自动写入磁盘
+      // 800ms 防抖自动写入磁盘（仅在 auto 策略时执行）
       if (diskTimerRef.current) clearTimeout(diskTimerRef.current);
       diskTimerRef.current = setTimeout(async () => {
         const doc = useDocumentStore.getState().getDocument(key);

@@ -65,6 +65,9 @@ const DEFAULT_SETTINGS: Settings = {
     showLineEndings: false,
   },
   file: {
+    autoSaveMarkdown: false,
+    autoSaveBoard: false,
+    autoSaveOther: false,
     forceManualSave: false,
     showHiddenFiles: false,
     restoreSession: true,
@@ -258,6 +261,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       file: { ...current.file, ...patch },
     };
     set({ settings: updated });
+    // 动态同步所有已打开文档的保存策略
+    try {
+      const { useDocumentStore } = await import('./documentStore');
+      useDocumentStore.getState().syncSavePolicies();
+    } catch {
+      // ignore
+    }
     try {
       await ipc.saveSettings(updated);
     } catch (e) {
@@ -279,8 +289,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     }
   },
 
-  _applyRemoteUpdate: (remote) => {
+  _applyRemoteUpdate: async (remote) => {
     const resolved = resolveAndApply(remote);
     set({ settings: remote, resolvedTheme: resolved });
+    try {
+      const { useDocumentStore } = await import('./documentStore');
+      useDocumentStore.getState().syncSavePolicies();
+    } catch {
+      // ignore
+    }
   },
 }));

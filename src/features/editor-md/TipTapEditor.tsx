@@ -67,9 +67,6 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   // 初始化锁：在初次加载和程序化设置内容期间阻止 onUpdate 误标为脏
   const isInitializingRef = useRef<boolean>(true);
 
-  const docStore = useDocumentStore();
-  const doc = docStore.getDocument(docKey);
-  const tabStore = useWindowStore();
   const settings = useSettingsStore((s) => s.settings);
 
   // 初始化 TipTap 编辑器
@@ -87,7 +84,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       // 规范化换行符后比对是否真正改变
       const isDirty = normalizeEol(content) !== normalizeEol(baseline);
 
-      tabStore.setTabDirty(docKey, isDirty);
+      useWindowStore.getState().setTabDirty(docKey, isDirty);
       useDocumentStore.getState().setDirty(docKey, isDirty);
 
       // 500ms → store（防抖更新内存镜像）
@@ -127,7 +124,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     if (!editor) return;
     if (initializedDocKeyRef.current === docKey) return;
 
-    const currentDoc = docStore.getDocument(docKey);
+    const currentDoc = useDocumentStore.getState().getDocument(docKey);
     if (!currentDoc) return;
     initializedDocKeyRef.current = docKey;
 
@@ -141,7 +138,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       setShowLargeBanner(true);
       // 强制 source 模式
       setViewMode('source');
-      tabStore.setTabViewMode(docKey, 'source');
+      useWindowStore.getState().setTabViewMode(docKey, 'source');
       // 不设置内容到 TipTap（太大会卡）
     } else {
       setShowLargeBanner(false);
@@ -150,38 +147,36 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
 
       // 正常文档：设置内容到编辑器
       const baseline = getBaseline(docKey);
-      if (!baseline.getBaseline()) {
-        baseline.setBaseline(content);
-      }
-      parseMarkdown(editor, content);
+      try {
+        parseMarkdown(editor, content);
 
-      // 若文档当前为未修改状态，确保基线与初始解析序列化结果对齐
-      const initialSerialized = serializeMarkdown(editor);
-      if (!currentDoc.isDirty) {
-        baseline.setBaseline(initialSerialized);
-        if (normalizeEol(currentDoc.baselineContent) === normalizeEol(initialSerialized)) {
-          docStore.setContent(docKey, initialSerialized);
-          docStore.setDirty(docKey, false);
-          tabStore.setTabDirty(docKey, false);
+        // 若文档当前为未修改状态，确保基线与初始解析序列化结果严格对齐，彻底消除格式化细微差异导致的假脏态
+        const initialSerialized = serializeMarkdown(editor);
+        if (!currentDoc.isDirty) {
+          baseline.setBaseline(initialSerialized);
+          useDocumentStore.getState().setContent(docKey, initialSerialized);
+          useDocumentStore.getState().setBaselineContent(docKey, initialSerialized);
+          useDocumentStore.getState().setDirty(docKey, false);
+          useWindowStore.getState().setTabDirty(docKey, false);
+        } else if (!baseline.getBaseline()) {
+          baseline.setBaseline(content);
         }
+      } finally {
+        // 确保初始化锁在解析完成后稳定解除
+        setTimeout(() => {
+          isInitializingRef.current = false;
+        }, 50);
       }
-
-      // 初始化完成，延迟解除初始化锁
-      const initTimer = setTimeout(() => {
-        isInitializingRef.current = false;
-      }, 50);
-
-      return () => clearTimeout(initTimer);
     }
 
     // 设置 viewMode（从 tab 恢复）
-    const tab = tabStore.getTab(docKey);
+    const tab = useWindowStore.getState().getTab(docKey);
     if (tab?.viewMode) {
       setViewMode(tab.viewMode);
     } else if (!verdict.isLarge) {
       setViewMode(settings.editor.defaultViewMode);
     }
-  }, [editor, docKey, docStore, tabStore, settings.editor.defaultViewMode]);
+  }, [editor, docKey, settings.editor.defaultViewMode]);
 
   // 自动保存（声明在模式切换前供引用）
   const autoSave = useCallback(async (key: string, content: string) => {
@@ -200,7 +195,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     if (baseline.isClean(content)) {
       // 内容与基线一致 → 不需要保存
       dStore.setDirty(key, false);
-      tabStore.setTabDirty(key, false);
+      useWindowStore.getState().setTabDirty(key, false);
       return;
     }
 
@@ -209,14 +204,14 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       if (result.ok) {
         dStore.updateBaseline(key, result.mtime, result.size);
         baseline.updateBaseline(content);
-        tabStore.setTabDirty(key, false);
+        useWindowStore.getState().setTabDirty(key, false);
         // 同步注册表脏态
         await ipc.setDocumentDirty(key, false);
       }
     } catch (e) {
       console.error('自动保存失败:', e);
     }
-  }, [tabStore]);
+  }, []);
 
   // 初始化 source 模式编辑器（CM6 + markdown）
   const initSourceEditor = useCallback((content: string) => {
@@ -279,7 +274,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       useDocumentStore.getState().setContent(docKey, md);
       initSourceEditor(md);
       setViewMode('source');
-      tabStore.setTabViewMode(docKey, 'source');
+      useWindowStore.getState().setTabViewMode(docKey, 'source');
     } else {
       // source → visual
       if (sourceViewRef.current) {
@@ -296,15 +291,15 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
         if (baseline.isClean(serialized)) {
           // 不脏
           useDocumentStore.getState().setDirty(docKey, false);
-          tabStore.setTabDirty(docKey, false);
+          useWindowStore.getState().setTabDirty(docKey, false);
         } else {
           useDocumentStore.getState().setContent(docKey, serialized);
         }
       }
       setViewMode('visual');
-      tabStore.setTabViewMode(docKey, 'visual');
+      useWindowStore.getState().setTabViewMode(docKey, 'visual');
     }
-  }, [editor, viewMode, docKey, tabStore, initSourceEditor]);
+  }, [editor, viewMode, docKey, initSourceEditor]);
 
   // Ctrl+/ 模式切换
   useEffect(() => {
@@ -369,8 +364,9 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
             }}
             onClick={() => {
               setShowLargeBanner(false);
-              if (editor && doc?.content) {
-                parseMarkdown(editor, doc.content);
+              const content = useDocumentStore.getState().getDocument(docKey)?.content;
+              if (editor && content) {
+                parseMarkdown(editor, content);
                 setViewMode('visual');
               }
             }}

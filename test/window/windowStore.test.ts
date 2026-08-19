@@ -119,4 +119,43 @@ describe('windowStore tab 关闭操作', () => {
     expect(state.tabs).toEqual([]);
     expect(state.activeKey).toBeNull();
   });
+
+  it('requestCloseTab 在干净文档时直接关闭，在脏文档时设置 pendingCloseKeys 触发拦截', () => {
+    const cleanTab = createMockTab('clean', 'clean.md');
+    const dirtyTab = { ...createMockTab('dirty', 'dirty.md'), isDirty: true };
+
+    useWindowStore.setState({
+      tabs: [cleanTab, dirtyTab],
+      activeKey: 'clean',
+      pendingCloseKeys: [],
+    });
+
+    // 1. 关闭干净 tab：直接关闭
+    useWindowStore.getState().requestCloseTab('clean');
+    expect(useWindowStore.getState().tabs.map((t) => t.key)).toEqual(['dirty']);
+    expect(useWindowStore.getState().pendingCloseKeys).toEqual([]);
+
+    // 2. 关闭脏 tab：触发 pendingCloseKeys
+    useWindowStore.getState().requestCloseTab('dirty');
+    expect(useWindowStore.getState().tabs.map((t) => t.key)).toEqual(['dirty']);
+    expect(useWindowStore.getState().pendingCloseKeys).toEqual(['dirty']);
+  });
+
+  it('requestCloseOther 在存在未保存文档时触发拦截', () => {
+    const tab1 = createMockTab('tab1');
+    const tab2 = { ...createMockTab('tab2'), isDirty: true };
+    const tab3 = createMockTab('tab3');
+
+    useWindowStore.setState({
+      tabs: [tab1, tab2, tab3],
+      activeKey: 'tab1',
+      pendingCloseKeys: [],
+    });
+
+    // 关闭除 tab1 外的其他 tab（包含脏 tab2）
+    useWindowStore.getState().requestCloseOther('tab1');
+    expect(useWindowStore.getState().pendingCloseKeys).toEqual(['tab2', 'tab3']);
+    // 标签页尚未真正关闭
+    expect(useWindowStore.getState().tabs.length).toBe(3);
+  });
 });
