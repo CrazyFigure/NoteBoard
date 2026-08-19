@@ -59,6 +59,7 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
   const setContent = useDocumentStore((s) => s.setContent);
   const setTabDirty = useWindowStore((s) => s.setTabDirty);
   const editorSettings = useSettingsStore((s) => s.settings.editor);
+  const typography = useSettingsStore((s) => s.settings.typography);
 
   // 监听编辑器设置变化并热重配（空格、换行符、行号、软换行等）
   useEffect(() => {
@@ -87,6 +88,41 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
     editorSettings.showLineEndings,
     editorSettings.showLineNumbers,
     editorSettings.softWrap,
+  ]);
+
+  // 监听排版字体与字号变化并热重配 CM6，并刷新字符度量
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    const typographyExt = EditorView.theme({
+      '&': {
+        fontFamily: 'var(--mono-font-family)',
+        fontSize: 'var(--mono-font-size)',
+        height: '100%',
+      },
+      '.cm-scroller': {
+        lineHeight: 'var(--mono-line-height, 1.5)',
+        fontFamily: 'var(--mono-font-family)',
+        fontSize: 'var(--mono-font-size)',
+      },
+      '.cm-content, .cm-line': {
+        fontFamily: 'var(--mono-font-family)',
+        fontSize: 'var(--mono-font-size)',
+      },
+      '.cm-content': {
+        padding: '16px 24px',
+      },
+    });
+    view.dispatch({
+      effects: typographyCompartment.reconfigure(typographyExt),
+    });
+    // 强制触发字符度量重排，确保光标与字符宽度即时贴合新字体
+    view.requestMeasure();
+  }, [
+    typography.monoFontFamily,
+    typography.monoFontFamilyZh,
+    typography.monoFontSize,
+    typography.monoLineHeight,
   ]);
 
   useEffect(() => {
@@ -197,6 +233,12 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
       },
       '.cm-scroller': {
         lineHeight: 'var(--mono-line-height, 1.5)',
+        fontFamily: 'var(--mono-font-family)',
+        fontSize: 'var(--mono-font-size)',
+      },
+      '.cm-content, .cm-line': {
+        fontFamily: 'var(--mono-font-family)',
+        fontSize: 'var(--mono-font-size)',
       },
       '.cm-content': {
         // 移除 margin: 0 auto 与 maxWidth，避免破坏 CodeMirror 虚拟选区坐标

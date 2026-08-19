@@ -844,8 +844,13 @@ body {
 }
 
 /* CodeMirror */
-.ProseMirror code, .cm-editor {
-  font-family: var(--mono-font-family);
+.ProseMirror code,
+.cm-editor,
+.cm-editor .cm-scroller,
+.cm-editor .cm-content,
+.cm-editor .cm-line,
+.cm-editor .cm-gutters {
+  font-family: var(--mono-font-family) !important;
   font-size: var(--mono-font-size);
 }
 
