@@ -1,0 +1,68 @@
+/* NoteBoard 内置字体声明
+ * JetBrains Mono (西文代码字体) + Maple Mono Normal NF CN (中文及 Nerd Font 图标代码字体)
+ * 优先 local() 命中系统已安装字体，若未安装则回退加载打包内置资源
+ */
+
+/* ── JetBrains Mono ── */
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: local('JetBrains Mono Regular'),
+       local('JetBrains Mono'),
+       local('JetBrainsMono-Regular'),
+       url('../assets/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: local('JetBrains Mono Bold'),
+       local('JetBrainsMono-Bold'),
+       url('../assets/fonts/JetBrainsMono-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: local('JetBrains Mono Italic'),
+       local('JetBrainsMono-Italic'),
+       url('../assets/fonts/JetBrainsMono-Italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: local('JetBrains Mono Bold Italic'),
+       local('JetBrainsMono-BoldItalic'),
+       url('../assets/fonts/JetBrainsMono-BoldItalic.woff2') format('woff2');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* ── Maple Mono Normal NF CN ── */
+@font-face {
+  font-family: 'Maple Mono Normal NF CN';
+  src: local('Maple Mono Normal NF CN Regular'),
+       local('Maple Mono Normal NF CN'),
+       local('MapleMonoNormal-NF-CN-Regular'),
+       url('../assets/fonts/MapleMonoNormal-NF-CN-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Maple Mono Normal NF CN';
+  src: local('Maple Mono Normal NF CN Bold'),
+       local('MapleMonoNormal-NF-CN-Bold'),
+       url('../assets/fonts/MapleMonoNormal-NF-CN-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}

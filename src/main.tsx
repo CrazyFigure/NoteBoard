@@ -6,6 +6,8 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import './styles/globals.css';
 import './styles/scrollbar.css';
+// 引入内置字体（JetBrains Mono 与 Maple Mono）
+import './styles/fonts.css';
 import { applyCachedTheme, applyCachedTypography } from './core/theme/applyTheme';
 
 // 🔴 防首屏闪烁：在 React 渲染之前同步注入主题

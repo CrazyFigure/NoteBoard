@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import '@excalidraw/excalidraw/index.css';
-import { parseScene, serializeScene, createEmptyScene, cleanAppState, isVersionSupported, getElementCount, type ExcalidrawScene } from './sceneIo';
+import { parseScene, serializeScene, createEmptyScene, cleanAppState, isVersionSupported, getElementCount, type ExcalidrawScene, type ExcalidrawElement } from './sceneIo';
 import { mapTheme } from './excalidrawTheme';
 import { FlowchartQuickConnect } from './FlowchartQuickConnect';
 import { useDocumentStore } from '../../stores/documentStore';
@@ -102,6 +102,15 @@ const ExcalidrawCanvas = React.memo(
   },
 );
 
+/**
+ * 计算元素集的持久化版本签名（id + version + versionNonce + isDeleted）
+ * Excalidraw 在侧边栏悬浮预览字体/颜色时不会递增 version/versionNonce，
+ * 仅在真正点击提交或用户修改画布图元时递增，藉此彻底杜绝预览阶段误报未保存
+ */
+function getElementsVersionSignature(elements: readonly ExcalidrawElement[] = []): string {
+  return elements.map((e) => `${e.id}:${e.version}:${e.versionNonce}:${e.isDeleted}`).join('|');
+}
+
 function BoardEditorInner({ docKey }: BoardEditorProps) {
   const [Component, setComponent] = useState<typeof ExcalidrawComponent>(null);
   const [initialData, setInitialData] = useState<ExcalidrawScene | null>(null);
@@ -122,6 +131,7 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
   const themeMode = useSettingsStore((s) => s.settings.appearance.themeMode);
   const theme = mapTheme(themeMode);
   const initialMountHandledRef = useRef<boolean>(false);
+  const lastCommittedSignatureRef = useRef<string>('');
 
   // 加载 Excalidraw 组件
   useEffect(() => {
@@ -157,6 +167,7 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
     }
 
     sceneRef.current = parsed;
+    lastCommittedSignatureRef.current = getElementsVersionSignature(parsed.elements);
     setInitialData(parsed);
     setLiveAppState(parsed.appState);
     setLiveElements(parsed.elements);
@@ -193,17 +204,18 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
         return;
       }
 
-      // 检查场景内容（元素、背景色或嵌入文件资源）是否发生实质变更
-      // 过滤鼠标移动、光标悬停、选区变动、平移缩放等非持久化操作
-      const contentChanged =
-        !prev ||
-        prev.elements !== elements ||
-        prev.files !== files ||
-        prev.appState?.viewBackgroundColor !== appState.viewBackgroundColor;
+      // 计算当前元素版本签名与持久化属性变更
+      const currentSig = getElementsVersionSignature(elements);
+      const prevSig = lastCommittedSignatureRef.current;
+      const bgChanged = prev?.appState?.viewBackgroundColor !== appState.viewBackgroundColor;
+      const filesChanged = prev?.files !== files;
 
-      if (!contentChanged) {
+      // 仅当图元真正发生提交变更（非悬浮预览）或场景持久属性变动时，才标记脏态
+      if (currentSig === prevSig && !bgChanged && !filesChanged) {
         return;
       }
+
+      lastCommittedSignatureRef.current = currentSig;
 
       // 标记脏态（同步 windowStore 和 documentStore）
       const tab = useWindowStore.getState().getTab(key);

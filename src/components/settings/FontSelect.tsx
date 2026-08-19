@@ -17,6 +17,29 @@ interface FontSelectProps {
   placeholder?: string;
 }
 
+// 内置代码字体清单（始终可用、开箱即用，优先展示）
+export const BUILTIN_FONTS: FontFamily[] = [
+  { family: 'JetBrains Mono', isMonospace: true, hasCjk: false },
+  { family: 'Maple Mono Normal NF CN', isMonospace: true, hasCjk: true },
+];
+
+/** 将系统字体与内置字体进行不区分大小写的去重合并，内置字体置顶优先 */
+function mergeFonts(systemFonts: FontFamily[]): FontFamily[] {
+  const map = new Map<string, FontFamily>();
+  // 1. 内置字体置顶入 map
+  for (const f of BUILTIN_FONTS) {
+    map.set(f.family.toLowerCase(), f);
+  }
+  // 2. 系统真实字体入 map
+  for (const f of systemFonts) {
+    const key = f.family.toLowerCase();
+    if (!map.has(key)) {
+      map.set(key, f);
+    }
+  }
+  return Array.from(map.values());
+}
+
 // 缓存系统字体列表与全局监听器，确保所有 FontSelect 实例即时同步数据
 let cachedSystemFonts: FontFamily[] | null = null;
 let fontFetchPromise: Promise<FontFamily[]> | null = null;
@@ -32,14 +55,20 @@ function notifyFontListeners(fonts: FontFamily[]) {
 async function fetchSystemFonts(): Promise<FontFamily[]> {
   if (cachedSystemFonts) return cachedSystemFonts;
   if (!fontFetchPromise) {
-    fontFetchPromise = ipc.listSystemFonts().then((fonts) => {
-      notifyFontListeners(fonts);
-      return fonts;
-    }).catch((err) => {
-      console.error('加载系统字体失败:', err);
-      fontFetchPromise = null;
-      return [];
-    });
+    fontFetchPromise = ipc
+      .listSystemFonts()
+      .then((fonts) => {
+        const merged = mergeFonts(fonts);
+        notifyFontListeners(merged);
+        return merged;
+      })
+      .catch((err) => {
+        console.error('加载系统字体失败:', err);
+        const fallback = mergeFonts([]);
+        notifyFontListeners(fallback);
+        fontFetchPromise = null;
+        return fallback;
+      });
   }
   return fontFetchPromise;
 }
@@ -70,6 +99,7 @@ function isCjkFont(font: FontFamily): boolean {
     name.includes('lxgw') ||
     name.includes('xiawu') ||
     name.includes('sarasa') ||
+    name.includes('maple') ||
     name.includes('wenquanyi') ||
     name.includes('jhenghei') ||
     name.includes('mingliu')
@@ -89,7 +119,9 @@ function isMonoFont(font: FontFamily): boolean {
     lower.includes('terminal') ||
     lower.includes('fixed') ||
     lower.includes('fira') ||
-    lower.includes('jetbrains')
+    lower.includes('jetbrains') ||
+    lower.includes('maple') ||
+    lower.includes('cascadia')
   );
 }
 
@@ -483,6 +515,22 @@ export function FontSelect({
                       >
                         {font.family}
                       </span>
+                      {/* 内置字体专属徽标 */}
+                      {BUILTIN_FONTS.some((b) => b.family.toLowerCase() === font.family.toLowerCase()) && (
+                        <span
+                          style={{
+                            fontSize: 10,
+                            padding: '1px 4px',
+                            borderRadius: 2,
+                            background: 'var(--accent-muted, rgba(99, 102, 241, 0.15))',
+                            color: 'var(--accent-strong, #6366f1)',
+                            flexShrink: 0,
+                            fontWeight: 500,
+                          }}
+                        >
+                          内置
+                        </span>
+                      )}
                       {font.isMonospace && (
                         <span
                           style={{
