@@ -3,6 +3,7 @@
 // 详见 docs/08-数据契约与持久化.md §3
 
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { getCurrentWebview, type DragDropEvent } from '@tauri-apps/api/webview';
 import type { ExternalChangePayload, Settings } from './types';
 
 // ── 事件名常量 ──
@@ -58,3 +59,12 @@ export function onHandoffComplete(
 export function onCloseRequested(cb: (label: string) => void): Promise<UnlistenFn> {
   return listen<string>(EVENTS.CLOSE_REQUESTED, (e) => cb(e.payload));
 }
+
+// ── 系统文件拖拽监听 ──
+
+/** 监听系统文件拖拽事件（enter / over / drop / leave） */
+export function onDragDrop(cb: (e: DragDropEvent) => void): Promise<UnlistenFn> {
+  return getCurrentWebview().onDragDropEvent((event) => cb(event.payload));
+}
+
+export type { DragDropEvent };

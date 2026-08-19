@@ -24,6 +24,19 @@ export async function openDocument(path: string): Promise<void> {
   let fileSize = 0;
   try {
     const probe = await ipc.probeDocument(path);
+    // 若拖入的是文件夹，直接将左侧资源管理器根设为该目录并展开
+    if (probe.isDir) {
+      try {
+        const nodes = await ipc.readDir(path, false);
+        useExplorerStore.getState().setRoot(path, nodes);
+        useLayoutStore.getState().setExplorerVisible(true);
+        await ipc.pushRecent(path, true);
+      } catch (e) {
+        console.error('加载文件夹目录失败:', e);
+      }
+      return;
+    }
+
     fileSize = probe.size;
     if (probe.size > 50 * 1024 * 1024) {
       console.warn('文件较大:', path);

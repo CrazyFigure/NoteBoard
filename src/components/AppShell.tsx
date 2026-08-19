@@ -12,6 +12,7 @@ import { WelcomeScreen } from './WelcomeScreen';
 import { UnsupportedView } from './UnsupportedView';
 import { ToastContainer } from './Toast';
 import { RailToggle } from './rail/RailToggle';
+import { FileDropOverlay } from './FileDropOverlay';
 import { useWindowStore } from '../stores/windowStore';
 import { useDocumentStore } from '../stores/documentStore';
 import {
@@ -545,6 +546,9 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
 
       {/* 全局 Toast 提示 */}
       <ToastContainer />
+
+      {/* 全局文件拖拽释放提示 */}
+      <FileDropOverlay />
     </div>
   );
 }
