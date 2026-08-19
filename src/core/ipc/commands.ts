@@ -19,6 +19,7 @@ import type {
   TransferredDocument,
   Eol,
   Encoding,
+  UpdateCheckResult,
 } from './types';
 
 // ── 窗口 ──
@@ -185,3 +186,29 @@ export function deleteDraft(key: string): Promise<void> {
 export function listDrafts(): Promise<unknown[]> {
   return invoke<unknown[]>('list_drafts');
 }
+
+// ── 应用更新与外部链接 ──
+
+// 检查 GitHub 最新版本
+export function checkForUpdates(): Promise<UpdateCheckResult> {
+  return invoke<UpdateCheckResult>('check_for_updates');
+}
+
+// 下载更新安装包并在落盘后启动安装器
+export function downloadAndInstallUpdate(params: {
+  downloadUrl: string;
+  assetName: string;
+  installerSize?: number | null;
+}): Promise<string> {
+  return invoke<string>('download_and_install_update', {
+    downloadUrl: params.downloadUrl,
+    assetName: params.assetName,
+    installerSize: params.installerSize ?? null,
+  });
+}
+
+// 使用系统默认浏览器打开外部超链接
+export function openExternalUrl(url: string): Promise<boolean> {
+  return invoke<boolean>('open_external_url', { url });
+}
+

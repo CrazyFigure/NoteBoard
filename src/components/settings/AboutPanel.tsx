@@ -2,12 +2,47 @@
 // 版本、GPL-3.0、第三方致谢、仓库链接、配置损坏告警位
 // 详见 docs/09-开发路线图.md 12.9
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { RefreshCw, ExternalLink } from 'lucide-react';
 import { getRegisteredShortcuts } from '../../core/shortcuts';
+import * as ipc from '../../core/ipc/commands';
+import type { UpdateCheckResult } from '../../core/ipc/types';
+import { translateUpdateCheckError } from '../../core/updates';
+import { UpdateModal } from '../UpdateModal';
 
 export function AboutPanel() {
   const [version] = useState('0.1.0');
   const shortcuts = getRegisteredShortcuts();
+
+  // 更新检测状态与弹窗控制
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateModalOpen, setUpdateModalOpen] = useState(false);
+  const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
+  const [checkError, setCheckError] = useState<string | null>(null);
+
+  // 执行检查更新逻辑
+  const handleCheckForUpdates = async () => {
+    try {
+      setCheckingUpdate(true);
+      setCheckError(null);
+      setUpdateResult(null);
+      setUpdateModalOpen(true);
+      const res = await ipc.checkForUpdates();
+      setUpdateResult(res);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setCheckError(translateUpdateCheckError(msg));
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
+  // 在系统默认浏览器打开 GitHub 仓库
+  const handleOpenGithub = () => {
+    ipc.openExternalUrl('https://github.com/CrazyFigure/NoteBoard').catch((err) => {
+      console.error('无法打开 GitHub 链接:', err);
+    });
+  };
 
   const sectionStyle: React.CSSProperties = {
     marginBottom: 24,
@@ -44,9 +79,53 @@ export function AboutPanel() {
       <h2 style={headingStyle}>关于 NoteBoard</h2>
 
       <div style={sectionStyle}>
-        <p>版本: {version}</p>
-        <p>许可证: GPL-3.0</p>
-        <p>仓库: https://github.com/your-org/noteboard</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+          <span>版本: v{version}</span>
+          <button
+            type="button"
+            disabled={checkingUpdate}
+            onClick={handleCheckForUpdates}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '2px 8px',
+              fontSize: 12,
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--editor-border)',
+              background: 'var(--editor-surface)',
+              color: 'var(--accent-strong)',
+              cursor: checkingUpdate ? 'not-allowed' : 'pointer',
+              fontWeight: 500,
+            }}
+          >
+            <RefreshCw size={12} className={checkingUpdate ? 'spin' : ''} style={checkingUpdate ? { animation: 'spin 1s linear infinite' } : undefined} />
+            <span>{checkingUpdate ? '正在检查...' : '检测更新'}</span>
+          </button>
+        </div>
+        <p style={{ margin: '4px 0' }}>许可证: GPL-3.0</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '4px 0' }}>
+          <span>开源仓库:</span>
+          <button
+            type="button"
+            onClick={handleOpenGithub}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: 0,
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--accent-strong)',
+              fontSize: 13,
+              cursor: 'pointer',
+              textDecoration: 'underline',
+            }}
+          >
+            <span>CrazyFigure/NoteBoard</span>
+            <ExternalLink size={13} />
+          </button>
+        </div>
       </div>
 
       {/* 第三方致谢 */}
@@ -83,6 +162,16 @@ export function AboutPanel() {
           删除 settings.json 后重启应用可恢复默认设置。
         </p>
       </div>
+
+      {/* 更新弹窗 */}
+      <UpdateModal
+        isOpen={updateModalOpen}
+        onClose={() => setUpdateModalOpen(false)}
+        result={updateResult}
+        checkError={checkError}
+        checking={checkingUpdate}
+        onRecheck={handleCheckForUpdates}
+      />
     </div>
   );
 }

@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows EXE
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # 读取完整 tag 历史以对比上一 tag 生成更新日志
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 11
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate release notes
+        id: release_notes
+        shell: pwsh
+        run: |
+          # 统计当前 tag 相对上一 tag 的提交生成分类更新日志
+          $previousTag = ''
+          $previousTagOutput = git describe --tags --abbrev=0 "HEAD^" 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $previousTag = $previousTagOutput
+          }
+
+          $range = if ($previousTag) { "$previousTag..HEAD" } else { "HEAD" }
+          $subjects = git log --format=%s $range
+
+          $groups = [ordered]@{
+            '新增' = [System.Collections.Generic.List[string]]::new()
+            '修复' = [System.Collections.Generic.List[string]]::new()
+            '优化' = [System.Collections.Generic.List[string]]::new()
+          }
+
+          foreach ($subject in $subjects) {
+            # 过滤发布流程整理提交
+            if ($subject -match '^(docs|chore)\(release\):') {
+              continue
+            }
+
+            $text = $subject -replace '^(feat|fix|docs|refactor|perf|style|chore|test|build|ci)(\([^)]+\))?:\s*', ''
+            if ([string]::IsNullOrWhiteSpace($text)) {
+              $text = $subject
+            }
+
+            if ($subject -match '^feat(\([^)]+\))?:') {
+              $groups['新增'].Add($text)
+            } elseif ($subject -match '^fix(\([^)]+\))?:') {
+              $groups['修复'].Add($text)
+            } else {
+              $groups['优化'].Add($text)
+            }
+          }
+
+          $lines = [System.Collections.Generic.List[string]]::new()
+          foreach ($heading in $groups.Keys) {
+            $lines.Add("${heading}：")
+            if ($groups[$heading].Count -gt 0) {
+              foreach ($item in $groups[$heading]) {
+                $lines.Add("- $item")
+              }
+            } else {
+              $lines.Add("- 本次暂无${heading}项。")
+            }
+            $lines.Add('')
+          }
+
+          $body = ($lines -join [Environment]::NewLine).TrimEnd()
+          'body<<__NOTEBOARD_RELEASE_BODY__' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $body | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          '__NOTEBOARD_RELEASE_BODY__' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      # 使用 tauri-action 构建 Windows NSIS 安装包并发布到 Release
+      - name: Build and publish Tauri release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: NoteBoard ${{ github.ref_name }}
+          releaseBody: ${{ steps.release_notes.outputs.body }}
+          releaseDraft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          # 规范产物文件命名
+          assetNamePattern: NoteBoard_[version]_[platform]_[arch][setup][ext]

@@ -309,3 +309,31 @@ impl From<PathBuf> for FileTreeNode {
         }
     }
 }
+
+// ── 应用更新检查结果 ──
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateCheckResult {
+    // 当前运行程序版本号
+    pub current_version: String,
+    // 远程 GitHub 最新发布版本号
+    pub latest_version: String,
+    // Release 标题名称
+    pub release_name: Option<String>,
+    // Release 页面 URL
+    pub release_url: String,
+    // 发布时间 ISO8601 字符串
+    pub published_at: Option<String>,
+    // 是否检测到可用新版本
+    pub update_available: bool,
+    // 安装包文件名（如 NoteBoard_0.2.0_x64-setup.exe）
+    pub installer_asset_name: Option<String>,
+    // 安装包直接下载链接
+    pub installer_download_url: Option<String>,
+    // 安装包文件大小（字节数）
+    pub installer_size: Option<u64>,
+    // Release 更新日志正文说明
+    pub release_body: Option<String>,
+}
+

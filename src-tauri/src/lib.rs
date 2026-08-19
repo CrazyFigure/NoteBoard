@@ -12,6 +12,7 @@ pub mod settings;
 pub mod session;
 pub mod sysfont;
 pub mod bootstrap;
+pub mod updater;
 
 use state::AppState;
 use std::sync::Mutex;
@@ -77,6 +78,10 @@ pub fn run() {
             session::commands::list_drafts,
             // sysfont
             sysfont::commands::list_system_fonts,
+            // updater
+            updater::commands::check_for_updates,
+            updater::commands::download_and_install_update,
+            updater::commands::open_external_url,
         ])
         .on_window_event(|window, event| {
             window::manager::on_window_event(window, event)
