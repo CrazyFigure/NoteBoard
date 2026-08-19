@@ -209,9 +209,10 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
       const prevSig = lastCommittedSignatureRef.current;
       const bgChanged = prev?.appState?.viewBackgroundColor !== appState.viewBackgroundColor;
       const filesChanged = prev?.files !== files;
+      const snapChanged = prev?.appState?.objectsSnapModeEnabled !== appState.objectsSnapModeEnabled;
 
-      // 仅当图元真正发生提交变更（非悬浮预览）或场景持久属性变动时，才标记脏态
-      if (currentSig === prevSig && !bgChanged && !filesChanged) {
+      // 仅当图元真正发生提交变更（非悬浮预览）或场景持久属性变动（背景色、文件、吸附对齐开关等）时，才标记脏态
+      if (currentSig === prevSig && !bgChanged && !filesChanged && !snapChanged) {
         return;
       }
 
@@ -264,6 +265,23 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
   // 稳定的 API 注入回调
   const handleApi = useCallback((api: { updateScene: (scene: Partial<ExcalidrawScene>) => void }) => {
     apiRef.current = api;
+  }, []);
+
+  // 自动吸附对齐开关状态（默认开启）
+  const isSnapEnabled = liveAppState?.objectsSnapModeEnabled ?? initialData?.appState?.objectsSnapModeEnabled ?? true;
+
+  // 切换自动吸附对齐模式
+  const handleToggleSnapMode = useCallback(() => {
+    const currentScene = sceneRef.current;
+    if (apiRef.current && currentScene) {
+      const nextVal = !(currentScene.appState?.objectsSnapModeEnabled ?? true);
+      apiRef.current.updateScene({
+        appState: {
+          ...currentScene.appState,
+          objectsSnapModeEnabled: nextVal,
+        } as ExcalidrawScene['appState'],
+      });
+    }
   }, []);
 
   // 注册全局场景获取器，供 saveDocument 快捷保存时获取最新内存数据
@@ -371,6 +389,58 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
         }}
       >
         <span>📊 {elementCount} 图元</span>
+
+        {/* 自动吸附对齐开关 */}
+        <button
+          type="button"
+          onClick={handleToggleSnapMode}
+          style={{
+            background: isSnapEnabled ? 'var(--primary-subtle, rgba(14, 127, 214, 0.12))' : 'transparent',
+            border: isSnapEnabled ? '1px solid var(--primary-500, #0e7fd6)' : '1px solid var(--editor-border)',
+            borderRadius: 4,
+            padding: '2px 8px',
+            cursor: 'pointer',
+            color: isSnapEnabled ? 'var(--primary-500, #0e7fd6)' : 'inherit',
+            fontSize: 11,
+            fontWeight: isSnapEnabled ? 500 : 400,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            transition: 'all var(--transition-fast)',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = isSnapEnabled
+              ? 'var(--primary-subtle-hover, rgba(14, 127, 214, 0.2))'
+              : 'var(--toolbar-hover)';
+            e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
+            if (!isSnapEnabled) e.currentTarget.style.color = 'var(--editor-text)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = isSnapEnabled
+              ? 'var(--primary-subtle, rgba(14, 127, 214, 0.12))'
+              : 'transparent';
+            e.currentTarget.style.borderColor = isSnapEnabled
+              ? 'var(--primary-500, #0e7fd6)'
+              : 'var(--editor-border)';
+            e.currentTarget.style.color = isSnapEnabled ? 'var(--primary-500, #0e7fd6)' : 'inherit';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          onMouseDown={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-active)';
+            e.currentTarget.style.transform = 'scale(0.92)';
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.background = isSnapEnabled
+              ? 'var(--primary-subtle-hover, rgba(14, 127, 214, 0.2))'
+              : 'var(--toolbar-hover)';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          title="自动吸附对齐 (Alt+S) - 移动图元时自动靠近边缘与中心线对齐，并显示对齐辅助虚线"
+        >
+          <span>🧲 自动吸附</span>
+          <span style={{ fontSize: 10, opacity: 0.85 }}>[{isSnapEnabled ? '开' : '关'}]</span>
+        </button>
+
         <button
           type="button"
           onClick={() => {
