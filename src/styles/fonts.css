@@ -50,6 +50,10 @@
   font-family: 'Maple Mono Normal NF CN';
   src: local('Maple Mono Normal NF CN Regular'),
        local('Maple Mono Normal NF CN'),
+       local('Maple Mono SC NF Regular'),
+       local('Maple Mono SC NF'),
+       local('Maple Mono NF CN'),
+       local('Maple Mono'),
        local('MapleMonoNormal-NF-CN-Regular'),
        url('../assets/fonts/MapleMonoNormal-NF-CN-Regular.ttf') format('truetype');
   font-weight: 400;
@@ -60,6 +64,11 @@
 @font-face {
   font-family: 'Maple Mono Normal NF CN';
   src: local('Maple Mono Normal NF CN Bold'),
+       local('Maple Mono Normal NF CN'),
+       local('Maple Mono SC NF Bold'),
+       local('Maple Mono SC NF'),
+       local('Maple Mono NF CN Bold'),
+       local('Maple Mono Bold'),
        local('MapleMonoNormal-NF-CN-Bold'),
        url('../assets/fonts/MapleMonoNormal-NF-CN-Bold.ttf') format('truetype');
   font-weight: 700;

@@ -35,8 +35,8 @@ const DEFAULT_SETTINGS: Settings = {
   typography: {
     contentFontFamily: '',
     contentFontFamilyZh: '',
-    monoFontFamily: 'Consolas',
-    monoFontFamilyZh: 'Microsoft YaHei UI',
+    monoFontFamily: 'JetBrains Mono',
+    monoFontFamilyZh: 'Maple Mono Normal NF CN',
     contentFontSize: 16,
     monoFontSize: 14,
     contentLineHeight: 1.7,

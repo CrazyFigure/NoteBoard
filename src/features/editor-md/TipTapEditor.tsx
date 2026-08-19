@@ -24,7 +24,7 @@ import { serializeMarkdown, parseMarkdown, getBaseline, normalizeEol } from './s
 import { judgeLargeDoc } from './largeDoc';
 import { nbEditorTheme } from '../editor-code/theme';
 import { nbSyntaxHighlighting } from '../editor-code/highlightStyle';
-import { createBaseExtensions } from '../editor-code/setup';
+import { createBaseExtensions, typographyCompartment } from '../editor-code/setup';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -68,6 +68,41 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   const isInitializingRef = useRef<boolean>(true);
 
   const settings = useSettingsStore((s) => s.settings);
+  const typography = settings.typography;
+
+  // 监听排版字体与字号变化并热重配源码模式 CM6 实例
+  useEffect(() => {
+    const view = sourceViewRef.current;
+    if (!view) return;
+    const typographyExt = EditorView.theme({
+      '&': {
+        fontFamily: 'var(--mono-font-family)',
+        fontSize: 'var(--mono-font-size)',
+        height: '100%',
+      },
+      '.cm-scroller': {
+        lineHeight: 'var(--mono-line-height, 1.5)',
+        fontFamily: 'var(--mono-font-family)',
+        fontSize: 'var(--mono-font-size)',
+      },
+      '.cm-content, .cm-line': {
+        fontFamily: 'var(--mono-font-family)',
+        fontSize: 'var(--mono-font-size)',
+      },
+      '.cm-content': {
+        padding: '16px 24px',
+      },
+    });
+    view.dispatch({
+      effects: typographyCompartment.reconfigure(typographyExt),
+    });
+    view.requestMeasure();
+  }, [
+    typography.monoFontFamily,
+    typography.monoFontFamilyZh,
+    typography.monoFontSize,
+    typography.monoLineHeight,
+  ]);
 
   // 初始化 TipTap 编辑器
   const editor = useEditor({
@@ -260,6 +295,31 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       state,
       parent: sourceDivRef.current,
     });
+
+    // 注入源码模式排版配置
+    const typographyExt = EditorView.theme({
+      '&': {
+        fontFamily: 'var(--mono-font-family)',
+        fontSize: 'var(--mono-font-size)',
+        height: '100%',
+      },
+      '.cm-scroller': {
+        lineHeight: 'var(--mono-line-height, 1.5)',
+        fontFamily: 'var(--mono-font-family)',
+        fontSize: 'var(--mono-font-size)',
+      },
+      '.cm-content, .cm-line': {
+        fontFamily: 'var(--mono-font-family)',
+        fontSize: 'var(--mono-font-size)',
+      },
+      '.cm-content': {
+        padding: '16px 24px',
+      },
+    });
+    view.dispatch({
+      effects: typographyCompartment.reconfigure(typographyExt),
+    });
+
     sourceViewRef.current = view;
     activeSourceViews.set(docKey, view);
   }, [docKey, autoSave]);

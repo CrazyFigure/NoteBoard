@@ -21,6 +21,12 @@ export const nbEditorTheme: Extension = EditorView.theme(
       overflow: 'auto',
       // 代码与纯文本行高由 --mono-line-height 驱动
       lineHeight: 'var(--mono-line-height, 1.5)',
+      fontFamily: 'var(--mono-font-family)',
+      fontSize: 'var(--mono-font-size)',
+    },
+    '.cm-content, .cm-line': {
+      fontFamily: 'var(--mono-font-family)',
+      fontSize: 'var(--mono-font-size)',
     },
     // 行号槽
     '.cm-gutters': {
