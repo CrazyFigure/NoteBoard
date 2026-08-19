@@ -14,8 +14,26 @@ import {
 import type { DocumentKind } from '@/core/ipc/types';
 
 describe('docKind 扩展名映射', () => {
-  test('KIND_BY_EXT 覆盖全部点名格式', () => {
-    const requiredExts = ['md', 'markdown', 'txt', 'sql', 'json', 'yaml', 'yml', 'xml', 'excalidraw'];
+  test('KIND_BY_EXT 覆盖全部点名格式与图片格式', () => {
+    const requiredExts = [
+      'md',
+      'markdown',
+      'txt',
+      'sql',
+      'json',
+      'yaml',
+      'yml',
+      'xml',
+      'excalidraw',
+      'png',
+      'jpg',
+      'jpeg',
+      'gif',
+      'webp',
+      'ico',
+      'svg',
+      'bmp',
+    ];
     for (const ext of requiredExts) {
       expect(KIND_BY_EXT[ext]).toBeDefined();
     }
@@ -25,6 +43,7 @@ describe('docKind 扩展名映射', () => {
     expect(savePolicyOf('markdown')).toBe('auto');
     expect(savePolicyOf('board')).toBe('auto');
     expect(savePolicyOf('code')).toBe('manual');
+    expect(savePolicyOf('image')).toBe('manual');
     expect(savePolicyOf('unsupported')).toBe('manual');
   });
 
@@ -33,6 +52,9 @@ describe('docKind 扩展名映射', () => {
     expect(extFromPath('D:\\notes\\test.MD')).toBe('md');
     expect(extFromPath('noext')).toBe('');
     expect(extFromPath('path.to/file.json')).toBe('json');
+    expect(extFromPath('avatar.PNG')).toBe('png');
+    expect(extFromPath('banner.webp')).toBe('webp');
+    expect(extFromPath('icon.ico')).toBe('ico');
   });
 
   test('kindFromPath 路径推断', () => {
@@ -40,6 +62,11 @@ describe('docKind 扩展名映射', () => {
     expect(kindFromPath('schema.sql')).toBe<DocumentKind>('code');
     expect(kindFromPath('config.yaml')).toBe<DocumentKind>('code');
     expect(kindFromPath('diagram.excalidraw')).toBe<DocumentKind>('board');
+    expect(kindFromPath('photo.png')).toBe<DocumentKind>('image');
+    expect(kindFromPath('animation.gif')).toBe<DocumentKind>('image');
+    expect(kindFromPath('modern.webp')).toBe<DocumentKind>('image');
+    expect(kindFromPath('app.ico')).toBe<DocumentKind>('image');
+    expect(kindFromPath('vector.svg')).toBe<DocumentKind>('image');
     expect(kindFromPath('unknown.xyz')).toBe<DocumentKind>('code');
   });
 
@@ -57,6 +84,7 @@ describe('docKind 扩展名映射', () => {
     expect(isEditable('markdown')).toBe(true);
     expect(isEditable('code')).toBe(true);
     expect(isEditable('board')).toBe(true);
+    expect(isEditable('image')).toBe(false);
     expect(isEditable('unsupported')).toBe(false);
   });
 });

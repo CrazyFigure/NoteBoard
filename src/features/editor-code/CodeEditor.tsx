@@ -170,13 +170,13 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
       '&': {
         fontFamily: 'var(--mono-font-family)',
         fontSize: 'var(--mono-font-size)',
+        height: '100%',
       },
       '.cm-scroller': {
         lineHeight: 'var(--mono-line-height, 1.5)',
       },
       '.cm-content': {
-        maxWidth: 'var(--content-max-width)',
-        margin: '0 auto',
+        // 移除 margin: 0 auto 与 maxWidth，避免破坏 CodeMirror 虚拟选区坐标
         padding: '16px 24px',
       },
     });
@@ -242,14 +242,31 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
   if (!doc) return null;
 
   return (
+    // 外层 Flex 容器负责居中与背景色，避免内部 .cm-content 居中导致坐标偏移
     <div
-      ref={containerRef}
       style={{
         width: '100%',
         height: '100%',
         overflow: 'hidden',
         background: 'var(--editor-bg)',
+        display: 'flex',
+        justifyContent: 'center',
       }}
-    />
+      onClick={(e) => {
+        // 点击外层空白区域时自动聚焦编辑器
+        if (e.target === e.currentTarget && viewRef.current) {
+          viewRef.current.focus();
+        }
+      }}
+    >
+      <div
+        ref={containerRef}
+        style={{
+          width: '100%',
+          maxWidth: 'var(--content-max-width)',
+          height: '100%',
+        }}
+      />
+    </div>
   );
 }

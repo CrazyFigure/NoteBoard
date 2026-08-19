@@ -6,68 +6,21 @@ import { memo, useState, useEffect, useRef } from 'react';
 import {
   ChevronRight,
   FileText,
-  File,
-  Database,
-  Braces,
-  FileCode,
-  CodeXml,
-  PencilRuler,
-  FileQuestion,
-  Folder,
-  FolderOpen,
   ExternalLink,
   Copy,
   Trash2,
 } from 'lucide-react';
 import type { FileTreeNode } from '../../core/ipc/types';
-import { extFromPath, kindFromPath } from '../../core/docKind';
 import { useExplorerStore } from './explorerStore';
 import { useTreeData } from './useTreeData';
 import { openDocument } from '../editor-code/orchestration/openDocument';
+import { getExplorerFileIcon } from './fileIcons';
 import * as ipc from '../../core/ipc/commands';
 
 interface TreeNodeProps {
   node: FileTreeNode;
   depth: number;
   isLast: boolean;
-}
-
-// ── 文件图标 ──
-
-function getFileIcon(node: FileTreeNode) {
-  const ext = node.isDir ? '' : extFromPath(node.name);
-  const iconProps = { size: 14, style: { flexShrink: 0 } };
-
-  if (node.isDir) return <Folder {...iconProps} color="var(--explorer-text-muted)" />;
-
-  const kind = kindFromPath(node.name);
-  if (kind === 'unsupported' && ext !== 'txt' && ext !== 'log') {
-    return <FileQuestion {...iconProps} color="var(--explorer-text-muted)" />;
-  }
-
-  switch (ext) {
-    case 'md':
-    case 'markdown':
-      return <FileText {...iconProps} color="var(--editor-accent)" />;
-    case 'txt':
-    case 'log':
-      return <File {...iconProps} color="var(--explorer-text-muted)" />;
-    case 'sql':
-      return <Database {...iconProps} color="var(--editor-accent)" />;
-    case 'json':
-      return <Braces {...iconProps} color="var(--warning-600)" />;
-    case 'yaml':
-    case 'yml':
-      return <FileCode {...iconProps} color="var(--success-600)" />;
-    case 'xml':
-      return <CodeXml {...iconProps} color="var(--editor-accent)" />;
-    case 'excalidraw':
-    case 'board':
-    case 'canvas':
-      return <PencilRuler {...iconProps} color="var(--accent-strong)" />;
-    default:
-      return <File {...iconProps} color="var(--explorer-text-muted)" />;
-  }
 }
 
 // ── 单节点渲染 ──
@@ -208,12 +161,12 @@ export const TreeNode = memo(function TreeNode({
           <span style={{ width: 12, flexShrink: 0 }} />
         )}
 
-        {/* 文件/目录图标 */}
-        {expanded && node.isDir ? (
-          <FolderOpen size={14} style={{ flexShrink: 0 }} color="var(--explorer-text-muted)" />
-        ) : (
-          getFileIcon(node)
-        )}
+        {/* 文件/目录优雅图标 */}
+        {getExplorerFileIcon(node.path, {
+          isDir: node.isDir,
+          isOpen: expanded,
+          size: 14,
+        })}
 
         {/* 文件名 */}
         <span

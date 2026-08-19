@@ -2,7 +2,7 @@
 // 与 src-tauri/src/dto.rs 手工同步
 // 序列化约定：结构体字段 camelCase，枚举变体 kebab-case
 
-export type DocumentKind = 'markdown' | 'code' | 'board' | 'unsupported';
+export type DocumentKind = 'markdown' | 'code' | 'board' | 'image' | 'unsupported';
 export type LanguageId = 'markdown' | 'sql' | 'json' | 'yaml' | 'xml' | 'plaintext';
 export type SavePolicy = 'auto' | 'manual';
 export type ViewMode = 'visual' | 'source';
@@ -10,11 +10,12 @@ export type Encoding = 'utf8' | 'utf8-bom' | 'gbk';
 export type Eol = 'crlf' | 'lf';
 export type ThemeId = 'chen-guang' | 'hu-po' | 'mo-ye';
 export type ThemeMode = ThemeId | 'system';
-export type ContentWidth = 'narrow' | 'standard' | 'wide' | 'full';
+// 编辑区宽度：预设档位或自定义百分比字符串（如 '75%'）
+export type ContentWidth = 'narrow' | 'standard' | 'wide' | 'full' | (string & {});
 
 // ── 枚举清单（与 Rust build.rs 生成的 contract-enums.json 一致）──
 
-export const ALL_DOCUMENT_KINDS: DocumentKind[] = ['markdown', 'code', 'board', 'unsupported'];
+export const ALL_DOCUMENT_KINDS: DocumentKind[] = ['markdown', 'code', 'board', 'image', 'unsupported'];
 export const ALL_ENCODINGS: Encoding[] = ['utf8', 'utf8-bom', 'gbk'];
 export const ALL_EOLS: Eol[] = ['crlf', 'lf'];
 export const ALL_LANGUAGE_IDS: LanguageId[] = ['markdown', 'sql', 'json', 'yaml', 'xml', 'plaintext'];

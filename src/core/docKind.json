@@ -10,5 +10,21 @@
   "xml": "code",
   "excalidraw": "board",
   "board": "board",
-  "canvas": "board"
+  "canvas": "board",
+  "png": "image",
+  "jpg": "image",
+  "jpeg": "image",
+  "jpe": "image",
+  "jfif": "image",
+  "gif": "image",
+  "webp": "image",
+  "ico": "image",
+  "cur": "image",
+  "svg": "image",
+  "bmp": "image",
+  "dib": "image",
+  "avif": "image",
+  "apng": "image",
+  "tif": "image",
+  "tiff": "image"
 }

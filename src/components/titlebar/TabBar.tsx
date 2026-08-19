@@ -48,11 +48,11 @@ import {
   openFolderDialog,
 } from '../../features/welcome/welcomeActions';
 import * as ipc from '../../core/ipc/commands';
+import { getExplorerFileIcon } from '../../features/explorer/fileIcons';
 
 // ── 类型图标映射 ──
 
 function getTabIcon(tab: Tab) {
-  const ext = tab.path ? extFromPath(tab.path) : '';
   const iconProps = { size: 14, style: { flexShrink: 0 } };
 
   // 外部变更图标
@@ -63,30 +63,9 @@ function getTabIcon(tab: Tab) {
     return <Unlink {...iconProps} color="var(--error-500)" />;
   }
 
-  switch (ext) {
-    case 'md':
-    case 'markdown':
-      return <FileText {...iconProps} color="var(--editor-accent)" />;
-    case 'txt':
-    case 'log':
-      return <File {...iconProps} color="var(--editor-text-muted)" />;
-    case 'sql':
-      return <Database {...iconProps} color="var(--editor-accent)" />;
-    case 'json':
-      return <Braces {...iconProps} color="var(--warning-600)" />;
-    case 'yaml':
-    case 'yml':
-      return <FileCode {...iconProps} color="var(--success-600)" />;
-    case 'xml':
-      return <CodeXml {...iconProps} color="var(--editor-accent)" />;
-    case 'excalidraw':
-    case 'board':
-    case 'canvas':
-      return <PencilRuler {...iconProps} color="var(--accent-strong)" />;
-    default:
-      if (!ext) return <File {...iconProps} color="var(--editor-text-muted)" />;
-      return <FileQuestion {...iconProps} color="var(--editor-text-muted)" />;
-  }
+  // 统一调用优雅文件格式图标体系
+  const targetPathOrName = tab.path || tab.displayName;
+  return getExplorerFileIcon(targetPathOrName, { size: 14 });
 }
 
 // ── 单个 Tab ──

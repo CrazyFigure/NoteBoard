@@ -26,10 +26,7 @@ import {
   lineNumbers,
   highlightActiveLine,
   highlightActiveLineGutter,
-  drawSelection,
   highlightSpecialChars,
-  rectangularSelection,
-  crosshairCursor,
   highlightWhitespace,
   ViewPlugin,
   Decoration,
@@ -140,11 +137,6 @@ export function createBaseExtensions(options?: BaseExtensionsOptions): Extension
     highlightActiveLine(),
     // 特殊字符高亮
     highlightSpecialChars(),
-    // 选区绘制
-    drawSelection(),
-    // 矩形选择
-    rectangularSelection(),
-    crosshairCursor(),
     // 括号匹配
     bracketMatching(),
     // 闭合括号

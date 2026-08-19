@@ -14,6 +14,7 @@ pub enum DocumentKind {
     Markdown,
     Code,
     Board,
+    Image,
     Unsupported,
 }
 
@@ -216,13 +217,18 @@ pub struct FontFamily {
 pub fn kind_by_ext(ext: &str) -> (DocumentKind, LanguageId) {
     match ext.to_lowercase().as_str() {
         "md" | "markdown" => (DocumentKind::Markdown, LanguageId::Markdown),
-        "excalidraw" => (DocumentKind::Board, LanguageId::Plaintext),
+        "excalidraw" | "board" | "canvas" => (DocumentKind::Board, LanguageId::Plaintext),
         "sql" => (DocumentKind::Code, LanguageId::Sql),
         "json" => (DocumentKind::Code, LanguageId::Json),
         "yaml" | "yml" => (DocumentKind::Code, LanguageId::Yaml),
         "xml" => (DocumentKind::Code, LanguageId::Xml),
         "txt" | "log" | "ini" | "conf" | "cfg" | "env" => {
             (DocumentKind::Code, LanguageId::Plaintext)
+        }
+        // 常见与特殊图片格式（包括 gif、webp、ico、png、jpg、svg、bmp 等）
+        "png" | "jpg" | "jpeg" | "jpe" | "jfif" | "gif" | "webp" | "ico" | "cur" | "svg"
+        | "bmp" | "dib" | "avif" | "apng" | "tif" | "tiff" => {
+            (DocumentKind::Image, LanguageId::Plaintext)
         }
         _ => (DocumentKind::Code, LanguageId::Plaintext),
     }
@@ -247,7 +253,7 @@ pub fn kind_from_path(path: &str) -> (DocumentKind, LanguageId) {
 pub fn save_policy_of(kind: DocumentKind) -> SavePolicy {
     match kind {
         DocumentKind::Markdown | DocumentKind::Board => SavePolicy::Auto,
-        DocumentKind::Code | DocumentKind::Unsupported => SavePolicy::Manual,
+        DocumentKind::Code | DocumentKind::Image | DocumentKind::Unsupported => SavePolicy::Manual,
     }
 }
 

@@ -40,8 +40,8 @@ export const nbEditorTheme: Extension = EditorView.theme(
     '.cm-activeLine': {
       backgroundColor: 'var(--cm-active-line-bg)',
     },
-    // 选区
-    '.cm-selectionBackground, .cm-content ::selection, .cm-line ::selection':
+    // 选区（使用原生文本选区，精准贴合字形边界）
+    '::selection, .cm-content ::selection, .cm-line ::selection, .cm-selectionBackground':
       {
         backgroundColor: 'var(--cm-selection-bg)',
       },
@@ -53,7 +53,7 @@ export const nbEditorTheme: Extension = EditorView.theme(
       borderLeftColor: 'var(--cm-cursor)',
       borderLeftWidth: '2px',
     },
-    '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection':
+    '&.cm-focused ::selection, &.cm-focused .cm-content ::selection, &.cm-focused .cm-line ::selection, &.cm-focused .cm-selectionBackground':
       {
         backgroundColor: 'var(--cm-selection-bg)',
       },
@@ -76,13 +76,15 @@ export const nbEditorTheme: Extension = EditorView.theme(
       color: 'var(--editor-text-muted)',
       fontSize: '11px',
     },
-    // 搜索高亮
+    // 搜索高亮与当前选中匹配项高亮（当前匹配项呈深色高对比度选中态与边框）
     '.cm-searchMatch': {
       backgroundColor: 'var(--cm-search-match-bg)',
-      outline: '1px solid var(--cm-search-active-bg)',
+      borderRadius: '2px',
     },
-    '.cm-searchMatch-selected': {
-      backgroundColor: 'var(--cm-search-active-bg)',
+    '.cm-searchMatch.cm-searchMatch-selected, .cm-searchMatch-selected': {
+      backgroundColor: 'var(--editor-selection, rgba(59, 130, 246, 0.38)) !important',
+      outline: '1.5px solid var(--accent-strong, #3b82f6)',
+      borderRadius: '2px',
     },
     // lint 标记
     '.cm-diagnosticText-error': {

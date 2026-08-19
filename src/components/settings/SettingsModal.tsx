@@ -3,9 +3,10 @@
 // 详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
 import { useState } from 'react';
-import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder } from 'lucide-react';
+import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, SlidersHorizontal } from 'lucide-react';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { THEMES } from '../../core/theme/themes';
+import { contentWidthToPercent, CONTENT_WIDTH_PERCENT_MAP } from '../../core/theme/applyTheme';
 import { FontSelect } from './FontSelect';
 import type { ThemeId, ThemeMode, ContentWidth } from '../../core/ipc/types';
 
@@ -205,11 +206,82 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <div>
                   <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>排版参数自定义</h3>
                   <p style={{ fontSize: 12, color: 'var(--editor-text-muted)', margin: 0 }}>
-                    独立配置 Markdown 文档、代码/纯文本以及文件树的排版参数。
+                    独立配置编辑区全局版心宽度、Markdown 文档、代码/纯文本以及文件树的排版参数。
                   </p>
                 </div>
 
-                {/* ── 2.1 Markdown 正文排版 ── */}
+                {/* ── 2.1 编辑区域宽度 ── */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 14px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
+                      <SlidersHorizontal size={15} color="var(--accent-strong)" />
+                      <span>编辑区域宽度 (全局版心)</span>
+                    </div>
+                    <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>作用于 Markdown、SQL、纯文本等所有文档</span>
+                  </div>
+
+                  {/* 编辑区宽度调节 */}
+                  <div style={formRowStyle}>
+                    <label style={labelStyle}>版心最大宽度</label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
+                      {/* 预设档位按钮 */}
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {(['narrow', 'standard', 'wide', 'full'] as const).map((w) => {
+                          const labels: Record<string, string> = {
+                            narrow: '窄 (65%)',
+                            standard: '标准 (80%)',
+                            wide: '宽屏 (92%)',
+                            full: '全宽 (100%)',
+                          };
+                          const isSelected =
+                            settings.typography.contentWidth === w ||
+                            contentWidthToPercent(settings.typography.contentWidth) === CONTENT_WIDTH_PERCENT_MAP[w];
+                          return (
+                            <button
+                              key={w}
+                              type="button"
+                              onClick={() => setTypography({ contentWidth: w })}
+                              style={{
+                                flex: 1,
+                                padding: '6px 8px',
+                                fontSize: 12,
+                                borderRadius: 'var(--radius-sm)',
+                                border: isSelected ? '1px solid var(--accent-strong)' : '1px solid var(--editor-border)',
+                                background: isSelected ? 'var(--editor-selection)' : 'var(--editor-bg)',
+                                color: 'var(--editor-text)',
+                                cursor: 'pointer',
+                                transition: 'all var(--transition-fast)',
+                              }}
+                            >
+                              {labels[w]}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* 滑动条自定义宽度调节 */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 2 }}>
+                        <input
+                          type="range"
+                          min="40"
+                          max="100"
+                          step="1"
+                          value={contentWidthToPercent(settings.typography.contentWidth)}
+                          onChange={(e) => {
+                            const val = `${e.target.value}%`;
+                            setTypography({ contentWidth: val });
+                          }}
+                          style={{ flex: 1, cursor: 'pointer' }}
+                        />
+                        <span style={{ fontSize: 12, color: 'var(--editor-text-muted)', minWidth: 42, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {contentWidthToPercent(settings.typography.contentWidth)}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── 2.2 Markdown 正文排版 ── */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 14px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
                     <FileText size={15} color="var(--accent-strong)" />
@@ -253,43 +325,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       />
                     </div>
                   </div>
-
-                  {/* 编辑区宽度 */}
-                  <div style={formRowStyle}>
-                    <label style={labelStyle}>编辑区域宽度</label>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      {(['narrow', 'standard', 'wide', 'full'] as ContentWidth[]).map((w) => {
-                        const labels: Record<ContentWidth, string> = {
-                          narrow: '窄 (65%)',
-                          standard: '标准 (80%)',
-                          wide: '宽屏 (92%)',
-                          full: '全宽 (100%)',
-                        };
-                        return (
-                          <button
-                            key={w}
-                            type="button"
-                            onClick={() => setTypography({ contentWidth: w })}
-                            style={{
-                              flex: 1,
-                              padding: '6px 8px',
-                              fontSize: 12,
-                              borderRadius: 'var(--radius-sm)',
-                              border: settings.typography.contentWidth === w ? '1px solid var(--accent-strong)' : '1px solid var(--editor-border)',
-                              background: settings.typography.contentWidth === w ? 'var(--editor-selection)' : 'var(--editor-bg)',
-                              color: 'var(--editor-text)',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            {labels[w]}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
                 </div>
 
-                {/* ── 2.2 代码与纯文本排版 ── */}
+                {/* ── 2.3 代码与纯文本排版 ── */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 14px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
@@ -339,7 +377,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </div>
 
-                {/* ── 2.3 文件树排版（资源管理器） ── */}
+                {/* ── 2.4 文件树排版（资源管理器） ── */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 14px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
@@ -388,7 +426,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </div>
 
-                {/* ── 2.4 实时排版效果预览 ── */}
+                {/* ── 2.5 实时排版效果预览 ── */}
                 <div>
                   <label style={{ ...labelStyle, marginBottom: 6, display: 'block' }}>实时排版预览</label>
                   <div
