@@ -206,6 +206,7 @@ export function FontSelect({
                     <span>未找到匹配字体</span>
                     <button
                       type="button"
+                      className="nb-btn-secondary"
                       onClick={() => {
                         onChange(searchQuery.trim());
                         setIsOpen(false);
@@ -213,13 +214,8 @@ export function FontSelect({
                       style={{
                         display: 'block',
                         margin: '6px auto 0',
-                        padding: '3px 8px',
+                        padding: '4px 10px',
                         fontSize: 11,
-                        borderRadius: 3,
-                        border: '1px solid var(--editor-border)',
-                        background: 'var(--editor-surface)',
-                        color: 'var(--editor-text)',
-                        cursor: 'pointer',
                       }}
                     >
                       使用 "{searchQuery.trim()}"

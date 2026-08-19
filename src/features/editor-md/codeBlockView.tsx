@@ -345,7 +345,24 @@ function CodeBlockComponent({ node, updateAttributes }: NodeViewProps) {
             fontSize: 12,
             padding: '2px 6px',
             borderRadius: 'var(--radius-sm)',
-            transition: 'color var(--transition-fast)',
+            transition: 'all var(--transition-fast)',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.color = 'var(--editor-text)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.color = copied ? 'var(--success-600)' : 'var(--editor-text-muted)';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          onMouseDown={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-active)';
+            e.currentTarget.style.transform = 'scale(0.94)';
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.transform = 'scale(1)';
           }}
           onClick={handleCopy}
           title="复制代码内容"

@@ -20,6 +20,8 @@ export function RailToggle({ side, visible, onToggle, show = true, ariaLabel }: 
   const [inHotZone, setInHotZone] = useState(false);
   // 是否直接悬停在按钮本体上
   const [isHovered, setIsHovered] = useState(false);
+  // 是否处于按压状态
+  const [isPressed, setIsPressed] = useState(false);
   // 是否获得键盘焦点
   const [isFocused, setIsFocused] = useState(false);
   const hotZoneRef = useRef<HTMLDivElement>(null);
@@ -61,7 +63,9 @@ export function RailToggle({ side, visible, onToggle, show = true, ariaLabel }: 
 
   // 动态视觉样式计算
   const opacity = isHighlighted ? 1 : inHotZone ? 0.75 : 0;
-  const background = isHighlighted
+  const background = isPressed
+    ? 'var(--toolbar-active)'
+    : isHighlighted
     ? 'var(--rail-hover-bg)'
     : inHotZone
     ? 'var(--rail-bg)'
@@ -113,7 +117,7 @@ export function RailToggle({ side, visible, onToggle, show = true, ariaLabel }: 
         style={{
           position: 'absolute',
           top: '50%',
-          transform: 'translateY(-50%)',
+          transform: `translateY(-50%) ${isPressed ? 'scale(0.92)' : isHovered ? 'scale(1.05)' : 'scale(1)'}`,
           width: 20,
           height: 56,
           display: 'flex',
@@ -123,7 +127,7 @@ export function RailToggle({ side, visible, onToggle, show = true, ariaLabel }: 
           border,
           boxShadow,
           opacity,
-          transition: 'opacity var(--transition-normal), background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast)',
+          transition: 'opacity var(--transition-normal), background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast)',
           zIndex: 21,
           cursor: 'pointer',
           pointerEvents: 'auto',
@@ -136,9 +140,17 @@ export function RailToggle({ side, visible, onToggle, show = true, ariaLabel }: 
         }}
         onClick={onToggle}
         onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
+        onMouseLeave={() => {
+          setIsHovered(false);
+          setIsPressed(false);
+        }}
+        onMouseDown={() => setIsPressed(true)}
+        onMouseUp={() => setIsPressed(false)}
         onFocus={() => setIsFocused(true)}
-        onBlur={() => setIsFocused(false)}
+        onBlur={() => {
+          setIsFocused(false);
+          setIsPressed(false);
+        }}
         aria-label={ariaLabel}
         aria-expanded={visible}
       >

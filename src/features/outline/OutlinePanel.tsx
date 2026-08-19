@@ -266,6 +266,23 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
                 data-heading-id={h.id}
                 onClick={() => handleHeadingClick(h)}
                 onDoubleClick={() => handleDoubleClick(h)}
+                onMouseEnter={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = 'var(--toolbar-hover)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = 'transparent';
+                  }
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+                onMouseDown={(e) => {
+                  e.currentTarget.style.transform = 'scale(0.985)';
+                }}
+                onMouseUp={(e) => {
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -282,6 +299,7 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
+                  transition: 'all var(--transition-fast)',
                 }}
                 title={h.text}
               >
@@ -301,8 +319,14 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
                       flexShrink: 0,
                       fontSize: 10,
                       opacity: 0.6,
-                      transition: 'transform 150ms ease',
+                      transition: 'transform 150ms ease, opacity var(--transition-fast)',
                       transform: isCollapsedItem ? 'rotate(-90deg)' : 'rotate(0deg)',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.opacity = '1';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.opacity = '0.6';
                     }}
                   >
                     ▼

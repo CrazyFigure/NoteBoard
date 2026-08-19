@@ -247,6 +247,12 @@ export function FlowchartQuickConnect({
               e.currentTarget.style.background = 'transparent';
               e.currentTarget.style.transform = 'scale(1)';
             }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.transform = 'scale(0.92)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.transform = 'scale(1.1)';
+            }}
           >
             {shape.renderIcon()}
           </button>

@@ -29,9 +29,10 @@ interface BubbleButtonProps {
   danger?: boolean;
 }
 
-/** 悬浮菜单基础按钮组件（舒适 32px 尺寸与精美悬停动效） */
+/** 悬浮菜单基础按钮组件（舒适 32px 尺寸与精美悬停/按压动效） */
 function BubbleButton({ icon, onClick, active, title, danger }: BubbleButtonProps) {
   const [hovered, setHovered] = useState(false);
+  const [pressed, setPressed] = useState(false);
 
   let background = 'transparent';
   let color = 'var(--editor-text)';
@@ -39,6 +40,8 @@ function BubbleButton({ icon, onClick, active, title, danger }: BubbleButtonProp
   if (active) {
     background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.15))';
     color = 'var(--accent-500, #3b82f6)';
+  } else if (pressed) {
+    background = 'var(--toolbar-active, rgba(0, 0, 0, 0.12))';
   } else if (hovered) {
     if (danger) {
       background = 'rgba(239, 68, 68, 0.12)';
@@ -52,10 +55,17 @@ function BubbleButton({ icon, onClick, active, title, danger }: BubbleButtonProp
     <button
       type="button"
       title={title}
-      onMouseDown={(e) => e.preventDefault()}
+      onMouseDown={(e) => {
+        e.preventDefault();
+        setPressed(true);
+      }}
+      onMouseUp={() => setPressed(false)}
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseLeave={() => {
+        setHovered(false);
+        setPressed(false);
+      }}
       style={{
         width: 32,
         height: 32,
@@ -70,7 +80,8 @@ function BubbleButton({ icon, onClick, active, title, danger }: BubbleButtonProp
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
-        transition: 'all 120ms ease',
+        transform: pressed ? 'scale(0.92)' : hovered ? 'scale(1.06)' : 'scale(1)',
+        transition: 'all var(--transition-fast)',
         userSelect: 'none',
       }}
     >

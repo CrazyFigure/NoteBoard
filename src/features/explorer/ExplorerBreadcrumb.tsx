@@ -183,7 +183,7 @@ export function ExplorerBreadcrumb({ root, onRefresh }: ExplorerBreadcrumbProps)
                 fontWeight: seg.isLast ? 600 : 400,
                 fontSize: 11,
                 cursor: 'pointer',
-                transition: 'background var(--transition-fast), color var(--transition-fast)',
+                transition: 'all var(--transition-fast)',
                 whiteSpace: 'nowrap',
                 maxWidth: 160,
                 overflow: 'hidden',
@@ -198,6 +198,13 @@ export function ExplorerBreadcrumb({ root, onRefresh }: ExplorerBreadcrumbProps)
                 e.currentTarget.style.color = seg.isLast
                   ? 'var(--explorer-text)'
                   : 'var(--explorer-text-muted)';
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+              onMouseDown={(e) => {
+                e.currentTarget.style.transform = 'scale(0.96)';
+              }}
+              onMouseUp={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
               }}
               title={seg.fullPath}
             >

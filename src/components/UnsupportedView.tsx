@@ -170,6 +170,7 @@ export function UnsupportedView({ filePath, fileName, fileSize }: UnsupportedVie
           {/* 主动作：用系统默认应用打开 */}
           <button
             type="button"
+            className="nb-btn-primary"
             onClick={handleOpenDefault}
             style={{
               display: 'flex',
@@ -184,13 +185,26 @@ export function UnsupportedView({ filePath, fileName, fileSize }: UnsupportedVie
               fontSize: 13,
               fontWeight: 500,
               cursor: 'pointer',
-              transition: 'opacity var(--transition-fast)',
+              boxShadow: 'var(--shadow-sm)',
+              transition: 'all var(--transition-fast)',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.opacity = '0.9';
+              e.currentTarget.style.filter = 'brightness(1.08)';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.25)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.opacity = '1';
+              e.currentTarget.style.filter = 'brightness(1)';
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.transform = 'translateY(0) scale(0.98)';
+              e.currentTarget.style.filter = 'brightness(0.95)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.filter = 'brightness(1.08)';
             }}
           >
             <ExternalLink size={15} />
@@ -201,6 +215,7 @@ export function UnsupportedView({ filePath, fileName, fileSize }: UnsupportedVie
           <div style={{ display: 'flex', gap: 10 }}>
             <button
               type="button"
+              className="nb-btn-secondary"
               onClick={handleReveal}
               style={{
                 flex: 1,
@@ -215,13 +230,28 @@ export function UnsupportedView({ filePath, fileName, fileSize }: UnsupportedVie
                 color: 'var(--editor-text)',
                 fontSize: 12,
                 cursor: 'pointer',
-                transition: 'background var(--transition-fast)',
+                boxShadow: 'var(--shadow-sm)',
+                transition: 'all var(--transition-fast)',
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = 'var(--toolbar-hover)';
+                e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = 'var(--shadow-md)';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = 'var(--editor-surface)';
+                e.currentTarget.style.borderColor = 'var(--editor-border)';
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
+              }}
+              onMouseDown={(e) => {
+                e.currentTarget.style.background = 'var(--toolbar-active)';
+                e.currentTarget.style.transform = 'translateY(0) scale(0.97)';
+              }}
+              onMouseUp={(e) => {
+                e.currentTarget.style.background = 'var(--toolbar-hover)';
+                e.currentTarget.style.transform = 'translateY(-1px)';
               }}
             >
               <FolderOpen size={14} />
@@ -230,6 +260,7 @@ export function UnsupportedView({ filePath, fileName, fileSize }: UnsupportedVie
 
             <button
               type="button"
+              className="nb-btn-secondary"
               onClick={handleCopyPath}
               style={{
                 flex: 1,
@@ -244,13 +275,28 @@ export function UnsupportedView({ filePath, fileName, fileSize }: UnsupportedVie
                 color: 'var(--editor-text)',
                 fontSize: 12,
                 cursor: 'pointer',
-                transition: 'background var(--transition-fast)',
+                boxShadow: 'var(--shadow-sm)',
+                transition: 'all var(--transition-fast)',
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = 'var(--toolbar-hover)';
+                e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = 'var(--shadow-md)';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = 'var(--editor-surface)';
+                e.currentTarget.style.borderColor = 'var(--editor-border)';
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
+              }}
+              onMouseDown={(e) => {
+                e.currentTarget.style.background = 'var(--toolbar-active)';
+                e.currentTarget.style.transform = 'translateY(0) scale(0.97)';
+              }}
+              onMouseUp={(e) => {
+                e.currentTarget.style.background = 'var(--toolbar-hover)';
+                e.currentTarget.style.transform = 'translateY(-1px)';
               }}
             >
               {copied ? <Check size={14} color="var(--success-600)" /> : <Copy size={14} />}

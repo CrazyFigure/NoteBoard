@@ -48,8 +48,25 @@ export function TitleBar() {
           justifyContent: 'center',
           flexShrink: 0,
           cursor: 'pointer',
+          transition: 'all var(--transition-fast)',
         }}
         onClick={toggleSettingsModal}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = 'var(--toolbar-hover)';
+          e.currentTarget.style.transform = 'scale(1.05)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'transparent';
+          e.currentTarget.style.transform = 'scale(1)';
+        }}
+        onMouseDown={(e) => {
+          e.currentTarget.style.background = 'var(--toolbar-active)';
+          e.currentTarget.style.transform = 'scale(0.92)';
+        }}
+        onMouseUp={(e) => {
+          e.currentTarget.style.background = 'var(--toolbar-hover)';
+          e.currentTarget.style.transform = 'scale(1.05)';
+        }}
         title="NoteBoard (点击打开设置)"
       >
         <img
@@ -89,13 +106,25 @@ export function TitleBar() {
           color: 'var(--editor-text-secondary)',
           cursor: 'pointer',
           flexShrink: 0,
-          transition: 'background var(--transition-fast)',
+          transition: 'all var(--transition-fast)',
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.background = 'var(--toolbar-hover)';
+          e.currentTarget.style.color = 'var(--editor-text)';
+          e.currentTarget.style.transform = 'scale(1.05)';
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.background = 'transparent';
+          e.currentTarget.style.color = 'var(--editor-text-secondary)';
+          e.currentTarget.style.transform = 'scale(1)';
+        }}
+        onMouseDown={(e) => {
+          e.currentTarget.style.background = 'var(--toolbar-active)';
+          e.currentTarget.style.transform = 'scale(0.92)';
+        }}
+        onMouseUp={(e) => {
+          e.currentTarget.style.background = 'var(--toolbar-hover)';
+          e.currentTarget.style.transform = 'scale(1.05)';
         }}
         title="设置 (Ctrl+,)"
         aria-label="打开设置"

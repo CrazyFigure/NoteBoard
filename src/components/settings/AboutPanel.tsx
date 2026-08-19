@@ -89,7 +89,7 @@ export function AboutPanel() {
               display: 'inline-flex',
               alignItems: 'center',
               gap: 4,
-              padding: '2px 8px',
+              padding: '3px 10px',
               fontSize: 12,
               borderRadius: 'var(--radius-sm)',
               border: '1px solid var(--editor-border)',
@@ -97,6 +97,36 @@ export function AboutPanel() {
               color: 'var(--accent-strong)',
               cursor: checkingUpdate ? 'not-allowed' : 'pointer',
               fontWeight: 500,
+              boxShadow: 'var(--shadow-sm)',
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseEnter={(e) => {
+              if (!checkingUpdate) {
+                e.currentTarget.style.background = 'var(--toolbar-hover)';
+                e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = 'var(--shadow-md)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!checkingUpdate) {
+                e.currentTarget.style.background = 'var(--editor-surface)';
+                e.currentTarget.style.borderColor = 'var(--editor-border)';
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
+              }
+            }}
+            onMouseDown={(e) => {
+              if (!checkingUpdate) {
+                e.currentTarget.style.background = 'var(--toolbar-active)';
+                e.currentTarget.style.transform = 'translateY(0) scale(0.96)';
+              }
+            }}
+            onMouseUp={(e) => {
+              if (!checkingUpdate) {
+                e.currentTarget.style.background = 'var(--toolbar-hover)';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }
             }}
           >
             <RefreshCw size={12} className={checkingUpdate ? 'spin' : ''} style={checkingUpdate ? { animation: 'spin 1s linear infinite' } : undefined} />
@@ -120,6 +150,19 @@ export function AboutPanel() {
               fontSize: 13,
               cursor: 'pointer',
               textDecoration: 'underline',
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'scale(1.03)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.transform = 'scale(0.96)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.transform = 'scale(1.03)';
             }}
           >
             <span>CrazyFigure/NoteBoard</span>

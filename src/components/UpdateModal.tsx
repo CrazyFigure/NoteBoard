@@ -192,9 +192,37 @@ export function UpdateModal({
               color: 'var(--editor-text-muted)',
               display: 'flex',
               alignItems: 'center',
+              justifyContent: 'center',
               padding: 4,
               borderRadius: 'var(--radius-sm)',
               opacity: downloading ? 0.5 : 1,
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseEnter={(e) => {
+              if (!downloading) {
+                e.currentTarget.style.background = 'var(--toolbar-hover)';
+                e.currentTarget.style.color = 'var(--editor-text)';
+                e.currentTarget.style.transform = 'scale(1.08)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!downloading) {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = 'var(--editor-text-muted)';
+                e.currentTarget.style.transform = 'scale(1)';
+              }
+            }}
+            onMouseDown={(e) => {
+              if (!downloading) {
+                e.currentTarget.style.background = 'var(--toolbar-active)';
+                e.currentTarget.style.transform = 'scale(0.92)';
+              }
+            }}
+            onMouseUp={(e) => {
+              if (!downloading) {
+                e.currentTarget.style.background = 'var(--toolbar-hover)';
+                e.currentTarget.style.transform = 'scale(1.08)';
+              }
             }}
           >
             <X size={16} />
@@ -415,14 +443,11 @@ export function UpdateModal({
           {/* 取消 / 关闭 */}
           <button
             type="button"
+            className="nb-btn-secondary"
             disabled={downloading}
             onClick={onClose}
             style={{
               padding: '6px 14px',
-              border: '1px solid var(--editor-border)',
-              borderRadius: 'var(--radius-sm)',
-              background: 'transparent',
-              color: 'var(--editor-text)',
               fontSize: 12,
               cursor: downloading ? 'not-allowed' : 'pointer',
               opacity: downloading ? 0.5 : 1,
@@ -435,6 +460,7 @@ export function UpdateModal({
           {result?.releaseUrl && (
             <button
               type="button"
+              className="nb-btn-secondary"
               disabled={downloading}
               onClick={() => handleOpenUrl(result.releaseUrl)}
               style={{
@@ -442,10 +468,6 @@ export function UpdateModal({
                 alignItems: 'center',
                 gap: 6,
                 padding: '6px 14px',
-                border: '1px solid var(--editor-border)',
-                borderRadius: 'var(--radius-sm)',
-                background: 'transparent',
-                color: 'var(--editor-text)',
                 fontSize: 12,
                 cursor: downloading ? 'not-allowed' : 'pointer',
               }}
@@ -459,18 +481,14 @@ export function UpdateModal({
           {checkError && onRecheck && (
             <button
               type="button"
+              className="nb-btn-primary"
               onClick={onRecheck}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
                 padding: '6px 14px',
-                border: 'none',
-                borderRadius: 'var(--radius-sm)',
-                background: 'var(--accent-strong)',
-                color: '#fff',
                 fontSize: 12,
-                cursor: 'pointer',
                 fontWeight: 500,
               }}
             >
@@ -483,6 +501,7 @@ export function UpdateModal({
           {showDetail && (
             <button
               type="button"
+              className="nb-btn-primary"
               disabled={downloading || !result?.installerDownloadUrl}
               onClick={handleDownloadAndInstall}
               style={{
@@ -490,10 +509,6 @@ export function UpdateModal({
                 alignItems: 'center',
                 gap: 6,
                 padding: '6px 16px',
-                border: 'none',
-                borderRadius: 'var(--radius-sm)',
-                background: 'var(--accent-strong)',
-                color: '#fff',
                 fontSize: 12,
                 cursor: downloading || !result?.installerDownloadUrl ? 'not-allowed' : 'pointer',
                 fontWeight: 500,

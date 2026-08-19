@@ -282,15 +282,25 @@ export function SearchReplaceBar() {
             color: 'var(--editor-text-secondary)',
             cursor: 'pointer',
             flexShrink: 0,
-            transition: 'background var(--transition-fast)',
+            transition: 'all var(--transition-fast)',
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.background = 'var(--toolbar-hover)';
             e.currentTarget.style.color = 'var(--editor-text)';
+            e.currentTarget.style.transform = 'scale(1.08)';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = 'transparent';
             e.currentTarget.style.color = 'var(--editor-text-secondary)';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          onMouseDown={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-active)';
+            e.currentTarget.style.transform = 'scale(0.92)';
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.transform = 'scale(1.08)';
           }}
         >
           <ChevronUp size={16} />
@@ -313,15 +323,25 @@ export function SearchReplaceBar() {
             color: 'var(--editor-text-secondary)',
             cursor: 'pointer',
             flexShrink: 0,
-            transition: 'background var(--transition-fast)',
+            transition: 'all var(--transition-fast)',
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.background = 'var(--toolbar-hover)';
             e.currentTarget.style.color = 'var(--editor-text)';
+            e.currentTarget.style.transform = 'scale(1.08)';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = 'transparent';
             e.currentTarget.style.color = 'var(--editor-text-secondary)';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          onMouseDown={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-active)';
+            e.currentTarget.style.transform = 'scale(0.92)';
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.transform = 'scale(1.08)';
           }}
         >
           <ChevronDown size={16} />
@@ -344,15 +364,25 @@ export function SearchReplaceBar() {
             color: 'var(--editor-text-secondary)',
             cursor: 'pointer',
             flexShrink: 0,
-            transition: 'background var(--transition-fast)',
+            transition: 'all var(--transition-fast)',
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.background = 'var(--toolbar-hover)';
             e.currentTarget.style.color = 'var(--editor-text)';
+            e.currentTarget.style.transform = 'scale(1.08)';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = 'transparent';
             e.currentTarget.style.color = 'var(--editor-text-secondary)';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          onMouseDown={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-active)';
+            e.currentTarget.style.transform = 'scale(0.92)';
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.transform = 'scale(1.08)';
           }}
         >
           <X size={16} />
@@ -437,10 +467,20 @@ export function SearchReplaceBar() {
           onMouseEnter={(e) => {
             e.currentTarget.style.background = 'var(--toolbar-hover)';
             e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
+            e.currentTarget.style.transform = 'translateY(-1px)';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = 'var(--editor-bg)';
             e.currentTarget.style.borderColor = 'var(--editor-border)';
+            e.currentTarget.style.transform = 'translateY(0)';
+          }}
+          onMouseDown={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-active)';
+            e.currentTarget.style.transform = 'translateY(0) scale(0.96)';
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.transform = 'translateY(-1px)';
           }}
         >
           <Replace size={13} />
@@ -470,10 +510,20 @@ export function SearchReplaceBar() {
           onMouseEnter={(e) => {
             e.currentTarget.style.background = 'var(--toolbar-hover)';
             e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
+            e.currentTarget.style.transform = 'translateY(-1px)';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = 'var(--editor-bg)';
             e.currentTarget.style.borderColor = 'var(--editor-border)';
+            e.currentTarget.style.transform = 'translateY(0)';
+          }}
+          onMouseDown={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-active)';
+            e.currentTarget.style.transform = 'translateY(0) scale(0.96)';
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.transform = 'translateY(-1px)';
           }}
         >
           <Grid2X2 size={13} />
