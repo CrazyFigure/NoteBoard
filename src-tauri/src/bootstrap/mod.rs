@@ -5,7 +5,7 @@ use crate::dto::WindowIntent;
 use crate::state::AppState;
 use crate::window::{intent, manager};
 use std::sync::Mutex;
-use tauri::{Manager, State};
+use tauri::Manager;
 
 /// setup 钩子
 pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {

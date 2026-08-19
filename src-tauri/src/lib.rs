@@ -16,7 +16,6 @@ pub mod updater;
 
 use state::AppState;
 use std::sync::Mutex;
-use tauri::Manager;
 
 /// 应用入口
 pub fn run() {

@@ -5,10 +5,7 @@ use crate::dto::{
     DocumentPayload, FileTreeNode, PathExistsResult, ProbeResult, WriteResult,
 };
 use crate::path as nbpath;
-use crate::state::AppState;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
-use tauri::State;
 
 use super::dir;
 use super::read;
@@ -192,8 +189,6 @@ pub fn path_exists(path: String) -> Result<PathExistsResult, String> {
 /// 在资源管理器中显示
 #[tauri::command]
 pub fn reveal_in_explorer(path: String) -> Result<(), String> {
-    let p = Path::new(&path);
-    let parent = p.parent().unwrap_or(p);
     // 用 std::process::Command 调用 explorer
     std::process::Command::new("explorer")
         .arg(format!("/select,{}", path))
@@ -225,13 +220,13 @@ pub fn open_with_default_app(path: String) -> Result<(), String> {
 
 /// 监听目录
 #[tauri::command]
-pub fn watch_dir(path: String, _recursive: bool, _delay_ms: u64) -> Result<(), String> {
+pub fn watch_dir(_path: String, _recursive: bool, _delay_ms: u64) -> Result<(), String> {
     // tauri-plugin-fs 的 watch 由前端直接调用
     Ok(())
 }
 
 /// 取消监听
 #[tauri::command]
-pub fn unwatch_dir(path: String) -> Result<(), String> {
+pub fn unwatch_dir(_path: String) -> Result<(), String> {
     Ok(())
 }

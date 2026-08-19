@@ -2,11 +2,9 @@
 // 🔴 实现红线：single-instance 回调运行在 WM_COPYDATA 同步窗口过程里
 //    直接建窗会死锁（wry#583）。必须 std::thread::spawn。
 
-use crate::dto::WindowIntent;
 use crate::state::AppState;
-use crate::window::manager;
 use std::sync::Mutex;
-use tauri::{Emitter, Manager, State};
+use tauri::{Emitter, Manager};
 
 /// 处理第二实例
 pub fn handle_second_instance(app: &tauri::AppHandle, argv: Vec<String>) {

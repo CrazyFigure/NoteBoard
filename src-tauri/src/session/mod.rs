@@ -1,9 +1,7 @@
 // NoteBoard 会话与草稿 — IPC 接口
 
-use crate::dto::FontFamily;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use tauri::Emitter;
 
 fn app_data_dir() -> PathBuf {
     let base = std::env::var("APPDATA")
@@ -224,7 +222,6 @@ pub mod commands {
     // ── helpers ──
 
     fn sha256_hex(input: &str) -> String {
-        use std::collections::HashMap;
         // 简单 hash，实际应用应使用 sha2 crate
         // 这里用一个简单的 hash 替代
         let mut hash: u64 = 0;

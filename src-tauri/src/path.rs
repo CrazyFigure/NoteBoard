@@ -7,7 +7,7 @@
 // 5. 其余部分保留原始大小写（用于显示），但比较时不区分大小写
 
 use dunce::canonicalize as canonicalized;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// 规范化路径
 pub fn normalize_key(p: &str) -> String {
