@@ -32,16 +32,31 @@ export const TreeNode = memo(function TreeNode({
   const { toggle, loadChildren } = useTreeData();
   const nodeKey = node.path.toLowerCase();
 
-  // 精确响应式订阅：当前节点的展开状态、子节点缓存及高亮状态
+  // 精确响应式订阅：当前节点的展开状态、子节点缓存、高亮状态以及定位滚动触发计数
   const isNodeExpanded = useExplorerStore((s) => s.expanded.has(nodeKey));
   const children = useExplorerStore((s) => s.children.get(nodeKey));
-  const isRevealed = useExplorerStore((s) => s.revealed?.toLowerCase() === nodeKey);
+  const isRevealed = useExplorerStore((s) => (s.revealed ? s.revealed.toLowerCase() === nodeKey : false));
+  const revealCount = useExplorerStore((s) => s.revealCount);
   const setRevealed = useExplorerStore((s) => s.setRevealed);
   const root = useExplorerStore((s) => s.root);
   const setRoot = useExplorerStore((s) => s.setRoot);
 
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const lastScrolledCountRef = useRef<number>(-1);
+
+  // 当当前节点处于高亮状态且定位计数更新时，平滑滚动至视口可见位置
+  useEffect(() => {
+    if (isRevealed && rowRef.current && lastScrolledCountRef.current !== revealCount) {
+      lastScrolledCountRef.current = revealCount;
+      rowRef.current.scrollIntoView({
+        block: 'nearest',
+        inline: 'nearest',
+        behavior: 'smooth',
+      });
+    }
+  }, [isRevealed, revealCount]);
 
   const expanded = node.isDir ? isNodeExpanded : false;
 
@@ -93,7 +108,8 @@ export const TreeNode = memo(function TreeNode({
   // 单击条目：文件则仅选中高亮（不打开文件）；文件夹则选中并展开/收起目录
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setRevealed(node.path);
+    // 用户手动点击条目本身已在可视区域内，仅设置高亮不触发额外滚动
+    setRevealed(node.path, false);
     if (node.isDir) {
       toggle(node.path);
     }
@@ -110,7 +126,7 @@ export const TreeNode = memo(function TreeNode({
   // 单击展开/折叠箭头图标
   const handleArrowClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setRevealed(node.path);
+    setRevealed(node.path, false);
     toggle(node.path);
   };
 
@@ -118,7 +134,7 @@ export const TreeNode = memo(function TreeNode({
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setRevealed(node.path);
+    setRevealed(node.path, false);
     setMenuPos({ x: e.clientX, y: e.clientY });
   };
 
@@ -132,6 +148,7 @@ export const TreeNode = memo(function TreeNode({
   return (
     <div role="treeitem" aria-expanded={node.isDir ? expanded : undefined} aria-level={depth + 1}>
       <div
+        ref={rowRef}
         style={rowStyle}
         onMouseEnter={handleHover}
         onMouseLeave={handleLeave}

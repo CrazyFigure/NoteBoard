@@ -557,23 +557,14 @@ export function TabBar() {
     transition: 'background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast)',
   };
 
-  // 点击激活或重复点击 Tab：激活并主动定位资源管理器至该文件所在目录
+  // 点击激活或重复点击 Tab：激活并平滑定位资源管理器至该文件
   const handleActivateTab = (tabKey: string) => {
+    const isCurrentActive = useWindowStore.getState().activeKey === tabKey;
     activateTab(tabKey);
-    const doc = useDocumentStore.getState().documents.get(tabKey);
-    if (doc?.dirPath) {
-      const { root, setRoot, setRevealed } = useExplorerStore.getState();
-      if (!sameKey(root, doc.dirPath)) {
-        ipc.readDir(doc.dirPath, false).then((nodes) => {
-          setRoot(doc.dirPath, nodes);
-          if (doc.key) {
-            setRevealed(doc.key);
-          }
-        });
-      } else {
-        if (doc.key) {
-          setRevealed(doc.key);
-        }
+    if (isCurrentActive && !tabKey.startsWith('untitled:')) {
+      const doc = useDocumentStore.getState().documents.get(tabKey);
+      if (doc?.key) {
+        useExplorerStore.getState().setRevealed(doc.key, true);
       }
     }
   };

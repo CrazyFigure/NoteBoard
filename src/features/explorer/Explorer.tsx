@@ -5,7 +5,7 @@
 
 import { useState, useCallback } from 'react';
 import { FilePlus, FolderPlus, LocateFixed, RotateCw, FolderOpen } from 'lucide-react';
-import { useExplorerStore } from './explorerStore';
+import { useExplorerStore, isSubPath } from './explorerStore';
 import { useTreeData } from './useTreeData';
 import { useReveal } from './useReveal';
 import { useWatcher } from './useWatcher';
@@ -42,23 +42,30 @@ export function Explorer() {
     }
   }, [root, loadChildren, setRoot]);
 
-  // 一键定位当前打开的文件与目录
+  // 一键定位当前打开的文件并在资源管理器中平滑滚动至该文件位置
   const handleLocateActive = useCallback(async () => {
     const activeKey = useWindowStore.getState().activeKey;
-    if (!activeKey) return;
+    if (!activeKey || activeKey.startsWith('untitled:')) return;
     const doc = useDocumentStore.getState().documents.get(activeKey);
+    const filePath = doc?.key || activeKey;
     const targetDir = doc?.dirPath;
-    if (!targetDir) return;
+    if (!targetDir || !filePath) return;
 
     try {
-      const nodes = await loadChildren(targetDir);
-      setRoot(targetDir, nodes);
-      if (doc.key) {
-        await revealPath(doc.key, targetDir);
-        setRevealed(doc.key);
+      const currentRoot = useExplorerStore.getState().root;
+      // 若当前根目录已包含该文件，则保持当前根目录树结构，直接展开路径链并滚动定位至该文件
+      if (currentRoot && isSubPath(currentRoot, filePath)) {
+        await revealPath(filePath, currentRoot);
+        setRevealed(filePath, true);
+      } else {
+        // 若当前无根目录或文件在外部目录，才将根目录切换至目标文件所在文件夹
+        const nodes = await loadChildren(targetDir);
+        setRoot(targetDir, nodes);
+        await revealPath(filePath, targetDir);
+        setRevealed(filePath, true);
       }
     } catch (err) {
-      console.error('定位当前文件所在目录失败:', err);
+      console.error('定位当前文件失败:', err);
     }
   }, [loadChildren, setRoot, revealPath, setRevealed]);
 

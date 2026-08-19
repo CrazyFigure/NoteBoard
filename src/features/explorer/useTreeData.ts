@@ -5,7 +5,7 @@
 import { useCallback } from 'react';
 import * as ipc from '../../core/ipc/commands';
 import type { FileTreeNode } from '../../core/ipc/types';
-import { useExplorerStore } from './explorerStore';
+import { useExplorerStore, getPathChain } from './explorerStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 
 /**
@@ -52,19 +52,15 @@ export function useTreeData() {
     [isExpanded, collapse, setLoading, expand, loadChildren],
   );
 
-  /** 展开到目标文件（reveal） */
+  /** 展开到目标文件的各级祖先目录（reveal） */
   const revealPath = useCallback(
     async (filePath: string, rootDir: string) => {
-      // 从根到文件的路径链
-      // 简单实现：逐级展开
-      const parts = filePath.substring(rootDir.length).split(/[\\/]/).filter(Boolean);
-      let current = rootDir;
-
-      for (let i = 0; i < parts.length - 1; i++) {
-        current = current + '\\' + parts[i];
-        if (!isExpanded(current)) {
-          const children = await loadChildren(current);
-          expand(current, children);
+      // 严谨计算从根目录到目标文件的祖先目录路径链并逐级展开
+      const dirsToExpand = getPathChain(rootDir, filePath);
+      for (const dir of dirsToExpand) {
+        if (!isExpanded(dir)) {
+          const children = await loadChildren(dir);
+          expand(dir, children);
         }
       }
     },

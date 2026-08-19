@@ -5,7 +5,7 @@
 import * as ipc from '../../../core/ipc/commands';
 import { useDocumentStore } from '../../../stores/documentStore';
 import { useWindowStore, type Tab } from '../../../stores/windowStore';
-import { useExplorerStore } from '../../explorer/explorerStore';
+import { useExplorerStore, isSubPath } from '../../explorer/explorerStore';
 import { useLayoutStore } from '../../../stores/layoutStore';
 import { kindFromPath, languageFromPath } from '../../../core/docKind';
 import { showToast } from '../../../stores/toastStore';
@@ -81,9 +81,14 @@ export async function openDocument(path: string): Promise<void> {
     if (dirPath) {
       useLayoutStore.getState().setExplorerVisible(true);
       try {
-        const nodes = await ipc.readDir(dirPath, false);
-        useExplorerStore.getState().setRoot(dirPath, nodes);
-        useExplorerStore.getState().setRevealed(path);
+        const curRoot = useExplorerStore.getState().root;
+        if (curRoot && isSubPath(curRoot, path)) {
+          useExplorerStore.getState().setRevealed(path, true);
+        } else {
+          const nodes = await ipc.readDir(dirPath, false);
+          useExplorerStore.getState().setRoot(dirPath, nodes);
+          useExplorerStore.getState().setRevealed(path, true);
+        }
       } catch (e) {
         console.error('加载父文件夹目录失败:', e);
       }
@@ -137,9 +142,14 @@ export async function openDocument(path: string): Promise<void> {
     if (dirPath) {
       useLayoutStore.getState().setExplorerVisible(true);
       try {
-        const nodes = await ipc.readDir(dirPath, false);
-        useExplorerStore.getState().setRoot(dirPath, nodes);
-        useExplorerStore.getState().setRevealed(path);
+        const curRoot = useExplorerStore.getState().root;
+        if (curRoot && isSubPath(curRoot, path)) {
+          useExplorerStore.getState().setRevealed(path, true);
+        } else {
+          const nodes = await ipc.readDir(dirPath, false);
+          useExplorerStore.getState().setRoot(dirPath, nodes);
+          useExplorerStore.getState().setRevealed(path, true);
+        }
       } catch (e) {
         console.error('加载父文件夹目录失败:', e);
       }
@@ -191,12 +201,17 @@ export async function openDocument(path: string): Promise<void> {
   tabStore.openTab(tab);
 
   // 6. 确保左侧栏展开并展示父文件夹目录
-  if (payload.dirPath) {
+  if (payload.dirPath && payload.key) {
     useLayoutStore.getState().setExplorerVisible(true);
     try {
-      const nodes = await ipc.readDir(payload.dirPath, false);
-      useExplorerStore.getState().setRoot(payload.dirPath, nodes);
-      useExplorerStore.getState().setRevealed(payload.key);
+      const curRoot = useExplorerStore.getState().root;
+      if (curRoot && isSubPath(curRoot, payload.key)) {
+        useExplorerStore.getState().setRevealed(payload.key, true);
+      } else {
+        const nodes = await ipc.readDir(payload.dirPath, false);
+        useExplorerStore.getState().setRoot(payload.dirPath, nodes);
+        useExplorerStore.getState().setRevealed(payload.key, true);
+      }
     } catch (e) {
       console.error('加载父文件夹目录失败:', e);
     }
