@@ -33,6 +33,7 @@ import type { LanguageId } from '../../core/ipc/types';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { normalizeEol } from '../editor-md/serialize';
 
 // ── 编辑器实例管理 ──
 
@@ -88,9 +89,10 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
   ]);
 
   useEffect(() => {
-    if (!containerRef.current || !doc) return;
+    const currentDoc = useDocumentStore.getState().getDocument(docKey);
+    if (!containerRef.current || !currentDoc) return;
     const container = containerRef.current;
-    const lang = doc.language;
+    const lang = currentDoc.language;
     const initialEditorSettings = useSettingsStore.getState().settings.editor;
 
     // 内容变更监听 → 更新 store（防抖 500ms）
@@ -100,12 +102,15 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
 
       const newContent = update.state.doc.toString();
       const key = docKey;
+      const targetDoc = useDocumentStore.getState().getDocument(key);
+      // 规范化换行符后即时计算脏态
+      const isDirty = normalizeEol(newContent) !== normalizeEol(targetDoc?.baselineContent);
+      setTabDirty(key, isDirty);
+      useDocumentStore.getState().setDirty(key, isDirty);
 
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         setContent(key, newContent);
-        const updatedDoc = useDocumentStore.getState().documents.get(key);
-        setTabDirty(key, updatedDoc?.isDirty ?? true);
       }, 500);
     });
 
@@ -178,7 +183,7 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
 
     // 创建编辑器状态与实例（createBaseExtensions 已包含 typographyCompartment 与 languageCompartment）
     const state = EditorState.create({
-      doc: doc.content ?? '',
+      doc: currentDoc.content ?? '',
       extensions: [
         ...createBaseExtensions(initialEditorSettings),
         updateListener,
@@ -232,7 +237,7 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
       editorView = null;
       viewRef.current = null;
     };
-  }, [docKey, doc, setContent, setTabDirty]);
+  }, [docKey, setContent, setTabDirty]);
 
   if (!doc) return null;
 

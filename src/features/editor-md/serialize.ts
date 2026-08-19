@@ -62,6 +62,17 @@ export function parseMarkdown(editor: Editor, markdown: string): void {
   });
 }
 
+// ── 换行符规整工具 ──
+
+/**
+ * 规范化文本换行符（将 CRLF 转换为 LF）
+ * 用于跨平台/跨编辑器引擎进行语义级无害内容比对，避免因换行符差异误标脏
+ */
+export function normalizeEol(text: string | null | undefined): string {
+  if (text == null) return '';
+  return text.replace(/\r\n/g, '\n');
+}
+
 // ── 基线管理 ──
 
 /**
@@ -96,10 +107,11 @@ export class BaselineManager {
     return this.baseline;
   }
 
-  /** 判断当前内容是否与基线一致（不脏） */
+  /** 判断当前内容是否与基线一致（不脏，支持自动规整行尾符） */
   isClean(currentContent: string): boolean {
     if (this.baseline === null) return false;
-    return currentContent === this.baseline;
+    // 统一规整换行符后进行内容比对，防止 Windows CRLF 导致假脏态
+    return normalizeEol(currentContent) === normalizeEol(this.baseline);
   }
 
   /** 更新基线（保存成功后调用） */
