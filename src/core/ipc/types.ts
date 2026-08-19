@@ -205,3 +205,38 @@ export interface ReconcileResult {
 export interface ConfirmHandoffResult {
   done: boolean;
 }
+
+// ── 应用更新相关类型 ──
+
+export interface UpdateCheckResult {
+  // 当前运行客户端版本
+  currentVersion: string;
+  // 远程 GitHub 最新发布版本
+  latestVersion: string;
+  // Release 标题
+  releaseName?: string | null;
+  // GitHub Release 页面链接
+  releaseUrl: string;
+  // 发布时间戳字符串
+  publishedAt?: string | null;
+  // 是否有可用新版本
+  updateAvailable: boolean;
+  // 匹配到的 Windows 安装包文件名
+  installerAssetName?: string | null;
+  // 安装包直接下载链接
+  installerDownloadUrl?: string | null;
+  // 安装包文件大小（字节数）
+  installerSize?: number | null;
+  // Release 更新说明
+  releaseBody?: string | null;
+}
+
+export interface UpdateDownloadProgress {
+  // 已下载字节数
+  downloadedBytes: number;
+  // 文件总字节数
+  totalBytes?: number;
+  // 当前进度百分比 (0-100)
+  percent?: number;
+}
+

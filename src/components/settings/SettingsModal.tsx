@@ -3,12 +3,15 @@
 // 详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
 import { useState, useEffect } from 'react';
-import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, SlidersHorizontal, LayoutTemplate } from 'lucide-react';
+import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, SlidersHorizontal, LayoutTemplate, RefreshCw, ExternalLink } from 'lucide-react';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { THEMES } from '../../core/theme/themes';
 import { contentWidthToPercent, CONTENT_WIDTH_PERCENT_MAP } from '../../core/theme/applyTheme';
 import { FontSelect } from './FontSelect';
-import type { ThemeId, ThemeMode, ContentWidth } from '../../core/ipc/types';
+import type { ThemeId, ThemeMode, ContentWidth, UpdateCheckResult } from '../../core/ipc/types';
+import * as ipc from '../../core/ipc/commands';
+import { translateUpdateCheckError } from '../../core/updates';
+import { UpdateModal } from '../UpdateModal';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -20,6 +23,36 @@ type TabType = 'appearance' | 'typography' | 'editor' | 'shortcuts' | 'about';
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('appearance');
   const { settings, resolvedTheme, setThemeMode, setTypography, setEditor } = useSettingsStore();
+
+  // 更新检测状态
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateModalOpen, setUpdateModalOpen] = useState(false);
+  const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
+  const [checkError, setCheckError] = useState<string | null>(null);
+
+  // 执行检查更新逻辑
+  const handleCheckForUpdates = async () => {
+    try {
+      setCheckingUpdate(true);
+      setCheckError(null);
+      setUpdateResult(null);
+      setUpdateModalOpen(true);
+      const res = await ipc.checkForUpdates();
+      setUpdateResult(res);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setCheckError(translateUpdateCheckError(msg));
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
+  // 在系统默认浏览器打开 GitHub 仓库
+  const handleOpenGithub = () => {
+    ipc.openExternalUrl('https://github.com/CrazyFigure/NoteBoard').catch((err) => {
+      console.error('无法打开 GitHub 链接:', err);
+    });
+  };
 
   // 监听 Esc 键快速关闭设置模态弹窗
   useEffect(() => {
@@ -853,23 +886,81 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
             {/* 4. 关于 */}
             {activeTab === 'about' && (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 12, padding: '16px 0' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 14, padding: '16px 0' }}>
                 <img src="/logo.ico" alt="NoteBoard Logo" width={56} height={56} />
                 <div>
                   <h2 style={{ fontSize: 18, fontWeight: 600, margin: '4px 0' }}>NoteBoard</h2>
                   <span style={{ fontSize: 12, color: 'var(--editor-text-muted)' }}>Windows 优雅桌面笔记 + 自由画板</span>
                 </div>
-                <p style={{ fontSize: 12, color: 'var(--editor-text-secondary)', maxWidth: 360, lineHeight: 1.6, margin: '8px 0' }}>
+                <p style={{ fontSize: 12, color: 'var(--editor-text-secondary)', maxWidth: 420, lineHeight: 1.6, margin: '4px 0' }}>
                   参考 note-gen 编辑交互与 TMD_Type-Markdown 美学配色，采用 Rust Tauri v2 原生高性能底座与 TipTap / CodeMirror 6 / Excalidraw 双核驱动。
                 </p>
-                <div style={{ fontSize: 11, color: 'var(--editor-text-muted)', marginTop: 8 }}>
+                <div style={{ fontSize: 12, color: 'var(--editor-text-muted)' }}>
                   版本 v0.1.0 · GPL-3.0 License
+                </div>
+
+                {/* 快捷操作：检测更新与 GitHub 仓库 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
+                  <button
+                    type="button"
+                    disabled={checkingUpdate}
+                    onClick={handleCheckForUpdates}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '7px 16px',
+                      fontSize: 12,
+                      fontWeight: 500,
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--editor-border)',
+                      background: 'var(--editor-surface)',
+                      color: 'var(--accent-strong)',
+                      cursor: checkingUpdate ? 'not-allowed' : 'pointer',
+                      transition: 'background var(--transition-fast)',
+                    }}
+                  >
+                    <RefreshCw size={14} className={checkingUpdate ? 'spin' : ''} style={checkingUpdate ? { animation: 'spin 1s linear infinite' } : undefined} />
+                    <span>{checkingUpdate ? '正在检查...' : '检测更新'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleOpenGithub}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '7px 16px',
+                      fontSize: 12,
+                      fontWeight: 500,
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--editor-border)',
+                      background: 'var(--editor-surface)',
+                      color: 'var(--editor-text)',
+                      cursor: 'pointer',
+                      transition: 'background var(--transition-fast)',
+                    }}
+                  >
+                    <ExternalLink size={14} />
+                    <span>GitHub 仓库</span>
+                  </button>
                 </div>
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* 更新弹窗 */}
+      <UpdateModal
+        isOpen={updateModalOpen}
+        onClose={() => setUpdateModalOpen(false)}
+        result={updateResult}
+        checkError={checkError}
+        checking={checkingUpdate}
+        onRecheck={handleCheckForUpdates}
+      />
     </div>
   );
 }
