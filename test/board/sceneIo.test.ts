@@ -14,10 +14,13 @@ import {
 
 describe('sceneIo - 画板场景数据处理', () => {
   describe('cleanAppState', () => {
-    it('应剔除 collaborators 以及选区等运行时临时字段', () => {
+    it('应剔除 collaborators、snapLines 以及选区等运行时临时字段，并保留 objectsSnapModeEnabled', () => {
       const dirtyAppState = {
         viewBackgroundColor: '#1e1e1e',
         gridSize: 20,
+        objectsSnapModeEnabled: false,
+        snapLines: [{ type: 'points', points: [[0, 0], [10, 10]] }],
+        originSnapOffset: { x: 5, y: 5 },
         collaborators: {}, // 模拟 JSON 反序列化产生的普通空对象
         selectedElementIds: { el1: true },
         previousSelectedElementIds: { el0: true },
@@ -35,28 +38,34 @@ describe('sceneIo - 画板场景数据处理', () => {
 
       const cleaned = cleanAppState(dirtyAppState);
 
-      // 验证 collaborators 已被彻底移除
+      // 验证 collaborators 与 snapLines 已被彻底移除
       expect('collaborators' in cleaned).toBe(false);
+      expect('snapLines' in cleaned).toBe(false);
+      expect('originSnapOffset' in cleaned).toBe(false);
       expect('selectedElementIds' in cleaned).toBe(false);
       expect('editingGroupId' in cleaned).toBe(false);
 
-      // 验证必要设置依然保留
+      // 验证必要设置与吸附设置依然保留
       expect(cleaned.viewBackgroundColor).toBe('#1e1e1e');
       expect(cleaned.gridSize).toBe(20);
+      expect(cleaned.objectsSnapModeEnabled).toBe(false);
       expect(cleaned.zoom).toEqual({ value: 1.5 });
     });
 
-    it('当传入空值或非对象时应返回默认 AppState', () => {
+    it('当传入空值或未配置吸附时应返回默认启用吸附的 AppState', () => {
       const cleanedNull = cleanAppState(null);
-      expect(cleanedNull).toEqual({ viewBackgroundColor: '#ffffff', gridSize: null });
+      expect(cleanedNull).toEqual({ viewBackgroundColor: '#ffffff', gridSize: null, objectsSnapModeEnabled: true });
 
       const cleanedUndefined = cleanAppState(undefined);
-      expect(cleanedUndefined).toEqual({ viewBackgroundColor: '#ffffff', gridSize: null });
+      expect(cleanedUndefined).toEqual({ viewBackgroundColor: '#ffffff', gridSize: null, objectsSnapModeEnabled: true });
+
+      const cleanedWithoutSnap = cleanAppState({ viewBackgroundColor: '#000000', gridSize: 10 });
+      expect(cleanedWithoutSnap.objectsSnapModeEnabled).toBe(true);
     });
   });
 
   describe('parseScene', () => {
-    it('解析包含 collaborators 普通对象的 JSON 时应自动完成清理', () => {
+    it('解析包含 collaborators 普通对象的 JSON 时应自动完成清理并默认启用吸附', () => {
       const rawJson = JSON.stringify({
         type: 'excalidraw',
         version: 2,
@@ -75,6 +84,19 @@ describe('sceneIo - 画板场景数据处理', () => {
       expect(parsed.type).toBe('excalidraw');
       expect(parsed.version).toBe(2);
       expect('collaborators' in parsed.appState).toBe(false);
+      expect(parsed.appState.objectsSnapModeEnabled).toBe(true);
+    });
+
+    it('解析已显式禁用吸附的 JSON 时应正确保留各个文件的设置', () => {
+      const rawJson = JSON.stringify({
+        elements: [{ id: '1', type: 'rectangle', x: 0, y: 0, width: 100, height: 100 }],
+        appState: {
+          objectsSnapModeEnabled: false,
+        },
+      });
+
+      const parsed = parseScene(rawJson);
+      expect(parsed.appState.objectsSnapModeEnabled).toBe(false);
     });
 
     it('解析缺少必要字段的 JSON 时应补全默认结构', () => {
@@ -88,6 +110,7 @@ describe('sceneIo - 画板场景数据处理', () => {
       expect(parsed.version).toBe(2);
       expect(parsed.source).toBe('noteboard');
       expect(parsed.appState).toBeDefined();
+      expect(parsed.appState.objectsSnapModeEnabled).toBe(true);
       expect(parsed.files).toEqual({});
     });
 
@@ -101,7 +124,7 @@ describe('sceneIo - 画板场景数据处理', () => {
   });
 
   describe('serializeScene', () => {
-    it('序列化时应自动清洗 appState 中的脏字段', () => {
+    it('序列化时应自动清洗 appState 中的脏字段并保留吸附设置', () => {
       const scene: ExcalidrawScene = {
         type: 'excalidraw',
         version: 2,
@@ -110,6 +133,8 @@ describe('sceneIo - 画板场景数据处理', () => {
         appState: {
           viewBackgroundColor: '#ffffff',
           gridSize: null,
+          objectsSnapModeEnabled: false,
+          snapLines: [{ type: 'points', points: [] }],
           collaborators: new Map(), // 运行时 Map
           selectedElementIds: { 'node-1': true },
         } as unknown as ExcalidrawScene['appState'],
@@ -120,18 +145,22 @@ describe('sceneIo - 画板场景数据处理', () => {
       const deserialized = JSON.parse(jsonStr);
 
       expect('collaborators' in deserialized.appState).toBe(false);
+      expect('snapLines' in deserialized.appState).toBe(false);
       expect('selectedElementIds' in deserialized.appState).toBe(false);
       expect(deserialized.appState.viewBackgroundColor).toBe('#ffffff');
+      expect(deserialized.appState.objectsSnapModeEnabled).toBe(false);
     });
   });
 
   describe('createEmptyScene & getElementCount', () => {
-    it('按亮色/暗色模式创建空场景', () => {
+    it('按亮色/暗色模式创建空场景并默认启用自动吸附', () => {
       const light = createEmptyScene(false);
       expect(light.appState.viewBackgroundColor).toBe('#ffffff');
+      expect(light.appState.objectsSnapModeEnabled).toBe(true);
 
       const dark = createEmptyScene(true);
       expect(dark.appState.viewBackgroundColor).toBe('#1e1e1e');
+      expect(dark.appState.objectsSnapModeEnabled).toBe(true);
     });
 
     it('正确判断版本支持与统计未删除图元数', () => {

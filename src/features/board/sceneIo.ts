@@ -57,6 +57,8 @@ export interface ExcalidrawElement {
 export interface ExcalidrawAppState {
   viewBackgroundColor: string;
   gridSize: number | null;
+  /** 是否启用靠近自动吸附对齐（智能对齐辅助线） */
+  objectsSnapModeEnabled?: boolean;
   currentItemStrokeColor?: string;
   currentItemBackgroundColor?: string;
   [key: string]: unknown;
@@ -76,11 +78,11 @@ export const SUPPORTED_VERSION = 2;
 /**
  * 清洗并规范化 Excalidraw AppState
  * 彻底过滤 collaborators（Map 经 JSON 序列化后会退化为 plain object，传给 Excalidraw 必导致 collaborators.forEach 报错）
- * 以及选区、拖拽、菜单等运行时临时交互状态，仅保留必要的外观和工具偏好设置
+ * 以及选区、拖拽、菜单、实时辅助线等运行时临时交互状态，仅保留必要的外观和工具偏好设置
  */
 export function cleanAppState(appState?: Partial<ExcalidrawAppState> | null): ExcalidrawAppState {
   if (!appState || typeof appState !== 'object') {
-    return { viewBackgroundColor: '#ffffff', gridSize: null };
+    return { viewBackgroundColor: '#ffffff', gridSize: null, objectsSnapModeEnabled: true };
   }
 
   const {
@@ -97,12 +99,19 @@ export function cleanAppState(appState?: Partial<ExcalidrawAppState> | null): Ex
     openMenu: _openMenu,
     openSidebar: _openSidebar,
     activeEmbeddable: _activeEmbeddable,
+    // 剔除对齐辅助线与偏移量等临时运行态数据，避免持久化至文件
+    snapLines: _snapLines,
+    originSnapOffset: _originSnapOffset,
+    searchMatches: _searchMatches,
+    toast: _toast,
     ...rest
   } = appState as Record<string, unknown>;
 
   return {
     viewBackgroundColor: (rest.viewBackgroundColor as string) ?? '#ffffff',
     gridSize: (rest.gridSize as number | null) ?? null,
+    // 默认启用自动吸附对齐，若显式配置则遵从具体文件的设置
+    objectsSnapModeEnabled: typeof rest.objectsSnapModeEnabled === 'boolean' ? rest.objectsSnapModeEnabled : true,
     ...rest,
   } as ExcalidrawAppState;
 }
@@ -123,7 +132,7 @@ export function parseScene(json: string): ExcalidrawScene {
   if (!data.version) data.version = 2;
   if (!data.source) data.source = 'noteboard';
   if (!data.appState) {
-    data.appState = { viewBackgroundColor: '#ffffff', gridSize: null };
+    data.appState = { viewBackgroundColor: '#ffffff', gridSize: null, objectsSnapModeEnabled: true };
   } else {
     // 防御性清洗反序列化后的 appState，剔除导致崩溃的非标准或普通对象属性
     data.appState = cleanAppState(data.appState);
@@ -152,7 +161,7 @@ export function serializeScene(scene: ExcalidrawScene): string {
 
 /**
  * 创建新的空场景
- * viewBackgroundColor 按当前主题写初始值
+ * viewBackgroundColor 按当前主题写初始值，默认开启自动吸附对齐
  */
 export function createEmptyScene(themeIsDark: boolean): ExcalidrawScene {
   return {
@@ -163,6 +172,8 @@ export function createEmptyScene(themeIsDark: boolean): ExcalidrawScene {
     appState: {
       viewBackgroundColor: themeIsDark ? '#1e1e1e' : '#ffffff',
       gridSize: null,
+      // 默认开启智能吸附对齐
+      objectsSnapModeEnabled: true,
       currentItemStrokeColor: themeIsDark ? '#e6e6e6' : '#1e1e1e',
       currentItemBackgroundColor: 'transparent',
     },
