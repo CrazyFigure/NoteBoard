@@ -169,6 +169,10 @@ export interface EditorSettings {
 }
 
 export interface FileSettings {
+  // 自动保存设置：Markdown / 画板 / 其他文本（默认均关闭，即手动保存）
+  autoSaveMarkdown: boolean;
+  autoSaveBoard: boolean;
+  autoSaveOther: boolean;
   forceManualSave: boolean;
   showHiddenFiles: boolean;
   restoreSession: boolean;

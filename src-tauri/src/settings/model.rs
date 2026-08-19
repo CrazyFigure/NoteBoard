@@ -196,6 +196,13 @@ impl Default for EditorSettings {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct FileSettings {
+    // 自动保存设置：Markdown / 画板 / 其他文本（默认均关闭，即手动保存）
+    #[serde(default)]
+    pub auto_save_markdown: bool,
+    #[serde(default)]
+    pub auto_save_board: bool,
+    #[serde(default)]
+    pub auto_save_other: bool,
     #[serde(default)]
     pub force_manual_save: bool,
     #[serde(default)]
@@ -211,6 +218,9 @@ pub struct FileSettings {
 impl Default for FileSettings {
     fn default() -> Self {
         Self {
+            auto_save_markdown: false,
+            auto_save_board: false,
+            auto_save_other: false,
             force_manual_save: false,
             show_hidden_files: false,
             restore_session: true,

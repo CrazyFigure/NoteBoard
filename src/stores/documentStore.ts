@@ -5,6 +5,7 @@
 
 import { create } from 'zustand';
 import type { DocumentPayload } from '../core/ipc/types';
+import { useSettingsStore } from './settingsStore';
 
 export interface Document {
   /** 规范化路径 key */
@@ -55,8 +56,12 @@ interface DocumentStore {
   setContent: (key: string, content: string) => void;
   /** 标记为脏/干净 */
   setDirty: (key: string, isDirty: boolean) => void;
+  /** 设置基准内容并对齐脏态 */
+  setBaselineContent: (key: string, baselineContent: string) => void;
   /** 更新基线（保存后调用） */
   updateBaseline: (key: string, mtime: number, size: number) => void;
+  /** 同步刷新所有文档的保存策略（设置改变时调用） */
+  syncSavePolicies: () => void;
   /** 设置外部变更状态 */
   setExternalStatus: (key: string, status: Document['externalStatus']) => void;
   /** 设置大文档判定 */
@@ -70,6 +75,24 @@ interface DocumentStore {
 function normalizeEol(text: string | null | undefined): string {
   if (text == null) return '';
   return text.replace(/\r\n/g, '\n');
+}
+
+/**
+ * 根据文件设置判定指定文档类型的保存策略（auto / manual）
+ */
+export function resolveSavePolicy(kind: DocumentPayload['kind']): 'auto' | 'manual' {
+  const fileSettings = useSettingsStore.getState().settings.file;
+  if (!fileSettings) return 'manual';
+  if (kind === 'markdown') {
+    return fileSettings.autoSaveMarkdown ? 'auto' : 'manual';
+  }
+  if (kind === 'board') {
+    return fileSettings.autoSaveBoard ? 'auto' : 'manual';
+  }
+  if (kind === 'code') {
+    return fileSettings.autoSaveOther ? 'auto' : 'manual';
+  }
+  return 'manual';
 }
 
 export const useDocumentStore = create<DocumentStore>((set, get) => ({
@@ -93,8 +116,7 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
       mtime: payload.mtime,
       readonly: payload.readonly,
       isDirty: existing?.isDirty ?? false,
-      savePolicy:
-        payload.kind === 'markdown' || payload.kind === 'board' ? 'auto' : 'manual',
+      savePolicy: existing?.savePolicy ?? resolveSavePolicy(payload.kind),
       baselineContent: existing?.baselineContent ?? payload.content,
       externalStatus: 'clean',
       largeDocVerdict: existing?.largeDocVerdict ?? null,
@@ -131,6 +153,17 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     });
   },
 
+  setBaselineContent: (key, baselineContent) => {
+    set((state) => {
+      const doc = state.documents.get(key);
+      if (!doc) return {};
+      const newMap = new Map(state.documents);
+      const isDirty = normalizeEol(doc.content) !== normalizeEol(baselineContent);
+      newMap.set(key, { ...doc, baselineContent, isDirty });
+      return { documents: newMap };
+    });
+  },
+
   updateBaseline: (key, mtime, size) => {
     set((state) => {
       const doc = state.documents.get(key);
@@ -144,6 +177,21 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
         isDirty: false,
       });
       return { documents: newMap };
+    });
+  },
+
+  syncSavePolicies: () => {
+    set((state) => {
+      let changed = false;
+      const newMap = new Map(state.documents);
+      newMap.forEach((doc, key) => {
+        const expected = resolveSavePolicy(doc.kind);
+        if (doc.savePolicy !== expected) {
+          newMap.set(key, { ...doc, savePolicy: expected });
+          changed = true;
+        }
+      });
+      return changed ? { documents: newMap } : {};
     });
   },
 

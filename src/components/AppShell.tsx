@@ -26,7 +26,7 @@ import { TipTapEditor } from '../features/editor-md/TipTapEditor';
 import { BoardEditor } from '../features/board/BoardEditor';
 import { ImageViewer } from '../features/image-viewer/ImageViewer';
 import { OutlinePanel } from '../features/outline/OutlinePanel';
-import { UnsavedGuardDialog, useUnsavedGuard } from '../features/editor-code/UnsavedGuardDialog';
+import { UnsavedGuardDialog } from '../features/editor-code/UnsavedGuardDialog';
 import { Explorer } from '../features/explorer/Explorer';
 import { SearchReplaceBar } from '../features/search/SearchReplaceBar';
 import { useSearchStore } from '../stores/searchStore';
@@ -95,29 +95,20 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
   const explorerWidthRef = useRef<number>(explorerWidth);
   const outlineWidthRef = useRef<number>(outlineWidth);
 
-  // 关闭拦截
-  const {
-    dirtyPendingTabs,
-    requestClose,
-    cancelClose,
-    confirmSaveAndClose,
-    discardAndClose,
-  } = useUnsavedGuard();
-
-  // 窗口级关闭：当 pendingCloseKeys 由 windowManager 设置时，UnsavedGuardDialog 也响应
+  // 统一关闭拦截状态与操作
   const pendingCloseKeys = useWindowStore((s) => s.pendingCloseKeys);
+  const isWindowClosing = useWindowStore((s) => s.isWindowClosing);
   const confirmCloseBatch = useWindowStore((s) => s.confirmCloseBatch);
   const clearPendingClose = useWindowStore((s) => s.clearPendingClose);
 
-  // 窗口级关闭的拦截对话框状态计算（使用 useMemo 避免 Zustand selector 每次返回新数组引发无限重渲染崩溃）
-  const isWindowClose = pendingCloseKeys.length > 0;
-  const windowDirtyTabs = useMemo(() => {
-    if (pendingCloseKeys.length === 0) return dirtyPendingTabs;
+  // 待关闭列表中处于脏态的标签页列表
+  const dirtyPendingTabs = useMemo(() => {
+    if (pendingCloseKeys.length === 0) return [];
     return tabs.filter((t) => pendingCloseKeys.includes(t.key) && t.isDirty);
-  }, [pendingCloseKeys, tabs, dirtyPendingTabs]);
+  }, [pendingCloseKeys, tabs]);
 
-  // 窗口级关闭的保存+关闭
-  const handleWindowSaveAndClose = async (keys: string[]) => {
+  // 保存并关闭
+  const handleSaveAndClose = async (keys: string[]) => {
     // 逐个保存待关闭的脏文档
     for (const key of keys) {
       const ok = await saveDocument(key);
@@ -126,20 +117,26 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
         return;
       }
     }
-    confirmCloseBatch(keys);
-    // 处理完脏文档保存后，直接执行窗口关闭流程
-    await performWindowClose(getCurrentWindow().label);
+    const targetKeys = [...useWindowStore.getState().pendingCloseKeys];
+    const willCloseWindow = useWindowStore.getState().isWindowClosing;
+    confirmCloseBatch(targetKeys);
+    if (willCloseWindow) {
+      await performWindowClose(getCurrentWindow().label);
+    }
   };
 
-  // 窗口级关闭的丢弃+关闭
-  const handleWindowDiscardAndClose = async (keys: string[]) => {
-    confirmCloseBatch(keys);
-    // 丢弃修改后，直接执行窗口关闭流程
-    await performWindowClose(getCurrentWindow().label);
+  // 丢弃修改并关闭
+  const handleDiscardAndClose = async () => {
+    const targetKeys = [...useWindowStore.getState().pendingCloseKeys];
+    const willCloseWindow = useWindowStore.getState().isWindowClosing;
+    confirmCloseBatch(targetKeys);
+    if (willCloseWindow) {
+      await performWindowClose(getCurrentWindow().label);
+    }
   };
 
-  // 窗口级关闭的取消
-  const handleWindowCancelClose = () => {
+  // 取消关闭
+  const handleCancelClose = () => {
     clearPendingClose();
   };
 
@@ -149,11 +146,12 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
 
   // Ctrl+S 快捷键注册
   useEffect(() => {
-    const unregSave = registerShortcut({
+    const unregCtrlS = registerShortcut({
       key: 'Ctrl+S',
       action: () => {
-        if (activeKey) {
-          saveDocument(activeKey);
+        const cur = useWindowStore.getState().activeKey;
+        if (cur) {
+          saveDocument(cur);
         }
       },
       scope: 'global',
@@ -220,7 +218,7 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
       action: () => {
         const curKey = useWindowStore.getState().activeKey;
         if (curKey) {
-          requestClose([curKey]);
+          useWindowStore.getState().requestCloseTab(curKey);
         }
       },
       scope: 'global',
@@ -312,7 +310,7 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
     });
 
     return () => {
-      unregSave();
+      unregCtrlS();
       unregCtrlF();
       unregCtrlH();
       unregCtrlW();
@@ -323,7 +321,7 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
       unregValidateShiftAltV();
       unregValidateCtrlAltV();
     };
-  }, [activeKey, requestClose]);
+  }, [activeKey]);
 
   // 组件卸载时将 ref 中的宽度写回 store（持久化）
   useEffect(() => {
@@ -538,11 +536,11 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
 
       {/* 关闭拦截对话框 */}
       <UnsavedGuardDialog
-        dirtyTabs={isWindowClose ? windowDirtyTabs : dirtyPendingTabs}
-        visible={isWindowClose ? windowDirtyTabs.length > 0 : dirtyPendingTabs.length > 0}
-        onSave={isWindowClose ? handleWindowSaveAndClose : confirmSaveAndClose}
-        onDiscard={isWindowClose ? handleWindowDiscardAndClose : discardAndClose}
-        onCancel={isWindowClose ? handleWindowCancelClose : cancelClose}
+        dirtyTabs={dirtyPendingTabs}
+        visible={dirtyPendingTabs.length > 0}
+        onSave={handleSaveAndClose}
+        onDiscard={handleDiscardAndClose}
+        onCancel={handleCancelClose}
       />
 
       {/* 全局 Toast 提示 */}

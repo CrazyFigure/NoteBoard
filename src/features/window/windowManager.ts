@@ -127,12 +127,8 @@ async function handleCloseRequested(): Promise<void> {
 
   if (dirtyTabs.length > 0) {
     // 触发拦截对话框
-    // AppShell 中的 useUnsavedGuard 会处理 UI
-    // 这里只负责触发：设置一个 pendingCloseKeys 状态
-    // 实际上 AppShell 已经在 TabBar 的 onClose 中处理了拦截
-    // 窗口级关闭时，所有脏 tab 都需要拦截
-    // 通过 windowStore 设置 pendingCloseKeys 让 UnsavedGuardDialog 响应
-    tabStore.requestCloseBatch(dirtyTabs.map((t) => t.key));
+    // 通过 windowStore 设置 pendingCloseKeys 与 isWindowClosing 状态让 UnsavedGuardDialog 响应
+    tabStore.requestWindowClose(dirtyTabs.map((t) => t.key));
     return; // 不继续关闭，等待用户选择
   }
 

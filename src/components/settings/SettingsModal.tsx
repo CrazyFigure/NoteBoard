@@ -3,7 +3,7 @@
 // 详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
 import { useState, useEffect } from 'react';
-import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, SlidersHorizontal, LayoutTemplate, RefreshCw, ExternalLink } from 'lucide-react';
+import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, SlidersHorizontal, LayoutTemplate, RefreshCw, ExternalLink, Save } from 'lucide-react';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { THEMES } from '../../core/theme/themes';
 import { contentWidthToPercent, CONTENT_WIDTH_PERCENT_MAP } from '../../core/theme/applyTheme';
@@ -18,11 +18,11 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type TabType = 'appearance' | 'typography' | 'editor' | 'shortcuts' | 'about';
+type TabType = 'appearance' | 'typography' | 'editor' | 'file' | 'shortcuts' | 'about';
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('appearance');
-  const { settings, resolvedTheme, setThemeMode, setTypography, setEditor } = useSettingsStore();
+  const { settings, resolvedTheme, setThemeMode, setTypography, setEditor, setFile } = useSettingsStore();
 
   // 更新检测状态
   const [checkingUpdate, setCheckingUpdate] = useState(false);
@@ -191,6 +191,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               icon={<FileCode size={15} />}
               label="编辑器"
               onClick={() => setActiveTab('editor')}
+            />
+            <NavBtn
+              active={activeTab === 'file'}
+              icon={<Folder size={15} />}
+              label="文件与保存"
+              onClick={() => setActiveTab('file')}
             />
             <NavBtn
               active={activeTab === 'shortcuts'}
@@ -916,7 +922,133 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </div>
             )}
 
-            {/* 4. 快捷键指南 */}
+            {/* 4. 文件与保存设置 */}
+            {activeTab === 'file' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div>
+                  <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>文件与保存设置</h3>
+                  <p style={{ fontSize: 12, color: 'var(--editor-text-muted)', margin: 0 }}>
+                    独立配置 Markdown、自由画板与代码文本的自动保存策略，以及工作区文件管理选项。
+                  </p>
+                </div>
+
+                {/* ── 4.1 自动保存设置 ── */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 14px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
+                      <Save size={15} color="var(--accent-strong)" />
+                      <span>自动保存设置 (分类型独立配置)</span>
+                    </div>
+                    <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>默认关闭：使用 Ctrl+S 手动保存，关闭时自动拦截确认</span>
+                  </div>
+
+                  {/* Markdown 笔记自动保存 */}
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer' }}>
+                    <div>
+                      <div>Markdown 笔记自动保存</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>停止输入 800ms 后自动写入磁盘；未开启时需手动保存</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.file.autoSaveMarkdown ?? false}
+                      onChange={(e) => setFile({ autoSaveMarkdown: e.target.checked })}
+                    />
+                  </label>
+
+                  {/* 自由画板自动保存 */}
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer' }}>
+                    <div>
+                      <div>自由画板 (.board) 自动保存</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>绘制操作停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.file.autoSaveBoard ?? false}
+                      onChange={(e) => setFile({ autoSaveBoard: e.target.checked })}
+                    />
+                  </label>
+
+                  {/* 代码与文本自动保存 */}
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer' }}>
+                    <div>
+                      <div>代码与文本 (.sql / .json / .txt 等) 自动保存</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>编辑停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.file.autoSaveOther ?? false}
+                      onChange={(e) => setFile({ autoSaveOther: e.target.checked })}
+                    />
+                  </label>
+                </div>
+
+                {/* ── 4.2 文件与工作区管理 ── */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 14px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
+                    <Folder size={15} color="var(--accent-strong)" />
+                    <span>文件树与会话选项</span>
+                  </div>
+
+                  {/* 显示隐藏文件 */}
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer' }}>
+                    <div>
+                      <div>显示隐藏文件 / 文件夹</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>在左侧文件树中显示以点（.）开头的隐藏文件或系统文件</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.file.showHiddenFiles ?? false}
+                      onChange={(e) => setFile({ showHiddenFiles: e.target.checked })}
+                    />
+                  </label>
+
+                  {/* 恢复上次会话 */}
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer' }}>
+                    <div>
+                      <div>启动时恢复上次会话</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>重新打开 NoteBoard 时自动恢复上次打开的所有标签页和工作区</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.file.restoreSession ?? true}
+                      onChange={(e) => setFile({ restoreSession: e.target.checked })}
+                    />
+                  </label>
+
+                  {/* 图片资源目录名 */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13 }}>
+                    <div>
+                      <div>图片资源目录名</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>插入/粘贴图片时自动保存到的本地文件夹名称</div>
+                    </div>
+                    <input
+                      type="text"
+                      value={settings.file.imageDirName ?? 'assets'}
+                      onChange={(e) => setFile({ imageDirName: e.target.value })}
+                      style={{ ...inputStyle, width: 120, textAlign: 'center' }}
+                    />
+                  </div>
+
+                  {/* 大文件确认阈值 */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13 }}>
+                    <div>
+                      <div>大文件打开确认阈值 (MB)</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>超过此大小的文件在打开前将弹出性能提示</div>
+                    </div>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={settings.file.largeFileConfirmMb ?? 5}
+                      onChange={(e) => setFile({ largeFileConfirmMb: parseInt(e.target.value, 10) || 5 })}
+                      style={{ ...inputStyle, width: 60, textAlign: 'center' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 5. 快捷键指南 */}
             {activeTab === 'shortcuts' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div>
