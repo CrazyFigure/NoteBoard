@@ -108,6 +108,8 @@ const DEFAULT_TYPOGRAPHY: TypographySettings = {
   explorerFontFamily: '',
   explorerFontSize: 13,
   explorerLineHeight: 24,
+  uiFontFamily: '',
+  uiFontSize: 13,
 };
 
 /**
@@ -149,6 +151,17 @@ export function applyTypography(t: Partial<TypographySettings>): void {
   }
   root.style.setProperty('--explorer-font-size', `${merged.explorerFontSize ?? 13}px`);
   root.style.setProperty('--explorer-item-height', `${merged.explorerLineHeight ?? 24}px`);
+
+  // 4. 软件全局界面 UI 排版（包括设置弹窗、提示、标题栏与状态栏等）
+  if (merged.uiFontFamily) {
+    root.style.setProperty('--ui-font-family', merged.uiFontFamily);
+  } else {
+    root.style.setProperty(
+      '--ui-font-family',
+      "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Noto Sans SC', Roboto, sans-serif",
+    );
+  }
+  root.style.setProperty('--ui-font-size', `${merged.uiFontSize ?? 13}px`);
 
   // 缓存到 localStorage，供 main.tsx 防首屏闪烁读取
   try {

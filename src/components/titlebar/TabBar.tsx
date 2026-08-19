@@ -43,6 +43,7 @@ import { extFromPath } from '../../core/docKind';
 import { moveToNewWindow } from '../../features/window/windowManager';
 import {
   newMarkdown,
+  newText,
   newBoard,
   openFileDialog,
   openFolderDialog,
@@ -603,6 +604,7 @@ export function TabBar() {
           }}
           onClick={(e) => e.stopPropagation()}
         >
+          {/* 新建 Markdown 笔记 */}
           <button
             type="button"
             style={getMenuItemStyle(false)}
@@ -616,6 +618,21 @@ export function TabBar() {
             <FileText size={13} color="var(--editor-accent)" />
             <span>新建 Markdown 笔记</span>
           </button>
+          {/* 新建文本文档 (.txt) */}
+          <button
+            type="button"
+            style={getMenuItemStyle(false)}
+            onClick={() => {
+              setNewMenuPos(null);
+              newText();
+            }}
+            onMouseEnter={handleMenuItemMouseEnter}
+            onMouseLeave={handleMenuItemMouseLeave}
+          >
+            <FileText size={13} color="#64748b" />
+            <span>新建文本文档 (.txt)</span>
+          </button>
+          {/* 新建自由画板 */}
           <button
             type="button"
             style={getMenuItemStyle(false)}

@@ -72,8 +72,45 @@ export function TypographyPanel() {
         </div>
       </div>
 
-      {/* ── 2. Markdown 正文排版 ── */}
-      <div style={sectionTitleStyle}>2. Markdown 正文排版</div>
+      {/* ── 2. 软件界面 UI 排版 ── */}
+      <div style={sectionTitleStyle}>2. 软件界面 UI 排版 (全局界面 / 弹窗 / 提示 / 菜单)</div>
+
+      {/* 界面 UI 字体 */}
+      <div style={rowStyle}>
+        <span style={labelStyle}>界面 UI 字体</span>
+        <input
+          type="text"
+          value={settings.typography.uiFontFamily ?? ''}
+          onChange={(e) => {
+            useSettingsStore.getState().setTypography({ uiFontFamily: e.target.value });
+            applyTypography({ ...settings.typography, uiFontFamily: e.target.value });
+          }}
+          placeholder="留空使用系统默认界面字体"
+          style={inputStyle}
+        />
+      </div>
+
+      {/* 界面 UI 字号 */}
+      <div style={rowStyle}>
+        <span style={labelStyle}>界面 UI 基础字号</span>
+        <input
+          type="range"
+          min="12"
+          max="18"
+          step="1"
+          value={settings.typography.uiFontSize ?? 13}
+          onChange={(e) => {
+            const v = parseInt(e.target.value, 10) || 13;
+            useSettingsStore.getState().setTypography({ uiFontSize: v });
+            applyTypography({ ...settings.typography, uiFontSize: v });
+          }}
+          style={{ flex: 1, maxWidth: 200 }}
+        />
+        <span style={{ width: 30 }}>{settings.typography.uiFontSize ?? 13}px</span>
+      </div>
+
+      {/* ── 3. Markdown 正文排版 ── */}
+      <div style={sectionTitleStyle}>3. Markdown 正文排版</div>
 
       {/* 正文字体族 */}
       <div style={rowStyle}>
@@ -127,8 +164,8 @@ export function TypographyPanel() {
         <span style={{ width: 30 }}>{settings.typography.contentLineHeight.toFixed(1)}</span>
       </div>
 
-      {/* ── 3. 代码与纯文本排版 ── */}
-      <div style={sectionTitleStyle}>3. 代码与纯文本排版 (.sql / .txt / .json 等)</div>
+      {/* ── 4. 代码与纯文本排版 ── */}
+      <div style={sectionTitleStyle}>4. 代码与纯文本排版 (.sql / .txt / .json 等)</div>
 
       {/* 等宽字体族 */}
       <div style={rowStyle}>
@@ -181,8 +218,8 @@ export function TypographyPanel() {
         <span style={{ width: 30 }}>{(settings.typography.monoLineHeight ?? 1.5).toFixed(1)}</span>
       </div>
 
-      {/* ── 4. 文件树排版 ── */}
-      <div style={sectionTitleStyle}>4. 文件树排版 (左侧资源管理器)</div>
+      {/* ── 5. 文件树排版 ── */}
+      <div style={sectionTitleStyle}>5. 文件树排版 (左侧资源管理器)</div>
 
       {/* 文件树字体族 */}
       <div style={rowStyle}>
@@ -249,6 +286,26 @@ export function TypographyPanel() {
             gap: 12,
           }}
         >
+          {/* 界面 UI 预览 */}
+          <div
+            style={{
+              fontFamily: settings.typography.uiFontFamily || 'var(--ui-font-family)',
+              fontSize: settings.typography.uiFontSize ?? 13,
+              padding: '8px 12px',
+              background: 'var(--editor-bg)',
+              border: '1px solid var(--editor-border)',
+              borderRadius: 4,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <span style={{ fontWeight: 600 }}>软件界面 UI 预览 · 提示文本</span>
+            <span style={{ padding: '2px 6px', background: 'var(--editor-selection)', color: 'var(--accent-strong)', borderRadius: 3, fontSize: '0.9em' }}>
+              按钮示例
+            </span>
+          </div>
+
           {/* 正文预览 */}
           <div
             style={{

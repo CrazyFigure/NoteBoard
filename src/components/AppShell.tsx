@@ -46,6 +46,7 @@ import {
   openFileDialog,
   openFolderDialog,
   newMarkdown,
+  newText,
   newBoard,
 } from '../features/welcome/welcomeActions';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -441,6 +442,7 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                     onOpenFile={openFileDialog}
                     onOpenFolder={openFolderDialog}
                     onNewMarkdown={newMarkdown}
+                    onNewText={newText}
                     onNewBoard={newBoard}
                   />
                 ) : activeTab ? (

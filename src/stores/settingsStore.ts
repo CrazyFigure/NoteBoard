@@ -43,6 +43,8 @@ const DEFAULT_SETTINGS: Settings = {
     explorerFontFamily: '',
     explorerFontSize: 13,
     explorerLineHeight: 24,
+    uiFontFamily: '',
+    uiFontSize: 13,
   },
   editor: {
     defaultViewMode: 'visual',
