@@ -167,4 +167,118 @@ describe('useHeadings 逻辑', () => {
       expect(filterHeadings('USAGE')[0].text).toBe('Usage');
     });
   });
+
+  describe('大纲树形折叠与子节点算法', () => {
+    // 计算子节点映射
+    function computeHasChildrenMap(items: { id: string; level: number }[]): Map<string, boolean> {
+      const map = new Map<string, boolean>();
+      for (let i = 0; i < items.length; i++) {
+        const current = items[i];
+        const next = items[i + 1];
+        const hasChildren = Boolean(next && next.level > current.level);
+        map.set(current.id, hasChildren);
+      }
+      return map;
+    }
+
+    // 计算折叠隐藏集合
+    function computeHiddenIds(
+      items: { id: string; level: number }[],
+      collapsed: Set<string>,
+      searchQuery = '',
+    ): Set<string> {
+      if (searchQuery.trim()) {
+        return new Set<string>();
+      }
+
+      const hidden = new Set<string>();
+      const ancestorStack: { level: number; isHiddenOrCollapsed: boolean }[] = [];
+
+      for (const h of items) {
+        while (ancestorStack.length > 0 && ancestorStack[ancestorStack.length - 1].level >= h.level) {
+          ancestorStack.pop();
+        }
+
+        const parentAncestor = ancestorStack.length > 0 ? ancestorStack[ancestorStack.length - 1] : null;
+        const isHidden = parentAncestor ? parentAncestor.isHiddenOrCollapsed : false;
+
+        if (isHidden) {
+          hidden.add(h.id);
+        }
+
+        const isSelfCollapsed = collapsed.has(h.id);
+        ancestorStack.push({
+          level: h.level,
+          isHiddenOrCollapsed: isHidden || isSelfCollapsed,
+        });
+      }
+
+      return hidden;
+    }
+
+    const testHeadings = [
+      { id: 'h-1', level: 1, text: '第一章' },
+      { id: 'h-1-1', level: 2, text: '1.1 节' },
+      { id: 'h-1-1-1', level: 3, text: '1.1.1 详细' },
+      { id: 'h-1-2', level: 2, text: '1.2 节' },
+      { id: 'h-2', level: 1, text: '第二章' },
+      { id: 'h-2-1', level: 2, text: '2.1 节' },
+    ];
+
+    it('正确判断各个标题是否有子标题', () => {
+      const hasChildrenMap = computeHasChildrenMap(testHeadings);
+      expect(hasChildrenMap.get('h-1')).toBe(true); // 第一章 有子节点 (1.1 节)
+      expect(hasChildrenMap.get('h-1-1')).toBe(true); // 1.1 节 有子节点 (1.1.1 详细)
+      expect(hasChildrenMap.get('h-1-1-1')).toBe(false); // 1.1.1 详细 无子节点
+      expect(hasChildrenMap.get('h-1-2')).toBe(false); // 1.2 节 后面紧跟第二章(level 1)，无子节点
+      expect(hasChildrenMap.get('h-2')).toBe(true); // 第二章 有子节点 (2.1 节)
+      expect(hasChildrenMap.get('h-2-1')).toBe(false); // 2.1 节 末尾，无子节点
+    });
+
+    it('折叠第一章时只隐藏第一章的后代，不影响第二章及其子节点', () => {
+      const collapsed = new Set(['h-1']);
+      const hidden = computeHiddenIds(testHeadings, collapsed);
+
+      // 第一章的所有直接与间接子节点应该被隐藏
+      expect(hidden.has('h-1-1')).toBe(true);
+      expect(hidden.has('h-1-1-1')).toBe(true);
+      expect(hidden.has('h-1-2')).toBe(true);
+
+      // 第一章自身不被隐藏
+      expect(hidden.has('h-1')).toBe(false);
+
+      // 第二章及其子节点绝不应该被隐藏
+      expect(hidden.has('h-2')).toBe(false);
+      expect(hidden.has('h-2-1')).toBe(false);
+    });
+
+    it('折叠 1.1 节时只隐藏 1.1.1，不影响 1.2 节及后续章节', () => {
+      const collapsed = new Set(['h-1-1']);
+      const hidden = computeHiddenIds(testHeadings, collapsed);
+
+      expect(hidden.has('h-1-1-1')).toBe(true);
+
+      expect(hidden.has('h-1')).toBe(false);
+      expect(hidden.has('h-1-1')).toBe(false);
+      expect(hidden.has('h-1-2')).toBe(false);
+      expect(hidden.has('h-2')).toBe(false);
+      expect(hidden.has('h-2-1')).toBe(false);
+    });
+
+    it('支持跳级标题的折叠传递', () => {
+      const skippedHeadings = [
+        { id: 'h-root', level: 1 },
+        { id: 'h-deep', level: 3 },
+      ];
+      const collapsed = new Set(['h-root']);
+      const hidden = computeHiddenIds(skippedHeadings, collapsed);
+      expect(hidden.has('h-deep')).toBe(true);
+    });
+
+    it('搜索状态下不折叠隐藏条目', () => {
+      const collapsed = new Set(['h-1']);
+      const hidden = computeHiddenIds(testHeadings, collapsed, '1.1');
+      expect(hidden.size).toBe(0);
+    });
+  });
 });

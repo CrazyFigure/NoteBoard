@@ -12,7 +12,8 @@ const EXPLORER_DEFAULT = 260;
 
 const OUTLINE_MIN = 200;
 const OUTLINE_MAX = 480;
-const OUTLINE_DEFAULT = 280;
+// 默认大纲宽度设置为最小宽度 OUTLINE_MIN
+const OUTLINE_DEFAULT = OUTLINE_MIN;
 
 interface LayoutStore {
   explorerVisible: boolean;
