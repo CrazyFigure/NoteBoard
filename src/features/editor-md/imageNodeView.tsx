@@ -421,15 +421,30 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
             <button
               type="button"
               title="缩放为 50%"
-              onClick={() => updateAttributes({ width: width === '50%' ? '100%' : '50%' })}
+              onClick={() => updateAttributes({ width: '50%' })}
               style={{
                 ...actionBtnStyle,
                 fontSize: 11,
                 fontWeight: 600,
                 color: width === '50%' ? 'var(--accent-strong)' : 'inherit',
+                background: width === '50%' ? 'var(--toolbar-active)' : 'transparent',
               }}
             >
               50%
+            </button>
+            <button
+              type="button"
+              title="缩放为 75%"
+              onClick={() => updateAttributes({ width: '75%' })}
+              style={{
+                ...actionBtnStyle,
+                fontSize: 11,
+                fontWeight: 600,
+                color: width === '75%' ? 'var(--accent-strong)' : 'inherit',
+                background: width === '75%' ? 'var(--toolbar-active)' : 'transparent',
+              }}
+            >
+              75%
             </button>
             <button
               type="button"
@@ -440,6 +455,7 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
                 fontSize: 11,
                 fontWeight: 600,
                 color: width === '100%' ? 'var(--accent-strong)' : 'inherit',
+                background: width === '100%' ? 'var(--toolbar-active)' : 'transparent',
               }}
             >
               100%

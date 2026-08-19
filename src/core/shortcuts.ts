@@ -39,7 +39,13 @@ function eventToKey(e: KeyboardEvent): string {
   if (e.shiftKey) parts.push('Shift');
   if (e.altKey) parts.push('Alt');
   if (e.metaKey) parts.push('Meta');
-  parts.push(e.key.length === 1 ? e.key.toUpperCase() : e.key);
+
+  // 处理特定物理按键码（如 Slash/NumpadDivide，防止输入法等环境干扰导致 e.key 非预期）
+  if (e.code === 'Slash' || e.code === 'NumpadDivide') {
+    parts.push('/');
+  } else {
+    parts.push(e.key.length === 1 ? e.key.toUpperCase() : e.key);
+  }
   return parts.join('+');
 }
 
