@@ -97,18 +97,99 @@ export function contentWidthToPercent(width: string | ContentWidth | undefined):
   return 80;
 }
 
+/**
+ * 格式化单个字体名称，带有空格或特殊字符时自动添加英文引号
+ */
+export function quoteFontFamily(font: string): string {
+  const trimmed = font.trim();
+  if (!trimmed) return '';
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    return trimmed;
+  }
+  if (/[\s,]/g.test(trimmed)) {
+    return `"${trimmed.replace(/"/g, '')}"`;
+  }
+  return trimmed;
+}
+
+/**
+ * 智能组合西文字体与中文字体，并附加高容错默认回退字体链
+ * 西文字体优先匹配英文字母与符号，中文字体优先匹配汉字
+ */
+export function formatFontFamily(
+  enFont?: string,
+  zhFont?: string,
+  genericFallback: 'sans-serif' | 'monospace' = 'sans-serif',
+): string {
+  const list: string[] = [];
+
+  // 西文字体优先匹配西文/数字/符号
+  if (enFont && enFont.trim()) {
+    const parts = enFont.split(',').map((p) => p.trim()).filter(Boolean);
+    for (const p of parts) {
+      list.push(quoteFontFamily(p));
+    }
+  }
+
+  // 中文字体匹配汉字/全角标点
+  if (zhFont && zhFont.trim()) {
+    const parts = zhFont.split(',').map((p) => p.trim()).filter(Boolean);
+    for (const p of parts) {
+      list.push(quoteFontFamily(p));
+    }
+  }
+
+  if (genericFallback === 'monospace') {
+    const monoFallbacks = [
+      'Consolas',
+      '"Cascadia Code"',
+      '"Microsoft YaHei Mono"',
+      '"Courier New"',
+      'monospace',
+    ];
+    for (const fb of monoFallbacks) {
+      const cleanFb = fb.replace(/"/g, '').toLowerCase();
+      if (!list.some((item) => item.replace(/"/g, '').toLowerCase() === cleanFb)) {
+        list.push(fb);
+      }
+    }
+  } else {
+    const sansFallbacks = [
+      '-apple-system',
+      'BlinkMacSystemFont',
+      '"Segoe UI"',
+      '"Microsoft YaHei UI"',
+      '"Noto Sans SC"',
+      'Roboto',
+      'sans-serif',
+    ];
+    for (const fb of sansFallbacks) {
+      const cleanFb = fb.replace(/"/g, '').toLowerCase();
+      if (!list.some((item) => item.replace(/"/g, '').toLowerCase() === cleanFb)) {
+        list.push(fb);
+      }
+    }
+  }
+
+  return list.join(', ');
+}
+
 const DEFAULT_TYPOGRAPHY: TypographySettings = {
   contentFontFamily: '',
-  monoFontFamily: "Consolas, 'Cascadia Code', 'Microsoft YaHei Mono', monospace",
+  contentFontFamilyZh: '',
+  monoFontFamily: 'Consolas',
+  monoFontFamilyZh: 'Microsoft YaHei UI',
   contentFontSize: 16,
   monoFontSize: 14,
   contentLineHeight: 1.7,
   monoLineHeight: 1.5,
   contentWidth: 'standard',
   explorerFontFamily: '',
+  explorerFontFamilyZh: '',
   explorerFontSize: 13,
   explorerLineHeight: 24,
   uiFontFamily: '',
+  uiFontFamilyZh: '',
   uiFontSize: 13,
 };
 
@@ -120,47 +201,45 @@ export function applyTypography(t: Partial<TypographySettings>): void {
   const root = document.documentElement;
   const merged = { ...DEFAULT_TYPOGRAPHY, ...t };
 
-  // 1. Markdown / 正文排版
-  if (merged.contentFontFamily) {
-    root.style.setProperty('--content-font-family', merged.contentFontFamily);
-  } else {
-    // 空字符串 = 系统默认，恢复到 CSS 中的默认值
-    root.style.setProperty(
-      '--content-font-family',
-      "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Noto Sans SC', Roboto, sans-serif",
-    );
-  }
+  // 1. Markdown / 正文排版 (西文字体 + 中文字体)
+  const contentFontFamilyCss = formatFontFamily(
+    merged.contentFontFamily,
+    merged.contentFontFamilyZh,
+    'sans-serif',
+  );
+  root.style.setProperty('--content-font-family', contentFontFamilyCss);
   root.style.setProperty('--content-font-size', `${merged.contentFontSize}px`);
   root.style.setProperty('--content-line-height', `${merged.contentLineHeight}`);
   // 内容区域最大宽度（支持预设与自定义百分比）
   root.style.setProperty('--content-max-width', resolveContentWidth(merged.contentWidth));
 
-  // 2. 代码 / 纯文本排版（.sql / .txt / .json 等及代码块）
-  root.style.setProperty('--mono-font-family', merged.monoFontFamily);
+  // 2. 代码 / 纯文本排版（.sql / .txt / .json 等及代码块）(西文等宽 + 中文等宽)
+  const monoFontFamilyCss = formatFontFamily(
+    merged.monoFontFamily,
+    merged.monoFontFamilyZh,
+    'monospace',
+  );
+  root.style.setProperty('--mono-font-family', monoFontFamilyCss);
   root.style.setProperty('--mono-font-size', `${merged.monoFontSize}px`);
   root.style.setProperty('--mono-line-height', `${merged.monoLineHeight ?? 1.5}`);
 
   // 3. 文件树排版（资源管理器）
-  if (merged.explorerFontFamily) {
-    root.style.setProperty('--explorer-font-family', merged.explorerFontFamily);
-  } else {
-    root.style.setProperty(
-      '--explorer-font-family',
-      "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Noto Sans SC', Roboto, sans-serif",
-    );
-  }
+  const explorerFontFamilyCss = formatFontFamily(
+    merged.explorerFontFamily,
+    merged.explorerFontFamilyZh,
+    'sans-serif',
+  );
+  root.style.setProperty('--explorer-font-family', explorerFontFamilyCss);
   root.style.setProperty('--explorer-font-size', `${merged.explorerFontSize ?? 13}px`);
   root.style.setProperty('--explorer-item-height', `${merged.explorerLineHeight ?? 24}px`);
 
   // 4. 软件全局界面 UI 排版（包括设置弹窗、提示、标题栏与状态栏等）
-  if (merged.uiFontFamily) {
-    root.style.setProperty('--ui-font-family', merged.uiFontFamily);
-  } else {
-    root.style.setProperty(
-      '--ui-font-family',
-      "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Noto Sans SC', Roboto, sans-serif",
-    );
-  }
+  const uiFontFamilyCss = formatFontFamily(
+    merged.uiFontFamily,
+    merged.uiFontFamilyZh,
+    'sans-serif',
+  );
+  root.style.setProperty('--ui-font-family', uiFontFamilyCss);
   root.style.setProperty('--ui-font-size', `${merged.uiFontSize ?? 13}px`);
 
   // 缓存到 localStorage，供 main.tsx 防首屏闪烁读取

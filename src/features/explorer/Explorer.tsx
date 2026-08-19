@@ -114,6 +114,7 @@ export function Explorer() {
     display: 'flex',
     flexDirection: 'column',
     background: 'var(--explorer-bg)',
+    fontFamily: 'var(--explorer-font-family, var(--ui-font-family))',
     overflow: 'hidden',
   };
 
@@ -123,7 +124,7 @@ export function Explorer() {
         <div
           style={{
             padding: '36px 16px',
-            fontSize: 13,
+            fontSize: 'var(--ui-font-size, 13px)',
             color: 'var(--explorer-text-muted)',
             textAlign: 'center',
             display: 'flex',
@@ -144,7 +145,7 @@ export function Explorer() {
               justifyContent: 'center',
               gap: 8,
               padding: '8px 16px',
-              fontSize: 13,
+              fontSize: 'var(--ui-font-size, 13px)',
               fontWeight: 500,
               borderRadius: 8,
               minWidth: 140,
@@ -174,7 +175,7 @@ export function Explorer() {
       >
         <span
           style={{
-            fontSize: 12,
+            fontSize: 'calc(var(--explorer-font-size, 13px) - 1px)',
             fontWeight: 600,
             color: 'var(--explorer-text)',
           }}

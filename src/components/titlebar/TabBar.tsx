@@ -140,8 +140,8 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
     userSelect: 'none',
     position: 'relative',
     boxSizing: 'border-box',
-    fontFamily: 'inherit',
-    fontSize: 13,
+    fontFamily: 'var(--ui-font-family, inherit)',
+    fontSize: 'var(--ui-font-size, 13px)',
     fontWeight: isActive ? 500 : 400,
   };
 
@@ -449,7 +449,8 @@ function getMenuItemStyle(disabled = false): React.CSSProperties {
     borderRadius: 4,
     textAlign: 'left',
     cursor: disabled ? 'not-allowed' : 'pointer',
-    fontSize: 12,
+    fontFamily: 'var(--ui-font-family, inherit)',
+    fontSize: 'calc(var(--ui-font-size, 13px) - 1px)',
     color: disabled ? 'var(--editor-text-muted)' : 'var(--editor-text)',
     opacity: disabled ? 0.45 : 1,
     transition: 'all var(--transition-fast)',

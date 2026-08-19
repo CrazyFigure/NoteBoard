@@ -26,7 +26,7 @@ pub mod commands {
             }
         }
 
-        // 基础默认保障列表
+        // 基础默认保障列表（包含 Windows/macOS/Linux 常见中西文及等宽优质字体）
         let defaults = [
             "Microsoft YaHei UI",
             "Microsoft YaHei",
@@ -34,6 +34,12 @@ pub mod commands {
             "SimHei",
             "KaiTi",
             "FangSong",
+            "DengXian",
+            "PingFang SC",
+            "Noto Sans SC",
+            "Noto Serif SC",
+            "Source Han Sans CN",
+            "Source Han Serif CN",
             "Consolas",
             "Cascadia Code",
             "Cascadia Mono",
@@ -45,11 +51,14 @@ pub mod commands {
             "Times New Roman",
             "Arial",
             "Calibri",
+            "Georgia",
+            "Inter",
         ];
         for d in defaults {
             font_names.insert(d.to_string());
         }
 
+        // 识别字体属性：等宽字体与中文字体
         let result = font_names
             .into_iter()
             .map(|name| {
@@ -58,8 +67,34 @@ pub mod commands {
                     || lower.contains("code")
                     || lower.contains("consolas")
                     || lower.contains("courier")
-                    || lower.contains("typewriter");
-                let has_cjk = name.chars().any(|c| (c as u32) >= 0x4E00 && (c as u32) <= 0x9FFF);
+                    || lower.contains("typewriter")
+                    || lower.contains("terminal")
+                    || lower.contains("fixed")
+                    || lower.contains("source code pro")
+                    || lower.contains("fira code")
+                    || lower.contains("jetbrains mono");
+                let has_cjk = name.chars().any(|c| (c as u32) >= 0x4E00 && (c as u32) <= 0x9FFF)
+                    || lower.contains("yahei")
+                    || lower.contains("simsun")
+                    || lower.contains("simhei")
+                    || lower.contains("kaiti")
+                    || lower.contains("fangsong")
+                    || lower.contains("dengxian")
+                    || lower.contains("noto sans sc")
+                    || lower.contains("noto serif sc")
+                    || lower.contains("source han")
+                    || lower.contains("pingfang")
+                    || lower.contains("songti")
+                    || lower.contains("heiti")
+                    || lower.contains("yu gothic")
+                    || lower.contains("meiryo")
+                    || lower.contains("malgun")
+                    || lower.contains("jhenghei")
+                    || lower.contains("mingliu")
+                    || lower.contains("lxgw")
+                    || lower.contains("xiawu")
+                    || lower.contains("sarasa")
+                    || lower.contains("wenquanyi");
                 FontFamily {
                     family: name,
                     is_monospace,

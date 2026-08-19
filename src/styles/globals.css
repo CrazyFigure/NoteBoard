@@ -764,7 +764,7 @@ body {
   margin: 16px 0;
   font-family: var(--mono-font-family);
   font-size: var(--mono-font-size);
-  line-height: 1.5;
+  line-height: var(--mono-line-height, 1.5);
   tab-size: 2;
 }
 .ProseMirror pre code {

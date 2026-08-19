@@ -1,46 +1,137 @@
 // NoteBoard 可搜索系统字体下拉选择组件
-// 点击懒加载系统字体 + 搜索过滤 + 字体即时视觉预览
+// 全局响应式字体缓存共享 + 搜索过滤 + 分类切换（中文/西文/等宽） + 一键恢复默认 + 即时字形预览
 // 详见 docs/06-主题与设计规范.md
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ChevronDown, Search, Loader2, Check } from 'lucide-react';
+import { ChevronDown, Search, Loader2, Check, X, RotateCcw } from 'lucide-react';
 import * as ipc from '../../core/ipc/commands';
 import type { FontFamily } from '../../core/ipc/types';
+
+export type FontFilterCategory = 'all' | 'zh' | 'en' | 'mono';
 
 interface FontSelectProps {
   value: string;
   onChange: (font: string) => void;
   isMonospaceOnly?: boolean;
+  filterType?: FontFilterCategory;
   placeholder?: string;
 }
 
-// 缓存系统字体列表，避免多次重复拉取
+// 缓存系统字体列表与全局监听器，确保所有 FontSelect 实例即时同步数据
 let cachedSystemFonts: FontFamily[] | null = null;
 let fontFetchPromise: Promise<FontFamily[]> | null = null;
+
+type FontListener = (fonts: FontFamily[]) => void;
+const fontListeners = new Set<FontListener>();
+
+function notifyFontListeners(fonts: FontFamily[]) {
+  cachedSystemFonts = fonts;
+  fontListeners.forEach((fn) => fn(fonts));
+}
 
 async function fetchSystemFonts(): Promise<FontFamily[]> {
   if (cachedSystemFonts) return cachedSystemFonts;
   if (!fontFetchPromise) {
     fontFetchPromise = ipc.listSystemFonts().then((fonts) => {
-      cachedSystemFonts = fonts;
+      notifyFontListeners(fonts);
       return fonts;
+    }).catch((err) => {
+      console.error('加载系统字体失败:', err);
+      fontFetchPromise = null;
+      return [];
     });
   }
   return fontFetchPromise;
+}
+
+// 模块加载时自动在后台预加载系统字体
+if (typeof window !== 'undefined') {
+  fetchSystemFonts();
+}
+
+/** 辅助判断是否包含中文字符集 */
+function isCjkFont(font: FontFamily): boolean {
+  if (font.hasCjk) return true;
+  const name = font.family.toLowerCase();
+  return (
+    /[\u4e00-\u9fff]/.test(font.family) ||
+    name.includes('yahei') ||
+    name.includes('simsun') ||
+    name.includes('simhei') ||
+    name.includes('kaiti') ||
+    name.includes('fangsong') ||
+    name.includes('dengxian') ||
+    name.includes('pingfang') ||
+    name.includes('noto sans sc') ||
+    name.includes('noto serif sc') ||
+    name.includes('source han') ||
+    name.includes('songti') ||
+    name.includes('heiti') ||
+    name.includes('lxgw') ||
+    name.includes('xiawu') ||
+    name.includes('sarasa') ||
+    name.includes('wenquanyi') ||
+    name.includes('jhenghei') ||
+    name.includes('mingliu')
+  );
+}
+
+/** 辅助判断是否等宽代码字体 */
+function isMonoFont(font: FontFamily): boolean {
+  if (font.isMonospace) return true;
+  const lower = font.family.toLowerCase();
+  return (
+    lower.includes('mono') ||
+    lower.includes('code') ||
+    lower.includes('consolas') ||
+    lower.includes('courier') ||
+    lower.includes('typewriter') ||
+    lower.includes('terminal') ||
+    lower.includes('fixed') ||
+    lower.includes('fira') ||
+    lower.includes('jetbrains')
+  );
 }
 
 export function FontSelect({
   value,
   onChange,
   isMonospaceOnly = false,
+  filterType,
   placeholder = '选择或输入字体…',
 }: FontSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [fonts, setFonts] = useState<FontFamily[]>(cachedSystemFonts ?? []);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeCategory, setActiveCategory] = useState<FontFilterCategory>(
+    filterType ?? (isMonospaceOnly ? 'mono' : 'all'),
+  );
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // 监听全局字体缓存更新，确保多实例无缝同步数据
+  useEffect(() => {
+    const handleUpdate: FontListener = (list) => {
+      setFonts(list);
+    };
+    fontListeners.add(handleUpdate);
+    if (cachedSystemFonts && fonts.length === 0) {
+      setFonts(cachedSystemFonts);
+    }
+    return () => {
+      fontListeners.delete(handleUpdate);
+    };
+  }, [fonts.length]);
+
+  // 当外部 filterType 属性变更时同步
+  useEffect(() => {
+    if (filterType) {
+      setActiveCategory(filterType);
+    } else if (isMonospaceOnly) {
+      setActiveCategory('mono');
+    }
+  }, [filterType, isMonospaceOnly]);
 
   // 点击外部关闭
   useEffect(() => {
@@ -60,7 +151,10 @@ export function FontSelect({
     setIsOpen(nextOpen);
     if (nextOpen) {
       setSearchQuery('');
-      if (!cachedSystemFonts) {
+      setActiveCategory(filterType ?? (isMonospaceOnly ? 'mono' : 'all'));
+      if (cachedSystemFonts) {
+        setFonts(cachedSystemFonts);
+      } else {
         setLoading(true);
         try {
           const list = await fetchSystemFonts();
@@ -80,13 +174,25 @@ export function FontSelect({
   // 过滤后的字体列表
   const filteredFonts = useMemo(() => {
     let list = fonts;
-    if (isMonospaceOnly) {
-      list = list.filter((f) => f.isMonospace);
+
+    // 分类过滤
+    if (activeCategory === 'mono') {
+      list = list.filter((f) => isMonoFont(f));
+    } else if (activeCategory === 'zh') {
+      list = list.filter((f) => isCjkFont(f));
+    } else if (activeCategory === 'en') {
+      list = list.filter((f) => !isCjkFont(f));
     }
+
     if (!searchQuery.trim()) return list;
     const q = searchQuery.toLowerCase().trim();
-    return list.filter((f) => f.family.toLowerCase().includes(q));
-  }, [fonts, isMonospaceOnly, searchQuery]);
+    const matched = list.filter((f) => f.family.toLowerCase().includes(q));
+    // 若在当前分类下搜不到，自动扩大搜索到全量字体
+    if (matched.length === 0 && activeCategory !== 'all') {
+      return fonts.filter((f) => f.family.toLowerCase().includes(q));
+    }
+    return matched;
+  }, [fonts, activeCategory, searchQuery]);
 
   return (
     <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
@@ -97,14 +203,16 @@ export function FontSelect({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '6px 10px',
+          padding: '5px 8px',
           border: isOpen ? '1px solid var(--accent-strong)' : '1px solid var(--editor-border)',
           borderRadius: 'var(--radius-sm)',
           background: 'var(--editor-surface)',
-          color: 'var(--editor-text)',
-          fontSize: 12,
+          color: value ? 'var(--editor-text)' : 'var(--editor-text-muted)',
+          fontSize: 'var(--ui-font-size, 13px)',
           cursor: 'pointer',
           userSelect: 'none',
+          gap: 6,
+          transition: 'border-color var(--transition-fast)',
         }}
       >
         <span
@@ -112,11 +220,47 @@ export function FontSelect({
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
-            fontFamily: value ? `${value}, var(--ui-font-family)` : 'inherit',
+            fontFamily: value ? `"${value}", var(--ui-font-family)` : 'inherit',
+            flex: 1,
+            color: value ? 'var(--editor-text)' : 'var(--editor-text-muted)',
           }}
         >
           {value || placeholder}
         </span>
+
+        {/* 若已有选定值，显示清除重置按钮 */}
+        {value ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange('');
+            }}
+            title="恢复系统默认"
+            style={{
+              border: 'none',
+              background: 'transparent',
+              padding: 2,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--editor-text-muted)',
+              borderRadius: 3,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--editor-text)';
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--editor-text-muted)';
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            <X size={13} />
+          </button>
+        ) : null}
+
         <ChevronDown
           size={14}
           style={{
@@ -141,13 +285,13 @@ export function FontSelect({
             border: '1px solid var(--editor-border)',
             borderRadius: 'var(--radius-md)',
             boxShadow: 'var(--shadow-lg)',
-            maxHeight: 260,
+            maxHeight: 280,
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
           }}
         >
-          {/* 搜索框与手动输入 */}
+          {/* 顶部搜索框 */}
           <div
             style={{
               padding: '6px 8px',
@@ -162,7 +306,7 @@ export function FontSelect({
             <input
               ref={searchInputRef}
               type="text"
-              placeholder="搜索或自定义字体名称…"
+              placeholder="搜索或直接输入字体名称…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -182,8 +326,83 @@ export function FontSelect({
             />
           </div>
 
+          {/* 分类快捷标签栏 */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '4px 8px',
+              borderBottom: '1px solid var(--editor-border)',
+              background: 'var(--editor-bg)',
+              fontSize: 11,
+            }}
+          >
+            {(
+              [
+                { key: 'all', label: '全部' },
+                { key: 'zh', label: '中文字体' },
+                { key: 'en', label: '西文字体' },
+                { key: 'mono', label: '等宽代码' },
+              ] as const
+            ).map((cat) => {
+              const active = activeCategory === cat.key;
+              return (
+                <button
+                  key={cat.key}
+                  type="button"
+                  onClick={() => setActiveCategory(cat.key)}
+                  style={{
+                    border: 'none',
+                    borderRadius: 3,
+                    padding: '2px 7px',
+                    cursor: 'pointer',
+                    fontSize: 11,
+                    background: active ? 'var(--editor-selection)' : 'transparent',
+                    color: active ? 'var(--accent-strong)' : 'var(--editor-text-muted)',
+                    fontWeight: active ? 600 : 400,
+                    transition: 'all var(--transition-fast)',
+                  }}
+                >
+                  {cat.label}
+                </button>
+              );
+            })}
+          </div>
+
           {/* 字体列表 */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+            {/* 系统默认选项 */}
+            <div
+              onClick={() => {
+                onChange('');
+                setIsOpen(false);
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '6px 12px',
+                cursor: 'pointer',
+                fontSize: 12,
+                background: !value ? 'var(--editor-selection)' : 'transparent',
+                color: !value ? 'var(--accent-strong)' : 'var(--editor-text)',
+                borderBottom: '1px dashed var(--editor-border)',
+              }}
+              onMouseEnter={(e) => {
+                if (value) e.currentTarget.style.background = 'var(--editor-surface)';
+              }}
+              onMouseLeave={(e) => {
+                if (value) e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <RotateCcw size={12} color="var(--editor-text-muted)" />
+                <span style={{ fontWeight: 500 }}>系统默认 (跟随系统)</span>
+              </div>
+              {!value && <Check size={14} color="var(--accent-strong)" style={{ flexShrink: 0 }} />}
+            </div>
+
             {loading ? (
               <div
                 style={{
@@ -222,7 +441,7 @@ export function FontSelect({
                     </button>
                   </div>
                 ) : (
-                  '暂无可用字体'
+                  '该分类下暂无可用字体'
                 )}
               </div>
             ) : (
@@ -252,17 +471,32 @@ export function FontSelect({
                       if (!isSelected) e.currentTarget.style.background = 'transparent';
                     }}
                   >
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
                       <span
                         style={{
-                          fontFamily: `${font.family}, sans-serif`,
+                          fontFamily: `"${font.family}", sans-serif`,
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
+                          fontSize: 13,
                         }}
                       >
                         {font.family}
                       </span>
+                      {font.isMonospace && (
+                        <span
+                          style={{
+                            fontSize: 10,
+                            padding: '1px 4px',
+                            borderRadius: 2,
+                            background: 'var(--code-inline-bg)',
+                            color: 'var(--code-inline-text)',
+                            flexShrink: 0,
+                          }}
+                        >
+                          等宽
+                        </span>
+                      )}
                     </div>
                     {isSelected && <Check size={14} color="var(--accent-strong)" style={{ flexShrink: 0 }} />}
                   </div>
@@ -275,3 +509,4 @@ export function FontSelect({
     </div>
   );
 }
+

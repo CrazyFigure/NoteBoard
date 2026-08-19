@@ -375,17 +375,29 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <LayoutTemplate size={15} color="var(--accent-strong)" />
                       <span>软件界面 UI 排版 (全局界面 / 弹窗 / 提示 / 菜单)</span>
                     </div>
-                    <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>作用于标题栏、设置中心、提示与全局 UI</span>
+                    <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>作用于标题栏、标签栏、设置中心、状态栏与全局 UI</span>
                   </div>
 
-                  {/* 界面 UI 字体 */}
-                  <div style={formRowStyle}>
-                    <label style={labelStyle}>界面 UI 字体</label>
-                    <FontSelect
-                      value={settings.typography.uiFontFamily ?? ''}
-                      placeholder="系统默认界面字体 (如: Microsoft YaHei UI, Segoe UI)"
-                      onChange={(font) => setTypography({ uiFontFamily: font })}
-                    />
+                  {/* 界面 UI 中西双字体配置 */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div style={formRowStyle}>
+                      <label style={labelStyle}>界面西文字体 (英文/数字)</label>
+                      <FontSelect
+                        value={settings.typography.uiFontFamily ?? ''}
+                        filterType="en"
+                        placeholder="系统默认西文字体 (如: Segoe UI, Inter)"
+                        onChange={(font) => setTypography({ uiFontFamily: font })}
+                      />
+                    </div>
+                    <div style={formRowStyle}>
+                      <label style={labelStyle}>界面中文字体 (汉字/全角)</label>
+                      <FontSelect
+                        value={settings.typography.uiFontFamilyZh ?? ''}
+                        filterType="zh"
+                        placeholder="系统默认中文字体 (如: Microsoft YaHei UI, 苹方)"
+                        onChange={(font) => setTypography({ uiFontFamilyZh: font })}
+                      />
+                    </div>
                   </div>
 
                   {/* 界面 UI 字号 */}
@@ -415,14 +427,26 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <span>Markdown 正文排版</span>
                   </div>
 
-                  {/* 正文字体 */}
-                  <div style={formRowStyle}>
-                    <label style={labelStyle}>正文字体</label>
-                    <FontSelect
-                      value={settings.typography.contentFontFamily}
-                      placeholder="系统默认 (如: Microsoft YaHei UI, Segoe UI)"
-                      onChange={(font) => setTypography({ contentFontFamily: font })}
-                    />
+                  {/* 正文中西双字体配置 */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div style={formRowStyle}>
+                      <label style={labelStyle}>正文西文字体 (英文/数字)</label>
+                      <FontSelect
+                        value={settings.typography.contentFontFamily}
+                        filterType="en"
+                        placeholder="系统默认西文字体 (如: Georgia, Inter, Segoe UI)"
+                        onChange={(font) => setTypography({ contentFontFamily: font })}
+                      />
+                    </div>
+                    <div style={formRowStyle}>
+                      <label style={labelStyle}>正文中文字体 (汉字/全角)</label>
+                      <FontSelect
+                        value={settings.typography.contentFontFamilyZh ?? ''}
+                        filterType="zh"
+                        placeholder="系统默认中文字体 (如: 微软雅黑, 霞鹜文楷, 楷体)"
+                        onChange={(font) => setTypography({ contentFontFamilyZh: font })}
+                      />
+                    </div>
                   </div>
 
                   {/* 正文字号与行高 */}
@@ -464,15 +488,27 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>支持 Ctrl + 滚轮 快速缩放</span>
                   </div>
 
-                  {/* 代码等宽字体 */}
-                  <div style={formRowStyle}>
-                    <label style={labelStyle}>代码等宽字体</label>
-                    <FontSelect
-                      value={settings.typography.monoFontFamily}
-                      placeholder="Consolas, Cascadia Code, monospace"
-                      isMonospaceOnly={true}
-                      onChange={(font) => setTypography({ monoFontFamily: font })}
-                    />
+                  {/* 代码等宽中西双字体配置 */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div style={formRowStyle}>
+                      <label style={labelStyle}>代码西文等宽字体</label>
+                      <FontSelect
+                        value={settings.typography.monoFontFamily}
+                        placeholder="Consolas, Cascadia Code, JetBrains Mono"
+                        filterType="mono"
+                        isMonospaceOnly={true}
+                        onChange={(font) => setTypography({ monoFontFamily: font })}
+                      />
+                    </div>
+                    <div style={formRowStyle}>
+                      <label style={labelStyle}>代码中文等宽/中文字体</label>
+                      <FontSelect
+                        value={settings.typography.monoFontFamilyZh ?? ''}
+                        placeholder="Microsoft YaHei UI, 微软雅黑, 等宽中文"
+                        filterType="zh"
+                        onChange={(font) => setTypography({ monoFontFamilyZh: font })}
+                      />
+                    </div>
                   </div>
 
                   {/* 代码字号与行高 */}
@@ -514,14 +550,26 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>支持 Ctrl + 滚轮 快速缩放</span>
                   </div>
 
-                  {/* 文件树字体 */}
-                  <div style={formRowStyle}>
-                    <label style={labelStyle}>文件树字体</label>
-                    <FontSelect
-                      value={settings.typography.explorerFontFamily ?? ''}
-                      placeholder="系统界面默认 (如: Microsoft YaHei UI, Segoe UI)"
-                      onChange={(font) => setTypography({ explorerFontFamily: font })}
-                    />
+                  {/* 文件树中西双字体配置 */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div style={formRowStyle}>
+                      <label style={labelStyle}>文件树西文字体</label>
+                      <FontSelect
+                        value={settings.typography.explorerFontFamily ?? ''}
+                        filterType="en"
+                        placeholder="系统界面默认 (如: Segoe UI, Arial)"
+                        onChange={(font) => setTypography({ explorerFontFamily: font })}
+                      />
+                    </div>
+                    <div style={formRowStyle}>
+                      <label style={labelStyle}>文件树中文字体</label>
+                      <FontSelect
+                        value={settings.typography.explorerFontFamilyZh ?? ''}
+                        filterType="zh"
+                        placeholder="系统界面默认 (如: Microsoft YaHei UI, 苹方)"
+                        onChange={(font) => setTypography({ explorerFontFamilyZh: font })}
+                      />
+                    </div>
                   </div>
 
                   {/* 文件树字号与行高 */}
@@ -570,11 +618,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     {/* 软件界面 UI 效果预览 */}
                     <div>
                       <p style={{ margin: '0 0 6px', fontWeight: 600, fontSize: 12, color: 'var(--editor-text-muted)' }}>
-                        软件界面 UI 与提示效果：
+                        软件界面 UI 与提示效果 (中英文混合测试: NoteBoard 2026 Ready)：
                       </p>
                       <div
                         style={{
-                          fontFamily: settings.typography.uiFontFamily || 'var(--ui-font-family)',
+                          fontFamily: 'var(--ui-font-family)',
                           fontSize: settings.typography.uiFontSize ?? 13,
                           padding: '10px 14px',
                           background: 'var(--editor-bg)',
@@ -588,14 +636,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ fontWeight: 600 }}>NoteBoard 界面</span>
-                          <span style={{ fontSize: '0.88em', color: 'var(--editor-text-muted)' }}>提示信息：文件已就绪</span>
+                          <span style={{ fontSize: '0.88em', color: 'var(--editor-text-muted)' }}>提示信息：文档已就绪 (File Ready)</span>
                         </div>
                         <div style={{ display: 'flex', gap: 6 }}>
                           <span style={{ padding: '3px 8px', background: 'var(--editor-selection)', color: 'var(--accent-strong)', borderRadius: 'var(--radius-sm)', fontSize: '0.88em', fontWeight: 500 }}>
-                            活动标签
+                            Active Tab 标签
                           </span>
                           <span style={{ padding: '3px 8px', background: 'var(--editor-surface)', border: '1px solid var(--editor-border)', borderRadius: 'var(--radius-sm)', fontSize: '0.88em' }}>
-                            普通按钮
+                            Action 按钮
                           </span>
                         </div>
                       </div>
@@ -604,7 +652,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     {/* Markdown 正文预览 */}
                     <div
                       style={{
-                        fontFamily: settings.typography.contentFontFamily || 'var(--content-font-family)',
+                        fontFamily: 'var(--content-font-family)',
                         fontSize: settings.typography.contentFontSize,
                         lineHeight: settings.typography.contentLineHeight,
                       }}
@@ -613,15 +661,15 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         Markdown 正文效果：
                       </p>
                       <p style={{ margin: 0 }}>
-                        这是正文排版效果，展示<strong>加粗</strong>、<em>斜体</em>与 <code style={{
+                        这是中英文正文排版效果（Typography Test: Quick Brown Fox 123），包含 <strong>加粗文本 Bold</strong>、<em>斜体 Italic</em> 与 <code style={{
                           background: 'var(--code-inline-bg)',
                           color: 'var(--code-inline-text)',
                           padding: '2px 6px',
                           borderRadius: 'var(--radius-sm)',
-                          fontFamily: settings.typography.monoFontFamily || 'var(--mono-font-family)',
+                          fontFamily: 'var(--mono-font-family)',
                           fontSize: '0.88em',
                           border: '1px solid var(--editor-border)',
-                        }}>const note = "NoteBoard";</code> 行内代码。
+                        }}>const note = "NoteBoard 2026";</code> 行内代码。
                       </p>
                     </div>
 
@@ -636,12 +684,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         background: 'var(--code-block-bg)',
                         border: '1px solid var(--editor-border)',
                         borderRadius: 'var(--radius-sm)',
-                        fontFamily: settings.typography.monoFontFamily || 'var(--mono-font-family)',
+                        fontFamily: 'var(--mono-font-family)',
                         fontSize: settings.typography.monoFontSize ?? 14,
                         lineHeight: settings.typography.monoLineHeight ?? 1.5,
                         color: 'var(--code-block-text)',
                       }}>
-                        <code>{`SELECT id, title, created_at\nFROM notes\nWHERE status = 'active';`}</code>
+                        <code>{`-- 查询笔记表（中西文代码混排测试）\nSELECT id, title, created_at\nFROM notes\nWHERE status = 'active' -- 仅查询有效笔记;`}</code>
                       </pre>
                     </div>
 
@@ -670,11 +718,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             borderLeft: '2px solid var(--accent-strong)',
                             color: 'var(--explorer-text)',
                             fontSize: settings.typography.explorerFontSize ?? 13,
-                            fontFamily: settings.typography.explorerFontFamily || 'inherit',
+                            fontFamily: 'var(--explorer-font-family)',
                           }}
                         >
                           <FileText size={14} color="var(--editor-accent)" />
-                          <span>快速入门指南.md</span>
+                          <span>01_快速入门指南 (Guide.md)</span>
                         </div>
                         <div
                           style={{
@@ -686,7 +734,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             paddingRight: 8,
                             color: 'var(--explorer-text)',
                             fontSize: settings.typography.explorerFontSize ?? 13,
-                            fontFamily: settings.typography.explorerFontFamily || 'inherit',
+                            fontFamily: 'var(--explorer-font-family)',
                           }}
                         >
                           <FileCode size={14} color="var(--editor-accent)" />

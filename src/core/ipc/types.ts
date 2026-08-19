@@ -121,22 +121,32 @@ export interface AppearanceSettings {
 }
 
 export interface TypographySettings {
+  // 正文西文字体（留空跟随系统）
   contentFontFamily: string;
+  // 正文中文字体（留空跟随系统）
+  contentFontFamilyZh?: string;
+  // 代码西文等宽字体
   monoFontFamily: string;
+  // 代码中文等宽/中文字体
+  monoFontFamilyZh?: string;
   contentFontSize: number;
   monoFontSize: number;
   contentLineHeight: number;
   // 代码/纯文本行高
   monoLineHeight?: number;
   contentWidth: ContentWidth;
-  // 文件树字体（留空跟随系统）
+  // 文件树西文字体（留空跟随系统）
   explorerFontFamily?: string;
+  // 文件树中文字体（留空跟随系统）
+  explorerFontFamilyZh?: string;
   // 文件树字号 (px)
   explorerFontSize?: number;
   // 文件树条目行高 (px)
   explorerLineHeight?: number;
-  // 软件界面 UI 字体（留空跟随系统）
+  // 软件界面 UI 西文字体（留空跟随系统）
   uiFontFamily?: string;
+  // 软件界面 UI 中文字体（留空跟随系统）
+  uiFontFamilyZh?: string;
   // 软件界面 UI 字号 (px)
   uiFontSize?: number;
 }
