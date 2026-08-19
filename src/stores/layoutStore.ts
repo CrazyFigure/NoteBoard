@@ -22,6 +22,8 @@ interface LayoutStore {
   outlineWidth: number;
   statusBarVisible: boolean;
   settingsModalVisible: boolean;
+  /** 是否正在向窗口内拖拽文件 */
+  isDraggingFile: boolean;
 
   // ── 操作 ──
   toggleExplorer: () => void;
@@ -33,6 +35,7 @@ interface LayoutStore {
   setOutlineWidth: (width: number) => void;
   setStatusBarVisible: (visible: boolean) => void;
   setSettingsModalVisible: (visible: boolean) => void;
+  setIsDraggingFile: (dragging: boolean) => void;
 
   // ── 持久化 ──
   toLayout: () => {
@@ -61,6 +64,7 @@ export const useLayoutStore = create<LayoutStore>((set, get) => ({
   outlineWidth: OUTLINE_DEFAULT,
   statusBarVisible: true,
   settingsModalVisible: false,
+  isDraggingFile: false,
 
   toggleExplorer: () => set((s) => ({ explorerVisible: !s.explorerVisible })),
   toggleOutline: () => set((s) => ({ outlineVisible: !s.outlineVisible })),
@@ -73,6 +77,7 @@ export const useLayoutStore = create<LayoutStore>((set, get) => ({
     set({ outlineWidth: clamp(width, OUTLINE_MIN, OUTLINE_MAX) }),
   setStatusBarVisible: (visible) => set({ statusBarVisible: visible }),
   setSettingsModalVisible: (visible) => set({ settingsModalVisible: visible }),
+  setIsDraggingFile: (dragging) => set({ isDraggingFile: dragging }),
 
   toLayout: () => {
     const s = get();

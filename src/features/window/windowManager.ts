@@ -4,11 +4,12 @@
 
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import * as ipc from '../../core/ipc/commands';
-import { onOpenFiles, onHandoffComplete, onCloseRequested, onFocusTab } from '../../core/ipc/events';
+import { onOpenFiles, onHandoffComplete, onCloseRequested, onFocusTab, onDragDrop } from '../../core/ipc/events';
 import type { WindowIntent, TransferredDocument } from '../../core/ipc/types';
 import { openDocument } from '../editor-code/orchestration/openDocument';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
+import { useLayoutStore } from '../../stores/layoutStore';
 import { kindFromPath, languageFromPath } from '../../core/docKind';
 
 // ── 初始化窗口（拉取模型）──
@@ -109,6 +110,7 @@ let unlistenOpenFiles: (() => void) | null = null;
 let unlistenHandoff: (() => void) | null = null;
 let unlistenCloseRequested: (() => void) | null = null;
 let unlistenFocusTab: (() => void) | null = null;
+let unlistenDragDrop: (() => void) | null = null;
 let reconcileTimer: ReturnType<typeof setInterval> | null = null;
 
 // ── 窗口关闭流程（6.8）──
@@ -160,7 +162,7 @@ export async function performWindowClose(label: string): Promise<void> {
 }
 
 /**
- * 启动单实例事件监听
+ * 启动单实例与文件拖拽事件监听
  */
 export function startEventListeners(): void {
   if (!unlistenOpenFiles) {
@@ -171,6 +173,27 @@ export function startEventListeners(): void {
       }
     }).then((fn) => {
       unlistenOpenFiles = fn;
+    });
+  }
+
+  // 监听系统文件拖拽到软件中打开
+  if (!unlistenDragDrop) {
+    onDragDrop(async (payload) => {
+      if (payload.type === 'enter' || payload.type === 'over') {
+        // 拖拽悬停：展示全屏拖拽释放提示浮层
+        useLayoutStore.getState().setIsDraggingFile(true);
+      } else if (payload.type === 'leave') {
+        // 移出窗口：隐藏拖拽提示浮层
+        useLayoutStore.getState().setIsDraggingFile(false);
+      } else if (payload.type === 'drop') {
+        // 释放文件：隐藏浮层并逐个在新 Tab 打开，自动加载目录树
+        useLayoutStore.getState().setIsDraggingFile(false);
+        for (const path of payload.paths) {
+          await openDocument(path);
+        }
+      }
+    }).then((fn) => {
+      unlistenDragDrop = fn;
     });
   }
 
@@ -236,10 +259,12 @@ export function startEventListeners(): void {
  */
 export function stopEventListeners(): void {
   unlistenOpenFiles?.();
+  unlistenDragDrop?.();
   unlistenHandoff?.();
   unlistenCloseRequested?.();
   unlistenFocusTab?.();
   unlistenOpenFiles = null;
+  unlistenDragDrop = null;
   unlistenHandoff = null;
   unlistenCloseRequested = null;
   unlistenFocusTab = null;

@@ -55,6 +55,8 @@ pub fn create_window(app: &tauri::AppHandle, label: String) -> Result<(), String
         .decorations(false)
         .visible(false)
         .shadow(true)
+        // 启用窗口拖拽文件接收能力
+        .drag_and_drop(true)
         .build();
     });
 
