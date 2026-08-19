@@ -4,6 +4,7 @@
 // 详见 docs/09-开发路线图.md 9.2-9.10
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { ChevronRight } from 'lucide-react';
 import type { Editor } from '@tiptap/core';
 import { useHeadings, type HeadingItem } from './useHeadings';
 
@@ -38,6 +39,54 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
     const q = searchQuery.toLowerCase().trim();
     return headings.filter((h) => h.text.toLowerCase().includes(q));
   }, [headings, searchQuery]);
+
+  // 计算每个标题是否含有子标题（在文档顺序中，紧随其后的下一标题 level 更大）
+  const hasChildrenMap = useMemo(() => {
+    const map = new Map<string, boolean>();
+    for (let i = 0; i < headings.length; i++) {
+      const current = headings[i];
+      const next = headings[i + 1];
+      const hasChildren = Boolean(next && next.level > current.level);
+      map.set(current.id, hasChildren);
+    }
+    return map;
+  }, [headings]);
+
+  // 计算当前被折叠隐藏的标题 ID 集合（基于直系父祖先的折叠状态进行单调栈判定）
+  const hiddenIds = useMemo(() => {
+    // 处于搜索状态时展示所有匹配项，不进行折叠隐藏
+    if (searchQuery.trim()) {
+      return new Set<string>();
+    }
+
+    const hidden = new Set<string>();
+    // 祖先单调栈：记录各级父祖先节点的 level 以及折叠/隐藏传递状态
+    const ancestorStack: { level: number; isHiddenOrCollapsed: boolean }[] = [];
+
+    for (const h of headings) {
+      // 弹出栈中同级或更深级别（非当前节点祖先）的节点
+      while (ancestorStack.length > 0 && ancestorStack[ancestorStack.length - 1].level >= h.level) {
+        ancestorStack.pop();
+      }
+
+      // 获取当前节点的最近直接父祖先
+      const parentAncestor = ancestorStack.length > 0 ? ancestorStack[ancestorStack.length - 1] : null;
+      const isHidden = parentAncestor ? parentAncestor.isHiddenOrCollapsed : false;
+
+      if (isHidden) {
+        hidden.add(h.id);
+      }
+
+      // 记录当前节点的折叠/隐藏传递状态
+      const isSelfCollapsed = collapsed.has(h.id);
+      ancestorStack.push({
+        level: h.level,
+        isHiddenOrCollapsed: isHidden || isSelfCollapsed,
+      });
+    }
+
+    return hidden;
+  }, [headings, collapsed, searchQuery]);
 
   // 点击跳转
   const handleHeadingClick = useCallback(
@@ -165,25 +214,6 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
     });
   }, []);
 
-  // 计算被折叠的标题
-  const isCollapsed = useCallback(
-    (heading: HeadingItem, allHeadings: HeadingItem[]): boolean => {
-      // 如果有父级被折叠，则也被折叠
-      let currentLevel = heading.level;
-      for (let i = allHeadings.indexOf(heading) - 1; i >= 0; i--) {
-        const prev = allHeadings[i];
-        if (prev.level < heading.level) {
-          // 这是一个父级标题
-          if (collapsed.has(prev.id)) return true;
-          // 递归检查
-          if (isCollapsed(prev, allHeadings)) return true;
-        }
-      }
-      return false;
-    },
-    [collapsed],
-  );
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--outline-bg)' }}>
       {/* 大纲标题栏 */}
@@ -250,14 +280,12 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
         >
         <div ref={listRef}>
           {filteredHeadings.map((h) => {
-            const isHidden = isCollapsed(h, filteredHeadings);
+            const isHidden = hiddenIds.has(h.id);
             if (isHidden) return null;
 
             const isActive = h.id === activeId;
             const isEditing = h.id === editingId;
-            const hasChildren = filteredHeadings.some(
-              (other) => other !== h && other.pos > h.pos && other.level > h.level,
-            );
+            const hasChildren = hasChildrenMap.get(h.id) ?? false;
             const isCollapsedItem = collapsed.has(h.id);
 
             return (
@@ -303,7 +331,7 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
                 }}
                 title={h.text}
               >
-                {/* 折叠按钮 */}
+                {/* 折叠/展开按钮 */}
                 {hasChildren ? (
                   <span
                     onClick={(e) => {
@@ -317,19 +345,20 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
                       alignItems: 'center',
                       justifyContent: 'center',
                       flexShrink: 0,
-                      fontSize: 10,
-                      opacity: 0.6,
-                      transition: 'transform 150ms ease, opacity var(--transition-fast)',
-                      transform: isCollapsedItem ? 'rotate(-90deg)' : 'rotate(0deg)',
+                      cursor: 'pointer',
+                      color: 'var(--editor-text-muted)',
+                      transform: isCollapsedItem ? 'none' : 'rotate(90deg)',
+                      transition: 'transform var(--transition-fast), color var(--transition-fast)',
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.opacity = '1';
+                      e.currentTarget.style.color = 'var(--editor-text)';
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.opacity = '0.6';
+                      e.currentTarget.style.color = 'var(--editor-text-muted)';
                     }}
+                    title={isCollapsedItem ? '展开' : '折叠'}
                   >
-                    ▼
+                    <ChevronRight size={12} strokeWidth={2.2} />
                   </span>
                 ) : (
                   <span style={{ width: 16, flexShrink: 0 }} />
