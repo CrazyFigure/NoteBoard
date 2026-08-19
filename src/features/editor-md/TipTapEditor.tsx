@@ -37,9 +37,15 @@ import { EditorContextMenu } from './EditorContextMenu';
 
 // 活跃 TipTap 实例表（供保存编排即时读取最新内容）
 const activeTipTapEditors = new Map<string, Editor>();
+// 活跃 Markdown 源码模式 CM6 实例表
+const activeSourceViews = new Map<string, EditorView>();
 
 export function getActiveTipTapEditor(key: string): Editor | undefined {
   return activeTipTapEditors.get(key);
+}
+
+export function getActiveSourceView(key: string): EditorView | undefined {
+  return activeSourceViews.get(key);
 }
 
 interface TipTapEditorProps {
@@ -195,6 +201,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     // 销毁旧实例
     if (sourceViewRef.current) {
       sourceViewRef.current.destroy();
+      activeSourceViews.delete(docKey);
     }
 
     const state = EditorState.create({
@@ -209,11 +216,13 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       ],
     });
 
-    sourceViewRef.current = new EditorView({
+    const view = new EditorView({
       state,
       parent: sourceDivRef.current,
     });
-  }, []);
+    sourceViewRef.current = view;
+    activeSourceViews.set(docKey, view);
+  }, [docKey]);
 
   // 自动保存
   const autoSave = useCallback(async (key: string, content: string) => {
@@ -260,6 +269,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
         sourceViewRef.current.destroy();
         sourceViewRef.current = null;
       }
+      activeSourceViews.delete(docKey);
       removeBaseline(docKey);
     };
   }, [docKey]);

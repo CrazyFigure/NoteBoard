@@ -11,6 +11,8 @@ export function formatJson(source: string): string {
   return JSON.stringify(parsed, null, 2) + '\n';
 }
 
+export { minifyJsonText, expandJsonText, validateJsonText } from './jsonOps';
+
 // ── XML 格式化 ──
 
 export function formatXml(source: string): string {

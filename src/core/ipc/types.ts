@@ -125,7 +125,15 @@ export interface TypographySettings {
   contentFontSize: number;
   monoFontSize: number;
   contentLineHeight: number;
+  // 代码/纯文本行高
+  monoLineHeight?: number;
   contentWidth: ContentWidth;
+  // 文件树字体（留空跟随系统）
+  explorerFontFamily?: string;
+  // 文件树字号 (px)
+  explorerFontSize?: number;
+  // 文件树条目行高 (px)
+  explorerLineHeight?: number;
 }
 
 export interface EditorSettings {
@@ -139,6 +147,10 @@ export interface EditorSettings {
   enableMermaid: boolean;
   enableAlerts: boolean;
   enableBlockHandle: boolean;
+  // 显示空格与空白字符（点/箭头）
+  showWhitespace: boolean;
+  // 显示换行符号（↵）
+  showLineEndings: boolean;
 }
 
 export interface FileSettings {

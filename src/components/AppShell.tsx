@@ -14,7 +14,6 @@ import { ToastContainer } from './Toast';
 import { RailToggle } from './rail/RailToggle';
 import { useWindowStore } from '../stores/windowStore';
 import { useDocumentStore } from '../stores/documentStore';
-import { useReveal } from '../features/explorer/useReveal';
 import {
   useLayoutStore,
   EXPLORER_MIN,
@@ -28,7 +27,18 @@ import { BoardEditor } from '../features/board/BoardEditor';
 import { OutlinePanel } from '../features/outline/OutlinePanel';
 import { UnsavedGuardDialog, useUnsavedGuard } from '../features/editor-code/UnsavedGuardDialog';
 import { Explorer } from '../features/explorer/Explorer';
+import { SearchReplaceBar } from '../features/search/SearchReplaceBar';
+import { useSearchStore } from '../stores/searchStore';
+import { getSelectedText } from '../features/search/searchController';
+import { getEditorView } from '../features/editor-code/CodeEditor';
+import { getActiveTipTapEditor, getActiveSourceView } from '../features/editor-md/TipTapEditor';
 import { registerShortcut } from '../core/shortcuts';
+import {
+  handleExpandJson,
+  handleMinifyJson,
+  handleValidateJson,
+} from '../features/editor-code/jsonOps';
+import type { LanguageId } from '../core/ipc/types';
 import { saveDocument } from '../features/editor-code/orchestration/saveDocument';
 import { performWindowClose } from '../features/window/windowManager';
 import {
@@ -69,9 +79,6 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
   const activeKey = useWindowStore((s) => s.activeKey);
   const activeDoc = useDocumentStore((s) => (activeKey ? s.documents.get(activeKey) : undefined));
 
-  // 纯跟随 + Reveal：全局跟随活跃 Tab 切换左侧资源管理器目录
-  useReveal();
-
   const {
     explorerVisible,
     explorerWidth,
@@ -89,6 +96,7 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
   // 关闭拦截
   const {
     dirtyPendingTabs,
+    requestClose,
     cancelClose,
     confirmSaveAndClose,
     discardAndClose,
@@ -139,7 +147,7 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
 
   // Ctrl+S 快捷键注册
   useEffect(() => {
-    const unreg = registerShortcut({
+    const unregSave = registerShortcut({
       key: 'Ctrl+S',
       action: () => {
         if (activeKey) {
@@ -149,8 +157,171 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
       scope: 'global',
       description: '保存当前文档',
     });
-    return () => unreg();
-  }, [activeKey]);
+
+    // Ctrl+F 查找
+    const unregCtrlF = registerShortcut({
+      key: 'Ctrl+F',
+      action: () => {
+        const currentTab = useWindowStore.getState().activeTab();
+        if (!currentTab) return;
+        let target = null;
+        if (currentTab.kind === 'markdown') {
+          if (currentTab.viewMode === 'source') {
+            const view = getActiveSourceView(currentTab.key);
+            if (view) target = { type: 'codemirror' as const, view };
+          } else {
+            const editor = getActiveTipTapEditor(currentTab.key);
+            if (editor) target = { type: 'tiptap' as const, editor };
+          }
+        } else if (currentTab.kind === 'code') {
+          const view = getEditorView();
+          if (view) target = { type: 'codemirror' as const, view };
+        }
+        const selected = target ? getSelectedText(target) : '';
+        const searchStore = useSearchStore.getState();
+        searchStore.openSearch(selected.trim() ? selected : undefined, 'search');
+      },
+      scope: 'global',
+      description: '查找文本',
+    });
+
+    // Ctrl+H 替换
+    const unregCtrlH = registerShortcut({
+      key: 'Ctrl+H',
+      action: () => {
+        const currentTab = useWindowStore.getState().activeTab();
+        if (!currentTab) return;
+        let target = null;
+        if (currentTab.kind === 'markdown') {
+          if (currentTab.viewMode === 'source') {
+            const view = getActiveSourceView(currentTab.key);
+            if (view) target = { type: 'codemirror' as const, view };
+          } else {
+            const editor = getActiveTipTapEditor(currentTab.key);
+            if (editor) target = { type: 'tiptap' as const, editor };
+          }
+        } else if (currentTab.kind === 'code') {
+          const view = getEditorView();
+          if (view) target = { type: 'codemirror' as const, view };
+        }
+        const selected = target ? getSelectedText(target) : '';
+        const searchStore = useSearchStore.getState();
+        searchStore.openSearch(selected.trim() ? selected : undefined, 'replace');
+      },
+      scope: 'global',
+      description: '替换文本',
+    });
+
+    // Ctrl+W 关闭当前标签页
+    const unregCtrlW = registerShortcut({
+      key: 'Ctrl+W',
+      action: () => {
+        const curKey = useWindowStore.getState().activeKey;
+        if (curKey) {
+          requestClose([curKey]);
+        }
+      },
+      scope: 'global',
+      description: '关闭当前标签页',
+    });
+
+    // ── JSON 快捷操作（支持 .json / .txt / 源码模式等） ──
+
+    // 1. JSON 展开 / 格式化 (Shift+Alt+F / Ctrl+Alt+L)
+    const handleExpandAction = () => {
+      const currentTab = useWindowStore.getState().activeTab();
+      if (!currentTab) return;
+      if (currentTab.kind === 'code') {
+        const view = getEditorView();
+        const doc = currentTab.key ? useDocumentStore.getState().documents.get(currentTab.key) : undefined;
+        if (view) handleExpandJson(view, doc?.language as LanguageId);
+      } else if (currentTab.kind === 'markdown' && currentTab.viewMode === 'source') {
+        const view = getActiveSourceView(currentTab.key);
+        if (view) handleExpandJson(view, 'markdown');
+      }
+    };
+
+    const unregExpandShiftAltF = registerShortcut({
+      key: 'Shift+Alt+F',
+      action: handleExpandAction,
+      scope: 'global',
+      description: 'JSON 展开 / 格式化',
+    });
+
+    const unregExpandCtrlAltL = registerShortcut({
+      key: 'Ctrl+Alt+L',
+      action: handleExpandAction,
+      scope: 'global',
+      description: 'JSON 展开 / 格式化 (JetBrains)',
+    });
+
+    // 2. JSON 压缩 (Shift+Alt+M / Ctrl+Alt+M)
+    const handleMinifyAction = () => {
+      const currentTab = useWindowStore.getState().activeTab();
+      if (!currentTab) return;
+      if (currentTab.kind === 'code') {
+        const view = getEditorView();
+        if (view) handleMinifyJson(view);
+      } else if (currentTab.kind === 'markdown' && currentTab.viewMode === 'source') {
+        const view = getActiveSourceView(currentTab.key);
+        if (view) handleMinifyJson(view);
+      }
+    };
+
+    const unregMinifyShiftAltM = registerShortcut({
+      key: 'Shift+Alt+M',
+      action: handleMinifyAction,
+      scope: 'global',
+      description: 'JSON 压缩为单行',
+    });
+
+    const unregMinifyCtrlAltM = registerShortcut({
+      key: 'Ctrl+Alt+M',
+      action: handleMinifyAction,
+      scope: 'global',
+      description: 'JSON 压缩为单行',
+    });
+
+    // 3. JSON 格式校验 (Shift+Alt+V / Ctrl+Alt+V)
+    const handleValidateAction = () => {
+      const currentTab = useWindowStore.getState().activeTab();
+      if (!currentTab) return;
+      if (currentTab.kind === 'code') {
+        const view = getEditorView();
+        if (view) handleValidateJson(view);
+      } else if (currentTab.kind === 'markdown' && currentTab.viewMode === 'source') {
+        const view = getActiveSourceView(currentTab.key);
+        if (view) handleValidateJson(view);
+      }
+    };
+
+    const unregValidateShiftAltV = registerShortcut({
+      key: 'Shift+Alt+V',
+      action: handleValidateAction,
+      scope: 'global',
+      description: 'JSON 格式校验',
+    });
+
+    const unregValidateCtrlAltV = registerShortcut({
+      key: 'Ctrl+Alt+V',
+      action: handleValidateAction,
+      scope: 'global',
+      description: 'JSON 格式校验',
+    });
+
+    return () => {
+      unregSave();
+      unregCtrlF();
+      unregCtrlH();
+      unregCtrlW();
+      unregExpandShiftAltF();
+      unregExpandCtrlAltL();
+      unregMinifyShiftAltM();
+      unregMinifyCtrlAltM();
+      unregValidateShiftAltV();
+      unregValidateCtrlAltV();
+    };
+  }, [activeKey, requestClose]);
 
   // 组件卸载时将 ref 中的宽度写回 store（持久化）
   useEffect(() => {
@@ -320,6 +491,9 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                     ariaLabel="展开/收起大纲"
                   />
                 )}
+
+                {/* 自研现代搜索与替换栏 */}
+                <SearchReplaceBar />
               </div>
             </div>
           </Panel>

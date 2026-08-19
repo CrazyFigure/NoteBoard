@@ -84,8 +84,20 @@ pub struct TypographySettings {
     pub mono_font_size: u32,
     #[serde(default = "default_line_height")]
     pub content_line_height: f64,
+    // 代码/纯文本行高
+    #[serde(default = "default_mono_line_height")]
+    pub mono_line_height: f64,
     #[serde(default = "default_content_width")]
     pub content_width: String,
+    // 文件树字体族（留空跟随系统）
+    #[serde(default)]
+    pub explorer_font_family: String,
+    // 文件树字号
+    #[serde(default = "default_explorer_font_size")]
+    pub explorer_font_size: u32,
+    // 文件树条目行高
+    #[serde(default = "default_explorer_line_height")]
+    pub explorer_line_height: u32,
 }
 
 impl Default for TypographySettings {
@@ -96,7 +108,11 @@ impl Default for TypographySettings {
             content_font_size: 16,
             mono_font_size: 14,
             content_line_height: 1.7,
+            mono_line_height: 1.5,
             content_width: "standard".to_string(),
+            explorer_font_family: String::new(),
+            explorer_font_size: 13,
+            explorer_line_height: 24,
         }
     }
 }
@@ -124,6 +140,12 @@ pub struct EditorSettings {
     pub enable_alerts: bool,
     #[serde(default = "default_true")]
     pub enable_block_handle: bool,
+    // 显示空格与空白字符（默认 false）
+    #[serde(default)]
+    pub show_whitespace: bool,
+    // 显示换行符号（默认 false）
+    #[serde(default)]
+    pub show_line_endings: bool,
 }
 
 impl Default for EditorSettings {
@@ -139,6 +161,8 @@ impl Default for EditorSettings {
             enable_mermaid: true,
             enable_alerts: true,
             enable_block_handle: true,
+            show_whitespace: false,
+            show_line_endings: false,
         }
     }
 }
@@ -197,6 +221,9 @@ fn default_mono_font() -> String { "Consolas, 'Microsoft YaHei Mono', monospace"
 fn default_content_font_size() -> u32 { 16 }
 fn default_mono_font_size() -> u32 { 14 }
 fn default_line_height() -> f64 { 1.7 }
+fn default_mono_line_height() -> f64 { 1.5 }
+fn default_explorer_font_size() -> u32 { 13 }
+fn default_explorer_line_height() -> u32 { 24 }
 fn default_content_width() -> String { "standard".to_string() }
 fn default_view_mode() -> String { "visual".to_string() }
 fn default_true() -> bool { true }

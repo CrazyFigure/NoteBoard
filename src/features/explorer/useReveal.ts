@@ -16,44 +16,49 @@ import { useTreeData } from './useTreeData';
 export function useReveal() {
   const activeKey = useWindowStore((s) => s.activeKey);
   const doc = useDocumentStore((s) => (activeKey ? s.documents.get(activeKey) : undefined));
-  const { root, setRoot, setRevealed, revealed } = useExplorerStore();
+  const { setRoot, setRevealed, revealed } = useExplorerStore();
   const { loadChildren, revealPath } = useTreeData();
-  const activeKeyRef = useRef<string | null>(null);
+  const lastActiveKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!activeKey || !doc) return;
+    if (!activeKey || !doc) {
+      lastActiveKeyRef.current = activeKey;
+      return;
+    }
 
     const newRoot = doc.dirPath;
     if (!newRoot) return;
 
-    activeKeyRef.current = activeKey;
+    // 当 activeKey 发生切换时，触发跟随与展开定位
+    const isTabSwitched = lastActiveKeyRef.current !== activeKey;
+    lastActiveKeyRef.current = activeKey;
 
-    // 不变式 I-16：跨目录时清空 expanded/children 并重建树
-    if (!sameKey(root, newRoot)) {
-      // 跨目录 → 重建树
-      loadChildren(newRoot).then((children) => {
-        // 防止异步竞态：仅在 activeKey 依然一致时应用
-        if (activeKeyRef.current === activeKey) {
-          setRoot(newRoot, children);
-          // 然后展开到目标文件并高亮
-          if (doc.key) {
-            revealPath(doc.key, newRoot).then(() => {
-              if (activeKeyRef.current === activeKey) {
-                setRevealed(doc.key);
-              }
-            });
-          }
-        }
-      });
-    } else {
-      // 同目录 → 确保展开并更新 revealed 高亮
-      if (doc.key && (!revealed || !sameKey(doc.key, revealed))) {
-        revealPath(doc.key, newRoot).then(() => {
-          if (activeKeyRef.current === activeKey) {
-            setRevealed(doc.key);
+    if (isTabSwitched) {
+      const currentRoot = useExplorerStore.getState().root;
+      if (!sameKey(currentRoot, newRoot)) {
+        // 跨目录 → 重建树并展开定位
+        loadChildren(newRoot).then((children) => {
+          if (useWindowStore.getState().activeKey === activeKey) {
+            setRoot(newRoot, children);
+            if (doc.key) {
+              revealPath(doc.key, newRoot).then(() => {
+                if (useWindowStore.getState().activeKey === activeKey) {
+                  setRevealed(doc.key);
+                }
+              });
+            }
           }
         });
+      } else {
+        // 同目录 → 确保展开并更新 revealed 高亮
+        if (doc.key && (!revealed || !sameKey(doc.key, revealed))) {
+          revealPath(doc.key, newRoot).then(() => {
+            if (useWindowStore.getState().activeKey === activeKey) {
+              setRevealed(doc.key);
+            }
+          });
+        }
       }
     }
-  }, [activeKey, doc?.dirPath, doc?.key, root, revealed, setRoot, setRevealed, loadChildren, revealPath]);
+  }, [activeKey, doc?.dirPath, doc?.key, setRoot, setRevealed, revealed, loadChildren, revealPath]);
 }

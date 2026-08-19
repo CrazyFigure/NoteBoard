@@ -2,14 +2,14 @@
 // history / defaultKeymap / searchKeymap / indentWithTab / bracketMatching 等
 // 详见 docs/09-开发路线图.md 阶段4
 
-import { Compartment, type Extension } from '@codemirror/state';
+import { Compartment, type Extension, RangeSetBuilder } from '@codemirror/state';
 import {
   history,
   defaultKeymap,
   historyKeymap,
   indentWithTab,
 } from '@codemirror/commands';
-import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
+import { search, highlightSelectionMatches } from '@codemirror/search';
 import {
   bracketMatching,
   defaultHighlightStyle,
@@ -31,11 +31,16 @@ import {
   rectangularSelection,
   crosshairCursor,
   highlightWhitespace,
+  ViewPlugin,
+  Decoration,
+  type DecorationSet,
+  WidgetType,
+  type ViewUpdate,
 } from '@codemirror/view';
 import { nbSyntaxHighlighting } from './highlightStyle';
 import { nbEditorTheme } from './theme';
 
-// ── 5 个热重配 Compartment ──
+// ── 热重配 Compartment ──
 // 详见 docs/09-开发路线图.md 4.3
 
 /** 语言热重配 */
@@ -53,14 +58,84 @@ export const lineNumberCompartment = new Compartment();
 /** 排版热重配 */
 export const typographyCompartment = new Compartment();
 
+/** 空白字符显示热重配 */
+export const whitespaceCompartment = new Compartment();
+
+/** 换行符号显示热重配 */
+export const lineEndingCompartment = new Compartment();
+
+// ── 换行符号小部件与扩展 ──
+
+/** 换行符号小部件（渲染 ↵ 标记） */
+class NewlineWidget extends WidgetType {
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = 'cm-newline-marker';
+    span.textContent = '↵';
+    span.setAttribute('aria-hidden', 'true');
+    return span;
+  }
+}
+
+const newlineWidget = new NewlineWidget();
+
+/** 构建可视区域内的换行符号装饰集 */
+function buildNewlineDecorations(view: EditorView): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const { from, to } of view.visibleRanges) {
+    let pos = from;
+    while (pos <= to) {
+      const line = view.state.doc.lineAt(pos);
+      // 非末行在行尾添加 ↵ 换行小部件
+      if (line.number < view.state.doc.lines) {
+        builder.add(line.to, line.to, Decoration.widget({
+          widget: newlineWidget,
+          side: 1,
+        }));
+      }
+      pos = line.to + 1;
+    }
+  }
+  return builder.finish();
+}
+
+/** 换行符号显示扩展 */
+export const showLineEndingsExtension = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = buildNewlineDecorations(view);
+    }
+    update(update: ViewUpdate) {
+      if (update.docChanged || update.viewportChanged) {
+        this.decorations = buildNewlineDecorations(update.view);
+      }
+    }
+  },
+  {
+    decorations: (v) => v.decorations,
+  },
+);
+
+// ── 基础扩展集选项 ──
+
+export interface BaseExtensionsOptions {
+  showWhitespace?: boolean;
+  showLineEndings?: boolean;
+  showLineNumbers?: boolean;
+  softWrap?: boolean;
+}
+
 // ── 基础扩展集 ──
 
-export function createBaseExtensions(): Extension[] {
+export function createBaseExtensions(options?: BaseExtensionsOptions): Extension[] {
   return [
     // 历史
     history(),
-    // 行号（初始开启，可通过 compartment 切换）
-    lineNumberCompartment.of([lineNumbers(), highlightActiveLineGutter()]),
+    // 行号（通过 compartment 切换）
+    lineNumberCompartment.of(
+      options?.showLineNumbers !== false ? [lineNumbers(), highlightActiveLineGutter()] : [],
+    ),
     // 活动行高亮
     highlightActiveLine(),
     // 特殊字符高亮
@@ -84,20 +159,23 @@ export function createBaseExtensions(): Extension[] {
     syntaxHighlighting(defaultHighlightStyle),
     // 编辑器界面主题
     nbEditorTheme,
-    // 空白字符高亮
-    highlightWhitespace(),
+    // 空白字符高亮（默认关闭，可通过 compartment 切换）
+    whitespaceCompartment.of(options?.showWhitespace ? highlightWhitespace() : []),
+    // 换行符号高亮（默认关闭，可通过 compartment 切换）
+    lineEndingCompartment.of(options?.showLineEndings ? showLineEndingsExtension : []),
     // 折叠槽
     foldGutter(),
+    // 搜索底层高亮与查询支持（不使用 CM 默认 UI）
+    search({ top: false }),
     // 选区匹配高亮
     highlightSelectionMatches(),
-    // 软换行（默认关闭，可切换）
-    wrapCompartment.of([]),
+    // 软换行（可通过 compartment 切换）
+    wrapCompartment.of(options?.softWrap ? EditorView.lineWrapping : []),
     // 排版（占位，后续设置面板会用）
     typographyCompartment.of([]),
     // 键映射
     keymap.of([
       ...defaultKeymap,
-      ...searchKeymap,
       ...historyKeymap,
       ...foldKeymap,
       ...closeBracketsKeymap,

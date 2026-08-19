@@ -57,9 +57,13 @@ const DEFAULT_TYPOGRAPHY: TypographySettings = {
   contentFontFamily: '',
   monoFontFamily: "Consolas, 'Cascadia Code', 'Microsoft YaHei Mono', monospace",
   contentFontSize: 16,
-  monoFontSize: 15,
+  monoFontSize: 14,
   contentLineHeight: 1.7,
+  monoLineHeight: 1.5,
   contentWidth: 'standard',
+  explorerFontFamily: '',
+  explorerFontSize: 13,
+  explorerLineHeight: 24,
 };
 
 /**
@@ -70,6 +74,7 @@ export function applyTypography(t: Partial<TypographySettings>): void {
   const root = document.documentElement;
   const merged = { ...DEFAULT_TYPOGRAPHY, ...t };
 
+  // 1. Markdown / 正文排版
   if (merged.contentFontFamily) {
     root.style.setProperty('--content-font-family', merged.contentFontFamily);
   } else {
@@ -79,12 +84,26 @@ export function applyTypography(t: Partial<TypographySettings>): void {
       "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Noto Sans SC', Roboto, sans-serif",
     );
   }
-
-  root.style.setProperty('--mono-font-family', merged.monoFontFamily);
   root.style.setProperty('--content-font-size', `${merged.contentFontSize}px`);
-  root.style.setProperty('--mono-font-size', `${merged.monoFontSize}px`);
   root.style.setProperty('--content-line-height', `${merged.contentLineHeight}`);
   root.style.setProperty('--content-max-width', CONTENT_WIDTH_MAP[merged.contentWidth] ?? '960px');
+
+  // 2. 代码 / 纯文本排版（.sql / .txt / .json 等及代码块）
+  root.style.setProperty('--mono-font-family', merged.monoFontFamily);
+  root.style.setProperty('--mono-font-size', `${merged.monoFontSize}px`);
+  root.style.setProperty('--mono-line-height', `${merged.monoLineHeight ?? 1.5}`);
+
+  // 3. 文件树排版（资源管理器）
+  if (merged.explorerFontFamily) {
+    root.style.setProperty('--explorer-font-family', merged.explorerFontFamily);
+  } else {
+    root.style.setProperty(
+      '--explorer-font-family',
+      "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Noto Sans SC', Roboto, sans-serif",
+    );
+  }
+  root.style.setProperty('--explorer-font-size', `${merged.explorerFontSize ?? 13}px`);
+  root.style.setProperty('--explorer-item-height', `${merged.explorerLineHeight ?? 24}px`);
 
   // 缓存到 localStorage，供 main.tsx 防首屏闪烁读取
   try {

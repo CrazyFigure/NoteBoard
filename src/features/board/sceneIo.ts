@@ -74,6 +74,40 @@ export interface ExcalidrawFileData {
 export const SUPPORTED_VERSION = 2;
 
 /**
+ * 清洗并规范化 Excalidraw AppState
+ * 彻底过滤 collaborators（Map 经 JSON 序列化后会退化为 plain object，传给 Excalidraw 必导致 collaborators.forEach 报错）
+ * 以及选区、拖拽、菜单等运行时临时交互状态，仅保留必要的外观和工具偏好设置
+ */
+export function cleanAppState(appState?: Partial<ExcalidrawAppState> | null): ExcalidrawAppState {
+  if (!appState || typeof appState !== 'object') {
+    return { viewBackgroundColor: '#ffffff', gridSize: null };
+  }
+
+  const {
+    // 剔除所有协同及运行时临时状态
+    collaborators: _collaborators,
+    selectedElementIds: _selectedElementIds,
+    previousSelectedElementIds: _previousSelectedElementIds,
+    selectedGroupIds: _selectedGroupIds,
+    editingGroupId: _editingGroupId,
+    editingElement: _editingElement,
+    resizingElement: _resizingElement,
+    draggingElement: _draggingElement,
+    cursorButton: _cursorButton,
+    openMenu: _openMenu,
+    openSidebar: _openSidebar,
+    activeEmbeddable: _activeEmbeddable,
+    ...rest
+  } = appState as Record<string, unknown>;
+
+  return {
+    viewBackgroundColor: (rest.viewBackgroundColor as string) ?? '#ffffff',
+    gridSize: (rest.gridSize as number | null) ?? null,
+    ...rest,
+  } as ExcalidrawAppState;
+}
+
+/**
  * 将 JSON 字符串解析为 Excalidraw 场景
  */
 export function parseScene(json: string): ExcalidrawScene {
@@ -88,7 +122,12 @@ export function parseScene(json: string): ExcalidrawScene {
   if (!data.type) data.type = 'excalidraw';
   if (!data.version) data.version = 2;
   if (!data.source) data.source = 'noteboard';
-  if (!data.appState) data.appState = { viewBackgroundColor: '#ffffff', gridSize: null };
+  if (!data.appState) {
+    data.appState = { viewBackgroundColor: '#ffffff', gridSize: null };
+  } else {
+    // 防御性清洗反序列化后的 appState，剔除导致崩溃的非标准或普通对象属性
+    data.appState = cleanAppState(data.appState);
+  }
   if (!data.files) data.files = {};
 
   return data;
@@ -98,13 +137,13 @@ export function parseScene(json: string): ExcalidrawScene {
  * 将 Excalidraw 场景序列化为 JSON 字符串
  */
 export function serializeScene(scene: ExcalidrawScene): string {
-  // 保持原生结构，不加自定义字段
+  // 保持原生结构，清理运行态 appState 字段
   const output: ExcalidrawScene = {
     type: scene.type,
     version: scene.version,
     source: scene.source,
     elements: scene.elements,
-    appState: scene.appState,
+    appState: cleanAppState(scene.appState),
     files: scene.files,
   };
 

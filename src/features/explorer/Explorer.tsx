@@ -4,7 +4,7 @@
 // 详见 docs/09-开发路线图.md 阶段5
 
 import { useState, useCallback } from 'react';
-import { FilePlus, FolderPlus, RotateCw, FolderOpen } from 'lucide-react';
+import { FilePlus, FolderPlus, LocateFixed, RotateCw, FolderOpen } from 'lucide-react';
 import { useExplorerStore } from './explorerStore';
 import { useTreeData } from './useTreeData';
 import { useReveal } from './useReveal';
@@ -13,24 +13,16 @@ import { TreeNode } from './TreeNode';
 import { openFolderDialog } from '../welcome/welcomeActions';
 import * as ipc from '../../core/ipc/commands';
 import { openDocument } from '../editor-code/orchestration/openDocument';
-
-// ── 根路径中间省略 ──
-
-function middleEllipsis(path: string, maxLen: number = 36): string {
-  if (path.length <= maxLen) return path;
-  const drive = path.match(/^[A-Za-z]:\\/);
-  const drivePart = drive ? drive[0] : '';
-  const last = path.split(/[\\/]/).pop() ?? '';
-  const remaining = maxLen - drivePart.length - last.length - 3;
-  if (remaining <= 0) return '…' + last;
-  return `${drivePart}…${path.slice(path.length - remaining - last.length)}`;
-}
+import { useSettingsStore } from '../../stores/settingsStore';
+import { useWindowStore } from '../../stores/windowStore';
+import { useDocumentStore } from '../../stores/documentStore';
+import { ExplorerBreadcrumb } from './ExplorerBreadcrumb';
 
 // ── Explorer 组件 ──
 
 export function Explorer() {
-  const { root, children, loading, setRoot } = useExplorerStore();
-  const { loadChildren } = useTreeData();
+  const { root, children, loading, setRoot, setRevealed } = useExplorerStore();
+  const { loadChildren, revealPath } = useTreeData();
   const [creatingType, setCreatingType] = useState<'file' | 'folder' | null>(null);
   const [creatingName, setCreatingName] = useState('');
 
@@ -49,6 +41,26 @@ export function Explorer() {
       setRoot(root, nodes);
     }
   }, [root, loadChildren, setRoot]);
+
+  // 一键定位当前打开的文件与目录
+  const handleLocateActive = useCallback(async () => {
+    const activeKey = useWindowStore.getState().activeKey;
+    if (!activeKey) return;
+    const doc = useDocumentStore.getState().documents.get(activeKey);
+    const targetDir = doc?.dirPath;
+    if (!targetDir) return;
+
+    try {
+      const nodes = await loadChildren(targetDir);
+      setRoot(targetDir, nodes);
+      if (doc.key) {
+        await revealPath(doc.key, targetDir);
+        setRevealed(doc.key);
+      }
+    } catch (err) {
+      console.error('定位当前文件所在目录失败:', err);
+    }
+  }, [loadChildren, setRoot, revealPath, setRevealed]);
 
   // 提交新建文件/文件夹
   const handleCreateSubmit = async () => {
@@ -76,6 +88,24 @@ export function Explorer() {
 
     setCreatingType(null);
     setCreatingName('');
+  };
+
+  // 支持在文件树区域按住 Ctrl + 鼠标滚轮 实时缩放字号与行高
+  const handleTreeWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 1 : -1;
+    const curTypography = useSettingsStore.getState().settings.typography;
+    const currentSize = curTypography.explorerFontSize ?? 13;
+    const newSize = Math.max(10, Math.min(22, currentSize + delta));
+    if (newSize !== currentSize) {
+      // 保持合理的条目行高比例（约 1.8 倍字号）
+      const newLineHeight = Math.round(newSize * 1.8);
+      useSettingsStore.getState().setTypography({
+        explorerFontSize: newSize,
+        explorerLineHeight: newLineHeight,
+      });
+    }
   };
 
   const containerStyle: React.CSSProperties = {
@@ -128,7 +158,7 @@ export function Explorer() {
       {/* 标题行 */}
       <div
         style={{
-          height: 28,
+          height: 30,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -146,7 +176,19 @@ export function Explorer() {
         >
           资源管理器
         </span>
-        <div style={{ display: 'flex', gap: 2 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          {/* 定位当前激活的文件与目录 */}
+          <button
+            type="button"
+            onClick={handleLocateActive}
+            style={actionBtnStyle}
+            onMouseEnter={handleBtnMouseEnter}
+            onMouseLeave={handleBtnMouseLeave}
+            title="定位当前打开的文件与目录"
+          >
+            <LocateFixed size={15} />
+          </button>
+          {/* 新建文件 */}
           <button
             type="button"
             onClick={() => {
@@ -154,10 +196,13 @@ export function Explorer() {
               setCreatingName('');
             }}
             style={actionBtnStyle}
+            onMouseEnter={handleBtnMouseEnter}
+            onMouseLeave={handleBtnMouseLeave}
             title="新建文件"
           >
-            <FilePlus size={13} />
+            <FilePlus size={15} />
           </button>
+          {/* 新建文件夹 */}
           <button
             type="button"
             onClick={() => {
@@ -165,55 +210,39 @@ export function Explorer() {
               setCreatingName('');
             }}
             style={actionBtnStyle}
+            onMouseEnter={handleBtnMouseEnter}
+            onMouseLeave={handleBtnMouseLeave}
             title="新建文件夹"
           >
-            <FolderPlus size={13} />
+            <FolderPlus size={15} />
           </button>
+          {/* 刷新目录 */}
           <button
             type="button"
             onClick={handleRefresh}
             style={actionBtnStyle}
+            onMouseEnter={handleBtnMouseEnter}
+            onMouseLeave={handleBtnMouseLeave}
             title="刷新目录"
           >
-            <RotateCw size={13} />
+            <RotateCw size={15} />
           </button>
+          {/* 打开文件夹 */}
           <button
             type="button"
             onClick={openFolderDialog}
             style={actionBtnStyle}
+            onMouseEnter={handleBtnMouseEnter}
+            onMouseLeave={handleBtnMouseLeave}
             title="打开文件夹"
           >
-            <FolderOpen size={13} />
+            <FolderOpen size={15} />
           </button>
         </div>
       </div>
 
-      {/* 根路径显示 */}
-      <div
-        style={{
-          height: 22,
-          display: 'flex',
-          alignItems: 'center',
-          padding: '0 8px',
-          flexShrink: 0,
-          overflow: 'hidden',
-          borderBottom: '1px solid var(--editor-border)',
-        }}
-        title={root}
-      >
-        <span
-          style={{
-            fontSize: 11,
-            color: 'var(--explorer-text-muted)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            width: '100%',
-          }}
-        >
-          {middleEllipsis(root)}
-        </span>
-      </div>
+      {/* 面包屑型路径导航栏 */}
+      <ExplorerBreadcrumb root={root} onRefresh={handleRefresh} />
 
       {/* 新建文件输入框 */}
       {creatingType && (
@@ -252,6 +281,7 @@ export function Explorer() {
 
       {/* 树内容 */}
       <div
+        onWheel={handleTreeWheel}
         style={{
           flex: 1,
           overflow: 'auto',
@@ -297,6 +327,8 @@ export function Explorer() {
 }
 
 const actionBtnStyle: React.CSSProperties = {
+  width: 22,
+  height: 22,
   border: 'none',
   background: 'transparent',
   cursor: 'pointer',
@@ -304,8 +336,19 @@ const actionBtnStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  padding: 4,
-  borderRadius: 3,
-  transition: 'color var(--transition-fast)',
+  padding: 0,
+  borderRadius: 4,
+  transition: 'background var(--transition-fast), color var(--transition-fast)',
 };
+
+function handleBtnMouseEnter(e: React.MouseEvent<HTMLButtonElement>) {
+  e.currentTarget.style.background = 'var(--toolbar-hover)';
+  e.currentTarget.style.color = 'var(--explorer-text)';
+}
+
+function handleBtnMouseLeave(e: React.MouseEvent<HTMLButtonElement>) {
+  e.currentTarget.style.background = 'transparent';
+  e.currentTarget.style.color = 'var(--explorer-text-muted)';
+}
+
 

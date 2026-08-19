@@ -38,7 +38,11 @@ const DEFAULT_SETTINGS: Settings = {
     contentFontSize: 16,
     monoFontSize: 14,
     contentLineHeight: 1.7,
+    monoLineHeight: 1.5,
     contentWidth: 'standard',
+    explorerFontFamily: '',
+    explorerFontSize: 13,
+    explorerLineHeight: 24,
   },
   editor: {
     defaultViewMode: 'visual',
@@ -51,6 +55,8 @@ const DEFAULT_SETTINGS: Settings = {
     enableMermaid: true,
     enableAlerts: true,
     enableBlockHandle: true,
+    showWhitespace: false,
+    showLineEndings: false,
   },
   file: {
     forceManualSave: false,
