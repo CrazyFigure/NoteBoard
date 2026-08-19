@@ -220,7 +220,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <div>
                   <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>主题配色方案</h3>
                   <p style={{ fontSize: 12, color: 'var(--editor-text-muted)', margin: 0 }}>
-                    支持 TMD_Type-Markdown 经典配色，针对 Markdown 代码块与行内代码深度调优。
+                    精心设计的经典配色，针对 Markdown 代码块与行内代码深度调优。
                   </p>
                 </div>
 
@@ -1118,7 +1118,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <span style={{ fontSize: 12, color: 'var(--editor-text-muted)' }}>Windows 优雅桌面笔记 + 自由画板</span>
                 </div>
                 <p style={{ fontSize: 12, color: 'var(--editor-text-secondary)', maxWidth: 420, lineHeight: 1.6, margin: '4px 0' }}>
-                  参考 note-gen 编辑交互与 TMD_Type-Markdown 美学配色，采用 Rust Tauri v2 原生高性能底座与 TipTap / CodeMirror 6 / Excalidraw 双核驱动。
+                  采用 Rust Tauri v2 原生高性能底座与 TipTap / CodeMirror 6 / Excalidraw 多核驱动。
                 </p>
                 <div style={{ fontSize: 12, color: 'var(--editor-text-muted)' }}>
                   版本 v0.1.0 · GPL-3.0 License

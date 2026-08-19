@@ -2,7 +2,7 @@
 // 阈值判定（单趟扫描，提前 return）+ 降级到 source 模式 + 横幅
 // 详见 docs/09-开发路线图.md 7.15
 //
-// 阈值（来自 note-gen 经验值，非推导值）：
+// 阈值设置：
 // - VISUAL_MODE_LIMIT: 超过此值不进入 visual 模式
 // - SECTION_MODE_LIMIT: 超过此值进入分段模式（阶段11）
 // - LARGE_FILE_CONFIRM: 超过此值弹确认框（FR-113）

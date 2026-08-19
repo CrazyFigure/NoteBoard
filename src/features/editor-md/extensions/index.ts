@@ -2,8 +2,8 @@
 // 唯一装配处：所有 TipTap 扩展在此注册
 // 详见 docs/09-开发路线图.md 7.1
 //
-// 移植自 note-gen，但只取最小扩展集，不整文件搬。
-// 主动剔除：AI 补全/建议/diff 预览、sync/、SQLite 层、全局单例 tab 状态。
+// 采用最小扩展集装配。
+// 不包含：AI 补全/建议/diff 预览、sync/、SQLite 层、全局单例 tab 状态。
 
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';

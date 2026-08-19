@@ -60,8 +60,6 @@ NoteBoard 采用 **GPL-3.0-only**。
 
 | 项目 | 协议 | 参考内容 |
 |---|---|---|
-| [codexu/note-gen](https://github.com/codexu/note-gen) | GPL-3.0 | 编辑区整体实现：TipTap + CodeMirror 双模式、大纲、大文档性能策略 |
-| [KoniKee/TMD_Type-Markdown](https://github.com/KoniKee/TMD_Type-Markdown) | MIT | `晨光` / `琥珀` / `墨夜` 三套主题配色与 CSS 变量体系 |
 | [excalidraw/excalidraw](https://github.com/excalidraw/excalidraw) | MIT | 画板引擎 |
 
-NoteBoard 选择 GPL-3.0 正是为了能够合法复用 note-gen 的 GPL 代码。移植的每个文件都保留原始版权声明，详见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+第三方依赖与许可证详情请参阅 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
