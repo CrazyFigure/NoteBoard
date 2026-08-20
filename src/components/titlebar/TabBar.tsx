@@ -19,6 +19,7 @@ import { CSS } from '@dnd-kit/utilities';
 import {
   X,
   Plus,
+  Home,
   FileText,
   File,
   Database,
@@ -522,9 +523,25 @@ export function TabBar() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [newMenuPos, setNewMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [showMoreSubMenu, setShowMoreSubMenu] = useState(false);
+  const subMenuTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const newMenuRef = useRef<HTMLDivElement>(null);
   // 新建按钮引用，用于菜单点击外部区域判断
   const newBtnRef = useRef<HTMLButtonElement>(null);
+
+  const handleOpenSubMenu = () => {
+    if (subMenuTimerRef.current) {
+      clearTimeout(subMenuTimerRef.current);
+      subMenuTimerRef.current = null;
+    }
+    setShowMoreSubMenu(true);
+  };
+
+  const handleCloseSubMenuDelayed = () => {
+    if (subMenuTimerRef.current) clearTimeout(subMenuTimerRef.current);
+    subMenuTimerRef.current = setTimeout(() => {
+      setShowMoreSubMenu(false);
+    }, 180);
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -631,6 +648,40 @@ export function TabBar() {
           </SortableContext>
         </DndContext>
       </div>
+
+      {/* 回到主界面 Home 按钮 */}
+      <button
+        type="button"
+        style={newBtnStyle}
+        onClick={() => {
+          // 切换回到主界面 (将 activeKey 置为 null，保留已打开 tabs)
+          useWindowStore.setState({ activeKey: null });
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = 'var(--toolbar-hover)';
+          e.currentTarget.style.borderColor = 'var(--tab-border)';
+          e.currentTarget.style.color = 'var(--editor-accent)';
+          e.currentTarget.style.transform = 'scale(1.08)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'transparent';
+          e.currentTarget.style.borderColor = 'transparent';
+          e.currentTarget.style.color = 'var(--editor-text-secondary)';
+          e.currentTarget.style.transform = 'scale(1)';
+        }}
+        onMouseDown={(e) => {
+          e.currentTarget.style.background = 'var(--toolbar-active)';
+          e.currentTarget.style.transform = 'scale(0.92)';
+        }}
+        onMouseUp={(e) => {
+          e.currentTarget.style.background = 'var(--toolbar-hover)';
+          e.currentTarget.style.transform = 'scale(1.08)';
+        }}
+        title="回到主界面"
+        aria-label="回到主界面"
+      >
+        <Home size={15} />
+      </button>
 
       {/* 新建标签按钮（+） */}
       <button
@@ -773,11 +824,11 @@ export function TabBar() {
 
           <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />
 
-          {/* 更多格式新建（带二级菜单） */}
+          {/* 更多格式新建（带二级菜单，防抖无缝悬停） */}
           <div
             style={{ position: 'relative' }}
-            onMouseEnter={() => setShowMoreSubMenu(true)}
-            onMouseLeave={() => setShowMoreSubMenu(false)}
+            onMouseEnter={handleOpenSubMenu}
+            onMouseLeave={handleCloseSubMenuDelayed}
           >
             <button
               type="button"
@@ -801,11 +852,12 @@ export function TabBar() {
             {/* 二级菜单 */}
             {showMoreSubMenu && (
               <div
+                onMouseEnter={handleOpenSubMenu}
+                onMouseLeave={handleCloseSubMenuDelayed}
                 style={{
                   position: 'absolute',
                   top: -4,
-                  left: '100%',
-                  marginLeft: 4,
+                  left: 'calc(100% - 2px)',
                   zIndex: 10000,
                   background: 'var(--editor-surface)',
                   border: '1px solid var(--editor-border)',

@@ -12,7 +12,7 @@ import {
   GripVertical,
 } from 'lucide-react';
 import type { MindNode } from './mindmapTypes';
-import { generateNodeId } from './mindmapConverter';
+import { generateNodeId, moveMindNode, isMindNodeDescendant } from './mindmapConverter';
 
 interface OutlinerEditorProps {
   root: MindNode;
@@ -241,28 +241,6 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
     });
   };
 
-  // 检查 target 是否是 source 或其子孙节点（防止循环引用）
-  const isDescendant = (sourceId: string, targetId: string): boolean => {
-    if (sourceId === targetId) return true;
-    function check(n: MindNode): boolean {
-      if (n.id === sourceId) {
-        function search(sub: MindNode): boolean {
-          if (sub.id === targetId) return true;
-          for (const c of sub.children || []) {
-            if (search(c)) return true;
-          }
-          return false;
-        }
-        return search(n);
-      }
-      for (const c of n.children || []) {
-        if (check(c)) return true;
-      }
-      return false;
-    }
-    return check(root);
-  };
-
   // 处理拖拽开始
   const handleDragStart = (e: React.DragEvent, nodeId: string) => {
     e.stopPropagation();
@@ -283,7 +261,7 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
     e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
 
-    if (!draggingNodeId || isDescendant(draggingNodeId, item.node.id)) {
+    if (!draggingNodeId || isMindNodeDescendant(root, draggingNodeId, item.node.id)) {
       return;
     }
 
@@ -315,59 +293,15 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
     setDraggingNodeId(null);
     setDropTarget(null);
 
-    if (!sourceId || isDescendant(sourceId, targetItem.node.id)) return;
+    if (!sourceId || isMindNodeDescendant(root, sourceId, targetItem.node.id)) return;
 
     updateTree((cloned) => {
-      // 1. 查找并抽离 source 节点
-      let extractedNode: MindNode | null = null;
-      function removeSource(n: MindNode): boolean {
-        if (n.children) {
-          const idx = n.children.findIndex((c) => c.id === sourceId);
-          if (idx !== -1) {
-            [extractedNode] = n.children.splice(idx, 1);
-            return true;
-          }
-          for (const c of n.children) {
-            if (removeSource(c)) return true;
-          }
-        }
-        return false;
-      }
-      removeSource(cloned);
-      if (!extractedNode) return;
-
-      // 2. 插入到 target 相应位置
-      if (pos === 'inside' || targetItem.depth === 0) {
-        function insertInside(n: MindNode): boolean {
-          if (n.id === targetItem.node.id) {
-            if (!n.children) n.children = [];
-            n.children.push(extractedNode!);
-            n.isExpanded = true;
-            return true;
-          }
-          for (const c of n.children || []) {
-            if (insertInside(c)) return true;
-          }
-          return false;
-        }
-        insertInside(cloned);
-      } else {
-        function insertSibling(n: MindNode): boolean {
-          if (n.children) {
-            const idx = n.children.findIndex((c) => c.id === targetItem.node.id);
-            if (idx !== -1) {
-              const insertIdx = pos === 'before' ? idx : idx + 1;
-              n.children.splice(insertIdx, 0, extractedNode!);
-              return true;
-            }
-            for (const c of n.children) {
-              if (insertSibling(c)) return true;
-            }
-          }
-          return false;
-        }
-        insertSibling(cloned);
-      }
+      const nextRoot = moveMindNode(cloned, sourceId, targetItem.node.id, pos);
+      cloned.text = nextRoot.text;
+      cloned.isExpanded = nextRoot.isExpanded;
+      cloned.children = nextRoot.children;
+      cloned.note = nextRoot.note;
+      cloned.color = nextRoot.color;
     });
   };
 
@@ -404,12 +338,11 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
                 paddingLeft,
                 margin: isRoot ? '12px 0 20px 0' : '4px 0',
                 position: 'relative',
-                transition: 'background 0.12s ease, opacity 0.15s ease',
+                transition: 'background 0.12s ease',
                 borderRadius: 6,
                 borderTop: dropPos === 'before' ? '2px solid var(--editor-accent, #3b82f6)' : '2px solid transparent',
                 borderBottom: dropPos === 'after' ? '2px solid var(--editor-accent, #3b82f6)' : '2px solid transparent',
-                background: dropPos === 'inside' ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-                opacity: isCurrentDragging ? 0.35 : 1,
+                background: dropPos === 'inside' ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
               }}
             >
               {/* 拖拽把手（仅在把手上触发 dragstart） */}
@@ -419,7 +352,7 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
                   draggable
                   onDragStart={(e) => handleDragStart(e, item.node.id)}
                   onDragEnd={handleDragEnd}
-                  title="按住拖拽整行（及其所有子要点）调整顺序与层级"
+                  title="按住拖拽整行换到其他行或调整层级"
                   style={{
                     width: 18,
                     height: 24,
@@ -539,6 +472,7 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
                   lineHeight: 1.5,
                   padding: '4px 8px',
                   borderRadius: 4,
+                  pointerEvents: draggingNodeId ? 'none' : 'auto',
                 }}
               />
 

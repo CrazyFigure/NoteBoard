@@ -19,105 +19,25 @@ interface LayoutNode {
   y: number;
   width: number;
   height: number;
-  depth: number;
+  level: number;
+  branchIndex: number;
+  totalSubHeight: number;
   children: LayoutNode[];
 }
 
-interface MeasuredNode {
-  node: MindNode;
-  depth: number;
-  width: number;
-  height: number;
-  subTreeHeight: number;
-  children: MeasuredNode[];
-}
+const BRANCH_COLORS = [
+  '#3b82f6', // 蓝
+  '#10b981', // 绿
+  '#f59e0b', // 橙黄
+  '#8b5cf6', // 紫
+  '#ec4899', // 粉
+  '#06b6d4', // 青
+];
 
-const NODE_H_GAP = 56; // 水平间距
-const NODE_V_GAP = 20; // 垂直间距
-
-// 测量节点近似宽高
-function measureNode(node: MindNode, depth: number): { width: number; height: number } {
-  const textLength = node.text ? node.text.length : 4;
-  const charWidth = depth === 0 ? 14 : depth === 1 ? 12 : 10;
-  const paddingX = depth === 0 ? 36 : depth === 1 ? 26 : 20;
-  const width = Math.max(76, Math.min(360, textLength * charWidth + paddingX));
-  const height = depth === 0 ? 46 : depth === 1 ? 38 : 32;
-  return { width, height };
-}
-
-// 第一阶段：后序遍历自底向上计算每个子树的总高度
-function measureSubTree(node: MindNode, depth = 0): MeasuredNode {
-  const { width, height } = measureNode(node, depth);
-  const isExpanded = node.isExpanded !== false;
-  const hasChildren = node.children && node.children.length > 0;
-
-  if (!hasChildren || !isExpanded) {
-    return {
-      node,
-      depth,
-      width,
-      height,
-      subTreeHeight: height,
-      children: [],
-    };
-  }
-
-  const measuredChildren = node.children.map((c) => measureSubTree(c, depth + 1));
-  const childrenTotalHeight =
-    measuredChildren.reduce((sum, c) => sum + c.subTreeHeight, 0) +
-    (measuredChildren.length - 1) * NODE_V_GAP;
-  const subTreeHeight = Math.max(height, childrenTotalHeight);
-
-  return {
-    node,
-    depth,
-    width,
-    height,
-    subTreeHeight,
-    children: measuredChildren,
-  };
-}
-
-// 第二阶段：前序遍历自顶向下分配绝对 (x, y) 坐标，根节点为绝对基准
-function assignCoordinates(
-  mNode: MeasuredNode,
-  startX: number,
-  startY: number,
-  nodes: LayoutNode[],
-  links: Array<{ from: LayoutNode; to: LayoutNode }>,
-): LayoutNode {
-  const currentLayout: LayoutNode = {
-    node: mNode.node,
-    depth: mNode.depth,
-    x: startX,
-    y: startY,
-    width: mNode.width,
-    height: mNode.height,
-    children: [],
-  };
-  nodes.push(currentLayout);
-
-  if (mNode.children.length > 0) {
-    const childStartX = startX + mNode.width + NODE_H_GAP;
-    const childrenTotalHeight =
-      mNode.children.reduce((sum, c) => sum + c.subTreeHeight, 0) +
-      (mNode.children.length - 1) * NODE_V_GAP;
-
-    // 所有子节点的总起始顶部 Y 坐标，使得子节点群体的几何中心与父节点垂直对齐
-    let currentTopY = startY + mNode.height / 2 - childrenTotalHeight / 2;
-
-    for (const child of mNode.children) {
-      // 当前子节点的 Y 居中于它的子树空间
-      const childNodeY = currentTopY + child.subTreeHeight / 2 - child.height / 2;
-      const childLayout = assignCoordinates(child, childStartX, childNodeY, nodes, links);
-      currentLayout.children.push(childLayout);
-      links.push({ from: currentLayout, to: childLayout });
-      currentTopY += child.subTreeHeight + NODE_V_GAP;
-    }
-  }
-
-  return currentLayout;
-}
+const NODE_H_GAP = 54;
+const NODE_V_GAP = 16;
+const NODE_HEIGHT = 36;
+const ROOT_NODE_HEIGHT = 44;
 
 export function MindmapRenderer({
   root,
@@ -125,35 +45,98 @@ export function MindmapRenderer({
   zoom,
   onZoomChange,
 }: MindmapRendererProps) {
-  const [pan, setPan] = useState({ x: 80, y: 220 });
-  const [isDragging, setIsDragging] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // 画布平移状态
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 80, y: 160 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // 正在就地编辑的节点
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
-  const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
-  const [dropTargetNodeId, setDropTargetNodeId] = useState<string | null>(null);
-  const dragStartRef = useRef({ x: 0, y: 0 });
 
-  // 检查 target 是否是 source 或其子孙节点（防止循环引用）
-  const isDescendant = (sourceId: string, targetId: string): boolean => {
-    if (sourceId === targetId) return true;
-    function check(n: MindNode): boolean {
-      if (n.id === sourceId) {
-        function search(sub: MindNode): boolean {
-          if (sub.id === targetId) return true;
-          for (const c of sub.children || []) {
-            if (search(c)) return true;
-          }
-          return false;
-        }
-        return search(n);
+  // 估算文本宽度
+  const estimateNodeWidth = useCallback((text: string, isRoot: boolean): number => {
+    const len = text.length || 2;
+    const base = isRoot ? 110 : 80;
+    return Math.min(260, Math.max(base, len * 13 + 36));
+  }, []);
+
+  // 递归计算整棵树的包围盒与高度 (自底向上度量)
+  const measureSubTree = useCallback(
+    (node: MindNode, level: number): LayoutNode => {
+      const isRoot = level === 0;
+      const width = estimateNodeWidth(node.text || '中心主题', isRoot);
+      const height = isRoot ? ROOT_NODE_HEIGHT : NODE_HEIGHT;
+      const isExpanded = node.isExpanded !== false;
+
+      if (!isExpanded || !node.children || node.children.length === 0) {
+        return {
+          node,
+          x: 0,
+          y: 0,
+          width,
+          height,
+          level,
+          branchIndex: 0,
+          totalSubHeight: height,
+          children: [],
+        };
       }
-      for (const c of n.children || []) {
-        if (check(c)) return true;
-      }
-      return false;
-    }
-    return check(root);
-  };
+
+      const measuredChildren = node.children.map((c) => measureSubTree(c, level + 1));
+      const totalChildrenHeight =
+        measuredChildren.reduce((sum, c) => sum + c.totalSubHeight, 0) +
+        (measuredChildren.length - 1) * NODE_V_GAP;
+
+      const totalSubHeight = Math.max(height, totalChildrenHeight);
+
+      return {
+        node,
+        x: 0,
+        y: 0,
+        width,
+        height,
+        level,
+        branchIndex: 0,
+        totalSubHeight,
+        children: measuredChildren,
+      };
+    },
+    [estimateNodeWidth],
+  );
+
+  // 前序遍历自顶向下分配绝对坐标 (紧凑无重叠 Tidy Tree)
+  const assignCoordinates = useCallback(
+    (
+      layoutRoot: LayoutNode,
+      startX: number,
+      startY: number,
+      outNodes: LayoutNode[],
+      outLinks: Array<{ from: LayoutNode; to: LayoutNode }>,
+      parentBranchIndex = 0,
+    ) => {
+      layoutRoot.x = startX;
+      layoutRoot.y = startY + (layoutRoot.totalSubHeight - layoutRoot.height) / 2;
+      layoutRoot.branchIndex = parentBranchIndex;
+      outNodes.push(layoutRoot);
+
+      if (layoutRoot.children.length === 0) return;
+
+      let currentChildY = startY;
+      const childStartX = startX + layoutRoot.width + NODE_H_GAP;
+
+      layoutRoot.children.forEach((child, idx) => {
+        const branchIdx = layoutRoot.level === 0 ? idx % BRANCH_COLORS.length : parentBranchIndex;
+        child.branchIndex = branchIdx;
+        assignCoordinates(child, childStartX, currentChildY, outNodes, outLinks, branchIdx);
+        outLinks.push({ from: layoutRoot, to: child });
+        currentChildY += child.totalSubHeight + NODE_V_GAP;
+      });
+    },
+    [],
+  );
 
   // 计算无重叠思维导图绝对坐标
   const { nodes, links } = useMemo(() => {
@@ -162,7 +145,7 @@ export function MindmapRenderer({
     const flatLinks: Array<{ from: LayoutNode; to: LayoutNode }> = [];
     assignCoordinates(measuredRoot, 0, 0, flatNodes, flatLinks);
     return { nodes: flatNodes, links: flatLinks };
-  }, [root]);
+  }, [root, measureSubTree, assignCoordinates]);
 
   // 深度克隆并更新树
   const updateTree = useCallback(
@@ -174,52 +157,6 @@ export function MindmapRenderer({
     [root, onChange],
   );
 
-  // 处理思维导图节点拖拽放置
-  const handleNodeDrop = (targetNodeId: string) => {
-    if (!draggingNodeId || isDescendant(draggingNodeId, targetNodeId)) {
-      setDraggingNodeId(null);
-      setDropTargetNodeId(null);
-      return;
-    }
-
-    const sourceId = draggingNodeId;
-    setDraggingNodeId(null);
-    setDropTargetNodeId(null);
-
-    updateTree((cloned) => {
-      let extracted: MindNode | null = null;
-      function removeSource(n: MindNode): boolean {
-        if (n.children) {
-          const idx = n.children.findIndex((c) => c.id === sourceId);
-          if (idx !== -1) {
-            [extracted] = n.children.splice(idx, 1);
-            return true;
-          }
-          for (const c of n.children) {
-            if (removeSource(c)) return true;
-          }
-        }
-        return false;
-      }
-      removeSource(cloned);
-      if (!extracted) return;
-
-      function insertIntoTarget(n: MindNode): boolean {
-        if (n.id === targetNodeId) {
-          if (!n.children) n.children = [];
-          n.children.push(extracted!);
-          n.isExpanded = true;
-          return true;
-        }
-        for (const c of n.children || []) {
-          if (insertIntoTarget(c)) return true;
-        }
-        return false;
-      }
-      insertIntoTarget(cloned);
-    });
-  };
-
   // 切换节点折叠
   const handleToggleExpand = (id: string) => {
     updateTree((cloned) => {
@@ -228,7 +165,7 @@ export function MindmapRenderer({
           n.isExpanded = !n.isExpanded;
           return true;
         }
-        for (const c of n.children) {
+        for (const c of n.children || []) {
           if (findAndToggle(c)) return true;
         }
         return false;
@@ -254,7 +191,7 @@ export function MindmapRenderer({
           n.isExpanded = true;
           return true;
         }
-        for (const c of n.children) {
+        for (const c of n.children || []) {
           if (findAndAdd(c)) return true;
         }
         return false;
@@ -278,7 +215,7 @@ export function MindmapRenderer({
           n.text = newText;
           return true;
         }
-        for (const c of n.children) {
+        for (const c of n.children || []) {
           if (findAndSet(c)) return true;
         }
         return false;
@@ -287,145 +224,123 @@ export function MindmapRenderer({
     });
 
     setEditingNodeId(null);
+    setEditText('');
   };
 
   // 画布鼠标拖拽平移
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0 || (e.target as HTMLElement).tagName === 'INPUT') return;
-    setIsDragging(true);
-    dragStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
+    if (e.button !== 0 || (e.target as HTMLElement).closest('.nb-mindmap-node')) return;
+    setIsPanning(true);
+    panStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging) return;
+    if (!isPanning) return;
     setPan({
-      x: e.clientX - dragStartRef.current.x,
-      y: e.clientY - dragStartRef.current.y,
+      x: e.clientX - panStartRef.current.x,
+      y: e.clientY - panStartRef.current.y,
     });
   };
 
   const handleMouseUp = () => {
-    setIsDragging(false);
+    setIsPanning(false);
   };
 
-  // 画布滚轮缩放
+  // 滚轮缩放与平移
   const handleWheel = (e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
-      const delta = e.deltaY < 0 ? 0.1 : -0.1;
-      onZoomChange(Math.max(0.2, Math.min(3, zoom + delta)));
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      const nextZoom = Math.min(3, Math.max(0.2, zoom + delta));
+      onZoomChange(nextZoom);
+    } else {
+      setPan((p) => ({
+        x: p.x - e.deltaX * 0.8,
+        y: p.y - e.deltaY * 0.8,
+      }));
     }
   };
 
-  // 优雅的分支色彩盘（适配深浅色）
-  const BRANCH_COLORS = [
-    '#3b82f6', // 蓝
-    '#10b981', // 绿
-    '#f59e0b', // 琥珀橙
-    '#8b5cf6', // 紫
-    '#ec4899', // 玫红
-    '#06b6d4', // 青
-  ];
-
   return (
     <div
-      style={{
-        width: '100%',
-        height: '100%',
-        overflow: 'hidden',
-        position: 'relative',
-        background: 'var(--editor-bg, #f8fafc)',
-        cursor: isDragging ? 'grabbing' : 'grab',
-        userSelect: 'none',
-      }}
+      ref={containerRef}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
       onWheel={handleWheel}
+      style={{
+        width: '100%',
+        height: '100%',
+        overflow: 'hidden',
+        position: 'relative',
+        cursor: isPanning ? 'grabbing' : 'grab',
+        background: 'var(--editor-bg, #ffffff)',
+        userSelect: 'none',
+      }}
     >
-      {/* 矢量画布 */}
-      <svg
-        style={{
-          width: '100%',
-          height: '100%',
-          position: 'absolute',
-          inset: 0,
-          pointerEvents: 'none',
-        }}
-      >
-        <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
-          {/* 渲染平滑贝塞尔连接曲线 */}
-          {links.map((link, idx) => {
-            const startX = link.from.x + link.from.width;
-            const startY = link.from.y + link.from.height / 2;
-            const endX = link.to.x;
-            const endY = link.to.y + link.to.height / 2;
-            const controlDist = Math.max(28, (endX - startX) * 0.45);
-
-            const pathData = `M ${startX} ${startY} C ${startX + controlDist} ${startY}, ${endX - controlDist} ${endY}, ${endX} ${endY}`;
-            const lineColor = BRANCH_COLORS[idx % BRANCH_COLORS.length];
-
-            return (
-              <path
-                key={`${link.from.node.id}-${link.to.node.id}`}
-                d={pathData}
-                fill="none"
-                stroke={lineColor}
-                strokeWidth={link.from.depth === 0 ? 2.5 : 1.8}
-                strokeLinecap="round"
-                opacity={0.85}
-              />
-            );
-          })}
-        </g>
-      </svg>
-
-      {/* 节点 DOM 容器 */}
+      {/* 缩放与平移图层 */}
       <div
         style={{
           position: 'absolute',
-          inset: 0,
           transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
           transformOrigin: '0 0',
-          pointerEvents: 'auto',
+          transition: isPanning ? 'none' : 'transform 0.05s ease-out',
         }}
       >
-        {nodes.map((n, idx) => {
-          const isRoot = n.depth === 0;
-          const isLevel1 = n.depth === 1;
-          const hasChildren = n.node.children && n.node.children.length > 0;
-          const isExpanded = n.node.isExpanded !== false;
-          const nodeColor = BRANCH_COLORS[idx % BRANCH_COLORS.length];
+        {/* SVG 贝塞尔曲线连接线图层 */}
+        <svg
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            width: 8000,
+            height: 8000,
+            pointerEvents: 'none',
+            overflow: 'visible',
+          }}
+        >
+          {links.map((link, idx) => {
+            const x1 = link.from.x + link.from.width;
+            const y1 = link.from.y + link.from.height / 2;
+            const x2 = link.to.x;
+            const y2 = link.to.y + link.to.height / 2;
+
+            const cX1 = x1 + (x2 - x1) * 0.55;
+            const cY1 = y1;
+            const cX2 = x1 + (x2 - x1) * 0.45;
+            const cY2 = y2;
+
+            const d = `M ${x1} ${y1} C ${cX1} ${cY1}, ${cX2} ${cY2}, ${x2} ${y2}`;
+            const color = BRANCH_COLORS[link.to.branchIndex % BRANCH_COLORS.length];
+
+            return (
+              <path
+                key={idx}
+                d={d}
+                fill="none"
+                stroke={color}
+                strokeWidth={link.from.level === 0 ? 2.5 : 1.8}
+                strokeLinecap="round"
+                opacity={0.8}
+              />
+            );
+          })}
+        </svg>
+
+        {/* 节点卡片 DOM 图层 */}
+        {nodes.map((n) => {
+          const isRoot = n.level === 0;
+          const isLevel1 = n.level === 1;
           const isEditing = editingNodeId === n.node.id;
-          const isDropTarget = dropTargetNodeId === n.node.id;
+          const hasChildren = Boolean(n.node.children && n.node.children.length > 0);
+          const isExpanded = n.node.isExpanded !== false;
+          const nodeColor = BRANCH_COLORS[n.branchIndex % BRANCH_COLORS.length];
 
           return (
             <div
               key={n.node.id}
               className="nb-mindmap-node"
-              draggable={!isRoot && !isEditing}
-              onDragStart={(e) => {
-                e.stopPropagation();
-                e.dataTransfer.setData('text/plain', n.node.id);
-                setDraggingNodeId(n.node.id);
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (draggingNodeId && !isDescendant(draggingNodeId, n.node.id)) {
-                  setDropTargetNodeId(n.node.id);
-                }
-              }}
-              onDragLeave={(e) => {
-                e.stopPropagation();
-                if (dropTargetNodeId === n.node.id) setDropTargetNodeId(null);
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleNodeDrop(n.node.id);
-              }}
               onDoubleClick={(e) => {
                 e.stopPropagation();
                 setEditingNodeId(n.node.id);
@@ -442,28 +357,21 @@ export function MindmapRenderer({
                 justifyContent: 'center',
                 background: isRoot
                   ? 'var(--editor-accent, #3b82f6)'
-                  : isDropTarget
-                    ? 'rgba(59, 130, 246, 0.15)'
-                    : 'var(--editor-surface, #ffffff)',
+                  : 'var(--editor-surface, #ffffff)',
                 color: isRoot
                   ? '#ffffff'
                   : 'var(--editor-text, #1e293b)',
                 border: isRoot
-                  ? isDropTarget ? '2px dashed #ffffff' : 'none'
-                  : isDropTarget
-                    ? '2px dashed var(--editor-accent, #3b82f6)'
-                    : `1.5px solid ${isLevel1 ? nodeColor : 'var(--editor-border, #cbd5e1)'}`,
+                  ? 'none'
+                  : `1.5px solid ${isLevel1 ? nodeColor : 'var(--editor-border, #cbd5e1)'}`,
                 borderRadius: isRoot ? 10 : 6,
                 boxShadow: isRoot
                   ? '0 6px 16px rgba(59, 130, 246, 0.35)'
-                  : isDropTarget
-                    ? '0 0 0 3px rgba(59, 130, 246, 0.25)'
-                    : '0 2px 6px rgba(0, 0, 0, 0.05)',
+                  : '0 2px 6px rgba(0, 0, 0, 0.05)',
                 fontSize: isRoot ? 15 : isLevel1 ? 13 : 12,
                 fontWeight: isRoot ? 600 : isLevel1 ? 500 : 400,
                 padding: '0 12px',
-                cursor: isEditing ? 'text' : !isRoot ? 'grab' : 'pointer',
-                opacity: draggingNodeId === n.node.id ? 0.35 : 1,
+                cursor: isEditing ? 'text' : 'pointer',
                 boxSizing: 'border-box',
                 transition: 'border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease',
               }}

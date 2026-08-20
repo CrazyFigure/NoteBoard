@@ -12,6 +12,8 @@ import {
   createDefaultMindmap,
   exportToXmindZip,
   importFromXmindZip,
+  moveMindNode,
+  isMindNodeDescendant,
 } from '@/features/mindmap/mindmapConverter';
 import type { MindNode } from '@/features/mindmap/mindmapTypes';
 
@@ -92,5 +94,28 @@ describe('mindmapConverter 转换器测试', () => {
     expect(importedTree.text).toBe('NoteBoard 规划');
     expect(importedTree.children.length).toBe(2);
     expect(importedTree.children[0].children[2].text).toBe('Draw.io');
+  });
+
+  test('isMindNodeDescendant 正确判断子孙与循环引用关系', () => {
+    expect(isMindNodeDescendant(sampleTree, 'c-1', 'c-1-1')).toBe(true);
+    expect(isMindNodeDescendant(sampleTree, 'c-1', 'c-1')).toBe(true);
+    expect(isMindNodeDescendant(sampleTree, 'c-1', 'c-2')).toBe(false);
+    expect(isMindNodeDescendant(sampleTree, 'c-1-1', 'c-1')).toBe(false);
+  });
+
+  test('moveMindNode 支持整树移动 (inside / before / after)', () => {
+    // 将 c-1-3 (Draw.io) 移入 c-2 (思维导图双模)
+    const moved1 = moveMindNode(sampleTree, 'c-1-3', 'c-2', 'inside');
+    expect(moved1.children[0].children.find((c) => c.id === 'c-1-3')).toBeUndefined();
+    expect(moved1.children[1].children.find((c) => c.id === 'c-1-3')?.text).toBe('Draw.io');
+
+    // 将 c-2 移到 c-1 前面
+    const moved2 = moveMindNode(sampleTree, 'c-2', 'c-1', 'before');
+    expect(moved2.children[0].id).toBe('c-2');
+    expect(moved2.children[1].id).toBe('c-1');
+
+    // 防循环移动：将父节点移入自身子节点应被安全忽略
+    const invalidMove = moveMindNode(sampleTree, 'c-1', 'c-1-1', 'inside');
+    expect(invalidMove).toEqual(sampleTree);
   });
 });
