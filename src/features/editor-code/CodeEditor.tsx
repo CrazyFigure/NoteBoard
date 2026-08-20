@@ -10,7 +10,8 @@ import {
   lineNumbers,
   highlightActiveLineGutter,
 } from '@codemirror/view';
-import { EditorState } from '@codemirror/state';
+import { EditorState, Prec, Transaction } from '@codemirror/state';
+import { undoDepth as cmUndoDepth } from '@codemirror/commands';
 import {
   createBaseExtensions,
   languageCompartment,
@@ -35,6 +36,13 @@ import { useWindowStore } from '../../stores/windowStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { normalizeEol } from '../editor-md/serialize';
 import * as ipc from '../../core/ipc/commands';
+import {
+  initializeDocumentHistory,
+  recordDocumentChange,
+  redoDocumentHistory,
+  registerDocumentHistoryAdapter,
+  undoDocumentHistory,
+} from '../history/documentHistory';
 
 // ── 编辑器实例管理 ──
 
@@ -131,6 +139,7 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
     const container = containerRef.current;
     const lang = currentDoc.language;
     const initialEditorSettings = useSettingsStore.getState().settings.editor;
+    initializeDocumentHistory(docKey, currentDoc.content ?? '', 'code');
 
     // 内容变更监听 → 更新 store（防抖 500ms）及自动保存（800ms，仅在 auto 策略时）
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -145,6 +154,20 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
       const isDirty = normalizeEol(newContent) !== normalizeEol(targetDoc?.baselineContent);
       setTabDirty(key, isDirty);
       useDocumentStore.getState().setDirty(key, isDirty);
+
+      // 借助 CodeMirror 原生深度只判断输入分组边界，真正历史统一记录到文件时间线
+      recordDocumentChange(key, newContent, {
+        mode: 'code',
+        startsNewGroup: cmUndoDepth(update.state) > cmUndoDepth(update.startState),
+        beforeSelection: {
+          anchor: update.startState.selection.main.anchor,
+          head: update.startState.selection.main.head,
+        },
+        selection: {
+          anchor: update.state.selection.main.anchor,
+          head: update.state.selection.main.head,
+        },
+      });
 
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
@@ -162,9 +185,11 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
           try {
             const result = await ipc.writeDocument(key, newContent, cur.encoding, cur.eol);
             if (result.ok) {
-              useDocumentStore.getState().updateBaseline(key, result.mtime, result.size);
-              useWindowStore.getState().setTabDirty(key, false);
-              await ipc.setDocumentDirty(key, false);
+              // 以本次实际写入的快照更新保存基线；若写盘期间又有输入，仍保持脏态
+              useDocumentStore.getState().updateBaseline(key, newContent, result.mtime, result.size);
+              const stillDirty = useDocumentStore.getState().getDocument(key)?.isDirty ?? false;
+              useWindowStore.getState().setTabDirty(key, stillDirty);
+              await ipc.setDocumentDirty(key, stillDirty);
             }
           } catch (e) {
             console.error('代码/文本文件自动保存失败:', e);
@@ -224,6 +249,32 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
       },
     ]);
 
+    // 最高优先级接管撤销/重做，防止落入当前 CodeMirror 实例的局部历史
+    const unifiedHistoryKeymap = Prec.highest(keymap.of([
+      {
+        key: 'Mod-z',
+        run: () => {
+          undoDocumentHistory(docKey);
+          return true;
+        },
+      },
+      {
+        key: 'Mod-y',
+        mac: 'Mod-Shift-z',
+        run: () => {
+          redoDocumentHistory(docKey);
+          return true;
+        },
+      },
+      {
+        linux: 'Ctrl-Shift-z',
+        run: () => {
+          redoDocumentHistory(docKey);
+          return true;
+        },
+      },
+    ]));
+
     // 代码与纯文本排版（由 --mono-* CSS 变量驱动）
     const typographyExt = EditorView.theme({
       '&': {
@@ -250,6 +301,7 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
     const state = EditorState.create({
       doc: currentDoc.content ?? '',
       extensions: [
+        unifiedHistoryKeymap,
         ...createBaseExtensions(initialEditorSettings),
         updateListener,
         jsonOperationsKeymap,
@@ -263,6 +315,30 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
 
     editorView = view;
     viewRef.current = view;
+
+    // 将统一历史节点应用到当前代码编辑器；程序化替换明确不进入原生历史
+    const unregisterHistoryAdapter = registerDocumentHistoryAdapter(docKey, {
+      applyEntry: (entry, navigation) => {
+        const documentLength = view.state.doc.length;
+        const preferredSelection = navigation.selectionMode === 'code'
+          ? navigation.selection
+          : undefined;
+        // 跨模式历史没有可直接复用的选区坐标时，定位到前后快照首个差异字符
+        const fallbackPosition = Math.min(navigation.changeOffset, entry.content.length);
+        const anchor = Math.max(0, Math.min(preferredSelection?.anchor ?? fallbackPosition, entry.content.length));
+        const head = Math.max(0, Math.min(preferredSelection?.head ?? anchor, entry.content.length));
+        view.dispatch({
+          changes: view.state.doc.toString() === entry.content
+            ? undefined
+            : { from: 0, to: documentLength, insert: entry.content },
+          selection: { anchor, head },
+          annotations: Transaction.addToHistory.of(false),
+          scrollIntoView: true,
+        });
+        // 历史导航后把输入焦点交还编辑器；不移动操作系统鼠标指针
+        view.focus();
+      },
+    });
 
     // 注入当前排版配置
     view.dispatch({
@@ -296,8 +372,12 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
     container.addEventListener('wheel', handleWheel, { passive: false });
 
     return () => {
+      // 卸载前同步刷新权威内容，避免快速切换标签时 500ms 防抖尚未落入 store 而丢字
+      const latestContent = view.state.doc.toString();
+      useDocumentStore.getState().setContent(docKey, latestContent);
       if (debounceTimer) clearTimeout(debounceTimer);
       if (autoSaveTimer) clearTimeout(autoSaveTimer);
+      unregisterHistoryAdapter();
       container.removeEventListener('wheel', handleWheel);
       view.destroy();
       editorView = null;

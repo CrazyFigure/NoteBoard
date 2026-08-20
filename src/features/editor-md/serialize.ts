@@ -47,37 +47,69 @@ export function serializeMarkdown(editor: Editor): string {
  * RangeError: Invalid content for node doc —— 在组件挂载路径上
  * 会炸掉 React 渲染（整窗白屏）。
  */
-export function parseMarkdown(editor: Editor, markdown: string): void {
+/**
+ * 执行整篇内容同步，但永远不写入编辑器内核的局部历史。
+ * 用户可见的撤销/重做由文件级统一时间线负责，初始化和模式同步都不允许伪造编辑步骤。
+ */
+function replaceEditorContent(
+  editor: Editor,
+  replace: ReturnType<Editor['chain']>,
+): void {
+  // 文件初始化、历史导航和模式同步属于程序行为，不允许污染用户的局部撤销栈
+  replace
+    .command(({ tr }) => {
+      tr.setMeta('addToHistory', false);
+      return true;
+    })
+    .run();
+}
+
+export function parseMarkdown(
+  editor: Editor,
+  markdown: string,
+): void {
   if (markdown.trim() === '') {
-    // 清空文档，不触发 onUpdate（与 setContent 默认行为一致）
-    editor.commands.clearContent(false);
+    // 空内容同样必须显式控制历史，否则初次打开空文件后可能出现伪撤销步骤
+    replaceEditorContent(
+      editor,
+      editor.chain().clearContent(false),
+    );
     return;
   }
   try {
-    editor.commands.setContent(markdown, {
-      contentType: 'markdown',
-      parseOptions: {
-        // 保持原有格式
-        preserveWhitespace: 'full',
-      },
-    });
+    replaceEditorContent(
+      editor,
+      editor.chain().setContent(markdown, {
+        contentType: 'markdown',
+        parseOptions: {
+          // 保持原有格式
+          preserveWhitespace: 'full',
+        },
+      }),
+    );
   } catch (err) {
     console.error('[NoteBoard] Markdown 解析出现容错，执行安全降级加载:', err);
     try {
-      editor.commands.setContent(
-        {
-          type: 'doc',
-          content: [
-            {
-              type: 'paragraph',
-              content: [{ type: 'text', text: markdown }],
-            },
-          ],
-        },
-        { contentType: 'json' },
+      replaceEditorContent(
+        editor,
+        editor.chain().setContent(
+          {
+            type: 'doc',
+            content: [
+              {
+                type: 'paragraph',
+                content: [{ type: 'text', text: markdown }],
+              },
+            ],
+          },
+          { contentType: 'json' },
+        ),
       );
     } catch {
-      editor.commands.clearContent(false);
+      replaceEditorContent(
+        editor,
+        editor.chain().clearContent(false),
+      );
     }
   }
 }
@@ -91,6 +123,14 @@ export function parseMarkdown(editor: Editor, markdown: string): void {
 export function normalizeEol(text: string | null | undefined): string {
   if (text == null) return '';
   return text.replace(/\r\n/g, '\n');
+}
+
+/**
+ * 判断源码文本是否真的不同于当前可视化文档。
+ * 返回 false 时调用方必须跳过整篇 setContent，否则即使事务不入栈也会重映射并破坏已有撤销/重做历史。
+ */
+export function hasMarkdownContentChanged(editor: Editor, markdown: string): boolean {
+  return normalizeEol(markdown) !== normalizeEol(serializeMarkdown(editor));
 }
 
 // ── 基线管理 ──

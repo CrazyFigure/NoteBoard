@@ -123,12 +123,27 @@ export interface BaseExtensionsOptions {
   softWrap?: boolean;
 }
 
+/**
+ * 相邻输入合并为同一次撤销的最大间隔。
+ * 采用比内核默认值更短的 300ms，避免连续但已有明显停顿的输入被一次性撤销过多。
+ */
+export const HISTORY_NEW_GROUP_DELAY_MS = 300;
+
+/**
+ * 编辑历史的最低保留步数。
+ * 保存只更新磁盘基线，不清空这部分历史，因此保存前后的内容仍可继续撤销和重做。
+ */
+export const HISTORY_MIN_DEPTH = 200;
+
 // ── 基础扩展集 ──
 
 export function createBaseExtensions(options?: BaseExtensionsOptions): Extension[] {
   return [
-    // 历史
-    history(),
+    // 编辑历史：缩短合并窗口并扩大容量，减少单次回退过多，同时保留更长的前后变化链
+    history({
+      minDepth: HISTORY_MIN_DEPTH,
+      newGroupDelay: HISTORY_NEW_GROUP_DELAY_MS,
+    }),
     // 行号（通过 compartment 切换）
     lineNumberCompartment.of(
       options?.showLineNumbers !== false ? [lineNumbers(), highlightActiveLineGutter()] : [],

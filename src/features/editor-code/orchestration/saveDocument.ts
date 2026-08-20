@@ -8,12 +8,13 @@ import * as ipc from '../../../core/ipc/commands';
 import { useDocumentStore } from '../../../stores/documentStore';
 import { useWindowStore } from '../../../stores/windowStore';
 import { getEditorView } from '../CodeEditor';
-import { getActiveTipTapEditor } from '../../editor-md/TipTapEditor';
+import { getActiveSourceView, getActiveTipTapEditor } from '../../editor-md/TipTapEditor';
 import { serializeMarkdown, getBaseline } from '../../editor-md/serialize';
 import { getActiveBoardScene } from '../../board/BoardEditor';
 import { serializeScene } from '../../board/sceneIo';
 import { kindFromPath, languageFromPath } from '../../../core/docKind';
 import type { WriteError } from '../../../core/ipc/types';
+import { moveDocumentHistory } from '../../history/documentHistory';
 
 // ── 保存单个文档 ──
 
@@ -25,14 +26,23 @@ export async function saveDocument(docKey: string): Promise<boolean> {
     return false;
   }
 
-  // 1. 如果是 Markdown，从 TipTap 实例取最新内容
-  const tipTap = getActiveTipTapEditor(docKey);
-  if (tipTap) {
-    try {
-      const latest = serializeMarkdown(tipTap);
-      store.setContent(docKey, latest);
-    } catch {
-      // ignore
+  // 1. Markdown 必须从当前可见模式读取权威内容，避免源码修改被隐藏的 TipTap 旧内容覆盖
+  if (doc.kind === 'markdown') {
+    const currentMode = useWindowStore.getState().getTab(docKey)?.viewMode ?? 'visual';
+    if (currentMode === 'source') {
+      const sourceView = getActiveSourceView(docKey);
+      if (sourceView) {
+        store.setContent(docKey, sourceView.state.doc.toString());
+      }
+    } else {
+      const tipTap = getActiveTipTapEditor(docKey);
+      if (tipTap) {
+        try {
+          store.setContent(docKey, serializeMarkdown(tipTap));
+        } catch {
+          // 序列化失败时保留 store 中的最近镜像，由后续写入错误处理统一反馈
+        }
+      }
     }
   }
 
@@ -74,11 +84,13 @@ export async function saveDocument(docKey: string): Promise<boolean> {
 
     if (result.ok) {
       // 更新基线
-      store.updateBaseline(docKey, result.mtime, result.size);
+      store.updateBaseline(docKey, updatedDoc.content ?? '', result.mtime, result.size);
       // 同步更新 Markdown 基线管理器
       getBaseline(docKey).updateBaseline(updatedDoc.content ?? '');
-      useWindowStore.getState().setTabDirty(docKey, false);
-      await ipc.setDocumentDirty(docKey, false);
+      // 写盘期间若继续编辑，保存前后的历史仍保留，且当前文档继续显示为未保存
+      const stillDirty = useDocumentStore.getState().getDocument(docKey)?.isDirty ?? false;
+      useWindowStore.getState().setTabDirty(docKey, stillDirty);
+      await ipc.setDocumentDirty(docKey, stillDirty);
       return true;
     } else if (result.error) {
       showWriteError(result.error);
@@ -145,6 +157,8 @@ export async function saveAs(originalKey: string, content: string): Promise<bool
 
       // 更新 DocumentStore
       if (originalKey !== selectedPath) {
+        // 先迁移文件级历史，再删除旧文档状态，保证首次另存为前后的步骤仍然存在
+        moveDocumentHistory(originalKey, selectedPath);
         docStore.remove(originalKey);
       }
 

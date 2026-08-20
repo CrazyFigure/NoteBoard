@@ -6,6 +6,10 @@
 import { create } from 'zustand';
 import type { DocumentPayload } from '../core/ipc/types';
 import { useSettingsStore } from './settingsStore';
+import {
+  clearAllDocumentHistories,
+  clearDocumentHistory,
+} from '../features/history/documentHistory';
 
 export interface Document {
   /** 规范化路径 key */
@@ -58,8 +62,8 @@ interface DocumentStore {
   setDirty: (key: string, isDirty: boolean) => void;
   /** 设置基准内容并对齐脏态 */
   setBaselineContent: (key: string, baselineContent: string) => void;
-  /** 更新基线（保存后调用） */
-  updateBaseline: (key: string, mtime: number, size: number) => void;
+  /** 使用实际写入磁盘的内容更新基线（保存后调用） */
+  updateBaseline: (key: string, savedContent: string, mtime: number, size: number) => void;
   /** 同步刷新所有文档的保存策略（设置改变时调用） */
   syncSavePolicies: () => void;
   /** 设置外部变更状态 */
@@ -164,17 +168,19 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     });
   },
 
-  updateBaseline: (key, mtime, size) => {
+  updateBaseline: (key, savedContent, mtime, size) => {
     set((state) => {
       const doc = state.documents.get(key);
       if (!doc) return {};
       const newMap = new Map(state.documents);
+      // 保存期间用户可能继续编辑，因此必须用“实际写入内容”做基线，并重新比较当前内容
+      const isDirty = normalizeEol(doc.content) !== normalizeEol(savedContent);
       newMap.set(key, {
         ...doc,
-        baselineContent: doc.content,
+        baselineContent: savedContent,
         mtime,
         size,
-        isDirty: false,
+        isDirty,
       });
       return { documents: newMap };
     });
@@ -216,6 +222,8 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
   },
 
   remove: (key) => {
+    // 标签页真正关闭时释放文件级撤销/重做时间线；普通模式和标签切换不会调用这里
+    clearDocumentHistory(key);
     set((state) => {
       const newMap = new Map(state.documents);
       newMap.delete(key);
@@ -223,5 +231,8 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     });
   },
 
-  clear: () => set({ documents: new Map() }),
+  clear: () => {
+    clearAllDocumentHistories();
+    set({ documents: new Map() });
+  },
 }));

@@ -5,6 +5,8 @@ import { describe, it, expect } from 'vitest';
 import { EditorState } from '@codemirror/state';
 import {
   createBaseExtensions,
+  HISTORY_MIN_DEPTH,
+  HISTORY_NEW_GROUP_DELAY_MS,
   whitespaceCompartment,
   lineEndingCompartment,
   showLineEndingsExtension,
@@ -17,6 +19,11 @@ describe('editor-code setup', () => {
     expect(extensions).toBeDefined();
     expect(Array.isArray(extensions)).toBe(true);
     expect(extensions.length).toBeGreaterThan(10);
+  });
+
+  it('撤销历史采用更短分组间隔并扩大保留深度', () => {
+    expect(HISTORY_NEW_GROUP_DELAY_MS).toBe(300);
+    expect(HISTORY_MIN_DEPTH).toBe(200);
   });
 
   it('默认 settingsStore 中的 showWhitespace 与 showLineEndings 为 false', () => {

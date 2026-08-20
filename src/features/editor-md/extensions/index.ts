@@ -34,6 +34,10 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import Suggestion from '@tiptap/suggestion';
 import { Extension, type Extensions } from '@tiptap/core';
 import { Plugin } from '@tiptap/pm/state';
+import {
+  redoDocumentHistory,
+  undoDocumentHistory,
+} from '../../history/documentHistory';
 
 /**
  * 链接点击分发扩展
@@ -68,19 +72,52 @@ const LinkClickHandler = Extension.create({
   },
 });
 
+/**
+ * 文档级统一撤销/重做快捷键。
+ * 高优先级拦截 TipTap 自带快捷键，让可视化与源码模式始终沿同一条文件历史移动。
+ */
+const UnifiedDocumentHistoryKeys = Extension.create<{ docKey: string }>({
+  name: 'unifiedDocumentHistoryKeys',
+  priority: 1000,
+  addOptions() {
+    return { docKey: '' };
+  },
+  addKeyboardShortcuts() {
+    return {
+      'Mod-z': () => {
+        undoDocumentHistory(this.options.docKey);
+        return true;
+      },
+      'Mod-y': () => {
+        redoDocumentHistory(this.options.docKey);
+        return true;
+      },
+      'Shift-Mod-z': () => {
+        redoDocumentHistory(this.options.docKey);
+        return true;
+      },
+    };
+  },
+});
+
 import { EnhancedImageBlock } from '../imageNodeView';
 
 /**
  * 构建 TipTap 扩展列表
  * 这是唯一的扩展装配点，不分散到各组件
  */
-export function buildExtensions(): Extensions {
+export function buildExtensions(docKey = ''): Extensions {
   return [
     // StarterKit 包含：bold, italic, strike, code, heading, bulletList, orderedList,
     // listItem, blockquote, horizontalRule, history, paragraph, text, document,
     // 但不含 codeBlock（我们用自定义的）
     StarterKit.configure({
       codeBlock: false, // 用自定义的 CodeBlockView
+      // 缩短连续输入的合并窗口，并保留更多编辑步骤；保存操作不会重建该历史栈
+      undoRedo: {
+        depth: 200,
+        newGroupDelay: 300,
+      },
       link: {
         openOnClick: false,
         HTMLAttributes: {
@@ -94,6 +131,9 @@ export function buildExtensions(): Extensions {
         class: 'nb-dropcursor',
       },
     }),
+
+    // 撤销/重做由文件级时间线统一接管，原生历史仅用于判断输入分组边界
+    UnifiedDocumentHistoryKeys.configure({ docKey }),
 
     // 链接点击分发处理器（阻止原生页面跳失与错误，支持外部与本地文件无缝打开）
     LinkClickHandler,
