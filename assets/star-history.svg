@@ -38,21 +38,25 @@
   <text class="subtitle" x="68" y="64">CrazyFigure/NoteBoard</text>
   <g>
     <line class="grid" x1="68" y1="368" x2="812" y2="368" />
+    <line class="grid" x1="68" y1="250.4" x2="812" y2="250.4" />
+    <line class="grid" x1="68" y1="132.8" x2="812" y2="132.8" />
     <line class="grid" x1="68" y1="74" x2="812" y2="74" />
     <line class="axis" x1="68" y1="74" x2="68" y2="368" />
     <line class="axis" x1="68" y1="368" x2="812" y2="368" />
     <text class="axis-label" x="54" y="372" text-anchor="end">0</text>
-    <text class="axis-label" x="54" y="78" text-anchor="end">1</text>
+    <text class="axis-label" x="54" y="254.4" text-anchor="end">2</text>
+    <text class="axis-label" x="54" y="136.8" text-anchor="end">4</text>
+    <text class="axis-label" x="54" y="78" text-anchor="end">5</text>
     <text class="axis-label" x="68" y="410" text-anchor="middle">2026-08-19</text>
     <text class="axis-label" x="254" y="410" text-anchor="middle">2026-08-19</text>
     <text class="axis-label" x="440" y="410" text-anchor="middle">2026-08-19</text>
     <text class="axis-label" x="626" y="410" text-anchor="middle">2026-08-19</text>
-    <text class="axis-label" x="812" y="410" text-anchor="middle">2026-08-19</text>
+    <text class="axis-label" x="812" y="410" text-anchor="middle">2026-08-20</text>
   </g>
-  <path class="area" d="M 68 368 H 812 V 368 L 812 368 L 68 368 Z" />
-  <path class="line" d="M 68 368 H 812 V 368" />
-  <circle class="dot" cx="812" cy="368" r="6" />
+  <path class="area" d="M 68 368 H 68.19 V 368 H 812 V 132.8 L 812 368 L 68 368 Z" />
+  <path class="line" d="M 68 368 H 68.19 V 368 H 812 V 132.8" />
+  <circle class="dot" cx="812" cy="132.8" r="6" />
   <rect class="badge" x="682" y="28" width="130" height="34" rx="17" />
-  <text class="badge-text" x="747" y="50" text-anchor="middle">0 stars</text>
-  <text class="status" x="812" y="428" text-anchor="end">Observed snapshots: 2026-08-19 – 2026-08-19</text>
+  <text class="badge-text" x="747" y="50" text-anchor="middle">4 stars</text>
+  <text class="status" x="812" y="428" text-anchor="end">Observed snapshots: 2026-08-19 – 2026-08-20</text>
 </svg>
