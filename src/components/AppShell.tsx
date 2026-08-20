@@ -26,6 +26,9 @@ import { CodeEditor } from '../features/editor-code/CodeEditor';
 import { TipTapEditor } from '../features/editor-md/TipTapEditor';
 import { BoardEditor } from '../features/board/BoardEditor';
 import { ImageViewer } from '../features/image-viewer/ImageViewer';
+import { MindmapEditor } from '../features/mindmap/MindmapEditor';
+import { DrawioEditor } from '../features/drawio/DrawioEditor';
+import { DiagramSplitEditor } from '../features/diagram-preview/DiagramSplitEditor';
 import { OutlinePanel } from '../features/outline/OutlinePanel';
 import { UnsavedGuardDialog } from '../features/editor-code/UnsavedGuardDialog';
 import { Explorer } from '../features/explorer/Explorer';
@@ -48,8 +51,16 @@ import {
   openFileDialog,
   openFolderDialog,
   newMarkdown,
-  newText,
+  newMindmap,
+  newDrawio,
   newBoard,
+  newMermaid,
+  newPlantUml,
+  newJson,
+  newYaml,
+  newSql,
+  newXml,
+  newText,
 } from '../features/welcome/welcomeActions';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
@@ -462,6 +473,14 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                     onNewMarkdown={newMarkdown}
                     onNewText={newText}
                     onNewBoard={newBoard}
+                    onNewMindmap={newMindmap}
+                    onNewDrawio={newDrawio}
+                    onNewMermaid={newMermaid}
+                    onNewPlantUml={newPlantUml}
+                    onNewJson={newJson}
+                    onNewYaml={newYaml}
+                    onNewSql={newSql}
+                    onNewXml={newXml}
                   />
                 ) : activeTab ? (
                   activeTab.kind === 'unsupported' ? (
@@ -471,8 +490,16 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                       fileName={activeTab.displayName}
                       fileSize={activeDoc?.size}
                     />
+                  ) : activeTab.kind === 'mindmap' ? (
+                    <MindmapEditor key={activeTab.key} docKey={activeTab.key} />
+                  ) : activeTab.kind === 'drawio' ? (
+                    <DrawioEditor key={activeTab.key} docKey={activeTab.key} />
                   ) : activeTab.kind === 'code' ? (
-                    <CodeEditor key={activeTab.key} docKey={activeTab.key} />
+                    activeTab.language === 'mermaid' || activeTab.language === 'plantuml' ? (
+                      <DiagramSplitEditor key={activeTab.key} docKey={activeTab.key} />
+                    ) : (
+                      <CodeEditor key={activeTab.key} docKey={activeTab.key} />
+                    )
                   ) : activeTab.kind === 'markdown' ? (
                     <TipTapEditor key={activeTab.key} docKey={activeTab.key} onEditorReady={setActiveEditor} />
                   ) : activeTab.kind === 'board' ? (
@@ -553,8 +580,6 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
 
       {/* 状态栏 */}
       {!isBoardPresentationMode && statusBarVisible && <StatusBar key="app-statusbar" />}
-
-      {/* 关闭拦截对话框 */}
       <UnsavedGuardDialog
         dirtyTabs={dirtyPendingTabs}
         visible={dirtyPendingTabs.length > 0}

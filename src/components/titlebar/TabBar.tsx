@@ -35,6 +35,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Trash2,
+  Network,
+  Layout,
+  Workflow,
+  GitMerge,
 } from 'lucide-react';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
@@ -43,8 +47,16 @@ import { extFromPath } from '../../core/docKind';
 import { moveToNewWindow } from '../../features/window/windowManager';
 import {
   newMarkdown,
-  newText,
+  newMindmap,
+  newDrawio,
   newBoard,
+  newMermaid,
+  newPlantUml,
+  newJson,
+  newYaml,
+  newSql,
+  newXml,
+  newText,
   openFileDialog,
   openFolderDialog,
 } from '../../features/welcome/welcomeActions';
@@ -395,6 +407,23 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
 
           {tab.path && (
             <>
+              {/* 复制文件名 */}
+              <button
+                type="button"
+                style={getMenuItemStyle(false)}
+                onClick={() => {
+                  setMenuPos(null);
+                  navigator.clipboard.writeText(tab.displayName);
+                }}
+                onMouseEnter={handleMenuItemMouseEnter}
+                onMouseLeave={handleMenuItemMouseLeave}
+                onMouseDown={handleMenuItemMouseDown}
+                onMouseUp={handleMenuItemMouseUp}
+              >
+                <Copy size={13} />
+                <span>复制文件名</span>
+              </button>
+
               {/* 复制文件完整路径 */}
               <button
                 type="button"
@@ -492,6 +521,7 @@ export function TabBar() {
   const { tabs, activeKey, activateTab, requestCloseTab, reorderTabs } = useWindowStore();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [newMenuPos, setNewMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [showMoreSubMenu, setShowMoreSubMenu] = useState(false);
   const newMenuRef = useRef<HTMLDivElement>(null);
   // 新建按钮引用，用于菜单点击外部区域判断
   const newBtnRef = useRef<HTMLButtonElement>(null);
@@ -665,7 +695,7 @@ export function TabBar() {
             borderRadius: 'var(--radius-sm)',
             boxShadow: 'var(--shadow-md)',
             padding: '4px',
-            minWidth: 160,
+            minWidth: 175,
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -675,6 +705,7 @@ export function TabBar() {
             style={getMenuItemStyle(false)}
             onClick={() => {
               setNewMenuPos(null);
+              setShowMoreSubMenu(false);
               newMarkdown();
             }}
             onMouseEnter={handleMenuItemMouseEnter}
@@ -683,14 +714,16 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <FileText size={13} color="var(--editor-accent)" />
-            <span>新建 Markdown 笔记</span>
+            <span>新建 Markdown 笔记 (Ctrl+N)</span>
           </button>
+
           {/* 新建文本文档 (.txt) */}
           <button
             type="button"
             style={getMenuItemStyle(false)}
             onClick={() => {
               setNewMenuPos(null);
+              setShowMoreSubMenu(false);
               newText();
             }}
             onMouseEnter={handleMenuItemMouseEnter}
@@ -701,12 +734,14 @@ export function TabBar() {
             <FileText size={13} color="#64748b" />
             <span>新建文本文档 (.txt)</span>
           </button>
+
           {/* 新建自由画板 */}
           <button
             type="button"
             style={getMenuItemStyle(false)}
             onClick={() => {
               setNewMenuPos(null);
+              setShowMoreSubMenu(false);
               newBoard();
             }}
             onMouseEnter={handleMenuItemMouseEnter}
@@ -715,14 +750,211 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <PencilRuler size={13} color="var(--accent-strong)" />
-            <span>新建自由画板</span>
+            <span>新建自由画板 (.excalidraw)</span>
           </button>
-          <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />
+
+          {/* 新建思维导图 */}
           <button
             type="button"
             style={getMenuItemStyle(false)}
             onClick={() => {
               setNewMenuPos(null);
+              setShowMoreSubMenu(false);
+              newMindmap();
+            }}
+            onMouseEnter={handleMenuItemMouseEnter}
+            onMouseLeave={handleMenuItemMouseLeave}
+            onMouseDown={handleMenuItemMouseDown}
+            onMouseUp={handleMenuItemMouseUp}
+          >
+            <Network size={13} color="#f97316" />
+            <span>新建思维导图 (.mindmap)</span>
+          </button>
+
+          <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />
+
+          {/* 更多格式新建（带二级菜单） */}
+          <div
+            style={{ position: 'relative' }}
+            onMouseEnter={() => setShowMoreSubMenu(true)}
+            onMouseLeave={() => setShowMoreSubMenu(false)}
+          >
+            <button
+              type="button"
+              style={{
+                ...getMenuItemStyle(false),
+                justifyContent: 'space-between',
+              }}
+              onClick={() => setShowMoreSubMenu((prev) => !prev)}
+              onMouseEnter={handleMenuItemMouseEnter}
+              onMouseLeave={handleMenuItemMouseLeave}
+              onMouseDown={handleMenuItemMouseDown}
+              onMouseUp={handleMenuItemMouseUp}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <FileCode size={13} color="var(--editor-accent)" />
+                <span>更多新建格式</span>
+              </div>
+              <ChevronRight size={13} color="var(--editor-text-muted)" />
+            </button>
+
+            {/* 二级菜单 */}
+            {showMoreSubMenu && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: -4,
+                  left: '100%',
+                  marginLeft: 4,
+                  zIndex: 10000,
+                  background: 'var(--editor-surface)',
+                  border: '1px solid var(--editor-border)',
+                  borderRadius: 'var(--radius-sm)',
+                  boxShadow: 'var(--shadow-md)',
+                  padding: '4px',
+                  minWidth: 175,
+                }}
+              >
+                {/* 新建 Draw.io 架构图 */}
+                <button
+                  type="button"
+                  style={getMenuItemStyle(false)}
+                  onClick={() => {
+                    setNewMenuPos(null);
+                    setShowMoreSubMenu(false);
+                    newDrawio();
+                  }}
+                  onMouseEnter={handleMenuItemMouseEnter}
+                  onMouseLeave={handleMenuItemMouseLeave}
+                  onMouseDown={handleMenuItemMouseDown}
+                  onMouseUp={handleMenuItemMouseUp}
+                >
+                  <Layout size={13} color="#ea580c" />
+                  <span>Draw.io 架构图 (.drawio)</span>
+                </button>
+
+                {/* 新建 Mermaid 图表 */}
+                <button
+                  type="button"
+                  style={getMenuItemStyle(false)}
+                  onClick={() => {
+                    setNewMenuPos(null);
+                    setShowMoreSubMenu(false);
+                    newMermaid();
+                  }}
+                  onMouseEnter={handleMenuItemMouseEnter}
+                  onMouseLeave={handleMenuItemMouseLeave}
+                  onMouseDown={handleMenuItemMouseDown}
+                  onMouseUp={handleMenuItemMouseUp}
+                >
+                  <Workflow size={13} color="#00bfb2" />
+                  <span>Mermaid 图表 (.mmd)</span>
+                </button>
+
+                {/* 新建 PlantUML / UML */}
+                <button
+                  type="button"
+                  style={getMenuItemStyle(false)}
+                  onClick={() => {
+                    setNewMenuPos(null);
+                    setShowMoreSubMenu(false);
+                    newPlantUml();
+                  }}
+                  onMouseEnter={handleMenuItemMouseEnter}
+                  onMouseLeave={handleMenuItemMouseLeave}
+                  onMouseDown={handleMenuItemMouseDown}
+                  onMouseUp={handleMenuItemMouseUp}
+                >
+                  <GitMerge size={13} color="#a855f7" />
+                  <span>PlantUML 建模 (.puml)</span>
+                </button>
+
+                <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />
+
+                {/* 新建 JSON 配置文件 */}
+                <button
+                  type="button"
+                  style={getMenuItemStyle(false)}
+                  onClick={() => {
+                    setNewMenuPos(null);
+                    setShowMoreSubMenu(false);
+                    newJson();
+                  }}
+                  onMouseEnter={handleMenuItemMouseEnter}
+                  onMouseLeave={handleMenuItemMouseLeave}
+                  onMouseDown={handleMenuItemMouseDown}
+                  onMouseUp={handleMenuItemMouseUp}
+                >
+                  <Braces size={13} color="#eab308" />
+                  <span>JSON 配置文件 (.json)</span>
+                </button>
+
+                {/* 新建 YAML 配置文件 */}
+                <button
+                  type="button"
+                  style={getMenuItemStyle(false)}
+                  onClick={() => {
+                    setNewMenuPos(null);
+                    setShowMoreSubMenu(false);
+                    newYaml();
+                  }}
+                  onMouseEnter={handleMenuItemMouseEnter}
+                  onMouseLeave={handleMenuItemMouseLeave}
+                  onMouseDown={handleMenuItemMouseDown}
+                  onMouseUp={handleMenuItemMouseUp}
+                >
+                  <FileCode size={13} color="#06b6d4" />
+                  <span>YAML 配置文件 (.yaml)</span>
+                </button>
+
+                {/* 新建 SQL 数据库脚本 */}
+                <button
+                  type="button"
+                  style={getMenuItemStyle(false)}
+                  onClick={() => {
+                    setNewMenuPos(null);
+                    setShowMoreSubMenu(false);
+                    newSql();
+                  }}
+                  onMouseEnter={handleMenuItemMouseEnter}
+                  onMouseLeave={handleMenuItemMouseLeave}
+                  onMouseDown={handleMenuItemMouseDown}
+                  onMouseUp={handleMenuItemMouseUp}
+                >
+                  <Database size={13} color="#3b82f6" />
+                  <span>SQL 数据库脚本 (.sql)</span>
+                </button>
+
+                {/* 新建 XML 标记文档 */}
+                <button
+                  type="button"
+                  style={getMenuItemStyle(false)}
+                  onClick={() => {
+                    setNewMenuPos(null);
+                    setShowMoreSubMenu(false);
+                    newXml();
+                  }}
+                  onMouseEnter={handleMenuItemMouseEnter}
+                  onMouseLeave={handleMenuItemMouseLeave}
+                  onMouseDown={handleMenuItemMouseDown}
+                  onMouseUp={handleMenuItemMouseUp}
+                >
+                  <CodeXml size={13} color="#ec4899" />
+                  <span>XML 标记文档 (.xml)</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />
+
+          {/* 打开文件 */}
+          <button
+            type="button"
+            style={getMenuItemStyle(false)}
+            onClick={() => {
+              setNewMenuPos(null);
+              setShowMoreSubMenu(false);
               openFileDialog();
             }}
             onMouseEnter={handleMenuItemMouseEnter}
@@ -733,11 +965,14 @@ export function TabBar() {
             <File size={13} />
             <span>打开文件… (Ctrl+O)</span>
           </button>
+
+          {/* 打开文件夹 */}
           <button
             type="button"
             style={getMenuItemStyle(false)}
             onClick={() => {
               setNewMenuPos(null);
+              setShowMoreSubMenu(false);
               openFolderDialog();
             }}
             onMouseEnter={handleMenuItemMouseEnter}

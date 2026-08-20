@@ -28,7 +28,9 @@ export async function openFileDialog(): Promise<void> {
     filters: [
       { name: '全部文件', extensions: ['*'] },
       { name: 'Markdown', extensions: ['md', 'markdown'] },
-      { name: '画板', extensions: ['excalidraw'] },
+      { name: '思维导图', extensions: ['mindmap', 'xmind', 'mm'] },
+      { name: '画板与绘图', extensions: ['excalidraw', 'drawio', 'dio', 'board'] },
+      { name: '图表脚本', extensions: ['mmd', 'mermaid', 'puml', 'plantuml', 'uml'] },
     ],
   });
   if (!paths || paths.length === 0) return;
@@ -63,11 +65,25 @@ export async function openFolderDialog(): Promise<void> {
 }
 
 /** 创建未命名文档与 tab */
-function createUntitledDocument(type: 'markdown' | 'board' | 'txt'): void {
+function createUntitledDocument(
+  type:
+    | 'markdown'
+    | 'board'
+    | 'txt'
+    | 'mindmap'
+    | 'drawio'
+    | 'mermaid'
+    | 'plantuml'
+    | 'json'
+    | 'yaml'
+    | 'sql'
+    | 'xml',
+): void {
   const key = nextUntitledKey(type);
-  let kind: DocumentKind;
+  let kind: DocumentKind = 'code';
   let language: LanguageId = 'plaintext';
   let displayName = '未命名.txt';
+  let initialContent = '';
 
   // 根据新建类型决定文档模型、语言标识与默认文件名
   if (type === 'markdown') {
@@ -78,6 +94,44 @@ function createUntitledDocument(type: 'markdown' | 'board' | 'txt'): void {
     kind = 'board';
     language = 'plaintext';
     displayName = '未命名.excalidraw';
+  } else if (type === 'mindmap') {
+    kind = 'mindmap';
+    language = 'json';
+    displayName = '未命名.mindmap';
+  } else if (type === 'drawio') {
+    kind = 'drawio';
+    language = 'xml';
+    displayName = '未命名.drawio';
+  } else if (type === 'mermaid') {
+    kind = 'code';
+    language = 'mermaid';
+    displayName = '未命名.mmd';
+    initialContent = `graph TD\n    A[开始] --> B(处理中)\n    B --> C{是否完成?}\n    C -->|是| D[结束]\n    C -->|否| B`;
+  } else if (type === 'plantuml') {
+    kind = 'code';
+    language = 'plantuml';
+    displayName = '未命名.puml';
+    initialContent = `@startuml\nactor 用户 as User\nparticipant "系统" as System\n\nUser -> System: 登录请求\nSystem --> User: 登录成功\n@enduml`;
+  } else if (type === 'json') {
+    kind = 'code';
+    language = 'json';
+    displayName = '未命名.json';
+    initialContent = `{\n  "name": "NoteBoard",\n  "version": "0.1.3"\n}`;
+  } else if (type === 'yaml') {
+    kind = 'code';
+    language = 'yaml';
+    displayName = '未命名.yaml';
+    initialContent = `name: NoteBoard\nversion: 0.1.3\nenabled: true`;
+  } else if (type === 'sql') {
+    kind = 'code';
+    language = 'sql';
+    displayName = '未命名.sql';
+    initialContent = `-- NoteBoard SQL 查询\nSELECT * FROM notes WHERE is_active = 1;`;
+  } else if (type === 'xml') {
+    kind = 'code';
+    language = 'xml';
+    displayName = '未命名.xml';
+    initialContent = `<?xml version="1.0" encoding="UTF-8"?>\n<root>\n  <item name="NoteBoard" />\n</root>`;
   } else {
     // 纯文本 (TXT) 使用代码编辑器与纯文本语法模式
     kind = 'code';
@@ -92,10 +146,10 @@ function createUntitledDocument(type: 'markdown' | 'board' | 'txt'): void {
     dirPath: '',
     kind,
     language,
-    content: '',
+    content: initialContent,
     encoding: 'utf8',
     eol: 'lf',
-    size: 0,
+    size: initialContent.length,
     mtime: 0,
     readonly: false,
   });
@@ -118,6 +172,46 @@ function createUntitledDocument(type: 'markdown' | 'board' | 'txt'): void {
 /** 新建 Markdown 文档 */
 export function newMarkdown(): void {
   createUntitledDocument('markdown');
+}
+
+/** 新建思维导图文档 */
+export function newMindmap(): void {
+  createUntitledDocument('mindmap');
+}
+
+/** 新建 Draw.io 绘图文档 */
+export function newDrawio(): void {
+  createUntitledDocument('drawio');
+}
+
+/** 新建 Mermaid 图表文档 */
+export function newMermaid(): void {
+  createUntitledDocument('mermaid');
+}
+
+/** 新建 PlantUML 图表文档 */
+export function newPlantUml(): void {
+  createUntitledDocument('plantuml');
+}
+
+/** 新建 JSON 配置文件 */
+export function newJson(): void {
+  createUntitledDocument('json');
+}
+
+/** 新建 YAML 配置文件 */
+export function newYaml(): void {
+  createUntitledDocument('yaml');
+}
+
+/** 新建 SQL 数据库脚本 */
+export function newSql(): void {
+  createUntitledDocument('sql');
+}
+
+/** 新建 XML 标记文档 */
+export function newXml(): void {
+  createUntitledDocument('xml');
 }
 
 /** 新建纯文本 (TXT) 文档 */

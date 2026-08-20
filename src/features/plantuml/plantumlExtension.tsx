@@ -1,121 +1,16 @@
-// NoteBoard Mermaid 图表扩展
-// 自研节点 + 懒加载 + securityLevel: strict + 全局串行渲染队列 + 陈旧守卫 + 视口门控
-// 详见 docs/09-开发路线图.md 8.5
-//
-// 设计：
-// 1. 自研 mermaidBlock 节点
-// 2. import('mermaid') 懒加载
-// 3. securityLevel: 'strict', startOnLoad: false
-// 4. 全局串行渲染队列（避免并发污染）
-// 5. 陈旧守卫：渲染完成后检查内容是否已变
-// 6. Skeleton 占位
-// 7. 主题切换时重渲染
+// NoteBoard PlantUML / UML TipTap 扩展
+// 自研 plantumlBlock 节点 + 视口门控 + LRU 缓存 + 全屏放大模态框与图片导出
+// 详见 docs/09-开发路线图.md
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
-import { observe } from './viewportActivation';
-import { schedule } from './viewportWorkScheduler';
-
-// ── 全局串行渲染队列 ──
-
-type RenderTask = {
-  id: number;
-  code: string;
-  theme: 'default' | 'dark' | 'forest';
-  resolve: (svg: string) => void;
-  reject: (error: Error) => void;
-};
-
-const renderQueue: RenderTask[] = [];
-let isProcessing = false;
-let nextId = 0;
-
-/** Mermaid 模块延迟加载 */
-let mermaidModule: typeof import('mermaid') | null = null;
-let mermaidLoading: Promise<typeof import('mermaid')> | null = null;
-
-async function loadMermaid(): Promise<typeof import('mermaid')> {
-  if (mermaidModule) return mermaidModule;
-  if (mermaidLoading) return mermaidLoading;
-
-  mermaidLoading = import('mermaid').then((mod) => {
-    mermaidModule = mod;
-    // 初始化
-    mod.default.initialize({
-      startOnLoad: false,
-      securityLevel: 'strict',
-      theme: 'default',
-    });
-    return mod;
-  });
-  return mermaidLoading;
-}
-
-/** 处理队列中的下一个任务 */
-async function processQueue(): Promise<void> {
-  if (isProcessing) return;
-  const task = renderQueue.shift();
-  if (!task) return;
-
-  isProcessing = true;
-
-  try {
-    const mermaid = await loadMermaid();
-
-    // 设置主题
-    if (task.theme === 'dark') {
-      mermaid.default.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'dark' });
-    } else if (task.theme === 'forest') {
-      mermaid.default.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'forest' });
-    } else {
-      mermaid.default.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'default' });
-    }
-
-    // 渲染
-    const renderId = `mermaid-${task.id}`;
-    const { svg } = await mermaid.default.render(renderId, task.code);
-    task.resolve(svg);
-  } catch (e) {
-    task.reject(e instanceof Error ? e : new Error(String(e)));
-  } finally {
-    isProcessing = false;
-    // 继续处理下一个
-    if (renderQueue.length > 0) {
-      processQueue();
-    }
-  }
-}
-
-/**
- * 提交 Mermaid 渲染任务到串行队列
- */
-function enqueueRender(code: string, theme: 'default' | 'dark' | 'forest'): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const task: RenderTask = {
-      id: nextId++,
-      code,
-      theme,
-      resolve,
-      reject,
-    };
-    renderQueue.push(task);
-    processQueue();
-  });
-}
-
-// ── 获取当前主题 ──
-
-function getCurrentMermaidTheme(): 'default' | 'dark' | 'forest' {
-  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-  return isDark ? 'dark' : 'default';
-}
-
 import { Maximize2, Copy, Download, Check, Edit2, X, AlertCircle } from 'lucide-react';
+import { renderPlantUmlToSvg } from './plantumlEncoder';
+import { observe } from '../editor-md/viewportActivation';
+import { schedule } from '../editor-md/viewportWorkScheduler';
 
-// ── React NodeView ──
-
-function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
+function PlantUmlComponent({ node, updateAttributes, selected }: NodeViewProps) {
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -125,6 +20,7 @@ function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
   const [fullscreen, setFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [zoom, setZoom] = useState(1);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const renderTokenRef = useRef<number>(0);
 
@@ -142,10 +38,18 @@ function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
     setError(null);
 
     try {
-      const result = await enqueueRender(currentCode, getCurrentMermaidTheme());
-      // 陈旧守卫：检查内容是否已变
+      const result = await renderPlantUmlToSvg(currentCode);
       if (token !== renderTokenRef.current) return;
-      setSvg(result);
+
+      if (result.error && !result.svg) {
+        setError(result.error);
+        setSvg(null);
+      } else {
+        setSvg(result.svg);
+        if (result.error) {
+          setError(result.error);
+        }
+      }
     } catch (e) {
       if (token !== renderTokenRef.current) return;
       setError(e instanceof Error ? e.message : String(e));
@@ -161,27 +65,21 @@ function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
     const el = containerRef.current;
     if (!el) return;
 
-    const unobserve = observe(el, () => {
-      setInViewport(true);
-    }, { once: true });
+    const unobserve = observe(
+      el,
+      () => {
+        setInViewport(true);
+      },
+      { once: true },
+    );
 
     return unobserve;
   }, []);
 
-  // 只在视口内时渲染
+  // 视口可见且有代码时调度渲染
   useEffect(() => {
     if (!inViewport || !code) return;
     schedule(() => doRender(code));
-  }, [inViewport, code, doRender]);
-
-  // 主题切换时重渲染
-  useEffect(() => {
-    if (!inViewport || !code) return;
-    const observer = new MutationObserver(() => {
-      schedule(() => doRender(code));
-    });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-    return () => observer.disconnect();
   }, [inViewport, code, doRender]);
 
   // 复制 SVG 或源码
@@ -208,7 +106,7 @@ function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `mermaid-${Date.now()}.svg`;
+    a.download = `plantuml-${Date.now()}.svg`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -238,7 +136,7 @@ function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
               color: 'var(--editor-text-muted, #64748b)',
             }}
           >
-            <span>编辑 Mermaid 图表源码</span>
+            <span>编辑 PlantUML / UML 图表</span>
             <div style={{ display: 'flex', gap: 6 }}>
               <button
                 type="button"
@@ -279,7 +177,7 @@ function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
           <textarea
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
-            placeholder="输入 Mermaid 语法，例如:&#10;graph TD&#10;    A[开始] --> B[结束]"
+            placeholder="输入 PlantUML 语法，例如:&#10;@startuml&#10;Alice -> Bob: Hello&#10;@enduml"
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
                 e.preventDefault();
@@ -342,7 +240,7 @@ function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontWeight: 600, color: 'var(--editor-accent, #3b82f6)' }}>Mermaid</span>
+            <span style={{ fontWeight: 600, color: 'var(--editor-accent, #3b82f6)' }}>PlantUML</span>
             {loading && <span>渲染中…</span>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -453,13 +351,13 @@ function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
         >
           {!inViewport && code && (
             <div style={{ color: 'var(--editor-text-muted, #64748b)', fontSize: 13 }}>
-              <span>📊 Mermaid 图表（滚动到视口时渲染）</span>
+              <span>📐 PlantUML 图表（滚动到视口时渲染）</span>
             </div>
           )}
 
           {inViewport && loading && !svg && (
             <div style={{ color: 'var(--editor-text-muted, #64748b)', fontSize: 13 }}>
-              <span>渲染中…</span>
+              <span>正在获取 PlantUML 矢量图…</span>
             </div>
           )}
 
@@ -500,7 +398,7 @@ function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
 
           {!code && (
             <span style={{ color: 'var(--editor-text-muted, #64748b)', fontStyle: 'italic', fontSize: 13 }}>
-              空 Mermaid 图表（双击或点击编辑输入内容）
+              空 PlantUML 图表（双击或点击编辑输入内容）
             </span>
           )}
         </div>
@@ -531,7 +429,7 @@ function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <span style={{ fontWeight: 600, color: 'var(--editor-text, #1e293b)' }}>Mermaid 图表预览</span>
+            <span style={{ fontWeight: 600, color: 'var(--editor-text, #1e293b)' }}>PlantUML 图表预览</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <button
@@ -643,11 +541,9 @@ function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
   );
 }
 
-// ── TipTap 节点定义 ──
-
-/** Mermaid 块节点 */
-export const MermaidBlock = Node.create({
-  name: 'mermaidBlock',
+/** PlantUML 块级节点 */
+export const PlantUmlBlock = Node.create({
+  name: 'plantumlBlock',
   group: 'block',
   atom: true,
   selectable: true,
@@ -661,34 +557,28 @@ export const MermaidBlock = Node.create({
   },
   parseHTML() {
     return [
-      { tag: 'div[data-mermaid]' },
-      { tag: 'pre[data-language="mermaid"]' },
+      { tag: 'div[data-plantuml]' },
+      { tag: 'pre[data-language="plantuml"]' },
+      { tag: 'pre[data-language="uml"]' },
+      { tag: 'pre[data-language="puml"]' },
     ];
   },
   renderHTML({ HTMLAttributes }) {
-    return ['div', mergeAttributes(HTMLAttributes, { 'data-mermaid': '' })];
+    return ['div', mergeAttributes(HTMLAttributes, { 'data-plantuml': '' })];
   },
   addNodeView() {
-    return ReactNodeViewRenderer(MermaidComponent);
+    return ReactNodeViewRenderer(PlantUmlComponent);
   },
   addCommands() {
     return {
-      insertMermaid:
+      insertPlantUml:
         (code: string) =>
         ({ commands }: { commands: { insertContent: (content: unknown) => boolean } }) => {
           return commands.insertContent({
-            type: 'mermaidBlock',
+            type: 'plantumlBlock',
             attrs: { code },
           });
         },
     } as never;
   },
 });
-
-/** 清除 Mermaid 模块（主题切换时重置初始化） */
-export function resetMermaid(): void {
-  mermaidModule = null;
-  mermaidLoading = null;
-  renderQueue.length = 0;
-  isProcessing = false;
-}

@@ -23,6 +23,7 @@ import { lowlight } from '../lowlight';
 import { searchReplaceExtension } from '../searchReplace';
 import { MathInline, MathBlock } from '../katexExtensions';
 import { MermaidBlock } from '../mermaidExtension';
+import { PlantUmlBlock } from '../../plantuml/plantumlExtension';
 import { GitHubAlert } from '../alertExtension';
 import { slashSuggestion } from '../slashCommand';
 
@@ -238,6 +239,9 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // Mermaid 图表
     MermaidBlock,
+
+    // PlantUML / UML 图表
+    PlantUmlBlock,
 
     // GitHub Alerts
     GitHubAlert,

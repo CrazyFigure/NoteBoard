@@ -1,0 +1,315 @@
+// NoteBoard Draw.io 深度集成编辑器
+// 基于 Diagrams.net Embed 协议 + postMessage 双向通信 + 主题联动与自动保存
+// 详见 docs/09-开发路线图.md
+
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { RefreshCw, Download, FileCode, AlertCircle, WifiOff } from 'lucide-react';
+import { useDocumentStore } from '../../stores/documentStore';
+import { useWindowStore } from '../../stores/windowStore';
+import { showToast } from '../../stores/toastStore';
+
+interface DrawioEditorProps {
+  docKey: string;
+}
+
+const DEFAULT_DRAWIO_XML = `<mxfile host="NoteBoard" modified="${new Date().toISOString()}" agent="NoteBoard" version="0.1.3" etag="noteboard">
+  <diagram id="diagram_1" name="第 1 页">
+    <mxGraphModel dx="1000" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" background="none" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="2" value="开始绘图" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="340" y="240" width="120" height="60" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>`;
+
+export function DrawioEditor({ docKey }: DrawioEditorProps) {
+  const doc = useDocumentStore((s) => s.documents.get(docKey));
+  const setContent = useDocumentStore((s) => s.setContent);
+  const setDirty = useDocumentStore((s) => s.setDirty);
+  const setTabDirty = useWindowStore((s) => s.setTabDirty);
+
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // 获取当前主题
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+
+  // 构建 Diagrams.net 嵌入 URL（去除容易阻塞的 configure 强依赖，保证秒级握手就绪）
+  const embedUrl = `https://embed.diagrams.net/?embed=1&ui=min&spin=1&proto=json&libraries=1${isDark ? '&dark=1' : '&dark=0'}`;
+
+  // 监听 Draw.io postMessage 事件
+  useEffect(() => {
+    let timeoutTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      if (!isLoaded) {
+        setLoadError('加载 Diagrams.net 引擎耗时较长，请检查网络或点击重新加载');
+      }
+    }, 15000);
+
+    const handleMessage = (e: MessageEvent) => {
+      // 过滤非目标 iframe 消息
+      if (!iframeRef.current || e.source !== iframeRef.current.contentWindow) {
+        return;
+      }
+
+      try {
+        const msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+        if (!msg || typeof msg !== 'object') return;
+
+        // 1. 处理配置请求 (若服务端发送 configure)
+        if (msg.event === 'configure') {
+          iframeRef.current?.contentWindow?.postMessage(
+            JSON.stringify({
+              action: 'configure',
+              config: {},
+            }),
+            '*',
+          );
+        }
+
+        // 2. Draw.io 初始化就绪事件
+        if (msg.event === 'init') {
+          if (timeoutTimer) {
+            clearTimeout(timeoutTimer);
+            timeoutTimer = null;
+          }
+          setIsLoaded(true);
+          setLoadError(null);
+          const xml = doc?.content?.trim() ? doc.content : DEFAULT_DRAWIO_XML;
+          iframeRef.current?.contentWindow?.postMessage(
+            JSON.stringify({
+              action: 'load',
+              autosave: 1,
+              xml,
+            }),
+            '*',
+          );
+        }
+
+        // 3. 自动保存与手动保存事件
+        if (msg.event === 'autosave' || msg.event === 'save') {
+          if (msg.xml) {
+            setContent(docKey, msg.xml);
+            setDirty(docKey, true);
+            setTabDirty(docKey, true);
+          }
+        }
+
+        // 4. 导出事件
+        if (msg.event === 'export') {
+          if (msg.data) {
+            const a = document.createElement('a');
+            a.href = msg.data;
+            a.download = `drawio-export-${Date.now()}.${msg.format || 'png'}`;
+            a.click();
+            showToast('绘图已成功导出');
+          }
+        }
+      } catch (err) {
+        console.error('解析 Draw.io 消息失败:', err);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => {
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [docKey, doc?.content, setContent, setDirty, setTabDirty, isLoaded]);
+
+  // 触发导出请求
+  const handleRequestExport = (format: 'png' | 'svg' | 'xml') => {
+    if (!iframeRef.current?.contentWindow) return;
+    if (format === 'xml') {
+      const xml = doc?.content || DEFAULT_DRAWIO_XML;
+      const blob = new Blob([xml], { type: 'application/xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `diagram-${Date.now()}.drawio`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('已导出 Draw.io XML');
+      return;
+    }
+
+    iframeRef.current.contentWindow.postMessage(
+      JSON.stringify({
+        action: 'export',
+        format,
+      }),
+      '*',
+    );
+  };
+
+  return (
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--editor-bg, #ffffff)',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      {/* 顶部操作条 */}
+      <div
+        style={{
+          height: 36,
+          minHeight: 36,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 12px',
+          borderBottom: '1px solid var(--editor-border, #e2e8f0)',
+          background: 'var(--editor-surface, #f8fafc)',
+          fontSize: 12,
+          userSelect: 'none',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}>
+          <FileCode size={15} color="var(--editor-accent, #3b82f6)" />
+          <span>Draw.io 绘图编辑器</span>
+          {!isLoaded && !loadError && (
+            <span style={{ fontSize: 11, color: 'var(--editor-text-muted)', fontWeight: 400 }}>
+              加载引擎中…
+            </span>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button
+            type="button"
+            onClick={() => handleRequestExport('svg')}
+            title="导出为 SVG 矢量图"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '3px 8px',
+              borderRadius: 4,
+              border: '1px solid var(--editor-border, #e2e8f0)',
+              background: 'var(--editor-bg, #ffffff)',
+              color: 'var(--editor-text, #1e293b)',
+              cursor: 'pointer',
+              fontSize: 11,
+            }}
+          >
+            <Download size={12} />
+            <span>导出 SVG</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleRequestExport('png')}
+            title="导出为 PNG 图片"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '3px 8px',
+              borderRadius: 4,
+              border: '1px solid var(--editor-border, #e2e8f0)',
+              background: 'var(--editor-bg, #ffffff)',
+              color: 'var(--editor-text, #1e293b)',
+              cursor: 'pointer',
+              fontSize: 11,
+            }}
+          >
+            <Download size={12} />
+            <span>导出 PNG</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleRequestExport('xml')}
+            title="导出 .drawio 源文件"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '3px 10px',
+              borderRadius: 4,
+              border: 'none',
+              background: 'var(--editor-accent, #3b82f6)',
+              color: '#ffffff',
+              cursor: 'pointer',
+              fontSize: 11,
+              fontWeight: 500,
+            }}
+          >
+            <Download size={12} />
+            <span>导出 Draw.io</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Draw.io iframe 嵌入容器 */}
+      <div style={{ flex: 1, position: 'relative', width: '100%', height: '100%' }}>
+        <iframe
+          ref={iframeRef}
+          src={embedUrl}
+          title="Draw.io Editor"
+          style={{
+            width: '100%',
+            height: '100%',
+            border: 'none',
+            display: 'block',
+          }}
+          onError={() => setLoadError('无法加载 Draw.io 绘图引擎，请检查网络连接')}
+        />
+
+        {/* 离线/异常提示 */}
+        {loadError && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'var(--editor-bg, #ffffff)',
+              color: 'var(--editor-text, #1e293b)',
+              padding: 24,
+              gap: 12,
+              zIndex: 10,
+            }}
+          >
+            <WifiOff size={40} color="var(--editor-text-muted, #94a3b8)" />
+            <span style={{ fontSize: 14, fontWeight: 500 }}>{loadError}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setLoadError(null);
+                setIsLoaded(false);
+                if (iframeRef.current) {
+                  iframeRef.current.src = embedUrl;
+                }
+              }}
+              style={{
+                padding: '6px 14px',
+                borderRadius: 6,
+                background: 'var(--editor-accent, #3b82f6)',
+                color: '#ffffff',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 13,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <RefreshCw size={14} />
+              <span>重新连接</span>
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
