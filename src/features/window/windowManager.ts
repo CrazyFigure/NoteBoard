@@ -117,11 +117,11 @@ let reconcileTimer: ReturnType<typeof setInterval> | null = null;
 // tauri://close-requested → preventDefault → 收集脏文档 → 批量拦截 → 写会话 → 注销文档 → close()
 
 /**
- * 窗口关闭处理：检查脏文档 → 弹拦截 → 最终关闭
+ * 请求关闭当前窗口：统一承接标题栏按钮与系统关闭事件。
+ * 若存在未保存文档则保留窗口关闭意图并弹出确认框；否则立即执行实际关闭流程。
  */
-async function handleCloseRequested(): Promise<void> {
+export async function requestCurrentWindowClose(): Promise<void> {
   const tabStore = useWindowStore.getState();
-  const docStore = useDocumentStore.getState();
   const label = getCurrentWindow().label;
 
   // 收集脏文档
@@ -217,7 +217,7 @@ export function startEventListeners(): void {
       if (targetLabel && targetLabel !== currentLabel) {
         return;
       }
-      handleCloseRequested();
+      requestCurrentWindowClose();
     }).then((fn) => {
       unlistenCloseRequested = fn;
     });
