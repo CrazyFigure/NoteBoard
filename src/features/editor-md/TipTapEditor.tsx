@@ -40,6 +40,7 @@ import { EditorBubbleMenu, TableToolbar } from './bubbleMenu';
 import { BlockDragHandle } from './blockDragHandle';
 import { ExternalChangeBanner } from './ExternalChangeBanner';
 import { EditorContextMenu } from './EditorContextMenu';
+import { LinkModal } from './LinkModal';
 import { handlePastedImageFile } from './imagePaste';
 import {
   getCurrentDocumentHistoryContent,
@@ -77,6 +78,15 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   const [showLargeBanner, setShowLargeBanner] = useState(false);
   const [largeVerdict, setLargeVerdict] = useState<ReturnType<typeof judgeLargeDoc> | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
+  // 超链接插入与编辑弹窗状态
+  const [linkModalState, setLinkModalState] = useState<{
+    isOpen: boolean;
+    initialText: string;
+    initialUrl: string;
+    isEditing: boolean;
+    from: number;
+    to: number;
+  } | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   // 持有最新 TipTap 实例，供仅按 docKey 注册的卸载清理读取，避免模式切换触发误清理
   const tipTapEditorRef = useRef<Editor | null>(null);
@@ -121,6 +131,8 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
         padding: '16px 24px',
       },
     });
+
+
     view.dispatch({
       effects: typographyCompartment.reconfigure(typographyExt),
     });
@@ -132,9 +144,16 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     typography.monoLineHeight,
   ]);
 
+  // 保持对 handleOpenLinkModal 的实时引用，供 LinkClickHandler 扩展在单击超链接时唤起弹窗
+  const openLinkModalRef = useRef<() => void>(() => {});
+
   // 初始化 TipTap 编辑器
   const editor = useEditor({
-    extensions: buildExtensions(docKey),
+    extensions: buildExtensions(docKey, {
+      onOpenLinkModal: () => {
+        openLinkModalRef.current();
+      },
+    }),
     content: '',
     onUpdate: ({ editor, transaction }) => {
       // 若处于初始化流程或事务未引起文档实际变更，则直接跳过
@@ -579,6 +598,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       useWindowStore.getState().setTabViewMode(docKey, 'visual');
       emit('view-mode-changed', { key: docKey, mode: 'visual' });
       setTimeout(() => {
+
         editor.commands.focus();
       }, 20);
     }
@@ -597,6 +617,100 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     };
   }, [docKey, toggleViewMode]);
 
+  // 打开超链接插入与编辑模态弹窗
+  const handleOpenLinkModal = useCallback(() => {
+    if (!editor) return;
+
+    let from = editor.state.selection.from;
+    let to = editor.state.selection.to;
+    let initialText = '';
+    let initialUrl = '';
+    let isEditing = false;
+
+    // 1. 若光标处于已有超链接标记内，扩展选区到完整链接范围并回显信息
+    if (editor.isActive('link')) {
+      isEditing = true;
+      editor.commands.extendMarkRange('link');
+      from = editor.state.selection.from;
+      to = editor.state.selection.to;
+      initialText = editor.state.doc.textBetween(from, to);
+      initialUrl = editor.getAttributes('link').href || '';
+    } else if (!editor.state.selection.empty) {
+      // 2. 当前选中了普通文本
+      initialText = editor.state.doc.textBetween(from, to);
+      initialUrl = '';
+    } else {
+      // 3. 空选区插入新超链接
+      initialText = '';
+      initialUrl = '';
+    }
+
+    setLinkModalState({
+      isOpen: true,
+      initialText,
+      initialUrl,
+      isEditing,
+      from,
+      to,
+    });
+  }, [editor]);
+  openLinkModalRef.current = handleOpenLinkModal;
+
+  // 确认提交超链接
+  const handleConfirmLink = useCallback(
+    ({ text, url }: { text: string; url: string }) => {
+      if (!editor || !linkModalState) return;
+
+      const { from, to } = linkModalState;
+      const targetUrl = url.trim();
+      if (!targetUrl) {
+        editor.chain().focus().setTextSelection({ from, to }).unsetLink().run();
+        setLinkModalState(null);
+        return;
+      }
+
+      const finalText = text.trim() || targetUrl;
+      const originalText = editor.state.doc.textBetween(from, to);
+
+      // 若文本未变且原本非空，仅更新 link 标记属性
+      if (originalText === finalText && originalText.length > 0) {
+        editor
+          .chain()
+          .focus()
+          .setTextSelection({ from, to })
+          .setLink({ href: targetUrl })
+          .run();
+      } else {
+        // 替换文本并挂载超链接标记
+        editor
+          .chain()
+          .focus()
+          .setTextSelection({ from, to })
+          .insertContent({
+            type: 'text',
+            text: finalText,
+            marks: [
+              {
+                type: 'link',
+                attrs: { href: targetUrl },
+              },
+            ],
+          })
+          .run();
+      }
+      setLinkModalState(null);
+    },
+    [editor, linkModalState]
+  );
+
+  // 移除超链接
+  const handleRemoveLink = useCallback(() => {
+    if (!editor || !linkModalState) return;
+    const { from, to } = linkModalState;
+    editor.chain().focus().setTextSelection({ from, to }).unsetLink().run();
+    setLinkModalState(null);
+  }, [editor, linkModalState]);
+
   // 注册当前 Markdown 文档专用的 Ctrl+/ 模式切换快捷键
   useEffect(() => {
     const unreg = registerShortcut({
@@ -614,6 +728,24 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       unreg();
     };
   }, [docKey, toggleViewMode]);
+
+  // 注册当前 Markdown 文档专用的 Ctrl+K 插入/编辑超链接快捷键
+  useEffect(() => {
+    const unreg = registerShortcut({
+      key: 'Ctrl+K',
+      action: () => {
+        const activeKey = useWindowStore.getState().activeKey;
+        if (activeKey === docKey && viewMode === 'visual') {
+          handleOpenLinkModal();
+        }
+      },
+      scope: 'global',
+      description: '插入或编辑超链接',
+    });
+    return () => {
+      unreg();
+    };
+  }, [docKey, viewMode, handleOpenLinkModal]);
 
   // 组件卸载时清理（注意：不要删除基线，以便切回 Tab 时仍能保持正确的脏态判定）
   useEffect(() => {
@@ -745,7 +877,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
           });
         }}
       >
-        {editor && <EditorBubbleMenu editor={editor} />}
+        {editor && <EditorBubbleMenu editor={editor} onOpenLinkModal={handleOpenLinkModal} />}
         {editor && <TableToolbar editor={editor} />}
         {editor && <BlockDragHandle editor={editor} />}
         {contextMenu && editor && (
@@ -754,6 +886,18 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
             position={{ x: contextMenu.x, y: contextMenu.y }}
             hasSelection={contextMenu.hasSelection}
             onClose={() => setContextMenu(null)}
+            onOpenLinkModal={handleOpenLinkModal}
+          />
+        )}
+        {linkModalState && (
+          <LinkModal
+            isOpen={linkModalState.isOpen}
+            initialText={linkModalState.initialText}
+            initialUrl={linkModalState.initialUrl}
+            isEditing={linkModalState.isEditing}
+            onClose={() => setLinkModalState(null)}
+            onConfirm={handleConfirmLink}
+            onRemove={handleRemoveLink}
           />
         )}
         <EditorContent editor={editor} style={{ height: '100%' }} />

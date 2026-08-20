@@ -25,6 +25,7 @@ import { MathInline, MathBlock } from '../katexExtensions';
 import { MermaidBlock } from '../mermaidExtension';
 import { GitHubAlert } from '../alertExtension';
 import { slashSuggestion } from '../slashCommand';
+
 import { handleLinkClick, resolveRelativeDocPath } from '../linkHandler';
 import { useDocumentStore } from '../../../stores/documentStore';
 import { useWindowStore } from '../../../stores/windowStore';
@@ -33,38 +34,82 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 
 import Suggestion from '@tiptap/suggestion';
 import { Extension, type Extensions } from '@tiptap/core';
-import { Plugin } from '@tiptap/pm/state';
+import { Plugin, TextSelection } from '@tiptap/pm/state';
 import {
   redoDocumentHistory,
   undoDocumentHistory,
 } from '../../history/documentHistory';
 
+export interface LinkClickHandlerOptions {
+  onOpenLinkModal?: () => void;
+}
+
 /**
  * 链接点击分发扩展
- * 统一拦截编辑区 a 标签的点击事件，外部链接调用系统默认浏览器，本地文件链接在 NoteBoard 内部打开
+ * 统一拦截编辑区 a 标签的点击事件：
+ * 1. Ctrl / Cmd + 左键单击：外部链接调用系统默认浏览器，本地文件链接在 NoteBoard 内打开
+ * 2. 普通左键单击：唤起超链接编辑/插入模态弹窗
  */
-const LinkClickHandler = Extension.create({
+const LinkClickHandler = Extension.create<LinkClickHandlerOptions>({
   name: 'linkClickHandler',
+  addOptions() {
+    return {
+      onOpenLinkModal: undefined,
+    };
+  },
   addProseMirrorPlugins() {
+    const extensionOptions = this.options;
     return [
       new Plugin({
         props: {
-          handleClick(_view, _pos, event) {
-            const target = event.target as HTMLElement | null;
-            const anchor = target?.closest('a');
-            if (anchor) {
-              const href = anchor.getAttribute('href');
-              if (href) {
+          handleDOMEvents: {
+            click(view, event) {
+              const target = event.target as HTMLElement | null;
+              const anchor = target?.closest('a');
+              if (anchor) {
+                const href = anchor.getAttribute('href');
                 event.preventDefault();
                 event.stopPropagation();
-                const activeKey = useWindowStore.getState().activeKey;
-                if (activeKey) {
-                  handleLinkClick(href, activeKey);
+
+                if (event.button === 0) {
+                  // 1. Ctrl / Cmd + 单击：触发链接跳转
+                  if (event.ctrlKey || event.metaKey) {
+                    if (href) {
+                      const activeKey = useWindowStore.getState().activeKey;
+                      if (activeKey) {
+                        handleLinkClick(href, activeKey);
+                      }
+                    }
+                  } else {
+                    // 2. 普通左键单击：定位光标并唤起超链接编辑弹窗
+                    const posAtCoord = view.posAtCoords({ left: event.clientX, top: event.clientY });
+                    if (posAtCoord) {
+                      view.dispatch(
+                        view.state.tr.setSelection(
+                          TextSelection.create(view.state.doc, posAtCoord.pos)
+                        )
+                      );
+                    }
+                    if (extensionOptions.onOpenLinkModal) {
+                      extensionOptions.onOpenLinkModal();
+                    }
+                  }
                 }
                 return true;
               }
-            }
-            return false;
+              return false;
+            },
+            auxclick(_view, event) {
+              // 拦截鼠标中键等辅助按键，防止触发原生导航
+              const target = event.target as HTMLElement | null;
+              const anchor = target?.closest('a');
+              if (anchor) {
+                event.preventDefault();
+                event.stopPropagation();
+                return true;
+              }
+              return false;
+            },
           },
         },
       }),
@@ -102,11 +147,15 @@ const UnifiedDocumentHistoryKeys = Extension.create<{ docKey: string }>({
 
 import { EnhancedImageBlock } from '../imageNodeView';
 
+export interface BuildExtensionsOptions {
+  onOpenLinkModal?: () => void;
+}
+
 /**
  * 构建 TipTap 扩展列表
  * 这是唯一的扩展装配点，不分散到各组件
  */
-export function buildExtensions(docKey = ''): Extensions {
+export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): Extensions {
   return [
     // StarterKit 包含：bold, italic, strike, code, heading, bulletList, orderedList,
     // listItem, blockquote, horizontalRule, history, paragraph, text, document,
@@ -122,7 +171,8 @@ export function buildExtensions(docKey = ''): Extensions {
         openOnClick: false,
         HTMLAttributes: {
           rel: 'noopener noreferrer',
-          target: '_blank',
+          target: null, // 🔴 必须为 null，绝不能设置 _blank，避免 WebView2 底层触发系统新窗口
+          title: 'Ctrl + 单击以访问链接',
         },
       },
       dropcursor: {
@@ -134,9 +184,9 @@ export function buildExtensions(docKey = ''): Extensions {
 
     // 撤销/重做由文件级时间线统一接管，原生历史仅用于判断输入分组边界
     UnifiedDocumentHistoryKeys.configure({ docKey }),
-
-    // 链接点击分发处理器（阻止原生页面跳失与错误，支持外部与本地文件无缝打开）
-    LinkClickHandler,
+    LinkClickHandler.configure({
+      onOpenLinkModal: options?.onOpenLinkModal,
+    }),
 
     // 本地图片增强扩展（支持 Base64、本地相对路径 Asset 解析、大图预览与排版调节）
     EnhancedImageBlock,
