@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   clearAllDocumentHistories,
   getCurrentDocumentHistoryContent,
+  getDocumentHistoryAvailability,
   initializeDocumentHistory,
   markDocumentHistoryModeBoundary,
   recordDocumentChange,
@@ -143,5 +144,20 @@ describe('documentHistory 文件级统一时间线', () => {
       anchor: 4,
       changeOffset: 2,
     });
+  });
+
+  it('工具栏可用状态始终跟随文件级历史索引', () => {
+    initializeDocumentHistory(DOC_KEY, 'A', 'board');
+    registerDocumentHistoryAdapter(DOC_KEY, { applyEntry: () => {} });
+    expect(getDocumentHistoryAvailability(DOC_KEY)).toEqual({ canUndo: false, canRedo: false });
+
+    recordDocumentChange(DOC_KEY, 'AB', { mode: 'board', startsNewGroup: true });
+    expect(getDocumentHistoryAvailability(DOC_KEY)).toEqual({ canUndo: true, canRedo: false });
+
+    undoDocumentHistory(DOC_KEY);
+    expect(getDocumentHistoryAvailability(DOC_KEY)).toEqual({ canUndo: false, canRedo: true });
+
+    redoDocumentHistory(DOC_KEY);
+    expect(getDocumentHistoryAvailability(DOC_KEY)).toEqual({ canUndo: true, canRedo: false });
   });
 });

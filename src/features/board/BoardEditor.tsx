@@ -4,13 +4,23 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import '@excalidraw/excalidraw/index.css';
-import { parseScene, serializeScene, createEmptyScene, cleanAppState, isVersionSupported, getElementCount, type ExcalidrawScene, type ExcalidrawElement } from './sceneIo';
+import { parseScene, serializeScene, createEmptyScene, cleanAppState, isVersionSupported, getElementCount, getBoardHistorySignature, type ExcalidrawScene, type ExcalidrawFileData } from './sceneIo';
 import { mapTheme } from './excalidrawTheme';
 import { FlowchartQuickConnect } from './FlowchartQuickConnect';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import * as ipc from '../../core/ipc/commands';
+import {
+  getDocumentHistoryAvailability,
+  initializeDocumentHistory,
+  markDocumentHistoryModeBoundary,
+  recordDocumentChange,
+  redoDocumentHistory,
+  registerDocumentHistoryAdapter,
+  synchronizeCurrentDocumentHistoryContent,
+  undoDocumentHistory,
+} from '../history/documentHistory';
 
 interface BoardEditorProps {
   docKey: string;
@@ -67,7 +77,16 @@ interface CanvasProps {
   initialData: Record<string, unknown>;
   theme: 'light' | 'dark';
   onChange: (elements: ExcalidrawScene['elements'], appState: ExcalidrawScene['appState'], files: ExcalidrawScene['files']) => void;
-  onApi: (api: { updateScene: (scene: Partial<ExcalidrawScene>) => void }) => void;
+  onApi: (api: BoardApi) => void;
+  onPointerDown: () => void;
+  onPointerUp: () => void;
+}
+
+/** 画板历史应用所需的 Excalidraw 命令子集 */
+interface BoardApi {
+  updateScene: (scene: Partial<ExcalidrawScene> & { captureUpdate?: 'NEVER' | 'EVENTUALLY' | 'IMMEDIATELY' }) => void;
+  addFiles?: (files: ExcalidrawFileData[]) => void;
+  getSceneElements?: () => ExcalidrawScene['elements'];
 }
 
 // 采用 React.memo 深度隔离 Excalidraw 画布组件，阻断父级任何状态更新导致的内部重渲染死锁
@@ -78,6 +97,8 @@ const ExcalidrawCanvas = React.memo(
     theme,
     onChange,
     onApi,
+    onPointerDown,
+    onPointerUp,
   }: CanvasProps) {
     return (
       <Component
@@ -87,6 +108,8 @@ const ExcalidrawCanvas = React.memo(
         langCode="zh-CN"
         UIOptions={UI_OPTIONS}
         excalidrawAPI={onApi}
+        onPointerDown={onPointerDown}
+        onPointerUp={onPointerUp}
       />
     );
   },
@@ -97,19 +120,12 @@ const ExcalidrawCanvas = React.memo(
       prev.theme === next.theme &&
       prev.onChange === next.onChange &&
       prev.onApi === next.onApi &&
+      prev.onPointerDown === next.onPointerDown &&
+      prev.onPointerUp === next.onPointerUp &&
       prev.initialData === next.initialData
     );
   },
 );
-
-/**
- * 计算元素集的持久化版本签名（id + version + versionNonce + isDeleted）
- * Excalidraw 在侧边栏悬浮预览字体/颜色时不会递增 version/versionNonce，
- * 仅在真正点击提交或用户修改画布图元时递增，藉此彻底杜绝预览阶段误报未保存
- */
-function getElementsVersionSignature(elements: readonly ExcalidrawElement[] = []): string {
-  return elements.map((e) => `${e.id}:${e.version}:${e.versionNonce}:${e.isDeleted}`).join('|');
-}
 
 function BoardEditorInner({ docKey }: BoardEditorProps) {
   const [Component, setComponent] = useState<typeof ExcalidrawComponent>(null);
@@ -117,12 +133,14 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
   const [readOnly, setReadOnly] = useState(false);
   const [elementCount, setElementCount] = useState(0);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [historyAvailability, setHistoryAvailability] = useState({ canUndo: false, canRedo: false });
   // 实时画板状态与元素列表（仅用于快捷连接浮层，ExcalidrawCanvas 本身由 React.memo 隔离不会触发内部重绘）
   const [liveAppState, setLiveAppState] = useState<ExcalidrawScene['appState'] | null>(null);
   const [liveElements, setLiveElements] = useState<ExcalidrawScene['elements']>([]);
   const storeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const diskTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const apiRef = useRef<{ updateScene: (scene: Partial<ExcalidrawScene>) => void } | null>(null);
+  const apiRef = useRef<BoardApi | null>(null);
+  const boardRootRef = useRef<HTMLDivElement>(null);
   const initializedDocKeyRef = useRef<string | null>(null);
   const sceneRef = useRef<ExcalidrawScene | null>(null);
   const docKeyRef = useRef(docKey);
@@ -132,6 +150,20 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
   const theme = mapTheme(themeMode);
   const initialMountHandledRef = useRef<boolean>(false);
   const lastCommittedSignatureRef = useRef<string>('');
+  // 同一次鼠标手势内的连续 onChange 必须合并成一个撤销步骤
+  const pointerGestureActiveRef = useRef(false);
+  const pointerGestureChangedRef = useRef(false);
+  const lastHistoryChangeAtRef = useRef(0);
+  // 程序化应用历史后，等待 Excalidraw 的异步 onChange 到达并禁止反向记录成新分支
+  const historyApplyTargetSignatureRef = useRef<string | null>(null);
+
+  /** 非指针连续输入（例如文字键入）的历史分组间隔 */
+  const BOARD_HISTORY_GROUP_DELAY_MS = 300;
+
+  /** 从文件级时间线刷新画板工具栏的撤销/重做可用状态 */
+  const refreshHistoryAvailability = useCallback((key = docKeyRef.current) => {
+    setHistoryAvailability(getDocumentHistoryAvailability(key));
+  }, []);
 
   // 加载 Excalidraw 组件
   useEffect(() => {
@@ -167,12 +199,14 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
     }
 
     sceneRef.current = parsed;
-    lastCommittedSignatureRef.current = getElementsVersionSignature(parsed.elements);
+    lastCommittedSignatureRef.current = getBoardHistorySignature(parsed);
+    initializeDocumentHistory(docKey, serializeScene(parsed), 'board');
+    refreshHistoryAvailability(docKey);
     setInitialData(parsed);
     setLiveAppState(parsed.appState);
     setLiveElements(parsed.elements);
     setElementCount(getElementCount(parsed));
-  }, [docKey, theme]);
+  }, [docKey, theme, refreshHistoryAvailability]);
 
   // onChange 回调（函数引用全局恒定，内部绝不直接触发同步 setState）
   const handleChange = useCallback(
@@ -201,22 +235,41 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
       // 初次加载挂载触发的第一次 onChange 忽略标脏
       if (!initialMountHandledRef.current) {
         initialMountHandledRef.current = true;
+        // Excalidraw 可能在恢复场景时规范化运行态；以首次稳定场景对齐首节点，避免第一次点击被误判
+        lastCommittedSignatureRef.current = getBoardHistorySignature(newScene);
+        synchronizeCurrentDocumentHistoryContent(key, serializeScene(newScene), 'board');
         return;
       }
 
-      // 计算当前元素版本签名与持久化属性变更
-      const currentSig = getElementsVersionSignature(elements);
+      // 仅比较真正可撤销的画板内容；点击选择、缩放和滚动不会改变该签名
+      const currentSig = getBoardHistorySignature(newScene);
       const prevSig = lastCommittedSignatureRef.current;
-      const bgChanged = prev?.appState?.viewBackgroundColor !== appState.viewBackgroundColor;
-      const filesChanged = prev?.files !== files;
-      const snapChanged = prev?.appState?.objectsSnapModeEnabled !== appState.objectsSnapModeEnabled;
 
-      // 仅当图元真正发生提交变更（非悬浮预览）或场景持久属性变动（背景色、文件、吸附对齐开关等）时，才标记脏态
-      if (currentSig === prevSig && !bgChanged && !filesChanged && !snapChanged) {
+      if (currentSig === prevSig) {
         return;
       }
 
       lastCommittedSignatureRef.current = currentSig;
+      const content = serializeScene(newScene);
+      const isHistoryNavigation = historyApplyTargetSignatureRef.current === currentSig;
+      historyApplyTargetSignatureRef.current = null;
+
+      if (isHistoryNavigation) {
+        // Excalidraw 的历史应用回调可能晚于统一历史锁，按目标签名识别并只同步当前节点
+        synchronizeCurrentDocumentHistoryContent(key, content, 'board');
+      } else {
+        const now = Date.now();
+        const startsNewGroup = pointerGestureActiveRef.current
+          ? !pointerGestureChangedRef.current
+          : now - lastHistoryChangeAtRef.current > BOARD_HISTORY_GROUP_DELAY_MS;
+        recordDocumentChange(key, content, {
+          mode: 'board',
+          startsNewGroup,
+        });
+        refreshHistoryAvailability(key);
+        pointerGestureChangedRef.current = pointerGestureActiveRef.current;
+        lastHistoryChangeAtRef.current = now;
+      }
 
       // 标记脏态（同步 windowStore 和 documentStore）
       const tab = useWindowStore.getState().getTab(key);
@@ -228,7 +281,6 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
       // 300ms 防抖更新 Store 内存镜像
       if (storeTimerRef.current) clearTimeout(storeTimerRef.current);
       storeTimerRef.current = setTimeout(() => {
-        const content = serializeScene(newScene);
         useDocumentStore.getState().setContent(key, content);
         const doc = useDocumentStore.getState().getDocument(key);
         // 如果内容与基线一致，自动解除脏态
@@ -247,7 +299,6 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
         const doc = useDocumentStore.getState().getDocument(key);
         if (doc?.savePolicy !== 'auto') return;
         try {
-          const content = serializeScene(newScene);
           const result = await ipc.writeDocument(key, content, doc.encoding, doc.eol);
           if (result.ok) {
             // 使用实际写入的画板快照更新基线，保存期间的新操作仍应保持未保存状态
@@ -261,13 +312,133 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
         }
       }, 800);
     },
-    [],
+    [refreshHistoryAvailability],
   );
 
+  /** 开始画布指针手势；拖动或缩放产生的多帧变化应归并为一个历史分组 */
+  const handleBoardPointerDown = useCallback(() => {
+    pointerGestureActiveRef.current = true;
+    pointerGestureChangedRef.current = false;
+  }, []);
+
+  /** 结束指针手势并封闭当前分组，下一次真实操作必须另起一步 */
+  const handleBoardPointerUp = useCallback(() => {
+    pointerGestureActiveRef.current = false;
+    pointerGestureChangedRef.current = false;
+    markDocumentHistoryModeBoundary(docKeyRef.current);
+  }, []);
+
   // 稳定的 API 注入回调
-  const handleApi = useCallback((api: { updateScene: (scene: Partial<ExcalidrawScene>) => void }) => {
+  const handleApi = useCallback((api: BoardApi) => {
     apiRef.current = api;
   }, []);
+
+  // 画板统一历史只应用持久场景快照，并明确禁止写入 Excalidraw 自带的选中态历史
+  useEffect(() => {
+    if (!initialData) return;
+    return registerDocumentHistoryAdapter(docKey, {
+      applyEntry: (entry) => {
+        const api = apiRef.current;
+        if (!api) {
+          throw new Error('画板尚未完成初始化，无法应用撤销/重做');
+        }
+        const restored = parseScene(entry.content);
+        historyApplyTargetSignatureRef.current = getBoardHistorySignature(restored);
+        sceneRef.current = restored;
+        api.addFiles?.(Object.values(restored.files ?? {}));
+        api.updateScene({
+          elements: restored.elements,
+          appState: restored.appState,
+          captureUpdate: 'NEVER',
+        });
+        refreshHistoryAvailability(docKey);
+      },
+    });
+  }, [docKey, initialData, refreshHistoryAvailability]);
+
+  // Excalidraw 的按钮状态来自它自己的历史栈；持续改写为文件级历史状态，防止重做按钮回落到旧栈
+  useEffect(() => {
+    const root = boardRootRef.current;
+    if (!root) return;
+
+    const synchronizeToolbarButtons = () => {
+      const undoButton = root.querySelector<HTMLButtonElement>('[data-testid="button-undo"]');
+      const redoButton = root.querySelector<HTMLButtonElement>('[data-testid="button-redo"]');
+
+      /** 同步按钮行为、无障碍状态以及 Excalidraw 实际用于置灰图标的子节点属性 */
+      const synchronizeButton = (button: HTMLButtonElement | null, enabled: boolean) => {
+        if (!button) return;
+        const disabled = !enabled;
+        const ariaDisabled = String(disabled);
+        if (button.disabled !== disabled) button.disabled = disabled;
+        if (button.getAttribute('aria-disabled') !== ariaDisabled) {
+          button.setAttribute('aria-disabled', ariaDisabled);
+        }
+        const icon = button.querySelector<HTMLElement>('.ToolIcon__icon');
+        if (icon?.getAttribute('aria-disabled') !== ariaDisabled) {
+          icon?.setAttribute('aria-disabled', ariaDisabled);
+        }
+      };
+
+      synchronizeButton(undoButton, historyAvailability.canUndo);
+      synchronizeButton(redoButton, historyAvailability.canRedo);
+    };
+
+    synchronizeToolbarButtons();
+    const observer = new MutationObserver(synchronizeToolbarButtons);
+    observer.observe(root, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['disabled', 'aria-disabled'],
+    });
+    return () => observer.disconnect();
+  }, [historyAvailability, Component, initialData]);
+
+  /** 最高优先级接管画板撤销快捷键，避开 Excalidraw 会记录点击选中态的原生历史 */
+  const handleBoardKeyDownCapture = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    const key = event.key.toLowerCase();
+    const isUndo = key === 'z' && !event.shiftKey;
+    const isRedo = key === 'y' || (key === 'z' && event.shiftKey);
+    if (!isUndo && !isRedo) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.nativeEvent.stopImmediatePropagation();
+    if (isUndo) undoDocumentHistory(docKey);
+    else redoDocumentHistory(docKey);
+  }, [docKey]);
+
+  /**
+   * 工具栏撤销/重做按钮同样走文件级历史。
+   * 使用 PointerDown 捕获可覆盖原生重做按钮处于 disabled、不会派发 click 的情况。
+   */
+  const handleBoardHistoryPointerDownCapture = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    const historyButton = target.closest<HTMLElement>('[data-testid="button-undo"], [data-testid="button-redo"]');
+    if (!historyButton || event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.nativeEvent.stopImmediatePropagation();
+    if (historyButton.dataset.testid === 'button-undo') undoDocumentHistory(docKey);
+    else redoDocumentHistory(docKey);
+  }, [docKey]);
+
+  /**
+   * PointerDown 后浏览器仍会继续合成 click；必须在捕获阶段吞掉，禁止 Excalidraw 原生历史再次执行。
+   * detail=0 表示通过键盘激活按钮，此时没有前置 PointerDown，需要在这里执行一次统一历史。
+   */
+  const handleBoardHistoryClickCapture = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    const historyButton = target.closest<HTMLElement>('[data-testid="button-undo"], [data-testid="button-redo"]');
+    if (!historyButton) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.nativeEvent.stopImmediatePropagation();
+    if (event.detail !== 0) return;
+    if (historyButton.dataset.testid === 'button-undo') undoDocumentHistory(docKey);
+    else redoDocumentHistory(docKey);
+  }, [docKey]);
 
   // 自动吸附对齐开关状态（默认开启）
   const isSnapEnabled = liveAppState?.objectsSnapModeEnabled ?? initialData?.appState?.objectsSnapModeEnabled ?? true;
@@ -297,6 +468,11 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
   // 清理计时器
   useEffect(() => {
     return () => {
+      // 防抖尚未触发时也要把画板最新快照写回内存，避免切换标签丢失操作
+      const latestScene = sceneRef.current;
+      if (latestScene) {
+        useDocumentStore.getState().setContent(docKey, serializeScene(latestScene));
+      }
       if (storeTimerRef.current) clearTimeout(storeTimerRef.current);
       if (diskTimerRef.current) clearTimeout(diskTimerRef.current);
     };
@@ -346,7 +522,13 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div
+      ref={boardRootRef}
+      onKeyDownCapture={handleBoardKeyDownCapture}
+      onPointerDownCapture={handleBoardHistoryPointerDownCapture}
+      onClickCapture={handleBoardHistoryClickCapture}
+      style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
+    >
       {/* 画板区域 */}
       <div style={{ flex: 1, height: '100%', width: '100%', overflow: 'hidden', position: 'relative' }}>
         <ExcalidrawCanvas
@@ -355,6 +537,8 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
           theme={theme}
           onChange={handleChange}
           onApi={handleApi}
+          onPointerDown={handleBoardPointerDown}
+          onPointerUp={handleBoardPointerUp}
         />
         {/* 流程图快速连线与节点延伸悬浮层 */}
         <div
