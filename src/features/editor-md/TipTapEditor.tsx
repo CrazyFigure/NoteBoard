@@ -656,6 +656,19 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   }, [editor]);
   openLinkModalRef.current = handleOpenLinkModal;
 
+  // 监听来自顶部操作栏或外部的唤起超链接弹窗请求
+  useEffect(() => {
+    const handleOpenModal = (payload: { key?: string }) => {
+      if (!payload.key || payload.key === docKey) {
+        handleOpenLinkModal();
+      }
+    };
+    on('open-link-modal', handleOpenModal);
+    return () => {
+      off('open-link-modal', handleOpenModal);
+    };
+  }, [docKey, handleOpenLinkModal]);
+
   // 确认提交超链接
   const handleConfirmLink = useCallback(
     ({ text, url }: { text: string; url: string }) => {

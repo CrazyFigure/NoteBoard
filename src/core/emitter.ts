@@ -19,6 +19,8 @@ export type AppEvents = {
   'view-mode-changed': { key: string; mode: 'visual' | 'source' };
   // 请求切换 Markdown 编辑器模式（可视化 / 源码）
   'toggle-md-view-mode': { key?: string; mode?: 'visual' | 'source' };
+  // 请求唤起超链接插入/编辑弹窗
+  'open-link-modal': { key?: string };
   // mitt 要求的索引签名
   [key: string]: unknown;
 };

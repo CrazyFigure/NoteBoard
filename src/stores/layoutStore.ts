@@ -22,6 +22,8 @@ interface LayoutStore {
   outlineWidth: number;
   statusBarVisible: boolean;
   settingsModalVisible: boolean;
+  /** 编辑器顶部操作栏是否可见 */
+  editorToolbarVisible: boolean;
   /** 是否正在向窗口内拖拽文件 */
   isDraggingFile: boolean;
 
@@ -29,12 +31,14 @@ interface LayoutStore {
   toggleExplorer: () => void;
   toggleOutline: () => void;
   toggleSettingsModal: () => void;
+  toggleEditorToolbar: () => void;
   setExplorerVisible: (visible: boolean) => void;
   setOutlineVisible: (visible: boolean) => void;
   setExplorerWidth: (width: number) => void;
   setOutlineWidth: (width: number) => void;
   setStatusBarVisible: (visible: boolean) => void;
   setSettingsModalVisible: (visible: boolean) => void;
+  setEditorToolbarVisible: (visible: boolean) => void;
   setIsDraggingFile: (dragging: boolean) => void;
 
   // ── 持久化 ──
@@ -43,12 +47,14 @@ interface LayoutStore {
     explorerWidth: number;
     outlineVisible: boolean;
     outlineWidth: number;
+    editorToolbarVisible?: boolean;
   };
   restoreFrom: (layout: {
     explorerVisible: boolean;
     explorerWidth: number;
     outlineVisible: boolean;
     outlineWidth: number;
+    editorToolbarVisible?: boolean;
   }) => void;
 }
 
@@ -64,11 +70,13 @@ export const useLayoutStore = create<LayoutStore>((set, get) => ({
   outlineWidth: OUTLINE_DEFAULT,
   statusBarVisible: true,
   settingsModalVisible: false,
+  editorToolbarVisible: true,
   isDraggingFile: false,
 
   toggleExplorer: () => set((s) => ({ explorerVisible: !s.explorerVisible })),
   toggleOutline: () => set((s) => ({ outlineVisible: !s.outlineVisible })),
   toggleSettingsModal: () => set((s) => ({ settingsModalVisible: !s.settingsModalVisible })),
+  toggleEditorToolbar: () => set((s) => ({ editorToolbarVisible: !s.editorToolbarVisible })),
   setExplorerVisible: (visible) => set({ explorerVisible: visible }),
   setOutlineVisible: (visible) => set({ outlineVisible: visible }),
   setExplorerWidth: (width) =>
@@ -77,6 +85,7 @@ export const useLayoutStore = create<LayoutStore>((set, get) => ({
     set({ outlineWidth: clamp(width, OUTLINE_MIN, OUTLINE_MAX) }),
   setStatusBarVisible: (visible) => set({ statusBarVisible: visible }),
   setSettingsModalVisible: (visible) => set({ settingsModalVisible: visible }),
+  setEditorToolbarVisible: (visible) => set({ editorToolbarVisible: visible }),
   setIsDraggingFile: (dragging) => set({ isDraggingFile: dragging }),
 
   toLayout: () => {
@@ -86,6 +95,7 @@ export const useLayoutStore = create<LayoutStore>((set, get) => ({
       explorerWidth: s.explorerWidth,
       outlineVisible: s.outlineVisible,
       outlineWidth: s.outlineWidth,
+      editorToolbarVisible: s.editorToolbarVisible,
     };
   },
 
@@ -95,6 +105,7 @@ export const useLayoutStore = create<LayoutStore>((set, get) => ({
       explorerWidth: clamp(layout.explorerWidth, EXPLORER_MIN, EXPLORER_MAX),
       outlineVisible: layout.outlineVisible,
       outlineWidth: clamp(layout.outlineWidth, OUTLINE_MIN, OUTLINE_MAX),
+      editorToolbarVisible: layout.editorToolbarVisible ?? true,
     });
   },
 }));

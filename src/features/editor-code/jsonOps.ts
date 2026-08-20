@@ -84,21 +84,58 @@ export function expandJsonText(text: string, tabSize: number = 2): string {
 // ── 编辑器 Action 处理器（针对 CodeMirror 6 实例） ──
 
 /** 获取目标文本及选区范围（若有选区则针对选区，否则针对全文） */
-function getTargetRange(view: EditorView) {
+function getTargetRange(view: EditorView, forcedScope?: 'all' | 'selection' | 'auto') {
   const selection = view.state.selection.main;
-  const isSelected = !selection.empty;
+  const hasSelection = !selection.empty;
+
+  if (forcedScope === 'selection') {
+    if (!hasSelection) {
+      return { isSelected: false, from: 0, to: 0, text: '', selection, noSelectionError: true };
+    }
+    return {
+      isSelected: true,
+      from: selection.from,
+      to: selection.to,
+      text: view.state.sliceDoc(selection.from, selection.to),
+      selection,
+      noSelectionError: false,
+    };
+  }
+
+  if (forcedScope === 'all') {
+    return {
+      isSelected: false,
+      from: 0,
+      to: view.state.doc.length,
+      text: view.state.doc.toString(),
+      selection,
+      noSelectionError: false,
+    };
+  }
+
+  const isSelected = hasSelection;
   const from = isSelected ? selection.from : 0;
   const to = isSelected ? selection.to : view.state.doc.length;
   const text = isSelected ? view.state.sliceDoc(from, to) : view.state.doc.toString();
-  return { isSelected, from, to, text, selection };
+  return { isSelected, from, to, text, selection, noSelectionError: false };
+}
+
+export interface JsonOpOptions {
+  scope?: 'all' | 'selection' | 'auto';
+  tabSize?: number;
+  lang?: LanguageId;
 }
 
 /**
  * 执行 JSON 格式校验
  * 支持选中文本校验或全文校验，失败时自动选中错误字符位置
  */
-export function handleValidateJson(view: EditorView): boolean {
-  const { isSelected, from, text } = getTargetRange(view);
+export function handleValidateJson(view: EditorView, options?: JsonOpOptions): boolean {
+  const { isSelected, from, text, noSelectionError } = getTargetRange(view, options?.scope);
+  if (noSelectionError) {
+    showToast('未选择任何文本，请先选中要校验的 JSON 片段', 'warning');
+    return false;
+  }
   const scopeName = isSelected ? '选中文本' : '全文';
 
   if (!text.trim()) {
@@ -133,8 +170,12 @@ export function handleValidateJson(view: EditorView): boolean {
  * 执行 JSON 压缩（Minify）
  * 将选中文本或全文转换为单行紧凑格式
  */
-export function handleMinifyJson(view: EditorView): boolean {
-  const { isSelected, from, to, text, selection } = getTargetRange(view);
+export function handleMinifyJson(view: EditorView, options?: JsonOpOptions): boolean {
+  const { isSelected, from, to, text, selection, noSelectionError } = getTargetRange(view, options?.scope);
+  if (noSelectionError) {
+    showToast('未选择任何文本，请先选中要压缩的 JSON 片段', 'warning');
+    return false;
+  }
   const scopeName = isSelected ? '选中文本' : '全文';
 
   if (!text.trim()) {
@@ -171,11 +212,58 @@ export function handleMinifyJson(view: EditorView): boolean {
 }
 
 /**
- * 执行 JSON 展开 / 格式化（Expand / Format）
- * 格式化选中文本或全文，支持根据 settings.editor.tabSize 调整缩进
+ * 执行 XML 格式化
  */
-export function handleExpandJson(view: EditorView, lang?: LanguageId): boolean {
-  const { isSelected, from, to, text, selection } = getTargetRange(view);
+export function handleFormatXml(view: EditorView, options?: JsonOpOptions): boolean {
+  const { isSelected, from, to, text, selection, noSelectionError } = getTargetRange(view, options?.scope);
+  if (noSelectionError) {
+    showToast('未选择任何文本，请先选中要格式化的 XML 片段', 'warning');
+    return false;
+  }
+  const scopeName = isSelected ? '选中文本' : '全文';
+
+  if (!text.trim()) {
+    showToast(`当前${scopeName}内容为空，无法格式化`, 'warning');
+    return false;
+  }
+
+  try {
+    const formattedXml = formatXml(text);
+    view.dispatch({
+      changes: { from, to, insert: formattedXml },
+      selection: isSelected
+        ? { anchor: from, head: from + formattedXml.length }
+        : { anchor: Math.min(selection.anchor, formattedXml.length) },
+      scrollIntoView: true,
+    });
+    view.focus();
+    showToast(`✓ XML 格式化成功（${scopeName}）`, 'success');
+    return true;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    showToast(`XML 格式化失败: ${msg}`, 'error', 4500);
+    return false;
+  }
+}
+
+/**
+ * 执行 JSON 展开 / 格式化（Expand / Format）
+ * 格式化选中文本或全文，支持根据 settings.editor.tabSize 或 options.tabSize 调整缩进
+ */
+export function handleExpandJson(
+  view: EditorView,
+  langOrOptions?: LanguageId | JsonOpOptions,
+): boolean {
+  const options: JsonOpOptions =
+    typeof langOrOptions === 'string'
+      ? { lang: langOrOptions }
+      : langOrOptions ?? {};
+
+  const { isSelected, from, to, text, selection, noSelectionError } = getTargetRange(view, options.scope);
+  if (noSelectionError) {
+    showToast('未选择任何文本，请先选中要格式化的内容', 'warning');
+    return false;
+  }
   const scopeName = isSelected ? '选中文本' : '全文';
 
   if (!text.trim()) {
@@ -184,28 +272,13 @@ export function handleExpandJson(view: EditorView, lang?: LanguageId): boolean {
   }
 
   // 若明确为 XML 格式文件且未选中非 XML 文本，回退至 XML 格式化
-  if (lang === 'xml') {
-    try {
-      const formattedXml = formatXml(text);
-      view.dispatch({
-        changes: { from, to, insert: formattedXml },
-        selection: isSelected
-          ? { anchor: from, head: from + formattedXml.length }
-          : { anchor: Math.min(selection.anchor, formattedXml.length) },
-        scrollIntoView: true,
-      });
-      view.focus();
-      showToast(`✓ XML 格式化成功（${scopeName}）`, 'success');
-      return true;
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      showToast(`XML 格式化失败: ${msg}`, 'error', 4500);
-      return false;
-    }
+  if (options.lang === 'xml') {
+    return handleFormatXml(view, options);
   }
 
   try {
-    const tabSize = useSettingsStore.getState().settings.editor.tabSize ?? 2;
+    const defaultTabSize = useSettingsStore.getState().settings.editor.tabSize ?? 2;
+    const tabSize = options.tabSize ?? defaultTabSize;
     let expanded = expandJsonText(text, tabSize);
 
     // 若是对全文格式化且末尾无换行，追加换行符符合文件规范
@@ -229,7 +302,7 @@ export function handleExpandJson(view: EditorView, lang?: LanguageId): boolean {
     });
     view.focus();
 
-    showToast(`✓ JSON 展开成功（${scopeName}）`, 'success');
+    showToast(`✓ JSON 展开成功（${scopeName}，${tabSize}空格缩进）`, 'success');
     return true;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
