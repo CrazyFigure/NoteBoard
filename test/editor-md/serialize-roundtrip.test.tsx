@@ -20,7 +20,12 @@ import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { TaskList, TaskItem } from '@tiptap/extension-list';
 import { Markdown } from '@tiptap/markdown';
-import { serializeMarkdown, parseMarkdown } from '../../src/features/editor-md/serialize';
+import { undoDepth } from '@tiptap/pm/history';
+import {
+  serializeMarkdown,
+  parseMarkdown,
+  hasMarkdownContentChanged,
+} from '../../src/features/editor-md/serialize';
 
 // 创建一个真实 TipTap editor 实例用于往返测试
 // 用最小扩展集，专注验证 Markdown 扩展注册与序列化往返
@@ -57,6 +62,32 @@ describe('serialize 真实往返集成（真实 TipTap Editor）', () => {
     expect(out).toBe('');
     editor.destroy();
   });
+
+  it('初次装载整篇 Markdown 不进入撤销栈', () => {
+    const editor = createEditor();
+    parseMarkdown(editor, '# 初始文档\n');
+    expect(undoDepth(editor.state)).toBe(0);
+    expect(editor.commands.undo()).toBe(false);
+    expect(serializeMarkdown(editor)).toContain('# 初始文档');
+    editor.destroy();
+  });
+
+  it('源码内容未变化时跳过整篇替换并保留可视化撤销与重做', () => {
+    const editor = createEditor();
+    parseMarkdown(editor, '# 原内容\n');
+    editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+    editor.commands.insertContent('新增内容');
+    const sourceContent = serializeMarkdown(editor);
+
+    // 回归：模式往返但源码未修改时，不能再调用 parseMarkdown/setContent 重映射历史栈
+    expect(hasMarkdownContentChanged(editor, sourceContent)).toBe(false);
+    expect(editor.commands.undo()).toBe(true);
+    expect(serializeMarkdown(editor)).not.toContain('新增内容');
+    expect(editor.commands.redo()).toBe(true);
+    expect(serializeMarkdown(editor)).toContain('新增内容');
+    editor.destroy();
+  });
+
 
   it('H1 标题往返不丢 # 前缀', () => {
     const editor = createEditor();

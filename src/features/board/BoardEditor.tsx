@@ -250,9 +250,11 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
           const content = serializeScene(newScene);
           const result = await ipc.writeDocument(key, content, doc.encoding, doc.eol);
           if (result.ok) {
-            useDocumentStore.getState().updateBaseline(key, result.mtime, result.size);
-            useWindowStore.getState().setTabDirty(key, false);
-            await ipc.setDocumentDirty(key, false);
+            // 使用实际写入的画板快照更新基线，保存期间的新操作仍应保持未保存状态
+            useDocumentStore.getState().updateBaseline(key, content, result.mtime, result.size);
+            const stillDirty = useDocumentStore.getState().getDocument(key)?.isDirty ?? false;
+            useWindowStore.getState().setTabDirty(key, stillDirty);
+            await ipc.setDocumentDirty(key, stillDirty);
           }
         } catch (e) {
           console.error('画板自动保存失败:', e);

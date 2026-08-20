@@ -11,15 +11,20 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
 import { EditorView, keymap } from '@codemirror/view';
-import { EditorState } from '@codemirror/state';
-import { defaultKeymap, historyKeymap } from '@codemirror/commands';
+import { EditorState, Prec, Transaction as CodeMirrorTransaction } from '@codemirror/state';
+import { undoDepth as codeMirrorUndoDepth } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
-import { indentWithTab } from '@codemirror/commands';
-import { syntaxHighlighting } from '@codemirror/language';
+import { undoDepth as prosemirrorUndoDepth } from '@tiptap/pm/history';
 
 import { buildExtensions } from './extensions';
 import { lowlight } from './lowlight';
-import { serializeMarkdown, parseMarkdown, getBaseline, normalizeEol } from './serialize';
+import {
+  serializeMarkdown,
+  parseMarkdown,
+  getBaseline,
+  normalizeEol,
+  hasMarkdownContentChanged,
+} from './serialize';
 import { judgeLargeDoc } from './largeDoc';
 import { nbEditorTheme } from '../editor-code/theme';
 import { nbSyntaxHighlighting } from '../editor-code/highlightStyle';
@@ -36,6 +41,16 @@ import { BlockDragHandle } from './blockDragHandle';
 import { ExternalChangeBanner } from './ExternalChangeBanner';
 import { EditorContextMenu } from './EditorContextMenu';
 import { handlePastedImageFile } from './imagePaste';
+import {
+  getCurrentDocumentHistoryContent,
+  initializeDocumentHistory,
+  markDocumentHistoryModeBoundary,
+  recordDocumentChange,
+  redoDocumentHistory,
+  registerDocumentHistoryAdapter,
+  synchronizeCurrentDocumentHistoryContent,
+  undoDocumentHistory,
+} from '../history/documentHistory';
 
 // 活跃 TipTap 实例表（供保存编排即时读取最新内容）
 const activeTipTapEditors = new Map<string, Editor>();
@@ -57,20 +72,31 @@ interface TipTapEditorProps {
 
 export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   const [viewMode, setViewMode] = useState<'visual' | 'source'>('visual');
+  // 始终记录最新模式，供只在真正卸载时执行的清理逻辑读取
+  const viewModeRef = useRef<'visual' | 'source'>('visual');
   const [showLargeBanner, setShowLargeBanner] = useState(false);
   const [largeVerdict, setLargeVerdict] = useState<ReturnType<typeof judgeLargeDoc> | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
+  // 持有最新 TipTap 实例，供仅按 docKey 注册的卸载清理读取，避免模式切换触发误清理
+  const tipTapEditorRef = useRef<Editor | null>(null);
   const sourceViewRef = useRef<EditorView | null>(null);
   const sourceDivRef = useRef<HTMLDivElement>(null);
   const storeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const diskTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initializedDocKeyRef = useRef<string | null>(null);
+  // TipTap 原生历史仅用来识别连续输入是否属于同一分组，快捷键由文档级历史接管
+  const visualUndoDepthRef = useRef(0);
   // 初始化锁：在初次加载和程序化设置内容期间阻止 onUpdate 误标为脏
   const isInitializingRef = useRef<boolean>(true);
 
   const settings = useSettingsStore((s) => s.settings);
   const typography = settings.typography;
+
+  // 模式变化仅刷新引用，不重新注册卸载清理，避免切换模式时误销毁源码历史栈
+  useEffect(() => {
+    viewModeRef.current = viewMode;
+  }, [viewMode]);
 
   // 监听排版字体与字号变化并热重配源码模式 CM6 实例
   useEffect(() => {
@@ -108,7 +134,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
 
   // 初始化 TipTap 编辑器
   const editor = useEditor({
-    extensions: buildExtensions(),
+    extensions: buildExtensions(docKey),
     content: '',
     onUpdate: ({ editor, transaction }) => {
       // 若处于初始化流程或事务未引起文档实际变更，则直接跳过
@@ -123,6 +149,22 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
 
       useWindowStore.getState().setTabDirty(docKey, isDirty);
       useDocumentStore.getState().setDirty(docKey, isDirty);
+
+      const nativeUndoDepth = prosemirrorUndoDepth(editor.state);
+      recordDocumentChange(docKey, content, {
+        mode: 'visual',
+        startsNewGroup: nativeUndoDepth > visualUndoDepthRef.current,
+        // TipTap 事务不公开初始选区；文档首差异位置就是本次修改在旧文档中的稳定落点
+        beforeSelection: (() => {
+          const position = transaction.before.content.findDiffStart(transaction.doc.content);
+          return position == null ? undefined : { anchor: position, head: position };
+        })(),
+        selection: {
+          anchor: editor.state.selection.anchor,
+          head: editor.state.selection.head,
+        },
+      });
+      visualUndoDepthRef.current = nativeUndoDepth;
 
       // 500ms → store（防抖更新内存镜像）
       if (storeTimerRef.current) clearTimeout(storeTimerRef.current);
@@ -176,6 +218,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   // 注册当前活跃 editor 实例给外部（如大纲与保存）
   useEffect(() => {
     if (editor) {
+      tipTapEditorRef.current = editor;
       activeTipTapEditors.set(docKey, editor);
       onEditorReady?.(editor);
     }
@@ -209,11 +252,13 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     try {
       const result = await ipc.writeDocument(key, content, targetDoc.encoding, targetDoc.eol);
       if (result.ok) {
-        dStore.updateBaseline(key, result.mtime, result.size);
+        // 使用本次实际写入的内容更新基线；写盘期间的新输入不能被误标为已保存
+        dStore.updateBaseline(key, content, result.mtime, result.size);
         baseline.updateBaseline(content);
-        useWindowStore.getState().setTabDirty(key, false);
+        const stillDirty = dStore.getDocument(key)?.isDirty ?? false;
+        useWindowStore.getState().setTabDirty(key, stillDirty);
         // 同步注册表脏态
-        await ipc.setDocumentDirty(key, false);
+        await ipc.setDocumentDirty(key, stillDirty);
       }
     } catch (e) {
       console.error('自动保存失败:', e);
@@ -224,10 +269,21 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   const initSourceEditor = useCallback((content: string) => {
     if (!sourceDivRef.current) return;
 
-    // 销毁旧实例
+    // 已创建的源码编辑器必须复用；模式同步只更新视图，不得写入文件级或原生历史
     if (sourceViewRef.current) {
-      sourceViewRef.current.destroy();
-      activeSourceViews.delete(docKey);
+      const currentContent = sourceViewRef.current.state.doc.toString();
+      if (currentContent !== content) {
+        sourceViewRef.current.dispatch({
+          changes: {
+            from: 0,
+            to: sourceViewRef.current.state.doc.length,
+            insert: content,
+          },
+          annotations: CodeMirrorTransaction.addToHistory.of(false),
+        });
+      }
+      activeSourceViews.set(docKey, sourceViewRef.current);
+      return;
     }
 
     // 源码模式输入监听与自动标脏
@@ -238,6 +294,20 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       const isDirty = normalizeEol(newContent) !== normalizeEol(baseline);
       useWindowStore.getState().setTabDirty(docKey, isDirty);
       useDocumentStore.getState().setDirty(docKey, isDirty);
+
+      // 源码事务按 CodeMirror 原生分组边界逐步写入同一条文件历史
+      recordDocumentChange(docKey, newContent, {
+        mode: 'source',
+        startsNewGroup: codeMirrorUndoDepth(update.state) > codeMirrorUndoDepth(update.startState),
+        beforeSelection: {
+          anchor: update.startState.selection.main.anchor,
+          head: update.startState.selection.main.head,
+        },
+        selection: {
+          anchor: update.state.selection.main.anchor,
+          head: update.state.selection.main.head,
+        },
+      });
 
       if (storeTimerRef.current) clearTimeout(storeTimerRef.current);
       storeTimerRef.current = setTimeout(() => {
@@ -253,11 +323,35 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     const state = EditorState.create({
       doc: content,
       extensions: [
+        // 最高优先级接管源码快捷键，禁止回落到 CodeMirror 的局部历史
+        Prec.highest(keymap.of([
+          {
+            key: 'Mod-z',
+            run: () => {
+              undoDocumentHistory(docKey);
+              return true;
+            },
+          },
+          {
+            key: 'Mod-y',
+            mac: 'Mod-Shift-z',
+            run: () => {
+              redoDocumentHistory(docKey);
+              return true;
+            },
+          },
+          {
+            linux: 'Ctrl-Shift-z',
+            run: () => {
+              redoDocumentHistory(docKey);
+              return true;
+            },
+          },
+        ])),
         ...createBaseExtensions(),
         markdown(),
         nbSyntaxHighlighting,
         nbEditorTheme,
-        keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         EditorView.lineWrapping,
         updateListener,
       ],
@@ -296,6 +390,65 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     activeSourceViews.set(docKey, view);
   }, [docKey, autoSave]);
 
+  // 当前可见模式负责呈现统一历史节点，另一内核会在下次切换时无历史地同步到同一内容
+  useEffect(() => {
+    if (!editor) return;
+    return registerDocumentHistoryAdapter(docKey, {
+      applyEntry: (entry, navigation) => {
+        if (viewModeRef.current === 'source') {
+          if (!sourceViewRef.current) {
+            initSourceEditor(entry.content);
+          }
+          const view = sourceViewRef.current;
+          if (!view) return;
+          const preferredSelection = navigation.selectionMode === 'source'
+            ? navigation.selection
+            : undefined;
+          // 可视化历史切到源码呈现时，用 Markdown 文本首差异位置作为可靠落点
+          const fallbackPosition = Math.min(navigation.changeOffset, entry.content.length);
+          const anchor = Math.max(0, Math.min(preferredSelection?.anchor ?? fallbackPosition, entry.content.length));
+          const head = Math.max(0, Math.min(preferredSelection?.head ?? anchor, entry.content.length));
+          view.dispatch({
+            changes: view.state.doc.toString() === entry.content
+              ? undefined
+              : { from: 0, to: view.state.doc.length, insert: entry.content },
+            selection: { anchor, head },
+            annotations: CodeMirrorTransaction.addToHistory.of(false),
+            scrollIntoView: true,
+          });
+          view.focus();
+          return;
+        }
+
+        const previousVisualDocument = editor.state.doc;
+        if (hasMarkdownContentChanged(editor, entry.content)) {
+          // 统一历史应用属于导航而非新编辑，整篇替换明确排除出 TipTap 原生历史
+          parseMarkdown(editor, entry.content);
+        }
+        synchronizeCurrentDocumentHistoryContent(
+          docKey,
+          serializeMarkdown(editor),
+          'visual',
+        );
+        const preferredSelection = navigation.selectionMode === 'visual'
+          ? navigation.selection
+          : undefined;
+        // 跨源码历史时，比较解析前后的 ProseMirror 文档，避免把 Markdown 标记字符偏移直接当节点坐标
+        const visualChangePosition = previousVisualDocument.content.findDiffStart(editor.state.doc.content);
+        const maxPosition = editor.state.doc.content.size;
+        const fallbackPosition = visualChangePosition ?? Math.min(navigation.changeOffset, maxPosition);
+        const anchor = Math.max(1, Math.min(preferredSelection?.anchor ?? fallbackPosition, maxPosition));
+        const head = Math.max(1, Math.min(preferredSelection?.head ?? anchor, maxPosition));
+        editor
+          .chain()
+          .setTextSelection({ from: anchor, to: head })
+          .scrollIntoView()
+          .focus()
+          .run();
+      },
+    });
+  }, [docKey, editor, initSourceEditor]);
+
   // 初始化内容 + 大文档判定（仅在 docKey 变更或初次加载时执行，不可随 doc.content 变化重复 parse）
   useEffect(() => {
     if (!editor) return;
@@ -310,6 +463,10 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     // 大文档判定
     const verdict = judgeLargeDoc(content, currentDoc.size);
     setLargeVerdict(verdict);
+    // 先确定初始模式，文件历史的首节点必须采用当前权威内核实际展示的内容
+    const tab = useWindowStore.getState().getTab(docKey);
+    const initialMode = tab?.viewMode ?? (verdict.isLarge ? 'source' : settings.editor.defaultViewMode);
+    let historyInitialContent = content;
 
     if (verdict.isLarge) {
       setShowLargeBanner(true);
@@ -329,6 +486,10 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
 
         // 若文档当前为未修改状态，确保基线与初始解析序列化结果严格对齐，彻底消除格式化细微差异导致的假脏态
         const initialSerialized = serializeMarkdown(editor);
+        // 初始为可视化模式时，以可视化序列化结果建立文件历史首节点
+        if (initialMode === 'visual') {
+          historyInitialContent = initialSerialized;
+        }
         if (!currentDoc.isDirty) {
           baseline.setBaseline(initialSerialized);
           useDocumentStore.getState().setContent(docKey, initialSerialized);
@@ -347,13 +508,14 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     }
 
     // 设置 viewMode（从 tab 恢复）
-    const tab = useWindowStore.getState().getTab(docKey);
-    const initialMode = tab?.viewMode ?? (verdict.isLarge ? 'source' : settings.editor.defaultViewMode);
+    viewModeRef.current = initialMode;
     setViewMode(initialMode);
+    initializeDocumentHistory(docKey, historyInitialContent, initialMode);
+    visualUndoDepthRef.current = prosemirrorUndoDepth(editor.state);
     if (initialMode === 'source') {
-      // 延迟确保 DOM 容器挂载后初始化 CodeMirror
+      // 延迟确保源码容器完成挂载；历史本身已独立于编辑器模式初始化
       setTimeout(() => {
-        initSourceEditor(content);
+        initSourceEditor(historyInitialContent);
       }, 0);
     }
   }, [editor, docKey, settings.editor.defaultViewMode, initSourceEditor]);
@@ -367,9 +529,12 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
 
     if (nextMode === 'source') {
       // 可视化 → 源码模式
-      const md = serializeMarkdown(editor);
+      const md = getCurrentDocumentHistoryContent(docKey) ?? serializeMarkdown(editor);
+      if (storeTimerRef.current) clearTimeout(storeTimerRef.current);
       useDocumentStore.getState().setContent(docKey, md);
       initSourceEditor(md);
+      markDocumentHistoryModeBoundary(docKey);
+      viewModeRef.current = 'source';
       setViewMode('source');
       useWindowStore.getState().setTabViewMode(docKey, 'source');
       emit('view-mode-changed', { key: docKey, mode: 'source' });
@@ -380,17 +545,27 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     } else {
       // 源码 → 可视化模式
       const md = sourceViewRef.current
-        ? sourceViewRef.current.state.doc.toString()
+        ? (getCurrentDocumentHistoryContent(docKey) ?? sourceViewRef.current.state.doc.toString())
         : (useDocumentStore.getState().getDocument(docKey)?.content ?? '');
-      isInitializingRef.current = true;
-      parseMarkdown(editor, md);
-      setTimeout(() => {
-        isInitializingRef.current = false;
-      }, 50);
+      // 模式同步不产生历史节点；文件级时间线已经逐步记录了源码阶段的真实编辑
+      const hasCrossModeChanges = hasMarkdownContentChanged(editor, md);
+      if (storeTimerRef.current) clearTimeout(storeTimerRef.current);
+      useDocumentStore.getState().setContent(docKey, md);
+      if (hasCrossModeChanges) {
+        isInitializingRef.current = true;
+        try {
+          // 只同步目标视图，明确不加入 TipTap 局部历史
+          parseMarkdown(editor, md);
+        } finally {
+          isInitializingRef.current = false;
+        }
+      }
 
       // 不变式 I-14 检查：切回 visual 后内容是否与基线一致
       const baseline = getBaseline(docKey);
       const serialized = serializeMarkdown(editor);
+      // Markdown 等价格式的规范化只更新当前节点表示，不得伪造成新的编辑步骤
+      synchronizeCurrentDocumentHistoryContent(docKey, serialized, 'visual');
       if (baseline.isClean(serialized)) {
         // 内容未变，保持非脏态
         useDocumentStore.getState().setDirty(docKey, false);
@@ -398,6 +573,8 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       } else {
         useDocumentStore.getState().setContent(docKey, serialized);
       }
+      markDocumentHistoryModeBoundary(docKey);
+      viewModeRef.current = 'visual';
       setViewMode('visual');
       useWindowStore.getState().setTabViewMode(docKey, 'visual');
       emit('view-mode-changed', { key: docKey, mode: 'visual' });
@@ -441,6 +618,14 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   // 组件卸载时清理（注意：不要删除基线，以便切回 Tab 时仍能保持正确的脏态判定）
   useEffect(() => {
     return () => {
+      // 组件卸载前立即刷新当前模式的最新内容，防止快速切换标签页导致防抖镜像落后
+      const currentMode = useWindowStore.getState().getTab(docKey)?.viewMode ?? viewModeRef.current;
+      const latestContent = currentMode === 'source' && sourceViewRef.current
+        ? sourceViewRef.current.state.doc.toString()
+        : tipTapEditorRef.current
+          ? serializeMarkdown(tipTapEditorRef.current)
+          : useDocumentStore.getState().getDocument(docKey)?.content ?? '';
+      useDocumentStore.getState().setContent(docKey, latestContent);
       initializedDocKeyRef.current = null;
       if (storeTimerRef.current) clearTimeout(storeTimerRef.current);
       if (diskTimerRef.current) clearTimeout(diskTimerRef.current);
@@ -448,6 +633,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
         sourceViewRef.current.destroy();
         sourceViewRef.current = null;
       }
+      tipTapEditorRef.current = null;
       activeSourceViews.delete(docKey);
     };
   }, [docKey]);
@@ -487,10 +673,15 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
             }}
             onClick={() => {
               setShowLargeBanner(false);
-              const content = useDocumentStore.getState().getDocument(docKey)?.content;
-              if (editor && content) {
+              const content = getCurrentDocumentHistoryContent(docKey)
+                ?? useDocumentStore.getState().getDocument(docKey)?.content
+                ?? '';
+              if (editor) {
                 parseMarkdown(editor, content);
+                markDocumentHistoryModeBoundary(docKey);
+                viewModeRef.current = 'visual';
                 setViewMode('visual');
+                useWindowStore.getState().setTabViewMode(docKey, 'visual');
               }
             }}
           >
