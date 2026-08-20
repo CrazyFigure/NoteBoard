@@ -78,7 +78,7 @@ export const SUPPORTED_VERSION = 2;
 /**
  * 清洗并规范化 Excalidraw AppState
  * 彻底过滤 collaborators（Map 经 JSON 序列化后会退化为 plain object，传给 Excalidraw 必导致 collaborators.forEach 报错）
- * 以及选区、拖拽、菜单、实时辅助线等运行时临时交互状态，仅保留必要的外观和工具偏好设置
+ * 以及选区、拖拽、菜单、全屏演示、实时辅助线等运行时临时交互状态，仅保留必要的外观和工具偏好设置
  */
 export function cleanAppState(appState?: Partial<ExcalidrawAppState> | null): ExcalidrawAppState {
   if (!appState || typeof appState !== 'object') {
@@ -99,6 +99,9 @@ export function cleanAppState(appState?: Partial<ExcalidrawAppState> | null): Ex
     openMenu: _openMenu,
     openSidebar: _openSidebar,
     activeEmbeddable: _activeEmbeddable,
+    // 全屏演示由应用布局控制，不能写入 .excalidraw 文件或文档历史
+    viewModeEnabled: _viewModeEnabled,
+    zenModeEnabled: _zenModeEnabled,
     // 剔除对齐辅助线与偏移量等临时运行态数据，避免持久化至文件
     snapLines: _snapLines,
     originSnapOffset: _originSnapOffset,

@@ -36,7 +36,7 @@ if (typeof Range !== 'undefined') {
 describe('顶部操作栏与工具单元测试 (Toolbar & Ops)', () => {
   describe('layoutStore 操作栏可见性状态', () => {
     beforeEach(() => {
-      useLayoutStore.setState({ editorToolbarVisible: true });
+      useLayoutStore.setState({ editorToolbarVisible: true, boardPresentationMode: false });
     });
 
     it('默认操作栏处于可见状态', () => {
@@ -69,6 +69,23 @@ describe('顶部操作栏与工具单元测试 (Toolbar & Ops)', () => {
         editorToolbarVisible: true,
       });
       expect(useLayoutStore.getState().editorToolbarVisible).toBe(true);
+    });
+
+    it('画板全屏演示应为临时布局状态，不参与布局持久化', () => {
+      useLayoutStore.getState().setBoardPresentationMode(true);
+      expect(useLayoutStore.getState().boardPresentationMode).toBe(true);
+
+      const layout = useLayoutStore.getState().toLayout();
+      expect(layout).not.toHaveProperty('boardPresentationMode');
+
+      useLayoutStore.getState().restoreFrom({
+        explorerVisible: true,
+        explorerWidth: 260,
+        outlineVisible: true,
+        outlineWidth: 200,
+        editorToolbarVisible: true,
+      });
+      expect(useLayoutStore.getState().boardPresentationMode).toBe(false);
     });
   });
 

@@ -88,6 +88,8 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
     explorerWidth,
     outlineVisible,
     outlineWidth,
+    statusBarVisible,
+    boardPresentationMode,
     toggleExplorer,
     toggleOutline,
   } = useLayoutStore();
@@ -145,6 +147,8 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
   // 右把手仅 Markdown 显示（不变式 I-17）
   const activeTab = tabs.find((t) => t.key === activeKey);
   const showOutline = activeTab?.kind === 'markdown';
+  // 仅活动画板可以接管应用外壳；切到其他格式时立即恢复常规布局
+  const isBoardPresentationMode = boardPresentationMode && activeTab?.kind === 'board';
 
   // Ctrl+S 快捷键注册
   useEffect(() => {
@@ -353,10 +357,13 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
   return (
     <div style={handleStyle}>
       {/* 标题栏 */}
-      <TitleBar />
+      {!isBoardPresentationMode && <TitleBar key="app-titlebar" />}
 
       {/* 主区域 */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
+      <div
+        key="app-main"
+        style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}
+      >
         <Group
           id="nb-layout"
           orientation="horizontal"
@@ -381,7 +388,7 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
           }}
         >
           {/* 资源管理器 */}
-          {explorerVisible && (
+          {!isBoardPresentationMode && explorerVisible && (
             <>
               <Panel
                 id="nb-explorer"
@@ -405,6 +412,7 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
 
           {/* 编辑区 */}
           <Panel
+            key="nb-editor-panel"
             id="nb-editor"
             minSize="30%"
           >
@@ -420,12 +428,14 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
               }}
             >
               {/* 左折叠把手 */}
-              <RailToggle
-                side="left"
-                visible={explorerVisible}
-                onToggle={toggleExplorer}
-                ariaLabel="展开/收起资源管理器"
-              />
+              {!isBoardPresentationMode && (
+                <RailToggle
+                  side="left"
+                  visible={explorerVisible}
+                  onToggle={toggleExplorer}
+                  ariaLabel="展开/收起资源管理器"
+                />
+              )}
 
               {/* 编辑器内容 */}
               <div
@@ -438,7 +448,7 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                 }}
               >
                 {/* 顶部操作栏（针对 Markdown 与代码/纯文本格式，支持多级菜单与收起/悬浮恢复） */}
-                {tabs.length > 0 && activeTab && (
+                {!isBoardPresentationMode && tabs.length > 0 && activeTab && (
                   <EditorToolbar
                     activeTab={activeTab}
                     activeEditor={activeEditor}
@@ -500,7 +510,7 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                 ) : null}
 
                 {/* 右折叠把手（仅 Markdown） */}
-                {tabs.length > 0 && (
+                {!isBoardPresentationMode && tabs.length > 0 && (
                   <RailToggle
                     side="right"
                     visible={outlineVisible}
@@ -511,13 +521,13 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                 )}
 
                 {/* 自研现代搜索与替换栏 */}
-                <SearchReplaceBar />
+                {!isBoardPresentationMode && <SearchReplaceBar />}
               </div>
             </div>
           </Panel>
 
           {/* 大纲 */}
-          {outlineVisible && showOutline && (
+          {!isBoardPresentationMode && outlineVisible && showOutline && (
             <>
               <ResizeHandle />
               <Panel
@@ -542,7 +552,7 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
       </div>
 
       {/* 状态栏 */}
-      <StatusBar />
+      {!isBoardPresentationMode && statusBarVisible && <StatusBar key="app-statusbar" />}
 
       {/* 关闭拦截对话框 */}
       <UnsavedGuardDialog
@@ -557,7 +567,7 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
       <ToastContainer />
 
       {/* 全局文件拖拽释放提示 */}
-      <FileDropOverlay />
+      {!isBoardPresentationMode && <FileDropOverlay />}
     </div>
   );
 }

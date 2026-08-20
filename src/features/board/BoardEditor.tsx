@@ -3,13 +3,17 @@
 // 详见 docs/09-开发路线图.md 10.1/10.6/10.7/10.10
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import '@excalidraw/excalidraw/index.css';
 import { parseScene, serializeScene, createEmptyScene, cleanAppState, isVersionSupported, getElementCount, getBoardHistorySignature, type ExcalidrawScene, type ExcalidrawFileData } from './sceneIo';
 import { mapTheme } from './excalidrawTheme';
+import { BoardPresentationToggle } from './BoardPresentationToggle';
 import { FlowchartQuickConnect } from './FlowchartQuickConnect';
 import { useDocumentStore } from '../../stores/documentStore';
+import { useLayoutStore } from '../../stores/layoutStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { showToast } from '../../stores/toastStore';
 import * as ipc from '../../core/ipc/commands';
 import {
   getDocumentHistoryAvailability,
@@ -80,6 +84,8 @@ interface CanvasProps {
   onApi: (api: BoardApi) => void;
   onPointerDown: () => void;
   onPointerUp: () => void;
+  /** 纯净演示模式同时启用 Excalidraw 只读视图与禅模式，隐藏内部编辑操作栏 */
+  presentationMode: boolean;
 }
 
 /** 画板历史应用所需的 Excalidraw 命令子集 */
@@ -99,6 +105,7 @@ const ExcalidrawCanvas = React.memo(
     onApi,
     onPointerDown,
     onPointerUp,
+    presentationMode,
   }: CanvasProps) {
     return (
       <Component
@@ -110,6 +117,8 @@ const ExcalidrawCanvas = React.memo(
         excalidrawAPI={onApi}
         onPointerDown={onPointerDown}
         onPointerUp={onPointerUp}
+        viewModeEnabled={presentationMode}
+        zenModeEnabled={presentationMode}
       />
     );
   },
@@ -122,6 +131,7 @@ const ExcalidrawCanvas = React.memo(
       prev.onApi === next.onApi &&
       prev.onPointerDown === next.onPointerDown &&
       prev.onPointerUp === next.onPointerUp &&
+      prev.presentationMode === next.presentationMode &&
       prev.initialData === next.initialData
     );
   },
@@ -137,8 +147,14 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
   // 实时画板状态与元素列表（仅用于快捷连接浮层，ExcalidrawCanvas 本身由 React.memo 隔离不会触发内部重绘）
   const [liveAppState, setLiveAppState] = useState<ExcalidrawScene['appState'] | null>(null);
   const [liveElements, setLiveElements] = useState<ExcalidrawScene['elements']>([]);
+  const boardPresentationMode = useLayoutStore((s) => s.boardPresentationMode);
+  const setBoardPresentationMode = useLayoutStore((s) => s.setBoardPresentationMode);
   const storeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const diskTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 串行化原生窗口全屏请求，避免快速连点造成较晚完成的旧请求覆盖最新状态 */
+  const fullscreenOperationRef = useRef<Promise<void>>(Promise.resolve());
+  /** 保存用户最新期望值，供异步全屏请求和卸载清理判断 */
+  const desiredPresentationModeRef = useRef(boardPresentationMode);
   const apiRef = useRef<BoardApi | null>(null);
   const boardRootRef = useRef<HTMLDivElement>(null);
   const initializedDocKeyRef = useRef<string | null>(null);
@@ -159,6 +175,68 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
 
   /** 非指针连续输入（例如文字键入）的历史分组间隔 */
   const BOARD_HISTORY_GROUP_DELAY_MS = 300;
+
+  /**
+   * 切换纯净画板与原生窗口全屏。
+   * 这里只修改临时布局状态和 Tauri 窗口状态，绝不调用场景更新或文档历史接口。
+   */
+  const requestBoardPresentationMode = useCallback((enabled: boolean) => {
+    desiredPresentationModeRef.current = enabled;
+    setBoardPresentationMode(enabled);
+
+    fullscreenOperationRef.current = fullscreenOperationRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        // 队列尚未执行时用户可能已经再次切换，过期请求可直接跳过
+        if (desiredPresentationModeRef.current !== enabled) return;
+        try {
+          await getCurrentWindow().setFullscreen(enabled);
+        } catch (error) {
+          console.error(enabled ? '进入画板全屏演示失败:' : '退出画板全屏演示失败:', error);
+          // 仅回滚仍是最新意图的失败请求，避免破坏后续切换结果
+          if (desiredPresentationModeRef.current === enabled) {
+            desiredPresentationModeRef.current = !enabled;
+            setBoardPresentationMode(!enabled);
+            showToast(enabled ? '无法进入系统全屏，请稍后重试' : '无法退出系统全屏，请按 Esc 重试', 'error');
+          }
+        }
+      });
+  }, [setBoardPresentationMode]);
+
+  const handleTogglePresentationMode = useCallback(() => {
+    requestBoardPresentationMode(!desiredPresentationModeRef.current);
+  }, [requestBoardPresentationMode]);
+
+  // 全屏演示期间用 Esc 退出；捕获阶段优先于 Excalidraw，避免按键被内部快捷键吞掉
+  useEffect(() => {
+    if (!boardPresentationMode) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      requestBoardPresentationMode(false);
+    };
+    window.addEventListener('keydown', handleEscape, true);
+    return () => window.removeEventListener('keydown', handleEscape, true);
+  }, [boardPresentationMode, requestBoardPresentationMode]);
+
+  // 切换标签页、文档或关闭画板时必须退出原生全屏，防止应用外壳长期不可见
+  useEffect(() => {
+    return () => {
+      if (!desiredPresentationModeRef.current) return;
+      desiredPresentationModeRef.current = false;
+      setBoardPresentationMode(false);
+      fullscreenOperationRef.current = fullscreenOperationRef.current
+        .catch(() => undefined)
+        .then(async () => {
+          try {
+            await getCurrentWindow().setFullscreen(false);
+          } catch (error) {
+            console.error('卸载画板时退出全屏失败:', error);
+          }
+        });
+    };
+  }, [setBoardPresentationMode]);
 
   /** 从文件级时间线刷新画板工具栏的撤销/重做可用状态 */
   const refreshHistoryAvailability = useCallback((key = docKeyRef.current) => {
@@ -497,24 +575,34 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
 
   if (readOnly) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
+        {!boardPresentationMode && (
+          <div
+            style={{
+              padding: '8px 12px',
+              background: 'var(--warning-50)',
+              borderBottom: '1px solid var(--warning-200)',
+              fontSize: 13,
+              color: 'var(--editor-text)',
+            }}
+          >
+            ⚠ 此文件使用的 Excalidraw 版本高于支持版本，以只读模式打开。
+          </div>
+        )}
         <div
-          style={{
-            padding: '8px 12px',
-            background: 'var(--warning-50)',
-            borderBottom: '1px solid var(--warning-200)',
-            fontSize: 13,
-            color: 'var(--editor-text)',
-          }}
+          key="readonly-board-canvas"
+          style={{ flex: 1, overflow: 'hidden', position: 'relative' }}
         >
-          ⚠ 此文件使用的 Excalidraw 版本高于支持版本，以只读模式打开。
-        </div>
-        <div style={{ flex: 1, overflow: 'hidden' }}>
           <Component
             initialData={stableInitialData as unknown as Record<string, unknown>}
-            viewMode={true}
+            viewModeEnabled={true}
+            zenModeEnabled={boardPresentationMode}
             theme={theme}
             langCode="zh-CN"
+          />
+          <BoardPresentationToggle
+            enabled={boardPresentationMode}
+            onToggle={handleTogglePresentationMode}
           />
         </div>
       </div>
@@ -539,41 +627,49 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
           onApi={handleApi}
           onPointerDown={handleBoardPointerDown}
           onPointerUp={handleBoardPointerUp}
+          presentationMode={boardPresentationMode}
         />
         {/* 流程图快速连线与节点延伸悬浮层 */}
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            overflow: 'hidden',
-            zIndex: 5,
-          }}
-        >
-          <FlowchartQuickConnect
-            api={apiRef.current}
-            appState={liveAppState ?? initialData?.appState}
-            elements={liveElements.length > 0 ? liveElements : (initialData?.elements ?? [])}
-            theme={theme}
-          />
-        </div>
+        {!boardPresentationMode && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              pointerEvents: 'none',
+              overflow: 'hidden',
+              zIndex: 5,
+            }}
+          >
+            <FlowchartQuickConnect
+              api={apiRef.current}
+              appState={liveAppState ?? initialData?.appState}
+              elements={liveElements.length > 0 ? liveElements : (initialData?.elements ?? [])}
+              theme={theme}
+            />
+          </div>
+        )}
+        <BoardPresentationToggle
+          enabled={boardPresentationMode}
+          onToggle={handleTogglePresentationMode}
+        />
       </div>
 
       {/* 状态栏画板区段 */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          padding: '2px 12px',
-          height: 24,
-          borderTop: '1px solid var(--editor-border)',
-          background: 'var(--editor-surface)',
-          fontSize: 11,
-          color: 'var(--editor-text-muted)',
-          flexShrink: 0,
-        }}
-      >
+      {!boardPresentationMode && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '2px 12px',
+            height: 24,
+            borderTop: '1px solid var(--editor-border)',
+            background: 'var(--editor-surface)',
+            fontSize: 11,
+            color: 'var(--editor-text-muted)',
+            flexShrink: 0,
+          }}
+        >
         <span>📊 {elementCount} 图元</span>
 
         {/* 自动吸附对齐开关 */}
@@ -676,7 +772,8 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
         >
           {Math.round(zoomLevel * 100)}%
         </button>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
