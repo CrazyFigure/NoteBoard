@@ -158,4 +158,30 @@ describe('windowStore tab 关闭操作', () => {
     // 标签页尚未真正关闭
     expect(useWindowStore.getState().tabs.length).toBe(3);
   });
+
+  it('setTabViewMode 仅改变指定标签页的模式，其他标签页模式保持独立', () => {
+    const tab1 = createMockTab('tab1');
+    const tab2 = createMockTab('tab2');
+
+    useWindowStore.setState({
+      tabs: [tab1, tab2],
+      activeKey: 'tab1',
+    });
+
+    // 将 tab1 设置为源码模式
+    useWindowStore.getState().setTabViewMode('tab1', 'source');
+
+    const state = useWindowStore.getState();
+    expect(state.getTab('tab1')?.viewMode).toBe('source');
+    // tab2 的 viewMode 保持为 visual 不受影响
+    expect(state.getTab('tab2')?.viewMode).toBe('visual');
+
+    // 将 tab2 设置为源码模式，tab1 切回可视化
+    useWindowStore.getState().setTabViewMode('tab2', 'source');
+    useWindowStore.getState().setTabViewMode('tab1', 'visual');
+
+    const updatedState = useWindowStore.getState();
+    expect(updatedState.getTab('tab1')?.viewMode).toBe('visual');
+    expect(updatedState.getTab('tab2')?.viewMode).toBe('source');
+  });
 });

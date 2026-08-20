@@ -5,9 +5,12 @@
 import { useWindowStore } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
 import { saveDocument } from '../../features/editor-code/orchestration/saveDocument';
+import { emit } from '../../core/emitter';
+import { Eye, Code } from 'lucide-react';
 
 export function StatusBar() {
   const activeKey = useWindowStore((s) => s.activeKey);
+  const activeTab = useWindowStore((s) => (activeKey ? s.getTab(activeKey) : undefined));
   const doc = useDocumentStore((s) => (activeKey ? s.documents.get(activeKey) : undefined));
 
   if (!doc) {
@@ -125,10 +128,55 @@ export function StatusBar() {
       </div>
       <div style={dividerStyle} />
 
-      {/* 类型 */}
-      <div style={sectionStyle}>
-        <span>{typeLabel}</span>
-      </div>
+      {/* 类型 / Markdown 模式切换 */}
+      {doc.kind === 'markdown' ? (
+        <div
+          style={{
+            ...sectionStyle,
+            borderRadius: 3,
+            transition: 'all var(--transition-fast)',
+          }}
+          title={`当前：Markdown (${activeTab?.viewMode === 'source' ? '源码模式' : '可视化模式'}) · 点击切换 (Ctrl+/)`}
+          onClick={() => {
+            if (activeKey) {
+              emit('toggle-md-view-mode', { key: activeKey });
+            }
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.color = 'var(--editor-text)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.color = 'var(--statusbar-text)';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          onMouseDown={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-active)';
+            e.currentTarget.style.transform = 'scale(0.96)';
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+        >
+          {activeTab?.viewMode === 'source' ? (
+            <>
+              <Code size={13} style={{ flexShrink: 0 }} />
+              <span>Markdown (源码)</span>
+            </>
+          ) : (
+            <>
+              <Eye size={13} style={{ flexShrink: 0 }} />
+              <span>Markdown (可视化)</span>
+            </>
+          )}
+        </div>
+      ) : (
+        <div style={sectionStyle}>
+          <span>{typeLabel}</span>
+        </div>
+      )}
       <div style={dividerStyle} />
 
       {/* 保存状态 */}
