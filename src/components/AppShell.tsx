@@ -162,6 +162,17 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
   // 仅活动画板可以接管应用外壳；切到其他格式时立即恢复常规布局
   const isBoardPresentationMode = boardPresentationMode && activeTab?.kind === 'board';
 
+  // 在应用空闲时预热 Diagrams.net，消除新建/打开 .drawio 时的网络冷启动耗时
+  useEffect(() => {
+    const link = document.createElement('link');
+    link.rel = 'prefetch';
+    link.href = 'https://embed.diagrams.net/?embed=1&ui=min&spin=1&proto=json&libraries=1';
+    document.head.appendChild(link);
+    return () => {
+      if (document.head.contains(link)) document.head.removeChild(link);
+    };
+  }, []);
+
   // Ctrl+S 快捷键注册
   useEffect(() => {
     const unregCtrlS = registerShortcut({
@@ -493,11 +504,22 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                         <div
                           key={tab.key}
                           style={{
-                            display: isTabActive ? 'flex' : 'none',
+                            display: 'flex',
                             flexDirection: 'column',
                             width: '100%',
                             height: '100%',
                             overflow: 'hidden',
+                            ...(isTabActive
+                              ? { position: 'relative' }
+                              : {
+                                  position: 'absolute',
+                                  top: -99999,
+                                  left: -99999,
+                                  opacity: 0,
+                                  pointerEvents: 'none',
+                                  visibility: 'hidden',
+                                  zIndex: -1,
+                                }),
                           }}
                         >
                           {tab.kind === 'unsupported' ? (
