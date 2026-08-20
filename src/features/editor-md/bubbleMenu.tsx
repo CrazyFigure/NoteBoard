@@ -225,6 +225,29 @@ function HighlightPalette({
   );
 }
 
+/** 从编辑器向外查找真正承载滚动的容器 */
+function findScrollParent(editorDom: HTMLElement): HTMLElement {
+  let current = editorDom.parentElement;
+  while (current) {
+    const { overflowY } = window.getComputedStyle(current);
+    if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return editorDom.parentElement ?? editorDom;
+}
+
+/** 判断当前选区是否为表格跨单元格多选（CellSelection） */
+function isCellSelection(selection: unknown): boolean {
+  if (!selection || typeof selection !== 'object') return false;
+  return (
+    (selection as { constructor?: { name?: string } }).constructor?.name === 'CellSelection' ||
+    '$headCell' in selection ||
+    'isCellSelection' in selection
+  );
+}
+
 /** 选中文本浮层菜单组件 */
 export function EditorBubbleMenu({
   editor,
@@ -246,7 +269,16 @@ export function EditorBubbleMenu({
         if (empty) return false;
         // 不在代码块中显示浮层菜单
         if (editor.isActive('codeBlock')) return false;
+        // 跨单元格多选时不弹出行内文本气泡菜单，交由表格工具栏处理
+        if (isCellSelection(selection)) return false;
         return true;
+      }}
+      options={{
+        strategy: 'fixed',
+        placement: 'top',
+        offset: 8,
+        flip: true,
+        shift: true,
       }}
     >
       <div
@@ -478,7 +510,7 @@ function HeaderRowIcon() {
   );
 }
 
-/** 表格浮动工具条（精美分类与方向直观区分） */
+/** 表格浮动工具条（精美分类与方向直观区分，支持滚动实时跟随与智能避让） */
 export function TableToolbar({ editor }: { editor: Editor }) {
   const [show, setShow] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -486,53 +518,89 @@ export function TableToolbar({ editor }: { editor: Editor }) {
   useEffect(() => {
     if (!editor) return;
 
+    const editorDom = editor.view.dom;
+    const scrollParent = findScrollParent(editorDom);
+
     const updateToolbar = () => {
       const isInTable = editor.isActive('table');
-      setShow(isInTable);
+      if (!isInTable) {
+        setShow(false);
+        return;
+      }
 
-      if (isInTable) {
-        const { selection } = editor.state;
-        const { $from } = selection;
+      const { selection } = editor.state;
+      const { $from } = selection;
 
-        // 寻找当前 table 节点或最靠近选区的单元格 DOM
-        let tableDom: HTMLElement | null = null;
-        for (let d = $from.depth; d > 0; d--) {
-          const node = $from.node(d);
-          if (node.type.name === 'table') {
-            const pos = $from.before(d);
-            const dom = editor.view.nodeDOM(pos);
-            if (dom instanceof HTMLElement) {
-              tableDom = dom;
-            }
-            break;
-          }
-        }
+      // 判断是否有非空普通文本选区（此时用户正在进行划词文本格式化，隐藏表格工具栏避免遮挡）
+      const cellSelecting = isCellSelection(selection);
+      const hasTextSelection = !selection.empty && !cellSelecting;
 
-        if (!tableDom) {
-          const dom = editor.view.nodeDOM($from.before(-1));
+      if (hasTextSelection) {
+        setShow(false);
+        return;
+      }
+
+      // 寻找当前 table 节点或最靠近选区的单元格 DOM
+      let tableDom: HTMLElement | null = null;
+      for (let d = $from.depth; d > 0; d--) {
+        const node = $from.node(d);
+        if (node.type.name === 'table') {
+          const pos = $from.before(d);
+          const dom = editor.view.nodeDOM(pos);
           if (dom instanceof HTMLElement) {
-            tableDom = dom.closest('table') || dom;
+            tableDom = dom;
           }
+          break;
+        }
+      }
+
+      if (!tableDom) {
+        const dom = editor.view.nodeDOM($from.before(-1));
+        if (dom instanceof HTMLElement) {
+          tableDom = dom.closest('table') || dom;
+        }
+      }
+
+      if (tableDom) {
+        const rect = tableDom.getBoundingClientRect();
+        // 表格完全滚出视口可视区域时隐藏
+        if (rect.bottom < 50 || rect.top > window.innerHeight - 20) {
+          setShow(false);
+          return;
         }
 
-        if (tableDom) {
-          const rect = tableDom.getBoundingClientRect();
-          // 如果表格顶部距离视口很近，工具条下移到表格内部上方
-          const topPos = rect.top > 52 ? rect.top - 46 : Math.max(rect.top + 8, 8);
-          setPosition({
-            top: topPos,
-            left: Math.max(rect.left + rect.width / 2, 200),
-          });
-        }
+        setShow(true);
+
+        // 计算顶部悬浮位置：
+        // 1. 若表格顶部在视口内（>= 54px），工具条悬浮于表格上方 44px
+        // 2. 若表格向上滚动且顶部已滚出视口，工具条吸顶在视口上方安全区（12px）
+        const topPos = rect.top >= 54 ? rect.top - 44 : Math.max(rect.top + 8, 12);
+
+        // 计算水平居中位置，并施加边界安全约束（工具条宽约 420px，半宽约 210px，留安全边距）
+        const targetLeft = rect.left + rect.width / 2;
+        const clampedLeft = Math.max(220, Math.min(targetLeft, window.innerWidth - 220));
+
+        setPosition({
+          top: topPos,
+          left: clampedLeft,
+        });
+      } else {
+        setShow(false);
       }
     };
 
     editor.on('selectionUpdate', updateToolbar);
     editor.on('transaction', updateToolbar);
+    scrollParent.addEventListener('scroll', updateToolbar, { passive: true });
+    window.addEventListener('resize', updateToolbar, { passive: true });
+    window.addEventListener('scroll', updateToolbar, { passive: true });
 
     return () => {
       editor.off('selectionUpdate', updateToolbar);
       editor.off('transaction', updateToolbar);
+      scrollParent.removeEventListener('scroll', updateToolbar);
+      window.removeEventListener('resize', updateToolbar);
+      window.removeEventListener('scroll', updateToolbar);
     };
   }, [editor]);
 
@@ -556,6 +624,7 @@ export function TableToolbar({ editor }: { editor: Editor }) {
         zIndex: 1000,
         gap: 2,
         userSelect: 'none',
+        transition: 'top 80ms ease, opacity 120ms ease',
       }}
     >
       {/* ── 列操作组（左右插列、删列） ── */}
