@@ -15,7 +15,7 @@ import {
 
 describe('sceneIo - 画板场景数据处理', () => {
   describe('cleanAppState', () => {
-    it('应剔除 collaborators、snapLines 以及选区等运行时临时字段，并保留 objectsSnapModeEnabled', () => {
+    it('应剔除协作、选区和全屏演示等运行时临时字段，并保留 objectsSnapModeEnabled', () => {
       const dirtyAppState = {
         viewBackgroundColor: '#1e1e1e',
         gridSize: 20,
@@ -34,6 +34,8 @@ describe('sceneIo - 画板场景数据处理', () => {
         openMenu: null,
         openSidebar: null,
         activeEmbeddable: null,
+        viewModeEnabled: true,
+        zenModeEnabled: true,
         zoom: { value: 1.5 },
       };
 
@@ -45,6 +47,8 @@ describe('sceneIo - 画板场景数据处理', () => {
       expect('originSnapOffset' in cleaned).toBe(false);
       expect('selectedElementIds' in cleaned).toBe(false);
       expect('editingGroupId' in cleaned).toBe(false);
+      expect('viewModeEnabled' in cleaned).toBe(false);
+      expect('zenModeEnabled' in cleaned).toBe(false);
 
       // 验证必要设置与吸附设置依然保留
       expect(cleaned.viewBackgroundColor).toBe('#1e1e1e');
@@ -196,6 +200,8 @@ describe('sceneIo - 画板场景数据处理', () => {
           scrollX: -300,
           scrollY: -200,
           zoom: { value: 1.5 },
+          viewModeEnabled: true,
+          zenModeEnabled: true,
         },
       };
       expect(getBoardHistorySignature(interactionOnly)).toBe(getBoardHistorySignature(base));

@@ -24,6 +24,8 @@ interface LayoutStore {
   settingsModalVisible: boolean;
   /** 编辑器顶部操作栏是否可见 */
   editorToolbarVisible: boolean;
+  /** 画板是否处于纯净全屏演示模式；仅为当前窗口临时 UI 状态，不参与布局持久化 */
+  boardPresentationMode: boolean;
   /** 是否正在向窗口内拖拽文件 */
   isDraggingFile: boolean;
 
@@ -39,6 +41,7 @@ interface LayoutStore {
   setStatusBarVisible: (visible: boolean) => void;
   setSettingsModalVisible: (visible: boolean) => void;
   setEditorToolbarVisible: (visible: boolean) => void;
+  setBoardPresentationMode: (enabled: boolean) => void;
   setIsDraggingFile: (dragging: boolean) => void;
 
   // ── 持久化 ──
@@ -71,6 +74,7 @@ export const useLayoutStore = create<LayoutStore>((set, get) => ({
   statusBarVisible: true,
   settingsModalVisible: false,
   editorToolbarVisible: true,
+  boardPresentationMode: false,
   isDraggingFile: false,
 
   toggleExplorer: () => set((s) => ({ explorerVisible: !s.explorerVisible })),
@@ -86,6 +90,7 @@ export const useLayoutStore = create<LayoutStore>((set, get) => ({
   setStatusBarVisible: (visible) => set({ statusBarVisible: visible }),
   setSettingsModalVisible: (visible) => set({ settingsModalVisible: visible }),
   setEditorToolbarVisible: (visible) => set({ editorToolbarVisible: visible }),
+  setBoardPresentationMode: (enabled) => set({ boardPresentationMode: enabled }),
   setIsDraggingFile: (dragging) => set({ isDraggingFile: dragging }),
 
   toLayout: () => {
@@ -106,6 +111,8 @@ export const useLayoutStore = create<LayoutStore>((set, get) => ({
       outlineVisible: layout.outlineVisible,
       outlineWidth: clamp(layout.outlineWidth, OUTLINE_MIN, OUTLINE_MAX),
       editorToolbarVisible: layout.editorToolbarVisible ?? true,
+      // 演示模式不能跨窗口恢复，避免启动后意外隐藏应用外壳
+      boardPresentationMode: false,
     });
   },
 }));
