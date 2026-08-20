@@ -235,7 +235,7 @@ export function FontSelect({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '5px 8px',
+          padding: '6px 10px',
           border: isOpen ? '1px solid var(--accent-strong)' : '1px solid var(--editor-border)',
           borderRadius: 'var(--radius-sm)',
           background: 'var(--editor-surface)',
