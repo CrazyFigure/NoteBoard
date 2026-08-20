@@ -160,6 +160,22 @@ export function serializeScene(scene: ExcalidrawScene): string {
 }
 
 /**
+ * 计算画板可撤销内容的语义签名。
+ * 选中、框选、滚动、缩放、菜单和悬浮预览都属于临时交互，不得占用撤销步骤；
+ * 图元提交版本、画布背景和吸附设置才属于用户可撤销的画板变化。
+ */
+export function getBoardHistorySignature(scene: ExcalidrawScene): string {
+  const elementsSignature = scene.elements
+    .map((element) => `${element.id}:${element.version}:${element.versionNonce}:${element.isDeleted}`)
+    .join('|');
+  return [
+    elementsSignature,
+    `background:${scene.appState.viewBackgroundColor ?? ''}`,
+    `snap:${scene.appState.objectsSnapModeEnabled ?? true}`,
+  ].join('\n');
+}
+
+/**
  * 创建新的空场景
  * viewBackgroundColor 按当前主题写初始值，默认开启自动吸附对齐
  */

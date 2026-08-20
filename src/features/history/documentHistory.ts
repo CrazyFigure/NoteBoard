@@ -2,7 +2,7 @@
 // 历史归属于文件而非具体编辑器内核，保证 Markdown 可视化、源码和代码编辑模式共享同一条时间线
 
 /** 单条历史所在的编辑模式，用于尽可能恢复同内核的光标位置 */
-export type DocumentHistoryMode = 'visual' | 'source' | 'code';
+export type DocumentHistoryMode = 'visual' | 'source' | 'code' | 'board';
 
 /** 编辑器光标或选区快照；跨内核恢复时会自动裁剪到合法范围 */
 export interface DocumentHistorySelection {
@@ -110,6 +110,19 @@ export function isApplyingDocumentHistory(docKey: string): boolean {
 export function getCurrentDocumentHistoryContent(docKey: string): string | null {
   const state = histories.get(docKey);
   return state?.entries[state.index]?.content ?? null;
+}
+
+/** 获取当前文档是否还能撤销或重做，供编辑器工具栏同步按钮状态 */
+export function getDocumentHistoryAvailability(docKey: string): {
+  canUndo: boolean;
+  canRedo: boolean;
+} {
+  const state = histories.get(docKey);
+  if (!state) return { canUndo: false, canRedo: false };
+  return {
+    canUndo: state.index > 0,
+    canRedo: state.index < state.entries.length - 1,
+  };
 }
 
 /**

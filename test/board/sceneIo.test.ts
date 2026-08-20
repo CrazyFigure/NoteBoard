@@ -9,6 +9,7 @@ import {
   createEmptyScene,
   isVersionSupported,
   getElementCount,
+  getBoardHistorySignature,
   type ExcalidrawScene,
 } from '../../src/features/board/sceneIo';
 
@@ -173,6 +174,37 @@ describe('sceneIo - 画板场景数据处理', () => {
         { id: '3', type: 'arrow', isDeleted: false } as any,
       ];
       expect(getElementCount(scene)).toBe(2);
+    });
+  });
+
+  describe('getBoardHistorySignature', () => {
+    it('点击选中、滚动和缩放不计为操作，图元真实变化才计入历史', () => {
+      const base = createEmptyScene(false);
+      base.elements = [{
+        id: 'node-1',
+        type: 'rectangle',
+        version: 1,
+        versionNonce: 10,
+        isDeleted: false,
+      } as ExcalidrawScene['elements'][number]];
+
+      const interactionOnly: ExcalidrawScene = {
+        ...base,
+        appState: {
+          ...base.appState,
+          selectedElementIds: { 'node-1': true },
+          scrollX: -300,
+          scrollY: -200,
+          zoom: { value: 1.5 },
+        },
+      };
+      expect(getBoardHistorySignature(interactionOnly)).toBe(getBoardHistorySignature(base));
+
+      const changed: ExcalidrawScene = {
+        ...interactionOnly,
+        elements: [{ ...interactionOnly.elements[0], version: 2 }],
+      };
+      expect(getBoardHistorySignature(changed)).not.toBe(getBoardHistorySignature(base));
     });
   });
 });
