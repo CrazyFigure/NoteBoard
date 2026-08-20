@@ -351,8 +351,73 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
   };
 
   const handleClearFormat = () => {
-    if (editor && !isSourceMode) {
-      editor.chain().focus().unsetAllMarks().run();
+    if (isSourceMode) {
+      executeSourceAction((view) => {
+        const { from, to, empty } = view.state.selection.main;
+        let targetFrom = from;
+        let targetTo = to;
+        let text = '';
+        if (empty) {
+          // 无选区时选取当前整行进行清除
+          const line = view.state.doc.lineAt(from);
+          targetFrom = line.from;
+          targetTo = line.to;
+          text = line.text;
+        } else {
+          text = view.state.sliceDoc(from, to);
+        }
+        // 清除行首块级语法（标题 #, 引用 >, 列表 -, 1.）及行内语法（加粗 **, 斜体 *, 删除线 ~~, 高亮 ==, 行内代码 `, 链接 [t](u)）
+        const cleaned = text
+          .replace(/^(#{1,6}\s+|>+\s*|[-*+]\s+(?:\[[ xX]\]\s+)?|\d+\.\s+)/gm, '')
+          .replace(/(\*\*|__)(.*?)\1/g, '$2')
+          .replace(/(\*|_)(.*?)\1/g, '$2')
+          .replace(/(~~)(.*?)\1/g, '$2')
+          .replace(/(==)(.*?)\1/g, '$2')
+          .replace(/(`)(.*?)\1/g, '$2')
+          .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+
+        view.dispatch({
+          changes: { from: targetFrom, to: targetTo, insert: cleaned },
+          selection: { anchor: targetFrom, head: targetFrom + cleaned.length },
+        });
+      });
+      return;
+    }
+
+    const currentEditor = editor || getActiveTipTapEditor(docKey);
+    if (!currentEditor) return;
+
+    const { state } = currentEditor;
+    const { from, to, empty } = state.selection;
+
+    if (empty) {
+      // 1. 无选区时：若处于标题/列表/引用等特殊块中，重置为普通段落
+      currentEditor.chain().focus().clearNodes().run();
+
+      // 2. 清除当前行内所有样式标记
+      const $pos = state.doc.resolve(from);
+      const start = $pos.start();
+      const end = $pos.end();
+      if (start < end) {
+        currentEditor
+          .chain()
+          .focus()
+          .setTextSelection({ from: start, to: end })
+          .unsetAllMarks()
+          .clearNodes()
+          .setTextSelection(from)
+          .run();
+      } else {
+        currentEditor.chain().focus().unsetAllMarks().clearNodes().run();
+      }
+    } else {
+      // 存在选区：同时清除所有行内 Mark（加粗/斜体/下划线/删除线/高亮/链接等）与块级 Node（标题/列表/引用/代码块等）
+      currentEditor
+        .chain()
+        .focus()
+        .unsetAllMarks()
+        .clearNodes()
+        .run();
     }
   };
 
