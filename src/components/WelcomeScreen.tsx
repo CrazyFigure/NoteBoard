@@ -414,7 +414,7 @@ export function WelcomeScreen({
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <Sparkles size={16} color="var(--editor-accent, #3b82f6)" />
               <span style={{ fontWeight: 500 }}>
-                {showMoreFormats ? '收起其他格式' : '更多格式新建 (Draw.io, Mermaid, UML, JSON…)'}
+                {showMoreFormats ? '收起其他格式' : '更多格式新建'}
               </span>
             </div>
             {showMoreFormats ? <ChevronUp size={16} /> : <ChevronDown size={16} />}

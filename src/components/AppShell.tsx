@@ -92,6 +92,7 @@ function ResizeHandle() {
 export function AppShell({ children }: { children?: React.ReactNode }) {
   const tabs = useWindowStore((s) => s.tabs);
   const activeKey = useWindowStore((s) => s.activeKey);
+  const documents = useDocumentStore((s) => s.documents);
   const activeDoc = useDocumentStore((s) => (activeKey ? s.documents.get(activeKey) : undefined));
 
   const {
@@ -466,7 +467,7 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                   />
                 )}
 
-                {tabs.length === 0 ? (
+                {tabs.length === 0 || !activeTab ? (
                   <WelcomeScreen
                     onOpenFile={openFileDialog}
                     onOpenFolder={openFolderDialog}
@@ -482,59 +483,80 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                     onNewSql={newSql}
                     onNewXml={newXml}
                   />
-                ) : activeTab ? (
-                  activeTab.kind === 'unsupported' ? (
-                    <UnsupportedView
-                      key={activeTab.key}
-                      filePath={activeTab.path ?? activeTab.key}
-                      fileName={activeTab.displayName}
-                      fileSize={activeDoc?.size}
-                    />
-                  ) : activeTab.kind === 'mindmap' ? (
-                    <MindmapEditor key={activeTab.key} docKey={activeTab.key} />
-                  ) : activeTab.kind === 'drawio' ? (
-                    <DrawioEditor key={activeTab.key} docKey={activeTab.key} />
-                  ) : activeTab.kind === 'code' ? (
-                    activeTab.language === 'mermaid' || activeTab.language === 'plantuml' ? (
-                      <DiagramSplitEditor key={activeTab.key} docKey={activeTab.key} />
-                    ) : (
-                      <CodeEditor key={activeTab.key} docKey={activeTab.key} />
-                    )
-                  ) : activeTab.kind === 'markdown' ? (
-                    <TipTapEditor key={activeTab.key} docKey={activeTab.key} onEditorReady={setActiveEditor} />
-                  ) : activeTab.kind === 'board' ? (
-                    <BoardEditor key={activeTab.key} docKey={activeTab.key} />
-                  ) : activeTab.kind === 'image' ? (
-                    <ImageViewer
-                      key={activeTab.key}
-                      filePath={activeTab.path ?? activeTab.key}
-                      fileName={activeTab.displayName}
-                      fileSize={activeDoc?.size}
-                    />
-                  ) : (
-                    children ?? (
-                      <div
-                        style={{
-                          padding: 24,
-                          overflow: 'auto',
-                          height: '100%',
-                        }}
-                      >
-                        <div style={{ maxWidth: 'var(--content-max-width)', margin: '0 auto' }}>
-                          <div
-                            style={{
-                              fontSize: 'var(--content-font-size)',
-                              lineHeight: 'var(--content-line-height)',
-                              color: 'var(--editor-text)',
-                            }}
-                          >
-                            {activeTab?.displayName}
-                          </div>
+                ) : (
+                  <div style={{ flex: 1, position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
+                    {tabs.map((tab) => {
+                      const isTabActive = tab.key === activeKey;
+                      const tabDoc = documents.get(tab.key);
+
+                      return (
+                        <div
+                          key={tab.key}
+                          style={{
+                            display: isTabActive ? 'flex' : 'none',
+                            flexDirection: 'column',
+                            width: '100%',
+                            height: '100%',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          {tab.kind === 'unsupported' ? (
+                            <UnsupportedView
+                              filePath={tab.path ?? tab.key}
+                              fileName={tab.displayName}
+                              fileSize={tabDoc?.size}
+                            />
+                          ) : tab.kind === 'mindmap' ? (
+                            <MindmapEditor docKey={tab.key} />
+                          ) : tab.kind === 'drawio' ? (
+                            <DrawioEditor docKey={tab.key} />
+                          ) : tab.kind === 'code' ? (
+                            tab.language === 'mermaid' || tab.language === 'plantuml' ? (
+                              <DiagramSplitEditor docKey={tab.key} />
+                            ) : (
+                              <CodeEditor docKey={tab.key} />
+                            )
+                          ) : tab.kind === 'markdown' ? (
+                            <TipTapEditor
+                              docKey={tab.key}
+                              onEditorReady={isTabActive ? setActiveEditor : undefined}
+                            />
+                          ) : tab.kind === 'board' ? (
+                            <BoardEditor docKey={tab.key} />
+                          ) : tab.kind === 'image' ? (
+                            <ImageViewer
+                              filePath={tab.path ?? tab.key}
+                              fileName={tab.displayName}
+                              fileSize={tabDoc?.size}
+                            />
+                          ) : (
+                            children ?? (
+                              <div
+                                style={{
+                                  padding: 24,
+                                  overflow: 'auto',
+                                  height: '100%',
+                                }}
+                              >
+                                <div style={{ maxWidth: 'var(--content-max-width)', margin: '0 auto' }}>
+                                  <div
+                                    style={{
+                                      fontSize: 'var(--content-font-size)',
+                                      lineHeight: 'var(--content-line-height)',
+                                      color: 'var(--editor-text)',
+                                    }}
+                                  >
+                                    {tab.displayName}
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          )}
                         </div>
-                      </div>
-                    )
-                  )
-                ) : null}
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* 右折叠把手（仅 Markdown） */}
                 {!isBoardPresentationMode && tabs.length > 0 && (

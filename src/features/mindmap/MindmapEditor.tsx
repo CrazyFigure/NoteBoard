@@ -1,8 +1,8 @@
 // NoteBoard 思维导图主编辑器 (Mindmap Editor)
-// 幕布式双模切换 (大纲编辑模式 ⇄ 思维导图展示模式) + XMind 导入导出 + 全局自动保存
+// 幕布式双模切换 (大纲编辑模式 ⇄ 思维导图展示模式) + XMind 导入导出 + 文件级统一撤销/重做
 // 详见 docs/09-开发路线图.md
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   ListTree,
   Network,
@@ -11,10 +11,7 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
-  Plus,
   FileText,
-  FolderOpen,
-  Share2,
 } from 'lucide-react';
 import type { MindNode } from './mindmapTypes';
 import {
@@ -23,13 +20,20 @@ import {
   exportToXmindZip,
   importFromXmindZip,
   mindNodeToMarkdown,
-  createDefaultMindmap,
 } from './mindmapConverter';
 import { OutlinerEditor } from './OutlinerEditor';
 import { MindmapRenderer } from './MindmapRenderer';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
+import {
+  initializeDocumentHistory,
+  registerDocumentHistoryAdapter,
+  recordDocumentChange,
+  undoDocumentHistory,
+  redoDocumentHistory,
+  markDocumentHistoryModeBoundary,
+} from '../history/documentHistory';
 
 interface MindmapEditorProps {
   docKey: string;
@@ -49,6 +53,24 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
     return parseMindmapDocument(doc?.content ?? '');
   });
 
+  // 注册统一文档历史快照应用器
+  useEffect(() => {
+    const initialContent = doc?.content ?? '';
+    initializeDocumentHistory(docKey, initialContent, 'mindmap');
+
+    const unregister = registerDocumentHistoryAdapter(docKey, {
+      applyEntry: (entry) => {
+        const parsed = parseMindmapDocument(entry.content);
+        setRootNode(parsed);
+        setContent(docKey, entry.content);
+        setDirty(docKey, true);
+        setTabDirty(docKey, true);
+      },
+    });
+
+    return unregister;
+  }, [docKey]);
+
   // 当外部文档切换或重新加载时同步状态
   useEffect(() => {
     if (doc?.content != null) {
@@ -57,7 +79,7 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
     }
   }, [docKey]);
 
-  // 节点树更新时同步到 DocumentStore 与脏标记
+  // 节点树更新时同步到 DocumentStore、脏标记并记录文件级历史
   const handleRootChange = useCallback(
     (newRoot: MindNode) => {
       setRootNode(newRoot);
@@ -65,9 +87,40 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
       setContent(docKey, serialized);
       setDirty(docKey, true);
       setTabDirty(docKey, true);
+      recordDocumentChange(docKey, serialized, {
+        mode: 'mindmap',
+        startsNewGroup: true,
+      });
     },
     [docKey, setContent, setDirty, setTabDirty],
   );
+
+  // 切换查看模式（不记录新历史节点）
+  const handleSwitchViewMode = (mode: ViewMode) => {
+    setViewMode(mode);
+    markDocumentHistoryModeBoundary(docKey);
+  };
+
+  // 全局撤销/重做快捷键 (Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 避免在普通文本框输入时拦截默认行为（除非在非输入区域或大纲整树操作）
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        if (e.shiftKey) {
+          e.preventDefault();
+          redoDocumentHistory(docKey);
+        } else {
+          e.preventDefault();
+          undoDocumentHistory(docKey);
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redoDocumentHistory(docKey);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [docKey]);
 
   // 导出为 .xmind 文件
   const handleExportXmind = async () => {
@@ -161,7 +214,7 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
           >
             <button
               type="button"
-              onClick={() => setViewMode('mindmap')}
+              onClick={() => handleSwitchViewMode('mindmap')}
               title="思维导图展示模式"
               style={{
                 display: 'flex',
@@ -183,7 +236,7 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
             </button>
             <button
               type="button"
-              onClick={() => setViewMode('outliner')}
+              onClick={() => handleSwitchViewMode('outliner')}
               title="幕布式大纲编辑模式"
               style={{
                 display: 'flex',

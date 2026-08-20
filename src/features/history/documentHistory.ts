@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 
 /** 单条历史所在的编辑模式，用于尽可能恢复同内核的光标位置 */
-export type DocumentHistoryMode = 'visual' | 'source' | 'code' | 'board';
+export type DocumentHistoryMode = 'visual' | 'source' | 'code' | 'board' | 'mindmap' | 'drawio';
 
 /** 编辑器光标或选区快照；跨内核恢复时会自动裁剪到合法范围 */
 export interface DocumentHistorySelection {

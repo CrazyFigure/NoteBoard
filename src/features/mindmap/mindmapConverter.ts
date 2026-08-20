@@ -333,3 +333,108 @@ export async function importFromXmindZip(buffer: ArrayBuffer): Promise<MindNode>
 
   throw new Error('未在 .xmind 文件中找到有效的思维导图内容');
 }
+
+/**
+ * 检查 targetId 是否是 sourceId 本身或其子孙节点（防止循环挂载）
+ */
+export function isMindNodeDescendant(root: MindNode, sourceId: string, targetId: string): boolean {
+  if (sourceId === targetId) return true;
+  function searchNode(n: MindNode): MindNode | null {
+    if (n.id === sourceId) return n;
+    for (const child of n.children || []) {
+      const found = searchNode(child);
+      if (found) return found;
+    }
+    return null;
+  }
+  const sourceNode = searchNode(root);
+  if (!sourceNode) return false;
+
+  function hasTarget(n: MindNode): boolean {
+    if (n.id === targetId) return true;
+    for (const child of n.children || []) {
+      if (hasTarget(child)) return true;
+    }
+    return false;
+  }
+  return hasTarget(sourceNode);
+}
+
+/**
+ * 纯函数：在思维导图节点树中移动节点（整树搬移），返回新的树对象
+ */
+export function moveMindNode(
+  root: MindNode,
+  sourceId: string,
+  targetId: string,
+  position: 'before' | 'inside' | 'after' = 'after',
+): MindNode {
+  if (sourceId === targetId || isMindNodeDescendant(root, sourceId, targetId)) {
+    return root;
+  }
+
+  const cloned: MindNode = JSON.parse(JSON.stringify(root));
+
+  // 1. 查找并抽离 source 节点
+  let extracted: MindNode | null = null;
+  function removeSource(n: MindNode): boolean {
+    if (n.children && n.children.length > 0) {
+      const idx = n.children.findIndex((c) => c.id === sourceId);
+      if (idx !== -1) {
+        [extracted] = n.children.splice(idx, 1);
+        return true;
+      }
+      for (const child of n.children) {
+        if (removeSource(child)) return true;
+      }
+    }
+    return false;
+  }
+
+  removeSource(cloned);
+  if (!extracted) return root;
+
+  // 2. 如果目标是根节点或者 position === 'inside'
+  if (targetId === cloned.id || position === 'inside') {
+    function insertInside(n: MindNode): boolean {
+      if (n.id === targetId) {
+        if (!n.children) n.children = [];
+        n.children.push(extracted!);
+        n.isExpanded = true;
+        return true;
+      }
+      for (const child of n.children || []) {
+        if (insertInside(child)) return true;
+      }
+      return false;
+    }
+    insertInside(cloned);
+    return cloned;
+  }
+
+  // 3. 作为兄弟节点插入 (before / after)
+  function insertSibling(n: MindNode): boolean {
+    if (n.children && n.children.length > 0) {
+      const idx = n.children.findIndex((c) => c.id === targetId);
+      if (idx !== -1) {
+        const insertIdx = position === 'before' ? idx : idx + 1;
+        n.children.splice(insertIdx, 0, extracted!);
+        return true;
+      }
+      for (const child of n.children) {
+        if (insertSibling(child)) return true;
+      }
+    }
+    return false;
+  }
+
+  const inserted = insertSibling(cloned);
+  if (!inserted) {
+    // 兜底：若未找到兄弟，追加到根节点
+    if (!cloned.children) cloned.children = [];
+    cloned.children.push(extracted);
+  }
+
+  return cloned;
+}
+
