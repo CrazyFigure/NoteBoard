@@ -26,6 +26,7 @@ describe('windowStore tab 关闭操作', () => {
       tabs: [],
       activeKey: null,
       pendingCloseKeys: [],
+      isWindowClosing: false,
     });
   });
 
@@ -157,6 +158,22 @@ describe('windowStore tab 关闭操作', () => {
     expect(useWindowStore.getState().pendingCloseKeys).toEqual(['tab2', 'tab3']);
     // 标签页尚未真正关闭
     expect(useWindowStore.getState().tabs.length).toBe(3);
+  });
+
+  it('requestWindowClose 保留窗口关闭意图，确认弹窗后可继续退出软件', () => {
+    const dirtyTab = { ...createMockTab('dirty', 'dirty.md'), isDirty: true };
+
+    useWindowStore.setState({
+      tabs: [dirtyTab],
+      activeKey: dirtyTab.key,
+    });
+
+    // 窗口级关闭必须区别于普通标签页批量关闭，供保存或丢弃回调决定是否继续退出。
+    useWindowStore.getState().requestWindowClose([dirtyTab.key]);
+
+    const state = useWindowStore.getState();
+    expect(state.pendingCloseKeys).toEqual([dirtyTab.key]);
+    expect(state.isWindowClosing).toBe(true);
   });
 
   it('setTabViewMode 仅改变指定标签页的模式，其他标签页模式保持独立', () => {

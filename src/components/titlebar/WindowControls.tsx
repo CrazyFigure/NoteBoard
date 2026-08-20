@@ -5,8 +5,7 @@
 import { useEffect, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Minus, Square, Copy, X } from 'lucide-react';
-import { useWindowStore } from '../../stores/windowStore';
-import { performWindowClose } from '../../features/window/windowManager';
+import { requestCurrentWindowClose } from '../../features/window/windowManager';
 
 export function WindowControls() {
   const [isMaximized, setIsMaximized] = useState(false);
@@ -25,16 +24,8 @@ export function WindowControls() {
 
   const handleMinimize = () => getCurrentWindow().minimize();
   const handleMaximize = () => getCurrentWindow().toggleMaximize();
-  const handleClose = async () => {
-    const tabStore = useWindowStore.getState();
-    const label = getCurrentWindow().label;
-    const dirtyTabs = tabStore.tabs.filter((t) => t.isDirty);
-    if (dirtyTabs.length > 0) {
-      tabStore.requestCloseBatch(dirtyTabs.map((t) => t.key));
-      return;
-    }
-    await performWindowClose(label);
-  };
+  // 标题栏关闭与系统关闭事件共用同一入口，确保确认保存或丢弃后继续关闭软件。
+  const handleClose = () => requestCurrentWindowClose();
 
   const btnStyle: React.CSSProperties = {
     width: 46,
