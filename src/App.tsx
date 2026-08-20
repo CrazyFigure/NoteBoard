@@ -33,6 +33,17 @@ export default function App() {
     };
     window.addEventListener('contextmenu', handleContextMenu);
 
+    // 全局捕获阶段拦截所有 a 标签的原生默认行为，防止 WebView2 底层触发新窗口或导航
+    const handleGlobalAnchorClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      const anchor = target?.closest('a');
+      if (anchor) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('click', handleGlobalAnchorClick, true);
+    window.addEventListener('auxclick', handleGlobalAnchorClick, true);
+
     // Ctrl+Shift+N 新建空窗口
     const unregNewWindow = registerShortcut({
       key: 'Ctrl+Shift+N',
@@ -75,6 +86,8 @@ export default function App() {
     return () => {
       cleanup();
       window.removeEventListener('contextmenu', handleContextMenu);
+      window.removeEventListener('click', handleGlobalAnchorClick, true);
+      window.removeEventListener('auxclick', handleGlobalAnchorClick, true);
       stopEventListeners();
       unregNewWindow();
       unregOpenFile();

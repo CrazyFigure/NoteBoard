@@ -41,6 +41,10 @@ export function resolveRelativeDocPath(baseDir: string, relativePath: string): s
   return rest ? `${drive}\\${rest}` : drive;
 }
 
+// 记录上一次点击时间与链接，用于短时防抖（防止连击触发多次打开）
+let lastClickTime = 0;
+let lastClickHref = '';
+
 /**
  * 统一处理 Markdown 链接点击跳转
  * @param rawHref 原始链接地址
@@ -49,6 +53,14 @@ export function resolveRelativeDocPath(baseDir: string, relativePath: string): s
 export async function handleLinkClick(rawHref: string, currentDocKey: string): Promise<boolean> {
   if (!rawHref) return false;
   const href = rawHref.trim();
+
+  // 400ms 内针对同一链接的重复点击直接拦截
+  const now = Date.now();
+  if (href === lastClickHref && now - lastClickTime < 400) {
+    return true;
+  }
+  lastClickTime = now;
+  lastClickHref = href;
 
   // 1. 外部网络协议链接：调用系统默认浏览器打开
   if (/^(https?:\/\/|mailto:|ftp:|tel:)/i.test(href)) {

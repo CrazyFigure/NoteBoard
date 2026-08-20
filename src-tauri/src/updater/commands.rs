@@ -481,10 +481,27 @@ pub fn open_external_url(url: String) -> Result<bool, String> {
 
     #[cfg(target_os = "windows")]
     {
-        Command::new("explorer.exe")
-            .arg(normalized)
-            .spawn()
-            .map_err(|e| e.to_string())?;
+        use windows::core::HSTRING;
+        use windows::Win32::UI::Shell::ShellExecuteW;
+        use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+        // 使用 Windows 原生 ShellExecuteW 唤起默认浏览器，避免 explorer.exe 导致的双重打开问题
+        let url_wide = HSTRING::from(normalized);
+        let operation = HSTRING::from("open");
+        unsafe {
+            let result = ShellExecuteW(
+                None,
+                &operation,
+                &url_wide,
+                None,
+                None,
+                SW_SHOWNORMAL,
+            );
+            // ShellExecute 返回值大于 32 表示成功
+            if result.0 as usize <= 32 {
+                return Err(format!("打开外部链接失败，错误代码: {}", result.0 as usize));
+            }
+        }
     }
 
     #[cfg(target_os = "macos")]

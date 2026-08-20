@@ -226,7 +226,13 @@ function HighlightPalette({
 }
 
 /** 选中文本浮层菜单组件 */
-export function EditorBubbleMenu({ editor }: { editor: Editor }) {
+export function EditorBubbleMenu({
+  editor,
+  onOpenLinkModal,
+}: {
+  editor: Editor;
+  onOpenLinkModal?: () => void;
+}) {
   const [showColorPicker, setShowColorPicker] = useState(false);
 
   if (!editor) return null;
@@ -327,17 +333,22 @@ export function EditorBubbleMenu({ editor }: { editor: Editor }) {
 
         <MenuDivider />
 
+        {/* 超链接设置按钮：优先打开定制美观弹窗 */}
         <BubbleButton
-          title="设置/修改超链接"
+          title="设置/修改超链接 (Ctrl+K)"
           icon={<Link2 size={16} />}
           onClick={() => {
-            const previousUrl = editor.getAttributes('link').href || '';
-            const url = window.prompt('输入链接 URL (支持网络链接或本地相对文件路径):', previousUrl);
-            if (url === null) return;
-            if (url === '') {
-              editor.chain().focus().extendMarkRange('link').unsetLink().run();
+            if (onOpenLinkModal) {
+              onOpenLinkModal();
             } else {
-              editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+              const previousUrl = editor.getAttributes('link').href || '';
+              const url = window.prompt('输入链接 URL (支持网络链接或本地相对文件路径):', previousUrl);
+              if (url === null) return;
+              if (url === '') {
+                editor.chain().focus().extendMarkRange('link').unsetLink().run();
+              } else {
+                editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+              }
             }
           }}
           active={editor.isActive('link')}

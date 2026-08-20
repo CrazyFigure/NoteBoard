@@ -47,6 +47,7 @@ interface EditorContextMenuProps {
   position: { x: number; y: number } | null;
   hasSelection: boolean;
   onClose: () => void;
+  onOpenLinkModal?: () => void;
 }
 
 /** 高亮颜色选项 */
@@ -66,6 +67,7 @@ export function EditorContextMenu({
   position,
   hasSelection,
   onClose,
+  onOpenLinkModal,
 }: EditorContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   // 二级子菜单容器引用，防止全局 mousedown 误判为点击外部而关闭
@@ -256,18 +258,23 @@ export function EditorContextMenu({
               <ChevronRight size={14} style={{ opacity: 0.6 }} />
             </button>
 
+            {/* ── 超链接 ── */}
             <button
               type="button"
               style={btnStyle}
               onClick={() => {
                 onClose();
-                const previousUrl = editor.getAttributes('link').href || '';
-                const url = window.prompt('输入链接地址 URL:', previousUrl);
-                if (url === null) return;
-                if (url === '') {
-                  editor.chain().focus().unsetLink().run();
+                if (onOpenLinkModal) {
+                  onOpenLinkModal();
                 } else {
-                  editor.chain().focus().setLink({ href: url }).run();
+                  const previousUrl = editor.getAttributes('link').href || '';
+                  const url = window.prompt('输入链接地址 URL:', previousUrl);
+                  if (url === null) return;
+                  if (url === '') {
+                    editor.chain().focus().unsetLink().run();
+                  } else {
+                    editor.chain().focus().setLink({ href: url }).run();
+                  }
                 }
               }}
               onMouseEnter={(e) => {
