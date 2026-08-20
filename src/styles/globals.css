@@ -738,13 +738,87 @@ body {
   }
 }
 
-/* 标题 */
+/* 标题基础排版与相对定位（为左侧 Gutter 标题级别标识提供定位锚点） */
+.ProseMirror h1,
+.ProseMirror h2,
+.ProseMirror h3,
+.ProseMirror h4,
+.ProseMirror h5,
+.ProseMirror h6 {
+  position: relative;
+}
 .ProseMirror h1 { font-size: 1.75em; font-weight: 600; line-height: 1.25; margin: 24px 0 16px; color: var(--editor-heading); padding-bottom: .3em; border-bottom: 1px solid var(--editor-border); }
 .ProseMirror h2 { font-size: 1.55em; font-weight: 600; line-height: 1.25; margin: 24px 0 16px; color: var(--editor-heading); padding-bottom: .3em; border-bottom: 1px solid var(--editor-border); }
 .ProseMirror h3 { font-size: 1.38em; font-weight: 600; line-height: 1.25; margin: 24px 0 16px; color: var(--editor-heading); }
 .ProseMirror h4 { font-size: 1.25em; font-weight: 600; line-height: 1.25; margin: 24px 0 16px; color: var(--editor-heading); }
 .ProseMirror h5 { font-size: 1.13em; font-weight: 600; line-height: 1.25; margin: 24px 0 16px; color: var(--editor-heading); }
 .ProseMirror h6 { font-size: 1em; font-weight: 600; line-height: 1.25; margin: 24px 0 16px; color: var(--editor-heading); }
+
+/* 标题左侧装订线级别标签（H1 ~ H6），小巧优雅、自适应主题 */
+.ProseMirror h1::before,
+.ProseMirror h2::before,
+.ProseMirror h3::before,
+.ProseMirror h4::before,
+.ProseMirror h5::before,
+.ProseMirror h6::before {
+  position: absolute;
+  left: -44px;
+  top: 0.28em;
+  width: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  font-family: var(--mono-font-family, 'JetBrains Mono', 'Consolas', monospace);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  line-height: 1;
+  color: var(--editor-text-muted);
+  opacity: 0.55;
+  user-select: none;
+  pointer-events: none;
+  transition:
+    opacity var(--transition-fast, 150ms ease),
+    color var(--transition-fast, 150ms ease),
+    transform var(--transition-fast, 150ms ease);
+}
+
+.ProseMirror h1::before { content: "H1"; }
+.ProseMirror h2::before { content: "H2"; }
+.ProseMirror h3::before { content: "H3"; }
+.ProseMirror h4::before { content: "H4"; }
+.ProseMirror h5::before { content: "H5"; }
+.ProseMirror h6::before { content: "H6"; }
+
+/* 鼠标悬停与光标聚焦于标题时，标题级别标签高亮并平滑轻移 */
+.ProseMirror h1:hover::before,
+.ProseMirror h2:hover::before,
+.ProseMirror h3:hover::before,
+.ProseMirror h4:hover::before,
+.ProseMirror h5:hover::before,
+.ProseMirror h6:hover::before,
+.ProseMirror h1:focus-within::before,
+.ProseMirror h2:focus-within::before,
+.ProseMirror h3:focus-within::before,
+.ProseMirror h4:focus-within::before,
+.ProseMirror h5:focus-within::before,
+.ProseMirror h6:focus-within::before {
+  opacity: 0.95;
+  color: var(--editor-accent);
+  transform: translateX(1px);
+}
+
+/* 打印与导出时隐藏标题级别标签 */
+@media print {
+  .ProseMirror h1::before,
+  .ProseMirror h2::before,
+  .ProseMirror h3::before,
+  .ProseMirror h4::before,
+  .ProseMirror h5::before,
+  .ProseMirror h6::before {
+    display: none !important;
+  }
+}
 
 /* 段落 */
 .ProseMirror p { margin-bottom: 16px; }
