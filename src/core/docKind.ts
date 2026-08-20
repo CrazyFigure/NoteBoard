@@ -26,6 +26,17 @@ export const LANGUAGE_BY_EXT: Record<string, LanguageId> = {
   excalidraw: 'plaintext',
   board: 'plaintext',
   canvas: 'plaintext',
+  mmd: 'mermaid',
+  mermaid: 'mermaid',
+  puml: 'plantuml',
+  plantuml: 'plantuml',
+  iuml: 'plantuml',
+  uml: 'plantuml',
+  drawio: 'xml',
+  dio: 'xml',
+  mindmap: 'json',
+  xmind: 'plaintext',
+  mm: 'plaintext',
 };
 
 /** 从路径提取扩展名（小写，无点） */
@@ -53,6 +64,8 @@ export function savePolicyOf(kind: DocumentKind): SavePolicy {
   switch (kind) {
     case 'markdown':
     case 'board':
+    case 'mindmap':
+    case 'drawio':
       return 'auto';
     case 'code':
     case 'image':

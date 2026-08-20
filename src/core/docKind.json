@@ -26,5 +26,16 @@
   "avif": "image",
   "apng": "image",
   "tif": "image",
-  "tiff": "image"
+  "tiff": "image",
+  "mindmap": "mindmap",
+  "xmind": "mindmap",
+  "mm": "mindmap",
+  "drawio": "drawio",
+  "dio": "drawio",
+  "mmd": "code",
+  "mermaid": "code",
+  "puml": "code",
+  "plantuml": "code",
+  "iuml": "code",
+  "uml": "code"
 }

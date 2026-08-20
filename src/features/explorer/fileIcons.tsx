@@ -24,6 +24,10 @@ import {
   Archive,
   Music,
   Video,
+  Network,
+  Workflow,
+  GitMerge,
+  Layout,
 } from 'lucide-react';
 import { extFromPath } from '../../core/docKind';
 
@@ -65,6 +69,29 @@ export function getExplorerFileIcon(
     case 'md':
     case 'markdown':
       return <FileText {...iconProps} color="var(--editor-accent, #3b82f6)" />;
+
+    // ── 思维导图与大纲（XMind / MindMap，活力珊瑚橙）──
+    case 'mindmap':
+    case 'xmind':
+    case 'mm':
+      return <Network {...iconProps} color="#f97316" />;
+
+    // ── Draw.io / 架构流程图（经典科技橙红）──
+    case 'drawio':
+    case 'dio':
+      return <Layout {...iconProps} color="#ea580c" />;
+
+    // ── Mermaid 流程与时序图表（现代青绿）──
+    case 'mmd':
+    case 'mermaid':
+      return <Workflow {...iconProps} color="#00bfb2" />;
+
+    // ── UML / PlantUML 建模图（优雅洋紫）──
+    case 'puml':
+    case 'plantuml':
+    case 'iuml':
+    case 'uml':
+      return <GitMerge {...iconProps} color="#a855f7" />;
 
     // ── 自由画板 / 白板（艺术品红与紫）──
     case 'board':

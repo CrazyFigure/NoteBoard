@@ -111,26 +111,34 @@ function getCurrentMermaidTheme(): 'default' | 'dark' | 'forest' {
   return isDark ? 'dark' : 'default';
 }
 
+import { Maximize2, Copy, Download, Check, Edit2, X, AlertCircle } from 'lucide-react';
+
 // ── React NodeView ──
 
 function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const [inViewport, setInViewport] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [zoom, setZoom] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
   const renderTokenRef = useRef<number>(0);
 
   const code = node.attrs.code || '';
 
   const doRender = useCallback(async (currentCode: string) => {
-    if (!currentCode) {
+    if (!currentCode.trim()) {
       setSvg(null);
+      setError(null);
       return;
     }
 
     const token = ++renderTokenRef.current;
+    setLoading(true);
     setError(null);
 
     try {
@@ -141,6 +149,10 @@ function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
     } catch (e) {
       if (token !== renderTokenRef.current) return;
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (token === renderTokenRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -172,92 +184,461 @@ function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
     return () => observer.disconnect();
   }, [inViewport, code, doRender]);
 
+  // 复制 SVG 或源码
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (svg) {
+      navigator.clipboard.writeText(svg).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      });
+    } else {
+      navigator.clipboard.writeText(code).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      });
+    }
+  };
+
+  // 导出 SVG 文件
+  const handleExportSvg = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!svg) return;
+    const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `mermaid-${Date.now()}.svg`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (editing) {
     return (
-      <NodeViewWrapper as="div" style={{ display: 'block', margin: '8px 0' }}>
-        <textarea
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-          onBlur={() => {
-            updateAttributes({ code: editValue });
-            setEditing(false);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              e.preventDefault();
-              setEditing(false);
-            }
-          }}
+      <NodeViewWrapper as="div" style={{ display: 'block', margin: '12px 0' }}>
+        <div
           style={{
-            width: '100%',
-            minHeight: 120,
-            padding: '8px 12px',
-            fontFamily: 'var(--mono-font-family)',
-            fontSize: 'var(--mono-font-size)',
-            border: '1px solid var(--editor-accent)',
-            borderRadius: 'var(--radius-md)',
-            background: 'var(--editor-surface)',
-            color: 'var(--editor-text)',
-            resize: 'vertical',
-            outline: 'none',
+            border: '1px solid var(--editor-accent, #3b82f6)',
+            borderRadius: 'var(--radius-md, 8px)',
+            background: 'var(--editor-surface, #ffffff)',
+            overflow: 'hidden',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
           }}
-        />
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '6px 12px',
+              background: 'var(--editor-bg, #f8fafc)',
+              borderBottom: '1px solid var(--editor-border, #e2e8f0)',
+              fontSize: 12,
+              fontWeight: 500,
+              color: 'var(--editor-text-muted, #64748b)',
+            }}
+          >
+            <span>编辑 Mermaid 图表源码</span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  updateAttributes({ code: editValue });
+                  setEditing(false);
+                }}
+                style={{
+                  padding: '3px 10px',
+                  borderRadius: 4,
+                  background: 'var(--editor-accent, #3b82f6)',
+                  color: '#ffffff',
+                  border: 'none',
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                }}
+              >
+                完成
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                style={{
+                  padding: '3px 8px',
+                  borderRadius: 4,
+                  background: 'transparent',
+                  color: 'var(--editor-text-muted, #64748b)',
+                  border: '1px solid var(--editor-border, #e2e8f0)',
+                  fontSize: 12,
+                  cursor: 'pointer',
+                }}
+              >
+                取消
+              </button>
+            </div>
+          </div>
+          <textarea
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            placeholder="输入 Mermaid 语法，例如:&#10;graph TD&#10;    A[开始] --> B[结束]"
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setEditing(false);
+              }
+              if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                updateAttributes({ code: editValue });
+                setEditing(false);
+              }
+            }}
+            style={{
+              width: '100%',
+              minHeight: 140,
+              padding: '10px 14px',
+              fontFamily: 'var(--mono-font-family, monospace)',
+              fontSize: 'var(--mono-font-size, 13px)',
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--editor-text, #1e293b)',
+              resize: 'vertical',
+              outline: 'none',
+              lineHeight: 1.5,
+            }}
+          />
+        </div>
       </NodeViewWrapper>
     );
   }
 
   return (
-    <NodeViewWrapper as="div" style={{ display: 'block', margin: '8px 0' }} selected={selected}>
+    <NodeViewWrapper as="div" style={{ display: 'block', margin: '12px 0' }} selected={selected}>
       <div
         ref={containerRef}
-        onDoubleClick={() => {
-          setEditValue(code);
-          setEditing(true);
-        }}
+        className="nb-diagram-container"
         style={{
+          position: 'relative',
           minHeight: 60,
-          padding: '12px',
-          border: '1px solid var(--editor-border)',
-          borderRadius: 'var(--radius-md)',
-          background: 'var(--editor-surface)',
-          cursor: 'pointer',
+          border: '1px solid var(--editor-border, #e2e8f0)',
+          borderRadius: 'var(--radius-md, 8px)',
+          background: 'var(--editor-surface, #ffffff)',
+          overflow: 'hidden',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          overflow: 'auto',
+          flexDirection: 'column',
         }}
         contentEditable={false}
       >
-        {!inViewport && code && (
-          <div style={{ color: 'var(--editor-text-muted)', fontSize: 13 }}>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <span>📊</span>
-              <span>Mermaid 图表（滚动到视口时渲染）</span>
-            </div>
+        {/* 顶部轻量浮动操作栏 */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '4px 10px',
+            borderBottom: '1px solid var(--editor-border, #e2e8f0)',
+            background: 'var(--editor-bg, #f8fafc)',
+            fontSize: 11,
+            color: 'var(--editor-text-muted, #64748b)',
+            userSelect: 'none',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontWeight: 600, color: 'var(--editor-accent, #3b82f6)' }}>Mermaid</span>
+            {loading && <span>渲染中…</span>}
           </div>
-        )}
-        {inViewport && !svg && !error && code && (
-          <div style={{ color: 'var(--editor-text-muted)', fontSize: 13 }}>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button
+              type="button"
+              onClick={() => {
+                setEditValue(code);
+                setEditing(true);
+              }}
+              title="编辑图表源码"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '3px 6px',
+                borderRadius: 4,
+                color: 'var(--editor-text-muted, #64748b)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                fontSize: 11,
+              }}
+            >
+              <Edit2 size={12} />
+              <span>编辑</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleCopy}
+              title="复制 SVG 矢量代码"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '3px 6px',
+                borderRadius: 4,
+                color: copied ? 'var(--success-600, #16a34a)' : 'var(--editor-text-muted, #64748b)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                fontSize: 11,
+              }}
+            >
+              {copied ? <Check size={12} /> : <Copy size={12} />}
+              <span>{copied ? '已复制' : '复制'}</span>
+            </button>
+            {svg && (
+              <button
+                type="button"
+                onClick={handleExportSvg}
+                title="导出 SVG 文件"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '3px 6px',
+                  borderRadius: 4,
+                  color: 'var(--editor-text-muted, #64748b)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  fontSize: 11,
+                }}
+              >
+                <Download size={12} />
+                <span>导出</span>
+              </button>
+            )}
+            {svg && (
+              <button
+                type="button"
+                onClick={() => setFullscreen(true)}
+                title="全屏放大查看"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '3px 6px',
+                  borderRadius: 4,
+                  color: 'var(--editor-text-muted, #64748b)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  fontSize: 11,
+                }}
+              >
+                <Maximize2 size={12} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 内容展示区 */}
+        <div
+          onDoubleClick={() => {
+            setEditValue(code);
+            setEditing(true);
+          }}
+          style={{
+            padding: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'auto',
+            cursor: 'pointer',
+            minHeight: 80,
+          }}
+        >
+          {!inViewport && code && (
+            <div style={{ color: 'var(--editor-text-muted, #64748b)', fontSize: 13 }}>
+              <span>📊 Mermaid 图表（滚动到视口时渲染）</span>
+            </div>
+          )}
+
+          {inViewport && loading && !svg && (
+            <div style={{ color: 'var(--editor-text-muted, #64748b)', fontSize: 13 }}>
               <span>渲染中…</span>
             </div>
-          </div>
-        )}
-        {error && (
-          <div style={{ fontSize: 12, color: 'var(--error-500)' }}>
-            <div>⚠ 渲染失败: {error}</div>
-            <pre style={{ marginTop: 8, padding: 8, background: 'var(--cm-gutter-background)', borderRadius: 4, overflow: 'auto', fontSize: 11, color: 'var(--editor-text-muted)' }}>{code}</pre>
-          </div>
-        )}
-        {svg && (
-          <div dangerouslySetInnerHTML={{ __html: svg }} />
-        )}
-        {!code && (
-          <span style={{ color: 'var(--editor-text-muted)', fontStyle: 'italic' }}>
-            空图表（双击编辑）
-          </span>
-        )}
+          )}
+
+          {error && (
+            <div style={{ fontSize: 12, color: '#ef4444', textAlign: 'center', width: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 8 }}>
+                <AlertCircle size={15} />
+                <span>{error}</span>
+              </div>
+              <pre
+                style={{
+                  padding: 8,
+                  background: 'var(--editor-bg, #f1f5f9)',
+                  borderRadius: 4,
+                  overflow: 'auto',
+                  fontSize: 11,
+                  color: 'var(--editor-text-muted, #64748b)',
+                  textAlign: 'left',
+                }}
+              >
+                {code}
+              </pre>
+            </div>
+          )}
+
+          {svg && (
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                maxWidth: '100%',
+                overflowX: 'auto',
+              }}
+              dangerouslySetInnerHTML={{ __html: svg }}
+            />
+          )}
+
+          {!code && (
+            <span style={{ color: 'var(--editor-text-muted, #64748b)', fontStyle: 'italic', fontSize: 13 }}>
+              空 Mermaid 图表（双击或点击编辑输入内容）
+            </span>
+          )}
+        </div>
       </div>
+
+      {/* 全屏模态弹窗 */}
+      {fullscreen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 99999,
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+          onClick={() => setFullscreen(false)}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '12px 20px',
+              background: 'var(--editor-surface, #ffffff)',
+              borderBottom: '1px solid var(--editor-border, #e2e8f0)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span style={{ fontWeight: 600, color: 'var(--editor-text, #1e293b)' }}>Mermaid 图表预览</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => setZoom((z) => Math.max(0.2, z - 0.2))}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: 4,
+                    border: '1px solid var(--editor-border, #e2e8f0)',
+                    background: 'var(--editor-bg, #f8fafc)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  -
+                </button>
+                <span style={{ fontSize: 12, minWidth: 44, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
+                <button
+                  type="button"
+                  onClick={() => setZoom((z) => Math.min(3, z + 0.2))}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: 4,
+                    border: '1px solid var(--editor-border, #e2e8f0)',
+                    background: 'var(--editor-bg, #f8fafc)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  +
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setZoom(1)}
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: 4,
+                    border: '1px solid var(--editor-border, #e2e8f0)',
+                    background: 'var(--editor-bg, #f8fafc)',
+                    cursor: 'pointer',
+                    fontSize: 12,
+                  }}
+                >
+                  重置
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={handleExportSvg}
+                style={{
+                  padding: '4px 12px',
+                  borderRadius: 4,
+                  background: 'var(--editor-accent, #3b82f6)',
+                  color: '#ffffff',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <Download size={13} />
+                <span>导出 SVG</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFullscreen(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 4,
+                  color: 'var(--editor-text-muted, #64748b)',
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+          </div>
+          <div
+            style={{
+              flex: 1,
+              overflow: 'auto',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 40,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {svg && (
+              <div
+                style={{
+                  transform: `scale(${zoom})`,
+                  transformOrigin: 'center center',
+                  transition: 'transform 0.15s ease',
+                  background: 'var(--editor-surface, #ffffff)',
+                  padding: 24,
+                  borderRadius: 8,
+                  boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
+                }}
+                dangerouslySetInnerHTML={{ __html: svg }}
+              />
+            )}
+          </div>
+        </div>
+      )}
     </NodeViewWrapper>
   );
 }
