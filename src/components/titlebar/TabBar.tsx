@@ -493,6 +493,8 @@ export function TabBar() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [newMenuPos, setNewMenuPos] = useState<{ x: number; y: number } | null>(null);
   const newMenuRef = useRef<HTMLDivElement>(null);
+  // 新建按钮引用，用于菜单点击外部区域判断
+  const newBtnRef = useRef<HTMLButtonElement>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -501,7 +503,12 @@ export function TabBar() {
   useEffect(() => {
     if (!newMenuPos) return;
     const handleDown = (e: MouseEvent) => {
-      if (newMenuRef.current && !newMenuRef.current.contains(e.target as Node)) {
+      // 点击菜单及加号按钮外部时关闭菜单
+      if (
+        newMenuRef.current &&
+        !newMenuRef.current.contains(e.target as Node) &&
+        !newBtnRef.current?.contains(e.target as Node)
+      ) {
         setNewMenuPos(null);
       }
     };
@@ -597,12 +604,25 @@ export function TabBar() {
 
       {/* 新建标签按钮（+） */}
       <button
+        ref={newBtnRef}
         type="button"
         style={newBtnStyle}
-        onClick={() => newMarkdown()}
+        onClick={(e) => {
+          e.stopPropagation();
+          // 单击加号按钮切换弹出/关闭菜单
+          if (newMenuPos) {
+            setNewMenuPos(null);
+          } else {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const menuWidth = 180;
+            const x = Math.min(rect.left, window.innerWidth - menuWidth - 8);
+            setNewMenuPos({ x, y: rect.bottom + 4 });
+          }
+        }}
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
+          // 右键加号按钮弹出菜单
           setNewMenuPos({ x: e.clientX, y: e.clientY });
         }}
         onMouseEnter={(e) => {
@@ -625,8 +645,8 @@ export function TabBar() {
           e.currentTarget.style.background = 'var(--toolbar-hover)';
           e.currentTarget.style.transform = 'scale(1.08)';
         }}
-        title="新建 Markdown 笔记 (Ctrl+N) · 右键更多"
-        aria-label="新建标签页"
+        title="新建或打开 (Ctrl+N)"
+        aria-label="新建或打开"
       >
         <Plus size={16} />
       </button>
