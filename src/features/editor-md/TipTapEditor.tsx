@@ -29,6 +29,8 @@ import { useWindowStore } from '../../stores/windowStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import * as ipc from '../../core/ipc/commands';
 import { registerShortcut } from '../../core/shortcuts';
+import { on, off, emit } from '../../core/emitter';
+import { MarkdownModeToggle } from './MarkdownModeToggle';
 import { EditorBubbleMenu, TableToolbar } from './bubbleMenu';
 import { BlockDragHandle } from './blockDragHandle';
 import { ExternalChangeBanner } from './ExternalChangeBanner';
@@ -356,49 +358,85 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     }
   }, [editor, docKey, settings.editor.defaultViewMode, initSourceEditor]);
 
-  // 切换可视化 / 源码模式
-  const toggleViewMode = useCallback(() => {
+  // 切换可视化 / 源码模式（可指定目标模式 targetMode，只影响当前活动文档）
+  const toggleViewMode = useCallback((targetMode?: 'visual' | 'source') => {
     if (!editor) return;
 
-    if (viewMode === 'visual') {
-      // visual → source
+    const nextMode = targetMode ?? (viewMode === 'visual' ? 'source' : 'visual');
+    if (nextMode === viewMode) return;
+
+    if (nextMode === 'source') {
+      // 可视化 → 源码模式
       const md = serializeMarkdown(editor);
       useDocumentStore.getState().setContent(docKey, md);
       initSourceEditor(md);
       setViewMode('source');
       useWindowStore.getState().setTabViewMode(docKey, 'source');
+      emit('view-mode-changed', { key: docKey, mode: 'source' });
       setTimeout(() => {
         sourceViewRef.current?.focus();
         sourceViewRef.current?.requestMeasure();
       }, 20);
     } else {
-      // source → visual
-      if (sourceViewRef.current) {
-        const md = sourceViewRef.current.state.doc.toString();
-        isInitializingRef.current = true;
-        parseMarkdown(editor, md);
-        setTimeout(() => {
-          isInitializingRef.current = false;
-        }, 50);
+      // 源码 → 可视化模式
+      const md = sourceViewRef.current
+        ? sourceViewRef.current.state.doc.toString()
+        : (useDocumentStore.getState().getDocument(docKey)?.content ?? '');
+      isInitializingRef.current = true;
+      parseMarkdown(editor, md);
+      setTimeout(() => {
+        isInitializingRef.current = false;
+      }, 50);
 
-        // 不变式 I-14 检查：切回 visual 后内容是否与基线一致
-        const baseline = getBaseline(docKey);
-        const serialized = serializeMarkdown(editor);
-        if (baseline.isClean(serialized)) {
-          // 不脏
-          useDocumentStore.getState().setDirty(docKey, false);
-          useWindowStore.getState().setTabDirty(docKey, false);
-        } else {
-          useDocumentStore.getState().setContent(docKey, serialized);
-        }
+      // 不变式 I-14 检查：切回 visual 后内容是否与基线一致
+      const baseline = getBaseline(docKey);
+      const serialized = serializeMarkdown(editor);
+      if (baseline.isClean(serialized)) {
+        // 内容未变，保持非脏态
+        useDocumentStore.getState().setDirty(docKey, false);
+        useWindowStore.getState().setTabDirty(docKey, false);
+      } else {
+        useDocumentStore.getState().setContent(docKey, serialized);
       }
       setViewMode('visual');
       useWindowStore.getState().setTabViewMode(docKey, 'visual');
+      emit('view-mode-changed', { key: docKey, mode: 'visual' });
       setTimeout(() => {
         editor.commands.focus();
       }, 20);
     }
   }, [editor, viewMode, docKey, initSourceEditor]);
+
+  // 监听来自状态栏或外部的模式切换请求
+  useEffect(() => {
+    const handleToggle = (payload: { key?: string; mode?: 'visual' | 'source' }) => {
+      if (!payload.key || payload.key === docKey) {
+        toggleViewMode(payload.mode);
+      }
+    };
+    on('toggle-md-view-mode', handleToggle);
+    return () => {
+      off('toggle-md-view-mode', handleToggle);
+    };
+  }, [docKey, toggleViewMode]);
+
+  // 注册当前 Markdown 文档专用的 Ctrl+/ 模式切换快捷键
+  useEffect(() => {
+    const unreg = registerShortcut({
+      key: 'Ctrl+/',
+      action: () => {
+        const activeKey = useWindowStore.getState().activeKey;
+        if (activeKey === docKey) {
+          toggleViewMode();
+        }
+      },
+      scope: 'global',
+      description: '切换 Markdown 可视化 / 源码模式',
+    });
+    return () => {
+      unreg();
+    };
+  }, [docKey, toggleViewMode]);
 
   // 组件卸载时清理（注意：不要删除基线，以便切回 Tab 时仍能保持正确的脏态判定）
   useEffect(() => {
@@ -554,6 +592,9 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
           }}
         />
       </div>
+
+      {/* 底部左侧模式切换器：可视化 / 源码模式，具备热区靠近唤出与 Hover、Active 状态反馈，仅对当前文档生效 */}
+      <MarkdownModeToggle viewMode={viewMode} onToggle={toggleViewMode} />
     </div>
   );
 }
