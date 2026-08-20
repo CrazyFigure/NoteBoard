@@ -1,6 +1,8 @@
 // NoteBoard 文档级统一撤销/重做历史
 // 历史归属于文件而非具体编辑器内核，保证 Markdown 可视化、源码和代码编辑模式共享同一条时间线
 
+import { useState, useEffect } from 'react';
+
 /** 单条历史所在的编辑模式，用于尽可能恢复同内核的光标位置 */
 export type DocumentHistoryMode = 'visual' | 'source' | 'code' | 'board';
 
@@ -61,6 +63,54 @@ const MAX_HISTORY_ENTRIES = 201;
 const histories = new Map<string, DocumentHistoryState>();
 const adapters = new Map<string, DocumentHistoryAdapter>();
 
+// ── 历史变更响应式订阅机制 ──
+
+type HistoryChangeListener = (
+  docKey: string,
+  availability: { canUndo: boolean; canRedo: boolean },
+) => void;
+
+const historyListeners = new Set<HistoryChangeListener>();
+
+/** 订阅文档历史可用性变更 */
+export function subscribeDocumentHistory(listener: HistoryChangeListener): () => void {
+  historyListeners.add(listener);
+  return () => {
+    historyListeners.delete(listener);
+  };
+}
+
+/** 通知所有订阅者当前文档的撤销/重做可用状态 */
+function notifyHistoryChange(docKey: string): void {
+  const availability = getDocumentHistoryAvailability(docKey);
+  for (const listener of historyListeners) {
+    try {
+      listener(docKey, availability);
+    } catch (e) {
+      console.error('历史监听器执行异常:', e);
+    }
+  }
+}
+
+/** React Hook: 实时响应当前文档的撤销/重做可用状态 */
+export function useDocumentHistory(docKey: string): {
+  canUndo: boolean;
+  canRedo: boolean;
+} {
+  const [availability, setAvailability] = useState(() => getDocumentHistoryAvailability(docKey));
+
+  useEffect(() => {
+    setAvailability(getDocumentHistoryAvailability(docKey));
+    return subscribeDocumentHistory((changedKey, newAvail) => {
+      if (changedKey === docKey) {
+        setAvailability(newAvail);
+      }
+    });
+  }, [docKey]);
+
+  return availability;
+}
+
 /** 创建新的文档历史状态 */
 function createHistory(content: string, mode: DocumentHistoryMode): DocumentHistoryState {
   return {
@@ -83,9 +133,11 @@ export function initializeDocumentHistory(
 ): void {
   const existing = histories.get(docKey);
   if (existing?.entries[existing.index]?.content === content) {
+    notifyHistoryChange(docKey);
     return;
   }
   histories.set(docKey, createHistory(content, mode));
+  notifyHistoryChange(docKey);
 }
 
 /** 注册当前挂载编辑器的历史快照应用器 */
@@ -206,6 +258,7 @@ export function recordDocumentChange(
   }
   state.lastEditMode = options.mode;
   state.forceNextGroup = false;
+  notifyHistoryChange(docKey);
 }
 
 /** 计算前后文本第一个不同字符的位置，作为跨编辑器内核都能理解的导航坐标 */
@@ -246,6 +299,7 @@ function moveHistory(docKey: string, offset: -1 | 1): boolean {
     adapter.applyEntry(nextEntry, navigation);
     state.forceNextGroup = true;
     state.lastEditMode = null;
+    notifyHistoryChange(docKey);
     return true;
   } catch (error) {
     state.index = previousIndex;
@@ -279,6 +333,8 @@ export function moveDocumentHistory(originalKey: string, nextKey: string): void 
   if (state) {
     histories.delete(originalKey);
     histories.set(nextKey, state);
+    notifyHistoryChange(originalKey);
+    notifyHistoryChange(nextKey);
   }
 }
 
@@ -286,10 +342,18 @@ export function moveDocumentHistory(originalKey: string, nextKey: string): void 
 export function clearDocumentHistory(docKey: string): void {
   histories.delete(docKey);
   adapters.delete(docKey);
+  notifyHistoryChange(docKey);
 }
 
 /** 测试及窗口整体清理使用：释放全部文档历史 */
 export function clearAllDocumentHistories(): void {
   histories.clear();
   adapters.clear();
+  for (const listener of historyListeners) {
+    try {
+      listener('', { canUndo: false, canRedo: false });
+    } catch {
+      // 忽略清理异常
+    }
+  }
 }

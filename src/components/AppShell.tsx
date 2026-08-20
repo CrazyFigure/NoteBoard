@@ -30,6 +30,7 @@ import { OutlinePanel } from '../features/outline/OutlinePanel';
 import { UnsavedGuardDialog } from '../features/editor-code/UnsavedGuardDialog';
 import { Explorer } from '../features/explorer/Explorer';
 import { SearchReplaceBar } from '../features/search/SearchReplaceBar';
+import { EditorToolbar } from '../features/toolbar/EditorToolbar';
 import { useSearchStore } from '../stores/searchStore';
 import { getSelectedText } from '../features/search/searchController';
 import { getEditorView } from '../features/editor-code/CodeEditor';
@@ -436,6 +437,14 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                   flexDirection: 'column',
                 }}
               >
+                {/* 顶部操作栏（针对 Markdown 与代码/纯文本格式，支持多级菜单与收起/悬浮恢复） */}
+                {tabs.length > 0 && activeTab && (
+                  <EditorToolbar
+                    activeTab={activeTab}
+                    activeEditor={activeEditor}
+                  />
+                )}
+
                 {tabs.length === 0 ? (
                   <WelcomeScreen
                     onOpenFile={openFileDialog}

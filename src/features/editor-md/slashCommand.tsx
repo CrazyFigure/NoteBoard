@@ -536,6 +536,8 @@ function SlashMenu({
   // 焦点是否位于悬展二级子菜单内部
   const [isFocusInSubmenu, setIsFocusInSubmenu] = useState(false);
   const [subSelectedIndex, setSubSelectedIndex] = useState(0);
+  // 二级子菜单是否因右侧空间不足而向左翻转
+  const [flipSubmenuLeft, setFlipSubmenuLeft] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -551,6 +553,14 @@ function SlashMenu({
 
   // 获取当前悬展的分组对象
   const activeGroup = ROOT_GROUPS.find((g) => g.id === hoveredGroupId);
+
+  // 检测二级子菜单是否需要向左侧展开
+  useEffect(() => {
+    if (!containerRef.current || !activeGroup) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const spaceRight = window.innerWidth - rect.right;
+    setFlipSubmenuLeft(spaceRight < 280);
+  }, [activeGroup]);
 
   // query 变化时重置
   useEffect(() => {
@@ -879,7 +889,9 @@ function SlashMenu({
           style={{
             position: 'absolute',
             top: 0,
-            left: 'calc(100% + 6px)',
+            ...(flipSubmenuLeft
+              ? { right: 'calc(100% + 6px)' }
+              : { left: 'calc(100% + 6px)' }),
             width: 270,
             maxHeight: 370,
             background: 'var(--editor-surface, #ffffff)',
@@ -1020,6 +1032,54 @@ export const slashSuggestion = {
     let component: ReactRenderer | null = null;
     let popup: HTMLElement | null = null;
 
+    // 精确计算斜杠菜单弹出位置，自动避开底部状态栏与顶部工具栏
+    const updatePosition = (props: SuggestionProps) => {
+      if (!props.clientRect || !popup) return;
+      const rect = props.clientRect();
+      if (!rect) return;
+
+      const menuWidth = 300;
+      const submenuWidth = 270;
+      const totalWidth = menuWidth + 6 + submenuWidth; // ~576px
+      const menuHeight = 370;
+      const statusbarHeight = 36;
+      const topbarHeight = 40;
+      const windowWidth = window.innerWidth;
+      const windowHeight = window.innerHeight;
+
+      // 1. 水平位置计算：优先跟随光标，若右侧空间不足则向左移动，确保二级子菜单完整显示
+      let left = rect.left;
+      if (left + totalWidth > windowWidth - 16) {
+        left = Math.max(16, windowWidth - totalWidth - 16);
+      }
+      if (left < 16) {
+        left = 16;
+      }
+
+      // 2. 垂直位置计算：判断下方是否有足够空间（扣除底部状态栏高度）
+      const spaceBelow = windowHeight - statusbarHeight - rect.bottom - 8;
+      const spaceAbove = rect.top - topbarHeight - 8;
+
+      let top: number;
+      if (spaceBelow >= menuHeight) {
+        // 下方空间充足：在光标下方展开
+        top = rect.bottom + 8;
+      } else if (spaceAbove >= menuHeight) {
+        // 下方空间不足但上方空间充足：在光标上方展开
+        top = rect.top - 8 - menuHeight;
+      } else {
+        // 上下空间均紧张时，选择空间较大的一侧贴紧视口边缘
+        if (spaceBelow >= spaceAbove) {
+          top = Math.max(topbarHeight, windowHeight - statusbarHeight - menuHeight);
+        } else {
+          top = Math.max(topbarHeight, rect.top - 8 - menuHeight);
+        }
+      }
+
+      popup.style.top = `${Math.round(top)}px`;
+      popup.style.left = `${Math.round(left)}px`;
+    };
+
     return {
       onStart: (props: SuggestionProps) => {
         component = new ReactRenderer(SlashMenu, {
@@ -1031,13 +1091,7 @@ export const slashSuggestion = {
           popup = document.createElement('div');
           popup.style.position = 'fixed';
           popup.style.zIndex = '9999';
-          const rect = props.clientRect();
-          if (rect) {
-            popup.style.top = `${rect.bottom + 8}px`;
-            // 防止贴右屏幕边缘
-            const maxLeft = Math.min(rect.left, window.innerWidth - 600);
-            popup.style.left = `${Math.max(maxLeft, 10)}px`;
-          }
+          updatePosition(props);
           popup.appendChild(component.element);
           document.body.appendChild(popup);
         }
@@ -1045,12 +1099,7 @@ export const slashSuggestion = {
       onUpdate: (props: SuggestionProps) => {
         component?.updateProps(props);
         if (props.clientRect && popup) {
-          const rect = props.clientRect();
-          if (rect) {
-            popup.style.top = `${rect.bottom + 8}px`;
-            const maxLeft = Math.min(rect.left, window.innerWidth - 600);
-            popup.style.left = `${Math.max(maxLeft, 10)}px`;
-          }
+          updatePosition(props);
         }
       },
       onKeyDown: (props: { event: KeyboardEvent }) => {
