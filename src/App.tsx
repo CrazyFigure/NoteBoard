@@ -1,10 +1,12 @@
 import { useEffect } from 'react';
 import { AppShell } from './components/AppShell';
 import { SettingsModal } from './components/settings/SettingsModal';
+import { UpdateModal } from './components/UpdateModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useSettingsStore } from './stores/settingsStore';
 import { useLayoutStore } from './stores/layoutStore';
 import { useWindowStore } from './stores/windowStore';
+import { useUpdateStore } from './stores/updateStore';
 import { initShortcuts, registerShortcut } from './core/shortcuts';
 import { initWindow, startEventListeners, stopEventListeners, newEmptyWindow } from './features/window/windowManager';
 import {
@@ -18,9 +20,20 @@ export default function App() {
   const { init, initialized } = useSettingsStore();
   const { settingsModalVisible, setSettingsModalVisible, toggleSettingsModal } = useLayoutStore();
   const activeKey = useWindowStore((s) => s.activeKey);
+  const {
+    modalOpen: updateModalOpen,
+    closeModal: closeUpdateModal,
+    updateResult,
+    checkError,
+    checking: checkingUpdate,
+    checkForUpdates,
+    initAutoUpdateTimer,
+  } = useUpdateStore();
 
   useEffect(() => {
     init();
+    // 启动自动检测更新定时任务（启动 3 秒后首次检测，随后每 5 分钟轮询一次）
+    const stopAutoUpdate = initAutoUpdateTimer();
     const cleanup = initShortcuts();
     // 窗口握手 + 事件监听
     initWindow().then(() => {
@@ -84,6 +97,7 @@ export default function App() {
     });
 
     return () => {
+      stopAutoUpdate();
       cleanup();
       window.removeEventListener('contextmenu', handleContextMenu);
       window.removeEventListener('click', handleGlobalAnchorClick, true);
@@ -94,7 +108,7 @@ export default function App() {
       unregOpenFolder();
       unregNewMarkdown();
     };
-  }, [init]);
+  }, [init, initAutoUpdateTimer]);
 
   // Ctrl+Shift+S 另存为
   useEffect(() => {
@@ -139,6 +153,15 @@ export default function App() {
         <SettingsModal
           isOpen={settingsModalVisible}
           onClose={() => setSettingsModalVisible(false)}
+        />
+        {/* 全局更新模态弹窗（供标题栏与关于页面共享） */}
+        <UpdateModal
+          isOpen={updateModalOpen}
+          onClose={closeUpdateModal}
+          result={updateResult}
+          checkError={checkError}
+          checking={checkingUpdate}
+          onRecheck={() => checkForUpdates(false)}
         />
       </div>
     </ErrorBoundary>

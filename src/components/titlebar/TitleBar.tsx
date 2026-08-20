@@ -4,13 +4,17 @@
 
 import { useEffect } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Settings as SettingsIcon } from 'lucide-react';
+import { Settings as SettingsIcon, RefreshCw } from 'lucide-react';
 import { TabBar } from './TabBar';
 import { WindowControls } from './WindowControls';
+import { ThemeMenu } from './ThemeMenu';
 import { useLayoutStore } from '../../stores/layoutStore';
+import { useUpdateStore } from '../../stores/updateStore';
 
 export function TitleBar() {
   const toggleSettingsModal = useLayoutStore((s) => s.toggleSettingsModal);
+
+  const { hasUpdate, checking: checkingUpdate, checkForUpdates } = useUpdateStore();
 
   // 双击拖拽区 → toggleMaximize
   useEffect(() => {
@@ -92,6 +96,81 @@ export function TitleBar() {
           minWidth: 0,
         }}
       />
+
+      {/* 检测更新按钮（主动检测更新，有新版本时标上小红点） */}
+      <button
+        type="button"
+        onClick={() => checkForUpdates(false)}
+        style={{
+          width: 36,
+          height: 36,
+          position: 'relative',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          border: 'none',
+          background: 'transparent',
+          color: hasUpdate ? 'var(--accent-strong)' : 'var(--editor-text-secondary)',
+          cursor: checkingUpdate ? 'not-allowed' : 'pointer',
+          flexShrink: 0,
+          transition: 'all var(--transition-fast)',
+        }}
+        onMouseEnter={(e) => {
+          if (!checkingUpdate) {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.color = 'var(--editor-text)';
+            e.currentTarget.style.transform = 'scale(1.05)';
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!checkingUpdate) {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.color = hasUpdate
+              ? 'var(--accent-strong)'
+              : 'var(--editor-text-secondary)';
+            e.currentTarget.style.transform = 'scale(1)';
+          }
+        }}
+        onMouseDown={(e) => {
+          if (!checkingUpdate) {
+            e.currentTarget.style.background = 'var(--toolbar-active)';
+            e.currentTarget.style.transform = 'scale(0.92)';
+          }
+        }}
+        onMouseUp={(e) => {
+          if (!checkingUpdate) {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.transform = 'scale(1.05)';
+          }
+        }}
+        title={hasUpdate ? '发现新版本 NoteBoard (点击查看)' : '检测更新'}
+        aria-label="检测更新"
+      >
+        <RefreshCw
+          size={14}
+          className={checkingUpdate ? 'spin' : ''}
+          style={checkingUpdate ? { animation: 'spin 1s linear infinite' } : undefined}
+        />
+        {/* 新版本小红点提示 */}
+        {hasUpdate && (
+          <span
+            style={{
+              position: 'absolute',
+              top: 7,
+              right: 7,
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              background: '#ef4444',
+              boxShadow: '0 0 0 1.5px var(--titlebar-bg)',
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+      </button>
+
+      {/* 快捷主题切换菜单 */}
+      <ThemeMenu />
 
       {/* 设置中心按钮 */}
       <button

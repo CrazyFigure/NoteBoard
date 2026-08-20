@@ -1,10 +1,13 @@
 {
   "name": "noteboard",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Windows 桌面笔记 + 画板软件",
   "type": "module",
   "license": "GPL-3.0-only",
   "scripts": {
+    "sync:version": "node scripts/sync-version.mjs",
+    "predev": "node scripts/sync-version.mjs",
+    "prebuild": "node scripts/sync-version.mjs",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "tauri": "tauri",

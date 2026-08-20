@@ -2,39 +2,21 @@
 // 版本、GPL-3.0、第三方致谢、仓库链接、配置损坏告警位
 // 详见 docs/09-开发路线图.md 12.9
 
-import { useState } from 'react';
 import { RefreshCw, ExternalLink } from 'lucide-react';
 import { getRegisteredShortcuts } from '../../core/shortcuts';
 import * as ipc from '../../core/ipc/commands';
-import type { UpdateCheckResult } from '../../core/ipc/types';
-import { translateUpdateCheckError } from '../../core/updates';
-import { UpdateModal } from '../UpdateModal';
+import { useUpdateStore } from '../../stores/updateStore';
+import { APP_VERSION } from '../../core/version';
 
 export function AboutPanel() {
-  const [version] = useState('0.1.0');
   const shortcuts = getRegisteredShortcuts();
 
-  // 更新检测状态与弹窗控制
-  const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [updateModalOpen, setUpdateModalOpen] = useState(false);
-  const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
-  const [checkError, setCheckError] = useState<string | null>(null);
+  // 使用全局更新状态 Store
+  const { checking: checkingUpdate, checkForUpdates } = useUpdateStore();
 
-  // 执行检查更新逻辑
-  const handleCheckForUpdates = async () => {
-    try {
-      setCheckingUpdate(true);
-      setCheckError(null);
-      setUpdateResult(null);
-      setUpdateModalOpen(true);
-      const res = await ipc.checkForUpdates();
-      setUpdateResult(res);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setCheckError(translateUpdateCheckError(msg));
-    } finally {
-      setCheckingUpdate(false);
-    }
+  // 执行检查更新逻辑（主动检查）
+  const handleCheckForUpdates = () => {
+    checkForUpdates(false);
   };
 
   // 在系统默认浏览器打开 GitHub 仓库
@@ -80,7 +62,7 @@ export function AboutPanel() {
 
       <div style={sectionStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-          <span>版本: v{version}</span>
+          <span>版本: v{APP_VERSION}</span>
           <button
             type="button"
             disabled={checkingUpdate}
@@ -203,16 +185,6 @@ export function AboutPanel() {
           删除 settings.json 后重启应用可恢复默认设置。
         </p>
       </div>
-
-      {/* 更新弹窗 */}
-      <UpdateModal
-        isOpen={updateModalOpen}
-        onClose={() => setUpdateModalOpen(false)}
-        result={updateResult}
-        checkError={checkError}
-        checking={checkingUpdate}
-        onRecheck={handleCheckForUpdates}
-      />
     </div>
   );
 }

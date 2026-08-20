@@ -8,10 +8,10 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { THEMES } from '../../core/theme/themes';
 import { contentWidthToPercent, CONTENT_WIDTH_PERCENT_MAP } from '../../core/theme/applyTheme';
 import { FontSelect } from './FontSelect';
-import type { ThemeId, ThemeMode, ContentWidth, UpdateCheckResult } from '../../core/ipc/types';
+import type { ThemeId, ThemeMode, ContentWidth } from '../../core/ipc/types';
 import * as ipc from '../../core/ipc/commands';
-import { translateUpdateCheckError } from '../../core/updates';
-import { UpdateModal } from '../UpdateModal';
+import { useUpdateStore } from '../../stores/updateStore';
+import { APP_VERSION } from '../../core/version';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -24,27 +24,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('appearance');
   const { settings, resolvedTheme, setThemeMode, setTypography, setEditor, setFile } = useSettingsStore();
 
-  // 更新检测状态
-  const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [updateModalOpen, setUpdateModalOpen] = useState(false);
-  const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
-  const [checkError, setCheckError] = useState<string | null>(null);
+  // 使用全局更新状态 Store
+  const { checking: checkingUpdate, checkForUpdates } = useUpdateStore();
 
-  // 执行检查更新逻辑
-  const handleCheckForUpdates = async () => {
-    try {
-      setCheckingUpdate(true);
-      setCheckError(null);
-      setUpdateResult(null);
-      setUpdateModalOpen(true);
-      const res = await ipc.checkForUpdates();
-      setUpdateResult(res);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setCheckError(translateUpdateCheckError(msg));
-    } finally {
-      setCheckingUpdate(false);
-    }
+  // 执行检查更新逻辑（主动检查）
+  const handleCheckForUpdates = () => {
+    checkForUpdates(false);
   };
 
   // 在系统默认浏览器打开 GitHub 仓库
@@ -1202,7 +1187,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   采用 Rust Tauri v2 原生高性能底座与 TipTap / CodeMirror 6 / Excalidraw 多核驱动。
                 </p>
                 <div style={{ fontSize: 12, color: 'var(--editor-text-muted)' }}>
-                  版本 v0.1.0 · GPL-3.0 License
+                  版本 v{APP_VERSION} · GPL-3.0 License
                 </div>
 
                 {/* 快捷操作：检测更新与 GitHub 仓库 */}
@@ -1314,15 +1299,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         </div>
       </div>
 
-      {/* 更新弹窗 */}
-      <UpdateModal
-        isOpen={updateModalOpen}
-        onClose={() => setUpdateModalOpen(false)}
-        result={updateResult}
-        checkError={checkError}
-        checking={checkingUpdate}
-        onRecheck={handleCheckForUpdates}
-      />
     </div>
   );
 }
