@@ -530,6 +530,214 @@ body {
   outline: none;
 }
 
+/* Markdown 顶层块拖拽：把手、源块、落点和跟随提示共同表达当前移动状态 */
+.nb-block-drag-handle {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--editor-text-secondary);
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.45;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  -webkit-user-drag: none;
+  transition:
+    opacity var(--transition-fast, 150ms ease),
+    color var(--transition-fast, 150ms ease),
+    background var(--transition-fast, 150ms ease),
+    transform var(--transition-fast, 150ms ease),
+    box-shadow var(--transition-fast, 150ms ease);
+}
+
+.nb-block-drag-handle:hover,
+.nb-block-drag-handle.is-hovered {
+  color: var(--editor-text);
+  background: var(--editor-selection);
+  opacity: 1;
+  transform: scale(1.06);
+}
+
+.nb-block-drag-handle:active,
+.nb-block-drag-handle.is-dragging {
+  color: var(--editor-accent);
+  background: var(--editor-selection);
+  opacity: 1;
+  cursor: grabbing;
+  transform: scale(0.94);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--editor-accent) 36%, transparent);
+}
+
+/* 源块只做轻量浮起与弱化，不改变其布局尺寸，避免拖动时文档跳动。 */
+.ProseMirror > .nb-block-drag-source {
+  position: relative;
+  z-index: 1;
+  border-radius: var(--radius-sm, 4px);
+  opacity: 0.56;
+  transform: translateX(2px) scale(0.995);
+  transform-origin: center;
+  outline: 1px solid color-mix(in srgb, var(--editor-accent) 45%, transparent);
+  outline-offset: 4px;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--editor-accent) 12%, transparent);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease,
+    outline-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+/* 指针落在源块内部时立即切换为禁用态，明确提示不能形成自嵌套结构。 */
+.ProseMirror > .nb-block-drag-source.nb-block-drag-source-invalid {
+  opacity: 0.68;
+  outline-color: color-mix(in srgb, var(--error-500) 70%, transparent);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--error-500) 14%, transparent);
+}
+
+/* 合法落点指示线跨越正文宽度，端点脉冲帮助快速定位插入层级。 */
+.nb-block-drop-indicator {
+  position: absolute;
+  z-index: 32;
+  height: 2px;
+  border-radius: 999px;
+  pointer-events: none;
+  background: var(--editor-accent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--editor-accent) 20%, transparent),
+    0 3px 12px color-mix(in srgb, var(--editor-accent) 34%, transparent);
+  transition: top 90ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: nb-block-drop-pulse 1.1s ease-in-out infinite;
+}
+
+.nb-block-drop-indicator::before,
+.nb-block-drop-indicator::after {
+  position: absolute;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border: 2px solid var(--editor-bg);
+  border-radius: 50%;
+  background: var(--editor-accent);
+  content: '';
+  transform: translateY(-50%);
+}
+
+.nb-block-drop-indicator::before { left: -3px; }
+.nb-block-drop-indicator::after { right: -3px; }
+
+/* 指针旁的轻量信息卡同时说明正在移动的块类型与当前落点状态。 */
+.nb-block-drag-preview {
+  position: fixed;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 220px;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, var(--editor-accent) 38%, var(--editor-border));
+  border-radius: var(--radius-md, 6px);
+  background: color-mix(in srgb, var(--editor-surface) 92%, transparent);
+  color: var(--editor-text);
+  box-shadow: var(--shadow-lg, 0 10px 24px rgba(0, 0, 0, 0.16));
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+  animation: nb-block-preview-in 120ms ease-out both;
+}
+
+.nb-block-drag-preview.is-invalid {
+  border-color: color-mix(in srgb, var(--error-500) 52%, var(--editor-border));
+}
+
+.nb-block-drag-preview-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--editor-selection);
+  color: var(--editor-accent);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.nb-block-drag-preview.is-invalid .nb-block-drag-preview-icon {
+  background: color-mix(in srgb, var(--error-500) 13%, transparent);
+  color: var(--error-500);
+}
+
+.nb-block-drag-preview-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.nb-block-drag-preview-copy strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nb-block-drag-preview-copy span {
+  color: var(--editor-text-secondary);
+  font-size: 11px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+/* 移动成功后仅播放一次落位强调，不长期污染 ProseMirror 节点样式。 */
+.ProseMirror > .nb-block-drag-settle {
+  animation: nb-block-drag-settle 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes nb-block-drop-pulse {
+  0%, 100% { opacity: 0.72; }
+  50% { opacity: 1; }
+}
+
+@keyframes nb-block-preview-in {
+  from { opacity: 0; transform: translateY(-3px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes nb-block-drag-settle {
+  0% {
+    background: color-mix(in srgb, var(--editor-accent) 16%, transparent);
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--editor-accent) 10%, transparent);
+  }
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nb-block-drag-handle,
+  .ProseMirror > .nb-block-drag-source,
+  .nb-block-drop-indicator {
+    transition: none;
+  }
+
+  .nb-block-drop-indicator,
+  .nb-block-drag-preview,
+  .ProseMirror > .nb-block-drag-settle {
+    animation: none;
+  }
+}
+
 /* 标题 */
 .ProseMirror h1 { font-size: 1.75em; font-weight: 600; line-height: 1.25; margin: 24px 0 16px; color: var(--editor-heading); padding-bottom: .3em; border-bottom: 1px solid var(--editor-border); }
 .ProseMirror h2 { font-size: 1.55em; font-weight: 600; line-height: 1.25; margin: 24px 0 16px; color: var(--editor-heading); padding-bottom: .3em; border-bottom: 1px solid var(--editor-border); }
