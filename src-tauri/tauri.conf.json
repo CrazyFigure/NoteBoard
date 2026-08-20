@@ -1,16 +1,14 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "NoteBoard",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "identifier": "com.crazyfigure.noteboard",
-
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "pnpm dev",
     "beforeBuildCommand": "pnpm build"
   },
-
   "app": {
     "withGlobalTauri": false,
     "windows": [
@@ -33,14 +31,17 @@
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost https://asset.localhost data: blob:; font-src 'self' data:; connect-src 'none'; worker-src 'self' blob:",
       "assetProtocol": {
         "enable": true,
-        "scope": ["**"]
+        "scope": [
+          "**"
+        ]
       }
     }
   },
-
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -49,42 +50,69 @@
     ],
     "fileAssociations": [
       {
-        "ext": ["md", "markdown"],
+        "ext": [
+          "md",
+          "markdown"
+        ],
         "name": "NoteBoard.Markdown",
         "description": "NoteBoard Markdown 笔记"
       },
       {
-        "ext": ["txt"],
+        "ext": [
+          "txt"
+        ],
         "name": "NoteBoard.Text",
         "description": "NoteBoard 文本文件"
       },
       {
-        "ext": ["sql"],
+        "ext": [
+          "sql"
+        ],
         "name": "NoteBoard.Sql",
         "description": "NoteBoard SQL 文件"
       },
       {
-        "ext": ["json"],
+        "ext": [
+          "json"
+        ],
         "name": "NoteBoard.Json",
         "description": "NoteBoard JSON 文件"
       },
       {
-        "ext": ["yaml", "yml"],
+        "ext": [
+          "yaml",
+          "yml"
+        ],
         "name": "NoteBoard.Yaml",
         "description": "NoteBoard YAML 文件"
       },
       {
-        "ext": ["xml"],
+        "ext": [
+          "xml"
+        ],
         "name": "NoteBoard.Xml",
         "description": "NoteBoard XML 文件"
       },
       {
-        "ext": ["excalidraw", "board", "canvas"],
+        "ext": [
+          "excalidraw",
+          "board",
+          "canvas"
+        ],
         "name": "NoteBoard.Board",
         "description": "NoteBoard 画板"
       },
       {
-        "ext": ["png", "jpg", "jpeg", "gif", "webp", "ico", "svg", "bmp"],
+        "ext": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "ico",
+          "svg",
+          "bmp"
+        ],
         "name": "NoteBoard.Image",
         "description": "NoteBoard 图片"
       }
@@ -97,10 +125,12 @@
       "nsis": {
         "installerIcon": "icons/icon.ico",
         "installMode": "currentUser",
-        "languages": ["SimpChinese", "English"]
+        "languages": [
+          "SimpChinese",
+          "English"
+        ]
       }
     }
   },
-
   "plugins": {}
 }
