@@ -1,12 +1,11 @@
 // NoteBoard 幕布式大纲编辑器 (Outliner Mode)
-// 树形列表 + 拖拽把手整树拖拽排序 (支持 before / inside / after) + 键盘导航 + 状态反馈
+// 树形列表 + Pointer Events 丝滑整树拖拽换行重排序 + 目标行级零误差高亮指示线 + 键盘导航
 // 详见 docs/09-开发路线图.md
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import {
   ChevronRight,
   ChevronDown,
-  Circle,
   Plus,
   Trash2,
   GripVertical,
@@ -29,15 +28,28 @@ interface FlatItem {
   isExpanded: boolean;
 }
 
-type DropPosition = 'before' | 'inside' | 'after' | null;
+type DropPosition = 'before' | 'inside' | 'after';
+
+interface DragSession {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  sourceId: string;
+  sourceText: string;
+  isDragging: boolean;
+}
 
 export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
   const focusTargetIdRef = useRef<string | null>(null);
 
-  // 拖拽状态
-  const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<{ id: string; pos: DropPosition } | null>(null);
+  // Pointer Events 拖拽会话状态
+  const dragSessionRef = useRef<DragSession | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragPreview, setDragPreview] = useState<{ x: number; y: number; text: string } | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ targetId: string; pos: DropPosition } | null>(null);
 
   // 展平节点树（用于顺序键盘导航与渲染）
   const flatItems = React.useMemo(() => {
@@ -141,7 +153,6 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
 
     updateTree((cloned) => {
       if (!item.parent) {
-        // 在根节点下插入首个子节点
         if (!cloned.children) cloned.children = [];
         cloned.children.unshift(newNode);
         cloned.isExpanded = true;
@@ -241,72 +252,149 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
     });
   };
 
-  // 处理拖拽开始
-  const handleDragStart = (e: React.DragEvent, nodeId: string) => {
-    e.stopPropagation();
-    e.dataTransfer.setData('text/plain', nodeId);
-    e.dataTransfer.effectAllowed = 'move';
-    setDraggingNodeId(nodeId);
-  };
+  // ── Pointer Events 拖拽核心实现 ──
 
-  // 处理拖拽结束（无论放置成功与否，立即复位）
-  const handleDragEnd = () => {
-    setDraggingNodeId(null);
-    setDropTarget(null);
-  };
-
-  // 处理拖拽悬停计算放置位置
-  const handleDragOver = (e: React.DragEvent, item: FlatItem) => {
+  const handlePointerDownHandle = (e: React.PointerEvent, item: FlatItem) => {
+    if (e.button !== 0 || item.depth === 0) return;
     e.preventDefault();
     e.stopPropagation();
-    e.dataTransfer.dropEffect = 'move';
 
-    if (!draggingNodeId || isMindNodeDescendant(root, draggingNodeId, item.node.id)) {
-      return;
-    }
+    const handleEl = e.currentTarget as HTMLElement;
+    handleEl.setPointerCapture(e.pointerId);
 
-    const rect = e.currentTarget.getBoundingClientRect();
-    const offsetY = e.clientY - rect.top;
-    const height = rect.height;
-
-    let pos: DropPosition = 'after';
-    if (item.depth === 0) {
-      pos = 'inside';
-    } else if (offsetY < height * 0.3) {
-      pos = 'before';
-    } else if (offsetY > height * 0.7) {
-      pos = 'after';
-    } else {
-      pos = 'inside';
-    }
-
-    setDropTarget({ id: item.node.id, pos });
+    dragSessionRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      sourceId: item.node.id,
+      sourceText: item.node.text || '要点',
+      isDragging: false,
+    };
   };
 
-  // 拖拽放置执行节点与子树迁移
-  const handleDrop = (e: React.DragEvent, targetItem: FlatItem) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const sourceId = draggingNodeId || e.dataTransfer.getData('text/plain');
-    const pos = dropTarget?.pos || 'after';
+  const handlePointerMove = (e: React.PointerEvent) => {
+    const session = dragSessionRef.current;
+    if (!session) return;
 
-    setDraggingNodeId(null);
-    setDropTarget(null);
+    const deltaX = Math.abs(e.clientX - session.startX);
+    const deltaY = Math.abs(e.clientY - session.startY);
 
-    if (!sourceId || isMindNodeDescendant(root, sourceId, targetItem.node.id)) return;
+    // 位移超过 4px 正式进入拖拽态
+    if (!session.isDragging) {
+      if (deltaX > 4 || deltaY > 4) {
+        session.isDragging = true;
+        setIsDragging(true);
+        document.body.style.cursor = 'grabbing';
+      } else {
+        return;
+      }
+    }
 
-    updateTree((cloned) => {
-      const nextRoot = moveMindNode(cloned, sourceId, targetItem.node.id, pos);
-      cloned.text = nextRoot.text;
-      cloned.isExpanded = nextRoot.isExpanded;
-      cloned.children = nextRoot.children;
-      cloned.note = nextRoot.note;
-      cloned.color = nextRoot.color;
+    setDragPreview({
+      x: e.clientX + 16,
+      y: e.clientY + 16,
+      text: session.sourceText,
     });
+
+    // 动态基于各行真实高度与位置计算目标
+    let closestTarget: { targetId: string; pos: DropPosition } | null = null;
+    let minDistance = Infinity;
+
+    for (const item of flatItems) {
+      if (isMindNodeDescendant(root, session.sourceId, item.node.id)) {
+        continue;
+      }
+
+      const rowEl = rowRefs.current.get(item.node.id);
+      if (!rowEl) continue;
+
+      const rect = rowEl.getBoundingClientRect();
+      const rowCenterY = rect.top + rect.height / 2;
+      const dist = Math.abs(e.clientY - rowCenterY);
+
+      if (dist < minDistance && dist < Math.max(36, rect.height * 1.2)) {
+        minDistance = dist;
+        const offsetY = e.clientY - rect.top;
+        let pos: DropPosition = 'after';
+
+        if (item.depth === 0) {
+          pos = 'inside';
+        } else if (offsetY < rect.height * 0.35) {
+          pos = 'before';
+        } else if (offsetY > rect.height * 0.65) {
+          pos = 'after';
+        } else {
+          pos = 'inside';
+        }
+
+        closestTarget = {
+          targetId: item.node.id,
+          pos,
+        };
+      }
+    }
+
+    setDropTarget(closestTarget);
   };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    const session = dragSessionRef.current;
+    if (!session) return;
+
+    const sourceId = session.sourceId;
+    const currentDropTarget = dropTarget;
+
+    try {
+      const handleEl = e.currentTarget as HTMLElement;
+      if (handleEl.hasPointerCapture(session.pointerId)) {
+        handleEl.releasePointerCapture(session.pointerId);
+      }
+    } catch {
+      // ignore
+    }
+
+    dragSessionRef.current = null;
+    setIsDragging(false);
+    setDragPreview(null);
+    setDropTarget(null);
+    document.body.style.cursor = 'default';
+
+    if (session.isDragging && currentDropTarget) {
+      updateTree((cloned) => {
+        const nextRoot = moveMindNode(
+          cloned,
+          sourceId,
+          currentDropTarget.targetId,
+          currentDropTarget.pos,
+        );
+        cloned.text = nextRoot.text;
+        cloned.isExpanded = nextRoot.isExpanded;
+        cloned.children = nextRoot.children;
+        cloned.note = nextRoot.note;
+        cloned.color = nextRoot.color;
+      });
+    }
+  };
+
+  // 按 Esc 键随时取消拖拽
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && dragSessionRef.current) {
+        dragSessionRef.current = null;
+        setIsDragging(false);
+        setDragPreview(null);
+        setDropTarget(null);
+        document.body.style.cursor = 'default';
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
     <div
+      ref={containerRef}
+      onPointerMove={handlePointerMove}
       style={{
         width: '100%',
         height: '100%',
@@ -316,22 +404,25 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
         color: 'var(--editor-text, #1e293b)',
         fontFamily: 'var(--content-font-family, inherit)',
         boxSizing: 'border-box',
+        position: 'relative',
       }}
     >
-      <div style={{ maxWidth: 860, margin: '0 auto' }}>
+      <div style={{ maxWidth: 860, margin: '0 auto', position: 'relative' }}>
         {flatItems.map((item, idx) => {
           const isRoot = item.depth === 0;
           const paddingLeft = item.depth * 28;
-          const isTarget = dropTarget?.id === item.node.id;
+          const isTarget = dropTarget?.targetId === item.node.id;
           const dropPos = isTarget ? dropTarget?.pos : null;
-          const isCurrentDragging = draggingNodeId === item.node.id;
+          const isInsideTarget = isTarget && dropPos === 'inside';
 
           return (
             <div
               key={item.node.id}
+              ref={(el) => {
+                if (el) rowRefs.current.set(item.node.id, el);
+                else rowRefs.current.delete(item.node.id);
+              }}
               className="nb-outliner-row"
-              onDragOver={(e) => handleDragOver(e, item)}
-              onDrop={(e) => handleDrop(e, item)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -340,18 +431,76 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
                 position: 'relative',
                 transition: 'background 0.12s ease',
                 borderRadius: 6,
-                borderTop: dropPos === 'before' ? '2px solid var(--editor-accent, #3b82f6)' : '2px solid transparent',
-                borderBottom: dropPos === 'after' ? '2px solid var(--editor-accent, #3b82f6)' : '2px solid transparent',
-                background: dropPos === 'inside' ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
+                background: isInsideTarget ? 'rgba(59, 130, 246, 0.12)' : 'transparent',
               }}
             >
-              {/* 拖拽把手（仅在把手上触发 dragstart） */}
+              {/* 行级精确落位高亮指示线 (Drop Indicator Line) - 紧贴目标行边界 */}
+              {isTarget && dropPos === 'before' && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: -2,
+                    left: paddingLeft,
+                    right: 0,
+                    height: 2,
+                    background: 'var(--editor-accent, #3b82f6)',
+                    zIndex: 50,
+                    pointerEvents: 'none',
+                    borderRadius: 1,
+                    boxShadow: '0 0 6px rgba(59, 130, 246, 0.6)',
+                  }}
+                >
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: -4,
+                      top: -3,
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      background: 'var(--editor-accent, #3b82f6)',
+                      boxShadow: '0 0 4px rgba(59, 130, 246, 0.8)',
+                    }}
+                  />
+                </div>
+              )}
+
+              {isTarget && dropPos === 'after' && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: -2,
+                    left: paddingLeft,
+                    right: 0,
+                    height: 2,
+                    background: 'var(--editor-accent, #3b82f6)',
+                    zIndex: 50,
+                    pointerEvents: 'none',
+                    borderRadius: 1,
+                    boxShadow: '0 0 6px rgba(59, 130, 246, 0.6)',
+                  }}
+                >
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: -4,
+                      top: -3,
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      background: 'var(--editor-accent, #3b82f6)',
+                      boxShadow: '0 0 4px rgba(59, 130, 246, 0.8)',
+                    }}
+                  />
+                </div>
+              )}
+
+              {/* 拖拽把手 */}
               {!isRoot && (
                 <div
                   className="nb-drag-handle"
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, item.node.id)}
-                  onDragEnd={handleDragEnd}
+                  onPointerDown={(e) => handlePointerDownHandle(e, item)}
+                  onPointerUp={handlePointerUp}
                   title="按住拖拽整行换到其他行或调整层级"
                   style={{
                     width: 18,
@@ -359,20 +508,26 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    cursor: 'grab',
+                    cursor: isDragging ? 'grabbing' : 'grab',
                     color: 'var(--editor-text-secondary, #64748b)',
                     opacity: 0.6,
                     transition: 'opacity 0.15s ease, color 0.15s ease',
                     flexShrink: 0,
                     marginRight: 2,
+                    touchAction: 'none',
+                    userSelect: 'none',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.opacity = '1';
-                    e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
+                    if (!isDragging) {
+                      e.currentTarget.style.opacity = '1';
+                      e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
+                    }
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.opacity = '0.6';
-                    e.currentTarget.style.color = 'var(--editor-text-secondary, #64748b)';
+                    if (!isDragging) {
+                      e.currentTarget.style.opacity = '0.6';
+                      e.currentTarget.style.color = 'var(--editor-text-secondary, #64748b)';
+                    }
                   }}
                 >
                   <GripVertical size={14} />
@@ -472,11 +627,11 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
                   lineHeight: 1.5,
                   padding: '4px 8px',
                   borderRadius: 4,
-                  pointerEvents: draggingNodeId ? 'none' : 'auto',
+                  pointerEvents: isDragging ? 'none' : 'auto',
                 }}
               />
 
-              {/* 悬停辅助操作按钮组（深色与 Hover/Active 状态反馈） */}
+              {/* 悬停辅助操作按钮组 */}
               <div
                 className="nb-outliner-actions"
                 style={{
@@ -568,6 +723,35 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
           );
         })}
       </div>
+
+      {/* 浮动拖拽跟随胶囊 */}
+      {isDragging && dragPreview && (
+        <div
+          style={{
+            position: 'fixed',
+            left: dragPreview.x,
+            top: dragPreview.y,
+            zIndex: 99999,
+            pointerEvents: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '6px 12px',
+            background: 'var(--editor-surface, #ffffff)',
+            color: 'var(--editor-text, #1e293b)',
+            border: '1px solid var(--editor-border-focus, #3b82f6)',
+            borderRadius: 6,
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.18)',
+            fontSize: 12,
+            fontWeight: 500,
+            transform: 'scale(1.02)',
+            opacity: 0.95,
+          }}
+        >
+          <GripVertical size={13} color="var(--editor-accent, #3b82f6)" />
+          <span>移动：{dragPreview.text.slice(0, 20) || '大纲要点'}</span>
+        </div>
+      )}
     </div>
   );
 }

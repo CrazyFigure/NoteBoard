@@ -16,6 +16,20 @@ import { kindFromPath, languageFromPath } from '../../../core/docKind';
 import type { WriteError } from '../../../core/ipc/types';
 import { moveDocumentHistory } from '../../history/documentHistory';
 
+const DEFAULT_DRAWIO_XML = `<mxfile host="NoteBoard" modified="${new Date().toISOString()}" agent="NoteBoard" version="0.1.3" etag="noteboard">
+  <diagram id="diagram_1" name="第 1 页">
+    <mxGraphModel dx="1000" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" background="none" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="2" value="开始绘图" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="340" y="240" width="120" height="60" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>`;
+
 // ── 保存单个文档 ──
 
 export async function saveDocument(docKey: string): Promise<boolean> {
@@ -66,6 +80,11 @@ export async function saveDocument(docKey: string): Promise<boolean> {
     }
   }
 
+  // 4. 如果是 Draw.io 且内容为空，初始化为默认 XML 模板
+  if (doc.kind === 'drawio' && !doc.content?.trim()) {
+    store.setContent(docKey, DEFAULT_DRAWIO_XML);
+  }
+
   const updatedDoc = useDocumentStore.getState().getDocument(docKey);
   if (!updatedDoc) return false;
 
@@ -111,19 +130,78 @@ export async function saveAs(originalKey: string, content: string): Promise<bool
   const tabStore = useWindowStore.getState();
   const doc = docStore.getDocument(originalKey);
 
-  const isMarkdown = doc?.kind === 'markdown' || originalKey.includes('markdown');
-  const isBoard = doc?.kind === 'board' || originalKey.includes('board');
+  let defaultExtension = 'txt';
+  let filters: Array<{ name: string; extensions: string[] }> = [
+    { name: '文本文档 (*.txt)', extensions: ['txt'] },
+    { name: '全部文件 (*.*)', extensions: ['*'] },
+  ];
 
-  const defaultExtension = isMarkdown ? 'md' : isBoard ? 'excalidraw' : 'txt';
-  const defaultPath = doc?.displayName && !doc.displayName.startsWith('未命名')
-    ? doc.displayName
-    : `未命名.${defaultExtension}`;
+  if (doc?.kind === 'markdown' || originalKey.includes('markdown')) {
+    defaultExtension = 'md';
+    filters = [
+      { name: 'Markdown 笔记 (*.md)', extensions: ['md', 'markdown'] },
+      { name: '全部文件 (*.*)', extensions: ['*'] },
+    ];
+  } else if (doc?.kind === 'mindmap' || originalKey.includes('mindmap')) {
+    defaultExtension = 'mindmap';
+    filters = [
+      { name: '思维导图文件 (*.mindmap)', extensions: ['mindmap'] },
+      { name: 'XMind 思维导图 (*.xmind)', extensions: ['xmind'] },
+      { name: '全部文件 (*.*)', extensions: ['*'] },
+    ];
+  } else if (doc?.kind === 'drawio' || originalKey.includes('drawio')) {
+    defaultExtension = 'drawio';
+    filters = [
+      { name: 'Draw.io 架构图 (*.drawio)', extensions: ['drawio'] },
+      { name: 'Draw.io XML (*.xml)', extensions: ['xml'] },
+      { name: '全部文件 (*.*)', extensions: ['*'] },
+    ];
+  } else if (doc?.kind === 'board' || originalKey.includes('board') || originalKey.includes('excalidraw')) {
+    defaultExtension = 'excalidraw';
+    filters = [
+      { name: '自由画板 (*.excalidraw)', extensions: ['excalidraw', 'board', 'canvas'] },
+      { name: '全部文件 (*.*)', extensions: ['*'] },
+    ];
+  } else if (doc?.language === 'mermaid' || originalKey.includes('mermaid')) {
+    defaultExtension = 'mmd';
+    filters = [
+      { name: 'Mermaid 图表 (*.mmd)', extensions: ['mmd', 'mermaid'] },
+      { name: '全部文件 (*.*)', extensions: ['*'] },
+    ];
+  } else if (doc?.language === 'plantuml' || originalKey.includes('plantuml')) {
+    defaultExtension = 'puml';
+    filters = [
+      { name: 'PlantUML 图表 (*.puml)', extensions: ['puml', 'plantuml', 'iuml', 'uml'] },
+      { name: '全部文件 (*.*)', extensions: ['*'] },
+    ];
+  } else if (doc?.language === 'json' || originalKey.includes('json')) {
+    defaultExtension = 'json';
+    filters = [
+      { name: 'JSON 数据 (*.json)', extensions: ['json'] },
+      { name: '全部文件 (*.*)', extensions: ['*'] },
+    ];
+  } else if (doc?.language === 'yaml' || originalKey.includes('yaml')) {
+    defaultExtension = 'yaml';
+    filters = [
+      { name: 'YAML 配置文件 (*.yaml, *.yml)', extensions: ['yaml', 'yml'] },
+      { name: '全部文件 (*.*)', extensions: ['*'] },
+    ];
+  } else if (doc?.language === 'sql' || originalKey.includes('sql')) {
+    defaultExtension = 'sql';
+    filters = [
+      { name: 'SQL 脚本 (*.sql)', extensions: ['sql'] },
+      { name: '全部文件 (*.*)', extensions: ['*'] },
+    ];
+  } else if (doc?.language === 'xml' || originalKey.includes('xml')) {
+    defaultExtension = 'xml';
+    filters = [
+      { name: 'XML 文档 (*.xml)', extensions: ['xml'] },
+      { name: '全部文件 (*.*)', extensions: ['*'] },
+    ];
+  }
 
-  const filters = isMarkdown
-    ? [{ name: 'Markdown 笔记 (*.md)', extensions: ['md', 'markdown'] }, { name: '全部文件 (*.*)', extensions: ['*'] }]
-    : isBoard
-    ? [{ name: '画板文件 (*.excalidraw, *.board)', extensions: ['excalidraw', 'board', 'canvas'] }, { name: '全部文件 (*.*)', extensions: ['*'] }]
-    : [{ name: '文本文档 (*.txt, *.json, *.sql)', extensions: ['txt', 'json', 'sql', 'yaml', 'yml', 'xml', 'md'] }, { name: '全部文件 (*.*)', extensions: ['*'] }];
+  const defaultPath = doc?.displayName || `未命名.${defaultExtension}`;
+  const saveContent = (doc?.kind === 'drawio' && !content.trim()) ? DEFAULT_DRAWIO_XML : content;
 
   try {
     const selectedPath = await save({
@@ -136,7 +214,7 @@ export async function saveAs(originalKey: string, content: string): Promise<bool
     const encoding = doc?.encoding ?? 'utf8';
     const eol = doc?.eol ?? 'lf';
 
-    const result = await ipc.writeDocument(selectedPath, content, encoding, eol);
+    const result = await ipc.writeDocument(selectedPath, saveContent, encoding, eol);
 
     if (result.ok) {
       const displayName = selectedPath.split(/[\\/]/).pop() ?? selectedPath;
@@ -168,7 +246,7 @@ export async function saveAs(originalKey: string, content: string): Promise<bool
         dirPath,
         kind,
         language,
-        content,
+        content: saveContent,
         encoding,
         eol,
         size: result.size,
@@ -177,7 +255,7 @@ export async function saveAs(originalKey: string, content: string): Promise<bool
       });
 
       // 同步更新 Markdown 基线管理器
-      getBaseline(selectedPath).updateBaseline(content);
+      getBaseline(selectedPath).updateBaseline(saveContent);
 
       // 更新 WindowStore
       tabStore.updateTabPath(originalKey, selectedPath, displayName);

@@ -1,12 +1,13 @@
 // NoteBoard Draw.io 深度集成编辑器
-// 基于 Diagrams.net Embed 协议 + postMessage 双向通信 + 主题联动与自动保存
+// 基于 Diagrams.net Embed 协议 + postMessage 双向通信 + 主题联动与自动保存 + Ctrl+S 统一保存
 // 详见 docs/09-开发路线图.md
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { RefreshCw, Download, FileCode, AlertCircle, WifiOff } from 'lucide-react';
+import { RefreshCw, Download, FileCode, AlertCircle, WifiOff, Save } from 'lucide-react';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
+import { saveDocument } from '../editor-code/orchestration/saveDocument';
 
 interface DrawioEditorProps {
   docKey: string;
@@ -36,11 +37,36 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // 初始化默认内容（若为空）
+  useEffect(() => {
+    if (!doc?.content?.trim()) {
+      setContent(docKey, DEFAULT_DRAWIO_XML);
+    }
+  }, [docKey, doc?.content, setContent]);
+
   // 获取当前主题
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
 
-  // 构建 Diagrams.net 嵌入 URL（去除容易阻塞的 configure 强依赖，保证秒级握手就绪）
+  // 构建 Diagrams.net 嵌入 URL
   const embedUrl = `https://embed.diagrams.net/?embed=1&ui=min&spin=1&proto=json&libraries=1${isDark ? '&dark=1' : '&dark=0'}`;
+
+  // 保存处理
+  const handleSave = useCallback(async () => {
+    // 触发 iframe export xml 保持最新
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(
+        JSON.stringify({
+          action: 'export',
+          format: 'xml',
+        }),
+        '*',
+      );
+    }
+    const ok = await saveDocument(docKey);
+    if (ok) {
+      showToast('Draw.io 图表已保存');
+    }
+  }, [docKey]);
 
   // 监听 Draw.io postMessage 事件
   useEffect(() => {
@@ -50,7 +76,7 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
       }
     }, 15000);
 
-    const handleMessage = (e: MessageEvent) => {
+    const handleMessage = async (e: MessageEvent) => {
       // 过滤非目标 iframe 消息
       if (!iframeRef.current || e.source !== iframeRef.current.contentWindow) {
         return;
@@ -97,11 +123,17 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
             setDirty(docKey, true);
             setTabDirty(docKey, true);
           }
+          if (msg.event === 'save') {
+            await saveDocument(docKey);
+            showToast('Draw.io 图表已保存');
+          }
         }
 
         // 4. 导出事件
         if (msg.event === 'export') {
-          if (msg.data) {
+          if (msg.format === 'xml' && msg.data) {
+            setContent(docKey, msg.data);
+          } else if (msg.data && msg.format !== 'xml') {
             const a = document.createElement('a');
             a.href = msg.data;
             a.download = `drawio-export-${Date.now()}.${msg.format || 'png'}`;
@@ -184,6 +216,29 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {/* 保存按钮 */}
+          <button
+            type="button"
+            onClick={handleSave}
+            title="保存当前图表 (Ctrl+S)"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '3px 10px',
+              borderRadius: 4,
+              border: 'none',
+              background: 'var(--editor-accent, #3b82f6)',
+              color: '#ffffff',
+              cursor: 'pointer',
+              fontSize: 11,
+              fontWeight: 500,
+            }}
+          >
+            <Save size={12} />
+            <span>保存</span>
+          </button>
+
           <button
             type="button"
             onClick={() => handleRequestExport('svg')}
@@ -232,14 +287,13 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
               display: 'flex',
               alignItems: 'center',
               gap: 4,
-              padding: '3px 10px',
+              padding: '3px 8px',
               borderRadius: 4,
-              border: 'none',
-              background: 'var(--editor-accent, #3b82f6)',
-              color: '#ffffff',
+              border: '1px solid var(--editor-border, #e2e8f0)',
+              background: 'var(--editor-bg, #ffffff)',
+              color: 'var(--editor-text, #1e293b)',
               cursor: 'pointer',
               fontSize: 11,
-              fontWeight: 500,
             }}
           >
             <Download size={12} />

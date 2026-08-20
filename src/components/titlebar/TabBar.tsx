@@ -523,7 +523,9 @@ export function TabBar() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [newMenuPos, setNewMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [showMoreSubMenu, setShowMoreSubMenu] = useState(false);
+  const [flipSubMenuLeft, setFlipSubMenuLeft] = useState(false);
   const subMenuTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const moreItemRef = useRef<HTMLDivElement>(null);
   const newMenuRef = useRef<HTMLDivElement>(null);
   // 新建按钮引用，用于菜单点击外部区域判断
   const newBtnRef = useRef<HTMLButtonElement>(null);
@@ -532,6 +534,12 @@ export function TabBar() {
     if (subMenuTimerRef.current) {
       clearTimeout(subMenuTimerRef.current);
       subMenuTimerRef.current = null;
+    }
+    if (moreItemRef.current) {
+      const rect = moreItemRef.current.getBoundingClientRect();
+      const spaceRight = window.innerWidth - rect.right;
+      // 若右侧剩余空间小于 185px，自动向左展开
+      setFlipSubMenuLeft(spaceRight < 185);
     }
     setShowMoreSubMenu(true);
   };
@@ -824,8 +832,9 @@ export function TabBar() {
 
           <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />
 
-          {/* 更多格式新建（带二级菜单，防抖无缝悬停） */}
+          {/* 更多格式新建（带二级菜单，防抖无缝悬停与自适应向左展开） */}
           <div
+            ref={moreItemRef}
             style={{ position: 'relative' }}
             onMouseEnter={handleOpenSubMenu}
             onMouseLeave={handleCloseSubMenuDelayed}
@@ -857,7 +866,9 @@ export function TabBar() {
                 style={{
                   position: 'absolute',
                   top: -4,
-                  left: 'calc(100% - 2px)',
+                  ...(flipSubMenuLeft
+                    ? { right: 'calc(100% - 2px)', left: 'auto' }
+                    : { left: 'calc(100% - 2px)', right: 'auto' }),
                   zIndex: 10000,
                   background: 'var(--editor-surface)',
                   border: '1px solid var(--editor-border)',
