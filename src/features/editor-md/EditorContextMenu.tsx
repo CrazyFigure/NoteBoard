@@ -38,6 +38,7 @@ import {
   Copy,
   Scissors,
   Clipboard,
+  ClipboardType,
   ChevronRight,
   RemoveFormatting,
   X,
@@ -161,8 +162,50 @@ export function EditorContextMenu({
         onClick={(e) => e.stopPropagation()}
       >
         {hasSelection ? (
-          // ── 模式 A：选中文本时的格式化与编辑菜单 ──
+          // ── 模式 A：选中文本时的格式化与编辑菜单（剪切复制置顶） ──
           <>
+            {/* ── 剪贴板操作组（置顶） ── */}
+            <button
+              type="button"
+              style={btnStyle}
+              onClick={() => {
+                onClose();
+                document.execCommand('cut');
+              }}
+              onMouseEnter={(e) => {
+                setActiveSubmenu(null);
+                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
+              }}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Scissors size={15} color="var(--accent-500, #3b82f6)" />
+                <span>剪切 (Ctrl+X)</span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              style={btnStyle}
+              onClick={() => {
+                onClose();
+                document.execCommand('copy');
+              }}
+              onMouseEnter={(e) => {
+                setActiveSubmenu(null);
+                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
+              }}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Copy size={15} color="var(--accent-500, #3b82f6)" />
+                <span>复制 (Ctrl+C)</span>
+              </div>
+            </button>
+
+            <div style={dividerStyle} />
+
+            {/* ── 文本格式化组 ── */}
             <button
               type="button"
               style={btnStyle}
@@ -370,50 +413,65 @@ export function EditorContextMenu({
                 <span>清除格式</span>
               </div>
             </button>
+          </>
+        ) : (
+          // ── 模式 B：未选中文本时的富文本插入菜单（剪贴板置顶，插入项严格遵循：标题 > 列表 > 代码块 > github提示 > 引用块 > 表格 > 其他） ──
+          <>
+            {/* ── 剪贴板操作组（置顶） ── */}
+            <button
+              type="button"
+              style={btnStyle}
+              onClick={async () => {
+                onClose();
+                try {
+                  const text = await navigator.clipboard.readText();
+                  if (text) {
+                    editor.chain().focus().insertContent(text).run();
+                  }
+                } catch {
+                  document.execCommand('paste');
+                }
+              }}
+              onMouseEnter={(e) => {
+                setActiveSubmenu(null);
+                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
+              }}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Clipboard size={15} color="var(--accent-500, #3b82f6)" />
+                <span>粘贴 (Ctrl+V)</span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              style={btnStyle}
+              onClick={async () => {
+                onClose();
+                try {
+                  const text = await navigator.clipboard.readText();
+                  if (text) {
+                    editor.chain().focus().insertContent({ type: 'text', text }).run();
+                  }
+                } catch {
+                  document.execCommand('paste');
+                }
+              }}
+              onMouseEnter={(e) => {
+                setActiveSubmenu(null);
+                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
+              }}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <ClipboardType size={15} color="var(--accent-500, #3b82f6)" />
+                <span>纯文本粘贴 (Ctrl+Shift+V)</span>
+              </div>
+            </button>
 
             <div style={dividerStyle} />
 
-            <button
-              type="button"
-              style={btnStyle}
-              onClick={() => {
-                onClose();
-                document.execCommand('copy');
-              }}
-              onMouseEnter={(e) => {
-                setActiveSubmenu(null);
-                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
-              }}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Copy size={15} />
-                <span>复制 (Ctrl+C)</span>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              style={btnStyle}
-              onClick={() => {
-                onClose();
-                document.execCommand('cut');
-              }}
-              onMouseEnter={(e) => {
-                setActiveSubmenu(null);
-                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
-              }}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Scissors size={15} />
-                <span>剪切 (Ctrl+X)</span>
-              </div>
-            </button>
-          </>
-        ) : (
-          // ── 模式 B：未选中文本时的富文本插入菜单（优先级：标题 > 列表 > 代码块 > github提示 > 引用块 > 表格 > 其他） ──
-          <>
             {/* 1. 插入标题 (带 H1~H6 二级子菜单) */}
             <button
               type="button"
@@ -620,35 +678,6 @@ export function EditorContextMenu({
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Minus size={15} />
                 <span>水平分割线 (---)</span>
-              </div>
-            </button>
-
-            <div style={dividerStyle} />
-
-            {/* 11. 粘贴 */}
-            <button
-              type="button"
-              style={btnStyle}
-              onClick={async () => {
-                onClose();
-                try {
-                  const text = await navigator.clipboard.readText();
-                  if (text) {
-                    editor.chain().focus().insertContent(text).run();
-                  }
-                } catch {
-                  document.execCommand('paste');
-                }
-              }}
-              onMouseEnter={(e) => {
-                setActiveSubmenu(null);
-                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
-              }}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Clipboard size={15} />
-                <span>粘贴 (Ctrl+V)</span>
               </div>
             </button>
           </>
