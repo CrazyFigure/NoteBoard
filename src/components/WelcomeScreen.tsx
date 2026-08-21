@@ -153,18 +153,18 @@ export function WelcomeScreen({
       onClick: onNewJson,
     },
     {
-      icon: FileCode,
-      label: 'YAML 配置文件 (.yaml)',
-      desc: 'YAML 服务配置与清单管理',
-      color: '#06b6d4',
-      onClick: onNewYaml,
-    },
-    {
       icon: Database,
       label: 'SQL 数据库脚本 (.sql)',
       desc: 'SQL 数据库查询与 DDL 语句',
       color: '#3b82f6',
       onClick: onNewSql,
+    },
+    {
+      icon: FileCode,
+      label: 'YAML 配置文件 (.yaml)',
+      desc: 'YAML 服务配置与清单管理',
+      color: '#06b6d4',
+      onClick: onNewYaml,
     },
     {
       icon: CodeXml,

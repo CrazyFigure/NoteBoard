@@ -4,6 +4,7 @@
 
 import { create } from 'zustand';
 import type { DocumentKind } from '../core/ipc/types';
+import { normalizePath } from '../features/explorer/pathUtils';
 
 export interface Tab {
   /** 唯一 ID（用文件路径规范化 key） */
@@ -51,6 +52,7 @@ interface WindowStore {
   setTabDetached: (key: string, isDetached: boolean) => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
   updateTabPath: (key: string, newPath: string, newDisplayName: string) => void;
+  renameTabsDirectory: (oldDir: string, newDir: string) => void;
   // ── 安全关闭拦截操作（若含未保存修改则弹窗确认） ──
   requestCloseTab: (key: string) => void;
   requestCloseOther: (key: string) => void;
@@ -300,6 +302,36 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
       ),
       activeKey: state.activeKey === key ? newPath : state.activeKey,
     }));
+  },
+
+  // 批量更新被重命名目录下所有 Tab 的路径与 key
+  renameTabsDirectory: (oldDir, newDir) => {
+    const normOld = normalizePath(oldDir).toLowerCase();
+    const normNew = normalizePath(newDir);
+    set((state) => {
+      let changed = false;
+      const newTabs = state.tabs.map((t) => {
+        if (!t.path) return t;
+        const normPath = normalizePath(t.path);
+        if (normPath.toLowerCase().startsWith(normOld + '\\')) {
+          changed = true;
+          const rel = normPath.substring(normOld.length);
+          const newPath = normNew + rel;
+          return {
+            ...t,
+            key: newPath,
+            path: newPath,
+          };
+        }
+        return t;
+      });
+      let newActiveKey = state.activeKey;
+      if (state.activeKey && normalizePath(state.activeKey).toLowerCase().startsWith(normOld + '\\')) {
+        const rel = normalizePath(state.activeKey).substring(normOld.length);
+        newActiveKey = normNew + rel;
+      }
+      return changed ? { tabs: newTabs, activeKey: newActiveKey } : {};
+    });
   },
 
   requestCloseBatch: (keys) => {

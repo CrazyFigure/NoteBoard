@@ -10,6 +10,7 @@ import {
   clearAllDocumentHistories,
   clearDocumentHistory,
 } from '../features/history/documentHistory';
+import { normalizePath } from '../features/explorer/pathUtils';
 
 export interface Document {
   /** 规范化路径 key */
@@ -70,6 +71,10 @@ interface DocumentStore {
   setExternalStatus: (key: string, status: Document['externalStatus']) => void;
   /** 设置大文档判定 */
   setLargeDocVerdict: (key: string, verdict: Document['largeDocVerdict']) => void;
+  /** 重命名单个已打开文档 */
+  renameDocument: (oldKey: string, newKey: string, newDisplayName: string, newDirPath: string) => void;
+  /** 批量更新指定目录下所有已打开文档的路径 */
+  renameDirectory: (oldDir: string, newDir: string) => void;
   /** 删除文档 */
   remove: (key: string) => void;
   /** 重置 */
@@ -218,6 +223,51 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
       const newMap = new Map(state.documents);
       newMap.set(key, { ...doc, largeDocVerdict: verdict });
       return { documents: newMap };
+    });
+  },
+
+  // 重命名单个已打开文档（迁移 key、displayName 与 dirPath）
+  renameDocument: (oldKey, newKey, newDisplayName, newDirPath) => {
+    set((state) => {
+      const doc = state.documents.get(oldKey);
+      if (!doc) return {};
+      const newMap = new Map(state.documents);
+      newMap.delete(oldKey);
+      newMap.set(newKey, {
+        ...doc,
+        key: newKey,
+        displayName: newDisplayName,
+        dirPath: newDirPath,
+      });
+      return { documents: newMap };
+    });
+  },
+
+  // 批量更新指定目录下所有已打开文档的路径
+  renameDirectory: (oldDir, newDir) => {
+    const normOld = normalizePath(oldDir).toLowerCase();
+    const normNew = normalizePath(newDir);
+    set((state) => {
+      let changed = false;
+      const newMap = new Map<string, Document>();
+      state.documents.forEach((doc, key) => {
+        const normKey = normalizePath(key);
+        if (normKey.toLowerCase().startsWith(normOld + '\\') || normKey.toLowerCase() === normOld) {
+          changed = true;
+          const rel = normKey.substring(normOld.length);
+          const updatedKey = normNew + rel;
+          const lastSlash = updatedKey.lastIndexOf('\\');
+          const updatedDirPath = lastSlash > 0 ? updatedKey.substring(0, lastSlash) : normNew;
+          newMap.set(updatedKey, {
+            ...doc,
+            key: updatedKey,
+            dirPath: updatedDirPath,
+          });
+        } else {
+          newMap.set(key, doc);
+        }
+      });
+      return changed ? { documents: newMap } : {};
     });
   },
 
