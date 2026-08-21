@@ -9,6 +9,7 @@ import { useWindowStore, type Tab } from '../../stores/windowStore';
 import { useExplorerStore } from '../explorer/explorerStore';
 import { openDocument } from '../editor-code/orchestration/openDocument';
 import type { DocumentKind, LanguageId } from '../../core/ipc/types';
+import { showToast } from '../../stores/toastStore';
 
 let untitledCounter = 0;
 
@@ -61,6 +62,20 @@ export async function openFolderDialog(): Promise<void> {
     await ipc.pushRecent(root, true);
   } catch {
     // 忽略
+  }
+}
+
+/**
+ * 打开已配置的暂存区并加载到左侧文件树。
+ * 与“打开文件夹”保持相同浏览体验，但无需用户每次重新选择路径。
+ */
+export async function openStagingArea(): Promise<void> {
+  try {
+    const root = await ipc.ensureStagingDirectory();
+    const nodes = await ipc.readDir(root, false);
+    useExplorerStore.getState().setRoot(root, nodes);
+  } catch (error) {
+    showToast(`无法打开暂存区：${error instanceof Error ? error.message : String(error)}`, 'error', 5000);
   }
 }
 

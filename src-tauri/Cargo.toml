@@ -31,6 +31,8 @@ dunce = "1"
 font-kit = "0.14"
 log = "0.4"
 url = "2"
+# 暂存文件名使用本地可读时间，便于用户按关闭时间定位副本。
+chrono = "0.4"
 # 更新检查与安装包下载：启用 system-proxy 读取系统代理，rustls-tls 避免 Windows 编译时对 OpenSSL 的依赖
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "system-proxy", "stream"] }
 

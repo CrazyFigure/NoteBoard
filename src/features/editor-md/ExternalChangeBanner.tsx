@@ -3,7 +3,6 @@
 // 详见 docs/09-开发路线图.md 13.1-13.3
 
 import { useDocumentStore } from '../../stores/documentStore';
-import { useWindowStore } from '../../stores/windowStore';
 
 interface ExternalChangeBannerProps {
   docKey: string;
@@ -12,7 +11,6 @@ interface ExternalChangeBannerProps {
 export function ExternalChangeBanner({ docKey }: ExternalChangeBannerProps) {
   const doc = useDocumentStore((s) => s.getDocument(docKey));
   const setExternalStatus = useDocumentStore((s) => s.setExternalStatus);
-  const docStore = useDocumentStore();
 
   if (!doc || !doc.externalStatus || doc.externalStatus === 'clean') {
     return null;
@@ -25,11 +23,6 @@ export function ExternalChangeBanner({ docKey }: ExternalChangeBannerProps) {
 
   const handleReload = async () => {
     // 从磁盘重新加载
-    setExternalStatus(docKey, 'clean');
-  };
-
-  const handleSaveAs = () => {
-    // 另存为
     setExternalStatus(docKey, 'clean');
   };
 
@@ -57,26 +50,8 @@ export function ExternalChangeBanner({ docKey }: ExternalChangeBannerProps) {
   }
 
   if (doc.externalStatus === 'deleted') {
-    return (
-      <div
-        style={{
-          padding: '8px 12px',
-          background: 'var(--error-50, #fee)',
-          borderBottom: '1px solid var(--error-200, #fbb)',
-          fontSize: 13,
-          color: 'var(--editor-text)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          flexShrink: 0,
-        }}
-      >
-        <span>🗑</span>
-        <span>文件已被外部删除。当前内容仍保留在标签页中。</span>
-        <button onClick={handleSaveAs} className="nb-btn-secondary" style={{ ...btnStyle, marginLeft: 'auto' }}>另存为</button>
-        <button onClick={() => useWindowStore.getState().closeTab(docKey)} className="nb-btn-secondary" style={btnStyle}>关闭标签</button>
-      </div>
-    );
+    // 删除场景由应用级 MissingFileDialog 统一处理，确保代码、画板等所有格式行为一致。
+    return null;
   }
 
   if (doc.externalStatus === 'renamed') {

@@ -40,6 +40,7 @@ import {
   Layout,
   Workflow,
   GitMerge,
+  Archive,
 } from 'lucide-react';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
@@ -60,9 +61,11 @@ import {
   newText,
   openFileDialog,
   openFolderDialog,
+  openStagingArea,
 } from '../../features/welcome/welcomeActions';
 import * as ipc from '../../core/ipc/commands';
 import { getExplorerFileIcon } from '../../features/explorer/fileIcons';
+import { checkOpenDocumentStillExists } from '../../features/external/missingFileGuard';
 
 // ── 类型图标映射 ──
 
@@ -623,6 +626,8 @@ export function TabBar() {
   const handleActivateTab = (tabKey: string) => {
     const isCurrentActive = useWindowStore.getState().activeKey === tabKey;
     activateTab(tabKey);
+    // 每次点击标签都检查运行期间的外部删除；缺失时由全局处置框接管。
+    checkOpenDocumentStillExists(tabKey, true).catch(() => {});
     if (isCurrentActive && !tabKey.startsWith('untitled:')) {
       const doc = useDocumentStore.getState().documents.get(tabKey);
       if (doc?.key) {
@@ -1045,6 +1050,24 @@ export function TabBar() {
           >
             <FolderOpen size={13} />
             <span>打开文件夹… (Ctrl+K Ctrl+O)</span>
+          </button>
+
+          {/* 打开暂存区：紧随打开文件夹，载入设置中固定的暂存目录。 */}
+          <button
+            type="button"
+            style={getMenuItemStyle(false)}
+            onClick={() => {
+              setNewMenuPos(null);
+              setShowMoreSubMenu(false);
+              openStagingArea();
+            }}
+            onMouseEnter={handleMenuItemMouseEnter}
+            onMouseLeave={handleMenuItemMouseLeave}
+            onMouseDown={handleMenuItemMouseDown}
+            onMouseUp={handleMenuItemMouseUp}
+          >
+            <Archive size={13} color="#8b5cf6" />
+            <span>打开暂存区</span>
           </button>
         </div>
       )}

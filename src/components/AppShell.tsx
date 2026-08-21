@@ -50,6 +50,7 @@ import { performWindowClose } from '../features/window/windowManager';
 import {
   openFileDialog,
   openFolderDialog,
+  openStagingArea,
   newMarkdown,
   newMindmap,
   newDrawio,
@@ -63,6 +64,14 @@ import {
   newText,
 } from '../features/welcome/welcomeActions';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { discardStagedDocuments, stashPendingDocuments } from '../features/staging/stagingManager';
+import { showToast } from '../stores/toastStore';
+import { hasUnsavedWork } from '../features/staging/stagingPolicy';
+import {
+  saveCurrentWindowSnapshot,
+} from '../features/session/closedWindowSession';
+import { MissingFileDialog } from '../features/external/MissingFileDialog';
+import { checkActiveDocumentStillExists } from '../features/external/missingFileGuard';
 
 // ── 分隔条样式 ──
 
@@ -113,14 +122,13 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
 
   // 统一关闭拦截状态与操作
   const pendingCloseKeys = useWindowStore((s) => s.pendingCloseKeys);
-  const isWindowClosing = useWindowStore((s) => s.isWindowClosing);
   const confirmCloseBatch = useWindowStore((s) => s.confirmCloseBatch);
   const clearPendingClose = useWindowStore((s) => s.clearPendingClose);
 
   // 待关闭列表中处于脏态的标签页列表
   const dirtyPendingTabs = useMemo(() => {
     if (pendingCloseKeys.length === 0) return [];
-    return tabs.filter((t) => pendingCloseKeys.includes(t.key) && t.isDirty);
+    return tabs.filter((tab) => pendingCloseKeys.includes(tab.key) && hasUnsavedWork(tab.key));
   }, [pendingCloseKeys, tabs]);
 
   // 保存并关闭
@@ -135,19 +143,60 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
     }
     const targetKeys = [...useWindowStore.getState().pendingCloseKeys];
     const willCloseWindow = useWindowStore.getState().isWindowClosing;
-    confirmCloseBatch(targetKeys);
     if (willCloseWindow) {
-      await performWindowClose(getCurrentWindow().label);
+      // 窗口级关闭必须在技术性移除标签前记录，否则会把仍打开的标签误判成已独立关闭。
+      try {
+        await saveCurrentWindowSnapshot();
+      } catch (error) {
+        console.error('保存最近文件快照失败:', error);
+        showToast('最近文件记录失败，但文件已经保存', 'warning');
+      }
+      await performWindowClose(getCurrentWindow().label, true);
+    } else {
+      confirmCloseBatch(targetKeys);
     }
   };
 
   // 丢弃修改并关闭
-  const handleDiscardAndClose = async () => {
+  const handleDiscardAndClose = async (keys: string[]) => {
     const targetKeys = [...useWindowStore.getState().pendingCloseKeys];
     const willCloseWindow = useWindowStore.getState().isWindowClosing;
-    confirmCloseBatch(targetKeys);
+    // “不保存”保持彻底丢弃语义，清理由自动关闭保护产生的副本。
+    await discardStagedDocuments(keys);
     if (willCloseWindow) {
-      await performWindowClose(getCurrentWindow().label);
+      try {
+        // 明确丢弃的标签不进入最近文件，其余仍打开标签继续记录。
+        await saveCurrentWindowSnapshot(keys);
+      } catch (error) {
+        console.error('保存最近文件快照失败:', error);
+        showToast('最近文件记录失败，但仍会按“不保存”关闭', 'warning');
+      }
+      await performWindowClose(getCurrentWindow().label, true);
+    } else {
+      confirmCloseBatch(targetKeys);
+    }
+  };
+
+  // 暂存：确认所有目标文档已写入用户设置的位置后才真正移除标签/关闭窗口。
+  const handleStashAndClose = async (keys: string[]) => {
+    try {
+      await stashPendingDocuments({ keys, retain: true });
+    } catch (error) {
+      showToast(`暂存失败，窗口尚未关闭：${error instanceof Error ? error.message : String(error)}`, 'error', 5000);
+      return;
+    }
+    const targetKeys = [...useWindowStore.getState().pendingCloseKeys];
+    const willCloseWindow = useWindowStore.getState().isWindowClosing;
+    if (willCloseWindow) {
+      try {
+        await saveCurrentWindowSnapshot();
+      } catch (error) {
+        console.error('保存最近文件快照失败:', error);
+        showToast('最近文件记录失败，但暂存文件已经保留', 'warning');
+      }
+      await performWindowClose(getCurrentWindow().label, true);
+    } else {
+      confirmCloseBatch(targetKeys);
     }
   };
 
@@ -440,6 +489,12 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
             minSize="30%"
           >
             <div
+              onFocusCapture={() => {
+                checkActiveDocumentStillExists().catch(() => {});
+              }}
+              onPointerDownCapture={() => {
+                checkActiveDocumentStillExists().catch(() => {});
+              }}
               style={{
                 position: 'relative',
                 width: '100%',
@@ -482,6 +537,7 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                   <WelcomeScreen
                     onOpenFile={openFileDialog}
                     onOpenFolder={openFolderDialog}
+                    onOpenStaging={openStagingArea}
                     onNewMarkdown={newMarkdown}
                     onNewText={newText}
                     onNewBoard={newBoard}
@@ -628,9 +684,13 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
         dirtyTabs={dirtyPendingTabs}
         visible={dirtyPendingTabs.length > 0}
         onSave={handleSaveAndClose}
+        onStash={handleStashAndClose}
         onDiscard={handleDiscardAndClose}
         onCancel={handleCancelClose}
       />
+
+      {/* 仅处理应用运行期间原文件被删除的活动标签；重启恢复缺失文件会直接跳过。 */}
+      <MissingFileDialog />
 
       {/* 全局 Toast 提示 */}
       <ToastContainer />

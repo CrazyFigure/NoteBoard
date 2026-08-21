@@ -181,6 +181,55 @@ export interface FileSettings {
   restoreSession: boolean;
   imageDirName: string;
   largeFileConfirmMb: number;
+  // 未保存文件的用户可见暂存目录（绝对路径）
+  stagingDirectory: string;
+}
+
+// ── 暂存 ──
+
+export interface StagingDocument {
+  key: string;
+  displayName: string;
+  content: string;
+  encoding: Encoding;
+  eol: Eol;
+  // 首次为空，后续传回既有路径以覆盖同一份副本
+  targetPath: string | null;
+}
+
+export interface StagingResult {
+  key: string;
+  targetPath: string;
+}
+
+// ── 最近关闭窗口 ──
+
+export interface SessionTabSnapshot {
+  key: string;
+  isPinned: boolean;
+  viewMode: ViewMode | null;
+  sourcePath: string | null;
+  stagedPath: string | null;
+  displayName: string;
+}
+
+export interface SessionWindowSnapshot {
+  seq: number;
+  explorerRoot: string;
+  layout: {
+    explorerVisible: boolean;
+    explorerWidth: number;
+    outlineVisible: boolean;
+    outlineWidth: number;
+  };
+  tabs: SessionTabSnapshot[];
+  activeKey: string;
+}
+
+export interface SessionSnapshot {
+  schemaVersion: number;
+  savedAt: number;
+  windows: SessionWindowSnapshot[];
 }
 
 export interface LayoutSettings {

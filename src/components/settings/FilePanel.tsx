@@ -3,6 +3,9 @@
 // 详见 docs/09-开发路线图.md 12.7
 
 import { useSettingsStore } from '../../stores/settingsStore';
+import { open } from '@tauri-apps/plugin-dialog';
+import * as ipc from '../../core/ipc/commands';
+import { showToast } from '../../stores/toastStore';
 
 export function FilePanel() {
   const settings = useSettingsStore((s) => s.settings);
@@ -17,6 +20,27 @@ export function FilePanel() {
   };
 
   const labelStyle: React.CSSProperties = { width: 140, flexShrink: 0 };
+
+  /** 通过系统目录选择器更新暂存位置，取消选择时保持现有设置。 */
+  const chooseStagingDirectory = async () => {
+    const selected = await open({ directory: true, multiple: false });
+    if (typeof selected === 'string') await setFile({ stagingDirectory: selected });
+  };
+
+  /** 恢复内置默认目录，避免在前端拼接平台相关路径。 */
+  const resetStagingDirectory = async () => {
+    const defaultDirectory = await ipc.getDefaultStagingDirectory();
+    await setFile({ stagingDirectory: defaultDirectory });
+  };
+
+  /** 设置页中的“打开”使用系统文件管理器，便于直接复制或整理暂存文件。 */
+  const revealStagingDirectory = async () => {
+    try {
+      await ipc.openStagingDirectory();
+    } catch (error) {
+      showToast(`无法打开暂存区：${error instanceof Error ? error.message : String(error)}`, 'error');
+    }
+  };
 
   return (
     <div>
@@ -60,6 +84,28 @@ export function FilePanel() {
         通用文件设置
       </div>
 
+      {/* 暂存目录：只读展示，使用目录选择器避免手工输入无效路径。 */}
+      <div style={{ ...rowStyle, alignItems: 'flex-start' }}>
+        <span style={{ ...labelStyle, paddingTop: 5 }}>暂存位置</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+          <input
+            type="text"
+            readOnly
+            value={settings.file.stagingDirectory ?? ''}
+            title={settings.file.stagingDirectory ?? ''}
+            style={{ ...inputStyle, maxWidth: 360, width: '100%' }}
+          />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button type="button" className="nb-btn-secondary" onClick={chooseStagingDirectory}>选择位置…</button>
+            <button type="button" className="nb-btn-secondary" onClick={resetStagingDirectory}>恢复默认</button>
+            <button type="button" className="nb-btn-secondary" onClick={revealStagingDirectory}>打开</button>
+          </div>
+          <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>
+            未保存内容以“时间-序号-文件名”写入；正常保存后自动清理本次恢复副本。
+          </span>
+        </div>
+      </div>
+
       {/* 显示隐藏文件 */}
       <div style={rowStyle}>
         <span style={labelStyle}>显示隐藏文件</span>
@@ -70,14 +116,17 @@ export function FilePanel() {
         />
       </div>
 
-      {/* 恢复会话 */}
+      {/* 最近文件恢复 */}
       <div style={rowStyle}>
-        <span style={labelStyle}>启动时恢复会话</span>
+        <span style={labelStyle}>保留最近文件</span>
         <input
           type="checkbox"
           checked={settings.file.restoreSession}
           onChange={(e) => setFile({ restoreSession: e.target.checked })}
         />
+      </div>
+      <div style={{ margin: '-10px 0 16px 152px', fontSize: 11, color: 'var(--editor-text-muted)' }}>
+        默认开启；启动时自动恢复到 Tab 栏，当前页面仍停留 Home。
       </div>
 
       {/* 图片目录名 */}

@@ -14,6 +14,7 @@ import type { FileTreeNode } from '../../core/ipc/types';
 import { useExplorerStore } from './explorerStore';
 import { useTreeData } from './useTreeData';
 import { openDocument } from '../editor-code/orchestration/openDocument';
+import { markOpenDocumentDeleted } from '../external/missingFileGuard';
 import { getExplorerFileIcon } from './fileIcons';
 import * as ipc from '../../core/ipc/commands';
 
@@ -257,6 +258,8 @@ export const TreeNode = memo(function TreeNode({
               setMenuPos(null);
               try {
                 await ipc.moveToTrash(node.path);
+                // 左侧栏删除已打开文件时立即标记，无需等待下一次焦点检查。
+                markOpenDocumentDeleted(node.path);
                 await refreshParent();
               } catch (err) {
                 console.error('删除失败:', err);

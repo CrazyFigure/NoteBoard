@@ -11,6 +11,10 @@ import { useWindowStore, type Tab } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { kindFromPath, languageFromPath } from '../../core/docKind';
+import { stashPendingDocuments } from '../staging/stagingManager';
+import { showToast } from '../../stores/toastStore';
+import { hasUnsavedWork } from '../staging/stagingPolicy';
+import { saveCurrentWindowSnapshot } from '../session/closedWindowSession';
 
 // ── 初始化窗口（拉取模型）──
 
@@ -124,10 +128,17 @@ export async function requestCurrentWindowClose(): Promise<void> {
   const tabStore = useWindowStore.getState();
   const label = getCurrentWindow().label;
 
-  // 收集脏文档
-  const dirtyTabs = tabStore.tabs.filter((t) => t.isDirty);
+  // 空白未命名文件可直接关闭；只有脏态或确有内容的未命名文件进入关闭保护。
+  const dirtyTabs = tabStore.tabs.filter((tab) => hasUnsavedWork(tab.key));
 
   if (dirtyTabs.length > 0) {
+    // 系统关闭请求到达时先立即刷新副本；即使用户尚未在确认框中选择，内容也已受保护。
+    try {
+      await stashPendingDocuments({ keys: dirtyTabs.map((tab) => tab.key) });
+    } catch (error) {
+      console.error('关闭前暂存失败:', error);
+      showToast(`关闭前暂存失败：${error instanceof Error ? error.message : String(error)}`, 'error', 5000);
+    }
     // 触发拦截对话框
     // 通过 windowStore 设置 pendingCloseKeys 与 isWindowClosing 状态让 UnsavedGuardDialog 响应
     tabStore.requestWindowClose(dirtyTabs.map((t) => t.key));
@@ -141,8 +152,18 @@ export async function requestCurrentWindowClose(): Promise<void> {
 /**
  * 执行实际窗口关闭：注销文档 → 通知后端注销并关闭窗口/退出进程
  */
-export async function performWindowClose(label: string): Promise<void> {
+export async function performWindowClose(label: string, snapshotSaved = false): Promise<void> {
   const tabStore = useWindowStore.getState();
+
+  // 无确认框的干净窗口在这里记录；有确认框的分支会在移除标签前提前记录。
+  if (!snapshotSaved) {
+    try {
+      await saveCurrentWindowSnapshot();
+    } catch (error) {
+      console.error('保存最近文件快照失败:', error);
+      showToast('最近文件记录失败，但不会影响本次关闭', 'warning');
+    }
+  }
 
   // 注销本窗口所有文档的所有权
   for (const tab of tabStore.tabs) {

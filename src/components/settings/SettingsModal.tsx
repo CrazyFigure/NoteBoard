@@ -12,6 +12,8 @@ import type { ThemeId, ThemeMode, ContentWidth } from '../../core/ipc/types';
 import * as ipc from '../../core/ipc/commands';
 import { useUpdateStore } from '../../stores/updateStore';
 import { APP_VERSION } from '../../core/version';
+import { open } from '@tauri-apps/plugin-dialog';
+import { showToast } from '../../stores/toastStore';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -37,6 +39,27 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     ipc.openExternalUrl('https://github.com/CrazyFigure/NoteBoard').catch((err) => {
       console.error('无法打开 GitHub 链接:', err);
     });
+  };
+
+  /** 从系统目录选择器更新暂存位置，确保写入目标是明确的绝对路径。 */
+  const handleChooseStagingDirectory = async () => {
+    const selected = await open({ directory: true, multiple: false });
+    if (typeof selected === 'string') await setFile({ stagingDirectory: selected });
+  };
+
+  /** 默认路径由 Rust 统一计算，避免前端硬编码 Windows 用户目录。 */
+  const handleResetStagingDirectory = async () => {
+    const defaultDirectory = await ipc.getDefaultStagingDirectory();
+    await setFile({ stagingDirectory: defaultDirectory });
+  };
+
+  /** 在资源管理器中打开暂存位置，设置错误时给出可见反馈。 */
+  const handleOpenStagingDirectory = async () => {
+    try {
+      await ipc.openStagingDirectory();
+    } catch (error) {
+      showToast(`无法打开暂存区：${error instanceof Error ? error.message : String(error)}`, 'error', 5000);
+    }
   };
 
   // 设置右侧内容区域的容器引用
@@ -1067,11 +1090,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     />
                   </label>
 
-                  {/* 恢复上次会话 */}
+                  {/* 保留最近文件：启动时恢复到 Tab 栏，但当前页面仍停留 Home。 */}
                   <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
                     <div>
-                      <div>启动时恢复上次会话</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>重新打开 NoteBoard 时自动恢复上次打开的所有标签页和工作区</div>
+                      <div>保留最近文件</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>默认开启；启动时自动恢复到 Tab 栏，当前页面仍显示 Home</div>
                     </div>
                     <input
                       type="checkbox"
@@ -1097,7 +1120,30 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </div>
 
-                {/* ── 4.3 图片目录设置 ── */}
+                {/* ── 4.3 暂存目录设置 ── */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, color: 'var(--editor-text)' }}>
+                    <Folder size={15} color="var(--accent-strong)" />
+                    <span>未保存文件暂存区</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>
+                    新建文件和有修改的文件会另存为“时间-序号-文件名”。编辑期间持续覆盖同一副本，正常保存后自动清理；暂存关闭或异常退出时保留。
+                  </div>
+                  <input
+                    type="text"
+                    readOnly
+                    value={settings.file.stagingDirectory ?? ''}
+                    title={settings.file.stagingDirectory ?? ''}
+                    style={{ ...inputStyle, width: '100%', maxWidth: 'none', padding: '6px 10px' }}
+                  />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button type="button" className="nb-btn-secondary" onClick={handleChooseStagingDirectory}>选择位置…</button>
+                    <button type="button" className="nb-btn-secondary" onClick={handleResetStagingDirectory}>恢复默认</button>
+                    <button type="button" className="nb-btn-secondary" onClick={handleOpenStagingDirectory}>在资源管理器中打开</button>
+                  </div>
+                </div>
+
+                {/* ── 4.4 图片目录设置 ── */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, color: 'var(--editor-text)' }}>
                     <ImageIcon size={15} color="var(--accent-strong)" />

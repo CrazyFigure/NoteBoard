@@ -20,6 +20,9 @@ import type {
   Eol,
   Encoding,
   UpdateCheckResult,
+  StagingDocument,
+  StagingResult,
+  SessionSnapshot,
 } from './types';
 
 // ── 窗口 ──
@@ -164,18 +167,50 @@ export function saveSettings(settings: Settings): Promise<number> {
   return invoke<number>('save_settings', { settings });
 }
 
+// ── 暂存 ──
+
+/** 获取内置默认暂存目录，供设置页恢复默认。 */
+export function getDefaultStagingDirectory(): Promise<string> {
+  return invoke<string>('get_default_staging_directory');
+}
+
+/** 创建并返回当前设置对应的暂存目录。 */
+export function ensureStagingDirectory(): Promise<string> {
+  return invoke<string>('ensure_staging_directory');
+}
+
+/** 使用系统文件管理器打开当前暂存目录。 */
+export function openStagingDirectory(): Promise<string> {
+  return invoke<string>('open_staging_directory');
+}
+
+/** 批量写入未保存文档，并返回可复用的暂存路径。 */
+export function stashDocuments(documents: StagingDocument[]): Promise<StagingResult[]> {
+  return invoke<StagingResult[]>('stash_documents', { documents });
+}
+
+/** 正常保存或明确丢弃后清理本次编辑会话的暂存副本。 */
+export function deleteStagedFile(path: string): Promise<void> {
+  return invoke<void>('delete_staged_file', { path });
+}
+
 export function listSystemFonts(): Promise<FontFamily[]> {
   return invoke<FontFamily[]>('list_system_fonts');
 }
 
 // ── 会话 ──
 
-export function loadSession(): Promise<unknown | null> {
-  return invoke<unknown | null>('load_session');
+export function loadSession(): Promise<SessionSnapshot | null> {
+  return invoke<SessionSnapshot | null>('load_session');
 }
 
-export function saveSession(session: unknown): Promise<void> {
+export function saveSession(session: SessionSnapshot): Promise<void> {
   return invoke<void>('save_session', { session });
+}
+
+/** 完成恢复或关闭功能开关时清理最近关闭窗口快照。 */
+export function clearSession(): Promise<void> {
+  return invoke<void>('clear_session');
 }
 
 export function listRecent(): Promise<unknown[]> {

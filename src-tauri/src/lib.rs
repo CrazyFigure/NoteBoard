@@ -13,6 +13,7 @@ pub mod session;
 pub mod sysfont;
 pub mod bootstrap;
 pub mod updater;
+pub mod staging;
 
 use state::AppState;
 use std::sync::Mutex;
@@ -68,9 +69,16 @@ pub fn run() {
             // settings
             settings::commands::load_settings,
             settings::commands::save_settings,
+            // staging
+            staging::commands::get_default_staging_directory,
+            staging::commands::ensure_staging_directory,
+            staging::commands::open_staging_directory,
+            staging::commands::stash_documents,
+            staging::commands::delete_staged_file,
             // session
             session::commands::load_session,
             session::commands::save_session,
+            session::commands::clear_session,
             session::commands::list_recent,
             session::commands::push_recent,
             session::commands::write_draft,

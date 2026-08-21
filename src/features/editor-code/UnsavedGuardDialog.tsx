@@ -3,7 +3,7 @@
 // 详见 docs/09-开发路线图.md 4.12
 
 import { useState, useEffect } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Archive } from 'lucide-react';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
 
 // ── 类型 ──
@@ -13,6 +13,8 @@ export interface UnsavedGuardDialogProps {
   dirtyTabs: Tab[];
   /** 确认保存并关闭 */
   onSave: (keys: string[]) => Promise<void>;
+  /** 另存到暂存区并关闭 */
+  onStash: (keys: string[]) => Promise<void>;
   /** 不保存直接关闭 */
   onDiscard: (keys: string[]) => void;
   /** 取消 */
@@ -26,11 +28,13 @@ export interface UnsavedGuardDialogProps {
 export function UnsavedGuardDialog({
   dirtyTabs,
   onSave,
+  onStash,
   onDiscard,
   onCancel,
   visible,
 }: UnsavedGuardDialogProps) {
   const [saving, setSaving] = useState(false);
+  const [staging, setStaging] = useState(false);
 
   if (!visible || dirtyTabs.length === 0) return null;
 
@@ -47,6 +51,15 @@ export function UnsavedGuardDialog({
 
   const handleDiscard = () => {
     onDiscard(dirtyTabs.map((t) => t.key));
+  };
+
+  const handleStash = async () => {
+    setStaging(true);
+    try {
+      await onStash(dirtyTabs.map((t) => t.key));
+    } finally {
+      setStaging(false);
+    }
   };
 
   const overlayStyle: React.CSSProperties = {
@@ -67,8 +80,8 @@ export function UnsavedGuardDialog({
     border: '1px solid var(--editor-border)',
     borderRadius: 'var(--radius-lg)',
     padding: 24,
-    minWidth: 420,
-    maxWidth: 500,
+    minWidth: 460,
+    maxWidth: 560,
     boxShadow: 'var(--shadow-lg)',
     color: 'var(--editor-text)',
     fontFamily: 'var(--content-font-family)',
@@ -97,8 +110,8 @@ export function UnsavedGuardDialog({
 
         <p style={{ margin: '0 0 8px', fontSize: 14, color: 'var(--editor-text-secondary)' }}>
           {isBatch
-            ? '以下文件有未保存的修改，保存后再关闭？'
-            : '此文件有未保存的修改，保存后再关闭？'}
+            ? '以下文件有未保存的修改。可保存到原位置，或另存到暂存区后关闭。'
+            : '此文件有未保存的修改。可保存到原位置，或另存到暂存区后关闭。'}
         </p>
 
         {isBatch && (
@@ -114,6 +127,7 @@ export function UnsavedGuardDialog({
             type="button"
             className="nb-btn-secondary"
             onClick={onCancel}
+            disabled={saving || staging}
             style={{
               padding: '6px 14px',
               fontSize: 13,
@@ -125,6 +139,7 @@ export function UnsavedGuardDialog({
             type="button"
             className="nb-btn-secondary"
             onClick={handleDiscard}
+            disabled={saving || staging}
             style={{
               padding: '6px 14px',
               fontSize: 13,
@@ -134,9 +149,9 @@ export function UnsavedGuardDialog({
           </button>
           <button
             type="button"
-            className="nb-btn-primary"
+            className="nb-btn-secondary"
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || staging}
             style={{
               padding: '6px 16px',
               fontSize: 13,
@@ -145,6 +160,24 @@ export function UnsavedGuardDialog({
             }}
           >
             {saving ? '保存中…' : '保存'}
+          </button>
+          <button
+            type="button"
+            className="nb-btn-primary"
+            onClick={handleStash}
+            disabled={saving || staging}
+            style={{
+              padding: '6px 16px',
+              fontSize: 13,
+              fontWeight: 500,
+              opacity: saving || staging ? 0.6 : 1,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <Archive size={14} />
+            {staging ? '暂存中…' : '暂存'}
           </button>
         </div>
       </div>
