@@ -8,6 +8,7 @@ import type { Editor } from '@tiptap/core';
 import {
   Bold,
   Italic,
+  Underline,
   Strikethrough,
   Code,
   Highlighter,
@@ -205,6 +206,25 @@ export function EditorContextMenu({
               style={btnStyle}
               onClick={() => {
                 onClose();
+                editor.chain().focus().toggleUnderline().run();
+              }}
+              onMouseEnter={(e) => {
+                setActiveSubmenu(null);
+                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
+              }}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Underline size={15} />
+                <span>下划线 (Ctrl+U)</span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              style={btnStyle}
+              onClick={() => {
+                onClose();
                 editor.chain().focus().toggleStrike().run();
               }}
               onMouseEnter={(e) => {
@@ -258,37 +278,6 @@ export function EditorContextMenu({
               <ChevronRight size={14} style={{ opacity: 0.6 }} />
             </button>
 
-            {/* ── 超链接 ── */}
-            <button
-              type="button"
-              style={btnStyle}
-              onClick={() => {
-                onClose();
-                if (onOpenLinkModal) {
-                  onOpenLinkModal();
-                } else {
-                  const previousUrl = editor.getAttributes('link').href || '';
-                  const url = window.prompt('输入链接地址 URL:', previousUrl);
-                  if (url === null) return;
-                  if (url === '') {
-                    editor.chain().focus().unsetLink().run();
-                  } else {
-                    editor.chain().focus().setLink({ href: url }).run();
-                  }
-                }
-              }}
-              onMouseEnter={(e) => {
-                setActiveSubmenu(null);
-                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
-              }}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Link size={15} />
-                <span>超链接</span>
-              </div>
-            </button>
-
             <div style={dividerStyle} />
 
             {/* ── 转为标题 (带 H1~H6 二级子菜单) ── */}
@@ -330,6 +319,39 @@ export function EditorContextMenu({
               </div>
             </button>
 
+            <div style={dividerStyle} />
+
+            {/* ── 超链接 ── */}
+            <button
+              type="button"
+              style={btnStyle}
+              onClick={() => {
+                onClose();
+                if (onOpenLinkModal) {
+                  onOpenLinkModal();
+                } else {
+                  const previousUrl = editor.getAttributes('link').href || '';
+                  const url = window.prompt('输入链接地址 URL:', previousUrl);
+                  if (url === null) return;
+                  if (url === '') {
+                    editor.chain().focus().unsetLink().run();
+                  } else {
+                    editor.chain().focus().setLink({ href: url }).run();
+                  }
+                }
+              }}
+              onMouseEnter={(e) => {
+                setActiveSubmenu(null);
+                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
+              }}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Link size={15} />
+                <span>超链接 (Ctrl+K)</span>
+              </div>
+            </button>
+
             <button
               type="button"
               style={btnStyle}
@@ -344,7 +366,7 @@ export function EditorContextMenu({
               onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <RemoveFormatting size={15} />
+                <RemoveFormatting size={15} color="#ef4444" />
                 <span>清除格式</span>
               </div>
             </button>
@@ -390,9 +412,9 @@ export function EditorContextMenu({
             </button>
           </>
         ) : (
-          // ── 模式 B：未选中文本时的富文本插入菜单 ──
+          // ── 模式 B：未选中文本时的富文本插入菜单（优先级：标题 > 列表 > 代码块 > github提示 > 引用块 > 表格 > 其他） ──
           <>
-            {/* ── 插入标题 (带 H1~H6 二级子菜单) ── */}
+            {/* 1. 插入标题 (带 H1~H6 二级子菜单) */}
             <button
               type="button"
               style={{
@@ -412,7 +434,7 @@ export function EditorContextMenu({
               <ChevronRight size={14} style={{ opacity: 0.6 }} />
             </button>
 
-            {/* ── 插入列表 (带二级子菜单) ── */}
+            {/* 2. 插入列表 (带二级子菜单) */}
             <button
               type="button"
               style={{
@@ -432,47 +454,7 @@ export function EditorContextMenu({
               <ChevronRight size={14} style={{ opacity: 0.6 }} />
             </button>
 
-            {/* ── GitHub 提示块 (带二级子菜单) ── */}
-            <button
-              type="button"
-              style={{
-                ...btnStyle,
-                background:
-                  activeSubmenu === 'insert-alert'
-                    ? 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))'
-                    : 'transparent',
-              }}
-              onMouseEnter={(e) => handleOpenSubmenu('insert-alert', e)}
-              onClick={(e) => handleOpenSubmenu('insert-alert', e)}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Boxes size={15} color="#3b82f6" />
-                <span>GitHub 提示块</span>
-              </div>
-              <ChevronRight size={14} style={{ opacity: 0.6 }} />
-            </button>
-
-            <div style={dividerStyle} />
-
-            <button
-              type="button"
-              style={btnStyle}
-              onClick={() => {
-                onClose();
-                editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
-              }}
-              onMouseEnter={(e) => {
-                setActiveSubmenu(null);
-                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
-              }}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Table size={15} />
-                <span>插入表格 (3x3)</span>
-              </div>
-            </button>
-
+            {/* 3. 插入代码块 */}
             <button
               type="button"
               style={btnStyle}
@@ -492,6 +474,27 @@ export function EditorContextMenu({
               </div>
             </button>
 
+            {/* 4. GitHub 提示块 (带二级子菜单) */}
+            <button
+              type="button"
+              style={{
+                ...btnStyle,
+                background:
+                  activeSubmenu === 'insert-alert'
+                    ? 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))'
+                    : 'transparent',
+              }}
+              onMouseEnter={(e) => handleOpenSubmenu('insert-alert', e)}
+              onClick={(e) => handleOpenSubmenu('insert-alert', e)}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Boxes size={15} color="#3b82f6" />
+                <span>GitHub 提示块</span>
+              </div>
+              <ChevronRight size={14} style={{ opacity: 0.6 }} />
+            </button>
+
+            {/* 5. 插入引用块 */}
             <button
               type="button"
               style={btnStyle}
@@ -511,6 +514,96 @@ export function EditorContextMenu({
               </div>
             </button>
 
+            {/* 6. 插入表格 */}
+            <button
+              type="button"
+              style={btnStyle}
+              onClick={() => {
+                onClose();
+                editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+              }}
+              onMouseEnter={(e) => {
+                setActiveSubmenu(null);
+                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
+              }}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Table size={15} />
+                <span>插入表格 (3x3)</span>
+              </div>
+            </button>
+
+            <div style={dividerStyle} />
+
+            {/* 7. 行内公式 */}
+            <button
+              type="button"
+              style={btnStyle}
+              onClick={() => {
+                onClose();
+                editor.chain().focus().insertContent({ type: 'mathInline', attrs: { latex: 'E=mc^2' } }).run();
+              }}
+              onMouseEnter={(e) => {
+                setActiveSubmenu(null);
+                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
+              }}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Sigma size={15} />
+                <span>行内公式 ($...$)</span>
+              </div>
+            </button>
+
+            {/* 8. Mermaid 图表 */}
+            <button
+              type="button"
+              style={btnStyle}
+              onClick={() => {
+                onClose();
+                editor.chain().focus().insertContent({ type: 'mermaidBlock', attrs: { code: 'graph TD\n  A --> B' } }).run();
+              }}
+              onMouseEnter={(e) => {
+                setActiveSubmenu(null);
+                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
+              }}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Workflow size={15} color="var(--accent-500, #3b82f6)" />
+                <span>Mermaid 图表</span>
+              </div>
+            </button>
+
+            {/* 9. 插入超链接 */}
+            <button
+              type="button"
+              style={btnStyle}
+              onClick={() => {
+                onClose();
+                if (onOpenLinkModal) {
+                  onOpenLinkModal();
+                } else {
+                  const url = window.prompt('输入链接地址 URL:');
+                  if (url) {
+                    editor.chain().focus().setLink({ href: url }).run();
+                  }
+                }
+              }}
+              onMouseEnter={(e) => {
+                setActiveSubmenu(null);
+                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
+              }}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Link size={15} color="var(--accent-500, #3b82f6)" />
+                <span>插入超链接</span>
+              </div>
+            </button>
+
+            {/* 10. 水平分割线 */}
             <button
               type="button"
               style={btnStyle}
@@ -532,46 +625,7 @@ export function EditorContextMenu({
 
             <div style={dividerStyle} />
 
-            <button
-              type="button"
-              style={btnStyle}
-              onClick={() => {
-                onClose();
-                editor.chain().focus().insertContent({ type: 'mathInline', attrs: { latex: 'E=mc^2' } }).run();
-              }}
-              onMouseEnter={(e) => {
-                setActiveSubmenu(null);
-                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
-              }}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Sigma size={15} />
-                <span>行内公式 ($...$)</span>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              style={btnStyle}
-              onClick={() => {
-                onClose();
-                editor.chain().focus().insertContent({ type: 'mermaidBlock', attrs: { code: 'graph TD\n  A --> B' } }).run();
-              }}
-              onMouseEnter={(e) => {
-                setActiveSubmenu(null);
-                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
-              }}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Workflow size={15} color="var(--accent-500, #3b82f6)" />
-                <span>Mermaid 图表</span>
-              </div>
-            </button>
-
-            <div style={dividerStyle} />
-
+            {/* 11. 粘贴 */}
             <button
               type="button"
               style={btnStyle}
