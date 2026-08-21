@@ -1232,24 +1232,25 @@ export const slashSuggestion = {
       const spaceBelow = windowHeight - statusbarHeight - rect.bottom - 8;
       const spaceAbove = rect.top - topbarHeight - 8;
 
-      let top: number;
-      if (spaceBelow >= menuHeight) {
-        // 下方空间充足：在光标下方展开
-        top = rect.bottom + 8;
-      } else if (spaceAbove >= menuHeight) {
-        // 下方空间不足但上方空间充足：在光标上方展开
-        top = rect.top - 8 - menuHeight;
+      // 判断是否在光标上方展开：下方空间不足且上方空间更大时向上展开
+      const isAbove = spaceBelow < menuHeight && (spaceAbove >= menuHeight || spaceAbove >= spaceBelow);
+
+      if (isAbove) {
+        // 向上展开：将底部锚定在光标上方 8px，使用 bottom 定位使筛选时内容变少自适应贴近光标
+        popup.style.top = 'auto';
+        popup.style.bottom = `${Math.round(windowHeight - rect.top + 8)}px`;
+        const maxAvailableHeight = Math.max(100, spaceAbove);
+        popup.style.maxHeight = `${Math.min(menuHeight, maxAvailableHeight)}px`;
       } else {
-        // 上下空间均紧张时，选择空间较大的一侧贴紧视口边缘
-        if (spaceBelow >= spaceAbove) {
-          top = Math.max(topbarHeight, windowHeight - statusbarHeight - menuHeight);
-        } else {
-          top = Math.max(topbarHeight, rect.top - 8 - menuHeight);
-        }
+        // 向下展开：将顶部锚定在光标下方 8px，使用 top 定位
+        popup.style.bottom = 'auto';
+        popup.style.top = `${Math.round(rect.bottom + 8)}px`;
+        const maxAvailableHeight = Math.max(100, spaceBelow);
+        popup.style.maxHeight = `${Math.min(menuHeight, maxAvailableHeight)}px`;
       }
 
-      popup.style.top = `${Math.round(top)}px`;
       popup.style.left = `${Math.round(left)}px`;
+      popup.style.right = 'auto';
     };
 
     return {
