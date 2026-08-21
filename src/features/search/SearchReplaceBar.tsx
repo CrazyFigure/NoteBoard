@@ -180,8 +180,9 @@ export function SearchReplaceBar() {
         top: 12,
         right: 20,
         zIndex: 40,
-        width: 360,
+        width: 380,
         maxWidth: 'calc(100% - 40px)',
+        boxSizing: 'border-box',
         background: 'var(--editor-surface, var(--editor-bg))',
         border: '1px solid var(--editor-border)',
         borderRadius: 12,
@@ -198,10 +199,12 @@ export function SearchReplaceBar() {
       }}
     >
       {/* ── 第一行：搜索输入框 + 匹配计数 + 上下导航 + 关闭 ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', boxSizing: 'border-box' }}>
         <div
           style={{
             flex: 1,
+            minWidth: 0,
+            boxSizing: 'border-box',
             display: 'flex',
             alignItems: 'center',
             height: 32,
@@ -258,6 +261,7 @@ export function SearchReplaceBar() {
                 fontVariantNumeric: 'tabular-nums',
                 flexShrink: 0,
                 paddingLeft: 4,
+                whiteSpace: 'nowrap',
               }}
             >
               {matchIndex}/{matchCount}
@@ -282,6 +286,7 @@ export function SearchReplaceBar() {
             color: 'var(--editor-text-secondary)',
             cursor: 'pointer',
             flexShrink: 0,
+            boxSizing: 'border-box',
             transition: 'all var(--transition-fast)',
           }}
           onMouseEnter={(e) => {
@@ -323,6 +328,7 @@ export function SearchReplaceBar() {
             color: 'var(--editor-text-secondary)',
             cursor: 'pointer',
             flexShrink: 0,
+            boxSizing: 'border-box',
             transition: 'all var(--transition-fast)',
           }}
           onMouseEnter={(e) => {
@@ -364,6 +370,7 @@ export function SearchReplaceBar() {
             color: 'var(--editor-text-secondary)',
             cursor: 'pointer',
             flexShrink: 0,
+            boxSizing: 'border-box',
             transition: 'all var(--transition-fast)',
           }}
           onMouseEnter={(e) => {
@@ -390,10 +397,12 @@ export function SearchReplaceBar() {
       </div>
 
       {/* ── 第二行：替换输入框 + 替换按钮 + 全部替换按钮 ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', boxSizing: 'border-box' }}>
         <div
           style={{
             flex: 1,
+            minWidth: 0,
+            boxSizing: 'border-box',
             display: 'flex',
             alignItems: 'center',
             height: 32,
@@ -451,7 +460,7 @@ export function SearchReplaceBar() {
           title="替换当前匹配 (Enter)"
           style={{
             height: 32,
-            padding: '0 10px',
+            padding: '0 8px',
             borderRadius: 8,
             border: '1px solid var(--editor-border)',
             background: 'var(--editor-bg)',
@@ -462,6 +471,8 @@ export function SearchReplaceBar() {
             gap: 4,
             cursor: 'pointer',
             flexShrink: 0,
+            whiteSpace: 'nowrap',
+            boxSizing: 'border-box',
             transition: 'all var(--transition-fast)',
           }}
           onMouseEnter={(e) => {
@@ -494,7 +505,7 @@ export function SearchReplaceBar() {
           title="全部替换 (Ctrl+Alt+Enter)"
           style={{
             height: 32,
-            padding: '0 10px',
+            padding: '0 8px',
             borderRadius: 8,
             border: '1px solid var(--editor-border)',
             background: 'var(--editor-bg)',
@@ -505,6 +516,8 @@ export function SearchReplaceBar() {
             gap: 4,
             cursor: 'pointer',
             flexShrink: 0,
+            whiteSpace: 'nowrap',
+            boxSizing: 'border-box',
             transition: 'all var(--transition-fast)',
           }}
           onMouseEnter={(e) => {
@@ -532,7 +545,7 @@ export function SearchReplaceBar() {
       </div>
 
       {/* ── 第三行：选项设置（区分大小写 / 全字匹配 / 正则表达式） ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, paddingTop: 2 }}>
+      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, paddingTop: 2, width: '100%', boxSizing: 'border-box' }}>
         <label
           style={{
             display: 'flex',
@@ -540,6 +553,7 @@ export function SearchReplaceBar() {
             gap: 5,
             cursor: 'pointer',
             fontSize: 12,
+            whiteSpace: 'nowrap',
             color: caseSensitive ? 'var(--editor-text)' : 'var(--editor-text-secondary)',
           }}
         >
@@ -562,6 +576,7 @@ export function SearchReplaceBar() {
             gap: 5,
             cursor: 'pointer',
             fontSize: 12,
+            whiteSpace: 'nowrap',
             color: wholeWord ? 'var(--editor-text)' : 'var(--editor-text-secondary)',
           }}
         >
@@ -584,6 +599,7 @@ export function SearchReplaceBar() {
             gap: 5,
             cursor: 'pointer',
             fontSize: 12,
+            whiteSpace: 'nowrap',
             color: isRegex ? 'var(--editor-text)' : 'var(--editor-text-secondary)',
           }}
         >
