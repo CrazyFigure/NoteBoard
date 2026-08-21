@@ -296,72 +296,30 @@ async fn download_update_installer(
     Ok(())
 }
 
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
+/// 直接唤起安装包；安装后的启动行为完全交给安装器完成页的用户选项决定
+fn spawn_update_installer(installer_path: &Path) -> std::io::Result<()> {
+    let extension = installer_path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
 
-#[cfg(target_os = "windows")]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
-#[cfg(target_os = "windows")]
-const DETACHED_PROCESS: u32 = 0x00000008;
-
-/// 唤起安装包可执行程序，并在安装器完成后自动重启新版本 NoteBoard
-fn spawn_update_installer_and_restart(
-    installer_path: &Path,
-    current_exe: &Path,
-) -> std::io::Result<()> {
-    #[cfg(target_os = "windows")]
-    {
-        let extension = installer_path
-            .extension()
-            .and_then(|value| value.to_str())
-            .unwrap_or_default()
-            .to_ascii_lowercase();
-
-        let update_dir = installer_path.parent().unwrap_or_else(|| Path::new("."));
-        let script_path = update_dir.join("apply_update.cmd");
-
-        // 构造 Windows 批处理命令：安装器退出后自动拉起新版 NoteBoard 主程序并自删除
-        let launch_installer_cmd = if extension == "msi" {
-            format!("msiexec.exe /i \"{}\"", installer_path.to_string_lossy())
-        } else {
-            format!("start /wait \"\" \"{}\"", installer_path.to_string_lossy())
-        };
-
-        let script_content = format!(
-            "@echo off\r\n\
-            rem 等待旧 NoteBoard 实例退出释放文件锁定\r\n\
-            timeout /t 1 /nobreak >nul\r\n\
-            rem 启动安装器并同步等待安装完成\r\n\
-            {}\r\n\
-            rem 安装完成后等待1秒确保写入完全落盘\r\n\
-            timeout /t 1 /nobreak >nul\r\n\
-            rem 重新拉起新版 NoteBoard 主程序\r\n\
-            if exist \"{}\" (\r\n\
-                start \"\" \"{}\"\r\n\
-            )\r\n\
-            del \"%~f0\"\r\n",
-            launch_installer_cmd,
-            current_exe.to_string_lossy(),
-            current_exe.to_string_lossy(),
-        );
-
-        fs::write(&script_path, script_content)?;
-
-        // 使用 DETACHED_PROCESS + CREATE_NO_WINDOW 启动批处理，脱离当前进程树且完全无黑色控制台窗口
-        let mut command = Command::new("cmd.exe");
-        command
-            .args(["/c", script_path.to_str().unwrap_or_default()])
-            .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS);
-
-        command.spawn()?;
-        Ok(())
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
+    // EXE 安装包直接启动，MSI 安装包交给系统安装服务，避免经 cmd 中转产生黑框和二次启动竞态
+    if extension == "exe" {
         Command::new(installer_path).spawn()?;
-        Ok(())
+    } else if extension == "msi" {
+        Command::new("msiexec.exe")
+            .arg("/i")
+            .arg(installer_path)
+            .spawn()?;
+    } else {
+        return Err(std::io::Error::new(
+            ErrorKind::InvalidInput,
+            "不支持的安装包格式",
+        ));
     }
+
+    Ok(())
 }
 
 /// 请求 GitHub Release 元数据；支持系统代理与直连双模式
@@ -470,14 +428,11 @@ pub async fn download_and_install_update(
     fs::create_dir_all(&update_dir).map_err(|error| error.to_string())?;
     let installer_path: PathBuf = update_dir.join(safe_file_name);
 
-    let current_exe = env::current_exe().map_err(|e| e.to_string())?;
-
     // 本地已有完整匹配安装包时直接启动，免去二次下载
     if installer_path_matches_expected_size(&installer_path, installer_size)? {
-        spawn_update_installer_and_restart(&installer_path, &current_exe)
-            .map_err(|error| error.to_string())?;
+        spawn_update_installer(&installer_path).map_err(|error| error.to_string())?;
 
-        // 延迟 600ms 退出当前实例，让出文件锁与系统资源供安装器覆盖更新
+        // 延迟 600ms 退出当前实例，让前端收到成功结果，并为安装器释放程序文件与单实例资源
         let handle_clone = app_handle.clone();
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(600));
@@ -513,10 +468,9 @@ pub async fn download_and_install_update(
         }
     }
 
-    spawn_update_installer_and_restart(&installer_path, &current_exe)
-        .map_err(|error| error.to_string())?;
+    spawn_update_installer(&installer_path).map_err(|error| error.to_string())?;
 
-    // 延迟 600ms 退出当前实例，让出文件锁与系统资源供安装器覆盖更新
+    // 延迟 600ms 退出当前实例，让前端收到成功结果，并为安装器释放程序文件与单实例资源
     let handle_clone = app_handle.clone();
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(600));

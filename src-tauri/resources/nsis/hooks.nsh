@@ -4,6 +4,10 @@
 ; 详见 docs/09-开发路线图.md 14.4/14.5
 
 !macro NSIS_HOOK_POSTINSTALL
+  ; 清理旧版内置更新器遗留的批处理，防止卸载旧版并安装完成后再次启动 NoteBoard
+  ; 仅处理系统临时目录中的更新脚本，不触碰 %APPDATA%\NoteBoard 用户数据
+  Delete "$TEMP\NoteBoard-updates\apply_update.cmd"
+
   ; 注册应用程序
   WriteRegStr HKCU "Software\Classes\Applications\NoteBoard.exe" "" "NoteBoard"
   WriteRegStr HKCU "Software\Classes\Applications\NoteBoard.exe\shell\open\command" "" '"$INSTDIR\NoteBoard.exe" "%1"'
