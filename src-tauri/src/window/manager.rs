@@ -10,6 +10,75 @@ use std::sync::Mutex;
 use tauri::{Emitter, Manager, State, Window, WindowEvent};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// 恢复、显示并激活已有窗口。
+/// Windows 会限制后台进程直接抢占焦点，因此在常规 Tauri 聚焦失败时，短暂调整窗口层级，
+/// 确保用户从资源管理器打开文件后能立即看到 NoteBoard，同时不会让窗口永久保持置顶。
+pub fn bring_to_front(window: &tauri::WebviewWindow) {
+    let _ = window.unminimize();
+    let _ = window.show();
+
+    #[cfg(target_os = "windows")]
+    if bring_to_front_on_windows(window).is_ok() {
+        return;
+    }
+
+    // 非 Windows 平台或原生句柄暂不可用时，回退到 Tauri 的标准聚焦流程。
+    let _ = window.set_focus();
+}
+
+/// 使用 Windows 原生窗口 API 激活后台窗口，并在前台权限受限时修正 Z 序。
+#[cfg(target_os = "windows")]
+fn bring_to_front_on_windows(window: &tauri::WebviewWindow) -> Result<(), String> {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        BringWindowToTop, GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow,
+        SetWindowPos, ShowWindow, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOMOVE, SWP_NOOWNERZORDER,
+        SWP_NOSIZE, SWP_SHOWWINDOW, SW_RESTORE,
+    };
+
+    // Tauri 与当前项目依赖的 windows crate 版本不同，原生句柄指针需要显式转换。
+    let tauri_hwnd = window.hwnd().map_err(|error| error.to_string())?;
+    let hwnd = HWND(tauri_hwnd.0);
+
+    unsafe {
+        let _ = ShowWindow(hwnd, SW_RESTORE);
+
+        // 临时关联当前工作线程与前台线程的输入队列，提高 SetForegroundWindow 的成功率。
+        let current_thread_id = GetCurrentThreadId();
+        let foreground_window = GetForegroundWindow();
+        let foreground_thread_id = if foreground_window.0.is_null() {
+            0
+        } else {
+            GetWindowThreadProcessId(foreground_window, None)
+        };
+        let should_attach = foreground_thread_id != 0 && foreground_thread_id != current_thread_id;
+        let is_attached = should_attach
+            && AttachThreadInput(current_thread_id, foreground_thread_id, true).as_bool();
+
+        let _ = BringWindowToTop(hwnd);
+        let is_foreground = SetForegroundWindow(hwnd).as_bool();
+
+        if !is_foreground {
+            // Windows 拒绝后台抢焦点时，短暂进入 topmost 层再立刻退出，窗口仍回归普通层级。
+            let flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW;
+            let _ = SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, flags);
+            let _ = SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, flags);
+            let _ = BringWindowToTop(hwnd);
+            let _ = SetForegroundWindow(hwnd);
+        }
+
+        // 无论激活是否被系统接受，都必须解除输入队列关联，避免影响后续键盘和鼠标消息。
+        if is_attached {
+            let _ = AttachThreadInput(current_thread_id, foreground_thread_id, false);
+        }
+    }
+
+    // 让 Tauri/Wry 同步内部焦点状态，并将键盘输入交给 WebView。
+    let _ = window.set_focus();
+    Ok(())
+}
+
 /// 窗口记录
 #[derive(Clone, Debug)]
 pub struct WindowRecord {

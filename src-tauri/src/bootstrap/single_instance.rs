@@ -48,10 +48,8 @@ fn handle_second_instance_on_worker(app: &tauri::AppHandle, argv: Vec<String>) {
         }
 
         if let Some(win) = app.get_webview_window(&target_label) {
-            // 安装器或快捷方式重复启动时，确保隐藏/最小化的首实例能重新出现在前台
-            let _ = win.unminimize();
-            let _ = win.show();
-            let _ = win.set_focus();
+            // 从资源管理器打开文件或重复启动时，恢复已有窗口并突破 Windows 后台焦点限制。
+            crate::window::manager::bring_to_front(&win);
         }
         return;
     }
