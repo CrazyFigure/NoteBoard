@@ -250,4 +250,57 @@ describe('顶部操作栏与工具单元测试 (Toolbar & Ops)', () => {
       clearDocumentHistory(testKey);
     });
   });
+
+  describe('slashSuggestion 斜杠命令与别名模糊搜索测试', () => {
+    it('空 query 检索应返回完整命令池并包含超链接、日期时间与4x4表格', async () => {
+      const { slashSuggestion } = await import('../../src/features/editor-md/slashCommand');
+      const items = slashSuggestion.items({ query: '' });
+      expect(items.length).toBeGreaterThan(15);
+      const ids = items.map((i) => i.id);
+      expect(ids).toContain('link');
+      expect(ids).toContain('date');
+      expect(ids).toContain('time');
+      expect(ids).toContain('datetime');
+      expect(ids).toContain('tableLarge');
+    });
+
+    it('输入 link、url、lj、超链接 应精准匹配超链接命令', async () => {
+      const { slashSuggestion } = await import('../../src/features/editor-md/slashCommand');
+      const byLink = slashSuggestion.items({ query: 'link' });
+      expect(byLink.some((i) => i.id === 'link')).toBe(true);
+
+      const byUrl = slashSuggestion.items({ query: 'url' });
+      expect(byUrl.some((i) => i.id === 'link')).toBe(true);
+
+      const byLj = slashSuggestion.items({ query: 'lj' });
+      expect(byLj.some((i) => i.id === 'link')).toBe(true);
+
+      const byChinese = slashSuggestion.items({ query: '超链接' });
+      expect(byChinese[0].id).toBe('link');
+    });
+
+    it('输入 rq、riqi、date、time、datetime 应匹配日期时间命令', async () => {
+      const { slashSuggestion } = await import('../../src/features/editor-md/slashCommand');
+      const byDate = slashSuggestion.items({ query: 'date' });
+      expect(byDate.some((i) => i.id === 'date')).toBe(true);
+
+      const byRq = slashSuggestion.items({ query: 'rq' });
+      expect(byRq.some((i) => i.id === 'date')).toBe(true);
+
+      const byTime = slashSuggestion.items({ query: 'time' });
+      expect(byTime.some((i) => i.id === 'time')).toBe(true);
+
+      const byDateTime = slashSuggestion.items({ query: 'datetime' });
+      expect(byDateTime.some((i) => i.id === 'datetime')).toBe(true);
+    });
+
+    it('输入 4x4 或 bg4 应匹配宽表格 4x4', async () => {
+      const { slashSuggestion } = await import('../../src/features/editor-md/slashCommand');
+      const by4x4 = slashSuggestion.items({ query: '4x4' });
+      expect(by4x4.some((i) => i.id === 'tableLarge')).toBe(true);
+
+      const byBg4 = slashSuggestion.items({ query: 'bg4' });
+      expect(byBg4.some((i) => i.id === 'tableLarge')).toBe(true);
+    });
+  });
 });

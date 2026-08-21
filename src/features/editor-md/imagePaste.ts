@@ -98,12 +98,11 @@ export async function handlePastedImageFile(
 }
 
 /**
- * 弹出系统文件选择器选择本地图片并导入到当前文档同级 img 目录
+ * 弹出系统文件选择器选择本地图片，自动保存到当前文档同级 img 目录并返回图片路径与描述
  */
-export async function insertLocalImageWithDialog(
-  editor: Editor,
+export async function pickAndSaveLocalImage(
   docKey: string,
-): Promise<void> {
+): Promise<{ src: string; alt: string } | null> {
   try {
     const selected = await open({
       title: '选择要插入的图片',
@@ -117,7 +116,7 @@ export async function insertLocalImageWithDialog(
     });
 
     if (!selected || typeof selected !== 'string') {
-      return;
+      return null;
     }
 
     const filePath = selected;
@@ -144,17 +143,31 @@ export async function insertLocalImageWithDialog(
       }
 
       const relativePath = `./${imageDirName}/${newFileName}`;
-      editor.chain().focus().setImage({ src: relativePath, alt: safeBaseName }).run();
       showToast(`图片已导入至 /${imageDirName}`, 'success');
+      return { src: relativePath, alt: safeBaseName };
     } else {
       // 未保存文档直接使用选择的文件路径
       const fileName = filePath.split(/[\\/]/).pop() || 'image';
-      editor.chain().focus().setImage({ src: filePath, alt: fileName }).run();
-      showToast('图片已插入。建议按 Ctrl+S 保存文档', 'info');
+      showToast('图片已选择。建议按 Ctrl+S 保存文档', 'info');
+      return { src: filePath, alt: fileName };
     }
   } catch (err) {
     console.error('选择本地图片失败:', err);
     showToast(`选择图片失败: ${err instanceof Error ? err.message : String(err)}`, 'error');
+    return null;
+  }
+}
+
+/**
+ * 弹出系统文件选择器选择本地图片并导入到当前文档同级 img 目录
+ */
+export async function insertLocalImageWithDialog(
+  editor: Editor,
+  docKey: string,
+): Promise<void> {
+  const imageInfo = await pickAndSaveLocalImage(docKey);
+  if (imageInfo) {
+    editor.chain().focus().setImage(imageInfo).run();
   }
 }
 

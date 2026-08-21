@@ -31,6 +31,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Flame,
+  Link2,
   Calendar,
   Clock,
   Pilcrow,
@@ -41,6 +42,7 @@ import {
 } from 'lucide-react';
 import { insertLocalImageWithDialog } from './imagePaste';
 import { useWindowStore } from '../../stores/windowStore';
+import { emit } from '../../core/emitter';
 
 /** 叶子具体执行命令项 */
 export interface LeafCommandItem {
@@ -267,6 +269,17 @@ const TABLE_LEAFS: LeafCommandItem[] = [
     keywords: '表格 紧凑表格 table small biaoge',
     action: (editor, range) => editor.chain().focus().deleteRange(range).insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run(),
   },
+  {
+    id: 'tableLarge',
+    label: '表格 (4x4)',
+    description: '插入 4 行 4 列宽表格',
+    groupId: 'tables',
+    groupLabel: '表格',
+    icon: <TableIcon size={17} />,
+    aliases: ['biaoge4', 'bg4', 'table4', '4x4'],
+    keywords: '表格 宽表格 table large 4x4 biaoge',
+    action: (editor, range) => editor.chain().focus().deleteRange(range).insertTable({ rows: 4, cols: 4, withHeaderRow: true }).run(),
+  },
 ];
 
 const MATH_LEAFS: LeafCommandItem[] = [
@@ -311,13 +324,13 @@ const MATH_LEAFS: LeafCommandItem[] = [
   },
 ];
 
-const TOOL_LEAFS: LeafCommandItem[] = [
+const DATETIME_LEAFS: LeafCommandItem[] = [
   {
     id: 'date',
     label: '插入当前日期',
     description: '插入当前日期（如 ' + new Date().toISOString().slice(0, 10) + '）',
-    groupId: 'tools',
-    groupLabel: '快捷工具',
+    groupId: 'datetime',
+    groupLabel: '日期时间',
     icon: <Calendar size={17} />,
     aliases: ['riqi', 'rq', 'date', 'today', 'jinri'],
     keywords: '日期 今天 riqi rq date today',
@@ -331,8 +344,8 @@ const TOOL_LEAFS: LeafCommandItem[] = [
     id: 'time',
     label: '插入当前时间',
     description: '插入当前时刻（如 ' + new Date().toTimeString().slice(0, 8) + '）',
-    groupId: 'tools',
-    groupLabel: '快捷工具',
+    groupId: 'datetime',
+    groupLabel: '日期时间',
     icon: <Clock size={17} />,
     aliases: ['shijian', 'sj', 'time', 'now', 'xiansi'],
     keywords: '时间 时刻 time now shijian sj',
@@ -342,84 +355,132 @@ const TOOL_LEAFS: LeafCommandItem[] = [
       editor.chain().focus().deleteRange(range).insertContent(timeStr).run();
     },
   },
+  {
+    id: 'datetime',
+    label: '插入日期与时间',
+    description: '插入完整日期时刻（如 ' + new Date().toISOString().slice(0, 10) + ' ' + new Date().toTimeString().slice(0, 8) + '）',
+    groupId: 'datetime',
+    groupLabel: '日期时间',
+    icon: <Calendar size={17} />,
+    aliases: ['riqishijian', 'rqsj', 'datetime', 'now', 'dt'],
+    keywords: '日期时间 日期 时间 datetime now riqishijian rqsj',
+    action: (editor, range) => {
+      const d = new Date();
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+      editor.chain().focus().deleteRange(range).insertContent(`${dateStr} ${timeStr}`).run();
+    },
+  },
 ];
 
-/** 一级独立常驻命令项（「清除格式」直接放到一级首要位置） */
+/** 独立常驻执行项定义 */
+const CODE_BLOCK_LEAF: LeafCommandItem = {
+  id: 'codeBlock',
+  label: '代码块',
+  description: '带语法高亮与语言切换的多行代码框',
+  icon: <Code2 size={17} />,
+  aliases: ['daima', 'daimakuai', 'dm', 'code', 'codeblock', 'pre', 'js', 'ts', 'py', 'sql', 'json', 'cpp'],
+  keywords: '代码 代码块 code codeblock daima dm',
+  action: (editor, range) => editor.chain().focus().deleteRange(range).toggleCodeBlock().run(),
+};
+
+const BLOCKQUOTE_LEAF: LeafCommandItem = {
+  id: 'blockquote',
+  label: '引用块 (Quote)',
+  description: '插入引述文字或要点摘录',
+  icon: <Quote size={17} />,
+  aliases: ['yinyong', 'yy', 'quote', 'blockquote'],
+  keywords: '引用 quote blockquote yinyong yy',
+  action: (editor, range) => editor.chain().focus().deleteRange(range).toggleBlockquote().run(),
+};
+
+const IMAGE_LOCAL_LEAF: LeafCommandItem = {
+  id: 'image',
+  label: '插入本地图片',
+  description: '选择本地图片并自动保存到文档 /img 目录',
+  icon: <ImageIcon size={17} />,
+  aliases: ['tupian', 'tp', 'image', 'img', 'photo', 'picture', 'bendi'],
+  keywords: '图片 插入图片 本地图片 image img photo picture tupian tp bendi',
+  action: (editor, range) => {
+    editor.chain().focus().deleteRange(range).run();
+    const activeKey = useWindowStore.getState().activeKey;
+    if (activeKey) {
+      insertLocalImageWithDialog(editor, activeKey);
+    }
+  },
+};
+
+const IMAGE_URL_LEAF: LeafCommandItem = {
+  id: 'imageUrl',
+  label: '插入网络图片',
+  description: '通过在线网络 URL 插入图片',
+  icon: <ImageIcon size={17} style={{ opacity: 0.7 }} />,
+  aliases: ['urltp', 'wangluotp', 'imgurl', 'imageurl'],
+  keywords: '网络图片 图片链接 image url img photo wangluo',
+  action: (editor, range) => {
+    const url = window.prompt('请输入图片网络 URL:');
+    if (url) {
+      editor.chain().focus().deleteRange(range).setImage({ src: url }).run();
+    }
+  },
+};
+
+const LINK_LEAF: LeafCommandItem = {
+  id: 'link',
+  label: '插入超链接',
+  description: '插入网页链接或文档相对链接',
+  icon: <Link2 size={17} color="#3b82f6" />,
+  aliases: ['link', 'url', 'lianjie', 'lj', 'chaolianjie', 'clj', 'http', 'https'],
+  keywords: '超链接 链接 link url lianjie http https chaolianjie lj',
+  action: (editor, range) => {
+    editor.chain().focus().deleteRange(range).run();
+    const activeKey = useWindowStore.getState().activeKey;
+    if (activeKey) {
+      emit('open-link-modal', { key: activeKey });
+    }
+  },
+};
+
+const PARAGRAPH_LEAF: LeafCommandItem = {
+  id: 'paragraph',
+  label: '正文段落',
+  description: '普通纯文本段落',
+  icon: <Pilcrow size={17} />,
+  aliases: ['zw', 'zhengwen', 'p', 'paragraph', 'text'],
+  keywords: '正文 段落 text paragraph zhengwen zw',
+  action: (editor, range) => editor.chain().focus().deleteRange(range).setParagraph().run(),
+};
+
+const DIVIDER_LEAF: LeafCommandItem = {
+  id: 'divider',
+  label: '水平分割线',
+  description: '插入 --- 横向视觉分隔线',
+  icon: <Minus size={17} />,
+  aliases: ['fengexian', 'fgx', 'fg', 'divider', 'hr', 'horizontal', 'line'],
+  keywords: '分割线 分割 华丽分割线 divider hr fengexian',
+  action: (editor, range) => editor.chain().focus().deleteRange(range).setHorizontalRule().run(),
+};
+
+const CLEAR_FORMAT_LEAF: LeafCommandItem = {
+  id: 'clearFormat',
+  label: '清除格式',
+  description: '清除文本样式、高亮与多余格式',
+  icon: <RemoveFormatting size={17} color="#ef4444" />,
+  aliases: ['qingchu', 'qc', 'clear', 'clean', 'plain'],
+  keywords: '清除格式 清空样式 clear clean format qingchu qc',
+  action: (editor, range) => editor.chain().focus().deleteRange(range).unsetAllMarks().run(),
+};
+
+/** 一级独立常驻命令项集合 */
 const STANDALONE_LEAFS: LeafCommandItem[] = [
-  {
-    id: 'clearFormat',
-    label: '清除格式',
-    description: '清除文本样式、高亮与多余格式',
-    icon: <RemoveFormatting size={17} color="#ef4444" />,
-    aliases: ['qingchu', 'qc', 'clear', 'clean', 'plain'],
-    keywords: '清除格式 清空样式 clear clean format qingchu qc',
-    action: (editor, range) => editor.chain().focus().deleteRange(range).unsetAllMarks().run(),
-  },
-  {
-    id: 'paragraph',
-    label: '正文段落',
-    description: '普通纯文本段落',
-    icon: <Pilcrow size={17} />,
-    aliases: ['zw', 'zhengwen', 'p', 'paragraph', 'text'],
-    keywords: '正文 段落 text paragraph zhengwen zw',
-    action: (editor, range) => editor.chain().focus().deleteRange(range).setParagraph().run(),
-  },
-  {
-    id: 'codeBlock',
-    label: '代码块',
-    description: '带语法高亮与语言切换的多行代码框',
-    icon: <Code2 size={17} />,
-    aliases: ['daima', 'daimakuai', 'dm', 'code', 'codeblock', 'pre', 'js', 'ts', 'py', 'sql', 'json', 'cpp'],
-    keywords: '代码 代码块 code codeblock daima dm',
-    action: (editor, range) => editor.chain().focus().deleteRange(range).toggleCodeBlock().run(),
-  },
-  {
-    id: 'blockquote',
-    label: '引用块 (Quote)',
-    description: '插入引述文字或要点摘录',
-    icon: <Quote size={17} />,
-    aliases: ['yinyong', 'yy', 'quote', 'blockquote'],
-    keywords: '引用 quote blockquote yinyong yy',
-    action: (editor, range) => editor.chain().focus().deleteRange(range).toggleBlockquote().run(),
-  },
-  {
-    id: 'divider',
-    label: '水平分割线',
-    description: '插入 --- 横向视觉分隔线',
-    icon: <Minus size={17} />,
-    aliases: ['fengexian', 'fgx', 'fg', 'divider', 'hr', 'horizontal', 'line'],
-    keywords: '分割线 分割 华丽分割线 divider hr fengexian',
-    action: (editor, range) => editor.chain().focus().deleteRange(range).setHorizontalRule().run(),
-  },
-  {
-    id: 'image',
-    label: '插入本地图片',
-    description: '选择本地图片并自动保存到文档 /img 目录',
-    icon: <ImageIcon size={17} />,
-    aliases: ['tupian', 'tp', 'image', 'img', 'photo', 'picture', 'bendi'],
-    keywords: '图片 插入图片 本地图片 image img photo picture tupian tp bendi',
-    action: (editor, range) => {
-      editor.chain().focus().deleteRange(range).run();
-      const activeKey = useWindowStore.getState().activeKey;
-      if (activeKey) {
-        insertLocalImageWithDialog(editor, activeKey);
-      }
-    },
-  },
-  {
-    id: 'imageUrl',
-    label: '插入网络图片',
-    description: '通过在线网络 URL 插入图片',
-    icon: <ImageIcon size={17} style={{ opacity: 0.7 }} />,
-    aliases: ['urltp', 'wangluotp', 'imgurl', 'imageurl'],
-    keywords: '网络图片 图片链接 image url img photo wangluo',
-    action: (editor, range) => {
-      const url = window.prompt('请输入图片网络 URL:');
-      if (url) {
-        editor.chain().focus().deleteRange(range).setImage({ src: url }).run();
-      }
-    },
-  },
+  CODE_BLOCK_LEAF,
+  BLOCKQUOTE_LEAF,
+  IMAGE_LOCAL_LEAF,
+  IMAGE_URL_LEAF,
+  LINK_LEAF,
+  PARAGRAPH_LEAF,
+  DIVIDER_LEAF,
+  CLEAR_FORMAT_LEAF,
 ];
 
 /** 一级菜单分组配置列表 */
@@ -451,7 +512,7 @@ const ROOT_GROUPS: GroupCommandItem[] = [
   {
     id: 'tables',
     label: '表格数据',
-    description: '标准 3x3 表格与紧凑 2x2 表格',
+    description: '标准 3x3 表格、紧凑 2x2 与宽表格 4x4',
     icon: <TableIcon size={17} />,
     isGroup: true,
     children: TABLE_LEAFS,
@@ -465,30 +526,49 @@ const ROOT_GROUPS: GroupCommandItem[] = [
     children: MATH_LEAFS,
   },
   {
-    id: 'tools',
-    label: '快捷工具',
-    description: '当前日期、当前时刻等',
-    icon: <Sparkles size={17} />,
+    id: 'datetime',
+    label: '日期时间',
+    description: '当前日期、当前时刻、日期与时刻',
+    icon: <Calendar size={17} />,
     isGroup: true,
-    children: TOOL_LEAFS,
+    children: DATETIME_LEAFS,
   },
 ];
 
-/** 全量叶子命令扁平池（供全局快速模糊搜索） */
+/** 全量叶子命令扁平池（优先级：标题 > 列表 > 代码块 > 提示块 > 引用块 > 表格 > 公式 > 图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
 const ALL_LEAFS: LeafCommandItem[] = [
-  ...STANDALONE_LEAFS,
   ...HEADING_LEAFS,
   ...LIST_LEAFS,
+  CODE_BLOCK_LEAF,
   ...ALERT_LEAFS,
+  BLOCKQUOTE_LEAF,
   ...TABLE_LEAFS,
   ...MATH_LEAFS,
-  ...TOOL_LEAFS,
+  IMAGE_LOCAL_LEAF,
+  IMAGE_URL_LEAF,
+  LINK_LEAF,
+  ...DATETIME_LEAFS,
+  PARAGRAPH_LEAF,
+  DIVIDER_LEAF,
+  CLEAR_FORMAT_LEAF,
 ];
 
-/** 默认根级菜单项（包含 Group 和 Standalone 叶子） */
+/** 默认根级菜单项（严格遵循优先级：标题 > 列表 > 代码块 > GitHub提示 > 引用块 > 表格 > 公式与图表 > 本地图片 > 网络图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
 const ROOT_MENU_ENTRIES: MenuEntry[] = [
-  ...ROOT_GROUPS.map((g) => ({ type: 'group' as const, item: g })),
-  ...STANDALONE_LEAFS.map((l) => ({ type: 'leaf' as const, item: l })),
+  { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'headings')! },
+  { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'lists')! },
+  { type: 'leaf', item: CODE_BLOCK_LEAF },
+  { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'alerts')! },
+  { type: 'leaf', item: BLOCKQUOTE_LEAF },
+  { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'tables')! },
+  { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'math')! },
+  { type: 'leaf', item: IMAGE_LOCAL_LEAF },
+  { type: 'leaf', item: IMAGE_URL_LEAF },
+  { type: 'leaf', item: LINK_LEAF },
+  { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'datetime')! },
+  { type: 'leaf', item: PARAGRAPH_LEAF },
+  { type: 'leaf', item: DIVIDER_LEAF },
+  { type: 'leaf', item: CLEAR_FORMAT_LEAF },
 ];
 
 /** 全局打平搜索逻辑 */

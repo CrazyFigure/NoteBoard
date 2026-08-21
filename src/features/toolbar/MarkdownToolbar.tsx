@@ -37,6 +37,8 @@ import {
   Minus,
   Link2,
   Image as ImageIcon,
+  Calendar,
+  Clock,
   RemoveFormatting,
   PlusSquare,
   CodeXml,
@@ -54,7 +56,7 @@ import {
   redoDocumentHistory,
   useDocumentHistory,
 } from '../history/documentHistory';
-import { insertLocalImageWithDialog } from '../editor-md/imagePaste';
+import { insertLocalImageWithDialog, pickAndSaveLocalImage } from '../editor-md/imagePaste';
 import { getActiveTipTapEditor, getActiveSourceView } from '../editor-md/TipTapEditor';
 import { emit } from '../../core/emitter';
 import type { EditorView } from '@codemirror/view';
@@ -340,14 +342,73 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
     editor.chain().focus().setHorizontalRule().run();
   };
 
+  // ── 超链接与图片处理 ──
   const handleOpenLink = () => {
+    setInsertDropdownOpen(false);
     emit('open-link-modal', { key: docKey });
   };
 
-  const handleInsertImage = () => {
+  const handleInsertLocalImage = async () => {
+    setInsertDropdownOpen(false);
+    if (isSourceMode) {
+      const imageInfo = await pickAndSaveLocalImage(docKey);
+      if (imageInfo) {
+        executeSourceAction((view) => {
+          const { from, to } = view.state.selection.main;
+          const snippet = `![${imageInfo.alt}](${imageInfo.src})`;
+          view.dispatch({
+            changes: { from, to, insert: snippet },
+            selection: { anchor: from + snippet.length },
+          });
+        });
+      }
+      return;
+    }
     if (editor) {
       insertLocalImageWithDialog(editor, docKey);
     }
+  };
+
+  const handleInsertNetworkImage = () => {
+    setInsertDropdownOpen(false);
+    const url = window.prompt('请输入图片网络 URL:');
+    if (!url) return;
+    if (isSourceMode) {
+      executeSourceAction((view) => {
+        const { from, to } = view.state.selection.main;
+        const snippet = `![图片](${url})`;
+        view.dispatch({
+          changes: { from, to, insert: snippet },
+          selection: { anchor: from + snippet.length },
+        });
+      });
+      return;
+    }
+    if (!editor) return;
+    editor.chain().focus().setImage({ src: url }).run();
+  };
+
+  // ── 日期时间插入处理 ──
+  const handleInsertDateTime = (mode: 'date' | 'time' | 'datetime') => {
+    setInsertDropdownOpen(false);
+    const d = new Date();
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+    const textToInsert =
+      mode === 'date' ? dateStr : mode === 'time' ? timeStr : `${dateStr} ${timeStr}`;
+
+    if (isSourceMode) {
+      executeSourceAction((view) => {
+        const { from, to } = view.state.selection.main;
+        view.dispatch({
+          changes: { from, to, insert: textToInsert },
+          selection: { anchor: from + textToInsert.length },
+        });
+      });
+      return;
+    }
+    if (!editor) return;
+    editor.chain().focus().insertContent(textToInsert).run();
   };
 
   const handleClearFormat = () => {
@@ -590,7 +651,7 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
 
       <ToolbarDivider />
 
-      {/* ── 插入块级元素下拉菜单（二级/三级菜单） ── */}
+      {/* ── 插入块级与丰富元素下拉菜单（二级/三级菜单集大成） ── */}
       <ToolbarDropdown
         isOpen={insertDropdownOpen}
         onOpenChange={setInsertDropdownOpen}
@@ -599,58 +660,18 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
             icon={<PlusSquare size={15} />}
             label="插入"
             hasDropdown
-            title="插入表格、公式、图表、提示块等"
+            title="插入超链接、图片、表格、公式、图表、提示块、日期时间等"
           />
         }
       >
-        {/* 表格二级菜单 */}
+        {/* 1. 代码块 */}
         <ToolbarDropdownItem
-          icon={<TableIcon size={14} />}
-          label="表格"
-          submenu={
-            <>
-              <ToolbarDropdownItem
-                label="标准表格 (3x3)"
-                onClick={() => handleInsertTable(3, 3)}
-              />
-              <ToolbarDropdownItem
-                label="紧凑表格 (2x2)"
-                onClick={() => handleInsertTable(2, 2)}
-              />
-              <ToolbarDropdownItem
-                label="宽表格 (4x4)"
-                onClick={() => handleInsertTable(4, 4)}
-              />
-            </>
-          }
+          icon={<Code2 size={14} />}
+          label="代码块"
+          onClick={handleInsertCodeBlock}
         />
 
-        {/* 公式与图表二级菜单 */}
-        <ToolbarDropdownItem
-          icon={<Sigma size={14} />}
-          label="公式与图表"
-          submenu={
-            <>
-              <ToolbarDropdownItem
-                icon={<Sigma size={14} />}
-                label="行内公式 ($...$)"
-                onClick={() => handleInsertMath('inline')}
-              />
-              <ToolbarDropdownItem
-                icon={<Sigma size={14} />}
-                label="独立公式块 ($$...$$)"
-                onClick={() => handleInsertMath('block')}
-              />
-              <ToolbarDropdownItem
-                icon={<Workflow size={14} />}
-                label="Mermaid 流程图表"
-                onClick={handleInsertMermaid}
-              />
-            </>
-          }
-        />
-
-        {/* GitHub Alert 提示块二级菜单 */}
+        {/* 2. GitHub Alert 提示块二级菜单 */}
         <ToolbarDropdownItem
           icon={<Info size={14} color="#3b82f6" />}
           label="提示块 (Callout)"
@@ -685,16 +706,114 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
           }
         />
 
-        <ToolbarDropdownItem
-          icon={<Code2 size={14} />}
-          label="代码块"
-          onClick={handleInsertCodeBlock}
-        />
+        {/* 3. 引用块 (Quote) */}
         <ToolbarDropdownItem
           icon={<Quote size={14} />}
           label="引用块 (Quote)"
           onClick={handleInsertQuote}
         />
+
+        {/* 4. 表格二级菜单 */}
+        <ToolbarDropdownItem
+          icon={<TableIcon size={14} />}
+          label="表格"
+          submenu={
+            <>
+              <ToolbarDropdownItem
+                label="标准表格 (3x3)"
+                onClick={() => handleInsertTable(3, 3)}
+              />
+              <ToolbarDropdownItem
+                label="紧凑表格 (2x2)"
+                onClick={() => handleInsertTable(2, 2)}
+              />
+              <ToolbarDropdownItem
+                label="宽表格 (4x4)"
+                onClick={() => handleInsertTable(4, 4)}
+              />
+            </>
+          }
+        />
+
+        {/* 5. 公式与图表二级菜单 */}
+        <ToolbarDropdownItem
+          icon={<Sigma size={14} />}
+          label="公式与图表"
+          submenu={
+            <>
+              <ToolbarDropdownItem
+                icon={<Sigma size={14} />}
+                label="行内公式 ($...$)"
+                onClick={() => handleInsertMath('inline')}
+              />
+              <ToolbarDropdownItem
+                icon={<Sigma size={14} />}
+                label="独立公式块 ($$...$$)"
+                onClick={() => handleInsertMath('block')}
+              />
+              <ToolbarDropdownItem
+                icon={<Workflow size={14} />}
+                label="Mermaid 流程图表"
+                onClick={handleInsertMermaid}
+              />
+            </>
+          }
+        />
+
+        {/* 6. 图片二级菜单 */}
+        <ToolbarDropdownItem
+          icon={<ImageIcon size={14} />}
+          label="图片"
+          submenu={
+            <>
+              <ToolbarDropdownItem
+                icon={<ImageIcon size={14} />}
+                label="插入本地图片"
+                onClick={handleInsertLocalImage}
+              />
+              <ToolbarDropdownItem
+                icon={<ImageIcon size={14} style={{ opacity: 0.7 }} />}
+                label="插入网络图片"
+                onClick={handleInsertNetworkImage}
+              />
+            </>
+          }
+        />
+
+        {/* 7. 超链接菜单项 */}
+        <ToolbarDropdownItem
+          icon={<Link2 size={14} />}
+          label="超链接"
+          shortcut="Ctrl+K"
+          onClick={handleOpenLink}
+        />
+
+        {/* 8. 日期时间二级菜单 */}
+        <ToolbarDropdownItem
+          icon={<Calendar size={14} />}
+          label="日期时间"
+          submenu={
+            <>
+              <ToolbarDropdownItem
+                icon={<Calendar size={14} />}
+                label="插入当前日期"
+                onClick={() => handleInsertDateTime('date')}
+              />
+              <ToolbarDropdownItem
+                icon={<Clock size={14} />}
+                label="插入当前时刻"
+                onClick={() => handleInsertDateTime('time')}
+              />
+              <ToolbarDropdownItem
+                icon={<Calendar size={14} />}
+                label="插入日期与时刻"
+                onClick={() => handleInsertDateTime('datetime')}
+              />
+            </>
+          }
+        />
+
+        {/* 9. 水平分割线 */}
         <ToolbarDropdownItem
           icon={<Minus size={14} />}
           label="水平分割线"
@@ -706,13 +825,14 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
       <ToolbarButton
         icon={<Link2 size={15} />}
         title="插入/编辑超链接"
+        shortcut="Ctrl+K"
         active={!isSourceMode && Boolean(editor?.isActive('link'))}
         onClick={handleOpenLink}
       />
       <ToolbarButton
         icon={<ImageIcon size={15} />}
         title="插入本地图片"
-        onClick={handleInsertImage}
+        onClick={handleInsertLocalImage}
       />
 
       <ToolbarDivider />
