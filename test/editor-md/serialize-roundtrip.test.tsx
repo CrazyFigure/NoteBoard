@@ -18,6 +18,7 @@
 import { describe, it, expect } from 'vitest';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
+import { Code } from '@tiptap/extension-code';
 import { TaskList, TaskItem } from '@tiptap/extension-list';
 import { Markdown } from '@tiptap/markdown';
 import { undoDepth } from '@tiptap/pm/history';
@@ -32,7 +33,9 @@ import {
 function createEditor(): Editor {
   return new Editor({
     extensions: [
-      StarterKit,
+      // 与正式编辑器保持一致：合法 Markdown 允许粗体/斜体包裹行内代码
+      StarterKit.configure({ code: false }),
+      Code.extend({ excludes: '' }),
       TaskList,
       TaskItem.configure({ nested: true }),
       Markdown,
@@ -176,6 +179,40 @@ describe('serialize 真实往返集成（真实 TipTap Editor）', () => {
     const out = serializeMarkdown(editor);
     expect(out).toMatch(/-\s+\[\s*\]\s+未完成任务/);
     expect(out).toMatch(/-\s+\[x\]\s+已完成任务/i);
+    editor.destroy();
+  });
+
+  it('普通 Markdown 标记、反斜杠与 shell 重定向往返后不应累积转义', () => {
+    const editor = createEditor();
+    const md = [
+      '- **首选语言**: 全程使用 **简体中文** 交流。',
+      '- **操作权限**: 禁止执行 `git commit` 或者 `git push`。',
+      '- **Windows 路径规范**: 使用 **单反斜杠 (`\\`)**。',
+      '  - 对： `C:\\Software\\WorkSpace\\file.tsx`',
+      '  - 普通路径： C:\\Software\\WorkSpace\\file.tsx',
+      '  - 双反斜杠代码： `C:\\\\Software\\\\WorkSpace`',
+      '```text',
+      'C:\\\\Software\\\\WorkSpace',
+      '```',
+      '- 使用 **&>/dev/null 2>&1** 丢弃输出，不要使用 &> nul。',
+    ].join('\n');
+
+    // 连续执行两次可视化往返，覆盖用户实际触发的重复模式切换场景
+    parseMarkdown(editor, md);
+    const first = serializeMarkdown(editor);
+    parseMarkdown(editor, first);
+    const second = serializeMarkdown(editor);
+
+    expect(first).toContain('**首选语言**');
+    expect(first).toContain('`git commit`');
+    expect(first).toContain('`C:\\Software\\WorkSpace\\file.tsx`');
+    expect(first).toContain('普通路径： C:\\Software\\WorkSpace\\file.tsx');
+    expect(first).toContain('双反斜杠代码： `C:\\\\Software\\\\WorkSpace`');
+    expect(first).toContain('```text\nC:\\\\Software\\\\WorkSpace\n```');
+    expect(first).toContain('**&>/dev/null 2>&1**');
+    expect(first).not.toContain('&amp;');
+    expect(first).not.toContain('\\*');
+    expect(second).toBe(first);
     editor.destroy();
   });
 });
