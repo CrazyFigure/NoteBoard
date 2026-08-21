@@ -178,9 +178,11 @@ function ImageLightboxModal({
           transform: `scale(${scale}) rotate(${rotate}deg)`,
         }}
       >
+        {/* 禁用 Referer 携带，防止防盗链拦截 */}
         <img
           src={src}
           alt={alt || 'Image Preview'}
+          referrerPolicy="no-referrer"
           style={{
             maxWidth: '100%',
             maxHeight: '85vh',
@@ -520,9 +522,11 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
             </button>
           </div>
         ) : (
+          /* 禁用 Referer 携带，防止防盗链拦截并支持跨域图片原生渲染 */
           <img
             src={resolvedDisplaySrc}
             alt={alt}
+            referrerPolicy="no-referrer"
             onError={() => setLoadError(true)}
             onDoubleClick={() => setLightboxOpen(true)}
             style={{
@@ -656,7 +660,8 @@ export const EnhancedImageBlock = Node.create({
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ['img', mergeAttributes(HTMLAttributes)];
+    // 渲染 HTML 时默认添加 referrerpolicy，确保导出或预览时不被防盗链拦截
+    return ['img', mergeAttributes({ referrerpolicy: 'no-referrer' }, HTMLAttributes)];
   },
 
   parseMarkdown: (token, helpers) => {

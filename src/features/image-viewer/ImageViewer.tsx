@@ -486,10 +486,12 @@ export function ImageViewer({ filePath, fileName, fileSize }: ImageViewerProps) 
             </button>
           </div>
         ) : (
+          /* 禁用 Referer 携带，防止外部或远程图片被防盗链拦截 */
           <img
             ref={imgRef}
             src={imgSrc}
             alt={name}
+            referrerPolicy="no-referrer"
             onLoad={handleImageLoad}
             onError={() => setLoadError(true)}
             draggable={false}
