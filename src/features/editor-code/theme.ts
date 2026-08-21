@@ -9,13 +9,14 @@ import { Extension } from '@codemirror/state';
 
 export const nbEditorTheme: Extension = EditorView.theme(
   {
-    // 编辑器根
+    // 编辑器根（显式配置 caretColor 保证原生光标跟随主题）
     '&': {
       backgroundColor: 'var(--editor-bg)',
       color: 'var(--editor-text)',
       height: '100%',
       fontFamily: 'var(--mono-font-family)',
       fontSize: 'var(--mono-font-size)',
+      caretColor: 'var(--cm-cursor)',
     },
     '.cm-scroller': {
       overflow: 'auto',
@@ -27,6 +28,12 @@ export const nbEditorTheme: Extension = EditorView.theme(
     '.cm-content, .cm-line': {
       fontFamily: 'var(--mono-font-family)',
       fontSize: 'var(--mono-font-size)',
+      // 原生输入光标显式消费主题光标变量
+      caretColor: 'var(--cm-cursor)',
+    },
+    '.cm-content': {
+      // 内容区域光标颜色
+      caretColor: 'var(--cm-cursor)',
     },
     // 行号槽
     '.cm-gutters': {
@@ -54,8 +61,13 @@ export const nbEditorTheme: Extension = EditorView.theme(
     '.cm-selectionMatch': {
       backgroundColor: 'var(--cm-search-match-bg)',
     },
-    // 光标
+    // 光标与模拟光标
     '&.cm-focused .cm-cursor, .cm-cursor': {
+      borderLeftColor: 'var(--cm-cursor)',
+      borderLeftWidth: '2px',
+    },
+    // 拖拽落点光标
+    '.cm-dropCursor': {
       borderLeftColor: 'var(--cm-cursor)',
       borderLeftWidth: '2px',
     },

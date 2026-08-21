@@ -107,6 +107,7 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
         fontFamily: 'var(--mono-font-family)',
         fontSize: 'var(--mono-font-size)',
         height: '100%',
+        caretColor: 'var(--cm-cursor)',
       },
       '.cm-scroller': {
         lineHeight: 'var(--mono-line-height, 1.5)',
@@ -116,9 +117,11 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
       '.cm-content, .cm-line': {
         fontFamily: 'var(--mono-font-family)',
         fontSize: 'var(--mono-font-size)',
+        caretColor: 'var(--cm-cursor)',
       },
       '.cm-content': {
         padding: '16px 24px',
+        caretColor: 'var(--cm-cursor)',
       },
     });
     view.dispatch({
@@ -275,12 +278,13 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
       },
     ]));
 
-    // 代码与纯文本排版（由 --mono-* CSS 变量驱动）
+    // 代码与纯文本排版（由 --mono-* CSS 变量驱动，并绑定主题光标）
     const typographyExt = EditorView.theme({
       '&': {
         fontFamily: 'var(--mono-font-family)',
         fontSize: 'var(--mono-font-size)',
         height: '100%',
+        caretColor: 'var(--cm-cursor)',
       },
       '.cm-scroller': {
         lineHeight: 'var(--mono-line-height, 1.5)',
@@ -290,10 +294,12 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
       '.cm-content, .cm-line': {
         fontFamily: 'var(--mono-font-family)',
         fontSize: 'var(--mono-font-size)',
+        caretColor: 'var(--cm-cursor)',
       },
       '.cm-content': {
         // 移除 margin: 0 auto 与 maxWidth，避免破坏 CodeMirror 虚拟选区坐标
         padding: '16px 24px',
+        caretColor: 'var(--cm-cursor)',
       },
     });
 

@@ -192,7 +192,7 @@ export function DiagramSplitEditor({ docKey }: DiagramSplitEditorProps) {
           },
           '.cm-content': {
             padding: '12px 0',
-            caretColor: 'var(--cm-caret, var(--editor-accent, #3b82f6))',
+            caretColor: 'var(--cm-cursor, var(--editor-accent, #3b82f6))',
           },
           '.cm-gutters': {
             background: 'var(--cm-gutter-background, var(--editor-surface, #f8fafc))',

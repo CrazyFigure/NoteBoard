@@ -115,6 +115,9 @@ body {
  * ═════════════════════════════════════════════════════════ */
 
 :root[data-theme="chen-guang"] {
+  /* 明暗模式标识 */
+  color-scheme: light;
+
   /* 色板层 */
   --primary-50: #f0f4f8;  --primary-100: #d9e2ec;  --primary-200: #bcccdc;
   --primary-300: #9fb3c8;  --primary-400: #829ab1;  --primary-500: #627d98;
@@ -249,6 +252,9 @@ body {
  * ═════════════════════════════════════════════════════════ */
 
 :root[data-theme="hu-po"] {
+  /* 明暗模式标识 */
+  color-scheme: light;
+
   /* 色板层（暖灰） */
   --primary-50: #FAF9F5;  --primary-100: #F0EDE4;  --primary-200: #DDD9CC;
   --primary-300: #C4BFAD;  --primary-400: #A9A28E;  --primary-500: #8E866F;
@@ -383,6 +389,9 @@ body {
  * ═════════════════════════════════════════════════════════ */
 
 :root[data-theme="mo-ye"] {
+  /* 明暗模式标识 */
+  color-scheme: dark;
+
   /* 色板层（反向递进） */
   --primary-50: #0f172a;  --primary-100: #1e293b;  --primary-200: #334155;
   --primary-300: #475569;  --primary-400: #64748b;  --primary-500: #94a3b8;
@@ -1155,6 +1164,13 @@ body {
 .cm-editor .cm-gutters {
   font-family: var(--mono-font-family) !important;
   font-size: var(--mono-font-size);
+}
+
+/* CodeMirror 输入光标颜色随主题自适应 */
+.cm-editor,
+.cm-editor .cm-content,
+.cm-editor .cm-line {
+  caret-color: var(--cm-cursor);
 }
 
 /* ═════════════════════════════════════════════════════════
