@@ -49,14 +49,14 @@
     <text class="axis-label" x="54" y="78" text-anchor="end">5</text>
     <text class="axis-label" x="68" y="410" text-anchor="middle">2026-08-19</text>
     <text class="axis-label" x="254" y="410" text-anchor="middle">2026-08-19</text>
-    <text class="axis-label" x="440" y="410" text-anchor="middle">2026-08-19</text>
-    <text class="axis-label" x="626" y="410" text-anchor="middle">2026-08-19</text>
-    <text class="axis-label" x="812" y="410" text-anchor="middle">2026-08-20</text>
+    <text class="axis-label" x="440" y="410" text-anchor="middle">2026-08-20</text>
+    <text class="axis-label" x="626" y="410" text-anchor="middle">2026-08-20</text>
+    <text class="axis-label" x="812" y="410" text-anchor="middle">2026-08-21</text>
   </g>
-  <path class="area" d="M 68 368 H 68.19 V 368 H 812 V 132.8 L 812 368 L 68 368 Z" />
-  <path class="line" d="M 68 368 H 68.19 V 368 H 812 V 132.8" />
-  <circle class="dot" cx="812" cy="132.8" r="6" />
+  <path class="area" d="M 68 368 H 68.08 V 368 H 381.29 V 132.8 H 812 V 74 L 812 368 L 68 368 Z" />
+  <path class="line" d="M 68 368 H 68.08 V 368 H 381.29 V 132.8 H 812 V 74" />
+  <circle class="dot" cx="812" cy="74" r="6" />
   <rect class="badge" x="682" y="28" width="130" height="34" rx="17" />
-  <text class="badge-text" x="747" y="50" text-anchor="middle">4 stars</text>
-  <text class="status" x="812" y="428" text-anchor="end">Observed snapshots: 2026-08-19 – 2026-08-20</text>
+  <text class="badge-text" x="747" y="50" text-anchor="middle">5 stars</text>
+  <text class="status" x="812" y="428" text-anchor="end">Observed snapshots: 2026-08-19 – 2026-08-21</text>
 </svg>
