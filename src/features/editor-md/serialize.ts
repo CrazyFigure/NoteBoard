@@ -7,6 +7,149 @@
 
 import type { Editor } from '@tiptap/core';
 
+// CommonMark 允许反斜杠转义的 ASCII 标点；这些字符前的双反斜杠不能擅自折叠，
+// 否则原本可见的反斜杠会在下一次解析时被当成转义符吞掉。
+const COMMONMARK_ESCAPABLE_PUNCTUATION = new Set(
+  [...'!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'],
+);
+const TIPTAP_MARKDOWN_SPECIAL_CHARACTERS = new Set(['`', '*', '_', '[', ']', '~']);
+
+interface MarkdownManagerWithEscaper {
+  escapeMarkdownSyntax?: (text: string) => string;
+}
+
+/**
+ * 转义普通文本中的 Markdown 标记，同时避免把 Windows 路径等安全反斜杠无条件翻倍。
+ * 反斜杠仅在行尾或 CommonMark 可转义标点前需要自我转义；字母、数字、中文前可原样保留。
+ */
+function escapeMarkdownText(text: string): string {
+  let output = '';
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === '\\') {
+      const nextCharacter = text[index + 1];
+      const mustEscapeBackslash =
+        nextCharacter === undefined
+        || nextCharacter === '\n'
+        || COMMONMARK_ESCAPABLE_PUNCTUATION.has(nextCharacter);
+      output += mustEscapeBackslash ? '\\\\' : '\\';
+      continue;
+    }
+    output += TIPTAP_MARKDOWN_SPECIAL_CHARACTERS.has(character)
+      ? `\\${character}`
+      : character;
+  }
+  return output;
+}
+
+interface BacktickRun {
+  start: number;
+  end: number;
+  length: number;
+}
+
+/** 查找未被反斜杠转义的反引号分隔符，供行内代码保护逻辑使用。 */
+function findBacktickRun(text: string, from: number): BacktickRun | null {
+  for (let index = from; index < text.length; index += 1) {
+    if (text[index] !== '`') continue;
+
+    let precedingBackslashes = 0;
+    for (let cursor = index - 1; cursor >= 0 && text[cursor] === '\\'; cursor -= 1) {
+      precedingBackslashes += 1;
+    }
+    if (precedingBackslashes % 2 !== 0) continue;
+
+    let end = index + 1;
+    while (end < text.length && text[end] === '`') end += 1;
+    return { start: index, end, length: end - index };
+  }
+  return null;
+}
+
+/**
+ * 只转换一行中不属于行内代码的片段。
+ * 代码跨度内的实体是用户原始代码，不能按普通 Markdown 文本清理。
+ */
+function mapOutsideInlineCode(
+  line: string,
+  transform: (text: string, linePrefix: string) => string,
+): string {
+  let cursor = 0;
+  let output = '';
+
+  while (cursor < line.length) {
+    const opening = findBacktickRun(line, cursor);
+    if (!opening) {
+      output += transform(line.slice(cursor), output);
+      break;
+    }
+
+    let closing = findBacktickRun(line, opening.end);
+    while (closing && closing.length !== opening.length) {
+      closing = findBacktickRun(line, closing.end);
+    }
+
+    // 未闭合反引号不是可靠的代码边界，保守保留其后的源码，避免错误改写
+    if (!closing) {
+      output += transform(line.slice(cursor, opening.start), output);
+      output += line.slice(opening.start);
+      break;
+    }
+
+    output += transform(line.slice(cursor, opening.start), output);
+    output += line.slice(opening.start, closing.end);
+    cursor = closing.end;
+  }
+
+  return output;
+}
+
+/**
+ * 清理 TipTap Markdown 序列化器为安全兜底而产生、但在源码中没有必要的编码。
+ *
+ * 主要规则：
+ * 1. `&` 还原为普通字符，避免 shell 重定向在往返后出现 `&amp;`；
+ * 2. 仅在不会变成块引用标记的位置还原 `>`；
+ * 代码围栏和行内代码保持原样，避免把代码中原本就存在的实体文本误解码。
+ */
+export function normalizeSerializedMarkdown(markdown: string): string {
+  let activeFence: { marker: '`' | '~'; length: number } | null = null;
+
+  return markdown
+    .split('\n')
+    .map((rawLine) => {
+      const fenceMatch = rawLine.match(/^ {0,3}(`{3,}|~{3,})/);
+      if (activeFence) {
+        const closingFence = new RegExp(
+          `^ {0,3}\\${activeFence.marker}{${activeFence.length},}[ \\t]*$`,
+        );
+        if (closingFence.test(rawLine)) activeFence = null;
+        return rawLine;
+      }
+      if (fenceMatch) {
+        activeFence = {
+          marker: fenceMatch[1][0] as '`' | '~',
+          length: fenceMatch[1].length,
+        };
+        return rawLine;
+      }
+
+      return mapOutsideInlineCode(rawLine, (segment, linePrefix) => {
+        // 必须先还原 amp，确保 `&amp;&gt;` 能在同一轮恢复为 `&>`
+        const ampRestored = segment.replace(/&amp;/g, '&');
+        const greaterThanRestored = ampRestored.replace(/&gt;/g, (entity, offset: number) => {
+          const prefix = linePrefix + ampRestored.slice(0, offset);
+          // 行首或列表/引用容器开头的 `>` 会改变 Markdown 块结构，必须继续保留实体
+          const isBlockQuoteMarker = /^(?: {0,3}(?:(?:>|[-+*]|\d+[.)])(?:[ \t]+|$)))* {0,3}$/.test(prefix);
+          return isBlockQuoteMarker ? entity : '>';
+        });
+
+        return greaterThanRestored;
+      });
+    })
+    .join('\n');
+}
+
 // ── 序列化器 ──
 
 /**
@@ -25,7 +168,24 @@ import type { Editor } from '@tiptap/core';
 export function serializeMarkdown(editor: Editor): string {
   const getMarkdown = (editor as unknown as { getMarkdown?: () => string }).getMarkdown;
   if (typeof getMarkdown === 'function') {
-    return getMarkdown.call(editor);
+    const manager = (
+      editor.storage as unknown as {
+        markdown?: { manager?: MarkdownManagerWithEscaper };
+      }
+    ).markdown?.manager;
+    const originalEscaper = manager?.escapeMarkdownSyntax;
+    if (manager && typeof originalEscaper === 'function') {
+      // TipTap 暂未开放文本转义策略配置；在同步序列化期间临时替换其内部转义器，
+      // 只影响普通文本节点，不会误改代码块、行内代码、链接地址或图片路径。
+      manager.escapeMarkdownSyntax = escapeMarkdownText;
+    }
+    try {
+      return normalizeSerializedMarkdown(getMarkdown.call(editor));
+    } finally {
+      if (manager && typeof originalEscaper === 'function') {
+        manager.escapeMarkdownSyntax = originalEscaper;
+      }
+    }
   }
   console.error(
     '[NoteBoard] @tiptap/markdown 扩展未注册，无法序列化为 Markdown。' +

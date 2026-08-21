@@ -6,6 +6,7 @@
 // 不包含：AI 补全/建议/diff 预览、sync/、SQLite 层、全局单例 tab 状态。
 
 import StarterKit from '@tiptap/starter-kit';
+import { Code } from '@tiptap/extension-code';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import CharacterCount from '@tiptap/extension-character-count';
@@ -152,6 +153,12 @@ export interface BuildExtensionsOptions {
   onOpenLinkModal?: () => void;
 }
 
+// Markdown 允许粗体、斜体等标记包裹行内代码；默认 Code 的 excludes: '_'
+// 会让合法的 **文字 `code`** 在解析时生成非法 marks，并触发整篇纯文本降级。
+const MarkdownCompatibleCode = Code.extend({
+  excludes: '',
+});
+
 /**
  * 构建 TipTap 扩展列表
  * 这是唯一的扩展装配点，不分散到各组件
@@ -162,6 +169,8 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
     // listItem, blockquote, horizontalRule, history, paragraph, text, document,
     // 但不含 codeBlock（我们用自定义的）
     StarterKit.configure({
+      // 改由允许 Markdown 标记嵌套的 Code 扩展注册，避免同名扩展和 schema 冲突
+      code: false,
       codeBlock: false, // 用自定义的 CodeBlockView
       // 缩短连续输入的合并窗口，并保留更多编辑步骤；保存操作不会重建该历史栈
       undoRedo: {
@@ -182,6 +191,9 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
         class: 'nb-dropcursor',
       },
     }),
+
+    // 行内代码需允许与粗体/斜体共存，才能无损承载合法 Markdown 的嵌套结构
+    MarkdownCompatibleCode,
 
     // 撤销/重做由文件级时间线统一接管，原生历史仅用于判断输入分组边界
     UnifiedDocumentHistoryKeys.configure({ docKey }),
