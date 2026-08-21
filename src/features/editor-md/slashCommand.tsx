@@ -52,6 +52,7 @@ export interface LeafCommandItem {
   groupId?: string;
   groupLabel?: string;
   aliases?: string[];
+  shortcutHint?: string;
   icon: ReactNode;
   keywords?: string;
   action: (editor: Editor, range: Range) => void;
@@ -62,6 +63,7 @@ export interface GroupCommandItem {
   id: string;
   label: string;
   description: string;
+  shortcutHint?: string;
   icon: ReactNode;
   isGroup: true;
   children: LeafCommandItem[];
@@ -80,6 +82,7 @@ const HEADING_LEAFS: LeafCommandItem[] = [
     description: '最高层级大标题',
     groupId: 'headings',
     groupLabel: '标题',
+    shortcutHint: '/h1',
     icon: <Heading1 size={17} />,
     aliases: ['h1', '1', 'biaoti1', 'bt1', 'heading1', 'title', 'yjbt'],
     keywords: '标题 一级标题 heading h1 biaoti yjbt',
@@ -91,6 +94,7 @@ const HEADING_LEAFS: LeafCommandItem[] = [
     description: '主要章节标题',
     groupId: 'headings',
     groupLabel: '标题',
+    shortcutHint: '/h2',
     icon: <Heading2 size={17} />,
     aliases: ['h2', '2', 'biaoti2', 'bt2', 'heading2', 'subtitle', 'ejbt'],
     keywords: '标题 二级标题 heading h2 biaoti ejbt',
@@ -102,6 +106,7 @@ const HEADING_LEAFS: LeafCommandItem[] = [
     description: '小节与子要点标题',
     groupId: 'headings',
     groupLabel: '标题',
+    shortcutHint: '/h3',
     icon: <Heading3 size={17} />,
     aliases: ['h3', '3', 'biaoti3', 'bt3', 'heading3', 'sjbt'],
     keywords: '标题 三级标题 heading h3 biaoti sjbt',
@@ -113,6 +118,7 @@ const HEADING_LEAFS: LeafCommandItem[] = [
     description: '子小节标题',
     groupId: 'headings',
     groupLabel: '标题',
+    shortcutHint: '/h4',
     icon: <Heading4 size={17} />,
     aliases: ['h4', '4', 'biaoti4', 'bt4', 'heading4'],
     keywords: '标题 四级标题 heading h4 biaoti',
@@ -124,6 +130,7 @@ const HEADING_LEAFS: LeafCommandItem[] = [
     description: '细分内容标题',
     groupId: 'headings',
     groupLabel: '标题',
+    shortcutHint: '/h5',
     icon: <Heading5 size={17} />,
     aliases: ['h5', '5', 'biaoti5', 'bt5', 'heading5'],
     keywords: '标题 五级标题 heading h5 biaoti',
@@ -135,6 +142,7 @@ const HEADING_LEAFS: LeafCommandItem[] = [
     description: '最低层级标题',
     groupId: 'headings',
     groupLabel: '标题',
+    shortcutHint: '/h6',
     icon: <Heading6 size={17} />,
     aliases: ['h6', '6', 'biaoti6', 'bt6', 'heading6'],
     keywords: '标题 六级标题 heading h6 biaoti',
@@ -149,6 +157,7 @@ const LIST_LEAFS: LeafCommandItem[] = [
     description: '带有可勾选框的任务清单',
     groupId: 'lists',
     groupLabel: '列表',
+    shortcutHint: '/todo',
     icon: <CheckSquare size={17} />,
     aliases: ['renwu', 'rw', 'todo', 'task', 'checkbox', 'daiban', 'db'],
     keywords: '任务 待办 task todo checkbox renwu daiban',
@@ -160,6 +169,7 @@ const LIST_LEAFS: LeafCommandItem[] = [
     description: '实心圆点项目符号列表',
     groupId: 'lists',
     groupLabel: '列表',
+    shortcutHint: '/list',
     icon: <List size={17} />,
     aliases: ['wuxu', 'wx', 'list', 'bullet', 'ul', 'liebiao', 'lb'],
     keywords: '列表 无序列表 list bullet ul wuxu',
@@ -171,6 +181,7 @@ const LIST_LEAFS: LeafCommandItem[] = [
     description: '1, 2, 3 数字递增编号列表',
     groupId: 'lists',
     groupLabel: '列表',
+    shortcutHint: '/ol',
     icon: <ListOrdered size={17} />,
     aliases: ['youxu', 'yx', 'list', 'ordered', 'ol', 'shuzi'],
     keywords: '列表 有序列表 编号 list ordered ol youxu',
@@ -185,6 +196,7 @@ const ALERT_LEAFS: LeafCommandItem[] = [
     description: '用于补充说明或背景信息',
     groupId: 'alerts',
     groupLabel: '提示块',
+    shortcutHint: '/note',
     icon: <Info size={17} color="#3b82f6" />,
     aliases: ['note', 'tishi', 'ts', 'info', 'alert'],
     keywords: '提示 note alert info tishi ts',
@@ -198,6 +210,7 @@ const ALERT_LEAFS: LeafCommandItem[] = [
     description: '提供操作技巧与最佳实践',
     groupId: 'alerts',
     groupLabel: '提示块',
+    shortcutHint: '/tip',
     icon: <Lightbulb size={17} color="#10b981" />,
     aliases: ['tip', 'jianyi', 'jy', 'jiqiao', 'jq', 'alert'],
     keywords: '建议 技巧 tip jianyi jiqiao alert',
@@ -211,6 +224,7 @@ const ALERT_LEAFS: LeafCommandItem[] = [
     description: '用户不应忽视的核心要点',
     groupId: 'alerts',
     groupLabel: '提示块',
+    shortcutHint: '/important',
     icon: <AlertCircle size={17} color="#8b5cf6" />,
     aliases: ['important', 'zhongyao', 'zy', 'point', 'alert'],
     keywords: '重要 关键 important zhongyao zy alert',
@@ -224,6 +238,7 @@ const ALERT_LEAFS: LeafCommandItem[] = [
     description: '需要特别警惕的注意事项',
     groupId: 'alerts',
     groupLabel: '提示块',
+    shortcutHint: '/warn',
     icon: <AlertTriangle size={17} color="#f59e0b" />,
     aliases: ['warning', 'warn', 'jinggao', 'jg', 'alert'],
     keywords: '警告 注意 warning alert warn jinggao jg',
@@ -237,6 +252,7 @@ const ALERT_LEAFS: LeafCommandItem[] = [
     description: '高风险操作或破坏性后果警示',
     groupId: 'alerts',
     groupLabel: '提示块',
+    shortcutHint: '/caution',
     icon: <Flame size={17} color="#ef4444" />,
     aliases: ['caution', 'weixian', 'wx', 'danger', 'alert'],
     keywords: '危险 高危 caution danger weixian wx alert',
@@ -253,6 +269,7 @@ const TABLE_LEAFS: LeafCommandItem[] = [
     description: '插入 3 行 3 列标准数据表格',
     groupId: 'tables',
     groupLabel: '表格',
+    shortcutHint: '/table',
     icon: <TableIcon size={17} />,
     aliases: ['biaoge', 'bg', 'table', 'grid', '3x3'],
     keywords: '表格 table grid biaoge bg',
@@ -264,6 +281,7 @@ const TABLE_LEAFS: LeafCommandItem[] = [
     description: '插入 2 行 2 列紧凑表格',
     groupId: 'tables',
     groupLabel: '表格',
+    shortcutHint: '/table2',
     icon: <TableIcon size={17} />,
     aliases: ['biaoge2', 'bg2', 'table2', '2x2'],
     keywords: '表格 紧凑表格 table small biaoge',
@@ -275,6 +293,7 @@ const TABLE_LEAFS: LeafCommandItem[] = [
     description: '插入 4 行 4 列宽表格',
     groupId: 'tables',
     groupLabel: '表格',
+    shortcutHint: '/table4',
     icon: <TableIcon size={17} />,
     aliases: ['biaoge4', 'bg4', 'table4', '4x4'],
     keywords: '表格 宽表格 table large 4x4 biaoge',
@@ -289,6 +308,7 @@ const MATH_LEAFS: LeafCommandItem[] = [
     description: '嵌入行内的 KaTeX 数学公式',
     groupId: 'math',
     groupLabel: '公式与图表',
+    shortcutHint: '/math',
     icon: <Sigma size={17} />,
     aliases: ['gongshi', 'gs', 'math', 'latex', 'inline', 'katex'],
     keywords: '公式 数学公式 math latex inline katex gongshi',
@@ -302,6 +322,7 @@ const MATH_LEAFS: LeafCommandItem[] = [
     description: '独立成段居中的 KaTeX 数学公式块',
     groupId: 'math',
     groupLabel: '公式与图表',
+    shortcutHint: '/blockmath',
     icon: <Sigma size={17} />,
     aliases: ['kuaijigongshi', 'kjgs', 'math', 'latex', 'block', 'katex'],
     keywords: '块级公式 数学公式 math latex block katex',
@@ -315,6 +336,7 @@ const MATH_LEAFS: LeafCommandItem[] = [
     description: '流程图、时序图、状态图与类图等',
     groupId: 'math',
     groupLabel: '公式与图表',
+    shortcutHint: '/mermaid',
     icon: <Workflow size={17} />,
     aliases: ['tubiao', 'tb', 'mermaid', 'diagram', 'chart', 'flowchart', 'tu'],
     keywords: '图表 流程图 mermaid diagram chart flowchart tubiao',
@@ -331,6 +353,7 @@ const DATETIME_LEAFS: LeafCommandItem[] = [
     description: '插入当前日期（如 ' + new Date().toISOString().slice(0, 10) + '）',
     groupId: 'datetime',
     groupLabel: '日期时间',
+    shortcutHint: '/date',
     icon: <Calendar size={17} />,
     aliases: ['riqi', 'rq', 'date', 'today', 'jinri'],
     keywords: '日期 今天 riqi rq date today',
@@ -346,6 +369,7 @@ const DATETIME_LEAFS: LeafCommandItem[] = [
     description: '插入当前时刻（如 ' + new Date().toTimeString().slice(0, 8) + '）',
     groupId: 'datetime',
     groupLabel: '日期时间',
+    shortcutHint: '/time',
     icon: <Clock size={17} />,
     aliases: ['shijian', 'sj', 'time', 'now', 'xiansi'],
     keywords: '时间 时刻 time now shijian sj',
@@ -361,6 +385,7 @@ const DATETIME_LEAFS: LeafCommandItem[] = [
     description: '插入完整日期时刻（如 ' + new Date().toISOString().slice(0, 10) + ' ' + new Date().toTimeString().slice(0, 8) + '）',
     groupId: 'datetime',
     groupLabel: '日期时间',
+    shortcutHint: '/now',
     icon: <Calendar size={17} />,
     aliases: ['riqishijian', 'rqsj', 'datetime', 'now', 'dt'],
     keywords: '日期时间 日期 时间 datetime now riqishijian rqsj',
@@ -378,6 +403,7 @@ const CODE_BLOCK_LEAF: LeafCommandItem = {
   id: 'codeBlock',
   label: '代码块',
   description: '带语法高亮与语言切换的多行代码框',
+  shortcutHint: '/code',
   icon: <Code2 size={17} />,
   aliases: ['daima', 'daimakuai', 'dm', 'code', 'codeblock', 'pre', 'js', 'ts', 'py', 'sql', 'json', 'cpp'],
   keywords: '代码 代码块 code codeblock daima dm',
@@ -388,6 +414,7 @@ const BLOCKQUOTE_LEAF: LeafCommandItem = {
   id: 'blockquote',
   label: '引用块 (Quote)',
   description: '插入引述文字或要点摘录',
+  shortcutHint: '/quote',
   icon: <Quote size={17} />,
   aliases: ['yinyong', 'yy', 'quote', 'blockquote'],
   keywords: '引用 quote blockquote yinyong yy',
@@ -398,6 +425,7 @@ const IMAGE_LOCAL_LEAF: LeafCommandItem = {
   id: 'image',
   label: '插入本地图片',
   description: '选择本地图片并自动保存到文档 /img 目录',
+  shortcutHint: '/img',
   icon: <ImageIcon size={17} />,
   aliases: ['tupian', 'tp', 'image', 'img', 'photo', 'picture', 'bendi'],
   keywords: '图片 插入图片 本地图片 image img photo picture tupian tp bendi',
@@ -414,6 +442,7 @@ const IMAGE_URL_LEAF: LeafCommandItem = {
   id: 'imageUrl',
   label: '插入网络图片',
   description: '通过在线网络 URL 插入图片',
+  shortcutHint: '/urlimg',
   icon: <ImageIcon size={17} style={{ opacity: 0.7 }} />,
   aliases: ['urltp', 'wangluotp', 'imgurl', 'imageurl'],
   keywords: '网络图片 图片链接 image url img photo wangluo',
@@ -429,6 +458,7 @@ const LINK_LEAF: LeafCommandItem = {
   id: 'link',
   label: '插入超链接',
   description: '插入网页链接或文档相对链接',
+  shortcutHint: '/link',
   icon: <Link2 size={17} color="#3b82f6" />,
   aliases: ['link', 'url', 'lianjie', 'lj', 'chaolianjie', 'clj', 'http', 'https'],
   keywords: '超链接 链接 link url lianjie http https chaolianjie lj',
@@ -445,6 +475,7 @@ const PARAGRAPH_LEAF: LeafCommandItem = {
   id: 'paragraph',
   label: '正文段落',
   description: '普通纯文本段落',
+  shortcutHint: '/p',
   icon: <Pilcrow size={17} />,
   aliases: ['zw', 'zhengwen', 'p', 'paragraph', 'text'],
   keywords: '正文 段落 text paragraph zhengwen zw',
@@ -455,6 +486,7 @@ const DIVIDER_LEAF: LeafCommandItem = {
   id: 'divider',
   label: '水平分割线',
   description: '插入 --- 横向视觉分隔线',
+  shortcutHint: '/hr',
   icon: <Minus size={17} />,
   aliases: ['fengexian', 'fgx', 'fg', 'divider', 'hr', 'horizontal', 'line'],
   keywords: '分割线 分割 华丽分割线 divider hr fengexian',
@@ -465,6 +497,7 @@ const CLEAR_FORMAT_LEAF: LeafCommandItem = {
   id: 'clearFormat',
   label: '清除格式',
   description: '清除文本样式、高亮与多余格式',
+  shortcutHint: '/clear',
   icon: <RemoveFormatting size={17} color="#ef4444" />,
   aliases: ['qingchu', 'qc', 'clear', 'clean', 'plain'],
   keywords: '清除格式 清空样式 clear clean format qingchu qc',
@@ -489,6 +522,7 @@ const ROOT_GROUPS: GroupCommandItem[] = [
     id: 'headings',
     label: '标题层级 (H1~H6)',
     description: '包含一级到六级标题',
+    shortcutHint: '/h1~h6',
     icon: <Heading size={17} />,
     isGroup: true,
     children: HEADING_LEAFS,
@@ -497,6 +531,7 @@ const ROOT_GROUPS: GroupCommandItem[] = [
     id: 'lists',
     label: '列表类型',
     description: '任务清单、无序圆点与有序编号',
+    shortcutHint: '/todo, /list',
     icon: <List size={17} />,
     isGroup: true,
     children: LIST_LEAFS,
@@ -505,6 +540,7 @@ const ROOT_GROUPS: GroupCommandItem[] = [
     id: 'alerts',
     label: 'GitHub 提示块',
     description: 'Note, Tip, Important, Warning, Caution',
+    shortcutHint: '/note, /tip',
     icon: <Boxes size={17} color="#3b82f6" />,
     isGroup: true,
     children: ALERT_LEAFS,
@@ -513,6 +549,7 @@ const ROOT_GROUPS: GroupCommandItem[] = [
     id: 'tables',
     label: '表格数据',
     description: '标准 3x3 表格、紧凑 2x2 与宽表格 4x4',
+    shortcutHint: '/table',
     icon: <TableIcon size={17} />,
     isGroup: true,
     children: TABLE_LEAFS,
@@ -521,6 +558,7 @@ const ROOT_GROUPS: GroupCommandItem[] = [
     id: 'math',
     label: '公式与图表',
     description: 'KaTeX 数学公式与 Mermaid 流程图',
+    shortcutHint: '/math, /tb',
     icon: <Workflow size={17} />,
     isGroup: true,
     children: MATH_LEAFS,
@@ -529,6 +567,7 @@ const ROOT_GROUPS: GroupCommandItem[] = [
     id: 'datetime',
     label: '日期时间',
     description: '当前日期、当前时刻、日期与时刻',
+    shortcutHint: '/date, /time',
     icon: <Calendar size={17} />,
     isGroup: true,
     children: DATETIME_LEAFS,
@@ -835,6 +874,7 @@ function SlashMenu({
                   itemRefs.current[index] = el;
                 }}
                 type="button"
+                title={item.shortcutHint ? `快捷触发词：${item.shortcutHint}` : undefined}
                 onMouseEnter={() => {
                   setSelectedIndex(index);
                   if (isGroup) {
@@ -943,6 +983,32 @@ function SlashMenu({
                   </div>
                 </div>
 
+                {/* 快捷斜杠触发命令优雅 Badge */}
+                {item.shortcutHint && (
+                  <span
+                    style={{
+                      fontSize: 10.5,
+                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                      background:
+                        isSelected || isGroupHovered
+                          ? 'rgba(59, 130, 246, 0.15)'
+                          : 'var(--editor-bg, rgba(0, 0, 0, 0.05))',
+                      color:
+                        isSelected || isGroupHovered
+                          ? 'var(--accent-500, #3b82f6)'
+                          : 'var(--editor-text-secondary, #64748b)',
+                      fontWeight: 500,
+                      flexShrink: 0,
+                      letterSpacing: '0.01em',
+                      transition: 'all 120ms ease',
+                    }}
+                  >
+                    {item.shortcutHint}
+                  </span>
+                )}
+
                 {/* 悬展箭头 */}
                 {isGroup && (
                   <ChevronRight
@@ -953,6 +1019,7 @@ function SlashMenu({
                           ? 'var(--accent-500, #3b82f6)'
                           : 'var(--editor-text-secondary, #94a3b8)',
                       flexShrink: 0,
+                      marginLeft: -2,
                     }}
                   />
                 )}
@@ -972,7 +1039,7 @@ function SlashMenu({
             ...(flipSubmenuLeft
               ? { right: 'calc(100% + 6px)' }
               : { left: 'calc(100% + 6px)' }),
-            width: 270,
+            width: 290,
             maxHeight: 370,
             background: 'var(--editor-surface, #ffffff)',
             border: '1px solid var(--editor-border, rgba(0,0,0,0.12))',
@@ -1021,6 +1088,7 @@ function SlashMenu({
                     subItemRefs.current[subIdx] = el;
                   }}
                   type="button"
+                  title={subLeaf.shortcutHint ? `快捷触发词：${subLeaf.shortcutHint}` : undefined}
                   onMouseEnter={() => {
                     setIsFocusInSubmenu(true);
                     setSubSelectedIndex(subIdx);
@@ -1092,6 +1160,30 @@ function SlashMenu({
                       {subLeaf.description}
                     </div>
                   </div>
+
+                  {/* 二级菜单快捷斜杠触发命令优雅 Badge */}
+                  {subLeaf.shortcutHint && (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                        padding: '1px 5px',
+                        borderRadius: 3,
+                        background: isSubSelected
+                          ? 'rgba(59, 130, 246, 0.15)'
+                          : 'var(--editor-bg, rgba(0, 0, 0, 0.05))',
+                        color: isSubSelected
+                          ? 'var(--accent-500, #3b82f6)'
+                          : 'var(--editor-text-secondary, #64748b)',
+                        fontWeight: 500,
+                        flexShrink: 0,
+                        letterSpacing: '0.01em',
+                        transition: 'all 120ms ease',
+                      }}
+                    >
+                      {subLeaf.shortcutHint}
+                    </span>
+                  )}
                 </button>
               );
             })}
