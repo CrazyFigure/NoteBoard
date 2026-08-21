@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-fn app_data_dir() -> PathBuf {
+pub(crate) fn app_data_dir() -> PathBuf {
     let base = std::env::var("APPDATA")
         .or_else(|_| std::env::var("HOME"))
         .unwrap_or_else(|_| ".".to_string());
@@ -220,6 +220,9 @@ pub struct FileSettings {
     pub image_dir_name: String,
     #[serde(default = "default_large_file_mb")]
     pub large_file_confirm_mb: u32,
+    // 暂存目录使用绝对路径；旧版设置缺失该字段时自动补为应用数据目录下的 staging。
+    #[serde(default = "default_staging_directory")]
+    pub staging_directory: String,
 }
 
 impl Default for FileSettings {
@@ -233,6 +236,7 @@ impl Default for FileSettings {
             restore_session: true,
             image_dir_name: "img".to_string(),
             large_file_confirm_mb: 50,
+            staging_directory: default_staging_directory(),
         }
     }
 }
@@ -280,6 +284,10 @@ fn default_true() -> bool { true }
 fn default_tab_size() -> u32 { 2 }
 fn default_image_dir() -> String { "img".to_string() }
 fn default_large_file_mb() -> u32 { 50 }
+// 默认暂存目录与设置文件同属应用数据区，避免依赖用户是否存在“文档”库。
+pub fn default_staging_directory() -> String {
+    app_data_dir().join("staging").to_string_lossy().to_string()
+}
 fn default_ui_scale() -> u32 { 100 }
 
 /// 读取设置（容错：缺字段填默认，损坏文件不 panic）
@@ -331,4 +339,18 @@ pub fn save(settings: &mut Settings) -> Result<u64, String> {
         .map_err(|e| e.to_string())?;
 
     Ok(settings.revision)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 旧版 settings.json 不含暂存字段时必须无损迁移到默认目录，不能导致整份设置解析失败。
+    #[test]
+    fn old_settings_receive_default_staging_directory() {
+        let settings: Settings = serde_json::from_str(r#"{"file":{"imageDirName":"images"}}"#)
+            .expect("旧版设置应能补全新字段");
+        assert_eq!(settings.file.image_dir_name, "images");
+        assert_eq!(settings.file.staging_directory, default_staging_directory());
+    }
 }

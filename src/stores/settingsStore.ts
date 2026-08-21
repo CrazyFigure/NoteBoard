@@ -74,6 +74,8 @@ const DEFAULT_SETTINGS: Settings = {
     restoreSession: true,
     imageDirName: 'img',
     largeFileConfirmMb: 50,
+    // Rust 不可用时以空值降级；桌面端正常加载后会得到绝对默认路径。
+    stagingDirectory: '',
   },
   layout: {
     statusBarVisible: true,
@@ -271,6 +273,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     }
     try {
       await ipc.saveSettings(updated);
+      // 关闭最近窗口恢复功能时同步清理旧快照，重新开启不会意外恢复过期标签。
+      if (patch.restoreSession === false) {
+        await ipc.clearSession();
+      }
     } catch (e) {
       console.error('保存设置失败:', e);
     }

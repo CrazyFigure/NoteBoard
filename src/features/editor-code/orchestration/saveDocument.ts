@@ -7,28 +7,12 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import * as ipc from '../../../core/ipc/commands';
 import { useDocumentStore } from '../../../stores/documentStore';
 import { useWindowStore } from '../../../stores/windowStore';
-import { getEditorView } from '../CodeEditor';
-import { getActiveSourceView, getActiveTipTapEditor } from '../../editor-md/TipTapEditor';
-import { serializeMarkdown, getBaseline } from '../../editor-md/serialize';
-import { getActiveBoardScene } from '../../board/BoardEditor';
-import { serializeScene } from '../../board/sceneIo';
+import { getBaseline } from '../../editor-md/serialize';
 import { kindFromPath, languageFromPath } from '../../../core/docKind';
 import type { WriteError } from '../../../core/ipc/types';
 import { moveDocumentHistory } from '../../history/documentHistory';
-
-const DEFAULT_DRAWIO_XML = `<mxfile host="NoteBoard" modified="${new Date().toISOString()}" agent="NoteBoard" version="0.1.3" etag="noteboard">
-  <diagram id="diagram_1" name="第 1 页">
-    <mxGraphModel dx="1000" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" background="none" math="0" shadow="0">
-      <root>
-        <mxCell id="0" />
-        <mxCell id="1" parent="0" />
-        <mxCell id="2" value="开始绘图" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
-          <mxGeometry x="340" y="240" width="120" height="60" as="geometry" />
-        </mxCell>
-      </root>
-    </mxGraphModel>
-  </diagram>
-</mxfile>`;
+import { DEFAULT_DRAWIO_XML, syncDocumentContent } from './syncDocumentContent';
+import { onDocumentSaved } from '../../staging/stagingManager';
 
 // ── 保存单个文档 ──
 
@@ -40,53 +24,17 @@ export async function saveDocument(docKey: string): Promise<boolean> {
     return false;
   }
 
-  // 1. Markdown 必须从当前可见模式读取权威内容，避免源码修改被隐藏的 TipTap 旧内容覆盖
-  if (doc.kind === 'markdown') {
-    const currentMode = useWindowStore.getState().getTab(docKey)?.viewMode ?? 'visual';
-    if (currentMode === 'source') {
-      const sourceView = getActiveSourceView(docKey);
-      if (sourceView) {
-        store.setContent(docKey, sourceView.state.doc.toString());
-      }
-    } else {
-      const tipTap = getActiveTipTapEditor(docKey);
-      if (tipTap) {
-        try {
-          store.setContent(docKey, serializeMarkdown(tipTap));
-        } catch {
-          // 序列化失败时保留 store 中的最近镜像，由后续写入错误处理统一反馈
-        }
-      }
-    }
-  }
-
-  // 2. 如果是 CodeEditor，从 CM6 view 实例取最新内容
-  const view = getEditorView();
-  if (view && doc.kind === 'code') {
-    const latest = view.state.doc.toString();
-    store.setContent(docKey, latest);
-  }
-
-  // 3. 如果是画板，从活跃画板实例取最新场景并序列化
-  if (doc.kind === 'board') {
-    const scene = getActiveBoardScene(docKey);
-    if (scene) {
-      try {
-        const latest = serializeScene(scene);
-        store.setContent(docKey, latest);
-      } catch {
-        // ignore
-      }
-    }
-  }
-
-  // 4. 如果是 Draw.io 且内容为空，初始化为默认 XML 模板
-  if (doc.kind === 'drawio' && !doc.content?.trim()) {
-    store.setContent(docKey, DEFAULT_DRAWIO_XML);
-  }
+  // 保存与暂存共用同一套权威内容抓取逻辑，避免不同退出路径得到不一致副本。
+  syncDocumentContent(docKey);
 
   const updatedDoc = useDocumentStore.getState().getDocument(docKey);
   if (!updatedDoc) return false;
+
+  // 运行期间原文件被删除后，Ctrl+S 也必须转为另存为，禁止悄悄在旧路径重建文件。
+  const detached = useWindowStore.getState().getTab(docKey)?.isDetached ?? false;
+  if (updatedDoc.externalStatus === 'deleted' || detached) {
+    return saveAs(updatedDoc.key, updatedDoc.content ?? '');
+  }
 
   // 没有路径 → 另存为
   if (!updatedDoc.key || updatedDoc.key.startsWith('untitled:')) {
@@ -110,6 +58,8 @@ export async function saveDocument(docKey: string): Promise<boolean> {
       const stillDirty = useDocumentStore.getState().getDocument(docKey)?.isDirty ?? false;
       useWindowStore.getState().setTabDirty(docKey, stillDirty);
       await ipc.setDocumentDirty(docKey, stillDirty);
+      // 正常写入原文件后，该副本不再代表未保存内容，应从暂存区清理。
+      await onDocumentSaved(docKey);
       return true;
     } else if (result.error) {
       showWriteError(result.error);
@@ -128,6 +78,8 @@ export async function saveDocument(docKey: string): Promise<boolean> {
 export async function saveAs(originalKey: string, content: string): Promise<boolean> {
   const docStore = useDocumentStore.getState();
   const tabStore = useWindowStore.getState();
+  // 另存为可能由“原文件已删除”提示触发，先抓取编辑器权威内容，避免写入防抖前的旧镜像。
+  syncDocumentContent(originalKey);
   const doc = docStore.getDocument(originalKey);
 
   let defaultExtension = 'txt';
@@ -201,7 +153,9 @@ export async function saveAs(originalKey: string, content: string): Promise<bool
   }
 
   const defaultPath = doc?.displayName || `未命名.${defaultExtension}`;
-  const saveContent = (doc?.kind === 'drawio' && !content.trim()) ? DEFAULT_DRAWIO_XML : content;
+  // 同步后的 DocumentStore 内容优先；content 仅作为文档实例尚未建立时的兼容回退。
+  const latestContent = doc?.content ?? content;
+  const saveContent = (doc?.kind === 'drawio' && !latestContent.trim()) ? DEFAULT_DRAWIO_XML : latestContent;
 
   try {
     const selectedPath = await save({
@@ -260,6 +214,9 @@ export async function saveAs(originalKey: string, content: string): Promise<bool
       // 更新 WindowStore
       tabStore.updateTabPath(originalKey, selectedPath, displayName);
       tabStore.setTabDirty(selectedPath, false);
+
+      // 另存为会迁移文档 key，因此按原 key 清理先前的未命名暂存副本。
+      await onDocumentSaved(originalKey);
 
       return true;
     } else if (result.error) {

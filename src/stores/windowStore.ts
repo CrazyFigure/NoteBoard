@@ -294,7 +294,8 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
     set((state) => ({
       tabs: state.tabs.map((t) =>
         t.key === key
-          ? { ...t, path: newPath, displayName: newDisplayName, key: newPath }
+          // 另存为建立了新的有效磁盘路径，同时解除原文件删除/断开状态。
+          ? { ...t, path: newPath, displayName: newDisplayName, key: newPath, externalStatus: 'clean', isDetached: false }
           : t,
       ),
       activeKey: state.activeKey === key ? newPath : state.activeKey,

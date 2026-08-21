@@ -15,6 +15,12 @@ import {
   newMarkdown,
 } from './features/welcome/welcomeActions';
 import { saveAs, saveDocument } from './features/editor-code/orchestration/saveDocument';
+import { startStagingManager } from './features/staging/stagingManager';
+import { checkActiveDocumentStillExists } from './features/external/missingFileGuard';
+import {
+  restoreLastClosedWindow,
+  startClosedWindowSessionTracker,
+} from './features/session/closedWindowSession';
 
 export default function App() {
   const { init, initialized } = useSettingsStore();
@@ -31,14 +37,28 @@ export default function App() {
   } = useUpdateStore();
 
   useEffect(() => {
-    init();
+    let disposed = false;
     // 启动自动检测更新定时任务（启动 3 秒后首次检测，随后每 5 分钟轮询一次）
     const stopAutoUpdate = initAutoUpdateTimer();
     const cleanup = initShortcuts();
-    // 窗口握手 + 事件监听
-    initWindow().then(() => {
-      startEventListeners();
-    });
+    // 增量暂存覆盖任务管理器直接终止进程、来不及执行关闭回调的系统边界。
+    const stopStagingManager = startStagingManager();
+    const stopClosedWindowSessionTracker = startClosedWindowSessionTracker();
+    // 先加载设置和窗口意图；普通空启动才自动恢复最近文件，显式打开文件时不抢占用户操作。
+    const initializeWindow = async () => {
+      await init();
+      if (disposed) return;
+      const intent = await initWindow();
+      if (!disposed && intent.type === 'empty' && useSettingsStore.getState().settings.file.restoreSession) {
+        try {
+          await restoreLastClosedWindow();
+        } catch (error) {
+          console.error('自动恢复最近文件失败:', error);
+        }
+      }
+      if (!disposed) startEventListeners();
+    };
+    initializeWindow();
 
     // 全局禁用原生浏览器右键菜单
     const handleContextMenu = (e: MouseEvent) => {
@@ -56,6 +76,12 @@ export default function App() {
     };
     window.addEventListener('click', handleGlobalAnchorClick, true);
     window.addEventListener('auxclick', handleGlobalAnchorClick, true);
+
+    // 从其他软件或任务切回 NoteBoard 时检查活动文件是否在运行期间被删除。
+    const handleWindowFocus = () => {
+      checkActiveDocumentStillExists(true).catch(() => {});
+    };
+    window.addEventListener('focus', handleWindowFocus);
 
     // Ctrl+Shift+N 新建空窗口
     const unregNewWindow = registerShortcut({
@@ -97,11 +123,15 @@ export default function App() {
     });
 
     return () => {
+      disposed = true;
       stopAutoUpdate();
       cleanup();
+      stopStagingManager();
+      stopClosedWindowSessionTracker();
       window.removeEventListener('contextmenu', handleContextMenu);
       window.removeEventListener('click', handleGlobalAnchorClick, true);
       window.removeEventListener('auxclick', handleGlobalAnchorClick, true);
+      window.removeEventListener('focus', handleWindowFocus);
       stopEventListeners();
       unregNewWindow();
       unregOpenFile();

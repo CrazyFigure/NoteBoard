@@ -20,11 +20,13 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
+  Archive,
 } from 'lucide-react';
 
 interface WelcomeScreenProps {
   onOpenFile?: () => void;
   onOpenFolder?: () => void;
+  onOpenStaging?: () => void;
   onNewMarkdown?: () => void;
   onNewText?: () => void;
   onNewMindmap?: () => void;
@@ -41,6 +43,7 @@ interface WelcomeScreenProps {
 export function WelcomeScreen({
   onOpenFile,
   onOpenFolder,
+  onOpenStaging,
   onNewMarkdown,
   onNewText,
   onNewMindmap,
@@ -108,6 +111,14 @@ export function WelcomeScreen({
       shortcut: 'Ctrl+Shift+O',
       color: '#f59e0b',
       onClick: onOpenFolder,
+    },
+    {
+      icon: Archive,
+      label: '打开暂存区',
+      desc: '查看关闭或异常退出时保留的未保存副本',
+      shortcut: '',
+      color: '#8b5cf6',
+      onClick: onOpenStaging,
     },
   ];
 
