@@ -70,17 +70,23 @@ export function executeSearch(
       if (searchPanelOpen(view.state)) {
         closeSearchPanel(view);
       }
+      // 清空搜索状态并折叠选区，避免残留关联高亮
       view.dispatch({
-        effects: setSearchQuery.of(new SearchQuery({ search: '' })),
+        effects: setSearchQuery.of(new SearchQuery({ search: '', literal: true })),
+        selection: view.state.selection.main.empty
+          ? undefined
+          : { anchor: view.state.selection.main.from },
       });
       return { matchIndex: 0, matchCount: 0 };
     }
 
     try {
+      // 当非正则表达式搜索时开启 literal: true，防止 CodeMirror 对 \\ 进行 unquote 导致匹配异常
       const query = new SearchQuery({
         search: searchText,
         replace: replaceText,
         caseSensitive,
+        literal: !isRegex,
         regexp: isRegex,
         wholeWord,
       });
@@ -109,13 +115,22 @@ export function executeSearch(
         }
         if (iter.value.from === selFrom && iter.value.to === selTo) {
           current = count;
-        } else if (current === 0 && iter.value.from <= selFrom && iter.value.to >= selFrom) {
-          current = count;
         }
         iter = cursor.next();
       }
 
-      // 如果当前没有选中任何匹配项且存在匹配项，默认选中首个匹配项并滚动居中
+      // 如果没有匹配项，若当前存在非空选区，将其折叠为单光标，解除 highlightSelectionMatches 的全篇匹配高亮
+      if (count === 0) {
+        if (!view.state.selection.main.empty) {
+          view.dispatch({
+            selection: { anchor: view.state.selection.main.from },
+            userEvent: 'select.search',
+          });
+        }
+        return { matchIndex: 0, matchCount: 0 };
+      }
+
+      // 如果当前选区未完全覆盖任何匹配项且存在匹配项，默认选中首个匹配项并滚动居中
       if (count > 0 && current === 0 && firstMatch) {
         current = 1;
         view.dispatch({
@@ -134,6 +149,11 @@ export function executeSearch(
     if (!searchText) {
       editor.commands.setSearchTerm('');
       editor.commands.resetIndex();
+      // 派发事务，强制 ProseMirror 插件执行 apply 以清除旧的高亮装饰
+      editor.view.dispatch(editor.state.tr);
+      if (!editor.state.selection.empty) {
+        editor.commands.setTextSelection(editor.state.selection.from);
+      }
       return { matchIndex: 0, matchCount: 0 };
     }
 
@@ -142,6 +162,8 @@ export function executeSearch(
       editor.commands.setCaseSensitive(caseSensitive);
       editor.commands.setReplaceTerm(replaceText);
       editor.commands.setSearchTerm(pattern);
+      // 派发事务，强制 ProseMirror 插件立即更新计算 results 与高亮 DecorationSet
+      editor.view.dispatch(editor.state.tr);
 
       const storage = getSearchStorage(editor);
       const count = storage?.results?.length ?? 0;
@@ -152,6 +174,9 @@ export function executeSearch(
         const item = storage.results[storage.resultIndex];
         editor.commands.setTextSelection({ from: item.from, to: item.to });
         editor.commands.scrollIntoView();
+      } else if (count === 0 && !editor.state.selection.empty) {
+        // 无匹配项时折叠选区，避免保留旧选区背景
+        editor.commands.setTextSelection(editor.state.selection.from);
       }
 
       return { matchIndex: index, matchCount: count };
@@ -238,6 +263,8 @@ export function executeReplace(
 
   if (target.type === 'codemirror') {
     const { view } = target;
+    // 确保 SearchQuery 最新状态已应用至编辑器
+    executeSearch(target, options);
     cmReplaceNext(view);
     return executeSearch(target, options);
   } else if (target.type === 'tiptap') {
@@ -264,6 +291,8 @@ export function executeReplaceAll(
 
   if (target.type === 'codemirror') {
     const { view } = target;
+    // 确保 SearchQuery 最新状态已应用至编辑器
+    executeSearch(target, options);
     cmReplaceAll(view);
     return executeSearch(target, options);
   } else if (target.type === 'tiptap') {
