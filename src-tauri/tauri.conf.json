@@ -124,6 +124,7 @@
       },
       "nsis": {
         "installerIcon": "icons/icon.ico",
+        "installerHooks": "resources/nsis/hooks.nsh",
         "installMode": "currentUser",
         "languages": [
           "SimpChinese",
