@@ -201,4 +201,44 @@ describe('windowStore tab 关闭操作', () => {
     expect(updatedState.getTab('tab1')?.viewMode).toBe('visual');
     expect(updatedState.getTab('tab2')?.viewMode).toBe('source');
   });
+
+  it('renameTabsDirectory 正确更新包含子路径的 tab key 与 path', () => {
+    const tab1: Tab = {
+      key: 'C:\\notes\\doc1.md',
+      displayName: 'doc1.md',
+      path: 'C:\\notes\\doc1.md',
+      kind: 'markdown',
+      language: 'markdown',
+      isDirty: false,
+      isPreview: false,
+      viewMode: 'visual',
+      externalStatus: null,
+      isDetached: false,
+    };
+    const tab2: Tab = {
+      key: 'C:\\other\\doc2.md',
+      displayName: 'doc2.md',
+      path: 'C:\\other\\doc2.md',
+      kind: 'markdown',
+      language: 'markdown',
+      isDirty: false,
+      isPreview: false,
+      viewMode: 'visual',
+      externalStatus: null,
+      isDetached: false,
+    };
+
+    useWindowStore.setState({
+      tabs: [tab1, tab2],
+      activeKey: 'C:\\notes\\doc1.md',
+    });
+
+    useWindowStore.getState().renameTabsDirectory('C:\\notes', 'C:\\new-notes');
+
+    const state = useWindowStore.getState();
+    expect(state.tabs[0]?.key).toBe('C:\\new-notes\\doc1.md');
+    expect(state.tabs[0]?.path).toBe('C:\\new-notes\\doc1.md');
+    expect(state.tabs[1]?.key).toBe('C:\\other\\doc2.md');
+    expect(state.activeKey).toBe('C:\\new-notes\\doc1.md');
+  });
 });
