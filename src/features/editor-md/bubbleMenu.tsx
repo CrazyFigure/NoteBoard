@@ -260,6 +260,8 @@ export function EditorBubbleMenu({
 
   if (!editor) return null;
 
+  const scrollParent = findScrollParent(editor.view.dom);
+
   return (
     <BubbleMenu
       editor={editor}
@@ -277,8 +279,18 @@ export function EditorBubbleMenu({
         strategy: 'fixed',
         placement: 'top',
         offset: 8,
-        flip: true,
-        shift: true,
+        flip: {
+          // 以编辑器滚动容器为边界约束，顶部空间不足以容纳菜单时自动翻转到文本下方，避免被顶部操作栏遮挡
+          boundary: scrollParent,
+          padding: 8,
+        },
+        shift: {
+          // 左右与上下边缘预留 8px 安全间距，防止浮层超出编辑器视口
+          boundary: scrollParent,
+          padding: 8,
+        },
+        // 监听编辑容器真实滚动事件，滚动时即时更新定位与翻转
+        scrollTarget: scrollParent,
       }}
     >
       <div
@@ -563,8 +575,10 @@ export function TableToolbar({ editor }: { editor: Editor }) {
 
       if (tableDom) {
         const rect = tableDom.getBoundingClientRect();
-        // 表格完全滚出视口可视区域时隐藏
-        if (rect.bottom < 50 || rect.top > window.innerHeight - 20) {
+        const containerRect = scrollParent.getBoundingClientRect();
+
+        // 表格完全滚出编辑容器可视区域时隐藏
+        if (rect.bottom < containerRect.top + 30 || rect.top > containerRect.bottom - 20) {
           setShow(false);
           return;
         }
@@ -572,13 +586,18 @@ export function TableToolbar({ editor }: { editor: Editor }) {
         setShow(true);
 
         // 计算顶部悬浮位置：
-        // 1. 若表格顶部在视口内（>= 54px），工具条悬浮于表格上方 44px
-        // 2. 若表格向上滚动且顶部已滚出视口，工具条吸顶在视口上方安全区（12px）
-        const topPos = rect.top >= 54 ? rect.top - 44 : Math.max(rect.top + 8, 12);
+        // 1. 若表格上方到操作栏有足够空间（>= 44px），工具条悬浮于表格上方 44px
+        // 2. 若表格向上滚动且顶部已接近或滚出容器顶部，工具条吸顶在容器顶部下方安全区（containerRect.top + 8px）
+        const topPos = rect.top - 44 >= containerRect.top + 6
+          ? rect.top - 44
+          : Math.max(rect.top + 8, containerRect.top + 8);
 
-        // 计算水平居中位置，并施加边界安全约束（工具条宽约 420px，半宽约 210px，留安全边距）
+        // 计算水平居中位置，并施加容器边界安全约束（工具条宽约 420px，半宽约 210px，留安全边距）
         const targetLeft = rect.left + rect.width / 2;
-        const clampedLeft = Math.max(220, Math.min(targetLeft, window.innerWidth - 220));
+        const clampedLeft = Math.max(
+          containerRect.left + 220,
+          Math.min(targetLeft, containerRect.right - 220)
+        );
 
         setPosition({
           top: topPos,
