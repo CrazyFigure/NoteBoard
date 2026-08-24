@@ -94,12 +94,12 @@ describe('searchController 搜索与替换控制器', () => {
     expect(quadStats.matchIndex).toBe(0);
   });
 
-  test('反斜杠字面量替换：单处与全部替换', () => {
+  test('反斜杠字面量替换：单处与全部替换返回正确计数与状态', () => {
     const doc = 'a \\\\ b \\\\ c';
     const view = createCMView(doc);
 
     // 替换第一处双反斜杠为 "/"
-    executeReplace(
+    const res1 = executeReplace(
       { type: 'codemirror', view },
       {
         searchText: '\\\\',
@@ -109,10 +109,12 @@ describe('searchController 搜索与替换控制器', () => {
         isRegex: false,
       },
     );
+    expect(res1.success).toBe(true);
+    expect(res1.replacedCount).toBe(1);
     expect(view.state.doc.toString()).toBe('a / b \\\\ c');
 
     // 替换全部双反斜杠为 "//"
-    executeReplaceAll(
+    const res2 = executeReplaceAll(
       { type: 'codemirror', view },
       {
         searchText: '\\\\',
@@ -122,7 +124,51 @@ describe('searchController 搜索与替换控制器', () => {
         isRegex: false,
       },
     );
+    expect(res2.success).toBe(true);
+    expect(res2.replacedCount).toBe(1);
     expect(view.state.doc.toString()).toBe('a / b // c');
+
+    // 无匹配项时执行替换，返回 success: false, replacedCount: 0
+    const res3 = executeReplace(
+      { type: 'codemirror', view },
+      {
+        searchText: 'not_exist',
+        replaceText: 'foo',
+        caseSensitive: false,
+        wholeWord: false,
+        isRegex: false,
+      },
+    );
+    expect(res3.success).toBe(false);
+    expect(res3.replacedCount).toBe(0);
+
+    // 无匹配项时执行全部替换，返回 success: false, replacedCount: 0
+    const res4 = executeReplaceAll(
+      { type: 'codemirror', view },
+      {
+        searchText: 'not_exist',
+        replaceText: 'foo',
+        caseSensitive: false,
+        wholeWord: false,
+        isRegex: false,
+      },
+    );
+    expect(res4.success).toBe(false);
+    expect(res4.replacedCount).toBe(0);
+
+    // 正则表达式语法错误时返回 error 提示
+    const res5 = executeReplace(
+      { type: 'codemirror', view },
+      {
+        searchText: '[invalid_regex',
+        replaceText: 'foo',
+        caseSensitive: false,
+        wholeWord: false,
+        isRegex: true,
+      },
+    );
+    expect(res5.success).toBe(false);
+    expect(res5.error).toBe('正则表达式格式错误');
   });
 
   test('无匹配时自动折叠选区，避免关联高亮残留', () => {
