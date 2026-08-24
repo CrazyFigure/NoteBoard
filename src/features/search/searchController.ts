@@ -23,6 +23,14 @@ export interface SearchOptions {
   isRegex: boolean;
 }
 
+export interface ReplaceResult {
+  success: boolean;
+  replacedCount: number;
+  matchIndex: number;
+  matchCount: number;
+  error?: string;
+}
+
 export interface SearchAndReplaceStorage {
   searchTerm: string;
   replaceTerm: string;
@@ -258,59 +266,136 @@ export function executeFindPrev(
 export function executeReplace(
   target: EditorTarget,
   options: SearchOptions,
-): { matchIndex: number; matchCount: number } {
-  if (!target || !options.searchText) return { matchIndex: 0, matchCount: 0 };
+): ReplaceResult {
+  if (!target || !options.searchText) return { success: false, replacedCount: 0, matchIndex: 0, matchCount: 0 };
+  const { searchText, wholeWord, isRegex } = options;
 
-  if (target.type === 'codemirror') {
-    const { view } = target;
-    // 确保 SearchQuery 最新状态已应用至编辑器
-    executeSearch(target, options);
-    cmReplaceNext(view);
-    return executeSearch(target, options);
-  } else if (target.type === 'tiptap') {
-    const { editor } = target;
-    const storage = getSearchStorage(editor);
-    const results = storage?.results ?? [];
-    const idx = storage?.resultIndex ?? 0;
-    const current = results[idx];
-    if (current) {
-      editor.chain().focus().insertContentAt({ from: current.from, to: current.to }, options.replaceText).run();
-      return executeSearch(target, options);
+  // 校验正则表达式合法性
+  if (isRegex) {
+    try {
+      const pattern = buildRegexPattern(searchText, wholeWord, isRegex);
+      new RegExp(pattern);
+    } catch {
+      return {
+        success: false,
+        replacedCount: 0,
+        matchIndex: 0,
+        matchCount: 0,
+        error: '正则表达式格式错误',
+      };
     }
   }
 
-  return { matchIndex: 0, matchCount: 0 };
+  if (target.type === 'codemirror') {
+    const { view } = target;
+    // 确保 SearchQuery 最新状态已应用至编辑器并获取匹配数
+    const statsBefore = executeSearch(target, options);
+    if (statsBefore.matchCount === 0) {
+      return { success: false, replacedCount: 0, matchIndex: 0, matchCount: 0 };
+    }
+    // 执行单处替换
+    cmReplaceNext(view);
+    const statsAfter = executeSearch(target, options);
+    return {
+      success: true,
+      replacedCount: 1,
+      matchIndex: statsAfter.matchIndex,
+      matchCount: statsAfter.matchCount,
+    };
+  } else if (target.type === 'tiptap') {
+    const { editor } = target;
+    // 确保 TipTap 搜索状态为最新
+    const statsBefore = executeSearch(target, options);
+    if (statsBefore.matchCount === 0) {
+      return { success: false, replacedCount: 0, matchIndex: 0, matchCount: 0 };
+    }
+    const storage = getSearchStorage(editor);
+    const results = storage?.results ?? [];
+    const idx = storage?.resultIndex ?? 0;
+    const current = results[idx] || results[0];
+    if (current) {
+      // 替换当前选中的匹配片段
+      editor.chain().focus().insertContentAt({ from: current.from, to: current.to }, options.replaceText).run();
+      const statsAfter = executeSearch(target, options);
+      return {
+        success: true,
+        replacedCount: 1,
+        matchIndex: statsAfter.matchIndex,
+        matchCount: statsAfter.matchCount,
+      };
+    }
+  }
+
+  return { success: false, replacedCount: 0, matchIndex: 0, matchCount: 0 };
 }
 
 /** 替换全部匹配项 */
 export function executeReplaceAll(
   target: EditorTarget,
   options: SearchOptions,
-): { matchIndex: number; matchCount: number } {
-  if (!target || !options.searchText) return { matchIndex: 0, matchCount: 0 };
+): ReplaceResult {
+  if (!target || !options.searchText) return { success: false, replacedCount: 0, matchIndex: 0, matchCount: 0 };
+  const { searchText, wholeWord, isRegex } = options;
 
-  if (target.type === 'codemirror') {
-    const { view } = target;
-    // 确保 SearchQuery 最新状态已应用至编辑器
-    executeSearch(target, options);
-    cmReplaceAll(view);
-    return executeSearch(target, options);
-  } else if (target.type === 'tiptap') {
-    const { editor } = target;
-    const storage = getSearchStorage(editor);
-    const results = [...(storage?.results ?? [])];
-    if (results.length > 0) {
-      const tr = editor.state.tr;
-      // 从后向前替换，防止位置偏移
-      for (let i = results.length - 1; i >= 0; i--) {
-        tr.insertText(options.replaceText, results[i].from, results[i].to);
-      }
-      editor.view.dispatch(tr);
-      return executeSearch(target, options);
+  // 校验正则表达式合法性
+  if (isRegex) {
+    try {
+      const pattern = buildRegexPattern(searchText, wholeWord, isRegex);
+      new RegExp(pattern);
+    } catch {
+      return {
+        success: false,
+        replacedCount: 0,
+        matchIndex: 0,
+        matchCount: 0,
+        error: '正则表达式格式错误',
+      };
     }
   }
 
-  return { matchIndex: 0, matchCount: 0 };
+  if (target.type === 'codemirror') {
+    const { view } = target;
+    // 确保 SearchQuery 最新状态已应用至编辑器并计算待替换总数
+    const statsBefore = executeSearch(target, options);
+    if (statsBefore.matchCount === 0) {
+      return { success: false, replacedCount: 0, matchIndex: 0, matchCount: 0 };
+    }
+    const countToReplace = statsBefore.matchCount;
+    // 执行全部替换
+    cmReplaceAll(view);
+    const statsAfter = executeSearch(target, options);
+    return {
+      success: true,
+      replacedCount: countToReplace,
+      matchIndex: statsAfter.matchIndex,
+      matchCount: statsAfter.matchCount,
+    };
+  } else if (target.type === 'tiptap') {
+    const { editor } = target;
+    // 确保 TipTap 搜索状态为最新
+    executeSearch(target, options);
+    const storage = getSearchStorage(editor);
+    const results = [...(storage?.results ?? [])];
+    const count = results.length;
+    if (count === 0) {
+      return { success: false, replacedCount: 0, matchIndex: 0, matchCount: 0 };
+    }
+    const tr = editor.state.tr;
+    // 从后向前替换，防止位置偏移
+    for (let i = results.length - 1; i >= 0; i--) {
+      tr.insertText(options.replaceText, results[i].from, results[i].to);
+    }
+    editor.view.dispatch(tr);
+    const statsAfter = executeSearch(target, options);
+    return {
+      success: true,
+      replacedCount: count,
+      matchIndex: statsAfter.matchIndex,
+      matchCount: statsAfter.matchCount,
+    };
+  }
+
+  return { success: false, replacedCount: 0, matchIndex: 0, matchCount: 0 };
 }
 
 /** 获取编辑器中当前选中的文本（用于填充搜索初始词） */

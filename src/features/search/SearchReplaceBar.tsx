@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useSearchStore } from '../../stores/searchStore';
 import { useWindowStore } from '../../stores/windowStore';
+import { showToast } from '../../stores/toastStore';
 import { getEditorView } from '../editor-code/CodeEditor';
 import { getActiveTipTapEditor, getActiveSourceView } from '../editor-md/TipTapEditor';
 import {
@@ -147,17 +148,53 @@ export function SearchReplaceBar() {
 
   // 替换单处
   const handleReplace = useCallback(() => {
+    // 校验搜索关键字是否为空
+    if (!searchText) {
+      showToast('请输入要搜索的内容', 'warning');
+      return;
+    }
     const target = getTarget();
-    const stats = executeReplace(target, searchOptions);
-    setMatchStats(stats.matchIndex, stats.matchCount);
-  }, [getTarget, searchOptions, setMatchStats]);
+    // 校验当前视图是否支持替换
+    if (!target) {
+      showToast('当前视图不支持替换操作', 'warning');
+      return;
+    }
+    const result = executeReplace(target, searchOptions);
+    setMatchStats(result.matchIndex, result.matchCount);
+    // 根据替换执行结果弹出状态提示
+    if (result.error) {
+      showToast(`替换失败: ${result.error}`, 'error');
+    } else if (result.success && result.replacedCount > 0) {
+      showToast('已替换 1 处匹配项', 'success');
+    } else {
+      showToast('未找到可替换的内容', 'warning');
+    }
+  }, [getTarget, searchOptions, searchText, setMatchStats]);
 
   // 替换全部
   const handleReplaceAll = useCallback(() => {
+    // 校验搜索关键字是否为空
+    if (!searchText) {
+      showToast('请输入要搜索的内容', 'warning');
+      return;
+    }
     const target = getTarget();
-    const stats = executeReplaceAll(target, searchOptions);
-    setMatchStats(stats.matchIndex, stats.matchCount);
-  }, [getTarget, searchOptions, setMatchStats]);
+    // 校验当前视图是否支持替换
+    if (!target) {
+      showToast('当前视图不支持替换操作', 'warning');
+      return;
+    }
+    const result = executeReplaceAll(target, searchOptions);
+    setMatchStats(result.matchIndex, result.matchCount);
+    // 根据全部替换执行结果弹出状态提示
+    if (result.error) {
+      showToast(`全部替换失败: ${result.error}`, 'error');
+    } else if (result.success && result.replacedCount > 0) {
+      showToast(`已替换全部 ${result.replacedCount} 处匹配项`, 'success');
+    } else {
+      showToast('未找到匹配项，未执行替换', 'warning');
+    }
+  }, [getTarget, searchOptions, searchText, setMatchStats]);
 
   // 全局 Escape 键快捷关闭搜索栏
   const handleContainerKeyDown = (e: React.KeyboardEvent) => {
