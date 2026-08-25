@@ -162,7 +162,7 @@ fn is_valid_update_download_url(url: &str) -> bool {
 }
 
 /// 构建支持 Windows 系统代理的 HTTP 客户端
-fn build_update_http_client(total_timeout: Duration) -> Result<reqwest::Client, String> {
+pub(crate) fn build_update_http_client(total_timeout: Duration) -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .connect_timeout(UPDATE_HTTP_CONNECT_TIMEOUT)
         .read_timeout(UPDATE_HTTP_READ_TIMEOUT)
@@ -172,7 +172,7 @@ fn build_update_http_client(total_timeout: Duration) -> Result<reqwest::Client, 
 }
 
 /// 构建强制直连（忽略代理）的 HTTP 客户端，用于代理节点 403 或不可达时的降级回退
-fn build_direct_http_client(total_timeout: Duration) -> Result<reqwest::Client, String> {
+pub(crate) fn build_direct_http_client(total_timeout: Duration) -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .no_proxy()
         .connect_timeout(UPDATE_HTTP_CONNECT_TIMEOUT)

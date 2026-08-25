@@ -102,6 +102,34 @@ export interface FontFamily {
   hasCjk: boolean;
 }
 
+export type FontPackState = 'missing' | 'ready' | 'invalid';
+
+/** 后端已校验的单个字体字形；path 仅指向 NoteBoard 应用数据目录。 */
+export interface FontPackFace {
+  family: string;
+  weight: string;
+  style: string;
+  path: string;
+}
+
+/** 字体包状态与可注册字形清单。 */
+export interface FontPackStatus {
+  id: string;
+  version: string;
+  state: FontPackState;
+  installedSizeBytes: number;
+  downloadSizeBytes: number;
+  downloadUrl: string;
+  faces: FontPackFace[];
+}
+
+/** 下载进度事件统一使用字节数，totalBytes 在服务端未返回长度时允许为空。 */
+export interface DownloadProgress {
+  downloadedBytes: number;
+  totalBytes?: number | null;
+  percent?: number | null;
+}
+
 // ── 设置 ──
 
 export interface Settings {

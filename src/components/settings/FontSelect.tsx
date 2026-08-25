@@ -6,6 +6,11 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ChevronDown, Search, Loader2, Check, X, RotateCcw } from 'lucide-react';
 import * as ipc from '../../core/ipc/commands';
 import type { FontFamily } from '../../core/ipc/types';
+import {
+  getApplicationFontFamilies,
+  PACKAGED_FONT_FAMILIES,
+  subscribeApplicationFontFamilies,
+} from '../../app/fontPack';
 
 export type FontFilterCategory = 'all' | 'zh' | 'en' | 'mono';
 
@@ -17,20 +22,19 @@ interface FontSelectProps {
   placeholder?: string;
 }
 
-// 内置代码字体清单（始终可用、开箱即用，优先展示）
-export const BUILTIN_FONTS: FontFamily[] = [
-  { family: 'JetBrains Mono', isMonospace: true, hasCjk: false },
-  { family: 'Maple Mono Normal NF CN', isMonospace: true, hasCjk: true },
+// 字体包元数据只在 FontFace 注册完成后加入下拉框，未下载时不能伪装成可用字体。
+const APPLICATION_FONT_METADATA: FontFamily[] = [
+  { family: PACKAGED_FONT_FAMILIES[0], isMonospace: true, hasCjk: false },
+  { family: PACKAGED_FONT_FAMILIES[1], isMonospace: true, hasCjk: true },
 ];
 
-/** 将系统字体与内置字体进行不区分大小写的去重合并，内置字体置顶优先 */
-function mergeFonts(systemFonts: FontFamily[]): FontFamily[] {
+/** 将系统字体与当前已注册应用字体去重合并，应用字体置顶便于快速选择。 */
+function mergeFonts(systemFonts: FontFamily[], applicationFamilies: readonly string[]): FontFamily[] {
   const map = new Map<string, FontFamily>();
-  // 1. 内置字体置顶入 map
-  for (const f of BUILTIN_FONTS) {
-    map.set(f.family.toLowerCase(), f);
+  const active = new Set(applicationFamilies.map((family) => family.toLowerCase()));
+  for (const font of APPLICATION_FONT_METADATA) {
+    if (active.has(font.family.toLowerCase())) map.set(font.family.toLowerCase(), font);
   }
-  // 2. 系统真实字体入 map
   for (const f of systemFonts) {
     const key = f.family.toLowerCase();
     if (!map.has(key)) {
@@ -40,31 +44,35 @@ function mergeFonts(systemFonts: FontFamily[]): FontFamily[] {
   return Array.from(map.values());
 }
 
-// 缓存系统字体列表与全局监听器，确保所有 FontSelect 实例即时同步数据
+// 原始系统字体与合并结果分开缓存，字体包下载/删除后可即时重算而无需重新扫描 Windows。
 let cachedSystemFonts: FontFamily[] | null = null;
+let cachedFontOptions: FontFamily[] | null = null;
 let fontFetchPromise: Promise<FontFamily[]> | null = null;
 
 type FontListener = (fonts: FontFamily[]) => void;
 const fontListeners = new Set<FontListener>();
 
 function notifyFontListeners(fonts: FontFamily[]) {
-  cachedSystemFonts = fonts;
+  cachedFontOptions = fonts;
   fontListeners.forEach((fn) => fn(fonts));
 }
 
 async function fetchSystemFonts(): Promise<FontFamily[]> {
-  if (cachedSystemFonts) return cachedSystemFonts;
+  if (cachedSystemFonts) {
+    return mergeFonts(cachedSystemFonts, getApplicationFontFamilies());
+  }
   if (!fontFetchPromise) {
     fontFetchPromise = ipc
       .listSystemFonts()
       .then((fonts) => {
-        const merged = mergeFonts(fonts);
+        cachedSystemFonts = fonts;
+        const merged = mergeFonts(fonts, getApplicationFontFamilies());
         notifyFontListeners(merged);
         return merged;
       })
       .catch((err) => {
         console.error('加载系统字体失败:', err);
-        const fallback = mergeFonts([]);
+        const fallback = mergeFonts([], getApplicationFontFamilies());
         notifyFontListeners(fallback);
         fontFetchPromise = null;
         return fallback;
@@ -72,6 +80,11 @@ async function fetchSystemFonts(): Promise<FontFamily[]> {
   }
   return fontFetchPromise;
 }
+
+// 应用字体注册状态变化时只重算合并列表，不触发昂贵的系统字体重新扫描。
+subscribeApplicationFontFamilies((families) => {
+  notifyFontListeners(mergeFonts(cachedSystemFonts ?? [], families));
+});
 
 // 模块加载时自动在后台预加载系统字体
 if (typeof window !== 'undefined') {
@@ -133,7 +146,7 @@ export function FontSelect({
   placeholder = '选择或输入字体…',
 }: FontSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [fonts, setFonts] = useState<FontFamily[]>(cachedSystemFonts ?? []);
+  const [fonts, setFonts] = useState<FontFamily[]>(cachedFontOptions ?? []);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<FontFilterCategory>(
@@ -148,8 +161,8 @@ export function FontSelect({
       setFonts(list);
     };
     fontListeners.add(handleUpdate);
-    if (cachedSystemFonts && fonts.length === 0) {
-      setFonts(cachedSystemFonts);
+    if (cachedFontOptions && fonts.length === 0) {
+      setFonts(cachedFontOptions);
     }
     return () => {
       fontListeners.delete(handleUpdate);
@@ -185,7 +198,7 @@ export function FontSelect({
       setSearchQuery('');
       setActiveCategory(filterType ?? (isMonospaceOnly ? 'mono' : 'all'));
       if (cachedSystemFonts) {
-        setFonts(cachedSystemFonts);
+        setFonts(mergeFonts(cachedSystemFonts, getApplicationFontFamilies()));
       } else {
         setLoading(true);
         try {
@@ -515,8 +528,8 @@ export function FontSelect({
                       >
                         {font.family}
                       </span>
-                      {/* 内置字体专属徽标 */}
-                      {BUILTIN_FONTS.some((b) => b.family.toLowerCase() === font.family.toLowerCase()) && (
+                      {/* 当前 WebView 已注册的应用字体专属徽标 */}
+                      {getApplicationFontFamilies().some((family) => family.toLowerCase() === font.family.toLowerCase()) && (
                         <span
                           style={{
                             fontSize: 10,
@@ -528,7 +541,7 @@ export function FontSelect({
                             fontWeight: 500,
                           }}
                         >
-                          内置
+                          应用字体
                         </span>
                       )}
                       {font.isMonospace && (
@@ -557,4 +570,3 @@ export function FontSelect({
     </div>
   );
 }
-

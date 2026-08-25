@@ -129,9 +129,9 @@ impl Default for TypographySettings {
         Self {
             content_font_family: String::new(),
             content_font_family_zh: String::new(),
-            // 默认代码西文字体：内置 JetBrains Mono
+            // 默认代码西文字体优先使用可选应用字体包中的 JetBrains Mono。
             mono_font_family: "JetBrains Mono".to_string(),
-            // 默认代码中文字体：内置 Maple Mono Normal NF CN
+            // 默认代码中文字体优先使用可选应用字体包中的 Maple Mono Normal NF CN。
             mono_font_family_zh: "Maple Mono Normal NF CN".to_string(),
             content_font_size: 16,
             mono_font_size: 14,

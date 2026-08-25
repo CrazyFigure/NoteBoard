@@ -1,0 +1,87 @@
+name: Font Pack Release
+
+on:
+  push:
+    tags:
+      - 'fonts-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing fonts-v* tag to publish'
+        required: true
+        default: 'fonts-v1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  publish-font-pack:
+    name: Publish application font pack
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Build verified font pack
+        id: package
+        shell: pwsh
+        run: |
+          # 字体包版本独立于应用版本；固定 v1 资产名与客户端内置下载地址保持一致。
+          $tag = if ('${{ github.event_name }}' -eq 'workflow_dispatch') { '${{ inputs.tag }}' } else { '${{ github.ref_name }}' }
+          if ($tag -notmatch '^fonts-v(?<version>\d+\.\d+\.\d+)$') {
+            throw "字体包 tag 必须符合 fonts-vX.Y.Z：$tag"
+          }
+          $version = $Matches.version
+          $packageRoot = Join-Path $env:RUNNER_TEMP 'noteboard-font-pack'
+          $fontsDir = Join-Path $packageRoot 'fonts'
+          $licensesDir = Join-Path $packageRoot 'licenses'
+          New-Item -ItemType Directory -Force -Path $fontsDir, $licensesDir | Out-Null
+
+          # 只收集明确支持的 WOFF2/TTF，避免编辑器临时文件或其它资源被意外发布。
+          $fontFiles = @(Get-ChildItem 'src/assets/fonts' -File | Where-Object { $_.Extension -in '.woff2', '.ttf' } | Sort-Object Name)
+          if ($fontFiles.Count -ne 6) {
+            throw "字体文件数量异常，预期 6，实际 $($fontFiles.Count)"
+          }
+          Copy-Item -LiteralPath $fontFiles.FullName -Destination $fontsDir
+          Copy-Item -LiteralPath 'assets/font-pack/OFL-1.1.txt', 'assets/font-pack/THIRD_PARTY_NOTICES.md' -Destination $licensesDir
+
+          # 发布清单记录大小与哈希便于审计；客户端另有同一份内置哈希表作为实际信任根。
+          $manifestFiles = @($fontFiles | ForEach-Object {
+            [ordered]@{
+              name = $_.Name
+              size = $_.Length
+              sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant()
+            }
+          })
+          $manifest = [ordered]@{
+            id = 'core'
+            version = $version
+            tag = $tag
+            systemInstall = $false
+            files = $manifestFiles
+          }
+          $manifest | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 (Join-Path $packageRoot 'font-pack.json')
+
+          $assetName = "NoteBoard-fontpack-core-v$version.zip"
+          $assetPath = Join-Path $env:RUNNER_TEMP $assetName
+          Compress-Archive -Path (Join-Path $packageRoot '*') -DestinationPath $assetPath -CompressionLevel Optimal
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "asset_path=$assetPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Publish prerelease asset
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = '${{ steps.package.outputs.tag }}'
+          $assetPath = '${{ steps.package.outputs.asset_path }}'
+          # 字体 Release 标记为 prerelease，现有 /releases/latest 应用更新接口会自动忽略它。
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $assetPath --clobber
+          } else {
+            gh release create $tag $assetPath --prerelease --title "NoteBoard Font Pack $tag" --notes "NoteBoard 应用内字体资源包；不会安装到 Windows。普通应用更新可持续复用。"
+          }

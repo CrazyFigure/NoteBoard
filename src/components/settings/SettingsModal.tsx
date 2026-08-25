@@ -14,6 +14,7 @@ import { useUpdateStore } from '../../stores/updateStore';
 import { APP_VERSION } from '../../core/version';
 import { open } from '@tauri-apps/plugin-dialog';
 import { showToast } from '../../stores/toastStore';
+import { FontPackSettingsCard } from './FontPackSettingsCard';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -300,6 +301,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     独立配置软件界面、Markdown 正文、代码与纯文本以及文件树的排版与版心宽度参数。
                   </p>
                 </div>
+
+                {/* 应用字体包独立于安装包，设置页提供下载、修复、导入和删除的长期入口。 */}
+                <FontPackSettingsCard />
 
                 {/* ── 2.1 软件界面 UI 排版 ── */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
