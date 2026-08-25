@@ -13,9 +13,12 @@ const COMMONMARK_ESCAPABLE_PUNCTUATION = new Set(
   [...'!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'],
 );
 const TIPTAP_MARKDOWN_SPECIAL_CHARACTERS = new Set(['`', '*', '_', '[', ']', '~']);
+// Unicode 标点与符号类别用于发现“可能是转义前缀”的反斜杠，不按具体字符逐项维护。
+const UNICODE_PUNCTUATION_OR_SYMBOL = /[\p{P}\p{S}]/u;
 
 interface MarkdownManagerWithEscaper {
   escapeMarkdownSyntax?: (text: string) => string;
+  parse?: (markdown: string) => ReturnType<Editor['getJSON']>;
 }
 
 /**
@@ -104,6 +107,157 @@ function mapOutsideInlineCode(
   return output;
 }
 
+interface MarkdownCleanupCandidate {
+  start: number;
+  end: number;
+  replacement: string;
+}
+
+/** 判断指定 UTF-16 位置起始的完整 Unicode 字符是否属于标点或符号。 */
+function isUnicodePunctuationOrSymbol(text: string, index: number): boolean {
+  const codePoint = text.codePointAt(index);
+  return codePoint !== undefined
+    && UNICODE_PUNCTUATION_OR_SYMBOL.test(String.fromCodePoint(codePoint));
+}
+
+/**
+ * 收集普通文本中可尝试清理的转义，跳过代码围栏与行内代码中的原始内容。
+ * 方括号、强调符等是否真的可以去掉反斜杠，将由后续同一 Markdown 解析器做语义校验。
+ */
+function collectMarkdownCleanupCandidates(markdown: string): MarkdownCleanupCandidate[] {
+  const candidates: MarkdownCleanupCandidate[] = [];
+  let activeFence: { marker: '`' | '~'; length: number } | null = null;
+  let lineOffset = 0;
+
+  for (const rawLine of markdown.split('\n')) {
+    const fenceMatch = rawLine.match(/^ {0,3}(`{3,}|~{3,})/);
+    if (activeFence) {
+      const closingFence = new RegExp(
+        `^ {0,3}\\${activeFence.marker}{${activeFence.length},}[ \\t]*$`,
+      );
+      if (closingFence.test(rawLine)) activeFence = null;
+      lineOffset += rawLine.length + 1;
+      continue;
+    }
+    if (fenceMatch) {
+      activeFence = {
+        marker: fenceMatch[1][0] as '`' | '~',
+        length: fenceMatch[1].length,
+      };
+      lineOffset += rawLine.length + 1;
+      continue;
+    }
+
+    let cursor = 0;
+    while (cursor < rawLine.length) {
+      const opening = findBacktickRun(rawLine, cursor);
+      const segmentEnd = opening?.start ?? rawLine.length;
+
+      // 按 Unicode 类别发现潜在转义，不依赖方括号、星号等具体字符枚举。
+      for (let index = cursor; index < segmentEnd; index += 1) {
+        if (
+          rawLine[index] === '\\'
+          && isUnicodePunctuationOrSymbol(rawLine, index + 1)
+        ) {
+          candidates.push({
+            start: lineOffset + index,
+            end: lineOffset + index + 1,
+            replacement: '',
+          });
+          continue;
+        }
+
+        const entity = rawLine.slice(index, index + 4);
+        if (entity === '&lt;' || entity === '&gt;') {
+          candidates.push({
+            start: lineOffset + index,
+            end: lineOffset + index + 4,
+            replacement: entity === '&lt;' ? '<' : '>',
+          });
+          index += 3;
+        }
+      }
+
+      if (!opening) break;
+
+      let closing = findBacktickRun(rawLine, opening.end);
+      while (closing && closing.length !== opening.length) {
+        closing = findBacktickRun(rawLine, closing.end);
+      }
+      // 未闭合反引号后的边界不可靠，保守停止清理该行剩余内容。
+      if (!closing) break;
+      cursor = closing.end;
+    }
+
+    lineOffset += rawLine.length + 1;
+  }
+
+  return candidates;
+}
+
+/** 从右向左应用清理项，保证各项仍可使用原 Markdown 字符偏移。 */
+function applyMarkdownCleanupCandidates(
+  markdown: string,
+  candidates: MarkdownCleanupCandidate[],
+): string {
+  let output = markdown;
+  for (let index = candidates.length - 1; index >= 0; index -= 1) {
+    const candidate = candidates[index];
+    output = output.slice(0, candidate.start) + candidate.replacement + output.slice(candidate.end);
+  }
+  return output;
+}
+
+/**
+ * 在不改变解析后文档的前提下删除冗余转义。
+ * 先批量尝试以覆盖绝大多数普通文本；存在真实 Markdown 歧义时再二分缩小范围，
+ * 仅保留形成强调、删除线、行内代码、链接等语法所必需的转义。
+ */
+function removeRedundantMarkdownEscapes(
+  markdown: string,
+  editor: Editor,
+  manager: MarkdownManagerWithEscaper | undefined,
+): string {
+  if (typeof manager?.parse !== 'function') return markdown;
+
+  const candidates = collectMarkdownCleanupCandidates(markdown);
+  if (candidates.length === 0) return markdown;
+
+  const preservesDocument = (candidateMarkdown: string): boolean => {
+    try {
+      return editor.schema.nodeFromJSON(manager.parse!(candidateMarkdown)).eq(editor.state.doc);
+    } catch {
+      // 解析器无法验证时必须保留安全输出，不能为了源码美观冒险改变文档结构。
+      return false;
+    }
+  };
+
+  const fullyCleaned = applyMarkdownCleanupCandidates(markdown, candidates);
+  if (preservesDocument(fullyCleaned)) return fullyCleaned;
+  if (candidates.length === 1) return markdown;
+
+  let output = markdown;
+  const cleanRange = (start: number, end: number): void => {
+    const range = candidates.slice(start, end);
+    const cleaned = applyMarkdownCleanupCandidates(output, range);
+    if (preservesDocument(cleaned)) {
+      output = cleaned;
+      return;
+    }
+    if (end - start <= 1) return;
+
+    // 先处理右半段，右侧缩短不会影响左半段仍在使用的原始字符偏移。
+    const middle = start + Math.floor((end - start) / 2);
+    cleanRange(middle, end);
+    cleanRange(start, middle);
+  };
+
+  const middle = Math.floor(candidates.length / 2);
+  cleanRange(middle, candidates.length);
+  cleanRange(0, middle);
+  return output;
+}
+
 /**
  * 清理 TipTap Markdown 序列化器为安全兜底而产生、但在源码中没有必要的编码。
  *
@@ -180,7 +334,8 @@ export function serializeMarkdown(editor: Editor): string {
       manager.escapeMarkdownSyntax = escapeMarkdownText;
     }
     try {
-      return normalizeSerializedMarkdown(getMarkdown.call(editor));
+      const normalized = normalizeSerializedMarkdown(getMarkdown.call(editor));
+      return removeRedundantMarkdownEscapes(normalized, editor, manager);
     } finally {
       if (manager && typeof originalEscaper === 'function') {
         manager.escapeMarkdownSyntax = originalEscaper;

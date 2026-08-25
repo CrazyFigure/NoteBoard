@@ -76,7 +76,8 @@ export const nbEditorTheme: Extension = EditorView.theme(
         backgroundColor: 'var(--cm-selection-bg)',
       },
     // 括号匹配
-    '.cm-bracketMatch': {
+    // CodeMirror 6 实际使用 cm-matchingBracket；使用正确类名覆盖默认的点状下划线样式。
+    '.cm-matchingBracket': {
       backgroundColor: 'var(--cm-bracket-bg)',
       outline: '1px solid var(--cm-bracket-outline)',
     },
