@@ -196,22 +196,12 @@ export function SearchReplaceBar() {
     }
   }, [getTarget, searchOptions, searchText, setMatchStats]);
 
-  // 全局 Escape 键快捷关闭搜索栏
-  const handleContainerKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      handleClose();
-    }
-  };
-
   if (!isOpen) return null;
 
   return (
     <div
       role="search"
       aria-label="查找与替换"
-      onKeyDown={handleContainerKeyDown}
       style={{
         position: 'absolute',
         top: 12,
@@ -273,9 +263,6 @@ export function SearchReplaceBar() {
                 } else {
                   handleFindNext();
                 }
-              } else if (e.key === 'Escape') {
-                e.preventDefault();
-                handleClose();
               } else if (e.key === 'ArrowDown') {
                 replaceInputRef.current?.focus();
               }
@@ -394,7 +381,7 @@ export function SearchReplaceBar() {
         <button
           type="button"
           onClick={handleClose}
-          title="关闭 (Esc)"
+          title="关闭"
           style={{
             width: 28,
             height: 28,
@@ -471,9 +458,6 @@ export function SearchReplaceBar() {
                 } else {
                   handleReplace();
                 }
-              } else if (e.key === 'Escape') {
-                e.preventDefault();
-                handleClose();
               } else if (e.key === 'ArrowUp') {
                 searchInputRef.current?.focus();
               }

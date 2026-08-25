@@ -1358,3 +1358,14 @@ button:not(:disabled) {
   }
 }
 
+/* 全局 Toast 提示淡入轻量位移动效 */
+@keyframes nb-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
