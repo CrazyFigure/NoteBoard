@@ -44,6 +44,19 @@ function createEditor(): Editor {
   });
 }
 
+/** 模拟用户在可视化模式直接输入普通文本，避免先经过 Markdown 解析而掩盖误转义问题。 */
+function setVisualPlainText(editor: Editor, text: string): void {
+  editor.commands.setContent({
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [{ type: 'text', text }],
+      },
+    ],
+  });
+}
+
 describe('serialize 真实往返集成（真实 TipTap Editor）', () => {
   it('editor.getMarkdown 存在（@tiptap/markdown 扩展已注册）', () => {
     const editor = createEditor();
@@ -213,6 +226,67 @@ describe('serialize 真实往返集成（真实 TipTap Editor）', () => {
     expect(first).not.toContain('&amp;');
     expect(first).not.toContain('\\*');
     expect(second).toBe(first);
+    editor.destroy();
+  });
+
+  it('可视化模式输入普通方括号后，源码模式不应增加多余反斜杠', () => {
+    const editor = createEditor();
+    const text = 'composition [kəmpəˈzɪʃn]';
+
+    setVisualPlainText(editor, text);
+    const first = serializeMarkdown(editor);
+    parseMarkdown(editor, first);
+    const second = serializeMarkdown(editor);
+
+    expect(first).toBe(text);
+    expect(second).toBe(text);
+    editor.destroy();
+  });
+
+  it('孤立的 Markdown 标点不会被过度转义，尖括号也保持可读源码', () => {
+    const editor = createEditor();
+    const text = [
+      '普通符号：* _ ~ ` [ ] ( ) { } < > + - = ! ? # $ % ^ & | / @ : ; , .',
+      'Unicode：¥ ￥ © ™ → ♫ 😀 ，。！？《》【】',
+    ].join('；');
+
+    setVisualPlainText(editor, text);
+    const first = serializeMarkdown(editor);
+    parseMarkdown(editor, first);
+    const second = serializeMarkdown(editor);
+
+    expect(first).toBe(text);
+    expect(second).toBe(text);
+    editor.destroy();
+  });
+
+  it('可能形成强调、删除线、行内代码或链接的文本仍保留必要转义', () => {
+    const editor = createEditor();
+    const text = '字面语法：a*b*c、~~删除线~~、`代码`、[链接](https://example.com)';
+
+    setVisualPlainText(editor, text);
+    const serialized = serializeMarkdown(editor);
+    parseMarkdown(editor, serialized);
+
+    // 必须以普通文本往返，不能因为清理反斜杠而意外生成 Markdown 标记或链接。
+    expect(editor.getText()).toBe(text);
+    expect(serialized).toContain('\\*');
+    expect(serialized).toContain('\\~');
+    expect(serialized).toContain('\\`');
+    expect(serialized).toContain('\\[');
+    editor.destroy();
+  });
+
+  it('Unicode 符号前由用户输入的原始反斜杠不会被通用清理误删', () => {
+    const editor = createEditor();
+    const text = '金额：¥100；原始文本：\\¥、\\©、\\→';
+
+    setVisualPlainText(editor, text);
+    const serialized = serializeMarkdown(editor);
+    parseMarkdown(editor, serialized);
+
+    expect(serialized).toBe(text);
+    expect(editor.getText()).toBe(text);
     editor.destroy();
   });
 });

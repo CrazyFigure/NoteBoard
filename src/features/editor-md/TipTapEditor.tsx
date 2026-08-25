@@ -42,6 +42,7 @@ import { ExternalChangeBanner } from './ExternalChangeBanner';
 import { EditorContextMenu } from './EditorContextMenu';
 import { LinkModal } from './LinkModal';
 import { handlePastedImageFile } from './imagePaste';
+import { markdownPlainBracketExtension } from './sourcePlainBracket';
 import {
   getCurrentDocumentHistoryContent,
   initializeDocumentHistory,
@@ -369,6 +370,8 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
         ])),
         ...createBaseExtensions(),
         markdown(),
+        // 裸 `[文本]` 是普通正文时取消 CodeMirror 的链接下划线与括号框，真实链接保持高亮。
+        markdownPlainBracketExtension,
         nbSyntaxHighlighting,
         nbEditorTheme,
         EditorView.lineWrapping,
