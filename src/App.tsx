@@ -1,12 +1,16 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppShell } from './components/AppShell';
 import { SettingsModal } from './components/settings/SettingsModal';
 import { UpdateModal } from './components/UpdateModal';
+import { FontPackPromptModal } from './components/FontPackPromptModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useSettingsStore } from './stores/settingsStore';
 import { useLayoutStore } from './stores/layoutStore';
 import { useWindowStore } from './stores/windowStore';
 import { useUpdateStore } from './stores/updateStore';
+import { useFontPackStore } from './stores/fontPackStore';
+import * as ipc from './core/ipc/commands';
+import { resolveSystemFontFallbackPatch, shouldPromptForFontPack } from './app/fontPack';
 import { initShortcuts, registerShortcut } from './core/shortcuts';
 import { initWindow, startEventListeners, stopEventListeners, newEmptyWindow } from './features/window/windowManager';
 import {
@@ -23,7 +27,13 @@ import {
 } from './features/session/closedWindowSession';
 
 export default function App() {
-  const { init, initialized } = useSettingsStore();
+  const { init, initialized, settings, setTypography } = useSettingsStore();
+  const fontPackInitialized = useFontPackStore((s) => s.initialized);
+  const fontPackStatus = useFontPackStore((s) => s.status);
+  const [fontPackPromptOpen, setFontPackPromptOpen] = useState(false);
+  const [fontPackPromptSystemFonts, setFontPackPromptSystemFonts] = useState<string[]>([]);
+  // 每个窗口只主动询问一次；拒绝会保存系统字体，下次启动不会再次打扰。
+  const fontPackPromptEvaluatedRef = useRef(false);
   const { settingsModalVisible, setSettingsModalVisible, toggleSettingsModal } = useLayoutStore();
   const activeKey = useWindowStore((s) => s.activeKey);
   const {
@@ -140,6 +150,45 @@ export default function App() {
     };
   }, [init, initAutoUpdateTimer]);
 
+  useEffect(() => {
+    if (!initialized || !fontPackInitialized || fontPackPromptEvaluatedRef.current) return;
+    fontPackPromptEvaluatedRef.current = true;
+    let cancelled = false;
+
+    // 字体包完整时静默使用；缺失或损坏时只在当前配置确实依赖它的情况下提示。
+    const evaluateFontPackPrompt = async () => {
+      if (fontPackStatus?.state === 'ready') return;
+      let installedFamilies: string[] = [];
+      try {
+        const installed = await ipc.listSystemFonts();
+        installedFamilies = installed.map((font) => font.family);
+      } catch (error) {
+        console.error('检测系统字体失败:', error);
+      }
+      if (cancelled) return;
+      setFontPackPromptSystemFonts(installedFamilies);
+      if (shouldPromptForFontPack(settings, installedFamilies)) {
+        setFontPackPromptOpen(true);
+      }
+    };
+    evaluateFontPackPrompt();
+    return () => {
+      cancelled = true;
+    };
+  }, [fontPackInitialized, fontPackStatus, initialized, settings]);
+
+  // 其它窗口完成字体安装时，本窗口注册成功后同步关闭仍显示的首次提示。
+  useEffect(() => {
+    if (fontPackStatus?.state === 'ready') setFontPackPromptOpen(false);
+  }, [fontPackStatus]);
+
+  /** 用户拒绝下载时立即切换并保存真实存在的系统字体，避免后续每次启动重复询问。 */
+  const handleUseSystemFonts = async () => {
+    const patch = resolveSystemFontFallbackPatch(settings.typography, fontPackPromptSystemFonts);
+    if (Object.keys(patch).length) await setTypography(patch);
+    setFontPackPromptOpen(false);
+  };
+
   // Ctrl+Shift+S 另存为
   useEffect(() => {
     const unregSaveAs = registerShortcut({
@@ -158,7 +207,7 @@ export default function App() {
     return () => unregSaveAs();
   }, [activeKey]);
 
-  if (!initialized) {
+  if (!initialized || !fontPackInitialized) {
     return (
       <div
         style={{
@@ -192,6 +241,11 @@ export default function App() {
           checkError={checkError}
           checking={checkingUpdate}
           onRecheck={() => checkForUpdates(false)}
+        />
+        <FontPackPromptModal
+          open={fontPackPromptOpen}
+          onEnabled={() => setFontPackPromptOpen(false)}
+          onUseSystem={handleUseSystemFonts}
         />
       </div>
     </ErrorBoundary>

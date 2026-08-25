@@ -216,6 +216,30 @@ pub struct FontFamily {
     pub has_cjk: bool,
 }
 
+/// 应用内字体资源包中的单个可注册字形；path 只指向校验通过的应用数据目录文件。
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct FontPackFace {
+    pub family: String,
+    pub weight: String,
+    pub style: String,
+    pub path: String,
+}
+
+/// 字体资源包状态由 Rust 统一校验，前端只按描述注册到当前 WebView。
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct FontPackStatus {
+    pub id: String,
+    pub version: String,
+    /// missing=从未安装；ready=文件完整；invalid=目录存在但文件缺失或校验失败。
+    pub state: String,
+    pub installed_size_bytes: u64,
+    pub download_size_bytes: u64,
+    pub download_url: String,
+    pub faces: Vec<FontPackFace>,
+}
+
 // ── 扩展名映射（单一真相源）──
 
 pub fn kind_by_ext(ext: &str) -> (DocumentKind, LanguageId) {

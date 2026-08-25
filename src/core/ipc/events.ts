@@ -4,7 +4,7 @@
 
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWebview, type DragDropEvent } from '@tauri-apps/api/webview';
-import type { ExternalChangePayload, Settings } from './types';
+import type { DownloadProgress, ExternalChangePayload, FontPackStatus, Settings } from './types';
 
 // ── 事件名常量 ──
 
@@ -18,6 +18,8 @@ export const EVENTS = {
   BEFORE_QUIT: 'nb://before-quit',
   HANDOFF_COMPLETE: 'nb://handoff-complete',
   CLOSE_REQUESTED: 'nb://close-requested',
+  FONT_PACK_DOWNLOAD_PROGRESS: 'noteboard-font-pack-download-progress',
+  FONT_PACK_CHANGED: 'noteboard-font-pack-changed',
 } as const;
 
 // ── 监听封装 ──
@@ -58,6 +60,16 @@ export function onHandoffComplete(
 
 export function onCloseRequested(cb: (label: string) => void): Promise<UnlistenFn> {
   return listen<string>(EVENTS.CLOSE_REQUESTED, (e) => cb(e.payload));
+}
+
+/** 监听字体包流式下载进度。 */
+export function onFontPackDownloadProgress(cb: (progress: DownloadProgress) => void): Promise<UnlistenFn> {
+  return listen<DownloadProgress>(EVENTS.FONT_PACK_DOWNLOAD_PROGRESS, (e) => cb(e.payload));
+}
+
+/** 多窗口同步字体包安装、修复和删除结果。 */
+export function onFontPackChanged(cb: (status: FontPackStatus) => void): Promise<UnlistenFn> {
+  return listen<FontPackStatus>(EVENTS.FONT_PACK_CHANGED, (e) => cb(e.payload));
 }
 
 // ── 系统文件拖拽监听 ──

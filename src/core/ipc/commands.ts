@@ -23,6 +23,7 @@ import type {
   StagingDocument,
   StagingResult,
   SessionSnapshot,
+  FontPackStatus,
 } from './types';
 
 // ── 窗口 ──
@@ -196,6 +197,26 @@ export function deleteStagedFile(path: string): Promise<void> {
 
 export function listSystemFonts(): Promise<FontFamily[]> {
   return invoke<FontFamily[]>('list_system_fonts');
+}
+
+/** 查询并逐文件校验应用字体包。 */
+export function getFontPackStatus(): Promise<FontPackStatus> {
+  return invoke<FontPackStatus>('get_font_pack_status');
+}
+
+/** 从固定 GitHub Release 下载、校验并原子安装应用字体包。 */
+export function downloadFontPack(): Promise<FontPackStatus> {
+  return invoke<FontPackStatus>('download_font_pack');
+}
+
+/** 导入离线 ZIP；Rust 端仍执行与在线包相同的固定哈希校验。 */
+export function importFontPack(sourcePath: string): Promise<FontPackStatus> {
+  return invoke<FontPackStatus>('import_font_pack', { sourcePath });
+}
+
+/** 删除当前应用字体包，不会触碰 Windows 系统字体。 */
+export function removeFontPack(): Promise<FontPackStatus> {
+  return invoke<FontPackStatus>('remove_font_pack');
 }
 
 // ── 会话 ──

@@ -21,6 +21,7 @@ import {
   startSystemThemeListener,
   stopSystemThemeListener,
 } from '../core/theme/applyTheme';
+import { useFontPackStore } from './fontPackStore';
 
 // ── 默认值 ──
 
@@ -141,7 +142,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     if (get().initialized) return;
 
     try {
-      const loaded = await ipc.loadSettings();
+      // 设置读取与字体包逐文件校验并行；两者都完成后再挂载编辑器，避免先按 fallback 测量后跳字形。
+      const [loaded] = await Promise.all([
+        ipc.loadSettings(),
+        useFontPackStore.getState().init(),
+      ]);
       const resolved = resolveAndApply(loaded);
       set({ settings: loaded, resolvedTheme: resolved, initialized: true });
 

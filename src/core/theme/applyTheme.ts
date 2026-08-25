@@ -140,7 +140,7 @@ export function formatFontFamily(
   }
 
   if (genericFallback === 'monospace') {
-    // 等宽字体回退链（优先内置优质中西文等宽字体）
+    // 等宽字体回退链优先尝试可选应用字体；未下载时浏览器会自然跳过并落到系统字体。
     const monoFallbacks = [
       '"JetBrains Mono"',
       '"Maple Mono Normal NF CN"',
@@ -177,7 +177,7 @@ export function formatFontFamily(
   return list.join(', ');
 }
 
-// 默认排版参数（代码字体初始默认采用内置的 JetBrains Mono 与 Maple Mono Normal NF CN）
+// 默认代码排版优先采用可选应用字体；首次缺失时由启动提示引导下载或保存系统字体兜底。
 const DEFAULT_TYPOGRAPHY: TypographySettings = {
   contentFontFamily: '',
   contentFontFamilyZh: '',

@@ -1,6 +1,6 @@
 [package]
 name = "noteboard"
-version = "0.1.8"
+version = "0.1.9"
 description = "Windows 桌面笔记 + 画板软件"
 authors = ["CrazyFigure"]
 license = "GPL-3.0-only"
@@ -35,6 +35,12 @@ url = "2"
 chrono = "0.4"
 # 更新检查与安装包下载：启用 system-proxy 读取系统代理，rustls-tls 避免 Windows 编译时对 OpenSSL 的依赖
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "system-proxy", "stream"] }
+# 字体资源包使用 SHA-256 固定清单校验，拒绝被替换或损坏的远程资产。
+sha2 = "0.10"
+# 字体包安装过程使用随机临时目录，避免多窗口同时触发操作时互相覆盖。
+uuid = { version = "1", features = ["v4"] }
+# 字体资源包使用标准 ZIP 分发；只启用 Deflate 解压，避免引入无关压缩算法。
+zip = { version = "8.4", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [target."cfg(windows)".dependencies]
 windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }

@@ -11,6 +11,7 @@ pub mod window;
 pub mod settings;
 pub mod session;
 pub mod sysfont;
+pub mod font_pack;
 pub mod bootstrap;
 pub mod updater;
 pub mod staging;
@@ -86,6 +87,11 @@ pub fn run() {
             session::commands::list_drafts,
             // sysfont
             sysfont::commands::list_system_fonts,
+            // 应用内字体资源包
+            font_pack::get_font_pack_status,
+            font_pack::download_font_pack,
+            font_pack::import_font_pack,
+            font_pack::remove_font_pack,
             // updater
             updater::commands::check_for_updates,
             updater::commands::download_and_install_update,

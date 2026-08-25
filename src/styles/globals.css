@@ -1288,6 +1288,241 @@ button:not(:disabled) {
   cursor: not-allowed;
 }
 
+/* 应用字体包管理卡片与首次启动提示共用状态、进度和错误反馈样式。 */
+.nb-font-pack-settings-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--editor-surface) 86%, var(--accent-strong) 14%);
+  box-shadow: var(--shadow-sm);
+}
+
+.nb-font-pack-settings-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.nb-font-pack-settings-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--editor-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.nb-font-pack-settings-title svg {
+  color: var(--accent-strong);
+}
+
+.nb-font-pack-settings-heading p {
+  margin: 6px 0 0;
+  color: var(--editor-text-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.nb-font-pack-status {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--editor-border);
+  border-radius: 999px;
+  background: var(--editor-bg);
+  color: var(--editor-text-muted);
+  font-size: 11px;
+}
+
+.nb-font-pack-status.is-ready {
+  border-color: color-mix(in srgb, #22c55e 48%, var(--editor-border));
+  background: color-mix(in srgb, #22c55e 12%, var(--editor-bg));
+  color: #16803a;
+}
+
+.nb-font-pack-status.is-invalid {
+  border-color: color-mix(in srgb, #f59e0b 52%, var(--editor-border));
+  background: color-mix(in srgb, #f59e0b 12%, var(--editor-bg));
+  color: #b45309;
+}
+
+.nb-font-pack-settings-meta,
+.nb-font-pack-settings-actions,
+.nb-font-pack-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nb-font-pack-settings-meta {
+  gap: 16px;
+  color: var(--editor-text-muted);
+  font-size: 11px;
+}
+
+.nb-font-pack-settings-actions,
+.nb-font-pack-actions {
+  justify-content: flex-end;
+}
+
+.nb-font-pack-remove-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid color-mix(in srgb, #dc2626 46%, var(--editor-border));
+  border-radius: var(--radius-md);
+  background: var(--editor-surface);
+  color: #dc2626;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.nb-font-pack-remove-button:hover:not(:disabled) {
+  border-color: #dc2626;
+  background: color-mix(in srgb, #dc2626 10%, var(--editor-surface));
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.nb-font-pack-remove-button:active:not(:disabled) {
+  background: color-mix(in srgb, #dc2626 16%, var(--editor-surface));
+  transform: translateY(0) scale(0.97);
+  box-shadow: var(--shadow-sm);
+}
+
+.nb-font-pack-remove-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.nb-font-pack-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nb-font-pack-progress-copy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--editor-text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.nb-font-pack-progress-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--editor-border);
+}
+
+.nb-font-pack-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-strong);
+  transition: width 100ms linear;
+}
+
+.nb-font-pack-muted {
+  color: var(--editor-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.nb-font-pack-error {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, #dc2626 35%, var(--editor-border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, #dc2626 8%, var(--editor-bg));
+  color: #dc2626;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.nb-font-pack-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10020;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(0 0 0 / 48%);
+  backdrop-filter: blur(5px);
+}
+
+.nb-font-pack-prompt {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px 16px;
+  width: min(560px, 92vw);
+  padding: 22px;
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-lg);
+  background: var(--editor-bg);
+  color: var(--editor-text);
+  box-shadow: var(--shadow-lg);
+}
+
+.nb-font-pack-prompt-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: var(--editor-selection);
+  color: var(--accent-strong);
+}
+
+.nb-font-pack-prompt-copy h3 {
+  margin: 1px 0 7px;
+  font-size: 16px;
+}
+
+.nb-font-pack-prompt-copy p {
+  margin: 0;
+  color: var(--editor-text-secondary);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.nb-font-pack-prompt-copy .nb-font-pack-muted {
+  margin-top: 5px;
+  color: var(--editor-text-muted);
+  font-size: 11px;
+}
+
+.nb-font-pack-prompt > :is(.nb-font-pack-error, .nb-font-pack-progress, .nb-font-pack-actions) {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 560px) {
+  .nb-font-pack-settings-heading {
+    flex-direction: column;
+  }
+
+  .nb-font-pack-settings-actions,
+  .nb-font-pack-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .nb-font-pack-settings-actions > button,
+  .nb-font-pack-actions > button {
+    width: 100%;
+  }
+}
+
 /* 图标/工具栏按钮 */
 .nb-icon-btn {
   display: inline-flex;

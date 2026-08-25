@@ -1,6 +1,6 @@
-/* NoteBoard 内置字体声明
+/* NoteBoard 字体包源文件对应声明（当前入口不再静态导入，避免字体进入每个安装包）
  * JetBrains Mono (西文代码字体) + Maple Mono Normal NF CN (中文及 Nerd Font 图标代码字体)
- * 优先 local() 命中系统已安装字体，若未安装则回退加载打包内置资源
+ * 本文件保留族名与字重映射供字体包维护时核对；生产入口通过 FontFace API 动态注册资源
  */
 
 /* ── JetBrains Mono ── */
