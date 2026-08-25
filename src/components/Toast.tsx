@@ -10,17 +10,20 @@ export function ToastContainer() {
   if (toasts.length === 0) return null;
 
   return (
+    // 全局 Toast 容器：定位在顶部同一高度的水平居中位置，避免遮挡右上角搜索与替换栏
     <div
       style={{
         position: 'fixed',
         top: 48,
-        right: 24,
+        left: '50%',
+        transform: 'translateX(-50%)',
         zIndex: 99999,
         display: 'flex',
         flexDirection: 'column',
+        alignItems: 'center',
         gap: 8,
         pointerEvents: 'none',
-        maxWidth: 400,
+        maxWidth: 'calc(100vw - 48px)',
       }}
     >
       {toasts.map((toast) => {
@@ -60,11 +63,12 @@ export function ToastContainer() {
               color: 'var(--editor-text)',
               fontSize: 13,
               lineHeight: 1.4,
-              animation: 'fadeIn 0.2s ease-out',
+              animation: 'nb-toast-in 0.2s ease-out',
             }}
           >
             {icon}
             <span style={{ flex: 1 }}>{toast.message}</span>
+            {/* 关闭提示按钮，带 Hover 与 Active 反馈 */}
             <button
               type="button"
               onClick={() => removeToast(toast.id)}
@@ -78,6 +82,23 @@ export function ToastContainer() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 borderRadius: 4,
+                transition: 'all var(--transition-fast)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--editor-text)';
+                e.currentTarget.style.background = 'var(--toolbar-hover)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--editor-text-muted)';
+                e.currentTarget.style.background = 'transparent';
+              }}
+              onMouseDown={(e) => {
+                e.currentTarget.style.background = 'var(--toolbar-active)';
+                e.currentTarget.style.transform = 'scale(0.92)';
+              }}
+              onMouseUp={(e) => {
+                e.currentTarget.style.background = 'var(--toolbar-hover)';
+                e.currentTarget.style.transform = 'scale(1)';
               }}
               title="关闭提示"
             >
