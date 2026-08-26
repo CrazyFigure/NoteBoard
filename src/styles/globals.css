@@ -1100,6 +1100,11 @@ body {
   word-break: break-word;
 }
 
+/* 设置页代码预览的 code 元素需继承父级字体链，避免浏览器默认 monospace 覆盖所选中文字体。 */
+.nb-typography-code-preview > code {
+  font-family: inherit;
+}
+
 /* 语法高亮 token */
 .ProseMirror .hljs-comment, .ProseMirror .hljs-quote { color: var(--hljs-comment); font-style: italic; }
 .ProseMirror .hljs-keyword, .ProseMirror .hljs-selector-tag { color: var(--hljs-keyword); }
