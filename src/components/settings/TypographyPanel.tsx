@@ -438,6 +438,7 @@ export function TypographyPanel() {
 
           {/* 代码预览 */}
           <pre
+            className="nb-typography-code-preview"
             style={{
               margin: 0,
               fontFamily: 'var(--mono-font-family)',
