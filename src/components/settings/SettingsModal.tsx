@@ -776,7 +776,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <p style={{ margin: '0 0 4px', fontWeight: 600, fontSize: 12, color: 'var(--editor-text-muted)' }}>
                         SQL / 代码 / 纯文本效果：
                       </p>
-                      <pre style={{
+                      <pre className="nb-typography-code-preview" style={{
                         margin: 0,
                         padding: '10px 14px',
                         background: 'var(--code-block-bg)',
@@ -1191,6 +1191,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <ShortcutItem keyCombo="Shift + Alt + V / Ctrl + Alt + V" label="JSON 格式校验与错误定位（支持选区 / 全文）" />
                 </div>
 
+                {/* 代码与纯文本编辑器快捷操作 */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-strong)', marginBottom: 4 }}>
+                    代码与纯文本编辑器 (.json / .txt / .sql 等)
+                  </div>
+                  <ShortcutItem keyCombo="Ctrl + 滚轮" label="实时缩放编辑器字号" />
+                </div>
+
                 {/* 查找与替换 */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-strong)', marginBottom: 4 }}>
@@ -1214,13 +1222,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <ShortcutItem keyCombo="Ctrl + W" label="关闭当前标签页" />
                 </div>
 
-                {/* Markdown 与编辑 */}
+                {/* Markdown 编辑 */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-strong)', marginBottom: 4 }}>
-                    Markdown 与排版
+                    Markdown 编辑
                   </div>
                   <ShortcutItem keyCombo="/" label="Markdown 中触发斜杠快捷插入" />
-                  <ShortcutItem keyCombo="Ctrl + 滚轮" label="实时缩放代码编辑器字号" />
                 </div>
               </div>
             )}
