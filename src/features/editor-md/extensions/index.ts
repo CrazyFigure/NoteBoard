@@ -7,10 +7,10 @@
 
 import StarterKit from '@tiptap/starter-kit';
 import { Code } from '@tiptap/extension-code';
-import Image from '@tiptap/extension-image';
+// 引入图片扩展的类型增强，使自定义图片节点的 setImage 命令在全局链式 API 中可见。
+import '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import CharacterCount from '@tiptap/extension-character-count';
-import Typography from '@tiptap/extension-typography';
 import { TaskList, TaskItem } from '@tiptap/extension-list';
 import { Table } from '@tiptap/extension-table';
 import { TableRow } from '@tiptap/extension-table';
@@ -28,11 +28,8 @@ import { PlantUmlBlock } from '../../plantuml/plantumlExtension';
 import { GitHubAlert } from '../alertExtension';
 import { slashSuggestion } from '../slashCommand';
 
-import { handleLinkClick, resolveRelativeDocPath } from '../linkHandler';
-import { useDocumentStore } from '../../../stores/documentStore';
+import { handleLinkClick } from '../linkHandler';
 import { useWindowStore } from '../../../stores/windowStore';
-import { useExplorerStore } from '../../explorer/explorerStore';
-import { convertFileSrc } from '@tauri-apps/api/core';
 
 import Suggestion from '@tiptap/suggestion';
 import { Extension, type Extensions } from '@tiptap/core';

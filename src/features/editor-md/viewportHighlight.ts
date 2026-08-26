@@ -11,7 +11,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import type { Node } from '@tiptap/pm/model';
 import { toHtml } from 'hast-util-to-html';
-import { getLowlight, normalizeLanguage, HIGHLIGHT_AUTO_LIMIT, SINGLE_BLOCK_LIMIT } from './lowlight';
+import { getLowlight, normalizeLanguage } from './lowlight';
 import { shouldSkipCodeBlockHighlight, shouldUseHighlightAuto } from './largeDoc';
 
 const highlightKey = new PluginKey('nb-lowlight-viewport');

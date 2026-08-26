@@ -38,7 +38,6 @@ import {
   RemoveFormatting,
   ChevronRight,
   Boxes,
-  Sparkles,
 } from 'lucide-react';
 import { insertLocalImageWithDialog } from './imagePaste';
 import { useWindowStore } from '../../stores/windowStore';
@@ -503,18 +502,6 @@ const CLEAR_FORMAT_LEAF: LeafCommandItem = {
   keywords: '清除格式 清空样式 clear clean format qingchu qc',
   action: (editor, range) => editor.chain().focus().deleteRange(range).unsetAllMarks().run(),
 };
-
-/** 一级独立常驻命令项集合 */
-const STANDALONE_LEAFS: LeafCommandItem[] = [
-  CODE_BLOCK_LEAF,
-  BLOCKQUOTE_LEAF,
-  IMAGE_LOCAL_LEAF,
-  IMAGE_URL_LEAF,
-  LINK_LEAF,
-  PARAGRAPH_LEAF,
-  DIVIDER_LEAF,
-  CLEAR_FORMAT_LEAF,
-];
 
 /** 一级菜单分组配置列表 */
 const ROOT_GROUPS: GroupCommandItem[] = [

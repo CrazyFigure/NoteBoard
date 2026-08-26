@@ -18,7 +18,7 @@ import {
   openFolderDialog,
   newMarkdown,
 } from './features/welcome/welcomeActions';
-import { saveAs, saveDocument } from './features/editor-code/orchestration/saveDocument';
+import { saveAs } from './features/editor-code/orchestration/saveDocument';
 import { startStagingManager } from './features/staging/stagingManager';
 import { checkActiveDocumentStillExists } from './features/external/missingFileGuard';
 import {
@@ -34,7 +34,7 @@ export default function App() {
   const [fontPackPromptSystemFonts, setFontPackPromptSystemFonts] = useState<string[]>([]);
   // 每个窗口只主动询问一次；拒绝会保存系统字体，下次启动不会再次打扰。
   const fontPackPromptEvaluatedRef = useRef(false);
-  const { settingsModalVisible, setSettingsModalVisible, toggleSettingsModal } = useLayoutStore();
+  const { settingsModalVisible, setSettingsModalVisible } = useLayoutStore();
   const activeKey = useWindowStore((s) => s.activeKey);
   const {
     modalOpen: updateModalOpen,

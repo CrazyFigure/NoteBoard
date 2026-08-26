@@ -15,7 +15,6 @@ import {
   Copy,
   Check,
   RotateCcw,
-  Maximize2,
   ZoomIn,
   ZoomOut,
   AlertCircle,

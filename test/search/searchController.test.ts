@@ -7,8 +7,6 @@ import { EditorView } from '@codemirror/view';
 import { search } from '@codemirror/search';
 import {
   executeSearch,
-  executeFindNext,
-  executeFindPrev,
   executeReplace,
   executeReplaceAll,
 } from '@/features/search/searchController';

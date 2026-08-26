@@ -59,8 +59,6 @@ export function RailToggle({ side, visible, onToggle, show = true, ariaLabel }: 
 
   // 活跃状态判断：悬停或聚焦时全亮高显，热区内半显，默认隐藏
   const isHighlighted = isHovered || isFocused;
-  const isVisible = isHighlighted || inHotZone;
-
   // 动态视觉样式计算
   const opacity = isHighlighted ? 1 : inHotZone ? 0.75 : 0;
   const background = isPressed

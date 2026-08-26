@@ -92,7 +92,7 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
   const handleHeadingClick = useCallback(
     (heading: HeadingItem) => {
       if (!editor) return;
-      const { pos, level } = heading;
+      const { pos } = heading;
       const docSize = editor.state.doc.content.size;
       const targetPos = Math.min(pos + 1, docSize);
 
@@ -136,7 +136,7 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
       }
 
       const tr = editor.state.tr;
-      const { pos, level } = heading;
+      const { pos } = heading;
       const node = editor.state.doc.nodeAt(pos);
       if (!node) {
         setEditingId(null);

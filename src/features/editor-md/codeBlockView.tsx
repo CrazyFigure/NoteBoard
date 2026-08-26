@@ -387,7 +387,7 @@ function CodeBlockComponent({ node, updateAttributes }: NodeViewProps) {
           border: 'none',
         }}
       >
-        <NodeViewContent as={"code" as any} className={`language-${language}`} />
+        <NodeViewContent<'code'> as="code" className={`language-${language}`} />
       </pre>
     </NodeViewWrapper>
   );

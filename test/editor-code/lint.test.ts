@@ -4,7 +4,6 @@
 
 import { describe, it, expect } from 'vitest';
 import { getLinterForLanguage } from '../../src/features/editor-code/lint';
-import { linter } from '@codemirror/lint';
 import type { LanguageId } from '../../src/core/ipc/types';
 
 describe('getLinterForLanguage', () => {

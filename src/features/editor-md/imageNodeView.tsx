@@ -1,7 +1,7 @@
 // NoteBoard Markdown 现代图片扩展与交互组件
 // 支持本地相对路径动态解析、悬停工具栏、大图预览查看器、多级缩放与拖拽拉伸、居左/居中/居右对齐
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
 import {
@@ -16,7 +16,6 @@ import {
   FolderOpen,
   RotateCw,
   X,
-  Image as ImageIcon,
   AlertCircle,
   RefreshCw,
 } from 'lucide-react';
@@ -32,14 +31,12 @@ import { openDocument } from '../editor-code/orchestration/openDocument';
 function ImageLightboxModal({
   src,
   alt,
-  rawSrc,
   onClose,
   onOpenInTab,
   onRevealInDir,
 }: {
   src: string;
   alt?: string;
-  rawSrc?: string;
   onClose: () => void;
   onOpenInTab?: () => void;
   onRevealInDir?: () => void;
@@ -588,7 +585,6 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
         <ImageLightboxModal
           src={resolvedDisplaySrc}
           alt={alt}
-          rawSrc={rawSrc}
           onClose={() => setLightboxOpen(false)}
           onOpenInTab={resolvedAbsPath ? handleOpenInTab : undefined}
           onRevealInDir={resolvedAbsPath ? handleRevealInDir : undefined}

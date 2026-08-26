@@ -15,7 +15,6 @@ import { undoDepth as cmUndoDepth } from '@codemirror/commands';
 import {
   createBaseExtensions,
   languageCompartment,
-  themeCompartment,
   wrapCompartment,
   lineNumberCompartment,
   typographyCompartment,

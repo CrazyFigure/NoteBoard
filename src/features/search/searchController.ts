@@ -49,7 +49,9 @@ export type EditorTarget =
 
 /** 获取 TipTap 搜索插件存储数据 */
 function getSearchStorage(editor: Editor): SearchAndReplaceStorage | undefined {
-  return (editor.storage as Record<string, any>)?.searchAndReplace;
+  // TipTap 对扩展存储使用宽泛类型，这里只收窄到搜索插件公开的数据结构。
+  const storage = editor.storage as unknown as { searchAndReplace?: SearchAndReplaceStorage };
+  return storage.searchAndReplace;
 }
 
 /** 转义正则特殊字符 */

@@ -173,9 +173,9 @@ describe('sceneIo - 画板场景数据处理', () => {
       expect(isVersionSupported(scene)).toBe(true);
 
       scene.elements = [
-        { id: '1', type: 'rectangle', isDeleted: false } as any,
-        { id: '2', type: 'ellipse', isDeleted: true } as any,
-        { id: '3', type: 'arrow', isDeleted: false } as any,
+        { id: '1', type: 'rectangle', isDeleted: false } as ExcalidrawScene['elements'][number],
+        { id: '2', type: 'ellipse', isDeleted: true } as ExcalidrawScene['elements'][number],
+        { id: '3', type: 'arrow', isDeleted: false } as ExcalidrawScene['elements'][number],
       ];
       expect(getElementCount(scene)).toBe(2);
     });

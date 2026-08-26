@@ -3,7 +3,6 @@
 // 详见 docs/09-开发路线图.md 12.1-12.11
 
 import { useState, useEffect, useRef } from 'react';
-import { useSettingsStore } from '../stores/settingsStore';
 import { AppearancePanel } from './settings/AppearancePanel';
 import { TypographyPanel } from './settings/TypographyPanel';
 import { EditorPanel } from './settings/EditorPanel';

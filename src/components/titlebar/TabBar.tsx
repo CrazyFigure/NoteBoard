@@ -29,7 +29,6 @@ import {
   PencilRuler,
   AlertTriangle,
   Unlink,
-  FileQuestion,
   ExternalLink,
   Copy,
   FolderOpen,
@@ -44,8 +43,7 @@ import {
 } from 'lucide-react';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
-import { useExplorerStore, sameKey } from '../../features/explorer/explorerStore';
-import { extFromPath } from '../../core/docKind';
+import { useExplorerStore } from '../../features/explorer/explorerStore';
 import { moveToNewWindow } from '../../features/window/windowManager';
 import {
   newMarkdown,

@@ -83,7 +83,7 @@ function findSafeCutPoint(md: MarkdownIt, content: string, start: number, maxEnd
 /** 检查 pos 是否在代码围栏内 */
 function isInsideFence(content: string, pos: number): boolean {
   // 从行首开始检查
-  let lineStart = content.lastIndexOf('\n', pos - 1) + 1;
+  const lineStart = content.lastIndexOf('\n', pos - 1) + 1;
   const before = content.substring(0, lineStart);
 
   let fenceCount = 0;
@@ -98,7 +98,7 @@ function isInsideFence(content: string, pos: number): boolean {
 
 /** 检查 pos 是否在表格内 */
 function isInsideTable(content: string, pos: number): boolean {
-  let lineStart = content.lastIndexOf('\n', pos - 1) + 1;
+  const lineStart = content.lastIndexOf('\n', pos - 1) + 1;
   const before = content.substring(0, lineStart);
   const lines = before.split('\n');
 

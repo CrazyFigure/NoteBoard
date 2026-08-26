@@ -37,7 +37,6 @@ export async function openFileDialog(): Promise<void> {
   if (!paths || paths.length === 0) return;
 
   for (const path of paths) {
-    // eslint-disable-next-line no-await-in-loop
     await openDocument(path);
   }
 }
