@@ -1293,6 +1293,118 @@ button:not(:disabled) {
   cursor: not-allowed;
 }
 
+/* 危险操作按钮（默认带浅红柔和底色，如放弃修改、不保存、删除等） */
+.nb-btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--radius-md, 6px);
+  border: 1px solid color-mix(in srgb, var(--error-500) 30%, var(--editor-border));
+  background: color-mix(in srgb, var(--error-500) 8%, var(--editor-surface));
+  color: var(--error-500);
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-fast);
+  box-sizing: border-box;
+}
+
+.nb-btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--error-500) 18%, var(--editor-surface));
+  border-color: color-mix(in srgb, var(--error-500) 65%, var(--editor-border));
+  color: var(--error-600);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--error-500) 18%, transparent);
+}
+
+.nb-btn-danger:active:not(:disabled) {
+  background: color-mix(in srgb, var(--error-500) 28%, var(--editor-surface));
+  border-color: var(--error-600);
+  transform: translateY(0) scale(0.97);
+  box-shadow: var(--shadow-sm);
+}
+
+.nb-btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 柔和特色操作按钮（默认带浅强调色柔和底色，如暂存等特色次级功能） */
+.nb-btn-soft {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--radius-md, 6px);
+  border: 1px solid color-mix(in srgb, var(--accent-strong) 28%, var(--editor-border));
+  background: color-mix(in srgb, var(--accent-strong) 9%, var(--editor-surface));
+  color: var(--accent-strong);
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-fast);
+  box-sizing: border-box;
+}
+
+.nb-btn-soft:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-strong) 18%, var(--editor-surface));
+  border-color: var(--editor-border-focus);
+  color: var(--accent-strong);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--accent-strong) 18%, transparent);
+}
+
+.nb-btn-soft:active:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-strong) 28%, var(--editor-surface));
+  transform: translateY(0) scale(0.97);
+  box-shadow: var(--shadow-sm);
+}
+
+.nb-btn-soft:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 墨夜主题下的危险按钮适配（在深色背景下保持柔和清晰的警示红） */
+:root[data-theme="mo-ye"] .nb-btn-danger {
+  color: #f87171;
+  background: color-mix(in srgb, #ef4444 14%, var(--editor-surface));
+  border-color: color-mix(in srgb, #f87171 35%, var(--editor-border));
+}
+
+:root[data-theme="mo-ye"] .nb-btn-danger:hover:not(:disabled) {
+  color: #fca5a5;
+  background: color-mix(in srgb, #ef4444 24%, var(--editor-surface));
+  border-color: color-mix(in srgb, #f87171 70%, var(--editor-border));
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25);
+}
+
+:root[data-theme="mo-ye"] .nb-btn-danger:active:not(:disabled) {
+  background: color-mix(in srgb, #ef4444 32%, var(--editor-surface));
+  border-color: #ef4444;
+}
+
+/* 墨夜主题下的柔和特色按钮适配（在深色背景下保持通透蓝光） */
+:root[data-theme="mo-ye"] .nb-btn-soft {
+  color: #93c5fd;
+  background: color-mix(in srgb, var(--accent-strong) 14%, var(--editor-surface));
+  border-color: color-mix(in srgb, var(--accent-strong) 38%, var(--editor-border));
+}
+
+:root[data-theme="mo-ye"] .nb-btn-soft:hover:not(:disabled) {
+  color: #bfdbfe;
+  background: color-mix(in srgb, var(--accent-strong) 24%, var(--editor-surface));
+  border-color: var(--accent-strong);
+  box-shadow: 0 4px 12px rgba(96, 165, 250, 0.25);
+}
+
+:root[data-theme="mo-ye"] .nb-btn-soft:active:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-strong) 34%, var(--editor-surface));
+}
+
 /* 应用字体包管理卡片与首次启动提示共用状态、进度和错误反馈样式。 */
 .nb-font-pack-settings-card {
   display: flex;

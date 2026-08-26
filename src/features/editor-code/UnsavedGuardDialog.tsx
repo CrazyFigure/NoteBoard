@@ -2,8 +2,8 @@
 // 单文件 + 批量
 // 详见 docs/09-开发路线图.md 4.12
 
-import { useState, useEffect } from 'react';
-import { AlertTriangle, Archive } from 'lucide-react';
+import { useState } from 'react';
+import { AlertTriangle, Archive, Save } from 'lucide-react';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
 
 // ── 类型 ──
@@ -40,6 +40,7 @@ export function UnsavedGuardDialog({
 
   const isBatch = dirtyTabs.length > 1;
 
+  // 执行常规保存并关闭
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -49,10 +50,12 @@ export function UnsavedGuardDialog({
     }
   };
 
+  // 放弃未保存修改并直接关闭
   const handleDiscard = () => {
     onDiscard(dirtyTabs.map((t) => t.key));
   };
 
+  // 另存到暂存区并关闭
   const handleStash = async () => {
     setStaging(true);
     try {
@@ -68,7 +71,8 @@ export function UnsavedGuardDialog({
     left: 0,
     right: 0,
     bottom: 0,
-    background: 'rgba(0,0,0,0.4)',
+    background: 'rgba(0,0,0,0.45)',
+    backdropFilter: 'blur(2px)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -87,20 +91,12 @@ export function UnsavedGuardDialog({
     fontFamily: 'var(--content-font-family)',
   };
 
-  const buttonBase: React.CSSProperties = {
-    padding: '8px 16px',
-    borderRadius: 'var(--radius-sm)',
-    border: '1px solid var(--editor-border)',
-    cursor: 'pointer',
-    fontSize: 13,
-    transition: 'background var(--transition-fast)',
-  };
-
   return (
     <div style={overlayStyle} role="dialog" aria-modal="true">
       <div style={dialogStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-          <AlertTriangle size={24} color="var(--warning-600)" />
+          {/* 警告图标：使用 warning-500 语义变量，在亮色和墨夜深色主题下均清晰明亮 */}
+          <AlertTriangle size={24} color="var(--warning-500)" />
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--editor-heading)' }}>
             {isBatch
               ? `${dirtyTabs.length} 个文件未保存`
@@ -122,7 +118,8 @@ export function UnsavedGuardDialog({
           </ul>
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
+          {/* 取消操作：取消关闭拦截并停留在当前页面 */}
           <button
             type="button"
             className="nb-btn-secondary"
@@ -135,9 +132,11 @@ export function UnsavedGuardDialog({
           >
             取消
           </button>
+
+          {/* 危险操作：不保存直接放弃未保存修改并关闭 */}
           <button
             type="button"
-            className="nb-btn-secondary"
+            className="nb-btn-danger"
             onClick={handleDiscard}
             disabled={saving || staging}
             style={{
@@ -147,30 +146,16 @@ export function UnsavedGuardDialog({
           >
             不保存
           </button>
+
+          {/* 柔和次级特色操作：另存到暂存区保护现场 */}
           <button
             type="button"
-            className="nb-btn-secondary"
-            onClick={handleSave}
-            disabled={saving || staging}
-            style={{
-              padding: '6px 16px',
-              fontSize: 13,
-              fontWeight: 500,
-              opacity: saving ? 0.6 : 1,
-            }}
-          >
-            {saving ? '保存中…' : '保存'}
-          </button>
-          <button
-            type="button"
-            className="nb-btn-primary"
+            className="nb-btn-soft"
             onClick={handleStash}
             disabled={saving || staging}
             style={{
-              padding: '6px 16px',
+              padding: '6px 14px',
               fontSize: 13,
-              fontWeight: 500,
-              opacity: saving || staging ? 0.6 : 1,
               display: 'inline-flex',
               alignItems: 'center',
               gap: 6,
@@ -178,6 +163,25 @@ export function UnsavedGuardDialog({
           >
             <Archive size={14} />
             {staging ? '暂存中…' : '暂存'}
+          </button>
+
+          {/* 核心主操作：突出显示保存按钮 */}
+          <button
+            type="button"
+            className="nb-btn-primary"
+            onClick={handleSave}
+            disabled={saving || staging}
+            style={{
+              padding: '6px 16px',
+              fontSize: 13,
+              fontWeight: 500,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <Save size={14} />
+            {saving ? '保存中…' : '保存'}
           </button>
         </div>
       </div>
@@ -193,6 +197,7 @@ export function useUnsavedGuard() {
 
   const [pendingClose, setPendingClose] = useState<string[]>([]);
 
+  // 请求关闭指定的标签页（若有脏 tab 则触发拦截）
   const requestClose = (keys: string[]) => {
     const dirty = tabs.filter((t) => keys.includes(t.key) && t.isDirty);
     if (dirty.length === 0) {
@@ -204,19 +209,20 @@ export function useUnsavedGuard() {
     }
   };
 
+  // 取消关闭操作
   const cancelClose = () => setPendingClose([]);
 
+  // 逐个保存并关闭
   const confirmSaveAndClose = async (keys: string[]) => {
-    // 逐个保存
     for (const key of keys) {
       const { saveDocument } = await import('./orchestration/saveDocument');
       await saveDocument(key);
     }
-    // 关闭
     keys.forEach((k) => closeTab(k));
     setPendingClose([]);
   };
 
+  // 放弃修改并关闭
   const discardAndClose = (keys: string[]) => {
     keys.forEach((k) => closeTab(k));
     setPendingClose([]);
