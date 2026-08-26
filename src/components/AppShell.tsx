@@ -102,7 +102,6 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
   const tabs = useWindowStore((s) => s.tabs);
   const activeKey = useWindowStore((s) => s.activeKey);
   const documents = useDocumentStore((s) => s.documents);
-  const activeDoc = useDocumentStore((s) => (activeKey ? s.documents.get(activeKey) : undefined));
 
   const {
     explorerVisible,

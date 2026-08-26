@@ -3,8 +3,6 @@ import { describe, test, expect } from 'vitest';
 import {
   resolveContentWidth,
   contentWidthToPercent,
-  CONTENT_WIDTH_MAP,
-  CONTENT_WIDTH_PERCENT_MAP,
   applyTypography,
 } from '@/core/theme/applyTheme';
 

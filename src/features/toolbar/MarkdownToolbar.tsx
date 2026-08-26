@@ -41,8 +41,6 @@ import {
   Clock,
   RemoveFormatting,
   PlusSquare,
-  CodeXml,
-  Eye,
 } from 'lucide-react';
 import {
   ToolbarButton,
@@ -449,7 +447,7 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
     if (!currentEditor) return;
 
     const { state } = currentEditor;
-    const { from, to, empty } = state.selection;
+    const { from, empty } = state.selection;
 
     if (empty) {
       // 1. 无选区时：若处于标题/列表/引用等特殊块中，重置为普通段落

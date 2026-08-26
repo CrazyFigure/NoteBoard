@@ -4,7 +4,6 @@
 import { describe, test, expect } from 'vitest';
 import {
   KIND_BY_EXT,
-  LANGUAGE_BY_EXT,
   extFromPath,
   kindFromPath,
   languageFromPath,

@@ -259,9 +259,10 @@ export const TreeNode = memo(function TreeNode({
         const rootNodes = await loadChildren(root);
         setRoot(root, rootNodes);
       }
-    } catch (err: any) {
-      console.error('重命名失败:', err);
-      showToast(typeof err === 'string' ? err : (err?.message || '重命名失败'), 'error');
+    } catch (error: unknown) {
+      // 将 Rust 与 JavaScript 的不同异常形态统一转换为用户可读消息。
+      console.error('重命名失败:', error);
+      showToast(typeof error === 'string' ? error : error instanceof Error ? error.message : '重命名失败', 'error');
     } finally {
       setIsRenaming(false);
     }
@@ -289,9 +290,10 @@ export const TreeNode = memo(function TreeNode({
         const newChildren = await loadChildren(node.path);
         useExplorerStore.getState().updateChildren(node.path, newChildren);
       }
-    } catch (err: any) {
-      console.error('创建子项失败:', err);
-      showToast(typeof err === 'string' ? err : (err?.message || '创建失败'), 'error');
+    } catch (error: unknown) {
+      // 将 Rust 与 JavaScript 的不同异常形态统一转换为用户可读消息。
+      console.error('创建子项失败:', error);
+      showToast(typeof error === 'string' ? error : error instanceof Error ? error.message : '创建失败', 'error');
     } finally {
       setCreatingSub(null);
       setCreatingSubName('');

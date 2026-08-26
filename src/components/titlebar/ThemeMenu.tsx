@@ -2,7 +2,7 @@
 // 支持快速在「跟随系统 / 晨光 / 琥珀 / 墨夜」之间切换，附带实时色块预览与选中指示
 
 import { useState, useRef, useEffect } from 'react';
-import { Palette, Check, SunMedium, Moon, Sparkles } from 'lucide-react';
+import { Palette, Check, Sparkles } from 'lucide-react';
 import { useSettingsStore } from '../../stores/settingsStore';
 import type { ThemeMode } from '../../core/ipc/types';
 

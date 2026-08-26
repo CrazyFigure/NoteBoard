@@ -3,7 +3,7 @@
 // 详见 docs/09-开发路线图.md
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { RefreshCw, Download, FileCode, AlertCircle, WifiOff, Save } from 'lucide-react';
+import { RefreshCw, Download, FileCode, WifiOff, Save } from 'lucide-react';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';

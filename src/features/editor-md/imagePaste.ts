@@ -11,10 +11,19 @@ import { showToast } from '../../stores/toastStore';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readFile } from '@tauri-apps/plugin-fs';
 
-/** 安全化文件名：只保留字母数字汉字和常见分隔符 */
+// Windows 文件名禁止字符与 ASCII 控制字符上限，用于生成可安全落盘的图片文件名。
+const WINDOWS_INVALID_FILENAME_CHARS = new Set('<>:"/\\|?*');
+const ASCII_CONTROL_CHARACTER_MAX = 0x1f;
+
+/** 安全化文件名：将 Windows 禁止字符和 ASCII 控制字符统一替换为下划线。 */
 function sanitizeFileName(name: string): string {
-  return name
-    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+  const sanitized = Array.from(name, (character) =>
+    character.charCodeAt(0) <= ASCII_CONTROL_CHARACTER_MAX || WINDOWS_INVALID_FILENAME_CHARS.has(character)
+      ? '_'
+      : character,
+  ).join('');
+
+  return sanitized
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '')
     .slice(0, 80);
@@ -80,7 +89,7 @@ export async function handlePastedImageFile(
         const base64Url = await fileToBase64(file);
         editor.chain().focus().setImage({ src: base64Url, alt: safeName }).run();
         showToast('图片落盘失败，已临时以 Base64 嵌入', 'warning');
-      } catch (err) {
+      } catch {
         showToast('图片插入失败', 'error');
       }
     }

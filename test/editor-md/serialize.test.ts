@@ -5,7 +5,7 @@
 // 不变式 I-13: 打开文件后，序列化的结果必须等于磁盘原文
 // 不变式 I-14: 打开 → visual → source → tab 不出现脏圆点
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { BaselineManager, getBaseline, removeBaseline, normalizeEol } from '../../src/features/editor-md/serialize';
 
 // 样本 Markdown（含非标准 HTML 块、混合缩进列表、行尾空格、setext 标题、嵌套引用、表格对齐符、任务列表、代码围栏内的 #）

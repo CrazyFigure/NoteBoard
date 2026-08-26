@@ -3,12 +3,11 @@
 // 详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, SlidersHorizontal, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon } from 'lucide-react';
+import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon } from 'lucide-react';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { THEMES } from '../../core/theme/themes';
 import { contentWidthToPercent, CONTENT_WIDTH_PERCENT_MAP } from '../../core/theme/applyTheme';
 import { FontSelect } from './FontSelect';
-import type { ThemeId, ThemeMode, ContentWidth } from '../../core/ipc/types';
 import * as ipc from '../../core/ipc/commands';
 import { useUpdateStore } from '../../stores/updateStore';
 import { APP_VERSION } from '../../core/version';

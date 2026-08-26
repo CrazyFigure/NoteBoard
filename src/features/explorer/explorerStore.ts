@@ -125,7 +125,7 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
   rescan: (rootChildren) => {
     const root = get().root;
     if (!root) return;
-    set((state) => {
+    set(() => {
       // 全量重扫：清空所有缓存，只重新加载根
       const newChildren = new Map<string, FileTreeNode[]>();
       newChildren.set(normalizePath(root).toLowerCase(), rootChildren);

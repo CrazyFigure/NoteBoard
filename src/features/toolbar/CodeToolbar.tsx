@@ -7,7 +7,6 @@ import {
   Undo2,
   Redo2,
   Braces,
-  FileCode,
   CodeXml,
   CaseSensitive,
   WrapText,
@@ -51,7 +50,6 @@ interface CodeToolbarProps {
 export function CodeToolbar({ docKey, language }: CodeToolbarProps) {
   const lang = (language ?? 'plaintext') as LanguageId;
   const isJson = lang === 'json';
-  const isXml = lang === 'xml';
   const { canUndo, canRedo } = useDocumentHistory(docKey);
 
   // 下拉菜单开闭状态

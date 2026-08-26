@@ -17,7 +17,6 @@ import { markdown } from '@codemirror/lang-markdown';
 import { undoDepth as prosemirrorUndoDepth } from '@tiptap/pm/history';
 
 import { buildExtensions } from './extensions';
-import { lowlight } from './lowlight';
 import {
   serializeMarkdown,
   parseMarkdown,
