@@ -1011,6 +1011,16 @@ body {
   text-align: left;
 }
 
+/* 单元格内段落边距重置：防止插入列宽指示手柄装饰节点时改变 :last-child 匹配导致行高跳动闪烁 */
+.ProseMirror th p,
+.ProseMirror td p {
+  margin: 0;
+}
+.ProseMirror th p + p,
+.ProseMirror td p + p {
+  margin-top: 6px;
+}
+
 /* 单元格多选与跨行跨列选区高亮 */
 .ProseMirror .selectedCell {
   background: rgba(59, 130, 246, 0.12) !important;
@@ -1034,7 +1044,7 @@ body {
   position: absolute;
   right: -2px;
   top: 0;
-  bottom: -2px;
+  bottom: 0;
   width: 4px;
   background-color: var(--accent-500, #3b82f6);
   pointer-events: none;
