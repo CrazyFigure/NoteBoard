@@ -9,9 +9,14 @@ import {
   Plus,
   Trash2,
   GripVertical,
+  Smile,
+  FileText,
+  Image as ImageIcon,
+  X,
 } from 'lucide-react';
 import type { MindNode } from './mindmapTypes';
 import { generateNodeId, moveMindNode, isMindNodeDescendant } from './mindmapConverter';
+import { MindmapIconPicker } from './MindmapIconPicker';
 
 interface OutlinerEditorProps {
   root: MindNode;
@@ -43,7 +48,22 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+  const noteInputRefs = useRef<Map<string, HTMLTextAreaElement>>(new Map());
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadTargetNodeIdRef = useRef<string | null>(null);
   const focusTargetIdRef = useRef<string | null>(null);
+  const focusNoteTargetIdRef = useRef<string | null>(null);
+
+  // 图标选择器弹窗状态
+  const [iconPickerState, setIconPickerState] = useState<{
+    nodeId: string;
+    currentIcon?: string;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  // 图片全屏预览弹窗
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   // Pointer Events 拖拽会话状态
   const dragSessionRef = useRef<DragSession | null>(null);
@@ -98,6 +118,19 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
     }
   }, [flatItems]);
 
+  // 自动聚焦备注输入框
+  useEffect(() => {
+    if (focusNoteTargetIdRef.current) {
+      const noteInput = noteInputRefs.current.get(focusNoteTargetIdRef.current);
+      if (noteInput) {
+        noteInput.focus();
+        noteInput.selectionStart = noteInput.value.length;
+        noteInput.selectionEnd = noteInput.value.length;
+      }
+      focusNoteTargetIdRef.current = null;
+    }
+  });
+
   // 深度克隆并触发更新
   const updateTree = useCallback(
     (mutator: (clonedRoot: MindNode) => void) => {
@@ -123,6 +156,94 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
       }
       findAndSet(cloned);
     });
+  };
+
+  // 更新指定节点的图标
+  const handleIconChange = (id: string, icon?: string) => {
+    updateTree((cloned) => {
+      function findAndSet(n: MindNode) {
+        if (n.id === id) {
+          n.icon = icon;
+          return true;
+        }
+        for (const child of n.children || []) {
+          if (findAndSet(child)) return true;
+        }
+        return false;
+      }
+      findAndSet(cloned);
+    });
+  };
+
+  // 更新指定节点的备注文字
+  const handleNoteChange = (id: string, note?: string) => {
+    updateTree((cloned) => {
+      function findAndSet(n: MindNode) {
+        if (n.id === id) {
+          n.note = note;
+          return true;
+        }
+        for (const child of n.children || []) {
+          if (findAndSet(child)) return true;
+        }
+        return false;
+      }
+      findAndSet(cloned);
+    });
+  };
+
+  // 更新指定节点的图片
+  const handleImageChange = (id: string, image?: string) => {
+    updateTree((cloned) => {
+      function findAndSet(n: MindNode) {
+        if (n.id === id) {
+          n.image = image;
+          return true;
+        }
+        for (const child of n.children || []) {
+          if (findAndSet(child)) return true;
+        }
+        return false;
+      }
+      findAndSet(cloned);
+    });
+  };
+
+  // 上传图片处理 (转 Base64 Data URL)
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const targetNodeId = uploadTargetNodeIdRef.current;
+    if (!file || !targetNodeId) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        handleImageChange(targetNodeId, reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // 粘贴图片处理
+  const handlePasteInNote = (e: React.ClipboardEvent, nodeId: string) => {
+    const items = e.clipboardData.items;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile();
+        if (file) {
+          e.preventDefault();
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (typeof reader.result === 'string') {
+              handleImageChange(nodeId, reader.result);
+            }
+          };
+          reader.readAsDataURL(file);
+          return;
+        }
+      }
+    }
   };
 
   // 切换节点的展开/折叠
@@ -407,6 +528,15 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
         position: 'relative',
       }}
     >
+      {/* 隐藏的图片选择 input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handleFileSelect}
+      />
+
       <div style={{ maxWidth: 860, margin: '0 auto', position: 'relative' }}>
         {flatItems.map((item, idx) => {
           const isRoot = item.depth === 0;
@@ -414,6 +544,8 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
           const isTarget = dropTarget?.targetId === item.node.id;
           const dropPos = isTarget ? dropTarget?.pos : null;
           const isInsideTarget = isTarget && dropPos === 'inside';
+          const hasNote = item.node.note !== undefined;
+          const hasImage = Boolean(item.node.image);
 
           return (
             <div
@@ -425,8 +557,7 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
               className="nb-outliner-row"
               style={{
                 display: 'flex',
-                alignItems: 'center',
-                paddingLeft,
+                flexDirection: 'column',
                 margin: isRoot ? '12px 0 20px 0' : '4px 0',
                 position: 'relative',
                 transition: 'background 0.12s ease',
@@ -495,195 +626,217 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
                 </div>
               )}
 
-              {/* 拖拽把手 */}
-              {!isRoot && (
+              {/* 节点主行 */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  paddingLeft,
+                  position: 'relative',
+                }}
+              >
+                {/* 拖拽把手 */}
+                {!isRoot && (
+                  <div
+                    className="nb-drag-handle"
+                    onPointerDown={(e) => handlePointerDownHandle(e, item)}
+                    onPointerUp={handlePointerUp}
+                    title="按住拖拽整行换到其他行或调整层级"
+                    style={{
+                      width: 18,
+                      height: 24,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: isDragging ? 'grabbing' : 'grab',
+                      color: 'var(--editor-text-secondary, #64748b)',
+                      opacity: 0.6,
+                      transition: 'opacity 0.15s ease, color 0.15s ease',
+                      flexShrink: 0,
+                      marginRight: 2,
+                      touchAction: 'none',
+                      userSelect: 'none',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isDragging) {
+                        e.currentTarget.style.opacity = '1';
+                        e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isDragging) {
+                        e.currentTarget.style.opacity = '0.6';
+                        e.currentTarget.style.color = 'var(--editor-text-secondary, #64748b)';
+                      }
+                    }}
+                  >
+                    <GripVertical size={14} />
+                  </div>
+                )}
+
+                {/* 展开/折叠指示箭头与大纲圆点 */}
                 <div
-                  className="nb-drag-handle"
-                  onPointerDown={(e) => handlePointerDownHandle(e, item)}
-                  onPointerUp={handlePointerUp}
-                  title="按住拖拽整行换到其他行或调整层级"
                   style={{
-                    width: 18,
+                    width: 24,
                     height: 24,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    cursor: isDragging ? 'grabbing' : 'grab',
-                    color: 'var(--editor-text-secondary, #64748b)',
-                    opacity: 0.6,
-                    transition: 'opacity 0.15s ease, color 0.15s ease',
+                    marginRight: 6,
                     flexShrink: 0,
-                    marginRight: 2,
-                    touchAction: 'none',
-                    userSelect: 'none',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isDragging) {
-                      e.currentTarget.style.opacity = '1';
-                      e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isDragging) {
-                      e.currentTarget.style.opacity = '0.6';
-                      e.currentTarget.style.color = 'var(--editor-text-secondary, #64748b)';
-                    }
                   }}
                 >
-                  <GripVertical size={14} />
+                  {item.hasChildren ? (
+                    <button
+                      type="button"
+                      onClick={() => handleToggleExpand(item.node.id)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: 2,
+                        display: 'flex',
+                        alignItems: 'center',
+                        color: 'var(--editor-text-secondary, #475569)',
+                        borderRadius: 4,
+                        transition: 'all 0.12s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'var(--toolbar-hover, rgba(0,0,0,0.06))';
+                        e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.color = 'var(--editor-text-secondary, #475569)';
+                      }}
+                    >
+                      {item.isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    </button>
+                  ) : (
+                    <div
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: '50%',
+                        background: isRoot ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-border, #94a3b8)',
+                      }}
+                    />
+                  )}
                 </div>
-              )}
 
-              {/* 展开/折叠指示箭头与大纲圆点 */}
-              <div
-                style={{
-                  width: 24,
-                  height: 24,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginRight: 6,
-                  flexShrink: 0,
-                }}
-              >
-                {item.hasChildren ? (
+                {/* 节点前置图标按钮（有图标则直接渲染，点击可修改或移除） */}
+                {item.node.icon && (
                   <button
                     type="button"
-                    onClick={() => handleToggleExpand(item.node.id)}
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      setIconPickerState({
+                        nodeId: item.node.id,
+                        currentIcon: item.node.icon,
+                        x: rect.left,
+                        y: rect.bottom + 4,
+                      });
+                    }}
+                    title="点击更改或移除图标"
                     style={{
                       background: 'transparent',
                       border: 'none',
                       cursor: 'pointer',
-                      padding: 2,
+                      fontSize: isRoot ? 20 : 16,
+                      lineHeight: 1,
+                      padding: '0 4px',
+                      marginRight: 4,
                       display: 'flex',
                       alignItems: 'center',
-                      color: 'var(--editor-text-secondary, #475569)',
+                      justifyContent: 'center',
                       borderRadius: 4,
-                      transition: 'all 0.12s ease',
+                      transition: 'transform 0.12s ease',
                     }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'var(--toolbar-hover, rgba(0,0,0,0.06))';
-                      e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent';
-                      e.currentTarget.style.color = 'var(--editor-text-secondary, #475569)';
-                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.2)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
                   >
-                    {item.isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    {item.node.icon}
                   </button>
-                ) : (
-                  <div
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: '50%',
-                      background: isRoot ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-border, #94a3b8)',
-                    }}
-                  />
                 )}
-              </div>
 
-              {/* 节点输入栏 */}
-              <input
-                ref={(el) => {
-                  if (el) inputRefs.current.set(item.node.id, el);
-                  else inputRefs.current.delete(item.node.id);
-                }}
-                type="text"
-                value={item.node.text}
-                placeholder={isRoot ? '输入中心主题…' : '输入大纲要点… (按 Enter 换行，Tab 缩进)'}
-                onChange={(e) => handleTextChange(item.node.id, e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleEnterKey(item);
-                  } else if (e.key === 'Tab') {
-                    e.preventDefault();
-                    if (e.shiftKey) {
-                      handleShiftTabKey(item);
-                    } else {
-                      handleTabKey(item);
+                {/* 节点标题输入栏 */}
+                <input
+                  ref={(el) => {
+                    if (el) inputRefs.current.set(item.node.id, el);
+                    else inputRefs.current.delete(item.node.id);
+                  }}
+                  type="text"
+                  value={item.node.text}
+                  placeholder={isRoot ? '输入中心主题…' : '输入大纲要点… (按 Enter 换行，Shift+Enter 添加备注)'}
+                  onChange={(e) => handleTextChange(item.node.id, e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (e.shiftKey) {
+                        // Shift+Enter 快速开启/聚焦备注
+                        if (item.node.note === undefined) {
+                          handleNoteChange(item.node.id, '');
+                        }
+                        focusNoteTargetIdRef.current = item.node.id;
+                      } else {
+                        handleEnterKey(item);
+                      }
+                    } else if (e.key === 'Tab') {
+                      e.preventDefault();
+                      if (e.shiftKey) {
+                        handleShiftTabKey(item);
+                      } else {
+                        handleTabKey(item);
+                      }
+                    } else if (e.key === 'Backspace' && item.node.text === '') {
+                      e.preventDefault();
+                      handleBackspaceKey(item, idx);
+                    } else if (e.key === 'ArrowUp' && idx > 0) {
+                      e.preventDefault();
+                      inputRefs.current.get(flatItems[idx - 1].node.id)?.focus();
+                    } else if (e.key === 'ArrowDown' && idx < flatItems.length - 1) {
+                      e.preventDefault();
+                      inputRefs.current.get(flatItems[idx + 1].node.id)?.focus();
                     }
-                  } else if (e.key === 'Backspace' && item.node.text === '') {
-                    e.preventDefault();
-                    handleBackspaceKey(item, idx);
-                  } else if (e.key === 'ArrowUp' && idx > 0) {
-                    e.preventDefault();
-                    inputRefs.current.get(flatItems[idx - 1].node.id)?.focus();
-                  } else if (e.key === 'ArrowDown' && idx < flatItems.length - 1) {
-                    e.preventDefault();
-                    inputRefs.current.get(flatItems[idx + 1].node.id)?.focus();
-                  }
-                }}
-                style={{
-                  flex: 1,
-                  border: 'none',
-                  outline: 'none',
-                  background: 'transparent',
-                  color: isRoot ? 'var(--editor-heading, #0f172a)' : 'var(--editor-text, #1e293b)',
-                  fontSize: isRoot ? 24 : item.depth === 1 ? 16 : 14,
-                  fontWeight: isRoot ? 700 : item.depth === 1 ? 600 : 400,
-                  lineHeight: 1.5,
-                  padding: '4px 8px',
-                  borderRadius: 4,
-                  pointerEvents: isDragging ? 'none' : 'auto',
-                }}
-              />
-
-              {/* 悬停辅助操作按钮组 */}
-              <div
-                className="nb-outliner-actions"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  marginLeft: 8,
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => handleEnterKey(item)}
-                  title="添加同级要点 (Enter)"
+                  }}
                   style={{
+                    flex: 1,
+                    border: 'none',
+                    outline: 'none',
                     background: 'transparent',
-                    border: '1px solid transparent',
+                    color: isRoot ? 'var(--editor-heading, #0f172a)' : 'var(--editor-text, #1e293b)',
+                    fontSize: isRoot ? 24 : item.depth === 1 ? 16 : 14,
+                    fontWeight: isRoot ? 700 : item.depth === 1 ? 600 : 400,
+                    lineHeight: 1.5,
+                    padding: '4px 8px',
                     borderRadius: 4,
-                    cursor: 'pointer',
-                    padding: '3px 5px',
+                    pointerEvents: isDragging ? 'none' : 'auto',
+                  }}
+                />
+
+                {/* 悬停辅助操作按钮组 */}
+                <div
+                  className="nb-outliner-actions"
+                  style={{
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'var(--editor-text-secondary, #475569)',
-                    transition: 'all 0.12s ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'var(--toolbar-hover, rgba(59, 130, 246, 0.12))';
-                    e.currentTarget.style.borderColor = 'var(--editor-border, #cbd5e1)';
-                    e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
-                    e.currentTarget.style.transform = 'scale(1.05)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                    e.currentTarget.style.borderColor = 'transparent';
-                    e.currentTarget.style.color = 'var(--editor-text-secondary, #475569)';
-                    e.currentTarget.style.transform = 'scale(1)';
-                  }}
-                  onMouseDown={(e) => {
-                    e.currentTarget.style.transform = 'scale(0.92)';
-                  }}
-                  onMouseUp={(e) => {
-                    e.currentTarget.style.transform = 'scale(1.05)';
+                    gap: 4,
+                    marginLeft: 8,
                   }}
                 >
-                  <Plus size={14} />
-                </button>
-
-                {!isRoot && (
+                  {/* 设置/更换图标按钮 */}
                   <button
                     type="button"
-                    onClick={() => handleBackspaceKey(item, idx)}
-                    title="删除此要点及子要点"
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      setIconPickerState({
+                        nodeId: item.node.id,
+                        currentIcon: item.node.icon,
+                        x: rect.left,
+                        y: rect.bottom + 4,
+                      });
+                    }}
+                    title="设置节点图标/标记"
                     style={{
                       background: 'transparent',
                       border: '1px solid transparent',
@@ -697,9 +850,9 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
                       transition: 'all 0.12s ease',
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)';
-                      e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)';
-                      e.currentTarget.style.color = '#ef4444';
+                      e.currentTarget.style.background = 'var(--toolbar-hover, rgba(59, 130, 246, 0.12))';
+                      e.currentTarget.style.borderColor = 'var(--editor-border, #cbd5e1)';
+                      e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
                       e.currentTarget.style.transform = 'scale(1.05)';
                     }}
                     onMouseLeave={(e) => {
@@ -708,21 +861,336 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
                       e.currentTarget.style.color = 'var(--editor-text-secondary, #475569)';
                       e.currentTarget.style.transform = 'scale(1)';
                     }}
-                    onMouseDown={(e) => {
-                      e.currentTarget.style.transform = 'scale(0.92)';
+                  >
+                    <Smile size={13} />
+                  </button>
+
+                  {/* 添加/聚焦备注按钮 */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (item.node.note === undefined) {
+                        handleNoteChange(item.node.id, '');
+                      }
+                      focusNoteTargetIdRef.current = item.node.id;
                     }}
-                    onMouseUp={(e) => {
+                    title="添加/编辑备注 (Shift+Enter)"
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid transparent',
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                      padding: '3px 5px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: hasNote ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-secondary, #475569)',
+                      transition: 'all 0.12s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'var(--toolbar-hover, rgba(59, 130, 246, 0.12))';
+                      e.currentTarget.style.borderColor = 'var(--editor-border, #cbd5e1)';
+                      e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
                       e.currentTarget.style.transform = 'scale(1.05)';
                     }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.borderColor = 'transparent';
+                      e.currentTarget.style.color = hasNote ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-secondary, #475569)';
+                      e.currentTarget.style.transform = 'scale(1)';
+                    }}
                   >
-                    <Trash2 size={14} />
+                    <FileText size={13} />
                   </button>
-                )}
+
+                  {/* 插入图片按钮 */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      uploadTargetNodeIdRef.current = item.node.id;
+                      fileInputRef.current?.click();
+                    }}
+                    title="上传/添加图片"
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid transparent',
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                      padding: '3px 5px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: hasImage ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-secondary, #475569)',
+                      transition: 'all 0.12s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'var(--toolbar-hover, rgba(59, 130, 246, 0.12))';
+                      e.currentTarget.style.borderColor = 'var(--editor-border, #cbd5e1)';
+                      e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
+                      e.currentTarget.style.transform = 'scale(1.05)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.borderColor = 'transparent';
+                      e.currentTarget.style.color = hasImage ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-secondary, #475569)';
+                      e.currentTarget.style.transform = 'scale(1)';
+                    }}
+                  >
+                    <ImageIcon size={13} />
+                  </button>
+
+                  {/* 添加同级要点按钮 */}
+                  <button
+                    type="button"
+                    onClick={() => handleEnterKey(item)}
+                    title="添加同级要点 (Enter)"
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid transparent',
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                      padding: '3px 5px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--editor-text-secondary, #475569)',
+                      transition: 'all 0.12s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'var(--toolbar-hover, rgba(59, 130, 246, 0.12))';
+                      e.currentTarget.style.borderColor = 'var(--editor-border, #cbd5e1)';
+                      e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
+                      e.currentTarget.style.transform = 'scale(1.05)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.borderColor = 'transparent';
+                      e.currentTarget.style.color = 'var(--editor-text-secondary, #475569)';
+                      e.currentTarget.style.transform = 'scale(1)';
+                    }}
+                  >
+                    <Plus size={14} />
+                  </button>
+
+                  {/* 删除此要点 */}
+                  {!isRoot && (
+                    <button
+                      type="button"
+                      onClick={() => handleBackspaceKey(item, idx)}
+                      title="删除此要点及子要点"
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid transparent',
+                        borderRadius: 4,
+                        cursor: 'pointer',
+                        padding: '3px 5px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--editor-text-secondary, #475569)',
+                        transition: 'all 0.12s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)';
+                        e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                        e.currentTarget.style.color = '#ef4444';
+                        e.currentTarget.style.transform = 'scale(1.05)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.borderColor = 'transparent';
+                        e.currentTarget.style.color = 'var(--editor-text-secondary, #475569)';
+                        e.currentTarget.style.transform = 'scale(1)';
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {/* 节点备注区域（浅色小字多行输入 + 图片） */}
+              {(hasNote || hasImage) && (
+                <div
+                  style={{
+                    paddingLeft: paddingLeft + 32,
+                    marginTop: 2,
+                    marginBottom: 4,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                  }}
+                >
+                  {/* 备注文字输入（浅色小字） */}
+                  {hasNote && (
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, position: 'relative' }}>
+                      <textarea
+                        ref={(el) => {
+                          if (el) noteInputRefs.current.set(item.node.id, el);
+                          else noteInputRefs.current.delete(item.node.id);
+                        }}
+                        rows={Math.min(6, (item.node.note?.split('\n').length || 1))}
+                        value={item.node.note || ''}
+                        placeholder="添加备注… (支持多行文字，直接按 Ctrl+V 粘贴图片)"
+                        onChange={(e) => handleNoteChange(item.node.id, e.target.value)}
+                        onPaste={(e) => handlePasteInNote(e, item.node.id)}
+                        onKeyDown={(e) => {
+                          // 空行按 Backspace 自动删除备注并返回标题输入
+                          if (e.key === 'Backspace' && item.node.note === '') {
+                            e.preventDefault();
+                            handleNoteChange(item.node.id, undefined);
+                            inputRefs.current.get(item.node.id)?.focus();
+                          } else if (e.key === 'Escape') {
+                            inputRefs.current.get(item.node.id)?.focus();
+                          }
+                        }}
+                        style={{
+                          width: '100%',
+                          maxWidth: 720,
+                          fontSize: 12,
+                          lineHeight: 1.6,
+                          color: 'var(--editor-text-secondary, #64748b)',
+                          background: 'var(--editor-surface, rgba(0, 0, 0, 0.02))',
+                          border: '1px solid var(--editor-border, #e2e8f0)',
+                          borderRadius: 6,
+                          padding: '6px 10px',
+                          outline: 'none',
+                          resize: 'vertical',
+                          fontFamily: 'inherit',
+                          boxSizing: 'border-box',
+                          transition: 'border-color 0.15s ease',
+                        }}
+                        onFocus={(e) => (e.target.style.borderColor = 'var(--editor-accent, #3b82f6)')}
+                        onBlur={(e) => (e.target.style.borderColor = 'var(--editor-border, #e2e8f0)')}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleNoteChange(item.node.id, undefined)}
+                        title="删除备注"
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: 'var(--editor-text-muted, #94a3b8)',
+                          padding: 2,
+                          marginTop: 4,
+                          borderRadius: 4,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--editor-text-muted, #94a3b8)')}
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* 节点挂载图片缩略图 */}
+                  {hasImage && item.node.image && (
+                    <div
+                      style={{
+                        position: 'relative',
+                        display: 'inline-block',
+                        maxWidth: 320,
+                        borderRadius: 6,
+                        overflow: 'hidden',
+                        border: '1px solid var(--editor-border, #e2e8f0)',
+                        background: 'var(--editor-surface, #ffffff)',
+                      }}
+                    >
+                      <img
+                        src={item.node.image}
+                        alt="节点图片"
+                        onClick={() => setPreviewImage(item.node.image!)}
+                        style={{
+                          display: 'block',
+                          maxWidth: '100%',
+                          maxHeight: 180,
+                          objectFit: 'contain',
+                          cursor: 'zoom-in',
+                          transition: 'transform 0.15s ease',
+                        }}
+                        title="点击全屏放大预览"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleImageChange(item.node.id, undefined)}
+                        title="删除图片"
+                        style={{
+                          position: 'absolute',
+                          top: 4,
+                          right: 4,
+                          background: 'rgba(0, 0, 0, 0.65)',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '50%',
+                          width: 20,
+                          height: 20,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'background 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.9)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(0, 0, 0, 0.65)')}
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
       </div>
+
+      {/* 图标选择器浮层 */}
+      {iconPickerState && (
+        <MindmapIconPicker
+          currentIcon={iconPickerState.currentIcon}
+          position={{ x: iconPickerState.x, y: iconPickerState.y }}
+          onSelect={(icon) => {
+            handleIconChange(iconPickerState.nodeId, icon);
+            setIconPickerState(null);
+          }}
+          onClose={() => setIconPickerState(null)}
+        />
+      )}
+
+      {/* 图片全屏放大预览弹窗 (Lightbox) */}
+      {previewImage && (
+        <div
+          onClick={() => setPreviewImage(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.75)',
+            zIndex: 100000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+            cursor: 'zoom-out',
+            animation: 'nbFadeIn 0.15s ease-out',
+          }}
+        >
+          <img
+            src={previewImage}
+            alt="大图预览"
+            style={{
+              maxWidth: '90%',
+              maxHeight: '90%',
+              objectFit: 'contain',
+              borderRadius: 8,
+              boxShadow: '0 12px 32px rgba(0, 0, 0, 0.4)',
+            }}
+          />
+        </div>
+      )}
 
       {/* 浮动拖拽跟随胶囊 */}
       {isDragging && dragPreview && (

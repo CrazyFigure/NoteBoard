@@ -118,4 +118,61 @@ describe('mindmapConverter 转换器测试', () => {
     const invalidMove = moveMindNode(sampleTree, 'c-1', 'c-1-1', 'inside');
     expect(invalidMove).toEqual(sampleTree);
   });
+
+  test('支持节点图标、多行备注与图片双向转换', () => {
+    const richTree: MindNode = {
+      id: 'root-rich',
+      text: '项目发布总览',
+      icon: '🚀',
+      note: '第一季度重要里程碑',
+      image: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      isExpanded: true,
+      children: [
+        {
+          id: 'child-1',
+          text: '核心功能研发',
+          icon: '⭐️',
+          note: '重点保障性能与视觉适配',
+          children: [],
+        },
+      ],
+    };
+
+    // 1. JSON 双向保真
+    const json = serializeMindmapDocument(richTree);
+    const fromJson = parseMindmapDocument(json);
+    expect(fromJson.icon).toBe('🚀');
+    expect(fromJson.note).toBe('第一季度重要里程碑');
+    expect(fromJson.image).toContain('data:image/png;base64');
+    expect(fromJson.children[0].icon).toBe('⭐️');
+    expect(fromJson.children[0].note).toBe('重点保障性能与视觉适配');
+
+    // 2. Markdown 转换保真
+    const md = mindNodeToMarkdown(richTree);
+    expect(md).toContain('# 🚀 项目发布总览');
+    expect(md).toContain('> 第一季度重要里程碑');
+    expect(md).toContain('> ![图片](data:image/png;base64');
+    expect(md).toContain('- ⭐️ 核心功能研发');
+    expect(md).toContain('> 重点保障性能与视觉适配');
+
+    const fromMd = markdownToMindNode(md);
+    expect(fromMd.text).toBe('项目发布总览');
+    expect(fromMd.icon).toBe('🚀');
+    expect(fromMd.note).toBe('第一季度重要里程碑');
+    expect(fromMd.image).toContain('data:image/png;base64');
+    expect(fromMd.children[0].text).toBe('核心功能研发');
+    expect(fromMd.children[0].icon).toBe('⭐️');
+    expect(fromMd.children[0].note).toBe('重点保障性能与视觉适配');
+
+    // 3. XMind markers & note 映射
+    const xmindJson = mindNodeToXmindJson(richTree);
+    expect(xmindJson[0].rootTopic.markers?.[0].markerId).toBe('🚀');
+    expect(xmindJson[0].rootTopic.note?.plain.content).toBe('第一季度重要里程碑');
+    expect(xmindJson[0].rootTopic.image?.src).toContain('data:image/png;base64');
+
+    const fromXmind = xmindJsonToMindNode(xmindJson);
+    expect(fromXmind.icon).toBe('🚀');
+    expect(fromXmind.note).toBe('第一季度重要里程碑');
+    expect(fromXmind.image).toContain('data:image/png;base64');
+  });
 });

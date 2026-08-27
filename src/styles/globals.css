@@ -1731,3 +1731,38 @@ button:not(:disabled) {
     transform: translateY(0) scale(1);
   }
 }
+
+/* 浮层轻量淡入动画 */
+@keyframes nbFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 幕布式大纲行悬浮操作栏展示 */
+.nb-outliner-row .nb-outliner-actions {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.nb-outliner-row:hover .nb-outliner-actions,
+.nb-outliner-row:focus-within .nb-outliner-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 思维导图卡片悬浮添加按钮与快捷工具栏 */
+.nb-mindmap-node:hover .nb-node-add-btn {
+  opacity: 1 !important;
+}
+
+.nb-mindmap-node:hover .nb-mindmap-node-toolbar {
+  display: flex !important;
+}
+

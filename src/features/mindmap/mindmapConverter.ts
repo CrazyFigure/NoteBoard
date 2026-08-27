@@ -87,7 +87,9 @@ function normalizeNode(node: Partial<MindNode>): MindNode {
   return {
     id: node.id || generateNodeId(),
     text: node.text || '',
+    icon: node.icon,
     note: node.note,
+    image: node.image,
     color: node.color,
     isExpanded: node.isExpanded !== false,
     children: Array.isArray(node.children) ? node.children.map(normalizeNode) : [],
@@ -117,10 +119,15 @@ export function xmindTopicToMindNode(topic: XMindTopic): MindNode {
     }
   }
 
+  // 提取 XMind 标记作为图标
+  const icon = topic.markers && topic.markers.length > 0 ? topic.markers[0].markerId : undefined;
+
   return {
     id: topic.id || generateNodeId(),
     text: topic.title || '分支',
+    icon,
     note: topic.note?.plain?.content,
+    image: topic.image?.src,
     isExpanded: true,
     children,
   };
@@ -146,6 +153,14 @@ export function mindNodeToXmindTopic(node: MindNode): XMindTopic {
     title: node.text,
   };
 
+  if (node.icon) {
+    topic.markers = [{ markerId: node.icon }];
+  }
+
+  if (node.image) {
+    topic.image = { src: node.image };
+  }
+
   if (node.note) {
     topic.note = { plain: { content: node.note } };
   }
@@ -167,6 +182,21 @@ export function mindNodeToXmindJson(root: MindNode): XMindContentJson {
     rootTopic: mindNodeToXmindTopic(root),
   };
   return [sheet];
+}
+
+/**
+ * 提取文本开头的常用 Emoji 或标记
+ */
+function extractLeadingIcon(rawText: string): { icon?: string; text: string } {
+  // 匹配前置常见 Emoji 符号或数字标记
+  const emojiMatch = rawText.match(/^([\u{1F300}-\u{1FAFF}]|[\u{2600}-\u{27BF}]|[1-9]️⃣|🔟|⭐️|🚩|💡|🔥|📌|✅|❌|❓|🎯|🚀|📅|⚡️)\s*(.*)$/u);
+  if (emojiMatch) {
+    return {
+      icon: emojiMatch[1],
+      text: emojiMatch[2].trim(),
+    };
+  }
+  return { text: rawText };
 }
 
 /**
@@ -193,6 +223,22 @@ export function markdownToMindNode(md: string): MindNode {
     line = line.replace(/\r$/, '');
     if (!line.trim()) continue;
 
+    // 解析备注引用块 >
+    const quoteMatch = line.match(/^(\s*)>\s*(.*)$/);
+    if (quoteMatch && stack.length > 0) {
+      const quoteContent = quoteMatch[2].trim();
+      const targetNode = stack[stack.length - 1].node;
+
+      // 检查是否为 Markdown 图片语法 ![alt](url)
+      const imgMatch = quoteContent.match(/^!\[.*?\]\((.*?)\)$/);
+      if (imgMatch) {
+        targetNode.image = imgMatch[1];
+      } else {
+        targetNode.note = targetNode.note ? `${targetNode.note}\n${quoteContent}` : quoteContent;
+      }
+      continue;
+    }
+
     let level = 0;
     let text = '';
 
@@ -202,11 +248,15 @@ export function markdownToMindNode(md: string): MindNode {
       level = headingMatch[1].length;
       text = headingMatch[2].trim();
 
+      const { icon, text: cleanText } = extractLeadingIcon(text);
+
       if (!hasSetRoot && level === 1) {
-        root.text = text;
+        root.text = cleanText || text;
+        root.icon = icon;
         hasSetRoot = true;
         continue;
       }
+      text = cleanText || text;
     } else {
       // 匹配列表项 - , * , 1. , 以及前置空格缩进
       const listMatch = line.match(/^(\s*)(?:[-*+]|\d+\.)\s+(.*)$/);
@@ -226,9 +276,12 @@ export function markdownToMindNode(md: string): MindNode {
 
     if (!text) continue;
 
+    const { icon, text: cleanText } = extractLeadingIcon(text);
+
     const newNode: MindNode = {
       id: generateNodeId(),
-      text,
+      text: cleanText || text,
+      icon,
       isExpanded: true,
       children: [],
     };
@@ -255,16 +308,34 @@ export function markdownToMindNode(md: string): MindNode {
  */
 export function mindNodeToMarkdown(root: MindNode, depth = 0): string {
   let res = '';
+  const iconPrefix = root.icon ? `${root.icon} ` : '';
+
   if (depth === 0) {
-    res += `# ${root.text}\n\n`;
+    res += `# ${iconPrefix}${root.text}\n\n`;
+    if (root.note) {
+      const noteLines = root.note.split('\n');
+      for (const nl of noteLines) {
+        res += `> ${nl}\n`;
+      }
+      res += '\n';
+    }
+    if (root.image) {
+      res += `> ![图片](${root.image})\n\n`;
+    }
     for (const child of root.children) {
       res += mindNodeToMarkdown(child, depth + 1);
     }
   } else {
     const indent = '  '.repeat(depth - 1);
-    res += `${indent}- ${root.text}\n`;
+    res += `${indent}- ${iconPrefix}${root.text}\n`;
     if (root.note) {
-      res += `${indent}  > ${root.note}\n`;
+      const noteLines = root.note.split('\n');
+      for (const nl of noteLines) {
+        res += `${indent}  > ${nl}\n`;
+      }
+    }
+    if (root.image) {
+      res += `${indent}  > ![图片](${root.image})\n`;
     }
     for (const child of root.children) {
       res += mindNodeToMarkdown(child, depth + 1);
