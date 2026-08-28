@@ -186,7 +186,7 @@ function SortRulesPanel({ columns, sortRules, onChange, onClose }: SortRulesPane
         const labels = getSortDirectionLabels(col.type);
         const usedColIds = localRules.map((r) => r.columnId);
         return (
-          <div key={`{rule.columnId}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div key={`${rule.columnId}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 11, color: 'var(--editor-text-muted, #94a3b8)', width: 18, flexShrink: 0 }}>{index + 1}</span>
             <FieldSelectButton
               columns={columns}
