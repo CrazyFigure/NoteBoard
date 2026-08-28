@@ -175,4 +175,65 @@ describe('mindmapConverter 转换器测试', () => {
     expect(fromXmind.note).toBe('第一季度重要里程碑');
     expect(fromXmind.image).toContain('data:image/png;base64');
   });
+
+  test('moveMindNode 移动携带所有子节点、图标、备注与图片的完整子树', () => {
+    const complexTree: MindNode = {
+      id: 'root-complex',
+      text: '根主题',
+      isExpanded: true,
+      children: [
+        {
+          id: 'branch-a',
+          text: '分支 A',
+          children: [
+            {
+              id: 'node-to-move',
+              text: '待移动要点',
+              icon: '🔥',
+              note: '重要备注信息',
+              image: 'data:image/png;base64,123',
+              children: [
+                { id: 'sub-1', text: '子要点 1', children: [] },
+                { id: 'sub-2', text: '子要点 2', children: [{ id: 'sub-2-1', text: '深层子要点', children: [] }] },
+              ],
+            },
+          ],
+        },
+        {
+          id: 'branch-b',
+          text: '分支 B',
+          children: [
+            { id: 'target-b1', text: '目标 B1', children: [] },
+          ],
+        },
+      ],
+    };
+
+    // 1. 将 node-to-move 移入 branch-b 下作为 target-b1 的后置兄弟
+    const movedTree = moveMindNode(complexTree, 'node-to-move', 'target-b1', 'after');
+    const branchA = movedTree.children.find((c) => c.id === 'branch-a')!;
+    const branchB = movedTree.children.find((c) => c.id === 'branch-b')!;
+
+    // 原分支 A 中不再含有 node-to-move
+    expect(branchA.children.find((c) => c.id === 'node-to-move')).toBeUndefined();
+
+    // 分支 B 中包含 node-to-move，且位于 target-b1 之后
+    expect(branchB.children.length).toBe(2);
+    expect(branchB.children[0].id).toBe('target-b1');
+    const movedNode = branchB.children[1];
+    expect(movedNode.id).toBe('node-to-move');
+    expect(movedNode.text).toBe('待移动要点');
+    expect(movedNode.icon).toBe('🔥');
+    expect(movedNode.note).toBe('重要备注信息');
+    expect(movedNode.image).toBe('data:image/png;base64,123');
+
+    // 验证其完整多层子树完整保留
+    expect(movedNode.children.length).toBe(2);
+    expect(movedNode.children[0].text).toBe('子要点 1');
+    expect(movedNode.children[1].children[0].text).toBe('深层子要点');
+
+    // 2. 将 node-to-move 直接作为根节点的子分支挂载 (inside 根主题)
+    const movedToRoot = moveMindNode(movedTree, 'node-to-move', 'root-complex', 'inside');
+    expect(movedToRoot.children.some((c) => c.id === 'node-to-move')).toBe(true);
+  });
 });
