@@ -38,10 +38,12 @@ import {
   RemoveFormatting,
   ChevronRight,
   Boxes,
+  BarChart3,
 } from 'lucide-react';
 import { insertLocalImageWithDialog } from './imagePaste';
 import { useWindowStore } from '../../stores/windowStore';
 import { emit } from '../../core/emitter';
+import { INFOGRAPHIC_TEMPLATES } from '../infographic/infographicTemplates';
 
 /** 叶子具体执行命令项 */
 export interface LeafCommandItem {
@@ -343,7 +345,37 @@ const MATH_LEAFS: LeafCommandItem[] = [
       editor.chain().focus().deleteRange(range).insertContent({ type: 'mermaidBlock', attrs: { code: 'graph TD\n  A[开始] --> B[处理]\n  B --> C[完成]' } }).run();
     },
   },
+  {
+    id: 'infographic',
+    label: 'Infographic 信息图',
+    description: '指标看板、时间线、流程步骤、对比表与图表',
+    groupId: 'math',
+    groupLabel: '公式与图表',
+    shortcutHint: '/info',
+    icon: <BarChart3 size={17} color="#3b82f6" />,
+    aliases: ['infographic', 'info', 'xinxitu', 'xxt', 'kpi', 'timeline', 'funnel', 'comparison'],
+    keywords: '信息图 infographic info xinxitu 指标 看板 时间线 流程 对比 漏斗 象限',
+    action: (editor, range) => {
+      const defaultTmpl = INFOGRAPHIC_TEMPLATES[0]?.code || 'type: metric-cards\ntitle: 核心指标看板';
+      editor.chain().focus().deleteRange(range).insertContent({ type: 'infographicBlock', attrs: { code: defaultTmpl } }).run();
+    },
+  },
 ];
+
+const INFOGRAPHIC_LEAFS: LeafCommandItem[] = INFOGRAPHIC_TEMPLATES.map((tmpl) => ({
+  id: `info-${tmpl.id}`,
+  label: tmpl.label,
+  description: tmpl.description,
+  groupId: 'infographics',
+  groupLabel: '信息图模板',
+  shortcutHint: `/info-${tmpl.id.slice(0, 4)}`,
+  icon: <BarChart3 size={17} color="#3b82f6" />,
+  aliases: ['info', 'infographic', 'xxt', tmpl.id],
+  keywords: `信息图 ${tmpl.label} ${tmpl.description} infographic info`,
+  action: (editor, range) => {
+    editor.chain().focus().deleteRange(range).insertContent({ type: 'infographicBlock', attrs: { code: tmpl.code } }).run();
+  },
+}));
 
 const DATETIME_LEAFS: LeafCommandItem[] = [
   {
@@ -551,6 +583,15 @@ const ROOT_GROUPS: GroupCommandItem[] = [
     children: MATH_LEAFS,
   },
   {
+    id: 'infographics',
+    label: '信息图模板',
+    description: '指标看板、时间线、步骤流程、对比表与漏斗',
+    shortcutHint: '/info',
+    icon: <BarChart3 size={17} color="#3b82f6" />,
+    isGroup: true,
+    children: INFOGRAPHIC_LEAFS,
+  },
+  {
     id: 'datetime',
     label: '日期时间',
     description: '当前日期、当前时刻、日期与时刻',
@@ -561,7 +602,7 @@ const ROOT_GROUPS: GroupCommandItem[] = [
   },
 ];
 
-/** 全量叶子命令扁平池（优先级：标题 > 列表 > 代码块 > 提示块 > 引用块 > 表格 > 公式 > 图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
+/** 全量叶子命令扁平池（优先级：标题 > 列表 > 代码块 > 提示块 > 引用块 > 表格 > 公式 > 信息图 > 图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
 const ALL_LEAFS: LeafCommandItem[] = [
   ...HEADING_LEAFS,
   ...LIST_LEAFS,
@@ -570,6 +611,7 @@ const ALL_LEAFS: LeafCommandItem[] = [
   BLOCKQUOTE_LEAF,
   ...TABLE_LEAFS,
   ...MATH_LEAFS,
+  ...INFOGRAPHIC_LEAFS,
   IMAGE_LOCAL_LEAF,
   IMAGE_URL_LEAF,
   LINK_LEAF,

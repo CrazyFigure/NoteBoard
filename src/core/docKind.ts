@@ -37,6 +37,9 @@ export const LANGUAGE_BY_EXT: Record<string, LanguageId> = {
   mindmap: 'json',
   xmind: 'plaintext',
   mm: 'plaintext',
+  // 多维表格采用结构化 JSON 格式持久化
+  bitable: 'json',
+  table: 'json',
 };
 
 /** 从路径提取扩展名（小写，无点） */
@@ -66,6 +69,8 @@ export function savePolicyOf(kind: DocumentKind): SavePolicy {
     case 'board':
     case 'mindmap':
     case 'drawio':
+    // 多维表格与画板/思维导图一致，支持自动保存策略
+    case 'bitable':
       return 'auto';
     case 'code':
     case 'image':

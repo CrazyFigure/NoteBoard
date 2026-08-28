@@ -28,6 +28,7 @@ import { BoardEditor } from '../features/board/BoardEditor';
 import { ImageViewer } from '../features/image-viewer/ImageViewer';
 import { MindmapEditor } from '../features/mindmap/MindmapEditor';
 import { DrawioEditor } from '../features/drawio/DrawioEditor';
+import { BitableEditor } from '../features/bitable/BitableEditor';
 import { DiagramSplitEditor } from '../features/diagram-preview/DiagramSplitEditor';
 import { OutlinePanel } from '../features/outline/OutlinePanel';
 import { UnsavedGuardDialog } from '../features/editor-code/UnsavedGuardDialog';
@@ -54,6 +55,7 @@ import {
   newMarkdown,
   newMindmap,
   newDrawio,
+  newBitable,
   newBoard,
   newMermaid,
   newPlantUml,
@@ -542,6 +544,7 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                     onNewBoard={newBoard}
                     onNewMindmap={newMindmap}
                     onNewDrawio={newDrawio}
+                    onNewBitable={newBitable}
                     onNewMermaid={newMermaid}
                     onNewPlantUml={newPlantUml}
                     onNewJson={newJson}
@@ -587,6 +590,8 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                             <MindmapEditor docKey={tab.key} />
                           ) : tab.kind === 'drawio' ? (
                             <DrawioEditor docKey={tab.key} />
+                          ) : tab.kind === 'bitable' ? (
+                            <BitableEditor docKey={tab.key} />
                           ) : tab.kind === 'code' ? (
                             tab.language === 'mermaid' || tab.language === 'plantuml' ? (
                               <DiagramSplitEditor docKey={tab.key} />

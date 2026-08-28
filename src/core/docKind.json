@@ -37,5 +37,7 @@
   "puml": "code",
   "plantuml": "code",
   "iuml": "code",
-  "uml": "code"
+  "uml": "code",
+  "bitable": "bitable",
+  "table": "bitable"
 }

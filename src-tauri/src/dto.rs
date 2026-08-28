@@ -17,6 +17,8 @@ pub enum DocumentKind {
     Image,
     Mindmap,
     Drawio,
+    // 多维表格格式 (.bitable / .table)
+    Bitable,
     Unsupported,
 }
 
@@ -248,6 +250,7 @@ pub fn kind_by_ext(ext: &str) -> (DocumentKind, LanguageId) {
         "excalidraw" | "board" | "canvas" => (DocumentKind::Board, LanguageId::Plaintext),
         "mindmap" | "xmind" | "mm" => (DocumentKind::Mindmap, LanguageId::Json),
         "drawio" | "dio" => (DocumentKind::Drawio, LanguageId::Xml),
+        "bitable" | "table" => (DocumentKind::Bitable, LanguageId::Json),
         "mmd" | "mermaid" => (DocumentKind::Code, LanguageId::Mermaid),
         "puml" | "plantuml" | "iuml" | "uml" => (DocumentKind::Code, LanguageId::Plantuml),
         "sql" => (DocumentKind::Code, LanguageId::Sql),
@@ -284,7 +287,7 @@ pub fn kind_from_path(path: &str) -> (DocumentKind, LanguageId) {
 
 pub fn save_policy_of(kind: DocumentKind) -> SavePolicy {
     match kind {
-        DocumentKind::Markdown | DocumentKind::Board | DocumentKind::Mindmap | DocumentKind::Drawio => SavePolicy::Auto,
+        DocumentKind::Markdown | DocumentKind::Board | DocumentKind::Mindmap | DocumentKind::Drawio | DocumentKind::Bitable => SavePolicy::Auto,
         DocumentKind::Code | DocumentKind::Image | DocumentKind::Unsupported => SavePolicy::Manual,
     }
 }
@@ -368,4 +371,3 @@ pub struct UpdateCheckResult {
     // Release 更新日志正文说明
     pub release_body: Option<String>,
 }
-

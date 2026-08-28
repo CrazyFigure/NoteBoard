@@ -21,6 +21,7 @@ import {
   ChevronUp,
   Sparkles,
   Archive,
+  Table2,
 } from 'lucide-react';
 
 interface WelcomeScreenProps {
@@ -32,6 +33,7 @@ interface WelcomeScreenProps {
   onNewMindmap?: () => void;
   onNewBoard?: () => void;
   onNewDrawio?: () => void;
+  onNewBitable?: () => void;
   onNewMermaid?: () => void;
   onNewPlantUml?: () => void;
   onNewJson?: () => void;
@@ -49,6 +51,7 @@ export function WelcomeScreen({
   onNewMindmap,
   onNewBoard,
   onNewDrawio,
+  onNewBitable,
   onNewMermaid,
   onNewPlantUml,
   onNewJson,
@@ -122,8 +125,15 @@ export function WelcomeScreen({
     },
   ];
 
-  // 更多格式（Draw.io, Mermaid, PlantUML, JSON, YAML, SQL, XML）
+  // 更多格式（多维表格, Draw.io, Mermaid, PlantUML, JSON, YAML, SQL, XML）
   const moreFormats = [
+    {
+      icon: Table2,
+      label: '飞书多维表格 (.bitable)',
+      desc: '结构化数据、标签筛选与看板视图',
+      color: '#2563eb',
+      onClick: onNewBitable,
+    },
     {
       icon: Layout,
       label: 'Draw.io 架构图 (.drawio)',
