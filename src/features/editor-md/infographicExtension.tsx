@@ -1,14 +1,12 @@
 // NoteBoard Infographic TipTap 扩展
-// 自研 infographicBlock 节点 + 视口门控 + 就地编辑 + 模板选择 + 全屏缩放预览与导出
+// 自研 infographicBlock 节点 + 视口门控 + 就地编辑 + 模板选择 + 全屏缩放预览
+// 信息图是纯 DOM 渲染，对外只产出图片：复制/导出 SVG 矢量图或 PNG 位图
 
 import { useState, useEffect, useRef } from 'react';
 import { Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
 import {
   Maximize2,
-  Copy,
-  Download,
-  Check,
   Edit2,
   X,
   AlertCircle,
@@ -20,6 +18,8 @@ import { InfographicRenderer } from '../infographic/infographicRenderer';
 import { InfographicTemplateIcon } from '../infographic/infographicTemplateIcon';
 import { INFOGRAPHIC_TEMPLATES } from '../infographic/infographicTemplates';
 import { observe } from './viewportActivation';
+import { ChartExportMenu } from '../export/ChartExportMenu';
+import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
 
 /** Infographic 交互微反馈样式注入（支持 Hover 与 Active 动效反馈） */
 const INFOGRAPHIC_STYLES = `
@@ -178,7 +178,11 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
   const [editValue, setEditValue] = useState('');
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
-  const [copied, setCopied] = useState(false);
+
+  // 内联与全屏两套渲染节点分别登记：信息图是纯 DOM 渲染，导出时抓取对应快照。
+  // 用 state 保存 DOM 节点，挂载/卸载能触发重渲染，按钮禁用态才跟得上。
+  const [inlineEl, setInlineEl] = useState<HTMLDivElement | null>(null);
+  const [fullscreenEl, setFullscreenEl] = useState<HTMLDivElement | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -186,6 +190,12 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
 
   // 解析当前代码
   const { data, error } = parseInfographicCode(code);
+
+  // 导出来源：解析成功且对应渲染节点已挂载才可用
+  const activeEl = fullscreen ? fullscreenEl : inlineEl;
+  const exportSource: ChartImageSource | null =
+    !error && data && activeEl ? { kind: 'element', element: activeEl } : null;
+  const exportFileName = buildExportFileName('', 'infographic');
 
   // 视口门控优化监听挂载
   useEffect(() => {
@@ -207,27 +217,6 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, [showTemplateDropdown]);
-
-  // 复制源码
-  const handleCopy = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(code).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-
-  // 导出为 HTML / 文本文件
-  const handleExport = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const blob = new Blob([code], { type: 'text/yaml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `infographic-${Date.now()}.yaml`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
 
   if (editing) {
     return (
@@ -442,27 +431,20 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
               <Edit2 size={12} />
               <span>编辑</span>
             </button>
-            <button
-              type="button"
-              className="nb-info-icon-btn"
-              onClick={handleCopy}
-              title="复制配置源码"
-              style={{
-                color: copied ? '#16a34a' : undefined,
-              }}
-            >
-              {copied ? <Check size={12} /> : <Copy size={12} />}
-              <span>{copied ? '已复制' : '复制'}</span>
-            </button>
-            <button
-              type="button"
-              className="nb-info-icon-btn"
-              onClick={handleExport}
-              title="导出信息图配置"
-            >
-              <Download size={12} />
-              <span>导出</span>
-            </button>
+            <ChartExportMenu
+              action="copy"
+              variant="ghost"
+              source={exportSource}
+              fileName={exportFileName}
+              title="复制为 SVG 矢量图或 PNG 图片"
+            />
+            <ChartExportMenu
+              action="download"
+              variant="ghost"
+              source={exportSource}
+              fileName={exportFileName}
+              title="导出为 SVG 矢量图或 PNG 图片"
+            />
             <button
               type="button"
               className="nb-info-icon-btn"
@@ -513,7 +495,11 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
             </div>
           )}
 
-          {!error && data && <InfographicRenderer data={data} />}
+          {!error && data && (
+            <div ref={setInlineEl} style={{ width: '100%' }}>
+              <InfographicRenderer data={data} />
+            </div>
+          )}
 
           {!code && (
             <span style={{ color: 'var(--editor-text-muted, #64748b)', fontStyle: 'italic', fontSize: 13 }}>
@@ -552,6 +538,18 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
               Infographic 信息图预览
             </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <ChartExportMenu
+                action="copy"
+                variant="outline"
+                source={exportSource}
+                fileName={exportFileName}
+              />
+              <ChartExportMenu
+                action="download"
+                variant="primary"
+                source={exportSource}
+                fileName={exportFileName}
+              />
               <button
                 type="button"
                 className="nb-info-close-btn"
@@ -575,6 +573,7 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
           >
             {data && (
               <div
+                ref={setFullscreenEl}
                 style={{
                   maxWidth: 900,
                   width: '100%',

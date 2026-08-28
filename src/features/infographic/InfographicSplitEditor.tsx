@@ -1,6 +1,7 @@
 // NoteBoard 信息图独立文件编辑器（.infographic / .ig）
-// 左侧声明式源码（YAML / JSON）+ 右侧实时渲染预览 + 模板填充 + 缩放平移 + 源码导出
+// 左侧声明式源码（YAML / JSON）+ 右侧实时渲染预览 + 模板填充 + 缩放平移 + SVG/PNG 复制导出
 // 与 Markdown 内嵌 ```infographic 块共用同一套解析器与渲染器，源码可双向复用
+// 信息图只对外产出图片（SVG / PNG），不再提供源码复制与源码导出
 // 详见 docs/09-开发路线图.md
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
@@ -12,9 +13,6 @@ import {
   Columns,
   Code2,
   Eye,
-  Download,
-  Copy,
-  Check,
   RotateCcw,
   ZoomIn,
   ZoomOut,
@@ -29,6 +27,8 @@ import { InfographicRenderer } from './infographicRenderer';
 import { INFOGRAPHIC_TEMPLATES } from './infographicTemplates';
 import { InfographicTemplateIcon } from './infographicTemplateIcon';
 import { loadLanguageExtension } from '../editor-code/languages';
+import { ChartExportMenu } from '../export/ChartExportMenu';
+import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
 
 interface InfographicSplitEditorProps {
   docKey: string;
@@ -56,7 +56,6 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
 
-  const [copied, setCopied] = useState(false);
   const [showTemplateMenu, setShowTemplateMenu] = useState(false);
   const templateMenuRef = useRef<HTMLDivElement>(null);
 
@@ -64,8 +63,19 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
   const editorViewRef = useRef<EditorView | null>(null);
   const languageCompartmentRef = useRef<Compartment>(new Compartment());
 
+  // 预览画布根节点：信息图是纯 DOM 渲染，复制/导出时抓取这里的实时快照。
+  // 用 state 而非 ref 保存，节点挂载/卸载能触发重渲染，按钮禁用态才跟得上。
+  const [previewEl, setPreviewEl] = useState<HTMLDivElement | null>(null);
+
   // 解析结果随源码同步推导：解析器为纯内存轻量计算，无需防抖
   const { data, error } = useMemo(() => parseInfographicCode(source), [source]);
+
+  // 只在预览可见且渲染成功时才允许复制/导出
+  const exportReady = layoutMode !== 'code' && !error && !!data && !!previewEl;
+  const exportSource: ChartImageSource | null = exportReady
+    ? { kind: 'element', element: previewEl }
+    : null;
+  const exportFileName = buildExportFileName(doc?.displayName, 'infographic');
 
   // 处理分隔条鼠标拖拽调整左右分栏比例
   const handleResizerMouseDown = (e: React.MouseEvent) => {
@@ -199,26 +209,6 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
     },
     [docKey, setContent, setDirty, setTabDirty],
   );
-
-  // 复制源码
-  const handleCopySource = () => {
-    if (!source) return;
-    navigator.clipboard.writeText(source).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-
-  // 导出源码文件（.infographic，与 Markdown 内嵌块导出保持一致）
-  const handleExportSource = () => {
-    const blob = new Blob([source], { type: 'text/yaml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `infographic-${Date.now()}.infographic`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
 
   // 画布拖拽平移
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -482,21 +472,23 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
             </div>
           )}
 
-          <button
-            type="button"
-            className="nb-ig-icon-btn"
-            onClick={handleCopySource}
-            title="复制源码"
-            style={{ color: copied ? 'var(--success-600, #16a34a)' : 'var(--editor-text, #1e293b)' }}
-          >
-            {copied ? <Check size={13} /> : <Copy size={13} />}
-            <span>{copied ? '已复制' : '复制源码'}</span>
-          </button>
+          <ChartExportMenu
+            action="copy"
+            variant="outline"
+            label="复制图片"
+            source={exportSource}
+            fileName={exportFileName}
+            title="复制为 SVG 矢量图或 PNG 图片"
+          />
 
-          <button type="button" className="nb-ig-primary-btn" onClick={handleExportSource} title="导出 .infographic 源码文件">
-            <Download size={13} />
-            <span>导出源码</span>
-          </button>
+          <ChartExportMenu
+            action="download"
+            variant="primary"
+            label="导出图片"
+            source={exportSource}
+            fileName={exportFileName}
+            title="导出为 SVG 矢量图或 PNG 图片"
+          />
         </div>
       </div>
 
@@ -610,7 +602,7 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
             }}
           >
             {data ? (
-              <div style={{ width: CANVAS_BASE_WIDTH, maxWidth: '100%', padding: 16 }}>
+              <div ref={setPreviewEl} style={{ width: CANVAS_BASE_WIDTH, maxWidth: '100%', padding: 16 }}>
                 <InfographicRenderer data={data} />
               </div>
             ) : (

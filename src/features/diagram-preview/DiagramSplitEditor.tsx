@@ -1,5 +1,5 @@
 // NoteBoard 图表双栏编辑器 (Mermaid / PlantUML / UML)
-// 左侧代码编辑 + 右侧实时渲染预览 + 缩放平移 + SVG/PNG 导出
+// 左侧代码编辑 + 右侧实时渲染预览 + 缩放平移 + SVG/PNG 复制与导出
 // 详见 docs/09-开发路线图.md
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -11,9 +11,6 @@ import {
   Columns,
   Code2,
   Eye,
-  Download,
-  Copy,
-  Check,
   RotateCcw,
   ZoomIn,
   ZoomOut,
@@ -24,6 +21,8 @@ import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { renderPlantUmlToSvg } from '../plantuml/plantumlEncoder';
 import { extFromPath } from '../../core/docKind';
+import { ChartExportMenu } from '../export/ChartExportMenu';
+import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
 
 interface DiagramSplitEditorProps {
   docKey: string;
@@ -59,7 +58,6 @@ export function DiagramSplitEditor({ docKey }: DiagramSplitEditorProps) {
   const [svgContent, setSvgContent] = useState<string>('');
   const [renderError, setRenderError] = useState<string | null>(null);
   const [isRendering, setIsRendering] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -226,26 +224,9 @@ export function DiagramSplitEditor({ docKey }: DiagramSplitEditorProps) {
     }
   }, [layoutMode, splitRatio]);
 
-  // 复制 SVG 矢量
-  const handleCopySvg = () => {
-    if (!svgContent) return;
-    navigator.clipboard.writeText(svgContent).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-
-  // 导出 SVG 文件
-  const handleExportSvg = () => {
-    if (!svgContent) return;
-    const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${diagramType}-${Date.now()}.svg`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  // 导出来源：只有渲染出 SVG 后复制/导出才可用
+  const exportSource: ChartImageSource | null = svgContent ? { kind: 'svg', svg: svgContent } : null;
+  const exportFileName = buildExportFileName(doc?.displayName, diagramType);
 
   // 画布鼠标拖拽平移
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -441,48 +422,21 @@ export function DiagramSplitEditor({ docKey }: DiagramSplitEditorProps) {
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={handleCopySvg}
-            title="复制 SVG 代码"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '4px 8px',
-              border: '1px solid var(--editor-border, #e2e8f0)',
-              borderRadius: 5,
-              background: 'var(--editor-bg, #ffffff)',
-              cursor: 'pointer',
-              fontSize: 12,
-              color: copied ? 'var(--success-600, #16a34a)' : 'var(--editor-text, #1e293b)',
-            }}
-          >
-            {copied ? <Check size={13} /> : <Copy size={13} />}
-            <span>{copied ? '已复制' : '复制 SVG'}</span>
-          </button>
+          <ChartExportMenu
+            action="copy"
+            variant="outline"
+            source={exportSource}
+            fileName={exportFileName}
+            label="复制"
+          />
 
-          <button
-            type="button"
-            onClick={handleExportSvg}
-            title="导出 SVG 文件"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '4px 10px',
-              border: 'none',
-              borderRadius: 5,
-              background: 'var(--editor-accent, #3b82f6)',
-              color: '#ffffff',
-              cursor: 'pointer',
-              fontSize: 12,
-              fontWeight: 500,
-            }}
-          >
-            <Download size={13} />
-            <span>导出 SVG</span>
-          </button>
+          <ChartExportMenu
+            action="download"
+            variant="primary"
+            source={exportSource}
+            fileName={exportFileName}
+            label="导出"
+          />
         </div>
       </div>
 
