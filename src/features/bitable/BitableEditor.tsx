@@ -8,7 +8,7 @@ import type {
   BitableRow,
   BitableViewConfig,
   BitableViewType,
-  FilterRule,
+  ColumnOptionAction,
   SortRule,
 } from './bitableTypes';
 import {
@@ -18,6 +18,15 @@ import {
 } from './bitableConverter';
 import { BitableGridView } from './BitableGridView';
 import { BitableKanbanView } from './BitableKanbanView';
+import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
+import { usePointerReorder } from './usePointerReorder';
+import {
+  coerceCellValue,
+  createId,
+  createRow,
+  pickNextColor,
+  slotToFinalPosition,
+} from './bitableUtils';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
@@ -59,15 +68,27 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
 
   const [searchQuery, setSearchQuery] = useState('');
 
-  // 视图管理状态
+  // 视图管理状态：下拉菜单统一走 Portal 浮层，需记录锚点与触发元素
   const [editingViewId, setEditingViewId] = useState<string | null>(null);
   const [viewNameInput, setViewNameInput] = useState('');
-  const [activeViewMenuId, setActiveViewMenuId] = useState<string | null>(null);
-  const [showAddViewMenu, setShowAddViewMenu] = useState(false);
+  const [viewMenu, setViewMenu] = useState<{
+    viewId: string;
+    anchor: AnchorRect;
+    trigger: HTMLElement;
+  } | null>(null);
+  const [addViewMenu, setAddViewMenu] = useState<{
+    anchor: AnchorRect;
+    trigger: HTMLElement;
+  } | null>(null);
 
-  // 外层包裹容器 ref，防止点击按钮时误触发 handleClickOutside
-  const addViewContainerRef = useRef<HTMLDivElement>(null);
-  const viewTabsContainerRef = useRef<HTMLDivElement>(null);
+  /**
+   * 文档数据的最新快照
+   * 同一次交互内可能连续提交多次（例如「新增标签选项」既要改列定义又要改单元格值），
+   * 若每次都基于渲染闭包中的 data，后一次提交会覆盖前一次的结果。
+   * 这里用 ref 同步保存最新值，保证同批次提交严格串行叠加。
+   */
+  const dataRef = useRef<BitableDocument>(data);
+  dataRef.current = data;
 
   // 1. 初始化并注册统一文档历史适配器
   useEffect(() => {
@@ -77,6 +98,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
     const unregister = registerDocumentHistoryAdapter(docKey, {
       applyEntry: (entry) => {
         const parsed = parseBitableDocument(entry.content);
+        dataRef.current = parsed;
         setData(parsed);
         setContent(docKey, entry.content);
         setDirty(docKey, true);
@@ -91,36 +113,61 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
   useEffect(() => {
     if (doc?.content != null) {
       const parsed = parseBitableDocument(doc.content);
+      dataRef.current = parsed;
       setData(parsed);
     }
   }, [docKey]);
 
-  // 点击外部关闭新建视图与视图下拉菜单
+  // 待写入历史的快照：同一次交互内的多次提交合并为一条撤销记录
+  const pendingHistoryRef = useRef<{ timer: number | null; content: string | null }>({
+    timer: null,
+    content: null,
+  });
+
+  // 组件卸载前冲刷未落库的历史记录
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (addViewContainerRef.current && !addViewContainerRef.current.contains(e.target as Node)) {
-        setShowAddViewMenu(false);
+    const pending = pendingHistoryRef.current;
+    return () => {
+      if (pending.timer !== null) {
+        window.clearTimeout(pending.timer);
+        pending.timer = null;
       }
-      if (viewTabsContainerRef.current && !viewTabsContainerRef.current.contains(e.target as Node)) {
-        setActiveViewMenuId(null);
+      if (pending.content !== null) {
+        recordDocumentChange(docKey, pending.content, { mode: 'bitable', startsNewGroup: true });
+        pending.content = null;
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [docKey]);
 
   // 3. 提交数据变更并记录到文档历史
+  // 支持函数式更新：无论同批次内调用多少次，每次都能基于最新文档继续叠加
   const commitChange = useCallback(
-    (nextDoc: BitableDocument) => {
+    (updater: BitableDocument | ((prev: BitableDocument) => BitableDocument)) => {
+      const prev = dataRef.current;
+      const nextDoc = typeof updater === 'function' ? updater(prev) : updater;
+      if (!nextDoc || nextDoc === prev) return;
+
+      dataRef.current = nextDoc;
       setData(nextDoc);
+
       const serialized = serializeBitableDocument(nextDoc);
       setContent(docKey, serialized);
       setDirty(docKey, true);
       setTabDirty(docKey, true);
-      recordDocumentChange(docKey, serialized, {
-        mode: 'bitable',
-        startsNewGroup: true,
-      });
+
+      // 延迟到本轮事件结束再记录历史：把一次交互产生的多步提交合并为单条撤销记录
+      const pending = pendingHistoryRef.current;
+      pending.content = serialized;
+      if (pending.timer === null) {
+        pending.timer = window.setTimeout(() => {
+          pending.timer = null;
+          const content = pending.content;
+          pending.content = null;
+          if (content !== null) {
+            recordDocumentChange(docKey, content, { mode: 'bitable', startsNewGroup: true });
+          }
+        }, 0);
+      }
     },
     [docKey, setContent, setDirty, setTabDirty],
   );
@@ -137,21 +184,25 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
   // ── 视图管理（切换/新建/重命名/复制/删除） ──
 
   const handleSelectView = (viewId: string) => {
-    commitChange({ ...data, activeViewId: viewId });
+    commitChange((prev) => ({ ...prev, activeViewId: viewId }));
     markDocumentHistoryModeBoundary(docKey);
   };
 
   const handleCreateView = (type: BitableViewType) => {
-    setShowAddViewMenu(false);
-    const newView: BitableViewConfig = {
-      id: `view_${Date.now()}`,
-      name: type === 'grid' ? `表格视图 ${data.views.length + 1}` : `看板视图 ${data.views.length + 1}`,
-      type,
-      groupByColumnId: type === 'kanban' ? data.columns.find((c) => c.type === 'select')?.id : undefined,
-    };
-    const nextViews = [...data.views, newView];
-    commitChange({ ...data, views: nextViews, activeViewId: newView.id });
-    showToast(`已创建 ${newView.name}`);
+    setAddViewMenu(null);
+    let createdName = type === 'grid' ? '表格视图' : '看板视图';
+    const newViewId = createId('view');
+    commitChange((prev) => {
+      createdName = type === 'grid' ? `表格视图 ${prev.views.length + 1}` : `看板视图 ${prev.views.length + 1}`;
+      // 看板视图必须绑定分组列，缺省取第一个单选列，保证新建后立刻能看到泳道
+      const groupByColumnId = type === 'kanban' ? prev.columns.find((c) => c.type === 'select')?.id : undefined;
+      return {
+        ...prev,
+        views: [...prev.views, { id: newViewId, name: createdName, type, groupByColumnId }],
+        activeViewId: newViewId,
+      };
+    });
+    showToast(`已创建 ${createdName}`);
   };
 
   const handleRenameView = (viewId: string) => {
@@ -159,218 +210,314 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
       setEditingViewId(null);
       return;
     }
-    const nextViews = data.views.map((v) => (v.id === viewId ? { ...v, name: viewNameInput.trim() } : v));
-    commitChange({ ...data, views: nextViews });
+    commitChange((prev) => ({
+      ...prev,
+      views: prev.views.map((v) => (v.id === viewId ? { ...v, name: viewNameInput.trim() } : v)),
+    }));
     setEditingViewId(null);
   };
 
   const handleDuplicateView = (view: BitableViewConfig) => {
-    setActiveViewMenuId(null);
+    setViewMenu(null);
     const dupView: BitableViewConfig = {
       ...view,
-      id: `view_${Date.now()}`,
+      id: createId('view'),
       name: `${view.name} (副本)`,
     };
-    const nextViews = [...data.views, dupView];
-    commitChange({ ...data, views: nextViews, activeViewId: dupView.id });
+    commitChange((prev) => ({
+      ...prev,
+      views: [...prev.views, dupView],
+      activeViewId: dupView.id,
+    }));
     showToast('已复制视图');
   };
 
   const handleDeleteView = (viewId: string) => {
-    setActiveViewMenuId(null);
+    setViewMenu(null);
     if (data.views.length <= 1) {
       showToast('至少保留一个视图');
       return;
     }
-    const nextViews = data.views.filter((v) => v.id !== viewId);
-    const nextActiveId = data.activeViewId === viewId ? nextViews[0].id : data.activeViewId;
-    commitChange({ ...data, views: nextViews, activeViewId: nextActiveId });
+    commitChange((prev) => {
+      const nextViews = prev.views.filter((v) => v.id !== viewId);
+      const nextActiveId = prev.activeViewId === viewId ? nextViews[0].id : prev.activeViewId;
+      return { ...prev, views: nextViews, activeViewId: nextActiveId };
+    });
     showToast('已删除视图');
   };
 
   const handleUpdateGroupByColumnId = (newColId: string) => {
-    const nextViews = data.views.map((v) => (v.id === activeView.id ? { ...v, groupByColumnId: newColId } : v));
-    commitChange({ ...data, views: nextViews });
+    commitChange((prev) => ({
+      ...prev,
+      views: prev.views.map((v) => (v.id === activeView.id ? { ...v, groupByColumnId: newColId } : v)),
+    }));
   };
 
   // ── 各字段类型专有排序 ──
 
   const handleSortColumn = useCallback(
     (colId: string, direction: 'asc' | 'desc' | null) => {
-      const sortRules: SortRule[] = direction ? [{ columnId: colId, direction }] : [];
-      const nextViews = data.views.map((v) => (v.id === activeView.id ? { ...v, sortRules } : v));
-      commitChange({ ...data, views: nextViews });
+      commitChange((prev) => {
+        const sortRules: SortRule[] = direction ? [{ columnId: colId, direction }] : [];
+        return {
+          ...prev,
+          views: prev.views.map((v) => (v.id === activeView.id ? { ...v, sortRules } : v)),
+        };
+      });
     },
-    [data, activeView.id, commitChange],
+    [activeView.id, commitChange],
   );
 
   // ── 行记录与子行管理 ──
 
   const handleUpdateRow = useCallback(
     (rowId: string, colId: string, val: unknown) => {
-      const nextRows = data.rows.map((r) => {
-        if (r.id === rowId) {
-          return { ...r, [colId]: val, _updatedAt: Date.now() };
-        }
-        return r;
-      });
-      commitChange({ ...data, rows: nextRows });
+      commitChange((prev) => ({
+        ...prev,
+        rows: prev.rows.map((r) => (r.id === rowId ? { ...r, [colId]: val, _updatedAt: Date.now() } : r)),
+      }));
     },
-    [data, commitChange],
+    [commitChange],
   );
 
   const handleAddRow = useCallback(() => {
-    const newRow: BitableRow = {
-      id: `row_${Date.now()}`,
-      _createdAt: Date.now(),
-      _updatedAt: Date.now(),
-    };
-    data.columns.forEach((col) => {
-      if (col.type === 'progress') newRow[col.id] = 0;
-      if (col.type === 'rating') newRow[col.id] = 0;
-      if (col.type === 'checkbox') newRow[col.id] = false;
-    });
-    commitChange({ ...data, rows: [...data.rows, newRow] });
-  }, [data, commitChange]);
+    commitChange((prev) => ({ ...prev, rows: [...prev.rows, createRow(prev.columns)] }));
+  }, [commitChange]);
 
   const handleAddSubRow = useCallback(
     (parentRowId: string) => {
-      const newSubRow: BitableRow = {
-        id: `row_${Date.now()}`,
-        parentId: parentRowId,
-        _createdAt: Date.now(),
-        _updatedAt: Date.now(),
-      };
-      // 插入在父行紧邻下方
-      const parentIdx = data.rows.findIndex((r) => r.id === parentRowId);
-      const nextRows = [...data.rows];
-      if (parentIdx >= 0) {
-        nextRows.splice(parentIdx + 1, 0, newSubRow);
-      } else {
-        nextRows.push(newSubRow);
-      }
-      commitChange({ ...data, rows: nextRows });
+      commitChange((prev) => {
+        const newSubRow: BitableRow = { ...createRow(prev.columns), parentId: parentRowId };
+        const parentIdx = prev.rows.findIndex((r) => r.id === parentRowId);
+        const nextRows = [...prev.rows];
+        // 插入在父行紧邻下方
+        if (parentIdx >= 0) nextRows.splice(parentIdx + 1, 0, newSubRow);
+        else nextRows.push(newSubRow);
+        return { ...prev, rows: nextRows };
+      });
       showToast('已添加子任务');
     },
-    [data, commitChange],
+    [commitChange],
   );
 
   const handleInsertRowAbove = useCallback(
     (rowId: string) => {
-      const targetRow = data.rows.find((r) => r.id === rowId);
-      const newRow: BitableRow = {
-        id: `row_${Date.now()}`,
-        parentId: targetRow?.parentId,
-        _createdAt: Date.now(),
-        _updatedAt: Date.now(),
-      };
-      const idx = data.rows.findIndex((r) => r.id === rowId);
-      const nextRows = [...data.rows];
-      if (idx >= 0) {
-        nextRows.splice(idx, 0, newRow);
-      } else {
-        nextRows.unshift(newRow);
-      }
-      commitChange({ ...data, rows: nextRows });
+      commitChange((prev) => {
+        const targetRow = prev.rows.find((r) => r.id === rowId);
+        const newRow: BitableRow = { ...createRow(prev.columns), parentId: targetRow?.parentId };
+        const idx = prev.rows.findIndex((r) => r.id === rowId);
+        const nextRows = [...prev.rows];
+        if (idx >= 0) nextRows.splice(idx, 0, newRow);
+        else nextRows.unshift(newRow);
+        return { ...prev, rows: nextRows };
+      });
     },
-    [data, commitChange],
+    [commitChange],
   );
 
   const handleInsertRowBelow = useCallback(
     (rowId: string) => {
-      const targetRow = data.rows.find((r) => r.id === rowId);
-      const newRow: BitableRow = {
-        id: `row_${Date.now()}`,
-        parentId: targetRow?.parentId,
-        _createdAt: Date.now(),
-        _updatedAt: Date.now(),
-      };
-      const idx = data.rows.findIndex((r) => r.id === rowId);
-      const nextRows = [...data.rows];
-      if (idx >= 0) {
-        nextRows.splice(idx + 1, 0, newRow);
-      } else {
-        nextRows.push(newRow);
-      }
-      commitChange({ ...data, rows: nextRows });
+      commitChange((prev) => {
+        const targetRow = prev.rows.find((r) => r.id === rowId);
+        const newRow: BitableRow = { ...createRow(prev.columns), parentId: targetRow?.parentId };
+        const idx = prev.rows.findIndex((r) => r.id === rowId);
+        const nextRows = [...prev.rows];
+        if (idx >= 0) nextRows.splice(idx + 1, 0, newRow);
+        else nextRows.push(newRow);
+        return { ...prev, rows: nextRows };
+      });
     },
-    [data, commitChange],
+    [commitChange],
   );
 
   const handleAddRowWithStatus = useCallback(
     (statusColId: string, optionId: string | null) => {
-      const newRow: BitableRow = {
-        id: `row_${Date.now()}`,
-        [statusColId]: optionId,
-        _createdAt: Date.now(),
-        _updatedAt: Date.now(),
-      };
-      commitChange({ ...data, rows: [...data.rows, newRow] });
+      commitChange((prev) => ({
+        ...prev,
+        rows: [...prev.rows, createRow(prev.columns, { [statusColId]: optionId })],
+      }));
+      showToast('已在该分组下新增卡片');
     },
-    [data, commitChange],
+    [commitChange],
   );
+
+  /** 看板新增分组：为分组列追加一个标签选项，即新增一条泳道 */
+  const handleAddGroupOption = useCallback(() => {
+    const groupColId = activeView.groupByColumnId || data.columns.find((c) => c.type === 'select')?.id;
+    const groupCol = data.columns.find((c) => c.id === groupColId);
+    if (!groupCol || groupCol.type !== 'select') {
+      showToast('请先将分组依据切换为单选字段');
+      return;
+    }
+    const options = groupCol.options || [];
+    const newOption = {
+      id: createId('opt'),
+      label: `新分组 ${options.length + 1}`,
+      color: pickNextColor(options),
+    };
+    commitChange((prev) => ({
+      ...prev,
+      columns: prev.columns.map((c) =>
+        c.id === groupCol.id ? { ...c, options: [...(c.options || []), newOption] } : c,
+      ),
+    }));
+    showToast(`已新增分组「${newOption.label}」`);
+  }, [activeView.groupByColumnId, data.columns, commitChange]);
 
   const handleDeleteRow = useCallback(
     (rowId: string) => {
-      // 级联删除该行以及其所有子行
-      const idsToDelete = new Set<string>([rowId]);
-      let changed = true;
-      while (changed) {
-        changed = false;
-        data.rows.forEach((r) => {
-          if (r.parentId && idsToDelete.has(r.parentId) && !idsToDelete.has(r.id)) {
-            idsToDelete.add(r.id);
-            changed = true;
-          }
-        });
-      }
-      const nextRows = data.rows.filter((r) => !idsToDelete.has(r.id));
-      commitChange({ ...data, rows: nextRows });
+      commitChange((prev) => {
+        // 级联删除该行以及其所有子行
+        const idsToDelete = new Set<string>([rowId]);
+        let changed = true;
+        while (changed) {
+          changed = false;
+          prev.rows.forEach((r) => {
+            if (r.parentId && idsToDelete.has(r.parentId) && !idsToDelete.has(r.id)) {
+              idsToDelete.add(r.id);
+              changed = true;
+            }
+          });
+        }
+        return { ...prev, rows: prev.rows.filter((r) => !idsToDelete.has(r.id)) };
+      });
     },
-    [data, commitChange],
+    [commitChange],
+  );
+
+  /**
+   * 区域粘贴：以 (rowId, colId) 为左上角写入二维文本矩阵
+   * 行数越界时自动补建新行；单选/多选遇到不存在的标签会按文本自动创建选项。
+   * 整个过程在单次提交内完成，保证「列定义 + 行数据」同时落库。
+   */
+  const handlePasteCells = useCallback(
+    (rowId: string, colId: string, matrix: string[][]) => {
+      commitChange((prev) => {
+        const colIdx = prev.columns.findIndex((c) => c.id === colId);
+        const rowIdx = prev.rows.findIndex((r) => r.id === rowId);
+        if (colIdx < 0 || rowIdx < 0) return prev;
+
+        const nextColumns = [...prev.columns];
+        const nextRows = [...prev.rows];
+
+        matrix.forEach((line, rowOffset) => {
+          const targetRowIdx = rowIdx + rowOffset;
+          // 目标行不存在时自动补建，保持与锚点行一致的层级
+          while (nextRows.length <= targetRowIdx) {
+            nextRows.push({ ...createRow(prev.columns), parentId: nextRows[rowIdx]?.parentId });
+          }
+
+          line.forEach((raw, colOffset) => {
+            const targetColIdx = colIdx + colOffset;
+            if (targetColIdx >= nextColumns.length) return;
+            const column = nextColumns[targetColIdx];
+            const { value, column: updatedColumn } = coerceCellValue(column, raw);
+            if (updatedColumn) nextColumns[targetColIdx] = updatedColumn;
+            nextRows[targetRowIdx] = {
+              ...nextRows[targetRowIdx],
+              [column.id]: value,
+              _updatedAt: Date.now(),
+            };
+          });
+        });
+
+        return { ...prev, columns: nextColumns, rows: nextRows };
+      });
+    },
+    [commitChange],
   );
 
   // ── 列与字段管理 ──
 
   const handleUpdateColumn = useCallback(
     (colId: string, partial: Partial<BitableColumn>) => {
-      const nextCols = data.columns.map((c) => {
-        if (c.id === colId) {
-          return { ...c, ...partial };
-        }
-        return c;
-      });
-      commitChange({ ...data, columns: nextCols });
+      commitChange((prev) => ({
+        ...prev,
+        columns: prev.columns.map((c) => (c.id === colId ? { ...c, ...partial } : c)),
+      }));
     },
-    [data, commitChange],
+    [commitChange],
+  );
+
+  /**
+   * 列标签选项的增删改排序
+   * 删除选项时必须同步清理所有引用了该选项的单元格，否则会留下悬空的脏数据。
+   */
+  const handleManageColumnOption = useCallback(
+    (colId: string, action: ColumnOptionAction) => {
+      commitChange((prev) => {
+        const targetCol = prev.columns.find((c) => c.id === colId);
+        if (!targetCol) return prev;
+        const options = targetCol.options || [];
+        let nextOptions = options;
+        let removedId: string | null = null;
+
+        if (action.type === 'add') {
+          if (options.some((o) => o.id === action.option.id)) return prev;
+          nextOptions = [...options, action.option];
+        } else if (action.type === 'update') {
+          nextOptions = options.map((o) =>
+            o.id === action.optionId ? { ...o, label: action.label, color: action.color } : o,
+          );
+        } else if (action.type === 'delete') {
+          nextOptions = options.filter((o) => o.id !== action.optionId);
+          removedId = action.optionId;
+        } else {
+          const from = options.findIndex((o) => o.id === action.optionId);
+          const to = action.direction === 'up' ? from - 1 : from + 1;
+          if (from < 0 || to < 0 || to >= options.length) return prev;
+          nextOptions = [...options];
+          const [moved] = nextOptions.splice(from, 1);
+          nextOptions.splice(to, 0, moved);
+        }
+
+        const nextColumns = prev.columns.map((c) =>
+          c.id === colId ? { ...c, options: nextOptions } : c,
+        );
+
+        if (!removedId) return { ...prev, columns: nextColumns };
+
+        // 清理所有引用了已删除选项的单元格
+        const isMulti = targetCol.type === 'multiSelect';
+        const nextRows = prev.rows.map((r) => {
+          const val = r[colId];
+          if (isMulti) {
+            if (!Array.isArray(val) || !val.includes(removedId as string)) return r;
+            return { ...r, [colId]: val.filter((id: string) => id !== removedId), _updatedAt: Date.now() };
+          }
+          if (val === removedId) return { ...r, [colId]: null, _updatedAt: Date.now() };
+          return r;
+        });
+
+        return { ...prev, columns: nextColumns, rows: nextRows };
+      });
+    },
+    [commitChange],
   );
 
   const handleAddColumn = useCallback(
     (direction: 'left' | 'right', referenceColId?: string) => {
-      const newCol: BitableColumn = {
-        id: `col_${Date.now()}`,
-        key: `field_${Date.now()}`,
-        name: '新字段',
-        type: 'text',
-        width: 160,
-      };
-
-      let nextCols = [...data.columns];
-      if (referenceColId) {
-        const idx = nextCols.findIndex((c) => c.id === referenceColId);
-        if (idx >= 0) {
+      commitChange((prev) => {
+        const newCol: BitableColumn = {
+          id: createId('col'),
+          key: createId('field'),
+          name: '新字段',
+          type: 'text',
+          width: 160,
+        };
+        const nextCols = [...prev.columns];
+        if (referenceColId) {
+          const idx = nextCols.findIndex((c) => c.id === referenceColId);
           const insertIdx = direction === 'left' ? idx : idx + 1;
-          nextCols.splice(insertIdx, 0, newCol);
+          if (idx >= 0) nextCols.splice(insertIdx, 0, newCol);
+          else nextCols.push(newCol);
         } else {
           nextCols.push(newCol);
         }
-      } else {
-        nextCols.push(newCol);
-      }
-
-      commitChange({ ...data, columns: nextCols });
+        return { ...prev, columns: nextCols };
+      });
     },
-    [data, commitChange],
+    [commitChange],
   );
 
   const handleDeleteColumn = useCallback(
@@ -379,45 +526,162 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
         showToast('至少保留一列');
         return;
       }
-      const nextCols = data.columns.filter((c) => c.id !== colId);
-      commitChange({ ...data, columns: nextCols });
+      commitChange((prev) => ({ ...prev, columns: prev.columns.filter((c) => c.id !== colId) }));
     },
-    [data, commitChange],
+    [data.columns.length, commitChange],
   );
 
   const handleClearColumn = useCallback(
     (colId: string) => {
-      const nextRows = data.rows.map((r) => ({ ...r, [colId]: null }));
-      commitChange({ ...data, rows: nextRows });
+      commitChange((prev) => ({
+        ...prev,
+        rows: prev.rows.map((r) => ({ ...r, [colId]: null })),
+      }));
     },
-    [data, commitChange],
+    [commitChange],
   );
 
   const handleMoveColumn = useCallback(
     (colId: string, direction: 'left' | 'right') => {
-      const idx = data.columns.findIndex((c) => c.id === colId);
-      if (idx < 0) return;
-      const targetIdx = direction === 'left' ? idx - 1 : idx + 1;
-      if (targetIdx < 0 || targetIdx >= data.columns.length) return;
-
-      const nextCols = [...data.columns];
-      const [moved] = nextCols.splice(idx, 1);
-      nextCols.splice(targetIdx, 0, moved);
-      commitChange({ ...data, columns: nextCols });
+      commitChange((prev) => {
+        const idx = prev.columns.findIndex((c) => c.id === colId);
+        if (idx < 0) return prev;
+        const targetIdx = direction === 'left' ? idx - 1 : idx + 1;
+        if (targetIdx < 0 || targetIdx >= prev.columns.length) return prev;
+        const nextCols = [...prev.columns];
+        const [moved] = nextCols.splice(idx, 1);
+        nextCols.splice(targetIdx, 0, moved);
+        return { ...prev, columns: nextCols };
+      });
       showToast(`已${direction === 'left' ? '向左' : '向右'}移动列`);
     },
-    [data, commitChange],
+    [commitChange],
   );
 
   const handleReorderColumns = useCallback(
     (fromIdx: number, toIdx: number) => {
       if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0) return;
-      const nextCols = [...data.columns];
-      const [moved] = nextCols.splice(fromIdx, 1);
-      nextCols.splice(toIdx, 0, moved);
-      commitChange({ ...data, columns: nextCols });
+      commitChange((prev) => {
+        const nextCols = [...prev.columns];
+        if (fromIdx >= nextCols.length) return prev;
+        const [moved] = nextCols.splice(fromIdx, 1);
+        nextCols.splice(Math.min(toIdx, nextCols.length), 0, moved);
+        return { ...prev, columns: nextCols };
+      });
+      showToast(`已将「${data.columns[fromIdx]?.name ?? ''}」移动到第 ${toIdx + 1} 列`);
     },
-    [data, commitChange],
+    [commitChange, data.columns],
+  );
+
+  /** 视图 Tab 拖拽换序：仅调整显示顺序，激活态按 ID 保持不变 */
+  const handleReorderViews = useCallback(
+    (fromIdx: number, toIdx: number) => {
+      commitChange((prev) => {
+        if (fromIdx < 0 || fromIdx >= prev.views.length) return prev;
+        const nextViews = [...prev.views];
+        const [moved] = nextViews.splice(fromIdx, 1);
+        nextViews.splice(Math.min(toIdx, nextViews.length), 0, moved);
+        return { ...prev, views: nextViews };
+      });
+    },
+    [commitChange],
+  );
+
+  // 视图 Tab DOM 节点表：用于测量位置，支撑拖拽排序
+  const viewTabRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // 视图 Tab 拖拽排序：与表头换列共用同一套「插入槽位」语义，落点即所得
+  const {
+    drag: viewDrag,
+    startDrag: startViewDrag,
+    getIndicator: getViewIndicator,
+    grabOffset: viewGrabOffset,
+    consumeDraggedFlag,
+  } = usePointerReorder<BitableViewConfig>({
+    items: data.views,
+    getElement: (v) => viewTabRefs.current.get(v.id),
+    onReorder: handleReorderViews,
+    disabled: editingViewId !== null,
+  });
+
+  /**
+   * 子行升级为上一级：挂到祖父节点下；已是最外层时保持不变
+   * 层级判定与写入都在同一次提交内完成，避免基于过期快照误判
+   */
+  const handleOutdentRow = useCallback(
+    (rowId: string) => {
+      let failed = false;
+      commitChange((prev) => {
+        const idx = prev.rows.findIndex((r) => r.id === rowId);
+        if (idx < 0) {
+          failed = true;
+          return prev;
+        }
+        const row = prev.rows[idx];
+        if (!row.parentId) {
+          failed = true;
+          return prev;
+        }
+
+        const parentIdx = prev.rows.findIndex((r) => r.id === row.parentId);
+        // 祖父节点：不存在时该行升级为最外层
+        const grandParentId = parentIdx >= 0 ? prev.rows[parentIdx].parentId : undefined;
+
+        const nextRows = [...prev.rows];
+        const [moved] = nextRows.splice(idx, 1);
+        // 紧跟在原父行之后，保证升级后的层级直观（与其原父行同级且相邻）
+        const parentAfterRemove = nextRows.findIndex((r) => r.id === row.parentId);
+        const insertIdx = parentAfterRemove >= 0 ? parentAfterRemove + 1 : nextRows.length;
+
+        const nextRow: BitableRow = { ...moved, _updatedAt: Date.now() };
+        if (grandParentId) nextRow.parentId = grandParentId;
+        else delete nextRow.parentId;
+
+        nextRows.splice(insertIdx, 0, nextRow);
+        return { ...prev, rows: nextRows };
+      });
+      showToast(failed ? '该行已经是第一级' : '已升级为上一级');
+    },
+    [commitChange],
+  );
+
+  /**
+   * 行降级为子任务：挂到同层中紧邻上方的行之下
+   * 同级判定与写入都在同一次提交内完成，避免基于过期快照误判层级
+   */
+  const handleIndentRow = useCallback(
+    (rowId: string) => {
+      let failed = false;
+      commitChange((prev) => {
+        const idx = prev.rows.findIndex((r) => r.id === rowId);
+        if (idx <= 0) {
+          failed = true;
+          return prev;
+        }
+        const row = prev.rows[idx];
+        let newParentId: string | undefined;
+        for (let i = idx - 1; i >= 0; i -= 1) {
+          const candidate = prev.rows[i];
+          // 仅能降级到同层的上一个兄弟节点之下
+          if ((candidate.parentId || undefined) === (row.parentId || undefined)) {
+            newParentId = candidate.id;
+            break;
+          }
+        }
+        if (!newParentId) {
+          failed = true;
+          return prev;
+        }
+        return {
+          ...prev,
+          rows: prev.rows.map((r) =>
+            r.id === rowId ? { ...r, parentId: newParentId, _updatedAt: Date.now() } : r,
+          ),
+        };
+      });
+      showToast(failed ? '上方没有同级行，无法降级' : '已降级为子任务');
+    },
+    [commitChange],
   );
 
   // 导出 CSV
@@ -482,7 +746,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
         } else if (colType === 'date') {
           cmp = String(valA).localeCompare(String(valB));
         } else if (colType === 'checkbox') {
-          cmp = (Boolean(valA) === Boolean(valB) ? 0 : Boolean(valA) ? 1 : -1);
+          cmp = Boolean(valA) === Boolean(valB) ? 0 : valA ? 1 : -1;
         } else if (colType === 'select') {
           const idxA = (targetCol?.options || []).findIndex((o) => o.id === valA);
           const idxB = (targetCol?.options || []).findIndex((o) => o.id === valB);
@@ -546,15 +810,22 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
         }}
       >
         {/* 左侧：多视图 Tab 标签列表 */}
-        <div ref={viewTabsContainerRef} style={{ display: 'flex', alignItems: 'center', gap: 4, overflowX: 'auto', flex: 1 }}>
-          {data.views.map((v) => {
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, overflowX: 'auto', flex: 1 }}>
+          {data.views.map((v, viewIdx) => {
             const isActive = v.id === activeView.id;
             const isEditingThis = editingViewId === v.id;
-            const isMenuOpen = activeViewMenuId === v.id;
+            const isMenuOpen = viewMenu?.viewId === v.id;
+            const viewIndicator = getViewIndicator(viewIdx);
 
             return (
               <div
                 key={v.id}
+                ref={(el) => {
+                  if (el) viewTabRefs.current.set(v.id, el);
+                  else viewTabRefs.current.delete(v.id);
+                }}
+                onMouseDown={(e) => startViewDrag(e, viewIdx)}
+                title="拖拽可调整视图顺序 · 双击名称重命名"
                 style={{
                   position: 'relative',
                   display: 'flex',
@@ -565,19 +836,32 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                   border: isActive ? '1px solid var(--editor-border, #cbd5e1)' : '1px solid transparent',
                   background: isActive ? 'var(--editor-bg, #ffffff)' : 'transparent',
                   color: isActive ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-muted, #64748b)',
-                  cursor: 'pointer',
+                  cursor: viewDrag ? 'grabbing' : 'grab',
                   fontWeight: isActive ? 600 : 400,
                   fontSize: 12,
-                  transition: 'all 0.15s ease',
+                  transition: 'background 0.15s ease',
                   flexShrink: 0,
+                  // 被拖起的 Tab 半透明，落点处绘制插入指示线
+                  opacity: viewDrag?.fromIdx === viewIdx ? 0.45 : 1,
+                  boxShadow:
+                    viewIndicator === 'left'
+                      ? 'inset 3px 0 0 #3b82f6'
+                      : viewIndicator === 'right'
+                        ? 'inset -3px 0 0 #3b82f6'
+                        : undefined,
                 }}
-                onClick={() => handleSelectView(v.id)}
+                onClick={() => {
+                  // 拖拽结束会紧跟一次 click，需避免误切换视图
+                  if (consumeDraggedFlag()) return;
+                  handleSelectView(v.id);
+                }}
               >
                 {v.type === 'grid' ? <TableIcon size={13} /> : <Kanban size={13} />}
 
                 {isEditingThis ? (
                   <input
                     type="text"
+                    data-no-drag
                     value={viewNameInput}
                     autoFocus
                     onChange={(e) => setViewNameInput(e.target.value)}
@@ -611,9 +895,18 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                 {/* 视图下拉更多菜单按钮 */}
                 <button
                   type="button"
+                  data-no-drag
+                  onMouseDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
-                    setActiveViewMenuId(isMenuOpen ? null : v.id);
+                    if (isMenuOpen) {
+                      setViewMenu(null);
+                      return;
+                    }
+                    const anchor = getAnchorRect(e.currentTarget);
+                    if (anchor) {
+                      setViewMenu({ viewId: v.id, anchor, trigger: e.currentTarget as HTMLElement });
+                    }
                   }}
                   style={{
                     border: 'none',
@@ -629,33 +922,20 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                   <ChevronDown size={11} />
                 </button>
 
-                {/* 视图配置浮动菜单 */}
-                {isMenuOpen && (
-                  <div
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: 0,
-                      marginTop: 4,
-                      width: 140,
-                      background: 'var(--editor-surface, #ffffff)',
-                      border: '1px solid var(--editor-border, #e2e8f0)',
-                      borderRadius: 6,
-                      boxShadow: '0 6px 20px rgba(0,0,0,0.1)',
-                      padding: 4,
-                      zIndex: 9999,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 2,
-                    }}
+                {/* 视图配置浮动菜单（Portal 渲染，避免被 Tab 栏的 overflow 裁剪） */}
+                {isMenuOpen && viewMenu && (
+                  <FloatingPanel
+                    anchor={viewMenu.anchor}
+                    trigger={viewMenu.trigger}
+                    width={140}
+                    onClose={() => setViewMenu(null)}
                   >
                     <button
                       type="button"
                       onClick={() => {
                         setViewNameInput(v.name);
                         setEditingViewId(v.id);
-                        setActiveViewMenuId(null);
+                        setViewMenu(null);
                       }}
                       style={{
                         display: 'flex',
@@ -713,17 +993,26 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                         <span>删除视图</span>
                       </button>
                     )}
-                  </div>
+                  </FloatingPanel>
                 )}
               </div>
             );
           })}
 
-          {/* 新建视图 `+` 按钮与下拉菜单（包裹容器绑定 addViewContainerRef） */}
-          <div ref={addViewContainerRef} style={{ position: 'relative' }}>
+          {/* 新建视图 `+` 按钮与下拉菜单（Portal 渲染，避免被 Tab 栏的 overflow 裁剪） */}
+          <div style={{ position: 'relative' }}>
             <button
               type="button"
-              onClick={() => setShowAddViewMenu((prev) => !prev)}
+              onClick={(e) => {
+                if (addViewMenu) {
+                  setAddViewMenu(null);
+                  return;
+                }
+                const anchor = getAnchorRect(e.currentTarget);
+                if (anchor) {
+                  setAddViewMenu({ anchor, trigger: e.currentTarget as HTMLElement });
+                }
+              }}
               title="新建视图"
               style={{
                 display: 'flex',
@@ -733,7 +1022,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                 height: 26,
                 borderRadius: 4,
                 border: '1px solid var(--editor-border, #cbd5e1)',
-                background: 'var(--editor-bg, #ffffff)',
+                background: addViewMenu ? 'var(--editor-bg, #f1f5f9)' : 'var(--editor-bg, #ffffff)',
                 color: 'var(--editor-text-muted, #64748b)',
                 cursor: 'pointer',
               }}
@@ -741,24 +1030,12 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
               <Plus size={13} />
             </button>
 
-            {showAddViewMenu && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: 0,
-                  marginTop: 4,
-                  width: 150,
-                  background: 'var(--editor-surface, #ffffff)',
-                  border: '1px solid var(--editor-border, #e2e8f0)',
-                  borderRadius: 6,
-                  boxShadow: '0 6px 20px rgba(0,0,0,0.1)',
-                  padding: 4,
-                  zIndex: 9999,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 2,
-                }}
+            {addViewMenu && (
+              <FloatingPanel
+                anchor={addViewMenu.anchor}
+                trigger={addViewMenu.trigger}
+                width={150}
+                onClose={() => setAddViewMenu(null)}
               >
                 <button
                   type="button"
@@ -798,7 +1075,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                   <Kanban size={13} color="#8b5cf6" />
                   <span>新建看板视图</span>
                 </button>
-              </div>
+              </FloatingPanel>
             )}
           </div>
         </div>
@@ -890,6 +1167,14 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
         </div>
       </div>
 
+      {/* 视图 Tab 拖拽时的跟随幽灵 */}
+      {viewDrag && (
+        <DragGhost x={viewDrag.x - viewGrabOffset.x} y={viewDrag.y - viewGrabOffset.y + 4}>
+          {data.views[viewDrag.fromIdx]?.name ?? ''}
+          {` · 第 ${slotToFinalPosition(viewDrag.insertAt, viewDrag.fromIdx)} 位`}
+        </DragGhost>
+      )}
+
       {/* 主视图分发渲染 */}
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         {activeView.type === 'grid' ? (
@@ -897,10 +1182,14 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             columns={data.columns}
             rows={filteredAndSortedRows}
             currentSortRule={activeView.sortRules?.[0] || null}
+            onPasteCells={handlePasteCells}
+            onManageColumnOption={handleManageColumnOption}
             onSortColumn={handleSortColumn}
             onUpdateRow={handleUpdateRow}
             onAddRow={handleAddRow}
             onAddSubRow={handleAddSubRow}
+            onOutdentRow={handleOutdentRow}
+            onIndentRow={handleIndentRow}
             onInsertRowAbove={handleInsertRowAbove}
             onInsertRowBelow={handleInsertRowBelow}
             onDeleteRow={handleDeleteRow}
@@ -919,6 +1208,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             onUpdateGroupByColumnId={handleUpdateGroupByColumnId}
             onUpdateRow={handleUpdateRow}
             onAddRowWithStatus={handleAddRowWithStatus}
+            onAddGroupOption={handleAddGroupOption}
             onDeleteRow={handleDeleteRow}
           />
         )}

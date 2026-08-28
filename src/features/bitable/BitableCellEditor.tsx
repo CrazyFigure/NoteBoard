@@ -1,394 +1,48 @@
 // NoteBoard 多维表格单元格渲染与交互编辑器
 // 深度还原飞书多维表格各类字段的视觉与交互体验
+// 单选/多选单元格统一通过「双击」唤出 Portal 选项面板，单击仅选中单元格
 
 import React, { useState, useRef, useEffect } from 'react';
-import type { BitableColumn, SelectOption, SelectOptionColor } from './bitableTypes';
-import { getOptionColor, BITABLE_PALETTE } from './bitableConverter';
-import {
-  Star,
-  Check,
-  Plus,
-  ExternalLink,
-  ChevronDown,
-  X,
-  Edit2,
-  Trash2,
-} from 'lucide-react';
+import type {
+  BitableColumn,
+  ColumnOptionAction,
+  SelectOptionColor,
+} from './bitableTypes';
+import { OptionBadge, SelectOptionsPanel } from './BitableOptions';
+import { getAnchorRect, type AnchorRect } from './BitableFloating';
+import { createId } from './bitableUtils';
+import { Star, Check, ExternalLink } from 'lucide-react';
 
 interface CellEditorProps {
   column: BitableColumn;
   value: unknown;
   onChange: (newValue: unknown) => void;
-  onUpdateColumnOptions?: (newOptions: SelectOption[]) => void;
-}
-
-/** 飞书风格彩色单选/多选标签胶囊组件 */
-export function OptionBadge({
-  option,
-  onRemove,
-}: {
-  option: SelectOption;
-  onRemove?: () => void;
-}) {
-  const color = getOptionColor(option.color);
-
-  return (
-    <div
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 4,
-        padding: '2px 8px',
-        borderRadius: 12,
-        background: color.bg,
-        border: `1px solid ${color.border}`,
-        color: color.text,
-        fontSize: 12,
-        fontWeight: 500,
-        lineHeight: 1.3,
-        userSelect: 'none',
-        maxWidth: '100%',
-      }}
-    >
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {option.label}
-      </span>
-      {onRemove && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onRemove();
-          }}
-          style={{
-            border: 'none',
-            background: 'transparent',
-            cursor: 'pointer',
-            padding: 0,
-            display: 'flex',
-            color: color.text,
-            opacity: 0.7,
-          }}
-        >
-          <X size={12} />
-        </button>
-      )}
-    </div>
-  );
-}
-
-/** 飞书风格单选与多选标签配置管理浮动面板 */
-function SelectOptionsPanel({
-  options,
-  selectedIds,
-  isMulti,
-  onToggleSelect,
-  onAddNewOption,
-  onUpdateOption,
-  onDeleteOption,
-  panelRef,
-}: {
-  options: SelectOption[];
-  selectedIds: string[];
-  isMulti: boolean;
-  onToggleSelect: (id: string) => void;
-  onAddNewOption: (label: string, color: SelectOptionColor) => void;
-  onUpdateOption: (id: string, label: string, color: SelectOptionColor) => void;
-  onDeleteOption: (id: string) => void;
-  panelRef: React.RefObject<HTMLDivElement | null>;
-}) {
-  const [newLabel, setNewLabel] = useState('');
-  const [newColor, setNewColor] = useState<SelectOptionColor>('blue');
-  const [editingOptId, setEditingOptId] = useState<string | null>(null);
-  const [editLabel, setEditLabel] = useState('');
-  const [editColor, setEditColor] = useState<SelectOptionColor>('blue');
-
-  const handleAdd = () => {
-    if (!newLabel.trim()) return;
-    onAddNewOption(newLabel.trim(), newColor);
-    setNewLabel('');
-  };
-
-  const handleStartEdit = (e: React.MouseEvent, opt: SelectOption) => {
-    e.stopPropagation();
-    setEditingOptId(opt.id);
-    setEditLabel(opt.label);
-    setEditColor(opt.color);
-  };
-
-  const handleSaveEdit = (optId: string) => {
-    if (editLabel.trim()) {
-      onUpdateOption(optId, editLabel.trim(), editColor);
-    }
-    setEditingOptId(null);
-  };
-
-  return (
-    <div
-      ref={panelRef}
-      onClick={(e) => e.stopPropagation()}
-      style={{
-        position: 'absolute',
-        top: '100%',
-        left: 0,
-        zIndex: 99999,
-        marginTop: 4,
-        width: 240,
-        background: 'var(--editor-surface, #ffffff)',
-        border: '1px solid var(--editor-border, #e2e8f0)',
-        borderRadius: 8,
-        boxShadow: '0 8px 28px rgba(0,0,0,0.16)',
-        padding: '6px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 6,
-      }}
-    >
-      {/* 选项列表 */}
-      <div style={{ maxHeight: 180, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {options.map((opt) => {
-          const isSelected = selectedIds.includes(opt.id);
-          const isEditingThis = editingOptId === opt.id;
-
-          if (isEditingThis) {
-            return (
-              <div
-                key={opt.id}
-                style={{
-                  padding: '6px 8px',
-                  borderRadius: 6,
-                  background: 'var(--editor-bg, #f8fafc)',
-                  border: '1px solid var(--editor-border, #cbd5e1)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 6,
-                }}
-              >
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <input
-                    type="text"
-                    value={editLabel}
-                    autoFocus
-                    onChange={(e) => setEditLabel(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleSaveEdit(opt.id);
-                      if (e.key === 'Escape') setEditingOptId(null);
-                    }}
-                    style={{
-                      flex: 1,
-                      padding: '3px 6px',
-                      fontSize: 12,
-                      border: '1px solid var(--editor-accent, #3b82f6)',
-                      borderRadius: 4,
-                      outline: 'none',
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleSaveEdit(opt.id)}
-                    style={{
-                      padding: '3px 8px',
-                      borderRadius: 4,
-                      background: 'var(--editor-accent, #3b82f6)',
-                      color: '#ffffff',
-                      border: 'none',
-                      fontSize: 11,
-                      cursor: 'pointer',
-                      fontWeight: 500,
-                    }}
-                  >
-                    保存
-                  </button>
-                </div>
-                {/* 编辑时的颜色挑选 */}
-                <div style={{ display: 'flex', gap: 4 }}>
-                  {BITABLE_PALETTE.map((pal) => (
-                    <div
-                      key={pal.id}
-                      onClick={() => setEditColor(pal.id as SelectOptionColor)}
-                      style={{
-                        width: 14,
-                        height: 14,
-                        borderRadius: '50%',
-                        background: pal.text,
-                        cursor: 'pointer',
-                        border: editColor === pal.id ? '2px solid #000000' : 'none',
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-            );
-          }
-
-          return (
-            <div
-              key={opt.id}
-              onClick={() => onToggleSelect(opt.id)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '4px 8px',
-                borderRadius: 4,
-                cursor: 'pointer',
-                background: isSelected ? 'var(--editor-bg, #f1f5f9)' : 'transparent',
-                transition: 'background 0.12s ease',
-              }}
-              onMouseEnter={(e) => {
-                if (!isSelected) e.currentTarget.style.background = 'var(--editor-bg, #f8fafc)';
-              }}
-              onMouseLeave={(e) => {
-                if (!isSelected) e.currentTarget.style.background = 'transparent';
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, overflow: 'hidden' }}>
-                <OptionBadge option={opt} />
-                {isSelected && <Check size={13} color="#3b82f6" />}
-              </div>
-
-              {/* 选项操作按钮（编辑 / 删除） */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 2 }} onClick={(e) => e.stopPropagation()}>
-                <button
-                  type="button"
-                  title="修改选项"
-                  onClick={(e) => handleStartEdit(e, opt)}
-                  style={{
-                    border: 'none',
-                    background: 'transparent',
-                    cursor: 'pointer',
-                    padding: 2,
-                    borderRadius: 3,
-                    color: 'var(--editor-text-muted, #94a3b8)',
-                    display: 'flex',
-                  }}
-                >
-                  <Edit2 size={11} />
-                </button>
-                <button
-                  type="button"
-                  title="删除选项"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteOption(opt.id);
-                  }}
-                  style={{
-                    border: 'none',
-                    background: 'transparent',
-                    cursor: 'pointer',
-                    padding: 2,
-                    borderRadius: 3,
-                    color: '#ef4444',
-                    display: 'flex',
-                  }}
-                >
-                  <Trash2 size={11} />
-                </button>
-              </div>
-            </div>
-          );
-        })}
-
-        {options.length === 0 && (
-          <div style={{ padding: '8px', fontSize: 11, color: 'var(--editor-text-muted, #94a3b8)', textAlign: 'center' }}>
-            暂无选项，请在下方创建
-          </div>
-        )}
-      </div>
-
-      {/* 新建标签选项表单 */}
-      <div
-        style={{
-          borderTop: '1px solid var(--editor-border, #f1f5f9)',
-          paddingTop: 6,
-          marginTop: 2,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 6,
-        }}
-      >
-        <div style={{ display: 'flex', gap: 4 }}>
-          <input
-            type="text"
-            placeholder="新建标签选项..."
-            value={newLabel}
-            onChange={(e) => setNewLabel(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleAdd();
-            }}
-            style={{
-              flex: 1,
-              padding: '3px 6px',
-              fontSize: 11,
-              border: '1px solid var(--editor-border, #cbd5e1)',
-              borderRadius: 4,
-              outline: 'none',
-            }}
-          />
-          <button
-            type="button"
-            onClick={handleAdd}
-            style={{
-              padding: '3px 8px',
-              borderRadius: 4,
-              background: 'var(--editor-accent, #3b82f6)',
-              color: '#ffffff',
-              border: 'none',
-              fontSize: 11,
-              cursor: 'pointer',
-              fontWeight: 500,
-            }}
-          >
-            添加
-          </button>
-        </div>
-
-        {/* 颜色选择球 */}
-        <div style={{ display: 'flex', gap: 4, padding: '2px 0' }}>
-          {BITABLE_PALETTE.map((pal) => (
-            <div
-              key={pal.id}
-              onClick={() => setNewColor(pal.id as SelectOptionColor)}
-              style={{
-                width: 14,
-                height: 14,
-                borderRadius: '50%',
-                background: pal.text,
-                cursor: 'pointer',
-                border: newColor === pal.id ? '2px solid #000000' : 'none',
-              }}
-            />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
+  /** 列选项增删改排序：由上层在单次提交内同步列与所有关联行 */
+  onManageColumnOption?: (colId: string, action: ColumnOptionAction) => void;
 }
 
 export function BitableCellEditor({
   column,
   value,
   onChange,
-  onUpdateColumnOptions,
+  onManageColumnOption,
 }: CellEditorProps) {
   const [editing, setEditing] = useState(false);
   const [inputValue, setInputValue] = useState<string>('');
-  const [showSelectPanel, setShowSelectPanel] = useState(false);
+  // 选项面板锚点：面板通过 Portal 渲染，彻底规避单元格 overflow 裁剪问题
+  const [panelAnchor, setPanelAnchor] = useState<AnchorRect | null>(null);
 
-  const panelRef = useRef<HTMLDivElement>(null);
+  const cellRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // 点击外部关闭单选/多选下拉面板
-  useEffect(() => {
-    if (!showSelectPanel) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        setShowSelectPanel(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showSelectPanel]);
+  const showSelectPanel = panelAnchor !== null;
+
+  // 双击单元格：以单元格自身为锚点打开选项面板
+  const openSelectPanel = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const anchor = getAnchorRect(cellRef.current);
+    if (anchor) setPanelAnchor(anchor);
+  };
 
   // 进入编辑状态时聚焦
   useEffect(() => {
@@ -529,46 +183,41 @@ export function BitableCellEditor({
 
     const handleToggleSelect = (optId: string) => {
       onChange(optId === value ? null : optId);
-      setShowSelectPanel(false);
+      setPanelAnchor(null);
     };
 
+    // 新增选项：先由上层落库列定义，再把新选项设为当前单元格的值
     const handleAddNewOption = (label: string, color: SelectOptionColor) => {
-      const newOpt: SelectOption = {
-        id: `opt_${Date.now()}`,
-        label,
-        color,
-      };
-      const updated = [...(column.options || []), newOpt];
-      onUpdateColumnOptions?.(updated);
+      const newOpt = { id: createId('opt'), label, color };
+      onManageColumnOption?.(column.id, { type: 'add', option: newOpt });
       onChange(newOpt.id);
-      setShowSelectPanel(false);
     };
 
     const handleUpdateOption = (optId: string, label: string, color: SelectOptionColor) => {
-      const updated = (column.options || []).map((o) => (o.id === optId ? { ...o, label, color } : o));
-      onUpdateColumnOptions?.(updated);
+      onManageColumnOption?.(column.id, { type: 'update', optionId: optId, label, color });
     };
 
     const handleDeleteOption = (optId: string) => {
-      const updated = (column.options || []).filter((o) => o.id !== optId);
-      onUpdateColumnOptions?.(updated);
-      if (value === optId) {
-        onChange(null);
-      }
+      onManageColumnOption?.(column.id, { type: 'delete', optionId: optId });
+      if (value === optId) onChange(null);
     };
 
     return (
       <div
+        ref={cellRef}
+        onDoubleClick={openSelectPanel}
+        title="双击选择或新建标签"
         style={{
           position: 'relative',
           width: '100%',
           height: '100%',
           display: 'flex',
           alignItems: 'center',
+          gap: 4,
           padding: '2px 6px',
           cursor: 'pointer',
+          overflow: 'hidden',
         }}
-        onClick={() => setShowSelectPanel(true)}
       >
         {selectedOption ? (
           <OptionBadge option={selectedOption} />
@@ -578,14 +227,17 @@ export function BitableCellEditor({
 
         {showSelectPanel && (
           <SelectOptionsPanel
+            anchor={panelAnchor}
+            trigger={cellRef.current}
             options={column.options || []}
             selectedIds={selectedIds}
+            selectable
             isMulti={false}
             onToggleSelect={handleToggleSelect}
-            onAddNewOption={handleAddNewOption}
+            onAddOption={handleAddNewOption}
             onUpdateOption={handleUpdateOption}
             onDeleteOption={handleDeleteOption}
-            panelRef={panelRef}
+            onClose={() => setPanelAnchor(null)}
           />
         )}
       </div>
@@ -605,24 +257,17 @@ export function BitableCellEditor({
     };
 
     const handleAddNewOption = (label: string, color: SelectOptionColor) => {
-      const newOpt: SelectOption = {
-        id: `opt_${Date.now()}`,
-        label,
-        color,
-      };
-      const updated = [...(column.options || []), newOpt];
-      onUpdateColumnOptions?.(updated);
+      const newOpt = { id: createId('opt'), label, color };
+      onManageColumnOption?.(column.id, { type: 'add', option: newOpt });
       onChange([...selectedIds, newOpt.id]);
     };
 
     const handleUpdateOption = (optId: string, label: string, color: SelectOptionColor) => {
-      const updated = (column.options || []).map((o) => (o.id === optId ? { ...o, label, color } : o));
-      onUpdateColumnOptions?.(updated);
+      onManageColumnOption?.(column.id, { type: 'update', optionId: optId, label, color });
     };
 
     const handleDeleteOption = (optId: string) => {
-      const updated = (column.options || []).filter((o) => o.id !== optId);
-      onUpdateColumnOptions?.(updated);
+      onManageColumnOption?.(column.id, { type: 'delete', optionId: optId });
       if (selectedIds.includes(optId)) {
         onChange(selectedIds.filter((id) => id !== optId));
       }
@@ -630,6 +275,9 @@ export function BitableCellEditor({
 
     return (
       <div
+        ref={cellRef}
+        onDoubleClick={openSelectPanel}
+        title="双击选择或新建标签"
         style={{
           position: 'relative',
           width: '100%',
@@ -640,32 +288,47 @@ export function BitableCellEditor({
           padding: '2px 6px',
           cursor: 'pointer',
           flexWrap: 'nowrap',
-          overflow: 'hidden',
+          // 注意：此处不能设置 overflow: hidden，否则 Portal 之外的内联面板会被裁剪；
+          // 徽章超宽由内部容器裁剪，避免影响浮层展示
+          overflow: 'visible',
         }}
-        onClick={() => setShowSelectPanel(true)}
       >
-        {selectedOptions.length > 0 ? (
-          selectedOptions.map((opt) => (
-            <OptionBadge
-              key={opt.id}
-              option={opt}
-              onRemove={() => handleToggleSelect(opt.id)}
-            />
-          ))
-        ) : (
-          <span style={{ fontSize: 12, color: 'var(--editor-text-muted, #94a3b8)', opacity: 0.5 }}>-</span>
-        )}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            flexWrap: 'nowrap',
+            overflow: 'hidden',
+            maxWidth: '100%',
+          }}
+        >
+          {selectedOptions.length > 0 ? (
+            selectedOptions.map((opt) => (
+              <OptionBadge
+                key={opt.id}
+                option={opt}
+                onRemove={() => handleToggleSelect(opt.id)}
+              />
+            ))
+          ) : (
+            <span style={{ fontSize: 12, color: 'var(--editor-text-muted, #94a3b8)', opacity: 0.5 }}>-</span>
+          )}
+        </div>
 
         {showSelectPanel && (
           <SelectOptionsPanel
+            anchor={panelAnchor}
+            trigger={cellRef.current}
             options={column.options || []}
             selectedIds={selectedIds}
-            isMulti={true}
+            selectable
+            isMulti
             onToggleSelect={handleToggleSelect}
-            onAddNewOption={handleAddNewOption}
+            onAddOption={handleAddNewOption}
             onUpdateOption={handleUpdateOption}
             onDeleteOption={handleDeleteOption}
-            panelRef={panelRef}
+            onClose={() => setPanelAnchor(null)}
           />
         )}
       </div>

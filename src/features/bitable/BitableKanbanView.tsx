@@ -7,18 +7,8 @@ import type {
   BitableRow,
   SelectOption,
 } from './bitableTypes';
-import { OptionBadge } from './BitableCellEditor';
-import {
-  Plus,
-  Calendar,
-  CheckCircle2,
-  Star,
-  User,
-  MoreHorizontal,
-  ChevronRight,
-  SlidersHorizontal,
-  Trash2,
-} from 'lucide-react';
+import { OptionBadge } from './BitableOptions';
+import { Plus, Calendar, Star, SlidersHorizontal, Trash2 } from 'lucide-react';
 
 interface KanbanViewProps {
   columns: BitableColumn[];
@@ -27,6 +17,8 @@ interface KanbanViewProps {
   onUpdateGroupByColumnId?: (colId: string) => void;
   onUpdateRow: (rowId: string, columnId: string, val: unknown) => void;
   onAddRowWithStatus: (columnId: string, optionId: string | null) => void;
+  /** 新增分组泳道：为分组列追加一个标签选项 */
+  onAddGroupOption?: () => void;
   onDeleteRow: (rowId: string) => void;
 }
 
@@ -37,6 +29,7 @@ export function BitableKanbanView({
   onUpdateGroupByColumnId,
   onUpdateRow,
   onAddRowWithStatus,
+  onAddGroupOption,
   onDeleteRow,
 }: KanbanViewProps) {
   // 查找作为分组依据的列（若未指定或不存在，优先选择第一个 select 列，否则选择第一个列）
@@ -216,7 +209,9 @@ export function BitableKanbanView({
               </div>
               <button
                 type="button"
-                onClick={() => onAddRowWithStatus(groupColumn.id, lane.id)}
+                onClick={() => {
+                  if (groupColumn) onAddRowWithStatus(groupColumn.id, lane.id);
+                }}
                 title="在当前分组下添加卡片"
                 style={{
                   border: 'none',
@@ -442,6 +437,53 @@ export function BitableKanbanView({
             </div>
           </div>
         ))}
+
+        {/* 新增分组泳道：仅在以单选中列为分组依据时可用 */}
+        {isSelectGroup && onAddGroupOption && (
+          <div
+            style={{
+              width: 200,
+              minWidth: 200,
+              borderRadius: 10,
+              border: '1px dashed var(--editor-border, #cbd5e1)',
+              background: 'transparent',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: 56,
+            }}
+          >
+            <button
+              type="button"
+              onClick={onAddGroupOption}
+              title="新增一个分组"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 14px',
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                fontSize: 12,
+                fontWeight: 500,
+                color: 'var(--editor-text-muted, #64748b)',
+                borderRadius: 6,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
+                e.currentTarget.style.background = 'var(--editor-bg, #f8fafc)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--editor-text-muted, #64748b)';
+                e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <Plus size={14} />
+              <span>新增分组</span>
+            </button>
+          </div>
+        )}
 
         {/* 未分类泳道 */}
         {unclassifiedRows.length > 0 && (

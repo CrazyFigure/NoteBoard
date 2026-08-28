@@ -91,6 +91,17 @@ export interface BitableViewConfig {
   hiddenColumnIds?: string[];
 }
 
+/**
+ * 单列标签选项的变更动作
+ * 统一由上层在「一次提交」内完成「列选项 + 所有关联行数据」的联动更新，
+ * 避免先改列再改行时两次提交相互覆盖（历史上表现为「新增选项后立即消失」）。
+ */
+export type ColumnOptionAction =
+  | { type: 'add'; option: SelectOption }
+  | { type: 'update'; optionId: string; label: string; color: SelectOptionColor }
+  | { type: 'delete'; optionId: string }
+  | { type: 'move'; optionId: string; direction: 'up' | 'down' };
+
 /** 完整多维表格持久化文档模型 */
 export interface BitableDocument {
   schemaVersion: number;
