@@ -65,11 +65,11 @@ export function languageFromPath(path: string): LanguageId {
 /** 从 kind 推导保存策略 */
 export function savePolicyOf(kind: DocumentKind): SavePolicy {
   switch (kind) {
+    // markdown、board、mindmap、drawio 及 bitable 多维表格均支持自动保存策略
     case 'markdown':
     case 'board':
     case 'mindmap':
     case 'drawio':
-    // 多维表格与画板/思维导图一致，支持自动保存策略
     case 'bitable':
       return 'auto';
     case 'code':
