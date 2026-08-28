@@ -14,6 +14,7 @@ import { BitableCellEditor } from './BitableCellEditor';
 import { SelectOptionsPanel } from './BitableOptions';
 import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
 import { usePointerReorder } from './usePointerReorder';
+import { getFieldTypeMeta } from './BitableFieldMeta';
 import {
   createId,
   formatCellValue,
@@ -22,17 +23,11 @@ import {
 } from './bitableUtils';
 import { showToast } from '../../stores/toastStore';
 import {
-  Type,
   IndentIncrease,
   IndentDecrease,
-  Hash,
+  Maximize2,
   Tag,
   Tags,
-  Calendar,
-  CheckSquare,
-  Star,
-  BarChart2,
-  Link,
   MoreHorizontal,
   Plus,
   Trash2,
@@ -74,6 +69,8 @@ interface GridViewProps {
   onOutdentRow?: (rowId: string) => void;
   /** 行降级为上一同级行的子级 */
   onIndentRow?: (rowId: string) => void;
+  /** 打开右侧记录详情侧边栏 */
+  onOpenRecord?: (rowId: string) => void;
   onInsertRowAbove?: (rowId: string) => void;
   onInsertRowBelow?: (rowId: string) => void;
   onDeleteRow: (rowId: string) => void;
@@ -86,29 +83,6 @@ interface GridViewProps {
 }
 
 /** 获取字段类型的显示图标与中文名称 */
-export function getFieldTypeMeta(type: BitableFieldType) {
-  switch (type) {
-    case 'text':
-      return { icon: <Type size={13} color="#3b82f6" />, label: '文本' };
-    case 'number':
-      return { icon: <Hash size={13} color="#10b981" />, label: '数字' };
-    case 'select':
-      return { icon: <Tag size={13} color="#8b5cf6" />, label: '单选' };
-    case 'multiSelect':
-      return { icon: <Tags size={13} color="#ec4899" />, label: '多选' };
-    case 'date':
-      return { icon: <Calendar size={13} color="#f59e0b" />, label: '日期' };
-    case 'checkbox':
-      return { icon: <CheckSquare size={13} color="#06b6d4" />, label: '勾选' };
-    case 'rating':
-      return { icon: <Star size={13} color="#eab308" />, label: '评分' };
-    case 'progress':
-      return { icon: <BarChart2 size={13} color="#3b82f6" />, label: '进度' };
-    case 'link':
-      return { icon: <Link size={13} color="#6366f1" />, label: '超链接' };
-  }
-}
-
 /** 获取各字段类型专有的排序文案 */
 function getSortLabels(type: BitableFieldType) {
   switch (type) {
@@ -162,6 +136,7 @@ export function BitableGridView({
   onAddSubRow,
   onOutdentRow,
   onIndentRow,
+  onOpenRecord,
   onInsertRowAbove,
   onInsertRowBelow,
   onDeleteRow,
@@ -876,6 +851,7 @@ export function BitableGridView({
                                   justifyContent: 'center',
                                   gap: 4,
                                   padding: '5px 6px',
+                                  minWidth: 26,
                                   border: 'none',
                                   background: 'transparent',
                                   cursor: colIdx === 0 ? 'not-allowed' : 'pointer',
@@ -903,6 +879,7 @@ export function BitableGridView({
                                   justifyContent: 'center',
                                   gap: 4,
                                   padding: '5px 6px',
+                            minWidth: 26,
                                   border: 'none',
                                   background: 'transparent',
                                   cursor: colIdx === columns.length - 1 ? 'not-allowed' : 'pointer',
@@ -1143,7 +1120,7 @@ export function BitableGridView({
                             color: '#ef4444',
                           }}
                         >
-                          <Trash2 size={12} />
+                          <Trash2 size={14} />
                           <span>删除此列</span>
                         </button>
                       </FloatingPanel>
@@ -1209,6 +1186,11 @@ export function BitableGridView({
                     e.stopPropagation();
                     setSelection({ type: 'row', rowId: row.id });
                   }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    if (onOpenRecord) onOpenRecord(row.id);
+                  }}
+                  title={onOpenRecord ? '单击选中整行 · 双击展开记录详情' : '单击选中整行'}
                   style={{
                     position: 'sticky',
                     left: 0,
@@ -1241,17 +1223,36 @@ export function BitableGridView({
                         display: isRowSelected ? 'flex' : 'none',
                         position: 'absolute',
                         left: '100%',
-                        top: 2,
+                        top: 0,
                         zIndex: 99,
                         background: 'var(--editor-surface, #ffffff)',
-                        border: '1px solid var(--editor-border, #e2e8f0)',
+                        border: '1px solid var(--editor-border, #cbd5e1)',
                         borderRadius: 6,
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                        padding: '2px 4px',
-                        gap: 2,
+                        boxShadow: '0 6px 18px rgba(15,23,42,0.12)',
+                        padding: '4px 5px',
+                        gap: 3,
+                        alignItems: 'center',
                       }}
                       onClick={(e) => e.stopPropagation()}
                     >
+                      {onOpenRecord && (
+                        <button
+                          type="button"
+                          title="展开记录详情"
+                          onClick={() => onOpenRecord(row.id)}
+                          style={{
+                            border: 'none',
+                            background: 'transparent',
+                            cursor: 'pointer',
+                            padding: '5px 6px',
+                            minWidth: 26,
+                            color: 'var(--editor-accent, #3b82f6)',
+                            display: 'flex',
+                          }}
+                        >
+                          <Maximize2 size={14} />
+                        </button>
+                      )}
                       {onOutdentRow && (
                         <button
                           type="button"
@@ -1267,12 +1268,13 @@ export function BitableGridView({
                             background: 'transparent',
                             cursor: row.parentId ? 'pointer' : 'not-allowed',
                             opacity: row.parentId ? 1 : 0.3,
-                            padding: 3,
+                            padding: '5px 6px',
+                            minWidth: 26,
                             color: 'var(--editor-text, #334155)',
                             display: 'flex',
                           }}
                         >
-                          <IndentDecrease size={12} />
+                          <IndentDecrease size={14} />
                         </button>
                       )}
                       {onIndentRow && (
@@ -1284,12 +1286,13 @@ export function BitableGridView({
                             border: 'none',
                             background: 'transparent',
                             cursor: 'pointer',
-                            padding: 3,
+                            padding: '5px 6px',
+                            minWidth: 26,
                             color: 'var(--editor-text, #334155)',
                             display: 'flex',
                           }}
                         >
-                          <IndentIncrease size={12} />
+                          <IndentIncrease size={14} />
                         </button>
                       )}
                       {onAddSubRow && (
@@ -1301,12 +1304,13 @@ export function BitableGridView({
                             border: 'none',
                             background: 'transparent',
                             cursor: 'pointer',
-                            padding: 3,
+                            padding: '5px 6px',
+                            minWidth: 26,
                             color: 'var(--editor-accent, #3b82f6)',
                             display: 'flex',
                           }}
                         >
-                          <CornerDownRight size={12} />
+                          <CornerDownRight size={14} />
                         </button>
                       )}
                       {onInsertRowAbove && (
@@ -1318,12 +1322,13 @@ export function BitableGridView({
                             border: 'none',
                             background: 'transparent',
                             cursor: 'pointer',
-                            padding: 3,
+                            padding: '5px 6px',
+                            minWidth: 26,
                             color: 'var(--editor-text, #334155)',
                             display: 'flex',
                           }}
                         >
-                          <ArrowUp size={12} />
+                          <ArrowUp size={14} />
                         </button>
                       )}
                       {onInsertRowBelow && (
@@ -1335,12 +1340,12 @@ export function BitableGridView({
                             border: 'none',
                             background: 'transparent',
                             cursor: 'pointer',
-                            padding: 3,
+                            padding: '5px 6px',
                             color: 'var(--editor-text, #334155)',
                             display: 'flex',
                           }}
                         >
-                          <ArrowDown size={12} />
+                          <ArrowDown size={14} />
                         </button>
                       )}
                       <button
@@ -1351,7 +1356,7 @@ export function BitableGridView({
                           border: 'none',
                           background: 'transparent',
                           cursor: 'pointer',
-                          padding: 3,
+                          padding: '5px 6px',
                           color: '#ef4444',
                           display: 'flex',
                         }}

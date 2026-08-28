@@ -18,6 +18,7 @@ import {
 } from './bitableConverter';
 import { BitableGridView } from './BitableGridView';
 import { BitableKanbanView } from './BitableKanbanView';
+import { BitableRecordPanel } from './BitableRecordPanel';
 import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
 import { usePointerReorder } from './usePointerReorder';
 import {
@@ -80,6 +81,9 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
     anchor: AnchorRect;
     trigger: HTMLElement;
   } | null>(null);
+
+  // 右侧记录详情侧边栏：以「收集单」形式编辑单条记录
+  const [recordPanelRowId, setRecordPanelRowId] = useState<string | null>(null);
 
   /**
    * 文档数据的最新快照
@@ -763,6 +767,21 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
     return result;
   }, [data.rows, data.columns, searchQuery, activeView.sortRules]);
 
+  // 记录详情侧边栏当前展示的行与其上级标题
+  const recordPanelRow = useMemo(
+    () => (recordPanelRowId ? data.rows.find((r) => r.id === recordPanelRowId) || null : null),
+    [recordPanelRowId, data.rows],
+  );
+  const recordPanelParentTitle = useMemo(() => {
+    if (!recordPanelRow || !recordPanelRow.parentId) return undefined;
+    const parent = data.rows.find((r) => r.id === recordPanelRow.parentId);
+    if (!parent) return undefined;
+    const titleCol = data.columns.find((c) => c.type === 'text');
+    if (!titleCol) return undefined;
+    const val = parent[titleCol.id];
+    return val === undefined || val === null ? undefined : String(val);
+  }, [recordPanelRow, data.rows, data.columns]);
+
   // 全局撤销/重做快捷键
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1175,7 +1194,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
         </DragGhost>
       )}
 
-      {/* 主视图分发渲染 */}
+      {/* 主视图分发渲染（relative 定位用于承载右侧记录详情侧边栏） */}
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         {activeView.type === 'grid' ? (
           <BitableGridView
@@ -1190,6 +1209,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             onAddSubRow={handleAddSubRow}
             onOutdentRow={handleOutdentRow}
             onIndentRow={handleIndentRow}
+            onOpenRecord={setRecordPanelRowId}
             onInsertRowAbove={handleInsertRowAbove}
             onInsertRowBelow={handleInsertRowBelow}
             onDeleteRow={handleDeleteRow}
@@ -1209,7 +1229,22 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             onUpdateRow={handleUpdateRow}
             onAddRowWithStatus={handleAddRowWithStatus}
             onAddGroupOption={handleAddGroupOption}
+            onManageColumnOption={handleManageColumnOption}
+            onOpenRecord={setRecordPanelRowId}
             onDeleteRow={handleDeleteRow}
+          />
+        )}
+
+        {/* 记录详情侧边栏：点击看板卡片或表格行展开 */}
+        {recordPanelRow && (
+          <BitableRecordPanel
+            row={recordPanelRow}
+            columns={data.columns}
+            parentTitle={recordPanelParentTitle}
+            onUpdateRow={handleUpdateRow}
+            onManageColumnOption={handleManageColumnOption}
+            onDeleteRow={handleDeleteRow}
+            onClose={() => setRecordPanelRowId(null)}
           />
         )}
       </div>
