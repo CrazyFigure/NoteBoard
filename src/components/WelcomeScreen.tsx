@@ -61,13 +61,13 @@ export function WelcomeScreen({
 }: WelcomeScreenProps) {
   const [showMoreFormats, setShowMoreFormats] = useState(false);
 
-  // 核心主放 4 种新建格式
-  const primaryFormats = [
+  // 主界面 9 大核心卡片（3 行 3 列整齐布局）
+  const primaryActions = [
     {
       icon: FilePlus,
       label: '新建 Markdown 笔记',
       desc: '富文本与源码双模笔记',
-      shortcut: 'Ctrl+N',
+      shortcut: '',
       color: 'var(--editor-accent, #3b82f6)',
       onClick: onNewMarkdown,
     },
@@ -78,6 +78,14 @@ export function WelcomeScreen({
       shortcut: '',
       color: '#64748b',
       onClick: onNewText,
+    },
+    {
+      icon: Table2,
+      label: '多维表格 (.bitable)',
+      desc: '结构化数据与看板视图',
+      shortcut: '',
+      color: '#2563eb',
+      onClick: onNewBitable,
     },
     {
       icon: PencilRuler,
@@ -95,14 +103,10 @@ export function WelcomeScreen({
       color: '#f97316',
       onClick: onNewMindmap,
     },
-  ];
-
-  // 常用工作区操作
-  const workspaceActions = [
     {
       icon: FileSearch,
       label: '打开文件…',
-      desc: '打开本地已有的任何笔记或图表',
+      desc: '打开本地已有的笔记或图表',
       shortcut: 'Ctrl+O',
       color: 'var(--editor-accent, #3b82f6)',
       onClick: onOpenFile,
@@ -118,22 +122,24 @@ export function WelcomeScreen({
     {
       icon: Archive,
       label: '打开暂存区',
-      desc: '查看关闭或异常退出时保留的未保存副本',
+      desc: '查看关闭或异常退出的副本',
       shortcut: '',
       color: '#8b5cf6',
       onClick: onOpenStaging,
     },
+    {
+      icon: Sparkles,
+      label: showMoreFormats ? '收起其他格式' : '更多格式新建',
+      desc: 'Draw.io、Mermaid、UML 等',
+      shortcut: '',
+      color: 'var(--editor-accent, #3b82f6)',
+      isToggleMore: true,
+      onClick: () => setShowMoreFormats((prev) => !prev),
+    },
   ];
 
-  // 更多格式（多维表格, Draw.io, Mermaid, PlantUML, JSON, YAML, SQL, XML）
+  // 更多格式（Draw.io, Mermaid, PlantUML, JSON, YAML, SQL, XML）
   const moreFormats = [
-    {
-      icon: Table2,
-      label: '多维表格 (.bitable)',
-      desc: '结构化数据、标签筛选与看板视图',
-      color: '#2563eb',
-      onClick: onNewBitable,
-    },
     {
       icon: Layout,
       label: 'Draw.io 架构图 (.drawio)',
@@ -235,34 +241,22 @@ export function WelcomeScreen({
         </span>
       </div>
 
-      {/* 主核心区：双栏网格 (左侧核心新建，右侧工作区操作与更多格式) */}
+      {/* 主核心区：3 行 3 列网格 */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-          gap: 20,
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+          gap: 12,
           width: '100%',
-          maxWidth: 780,
+          maxWidth: 840,
         }}
       >
-        {/* 左栏：核心 4 格式新建 */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              color: 'var(--editor-text-muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              paddingLeft: 4,
-            }}
-          >
-            快速新建
-          </div>
-
-          {primaryFormats.map((action, i) => (
+        {primaryActions.map((action, i) => {
+          const isExpandBtn = Boolean(action.isToggleMore);
+          return (
             <button
               key={i}
+              type="button"
               className="nb-btn-card"
               onClick={action.onClick ?? (() => {})}
               style={{
@@ -270,9 +264,9 @@ export function WelcomeScreen({
                 alignItems: 'center',
                 gap: 12,
                 padding: '10px 14px',
-                border: '1px solid var(--editor-border)',
+                border: isExpandBtn && showMoreFormats ? '1px solid var(--editor-border-focus)' : '1px solid var(--editor-border)',
                 borderRadius: 8,
-                background: 'var(--editor-surface)',
+                background: isExpandBtn && showMoreFormats ? 'var(--toolbar-hover)' : 'var(--editor-surface)',
                 cursor: 'pointer',
                 fontSize: 13,
                 color: 'var(--editor-text)',
@@ -286,9 +280,15 @@ export function WelcomeScreen({
                 e.currentTarget.style.transform = 'translateY(-1px)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'var(--editor-surface)';
-                e.currentTarget.style.borderColor = 'var(--editor-border)';
+                e.currentTarget.style.background = isExpandBtn && showMoreFormats ? 'var(--toolbar-hover)' : 'var(--editor-surface)';
+                e.currentTarget.style.borderColor = isExpandBtn && showMoreFormats ? 'var(--editor-border-focus)' : 'var(--editor-border)';
                 e.currentTarget.style.transform = 'translateY(0)';
+              }}
+              onMouseDown={(e) => {
+                e.currentTarget.style.transform = 'scale(0.98)';
+              }}
+              onMouseUp={(e) => {
+                e.currentTarget.style.transform = 'translateY(-1px)';
               }}
             >
               <div
@@ -306,12 +306,14 @@ export function WelcomeScreen({
                 <action.icon size={18} color={action.color} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 500, lineHeight: 1.3 }}>{action.label}</div>
-                <div style={{ fontSize: 11, color: 'var(--editor-text-muted)', marginTop: 2 }}>
+                <div style={{ fontWeight: 500, lineHeight: 1.3, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                  {action.label}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--editor-text-muted)', marginTop: 2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
                   {action.desc}
                 </div>
               </div>
-              {action.shortcut && (
+              {action.shortcut ? (
                 <span
                   style={{
                     color: 'var(--editor-text-muted)',
@@ -325,135 +327,25 @@ export function WelcomeScreen({
                 >
                   {action.shortcut}
                 </span>
-              )}
+              ) : isExpandBtn ? (
+                showMoreFormats ? <ChevronUp size={16} color="var(--editor-text-muted)" /> : <ChevronDown size={16} color="var(--editor-text-muted)" />
+              ) : null}
             </button>
-          ))}
-        </div>
-
-        {/* 右栏：工作区操作 + 更多格式入口 */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              color: 'var(--editor-text-muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              paddingLeft: 4,
-            }}
-          >
-            工作区与更多
-          </div>
-
-          {workspaceActions.map((action, i) => (
-            <button
-              key={i}
-              className="nb-btn-card"
-              onClick={action.onClick ?? (() => {})}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                padding: '10px 14px',
-                border: '1px solid var(--editor-border)',
-                borderRadius: 8,
-                background: 'var(--editor-surface)',
-                cursor: 'pointer',
-                fontSize: 13,
-                color: 'var(--editor-text)',
-                boxShadow: 'var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.04))',
-                transition: 'all var(--transition-fast, 150ms ease)',
-                textAlign: 'left',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--toolbar-hover)';
-                e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'var(--editor-surface)';
-                e.currentTarget.style.borderColor = 'var(--editor-border)';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
-            >
-              <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 6,
-                  background: 'var(--editor-bg)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                }}
-              >
-                <action.icon size={18} color={action.color} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 500, lineHeight: 1.3 }}>{action.label}</div>
-                <div style={{ fontSize: 11, color: 'var(--editor-text-muted)', marginTop: 2 }}>
-                  {action.desc}
-                </div>
-              </div>
-              {action.shortcut && (
-                <span
-                  style={{
-                    color: 'var(--editor-text-muted)',
-                    fontSize: 11,
-                    padding: '2px 6px',
-                    background: 'var(--editor-bg)',
-                    borderRadius: 4,
-                    border: '1px solid var(--editor-border)',
-                    flexShrink: 0,
-                  }}
-                >
-                  {action.shortcut}
-                </span>
-              )}
-            </button>
-          ))}
-
-          {/* 更多格式折叠/展开卡片 */}
-          <button
-            type="button"
-            onClick={() => setShowMoreFormats((prev) => !prev)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '10px 14px',
-              border: '1px dashed var(--editor-border)',
-              borderRadius: 8,
-              background: showMoreFormats ? 'var(--toolbar-hover)' : 'var(--editor-surface)',
-              cursor: 'pointer',
-              fontSize: 13,
-              color: 'var(--editor-text)',
-              transition: 'all var(--transition-fast, 150ms ease)',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <Sparkles size={16} color="var(--editor-accent, #3b82f6)" />
-              <span style={{ fontWeight: 500 }}>
-                {showMoreFormats ? '收起其他格式' : '更多格式新建'}
-              </span>
-            </div>
-            {showMoreFormats ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </button>
-        </div>
+          );
+        })}
       </div>
 
       {/* 展开的更多格式卡片网格 */}
       {showMoreFormats && (
         <div
           style={{
-            marginTop: 18,
+            marginTop: 14,
             width: '100%',
-            maxWidth: 780,
+            maxWidth: 840,
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
             gap: 10,
-            padding: 16,
+            padding: 14,
             background: 'var(--editor-surface)',
             border: '1px solid var(--editor-border)',
             borderRadius: 10,
@@ -477,7 +369,7 @@ export function WelcomeScreen({
                 fontSize: 12,
                 color: 'var(--editor-text)',
                 textAlign: 'left',
-                transition: 'all 0.12s ease',
+                transition: 'all var(--transition-fast, 150ms ease)',
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = 'var(--toolbar-hover)';
@@ -488,6 +380,12 @@ export function WelcomeScreen({
                 e.currentTarget.style.background = 'var(--editor-bg)';
                 e.currentTarget.style.borderColor = 'var(--editor-border)';
                 e.currentTarget.style.transform = 'translateY(0)';
+              }}
+              onMouseDown={(e) => {
+                e.currentTarget.style.transform = 'scale(0.98)';
+              }}
+              onMouseUp={(e) => {
+                e.currentTarget.style.transform = 'translateY(-1px)';
               }}
             >
               <fmt.icon size={16} color={fmt.color} style={{ flexShrink: 0 }} />

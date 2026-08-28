@@ -1214,7 +1214,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                   <ShortcutItem keyCombo="Ctrl + O" label="打开文件" />
                   <ShortcutItem keyCombo="Ctrl + Shift + O" label="打开文件夹" />
-                  <ShortcutItem keyCombo="Ctrl + N" label="新建 Markdown 笔记" />
                   <ShortcutItem keyCombo="Ctrl + Shift + N" label="新建空窗口" />
                   <ShortcutItem keyCombo="Ctrl + S" label="保存当前文档" />
                   <ShortcutItem keyCombo="Ctrl + Shift + S" label="文档另存为" />

@@ -16,7 +16,6 @@ import { initWindow, startEventListeners, stopEventListeners, newEmptyWindow } f
 import {
   openFileDialog,
   openFolderDialog,
-  newMarkdown,
 } from './features/welcome/welcomeActions';
 import { saveAs } from './features/editor-code/orchestration/saveDocument';
 import { startStagingManager } from './features/staging/stagingManager';
@@ -123,15 +122,6 @@ export default function App() {
       description: '打开文件夹',
     });
 
-    const unregNewMarkdown = registerShortcut({
-      key: 'Ctrl+N',
-      action: () => {
-        newMarkdown();
-      },
-      scope: 'global',
-      description: '新建 Markdown',
-    });
-
     return () => {
       disposed = true;
       stopAutoUpdate();
@@ -146,7 +136,6 @@ export default function App() {
       unregNewWindow();
       unregOpenFile();
       unregOpenFolder();
-      unregNewMarkdown();
     };
   }, [init, initAutoUpdateTimer]);
 
