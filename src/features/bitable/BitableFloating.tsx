@@ -31,12 +31,18 @@ export function getAnchorRect(el: Element | null | undefined): AnchorRect | null
 export function DragGhost({
   x,
   y,
-  width,
+  minWidth,
+  maxWidth = 380,
   children,
 }: {
   x: number;
   y: number;
-  width?: number;
+  /**
+   * 幽灵的最小宽度：拖列时传被拖列的实测宽度，
+   * 视觉上等同于「整列被拎起来」，窄列时又能被内容撑开而不截断文案。
+   */
+  minWidth?: number;
+  maxWidth?: number;
   children: React.ReactNode;
 }) {
   return createPortal(
@@ -45,7 +51,11 @@ export function DragGhost({
         position: 'fixed',
         top: y,
         left: x,
-        width,
+        // 宽度取「内容自然宽度」与 minWidth 的较大值，再受 maxWidth 约束：
+        // 只写死 width 会让窄列的落点提示被省略号截断，看不出移到第几列
+        width: 'max-content',
+        minWidth,
+        maxWidth,
         zIndex: 100001,
         padding: '4px 10px',
         borderRadius: 6,
@@ -57,7 +67,6 @@ export function DragGhost({
         pointerEvents: 'none',
         opacity: 0.96,
         boxShadow: '0 6px 18px rgba(0,0,0,0.22)',
-        maxWidth: 240,
         overflow: 'hidden',
         textOverflow: 'ellipsis',
         whiteSpace: 'nowrap',

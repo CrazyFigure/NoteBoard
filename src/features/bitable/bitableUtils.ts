@@ -443,6 +443,112 @@ export function compareRowsBySortRules(
   return 0;
 }
 
+export interface FlatTreeNode {
+  row: BitableRow;
+  depth: number;
+}
+
+/**
+ * 把树形行展开为「忽略折叠」的完整扁平序列
+ * 与表格渲染用的 flatTreeRows 不同：拖拽换序必须基于完整序列计算，
+ * 否则折叠隐藏的子行在重排后会丢失或被截断在错误的父级下。
+ */
+export function flattenTreeRowsFull(rows: BitableRow[]): FlatTreeNode[] {
+  const childrenOf = new Map<string | undefined, BitableRow[]>();
+  rows.forEach((row) => {
+    const list = childrenOf.get(row.parentId) || [];
+    list.push(row);
+    childrenOf.set(row.parentId, list);
+  });
+
+  const result: FlatTreeNode[] = [];
+  const walk = (parentId: string | undefined, depth: number) => {
+    (childrenOf.get(parentId) || []).forEach((row) => {
+      result.push({ row, depth });
+      walk(row.id, depth + 1);
+    });
+  };
+  walk(undefined, 0);
+  return result;
+}
+
+/**
+ * 收集某行的全部后代行 ID（不含自身）
+ * 用于拦截「把父行拖进自己的子树」这类会破坏树结构的非法落点。
+ */
+export function collectDescendantRowIds(rows: BitableRow[], rowId: string): Set<string> {
+  const childrenOf = new Map<string | undefined, BitableRow[]>();
+  rows.forEach((row) => {
+    const list = childrenOf.get(row.parentId) || [];
+    list.push(row);
+    childrenOf.set(row.parentId, list);
+  });
+
+  const result = new Set<string>();
+  const stack = [...(childrenOf.get(rowId) || [])];
+  while (stack.length) {
+    const node = stack.pop()!;
+    if (result.has(node.id)) continue;
+    result.add(node.id);
+    (childrenOf.get(node.id) || []).forEach((child) => stack.push(child));
+  }
+  return result;
+}
+
+/**
+ * 在树形行中移动某一行（连同整棵子树）到指定落点
+ *
+ * @param beforeRowId 落点参照行：被拖行插入到它之前；null 表示追加到末尾
+ * @param parentId 被拖行的新父级，由调用方按落点参照行的父级给出
+ *
+ * 数组顺序即兄弟顺序：重排扁平序列后原样写回即可，无需额外维护顺序字段。
+ * 落点若落在自身子树内部（会形成环）则原样返回，避免数据结构损坏。
+ */
+export function moveTreeRow(
+  rows: BitableRow[],
+  draggedRowId: string,
+  beforeRowId: string | null,
+  parentId?: string,
+): BitableRow[] {
+  const flat = flattenTreeRowsFull(rows);
+  const fromIdx = flat.findIndex((n) => n.row.id === draggedRowId);
+  if (fromIdx < 0) return rows;
+
+  // 紧随其后且层级更深的连续行即整棵子树
+  const depth = flat[fromIdx].depth;
+  let endIdx = fromIdx + 1;
+  while (endIdx < flat.length && flat[endIdx].depth > depth) endIdx += 1;
+
+  const moving = flat.slice(fromIdx, endIdx);
+  // 落点落在自身子树内部会让父行成为自己的后代，直接判定为非法
+  if (beforeRowId && moving.some((n) => n.row.id === beforeRowId)) return rows;
+  if (parentId && moving.some((n) => n.row.id === parentId)) return rows;
+
+  const rest = [...flat.slice(0, fromIdx), ...flat.slice(endIdx)];
+  let insertIdx = beforeRowId ? rest.findIndex((n) => n.row.id === beforeRowId) : -1;
+  if (insertIdx < 0) insertIdx = rest.length;
+
+  const nextFlat = [...rest.slice(0, insertIdx), ...moving, ...rest.slice(insertIdx)];
+  return nextFlat.map((node) => (node.row.id === draggedRowId ? { ...node.row, parentId } : node.row));
+}
+
+/**
+ * 把标签选项从 fromIdx 移动到 toIdx（删除后的插入索引语义）
+ * 看板泳道换序即等价于调整分组列标签选项的顺序。
+ */
+export function moveOptionByIndex(
+  options: SelectOption[],
+  fromIdx: number,
+  toIdx: number,
+): SelectOption[] {
+  if (fromIdx < 0 || fromIdx >= options.length) return options;
+  const next = [...options];
+  const [moved] = next.splice(fromIdx, 1);
+  const target = Math.max(0, Math.min(next.length, toIdx));
+  next.splice(target, 0, moved);
+  return next;
+}
+
 /**
  * 获取某字段类型的专有排序方向文案
  * 不同字段类型用不同隐喻（A-Z、0-9、日期先后等）。

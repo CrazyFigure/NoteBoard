@@ -21,10 +21,14 @@ import {
   createId,
   formatCellValue,
   getSortDirectionLabels,
+  collectDescendantRowIds,
   groupFlatTreeRows,
+  isSlotNoop,
   parseClipboardMatrix,
+  previewLongText,
   resolveLongTextConfig,
   slotToFinalPosition,
+  slotToSpliceIndex,
 } from './bitableUtils';
 import { showToast } from '../../stores/toastStore';
 import {
@@ -94,6 +98,11 @@ interface GridViewProps {
   onClearColumn?: (colId: string) => void;
   onMoveColumn?: (colId: string, direction: 'left' | 'right') => void;
   onReorderColumns?: (fromIndex: number, toIndex: number) => void;
+  /**
+   * 拖拽行头换序：把 draggedRowId 对应的行（连同子树）插到 beforeRowId 之前
+   * beforeRowId 为 null 表示追加到末尾；parentId 为被拖行的新父级。
+   */
+  onMoveRow?: (draggedRowId: string, beforeRowId: string | null, parentId?: string) => void;
 }
 
 const ALL_FIELD_TYPES: BitableFieldType[] = [
@@ -121,6 +130,18 @@ interface FlatTreeRow {
   hasChildren: boolean;
   isCollapsed: boolean;
   rowNumber: number;
+}
+
+/**
+ * 可拖拽的行槽位：拖拽换序基于「可见数据行」序列计算
+ * groupStart / groupEnd 为该行所属分组在序列中的区间 [groupStart, groupEnd)，
+ * 用于把落点夹在本组内——跨组拖动等价于改写分组字段的值，不属于「换顺序」。
+ */
+interface RowSlot {
+  rowId: string;
+  parentId?: string;
+  groupStart: number;
+  groupEnd: number;
 }
 
 /** 表格视图渲染项：分组标题行或普通数据行 */
@@ -272,6 +293,7 @@ export function BitableGridView({
   onClearColumn,
   onMoveColumn,
   onReorderColumns,
+  onMoveRow,
 }: GridViewProps) {
   // 当前打开列头菜单的列 ID（菜单改由 Portal 浮层渲染，需同时记录锚点与触发元素）
   const [columnMenu, setColumnMenu] = useState<{
@@ -415,6 +437,94 @@ export function BitableGridView({
       return next;
     });
   };
+
+  // 是否处于分组视图：决定落点提示文案与跨组夹取行为
+  const isGrouped = Boolean(groupByColumnId && groupColumn);
+
+  // 行 DOM 节点表：用于测量行位置，支撑「拖拽行头换序」的落点计算
+  const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
+
+  // 行 ID → 行数据：沿 parentId 链上溯即可判断落点是否落进自身子树
+  const rowById = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
+
+  /**
+   * 可见数据行槽位序列（排除分组标题行）
+   * 两趟构造：先按分组划出连续区间，再把区间回填到每一行上。
+   */
+  const rowSlots = useMemo<RowSlot[]>(() => {
+    const raw: Array<{ rowId: string; parentId?: string; groupKey: string | null }> = [];
+    let currentKey: string | null = null;
+    gridItems.forEach((item) => {
+      if (item.type === 'group') {
+        currentKey = item.key;
+        return;
+      }
+      raw.push({
+        rowId: item.treeNode.row.id,
+        parentId: item.treeNode.row.parentId,
+        groupKey: currentKey,
+      });
+    });
+
+    const ranges = new Map<string | null, { start: number; end: number }>();
+    raw.forEach((slot, idx) => {
+      const range = ranges.get(slot.groupKey);
+      if (!range) ranges.set(slot.groupKey, { start: idx, end: idx + 1 });
+      else range.end = idx + 1;
+    });
+
+    return raw.map((slot) => {
+      const range = ranges.get(slot.groupKey)!;
+      return { rowId: slot.rowId, parentId: slot.parentId, groupStart: range.start, groupEnd: range.end };
+    });
+  }, [gridItems]);
+
+  /** 行 ID → 槽位索引，供渲染层按行取用拖拽状态 */
+  const rowSlotIndex = useMemo(
+    () => new Map(rowSlots.map((slot, idx) => [slot.rowId, idx])),
+    [rowSlots],
+  );
+
+  /**
+   * 把拖拽槽位换算为落点描述；返回 null 表示该落点无效（不画指示线、不提交）
+   *
+   * 两个关键点：
+   * 1) 落库时被拖行是「连整棵子树一起搬走」的，因此落点参照行必须跳过它自己的后代，
+   *    否则「把父行拖到紧邻自己子树的后面」会被算成一次有效移动，实际顺序却毫无变化；
+   * 2) 新父级不能是被拖行自身或它的后代，否则父行会被塞进自己的子树形成环。
+   *
+   * @param toIdx 「移除被拖行之后」的插入索引
+   */
+  const resolveRowDropTarget = useCallback(
+    (fromIdx: number, toIdx: number) => {
+      const dragged = rowSlots[fromIdx];
+      if (!dragged) return null;
+      const descendants = collectDescendantRowIds(rows, dragged.rowId);
+      const rest = rowSlots.filter((_, i) => i !== fromIdx);
+
+      // 跳过自身子树：这些行会跟着一起走，不能作为落点参照
+      let cursor = toIdx;
+      while (cursor < rest.length && descendants.has(rest[cursor].rowId)) cursor += 1;
+      const before = rest[cursor] ?? null;
+
+      const restWithoutSubtree = rest.filter((slot) => !descendants.has(slot.rowId));
+      const insertIdx = before
+        ? restWithoutSubtree.findIndex((slot) => slot.rowId === before.rowId)
+        : restWithoutSubtree.length;
+
+      // 插入位置与子树原起点重合 → 顺序不变，按无效落点处理，避免产生空撤销记录
+      if (insertIdx === fromIdx) return null;
+
+      // 追加到末尾时沿用末行的父级，保证落点与视觉位置一致
+      const parentId = before
+        ? before.parentId
+        : restWithoutSubtree[restWithoutSubtree.length - 1]?.parentId;
+      if (parentId && (parentId === dragged.rowId || descendants.has(parentId))) return null;
+
+      return { beforeRowId: before ? before.rowId : null, parentId, insertIdx };
+    },
+    [rowSlots, rows],
+  );
 
   // 3. 剪贴板读写：统一通过隐藏代理输入框接收原生 copy / cut / paste 事件
   // 直接调用 navigator.clipboard.readText() 会触发浏览器的「是否允许粘贴」权限弹窗，
@@ -628,6 +738,91 @@ export function BitableGridView({
       },
     });
 
+  // 6. 拖拽行头换序
+  // 前置条件：视图未设置排序规则——一旦排序生效，行序由排序结果决定，手动顺序会被立刻覆盖。
+  // 无分组时整表可换序；有分组时落点被夹在本组内，跨组拖拽不改变分组归属。
+  const rowDragEnabled = Boolean(onMoveRow) && sortRules.length === 0;
+
+  const {
+    drag: rowDrag,
+    startDrag: startRowDrag,
+    grabOffset: rowGrabOffset,
+    consumeDraggedFlag: consumeRowDraggedFlag,
+  } = usePointerReorder<RowSlot>({
+    items: rowSlots,
+    getElement: (slot) => rowRefs.current.get(slot.rowId),
+    axis: 'y',
+    disabled: !rowDragEnabled,
+    // 把落点夹在本组范围内，越界时贴到组边界
+    clampSlot: (insertAt, fromIdx) => {
+      const slot = rowSlots[fromIdx];
+      if (!slot) return insertAt;
+      return Math.max(slot.groupStart, Math.min(insertAt, slot.groupEnd));
+    },
+    isSlotValid: (insertAt, fromIdx) =>
+      resolveRowDropTarget(fromIdx, slotToSpliceIndex(insertAt, fromIdx)) !== null,
+    onReorder: (fromIdx, toIdx) => {
+      const draggedId = rowSlots[fromIdx]?.rowId;
+      const target = resolveRowDropTarget(fromIdx, toIdx);
+      if (!draggedId || !target || !onMoveRow) return;
+      onMoveRow(draggedId, target.beforeRowId, target.parentId);
+    },
+  });
+
+  /**
+   * 行落点指示线：返回值已按「顶边 / 底边」命名，避免与列拖拽的左右语义混淆
+   * 分组视图下不使用 Hook 的通用实现：落点被夹到本组末尾时，通用实现会把
+   * insertAt 当成「下一组首行的上边线」，指示线因此跑到下一组去。
+   */
+  const getRowIndicator = useCallback(
+    (idx: number): 'top' | 'bottom' | null => {
+      if (!rowDrag || !rowDrag.valid) return null;
+      const { fromIdx, insertAt } = rowDrag;
+      if (isSlotNoop(insertAt, fromIdx)) return null;
+      if (insertAt === idx) return 'top';
+      const slot = rowSlots[fromIdx];
+      if (!slot) return null;
+      // 组内末尾与全表末尾都落在「最后一行之下」，需在本行画底边线
+      if (insertAt === slot.groupEnd && idx === slot.groupEnd - 1) return 'bottom';
+      if (insertAt === rowSlots.length && idx === rowSlots.length - 1) return 'bottom';
+      return null;
+    },
+    [rowDrag, rowSlots],
+  );
+
+  /** 行拖拽幽灵展示的主标题列：优先单行文本，其次多行文本，都没有则退回第一列 */
+  const rowTitleCol = useMemo(
+    () => columns.find((c) => c.type === 'text') || columns.find((c) => c.type === 'longText') || columns[0],
+    [columns],
+  );
+
+  const resolveRowTitle = useCallback(
+    (rowId: string) => {
+      const row = rowById.get(rowId);
+      if (!row || !rowTitleCol) return '未命名记录';
+      const val = row[rowTitleCol.id];
+      if (val === undefined || val === null || String(val).trim() === '') return '未命名记录';
+      if (rowTitleCol.type === 'longText') {
+        return previewLongText(String(val), resolveLongTextConfig(rowTitleCol)) || '未命名记录';
+      }
+      return String(val);
+    },
+    [rowById, rowTitleCol],
+  );
+
+  /**
+   * 行落点的最终序号（从 1 起）
+   * 以「剔除自身子树后的可见序列」为基准计数，分组视图下再折算为组内序号，
+   * 与用户「在这一组里挪到第几位」的心理预期一致。
+   */
+  const rowDropPosition = useMemo(() => {
+    if (!rowDrag) return 0;
+    const target = resolveRowDropTarget(rowDrag.fromIdx, slotToSpliceIndex(rowDrag.insertAt, rowDrag.fromIdx));
+    if (!target) return 0;
+    const offset = rowSlots[rowDrag.fromIdx]?.groupStart ?? 0;
+    return target.insertIdx - offset + 1;
+  }, [rowDrag, rowSlots, resolveRowDropTarget]);
+
   /**
    * 是否存在「全显示」模式的多行文本列
    * 存在时行高必须交给内容决定：若继续锁死 38px，超出的内容会被裁掉，
@@ -703,8 +898,8 @@ export function BitableGridView({
         flexDirection: 'column',
         overflow: 'auto',
         background: 'var(--editor-bg, #ffffff)',
-        // 拖拽换列期间禁用文本选中，避免拖出蓝色选区
-        userSelect: colDrag ? 'none' : undefined,
+        // 拖拽换列 / 换行期间禁用文本选中，避免拖出蓝色选区
+        userSelect: colDrag || rowDrag ? 'none' : undefined,
       }}
       onClick={(e) => {
         // 点击空白处取消菜单并把焦点交还剪贴板代理
@@ -1460,29 +1655,60 @@ export function BitableGridView({
 
             const { row, depth, hasChildren, isCollapsed, rowNumber } = item.treeNode;
             const isRowSelected = selection.type === 'row' && selection.rowId === row.id;
+            const rowSlotIdx = rowSlotIndex.get(row.id) ?? -1;
+            const isRowDragging = rowDrag?.fromIdx === rowSlotIdx;
+
+            // 落点指示线：槽位落在本行上方画顶边线，落到末行之后画底边线
+            const rowIndicator = rowSlotIdx >= 0 ? getRowIndicator(rowSlotIdx) : null;
+            // 把指示线画在每个单元格上而不是 tr 上：tr 的 box-shadow 在浏览器中渲染不可靠
+            // （容易被 td 背景盖住、且部分浏览器直接忽略 tr 的 box-shadow）
+            const rowDropShadow =
+              rowIndicator === 'top'
+                ? 'inset 0 2px 0 #3b82f6'
+                : rowIndicator === 'bottom'
+                  ? 'inset 0 -2px 0 #3b82f6'
+                  : undefined;
 
             return (
               <tr
                 key={row.id}
+                ref={(el) => {
+                  if (el) rowRefs.current.set(row.id, el);
+                  else rowRefs.current.delete(row.id);
+                }}
                 style={{
                   // 存在全显示多行文本列时，height 退化为最小高度，实际行高由内容撑开
                   height: hasFullLongTextColumn ? undefined : 38,
                   minHeight: 38,
                   background: isRowSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--editor-surface, #ffffff)',
                   transition: 'background var(--transition-fast)',
+                  // 被拖起的行整体压暗，明确「哪一行正在被搬运」
+                  opacity: isRowDragging ? 0.45 : 1,
                 }}
               >
-                {/* 序号列单元格 (点击选中整行，悬停/选中弹出快捷操作) */}
+                {/* 序号列单元格 (点击选中整行，拖拽换行，双击展开详情) */}
                 <td
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    if (rowSlotIdx >= 0) startRowDrag(e, rowSlotIdx);
+                  }}
                   onClick={(e) => {
                     e.stopPropagation();
+                    // 拖拽结束紧跟的 click 不应再改变选区
+                    if (consumeRowDraggedFlag()) return;
                     setSelection({ type: 'row', rowId: row.id });
                   }}
                   onDoubleClick={(e) => {
                     e.stopPropagation();
                     if (onOpenRecord) onOpenRecord(row.id);
                   }}
-                  title={onOpenRecord ? '单击选中整行 · 双击展开记录详情' : '单击选中整行'}
+                  title={
+                    !rowDragEnabled
+                      ? '存在排序规则时行序由排序决定，无法手动拖动'
+                      : isGrouped
+                        ? '拖拽可在分组内换行 · 单击选中整行 · 双击展开详情'
+                        : '拖拽行头可换序 · 单击选中整行 · 双击展开详情'
+                  }
                   style={{
                     position: 'sticky',
                     left: 0,
@@ -1494,7 +1720,9 @@ export function BitableGridView({
                     color: 'var(--editor-text-muted, #94a3b8)',
                     textAlign: 'center',
                     padding: 0,
-                    cursor: 'pointer',
+                    cursor: rowDrag ? 'grabbing' : rowDragEnabled ? 'grab' : 'pointer',
+                    // sticky 单元格有自己的背景色，指示线必须直接画在它上面，否则会被自身背景盖掉
+                    boxShadow: rowDropShadow,
                   }}
                 >
                   <div
@@ -1510,7 +1738,9 @@ export function BitableGridView({
                     <span>{rowNumber}</span>
 
                     {/* 行快捷操作 (添加子任务、向上插入、向下插入、删除) */}
+                    {/* data-no-drag：这些按钮位于行头内部，但按下时不应触发拖拽换行 */}
                     <div
+                      data-no-drag
                       style={{
                         display: isRowSelected ? 'flex' : 'none',
                         position: 'absolute',
@@ -1640,6 +1870,8 @@ export function BitableGridView({
                           : 'inherit',
                         outline: isCellSelected ? '2px solid var(--editor-accent, #3b82f6)' : 'none',
                         outlineOffset: -2,
+                        // 落点指示线画在数据单元格上：tr 的 box-shadow 不可靠，必须逐格画
+                        boxShadow: rowDropShadow,
                       }}
                     >
                       <div
@@ -1704,7 +1936,13 @@ export function BitableGridView({
                 })}
 
                 {/* 尾部空白 */}
-                <td style={{ borderBottom: '1px solid var(--editor-border, #f1f5f9)' }} />
+                <td
+                  style={{
+                    borderBottom: '1px solid var(--editor-border, #f1f5f9)',
+                    // 落点指示线必须延伸到行尾的留白格，否则右侧看不到落点
+                    boxShadow: rowDropShadow,
+                  }}
+                />
               </tr>
             );
           })}
@@ -1778,10 +2016,20 @@ export function BitableGridView({
         <DragGhost
           x={colDrag.x - grabOffset.x}
           y={colDrag.y - grabOffset.y + 4}
-          width={colDragWidth}
+          minWidth={colDragWidth}
         >
           {columns[colDrag.fromIdx]?.name ?? ''}
           {` · 移动到第 ${slotToFinalPosition(colDrag.insertAt, colDrag.fromIdx)} 列`}
+        </DragGhost>
+      )}
+
+      {/* 行头拖拽时的跟随幽灵：提示落在本组/本表的第几行 */}
+      {rowDrag && (
+        <DragGhost x={rowDrag.x - rowGrabOffset.x} y={rowDrag.y - rowGrabOffset.y + 4}>
+          {resolveRowTitle(rowSlots[rowDrag.fromIdx]?.rowId ?? '')}
+          {rowDrag.valid
+            ? ` · 移动到${isGrouped ? '组内' : ''}第 ${rowDropPosition} 行`
+            : ' · 此处不可放置'}
         </DragGhost>
       )}
     </div>
