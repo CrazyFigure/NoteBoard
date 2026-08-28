@@ -86,6 +86,13 @@ interface FloatingPanelProps {
 const VIEWPORT_PADDING = 8;
 const MIN_VISIBLE_HEIGHT = 160;
 
+// 浮层栈：按打开顺序记录当前所有 FloatingPanel 实例
+// 背景：面板类浮层（如排序面板）内部还会再开浮层（如字段选择下拉），
+// 两者都经 Portal 挂在 body 下、DOM 互不包含。外层若只判断“点击是否在自己子树内”，
+// 会把点击内层浮层误判为外部点击而关闭——表现为“排序字段一改整个弹窗就退出”。
+// 借助打开顺序栈即可识别：栈中位于自己之后打开的面板，都是自己派生的更上层浮层。
+const panelStack: Array<{ current: HTMLDivElement | null }> = [];
+
 export function FloatingPanel({
   anchor,
   width = 240,
@@ -97,6 +104,15 @@ export function FloatingPanel({
 }: FloatingPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [layout, setLayout] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
+
+  // 注册到浮层栈，卸载时移除：栈顺序即打开顺序，是嵌套归属判断的依据
+  useEffect(() => {
+    panelStack.push(panelRef);
+    return () => {
+      const idx = panelStack.indexOf(panelRef);
+      if (idx >= 0) panelStack.splice(idx, 1);
+    };
+  }, []);
 
   // 依据锚点与实测高度计算定位：优先向下展开，下方空间不足则向上翻转
   useLayoutEffect(() => {
@@ -128,22 +144,40 @@ export function FloatingPanel({
 
   // 外部点击、Esc、外部滚动与窗口尺寸变化时关闭浮层
   useEffect(() => {
+    // target 是否位于本面板或本面板派生的更上层浮层内。
+    // 子孙浮层经 Portal 挂在 body 下、不在本面板 DOM 子树内，必须靠浮层栈识别归属，
+    // 否则点击内层下拉项会被外层面板误判为外部点击（这正是“排序面板一改就退出”的根因）。
+    const isInsideSelfOrDescendant = (target: Node): boolean => {
+      if (panelRef.current?.contains(target)) return true;
+      const selfIndex = panelStack.indexOf(panelRef);
+      // 栈中位于自己之后打开的面板 = 自己的子孙浮层（更上层）
+      for (let i = selfIndex + 1; i < panelStack.length; i++) {
+        const el = panelStack[i].current;
+        if (el && el.contains(target)) return true;
+      }
+      return false;
+    };
+
     const handlePointerDown = (e: MouseEvent) => {
       const target = e.target as Node | null;
       if (!target) return;
-      if (panelRef.current?.contains(target)) return;
+      if (isInsideSelfOrDescendant(target)) return;
       if (trigger && trigger.contains(target)) return;
       onClose();
     };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        // 仅栈顶浮层响应 Esc：嵌套场景下逐层退出，而不是一次把内外层全部关掉。
+        // document 上同节点的监听按注册顺序执行，外层先执行时让位给栈顶即可。
+        if (panelStack[panelStack.length - 1] !== panelRef) return;
         e.stopPropagation();
         onClose();
       }
     };
     const handleScroll = (e: Event) => {
-      // 浮层内部的滚动不关闭，其余任何祖先滚动都会让 fixed 定位失效，直接关闭
-      if (panelRef.current && e.target instanceof Node && panelRef.current.contains(e.target)) return;
+      // 自身或更上层浮层内部的滚动不关闭（更上层浮层滚动时锚点相对自己不变，无需关闭）；
+      // 其余任何祖先滚动都会让 fixed 定位失效，直接关闭
+      if (e.target instanceof Node && isInsideSelfOrDescendant(e.target)) return;
       onClose();
     };
 
