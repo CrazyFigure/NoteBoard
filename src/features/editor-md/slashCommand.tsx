@@ -686,6 +686,11 @@ function SlashMenu({
   const [subSelectedIndex, setSubSelectedIndex] = useState(0);
   // 二级子菜单是否因右侧空间不足而向左翻转
   const [flipSubmenuLeft, setFlipSubmenuLeft] = useState(false);
+  // 二级子菜单的垂直布局：top 对齐到当前选中/悬展的一级项，maxHeight 限制以不撑出视口
+  const [submenuLayout, setSubmenuLayout] = useState<{ top: number; maxHeight: number }>({
+    top: 0,
+    maxHeight: 370,
+  });
 
   const containerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -702,13 +707,34 @@ function SlashMenu({
   // 获取当前悬展的分组对象
   const activeGroup = ROOT_GROUPS.find((g) => g.id === hoveredGroupId);
 
-  // 检测二级子菜单是否需要向左侧展开
+  // 重算二级子菜单的垂直位置与最大高度：让子菜单顶部对齐到当前选中/悬展的一级项，
+  // 同时根据选中项之下到视口底部（避开状态栏）的剩余空间限制 maxHeight，
+  // 避免选中项靠下时子菜单被裁剪或挤出底部。水平方向顺便判断是否需要向左翻转。
   useEffect(() => {
-    if (!containerRef.current || !activeGroup) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const spaceRight = window.innerWidth - rect.right;
-    setFlipSubmenuLeft(spaceRight < 280);
-  }, [activeGroup]);
+    if (!activeGroup || !containerRef.current) return;
+    const activeEl = itemRefs.current[selectedIndex];
+    if (!activeEl) return;
+
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const itemRect = activeEl.getBoundingClientRect();
+
+    // 水平：右侧空间不足以容纳子菜单（290 + 12 间距）则左翻
+    const spaceRight = window.innerWidth - containerRect.right;
+    setFlipSubmenuLeft(spaceRight < 290 + 12);
+
+    // 垂直：让子菜单顶部与选中项顶部对齐，最小不低于容器顶部
+    const offsetTop = Math.max(0, Math.round(itemRect.top - containerRect.top));
+
+    // 下方的可用空间 = 视口底部 - 状态栏 - 边距 - 选中项在视口中的 top
+    const viewportHeight = window.innerHeight;
+    const statusBarHeight = 36;
+    const bottomPadding = 8;
+    const spaceBelow = viewportHeight - statusBarHeight - bottomPadding - itemRect.top;
+    // 至少保留 180px 高度防止只剩一截窄条；上限仍维持原 370
+    const maxHeight = Math.max(180, Math.min(370, Math.floor(spaceBelow)));
+
+    setSubmenuLayout({ top: offsetTop, maxHeight });
+  }, [activeGroup, selectedIndex]);
 
   // query 变化时重置
   useEffect(() => {
@@ -1064,12 +1090,12 @@ function SlashMenu({
           onMouseEnter={() => setIsFocusInSubmenu(true)}
           style={{
             position: 'absolute',
-            top: 0,
+            top: submenuLayout.top,
             ...(flipSubmenuLeft
               ? { right: 'calc(100% + 6px)' }
               : { left: 'calc(100% + 6px)' }),
             width: 290,
-            maxHeight: 370,
+            maxHeight: submenuLayout.maxHeight,
             background: 'var(--editor-surface, #ffffff)',
             border: '1px solid var(--editor-border, rgba(0,0,0,0.12))',
             borderRadius: 8,
@@ -1104,7 +1130,8 @@ function SlashMenu({
             style={{
               overflowY: 'auto',
               padding: '4px',
-              maxHeight: 330,
+              flex: 1,
+              minHeight: 0,
             }}
           >
             {activeGroup.children.map((subLeaf, subIdx) => {
