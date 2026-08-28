@@ -40,6 +40,7 @@ import {
   Workflow,
   GitMerge,
   Archive,
+  Table2,
 } from 'lucide-react';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
@@ -49,6 +50,7 @@ import {
   newMarkdown,
   newMindmap,
   newDrawio,
+  newBitable,
   newBoard,
   newMermaid,
   newPlantUml,
@@ -881,6 +883,24 @@ export function TabBar() {
                   minWidth: 175,
                 }}
               >
+                {/* 新建多维表格 */}
+                <button
+                  type="button"
+                  style={getMenuItemStyle(false)}
+                  onClick={() => {
+                    setNewMenuPos(null);
+                    setShowMoreSubMenu(false);
+                    newBitable();
+                  }}
+                  onMouseEnter={handleMenuItemMouseEnter}
+                  onMouseLeave={handleMenuItemMouseLeave}
+                  onMouseDown={handleMenuItemMouseDown}
+                  onMouseUp={handleMenuItemMouseUp}
+                >
+                  <Table2 size={13} color="#2563eb" />
+                  <span>飞书多维表格 (.bitable)</span>
+                </button>
+
                 {/* 新建 Draw.io 架构图 */}
                 <button
                   type="button"

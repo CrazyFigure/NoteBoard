@@ -25,6 +25,7 @@ import { searchReplaceExtension } from '../searchReplace';
 import { MathInline, MathBlock } from '../katexExtensions';
 import { MermaidBlock } from '../mermaidExtension';
 import { PlantUmlBlock } from '../../plantuml/plantumlExtension';
+import { InfographicBlock } from '../infographicExtension';
 import { GitHubAlert } from '../alertExtension';
 import { slashSuggestion } from '../slashCommand';
 
@@ -251,6 +252,9 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // PlantUML / UML 图表
     PlantUmlBlock,
+
+    // Infographic 现代化信息图
+    InfographicBlock,
 
     // GitHub Alerts
     GitHubAlert,

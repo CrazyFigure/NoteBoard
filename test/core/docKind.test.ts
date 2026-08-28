@@ -42,6 +42,8 @@ describe('docKind 扩展名映射', () => {
       'puml',
       'plantuml',
       'uml',
+      'bitable',
+      'table',
     ];
     for (const ext of requiredExts) {
       expect(KIND_BY_EXT[ext]).toBeDefined();
@@ -53,6 +55,7 @@ describe('docKind 扩展名映射', () => {
     expect(savePolicyOf('board')).toBe('auto');
     expect(savePolicyOf('mindmap')).toBe('auto');
     expect(savePolicyOf('drawio')).toBe('auto');
+    expect(savePolicyOf('bitable')).toBe('auto');
     expect(savePolicyOf('code')).toBe('manual');
     expect(savePolicyOf('image')).toBe('manual');
     expect(savePolicyOf('unsupported')).toBe('manual');
@@ -81,6 +84,8 @@ describe('docKind 扩展名映射', () => {
     expect(kindFromPath('ideas.mindmap')).toBe<DocumentKind>('mindmap');
     expect(kindFromPath('ideas.xmind')).toBe<DocumentKind>('mindmap');
     expect(kindFromPath('arch.drawio')).toBe<DocumentKind>('drawio');
+    expect(kindFromPath('tasks.bitable')).toBe<DocumentKind>('bitable');
+    expect(kindFromPath('project.table')).toBe<DocumentKind>('bitable');
     expect(kindFromPath('photo.png')).toBe<DocumentKind>('image');
     expect(kindFromPath('animation.gif')).toBe<DocumentKind>('image');
     expect(kindFromPath('modern.webp')).toBe<DocumentKind>('image');
@@ -100,6 +105,7 @@ describe('docKind 扩展名映射', () => {
     expect(languageFromPath('arch.puml')).toBe('plantuml');
     expect(languageFromPath('arch.plantuml')).toBe('plantuml');
     expect(languageFromPath('arch.uml')).toBe('plantuml');
+    expect(languageFromPath('tasks.bitable')).toBe('json');
     expect(languageFromPath('notes.txt')).toBe('plaintext');
     expect(languageFromPath('unknown.xyz')).toBe('plaintext');
   });
@@ -110,6 +116,7 @@ describe('docKind 扩展名映射', () => {
     expect(isEditable('board')).toBe(true);
     expect(isEditable('mindmap')).toBe(true);
     expect(isEditable('drawio')).toBe(true);
+    expect(isEditable('bitable')).toBe(true);
     expect(isEditable('image')).toBe(false);
     expect(isEditable('unsupported')).toBe(false);
   });

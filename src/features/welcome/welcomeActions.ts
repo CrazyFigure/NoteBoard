@@ -10,6 +10,7 @@ import { useExplorerStore } from '../explorer/explorerStore';
 import { openDocument } from '../editor-code/orchestration/openDocument';
 import type { DocumentKind, LanguageId } from '../../core/ipc/types';
 import { showToast } from '../../stores/toastStore';
+import { createDefaultBitableDocument, serializeBitableDocument } from '../bitable/bitableConverter';
 
 let untitledCounter = 0;
 
@@ -29,6 +30,7 @@ export async function openFileDialog(): Promise<void> {
     filters: [
       { name: '全部文件', extensions: ['*'] },
       { name: 'Markdown', extensions: ['md', 'markdown'] },
+      { name: '多维表格', extensions: ['bitable', 'table'] },
       { name: '思维导图', extensions: ['mindmap', 'xmind', 'mm'] },
       { name: '画板与绘图', extensions: ['excalidraw', 'drawio', 'dio', 'board'] },
       { name: '图表脚本', extensions: ['mmd', 'mermaid', 'puml', 'plantuml', 'uml'] },
@@ -86,6 +88,7 @@ function createUntitledDocument(
     | 'txt'
     | 'mindmap'
     | 'drawio'
+    | 'bitable'
     | 'mermaid'
     | 'plantuml'
     | 'json'
@@ -116,6 +119,11 @@ function createUntitledDocument(
     kind = 'drawio';
     language = 'xml';
     displayName = '未命名.drawio';
+  } else if (type === 'bitable') {
+    kind = 'bitable';
+    language = 'json';
+    displayName = '未命名.bitable';
+    initialContent = serializeBitableDocument(createDefaultBitableDocument('未命名多维表格'));
   } else if (type === 'mermaid') {
     kind = 'code';
     language = 'mermaid';
@@ -196,6 +204,11 @@ export function newMindmap(): void {
 /** 新建 Draw.io 绘图文档 */
 export function newDrawio(): void {
   createUntitledDocument('drawio');
+}
+
+/** 新建多维表格文档 */
+export function newBitable(): void {
+  createUntitledDocument('bitable');
 }
 
 /** 新建 Mermaid 图表文档 */

@@ -41,6 +41,7 @@ import {
   Clock,
   RemoveFormatting,
   PlusSquare,
+  BarChart3,
 } from 'lucide-react';
 import {
   ToolbarButton,
@@ -278,6 +279,25 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
     editor.chain().focus().insertContent({
       type: 'mermaidBlock',
       attrs: { code: 'graph TD\n  A[开始] --> B[处理]\n  B --> C[完成]' },
+    }).run();
+  };
+
+  // 插入 Infographic 现代化信息图
+  const handleInsertInfographic = () => {
+    setInsertDropdownOpen(false);
+    const tmpl = `type: metric-cards\ntitle: 核心运营与业务指标\ndata:\n  - label: 日活跃用户\n    value: "128,450"\n    change: "+12.5%"\n    trend: up\n    color: blue\n  - label: 核心功能转化率\n    value: "38.6%"\n    change: "+3.2%"\n    trend: up\n    color: emerald`;
+    if (isSourceMode) {
+      const infoSnippet = `\n\`\`\`infographic\n${tmpl}\n\`\`\`\n`;
+      executeSourceAction((view) => {
+        const { from } = view.state.selection.main;
+        view.dispatch({ changes: { from, to: from, insert: infoSnippet } });
+      });
+      return;
+    }
+    if (!editor) return;
+    editor.chain().focus().insertContent({
+      type: 'infographicBlock',
+      attrs: { code: tmpl },
     }).run();
   };
 
@@ -753,6 +773,11 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
                 icon={<Workflow size={14} />}
                 label="Mermaid 流程图表"
                 onClick={handleInsertMermaid}
+              />
+              <ToolbarDropdownItem
+                icon={<BarChart3 size={14} color="#3b82f6" />}
+                label="Infographic 现代信息图"
+                onClick={handleInsertInfographic}
               />
             </>
           }
