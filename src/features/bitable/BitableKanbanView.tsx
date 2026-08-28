@@ -8,7 +8,44 @@ import type {
   SelectOption,
 } from './bitableTypes';
 import { OptionBadge } from './BitableOptions';
-import { Plus, Calendar, Star, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { BITABLE_PALETTE } from './bitableConverter';
+import { FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
+import type { ColumnOptionAction, SelectOptionColor } from './bitableTypes';
+import {
+  Plus,
+  Calendar,
+  Star,
+  SlidersHorizontal,
+  Trash2,
+  MoreHorizontal,
+  Pencil,
+  X,
+} from 'lucide-react';
+import { useState } from 'react';
+
+/** 分组菜单项的统一样式 */
+const MENU_ITEM_STYLE: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '6px 8px',
+  border: 'none',
+  background: 'transparent',
+  cursor: 'pointer',
+  fontSize: 12,
+  lineHeight: 1.2,
+  borderRadius: 4,
+  color: 'var(--editor-text, #1e293b)',
+  textAlign: 'left',
+  width: '100%',
+};
+
+// 让 lucide svg 与文字 baseline 一致、且不挤压
+const MENU_ICON_STYLE: React.CSSProperties = {
+  flexShrink: 0,
+  display: 'inline-flex',
+  alignItems: 'center',
+};
 
 interface KanbanViewProps {
   columns: BitableColumn[];
@@ -19,6 +56,10 @@ interface KanbanViewProps {
   onAddRowWithStatus: (columnId: string, optionId: string | null) => void;
   /** 新增分组泳道：为分组列追加一个标签选项 */
   onAddGroupOption?: () => void;
+  /** 分组标签的改名 / 改色 / 删除，由上层在单次提交内同步列与所有关联卡片 */
+  onManageColumnOption?: (colId: string, action: ColumnOptionAction) => void;
+  /** 点击卡片打开记录详情侧边栏 */
+  onOpenRecord?: (rowId: string) => void;
   onDeleteRow: (rowId: string) => void;
 }
 
@@ -30,8 +71,23 @@ export function BitableKanbanView({
   onUpdateRow,
   onAddRowWithStatus,
   onAddGroupOption,
+  onManageColumnOption,
+  onOpenRecord,
   onDeleteRow,
 }: KanbanViewProps) {
+  // 分组操作菜单（改名 / 改色 / 删除）与触发元素锚点
+  const [groupMenu, setGroupMenu] = useState<{
+    optionId: string;
+    anchor: AnchorRect;
+    trigger: HTMLElement;
+  } | null>(null);
+  // 分组编辑态：直接输入新名称并选色
+  const [editingGroup, setEditingGroup] = useState<{ optionId: string; label: string; color: SelectOptionColor } | null>(
+    null,
+  );
+  // 删除分组需二次确认，避免误删整组卡片
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+
   // 查找作为分组依据的列（若未指定或不存在，优先选择第一个 select 列，否则选择第一个列）
   const groupColumn =
     (groupByColumnId ? columns.find((c) => c.id === groupByColumnId) : null) ||
@@ -207,26 +263,233 @@ export function BitableKanbanView({
                   {lane.rows.length}
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  if (groupColumn) onAddRowWithStatus(groupColumn.id, lane.id);
-                }}
-                title="在当前分组下添加卡片"
+              <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (groupColumn) onAddRowWithStatus(groupColumn.id, lane.id);
+                  }}
+                  title="在当前分组下添加卡片"
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    padding: 3,
+                    borderRadius: 4,
+                    color: 'var(--editor-text-muted, #64748b)',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Plus size={14} />
+                </button>
+
+                {isSelectGroup && onManageColumnOption && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      const anchor = getAnchorRect(e.currentTarget);
+                      if (!anchor) return;
+                      setPendingDeleteId(null);
+                      setGroupMenu((prev) =>
+                        prev && prev.optionId === lane.id
+                          ? null
+                          : { optionId: lane.id, anchor, trigger: e.currentTarget as HTMLElement },
+                      );
+                    }}
+                    title="编辑或删除该分组"
+                    style={{
+                      border: 'none',
+                      background: groupMenu && groupMenu.optionId === lane.id ? 'var(--editor-bg, #f1f5f9)' : 'transparent',
+                      cursor: 'pointer',
+                      padding: 3,
+                      borderRadius: 4,
+                      color: 'var(--editor-text-muted, #64748b)',
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <MoreHorizontal size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {editingGroup && editingGroup.optionId === lane.id && groupColumn && (
+              <div
                 style={{
-                  border: 'none',
-                  background: 'transparent',
-                  cursor: 'pointer',
-                  padding: 3,
-                  borderRadius: 4,
-                  color: 'var(--editor-text-muted, #64748b)',
+                  padding: '8px 10px',
+                  borderBottom: '1px solid var(--editor-border, #f1f5f9)',
+                  background: 'var(--editor-bg, #f8fafc)',
                   display: 'flex',
-                  alignItems: 'center',
+                  flexDirection: 'column',
+                  gap: 6,
                 }}
               >
-                <Plus size={14} />
-              </button>
-            </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <input
+                    type="text"
+                    value={editingGroup.label}
+                    autoFocus
+                    placeholder="分组名称"
+                    onChange={(e) =>
+                      setEditingGroup((prev) => (prev ? { ...prev, label: e.target.value } : prev))
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && editingGroup.label.trim() && groupColumn) {
+                        if (onManageColumnOption) {
+                          onManageColumnOption(groupColumn.id, {
+                            type: 'update',
+                            optionId: editingGroup.optionId,
+                            label: editingGroup.label.trim(),
+                            color: editingGroup.color,
+                          });
+                        }
+                        setEditingGroup(null);
+                      } else if (e.key === 'Escape') {
+                        setEditingGroup(null);
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      padding: '4px 6px',
+                      fontSize: 12,
+                      border: '1px solid var(--editor-accent, #3b82f6)',
+                      borderRadius: 4,
+                      outline: 'none',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    title="取消编辑"
+                    onClick={() => setEditingGroup(null)}
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      padding: 2,
+                      color: 'var(--editor-text-muted, #94a3b8)',
+                      display: 'flex',
+                    }}
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {BITABLE_PALETTE.map((pal) => (
+                    <div
+                      key={pal.id}
+                      title={pal.label}
+                      onClick={() =>
+                        setEditingGroup((prev) =>
+                          prev ? { ...prev, color: pal.id as SelectOptionColor } : prev,
+                        )
+                      }
+                      style={{
+                        width: 14,
+                        height: 14,
+                        borderRadius: '50%',
+                        background: pal.text,
+                        cursor: 'pointer',
+                        boxSizing: 'border-box',
+                        border:
+                          editingGroup.color === pal.id
+                            ? '2px solid var(--editor-text, #0f172a)'
+                            : '1px solid rgba(15,23,42,0.12)',
+                      }}
+                    />
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!editingGroup.label.trim() || !groupColumn) return;
+                    if (onManageColumnOption) {
+                      onManageColumnOption(groupColumn.id, {
+                        type: 'update',
+                        optionId: editingGroup.optionId,
+                        label: editingGroup.label.trim(),
+                        color: editingGroup.color,
+                      });
+                    }
+                    setEditingGroup(null);
+                  }}
+                  style={{
+                    alignSelf: 'flex-end',
+                    padding: '4px 10px',
+                    borderRadius: 4,
+                    border: 'none',
+                    background: 'var(--editor-accent, #3b82f6)',
+                    color: '#ffffff',
+                    fontSize: 11,
+                    cursor: 'pointer',
+                    fontWeight: 500,
+                  }}
+                >
+                  保存分组
+                </button>
+              </div>
+            )}
+
+            {isSelectGroup && onManageColumnOption && groupMenu && groupMenu.optionId === lane.id && (
+              <FloatingPanel
+                anchor={groupMenu.anchor}
+                trigger={groupMenu.trigger}
+                width={210}
+                gap={2}
+                align="right"
+                onClose={() => {
+                  setGroupMenu(null);
+                  setPendingDeleteId(null);
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    const opt = options.find((o) => o.id === lane.id);
+                    setEditingGroup({
+                      optionId: lane.id,
+                      label: opt ? opt.label : lane.label,
+                      color: opt ? opt.color : 'blue',
+                    });
+                    setGroupMenu(null);
+                  }}
+                  style={MENU_ITEM_STYLE}
+                >
+                  <span style={MENU_ICON_STYLE}><Pencil size={13} /></span>
+                  <span>编辑分组名称与颜色</span>
+                </button>
+
+                {pendingDeleteId === lane.id ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (groupColumn && onManageColumnOption) {
+                        onManageColumnOption(groupColumn.id, { type: 'delete', optionId: lane.id });
+                      }
+                      setPendingDeleteId(null);
+                      setGroupMenu(null);
+                    }}
+                    style={{ ...MENU_ITEM_STYLE, color: '#b91c1c', background: '#fee2e2' }}
+                  >
+                    <span style={MENU_ICON_STYLE}><Trash2 size={13} /></span>
+                    <span>确认删除（{lane.rows.length} 张卡片将变为未分组）</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setPendingDeleteId(lane.id)}
+                    style={{ ...MENU_ITEM_STYLE, color: '#b91c1c' }}
+                  >
+                    <span style={MENU_ICON_STYLE}><Trash2 size={13} /></span>
+                    <span>删除该分组</span>
+                  </button>
+                )}
+              </FloatingPanel>
+            )}
 
             {/* 卡片容器列表 */}
             <div
@@ -242,6 +505,8 @@ export function BitableKanbanView({
               {lane.rows.map((row) => (
                 <div
                   key={row.id}
+                  onClick={() => onOpenRecord && onOpenRecord(row.id)}
+                  title={onOpenRecord ? '点击展开记录详情' : undefined}
                   style={{
                     padding: '12px 14px',
                     borderRadius: 8,
@@ -531,6 +796,8 @@ export function BitableKanbanView({
               {unclassifiedRows.map((row) => (
                 <div
                   key={row.id}
+                  onClick={() => onOpenRecord && onOpenRecord(row.id)}
+                  title={onOpenRecord ? '点击展开记录详情' : undefined}
                   style={{
                     padding: '12px 14px',
                     borderRadius: 8,

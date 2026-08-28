@@ -13,12 +13,33 @@ import { getAnchorRect, type AnchorRect } from './BitableFloating';
 import { createId } from './bitableUtils';
 import { Star, Check, ExternalLink } from 'lucide-react';
 
+/** 表单形态（记录详情侧边栏）下输入控件的统一样式 */
+const FORM_INPUT_STYLE: React.CSSProperties = {
+  width: '100%',
+  boxSizing: 'border-box',
+  border: '1px solid var(--editor-border, #cbd5e1)',
+  borderRadius: 6,
+  padding: '6px 8px',
+  fontSize: 13,
+  fontFamily: 'inherit',
+  lineHeight: 1.5,
+  outline: 'none',
+  background: 'var(--editor-bg, #ffffff)',
+  color: 'var(--editor-text, #1e293b)',
+};
+
 interface CellEditorProps {
   column: BitableColumn;
   value: unknown;
   onChange: (newValue: unknown) => void;
   /** 列选项增删改排序：由上层在单次提交内同步列与所有关联行 */
   onManageColumnOption?: (colId: string, action: ColumnOptionAction) => void;
+  /**
+   * 呈现形态：
+   * - cell：表格单元格，紧凑、需双击进入编辑
+   * - form：记录详情侧边栏，舒展、始终可直接编辑（多行文本、即时日期选择等）
+   */
+  variant?: 'cell' | 'form';
 }
 
 export function BitableCellEditor({
@@ -26,6 +47,7 @@ export function BitableCellEditor({
   value,
   onChange,
   onManageColumnOption,
+  variant = 'cell',
 }: CellEditorProps) {
   const [editing, setEditing] = useState(false);
   const [inputValue, setInputValue] = useState<string>('');
@@ -52,8 +74,40 @@ export function BitableCellEditor({
     }
   }, [editing]);
 
+  // 表单模式下控件常驻可编辑，需随外部值变化同步内部输入态
+  useEffect(() => {
+    if (variant !== 'form') return;
+    if (column.type === 'text' || column.type === 'number' || column.type === 'link') {
+      setInputValue(value === null || value === undefined ? '' : String(value));
+    }
+  }, [variant, column.id, column.type, value]);
+
   // ── 1. 文本字段 (Text) ──
   if (column.type === 'text') {
+    // 表单形态：常驻可编辑的多行文本框，回车提交、Shift+回车换行
+    if (variant === 'form') {
+      return (
+        <textarea
+          rows={2}
+          value={inputValue}
+          placeholder="请输入内容"
+          onChange={(e) => setInputValue(e.target.value)}
+          onBlur={() => onChange(inputValue)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              onChange(inputValue);
+              e.currentTarget.blur();
+            } else if (e.key === 'Escape') {
+              setInputValue(value === null || value === undefined ? '' : String(value));
+              e.currentTarget.blur();
+            }
+          }}
+          style={{ ...FORM_INPUT_STYLE, minHeight: 54, resize: 'vertical' }}
+        />
+      );
+    }
+
     if (editing) {
       return (
         <input
@@ -116,6 +170,28 @@ export function BitableCellEditor({
 
   // ── 2. 数字字段 (Number) ──
   if (column.type === 'number') {
+    if (variant === 'form') {
+      return (
+        <input
+          type="number"
+          value={inputValue}
+          placeholder="请输入数字"
+          onChange={(e) => setInputValue(e.target.value)}
+          onBlur={() => onChange(inputValue.trim() === '' ? null : Number(inputValue))}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              onChange(inputValue.trim() === '' ? null : Number(inputValue));
+              e.currentTarget.blur();
+            } else if (e.key === 'Escape') {
+              setInputValue(value === null || value === undefined ? '' : String(value));
+              e.currentTarget.blur();
+            }
+          }}
+          style={FORM_INPUT_STYLE}
+        />
+      );
+    }
+
     if (editing) {
       return (
         <input
@@ -202,19 +278,28 @@ export function BitableCellEditor({
       if (value === optId) onChange(null);
     };
 
+    const isForm = variant === 'form';
+
     return (
       <div
         ref={cellRef}
+        // 表单形态单击即可选择，单元格形态沿用双击以免与选区点击冲突
+        onClick={isForm ? openSelectPanel : undefined}
         onDoubleClick={openSelectPanel}
-        title="双击选择或新建标签"
+        title={isForm ? '点击选择或新建标签' : '双击选择或新建标签'}
         style={{
           position: 'relative',
           width: '100%',
           height: '100%',
           display: 'flex',
           alignItems: 'center',
+          flexWrap: 'wrap',
           gap: 4,
-          padding: '2px 6px',
+          padding: isForm ? '6px 8px' : '2px 6px',
+          minHeight: isForm ? 34 : undefined,
+          border: isForm ? '1px solid var(--editor-border, #cbd5e1)' : undefined,
+          borderRadius: isForm ? 6 : undefined,
+          background: isForm ? 'var(--editor-bg, #ffffff)' : undefined,
           cursor: 'pointer',
           overflow: 'hidden',
         }}
@@ -222,7 +307,9 @@ export function BitableCellEditor({
         {selectedOption ? (
           <OptionBadge option={selectedOption} />
         ) : (
-          <span style={{ fontSize: 12, color: 'var(--editor-text-muted, #94a3b8)', opacity: 0.5 }}>-</span>
+          <span style={{ fontSize: 12, color: 'var(--editor-text-muted, #94a3b8)', opacity: 0.6 }}>
+            {isForm ? '点击选择标签' : '-'}
+          </span>
         )}
 
         {showSelectPanel && (
@@ -273,11 +360,15 @@ export function BitableCellEditor({
       }
     };
 
+    const isForm = variant === 'form';
+
     return (
       <div
         ref={cellRef}
+        // 表单形态单击即可选择，单元格形态沿用双击以免与选区点击冲突
+        onClick={isForm ? openSelectPanel : undefined}
         onDoubleClick={openSelectPanel}
-        title="双击选择或新建标签"
+        title={isForm ? '点击选择或新建标签' : '双击选择或新建标签'}
         style={{
           position: 'relative',
           width: '100%',
@@ -285,7 +376,11 @@ export function BitableCellEditor({
           display: 'flex',
           alignItems: 'center',
           gap: 4,
-          padding: '2px 6px',
+          padding: isForm ? '6px 8px' : '2px 6px',
+          minHeight: isForm ? 34 : undefined,
+          border: isForm ? '1px solid var(--editor-border, #cbd5e1)' : undefined,
+          borderRadius: isForm ? 6 : undefined,
+          background: isForm ? 'var(--editor-bg, #ffffff)' : undefined,
           cursor: 'pointer',
           flexWrap: 'nowrap',
           // 注意：此处不能设置 overflow: hidden，否则 Portal 之外的内联面板会被裁剪；
@@ -298,7 +393,7 @@ export function BitableCellEditor({
             display: 'flex',
             alignItems: 'center',
             gap: 4,
-            flexWrap: 'nowrap',
+            flexWrap: isForm ? 'wrap' : 'nowrap',
             overflow: 'hidden',
             maxWidth: '100%',
           }}
@@ -312,7 +407,9 @@ export function BitableCellEditor({
               />
             ))
           ) : (
-            <span style={{ fontSize: 12, color: 'var(--editor-text-muted, #94a3b8)', opacity: 0.5 }}>-</span>
+            <span style={{ fontSize: 12, color: 'var(--editor-text-muted, #94a3b8)', opacity: 0.6 }}>
+              {isForm ? '点击选择标签' : '-'}
+            </span>
           )}
         </div>
 
@@ -342,17 +439,21 @@ export function BitableCellEditor({
         type="date"
         value={typeof value === 'string' ? value : ''}
         onChange={(e) => onChange(e.target.value || null)}
-        style={{
-          width: '100%',
-          height: '100%',
-          border: 'none',
-          background: 'transparent',
-          padding: '2px 6px',
-          fontSize: 12,
-          color: 'var(--editor-text, #1e293b)',
-          cursor: 'pointer',
-          outline: 'none',
-        }}
+        style={
+          variant === 'form'
+            ? FORM_INPUT_STYLE
+            : {
+                width: '100%',
+                height: '100%',
+                border: 'none',
+                background: 'transparent',
+                padding: '2px 6px',
+                fontSize: 12,
+                color: 'var(--editor-text, #1e293b)',
+                cursor: 'pointer',
+                outline: 'none',
+              }
+        }
       />
     );
   }
@@ -360,6 +461,51 @@ export function BitableCellEditor({
   // ── 6. 复选框 (Checkbox) ──
   if (column.type === 'checkbox') {
     const isChecked = Boolean(value);
+    // 表单形态用开关样式并附带文字，比裸方块更易理解
+    if (variant === 'form') {
+      return (
+        <div
+          onClick={() => onChange(!isChecked)}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            cursor: 'pointer',
+            userSelect: 'none',
+          }}
+        >
+          <div
+            style={{
+              position: 'relative',
+              width: 38,
+              height: 22,
+              borderRadius: 11,
+              background: isChecked ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-border, #cbd5e1)',
+              transition: 'background 0.18s ease',
+              flexShrink: 0,
+            }}
+          >
+            <div
+              style={{
+                position: 'absolute',
+                top: 3,
+                left: isChecked ? 19 : 3,
+                width: 16,
+                height: 16,
+                borderRadius: '50%',
+                background: '#ffffff',
+                transition: 'left 0.18s ease',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+              }}
+            />
+          </div>
+          <span style={{ fontSize: 13, color: 'var(--editor-text, #1e293b)' }}>
+            {isChecked ? '已完成' : '未完成'}
+          </span>
+        </div>
+      );
+    }
+
     return (
       <div
         style={{
@@ -423,6 +569,32 @@ export function BitableCellEditor({
   // ── 8. 进度条 (Progress 0~100) ──
   if (column.type === 'progress') {
     const progressVal = typeof value === 'number' ? Math.min(100, Math.max(0, value)) : 0;
+
+    // 表单形态用滑块 + 数值输入，拖动即可设定
+    if (variant === 'form') {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={progressVal}
+            onChange={(e) => onChange(Number(e.target.value))}
+            style={{ flex: 1, accentColor: 'var(--editor-accent, #3b82f6)' }}
+          />
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={progressVal}
+            onChange={(e) => onChange(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
+            style={{ ...FORM_INPUT_STYLE, width: 64, textAlign: 'right' }}
+          />
+          <span style={{ fontSize: 12, color: 'var(--editor-text-muted, #94a3b8)' }}>%</span>
+        </div>
+      );
+    }
+
     return (
       <div
         style={{
@@ -477,6 +649,37 @@ export function BitableCellEditor({
 
   // ── 9. 超链接 (Link) ──
   if (column.type === 'link') {
+    if (variant === 'form') {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <input
+            type="url"
+            value={inputValue}
+            placeholder="https://example.com"
+            onChange={(e) => setInputValue(e.target.value)}
+            onBlur={() => onChange(inputValue)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                onChange(inputValue);
+                e.currentTarget.blur();
+              }
+            }}
+            style={FORM_INPUT_STYLE}
+          />
+          {Boolean(inputValue) && (
+            <a
+              href={inputValue}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontSize: 11, color: 'var(--editor-accent, #3b82f6)' }}
+            >
+              在新窗口打开链接
+            </a>
+          )}
+        </div>
+      );
+    }
+
     if (editing) {
       return (
         <input
