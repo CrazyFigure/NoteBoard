@@ -120,6 +120,12 @@ export async function saveAs(originalKey: string, content: string): Promise<bool
       { name: 'Mermaid 图表 (*.mmd)', extensions: ['mmd', 'mermaid'] },
       { name: '全部文件 (*.*)', extensions: ['*'] },
     ];
+  } else if (doc?.language === 'infographic' || originalKey.includes('infographic')) {
+    defaultExtension = 'infographic';
+    filters = [
+      { name: '信息图源码 (*.infographic)', extensions: ['infographic', 'ig'] },
+      { name: '全部文件 (*.*)', extensions: ['*'] },
+    ];
   } else if (doc?.language === 'plantuml' || originalKey.includes('plantuml')) {
     defaultExtension = 'puml';
     filters = [

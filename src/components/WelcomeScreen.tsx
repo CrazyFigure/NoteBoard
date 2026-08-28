@@ -17,6 +17,7 @@ import {
   FileCode,
   Database,
   CodeXml,
+  ChartColumn,
   ChevronDown,
   ChevronUp,
   Sparkles,
@@ -36,6 +37,7 @@ interface WelcomeScreenProps {
   onNewBitable?: () => void;
   onNewMermaid?: () => void;
   onNewPlantUml?: () => void;
+  onNewInfographic?: () => void;
   onNewJson?: () => void;
   onNewYaml?: () => void;
   onNewSql?: () => void;
@@ -54,6 +56,7 @@ export function WelcomeScreen({
   onNewBitable,
   onNewMermaid,
   onNewPlantUml,
+  onNewInfographic,
   onNewJson,
   onNewYaml,
   onNewSql,
@@ -146,6 +149,13 @@ export function WelcomeScreen({
       desc: '专业系统架构与业务流程图',
       color: '#ea580c',
       onClick: onNewDrawio,
+    },
+    {
+      icon: ChartColumn,
+      label: '信息图 (.infographic)',
+      desc: '指标看板、时间线与漏斗等可视化',
+      color: '#14b8a6',
+      onClick: onNewInfographic,
     },
     {
       icon: Workflow,

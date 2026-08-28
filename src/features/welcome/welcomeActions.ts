@@ -11,6 +11,7 @@ import { openDocument } from '../editor-code/orchestration/openDocument';
 import type { DocumentKind, LanguageId } from '../../core/ipc/types';
 import { showToast } from '../../stores/toastStore';
 import { createDefaultBitableDocument, serializeBitableDocument } from '../bitable/bitableConverter';
+import { INFOGRAPHIC_TEMPLATES } from '../infographic/infographicTemplates';
 
 let untitledCounter = 0;
 
@@ -33,7 +34,7 @@ export async function openFileDialog(): Promise<void> {
       { name: '多维表格', extensions: ['bitable', 'table'] },
       { name: '思维导图', extensions: ['mindmap', 'xmind', 'mm'] },
       { name: '画板与绘图', extensions: ['excalidraw', 'drawio', 'dio', 'board'] },
-      { name: '图表脚本', extensions: ['mmd', 'mermaid', 'puml', 'plantuml', 'uml'] },
+      { name: '图表与信息图脚本', extensions: ['mmd', 'mermaid', 'puml', 'plantuml', 'uml', 'infographic', 'ig'] },
     ],
   });
   if (!paths || paths.length === 0) return;
@@ -91,6 +92,7 @@ function createUntitledDocument(
     | 'bitable'
     | 'mermaid'
     | 'plantuml'
+    | 'infographic'
     | 'json'
     | 'yaml'
     | 'sql'
@@ -134,6 +136,12 @@ function createUntitledDocument(
     language = 'plantuml';
     displayName = '未命名.puml';
     initialContent = `@startuml\nactor 用户 as User\nparticipant "系统" as System\n\nUser -> System: 登录请求\nSystem --> User: 登录成功\n@enduml`;
+  } else if (type === 'infographic') {
+    // 信息图为声明式 YAML 源码，默认填充指标看板模板，保证新建即可见效果
+    kind = 'code';
+    language = 'infographic';
+    displayName = '未命名.infographic';
+    initialContent = INFOGRAPHIC_TEMPLATES[0]?.code ?? 'type: metric-cards\n';
   } else if (type === 'json') {
     kind = 'code';
     language = 'json';
@@ -219,6 +227,11 @@ export function newMermaid(): void {
 /** 新建 PlantUML 图表文档 */
 export function newPlantUml(): void {
   createUntitledDocument('plantuml');
+}
+
+/** 新建信息图文档（.infographic 声明式源码） */
+export function newInfographic(): void {
+  createUntitledDocument('infographic');
 }
 
 /** 新建 JSON 配置文件 */

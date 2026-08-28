@@ -32,6 +32,10 @@ export async function loadLanguageExtension(lang: LanguageId): Promise<Extension
     case 'yaml':
       promise = import('@codemirror/lang-yaml').then((m) => m.yaml());
       break;
+    // 信息图源码以 YAML 为主（兼容 JSON 写法），复用 YAML 语法高亮
+    case 'infographic':
+      promise = import('@codemirror/lang-yaml').then((m) => m.yaml());
+      break;
     case 'xml':
       promise = import('@codemirror/lang-xml').then((m) => m.xml());
       break;

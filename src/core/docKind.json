@@ -39,5 +39,7 @@
   "iuml": "code",
   "uml": "code",
   "bitable": "bitable",
-  "table": "bitable"
+  "table": "bitable",
+  "infographic": "code",
+  "ig": "code"
 }

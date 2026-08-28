@@ -40,6 +40,9 @@ export const LANGUAGE_BY_EXT: Record<string, LanguageId> = {
   // 多维表格采用结构化 JSON 格式持久化
   bitable: 'json',
   table: 'json',
+  // 信息图为声明式 YAML/JSON 源码，需专属 language 以走分屏预览编辑器
+  infographic: 'infographic',
+  ig: 'infographic',
 };
 
 /** 从路径提取扩展名（小写，无点） */
