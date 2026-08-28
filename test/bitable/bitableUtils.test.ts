@@ -13,6 +13,8 @@ import {
   isSlotNoop,
   resolveGroupKey,
   groupFlatTreeRows,
+  compareRowsBySortRules,
+  getSortDirectionLabels,
 } from '@/features/bitable/bitableUtils';
 import type { BitableColumn, BitableRow } from '@/features/bitable/bitableTypes';
 
@@ -217,5 +219,43 @@ describe('多维表格通用工具测试', () => {
     expect(groups).toHaveLength(1);
     expect(groups[0].meta.label).toBe('未指定');
     expect(groups[0].rows).toHaveLength(2);
+  });
+
+  test('compareRowsBySortRules 支持多字段联合排序', () => {
+    const numberCol: BitableColumn = { id: 'cn', key: 'priority', name: '优先级', type: 'number' };
+    const nameCol: BitableColumn = { id: 'c1', key: 'name', name: '名称', type: 'text' };
+    const columns = [nameCol, numberCol];
+    const rows: BitableRow[] = [
+      { id: 'r1', c1: 'B', cn: 2 },
+      { id: 'r2', c1: 'A', cn: 2 },
+      { id: 'r3', c1: 'A', cn: 1 },
+      { id: 'r4', c1: 'B', cn: 1 },
+    ];
+    const rules = [
+      { columnId: 'cn', direction: 'asc' as const },
+      { columnId: 'c1', direction: 'asc' as const },
+    ];
+    const sorted = [...rows].sort((a, b) => compareRowsBySortRules(a, b, columns, rules));
+    expect(sorted.map((r) => r.id)).toEqual(['r3', 'r4', 'r2', 'r1']);
+  });
+
+  test('compareRowsBySortRules 空值始终后置', () => {
+    const col: BitableColumn = { id: 'c1', key: 'name', name: '名称', type: 'text' };
+    const rows: BitableRow[] = [
+      { id: 'r1', c1: '' },
+      { id: 'r2', c1: 'Apple' },
+      { id: 'r3', c1: null as unknown as string },
+    ];
+    const sorted = [...rows].sort((a, b) => compareRowsBySortRules(a, b, [col], [{ columnId: 'c1', direction: 'asc' }]));
+    expect(sorted[0].id).toBe('r2');
+    expect(sorted.slice(1).map((r) => r.id).sort()).toEqual(['r1', 'r3']);
+  });
+
+  test('getSortDirectionLabels 按字段类型返回专有文案', () => {
+    expect(getSortDirectionLabels('number')).toEqual({ asc: '0 → 9', desc: '9 → 0' });
+    expect(getSortDirectionLabels('date')).toEqual({ asc: '最早的日期 → 最晚', desc: '最晚的日期 → 最早' });
+    expect(getSortDirectionLabels('checkbox')).toEqual({ asc: '未勾选 → 勾选', desc: '勾选 → 未勾选' });
+    expect(getSortDirectionLabels('select')).toEqual({ asc: '选项顺序', desc: '选项逆序' });
+    expect(getSortDirectionLabels('text')).toEqual({ asc: 'A → Z', desc: 'Z → A' });
   });
 });

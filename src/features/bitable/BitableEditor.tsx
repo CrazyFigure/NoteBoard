@@ -23,6 +23,7 @@ import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './Bita
 import { usePointerReorder } from './usePointerReorder';
 import {
   coerceCellValue,
+  compareRowsBySortRules,
   createId,
   createRow,
   pickNextColor,
@@ -259,17 +260,14 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
     }));
   };
 
-  // ── 各字段类型专有排序 ──
+  // ── 多字段联合排序 ──
 
-  const handleSortColumn = useCallback(
-    (colId: string, direction: 'asc' | 'desc' | null) => {
-      commitChange((prev) => {
-        const sortRules: SortRule[] = direction ? [{ columnId: colId, direction }] : [];
-        return {
-          ...prev,
-          views: prev.views.map((v) => (v.id === activeView.id ? { ...v, sortRules } : v)),
-        };
-      });
+  const handleUpdateSortRules = useCallback(
+    (sortRules: SortRule[]) => {
+      commitChange((prev) => ({
+        ...prev,
+        views: prev.views.map((v) => (v.id === activeView.id ? { ...v, sortRules } : v)),
+      }));
     },
     [activeView.id, commitChange],
   );
@@ -728,42 +726,10 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
       });
     }
 
-    // 2. 字段类型专有排序
-    const sortRule = activeView.sortRules?.[0];
-    if (sortRule) {
-      const targetCol = data.columns.find((c) => c.id === sortRule.columnId);
-      const colType = targetCol?.type || 'text';
-      const colId = sortRule.columnId;
-      const isAsc = sortRule.direction === 'asc';
-
-      result.sort((a, b) => {
-        const valA = a[colId];
-        const valB = b[colId];
-
-        // 空值后置
-        if (valA === undefined || valA === null || valA === '') {
-          return valB === undefined || valB === null || valB === '' ? 0 : 1;
-        }
-        if (valB === undefined || valB === null || valB === '') return -1;
-
-        let cmp = 0;
-        if (colType === 'number' || colType === 'progress' || colType === 'rating') {
-          cmp = Number(valA) - Number(valB);
-        } else if (colType === 'date') {
-          cmp = String(valA).localeCompare(String(valB));
-        } else if (colType === 'checkbox') {
-          cmp = Boolean(valA) === Boolean(valB) ? 0 : valA ? 1 : -1;
-        } else if (colType === 'select') {
-          const idxA = (targetCol?.options || []).findIndex((o) => o.id === valA);
-          const idxB = (targetCol?.options || []).findIndex((o) => o.id === valB);
-          cmp = idxA - idxB;
-        } else {
-          // 文本、链接等使用中文拼音/自然排序
-          cmp = String(valA).localeCompare(String(valB), 'zh-CN', { numeric: true });
-        }
-
-        return isAsc ? cmp : -cmp;
-      });
+    // 2. 多字段联合排序：按 sortRules 数组顺序依次比较
+    const sortRules = activeView.sortRules || [];
+    if (sortRules.length > 0) {
+      result.sort((a, b) => compareRowsBySortRules(a, b, data.columns, sortRules));
     }
 
     return result;
@@ -1209,12 +1175,12 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
           <BitableGridView
             columns={data.columns}
             rows={filteredAndSortedRows}
-            currentSortRule={activeView.sortRules?.[0] || null}
+            sortRules={activeView.sortRules || []}
             groupByColumnId={activeView.groupByColumnId}
             onUpdateGroupByColumnId={handleUpdateGroupByColumnId}
+            onUpdateSortRules={handleUpdateSortRules}
             onPasteCells={handlePasteCells}
             onManageColumnOption={handleManageColumnOption}
-            onSortColumn={handleSortColumn}
             onUpdateRow={handleUpdateRow}
             onAddRow={handleAddRow}
             onAddSubRow={handleAddSubRow}

@@ -1,7 +1,9 @@
 // NoteBoard 多维表格字段类型元数据
-// 表头、列菜单、记录详情侧边栏共用同一套图标与文案，避免多处各写一份造成不一致
+// 表头、列菜单、记录详情侧边栏、分组/排序字段选择器共用同一套图标与文案
 
-import type { BitableFieldType } from './bitableTypes';
+import React, { useState } from 'react';
+import type { BitableColumn, BitableFieldType } from './bitableTypes';
+import { FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
 import {
   Type,
   AlignLeft,
@@ -13,6 +15,7 @@ import {
   Star,
   BarChart2,
   Link,
+  ChevronDown,
 } from 'lucide-react';
 
 export interface FieldTypeMeta {
@@ -47,4 +50,144 @@ export function getFieldTypeMeta(type: BitableFieldType): FieldTypeMeta {
       // 未知类型兜底：外部数据可能携带本版本不认识的字段类型，不能让渲染崩掉
       return { icon: <Type size={13} color="#94a3b8" />, label: '未知字段' };
   }
+}
+
+interface FieldSelectButtonProps {
+  columns: BitableColumn[];
+  value: string | null;
+  placeholder?: string;
+  onChange: (colId: string | null) => void;
+  disabledColIds?: string[];
+  width?: number;
+}
+
+/**
+ * 通用字段选择触发器
+ * 用于表格视图/看板视图的分组、排序等场景；列表项显示字段彩色类型图标与中文名称。
+ */
+export function FieldSelectButton({
+  columns,
+  value,
+  placeholder = '请选择字段',
+  onChange,
+  disabledColIds = [],
+  width = 160,
+}: FieldSelectButtonProps) {
+  const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<AnchorRect | null>(null);
+  const [trigger, setTrigger] = useState<HTMLElement | null>(null);
+
+  const selectedCol = columns.find((c) => c.id === value);
+  const meta = selectedCol ? getFieldTypeMeta(selectedCol.type) : null;
+
+  const handleOpen = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = getAnchorRect(e.currentTarget);
+    if (!rect) return;
+    setAnchor(rect);
+    setTrigger(e.currentTarget);
+    setOpen(true);
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={handleOpen}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '3px 8px',
+          borderRadius: 4,
+          border: '1px solid var(--editor-border, #cbd5e1)',
+          background: 'var(--editor-bg, #ffffff)',
+          color: 'var(--editor-text, #1e293b)',
+          fontSize: 12,
+          cursor: 'pointer',
+          minWidth: width,
+          maxWidth: width,
+        }}
+      >
+        {meta && selectedCol ? (
+          <>
+            {meta.icon}
+            <span
+              style={{
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                flex: 1,
+                textAlign: 'left',
+              }}
+            >
+              {selectedCol.name}
+            </span>
+          </>
+        ) : (
+          <span style={{ color: 'var(--editor-text-muted, #64748b)', flex: 1, textAlign: 'left' }}>
+            {placeholder}
+          </span>
+        )}
+        <ChevronDown size={12} style={{ marginLeft: 'auto', opacity: 0.6, flexShrink: 0 }} />
+      </button>
+      {open && anchor && trigger && (
+        <FloatingPanel anchor={anchor} trigger={trigger} width={200} onClose={() => setOpen(false)}>
+          <div style={{ display: 'flex', flexDirection: 'column', padding: '4px' }}>
+            <button
+              type="button"
+              onClick={() => {
+                onChange(null);
+                setOpen(false);
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '5px 8px',
+                border: 'none',
+                background: value === null ? 'var(--editor-bg, #f1f5f9)' : 'transparent',
+                cursor: 'pointer',
+                fontSize: 12,
+                borderRadius: 4,
+                color: 'var(--editor-text-muted, #64748b)',
+              }}
+            >
+              <span>{placeholder}</span>
+            </button>
+            {columns
+              .filter((c) => !disabledColIds.includes(c.id))
+              .map((col) => {
+                const colMeta = getFieldTypeMeta(col.type);
+                const isSelected = col.id === value;
+                return (
+                  <button
+                    key={col.id}
+                    type="button"
+                    onClick={() => {
+                      onChange(col.id);
+                      setOpen(false);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '5px 8px',
+                      border: 'none',
+                      background: isSelected ? 'var(--editor-bg, #f1f5f9)' : 'transparent',
+                      cursor: 'pointer',
+                      fontSize: 12,
+                      borderRadius: 4,
+                      color: 'var(--editor-text, #1e293b)',
+                    }}
+                  >
+                    {colMeta.icon}
+                    <span>{col.name}</span>
+                  </button>
+                );
+              })}
+          </div>
+        </FloatingPanel>
+      )}
+    </>
+  );
 }
