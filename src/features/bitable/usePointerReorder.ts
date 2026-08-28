@@ -17,6 +17,8 @@ export interface PointerDragState {
   fromIdx: number;
   /** 落点槽位，取值 0 ~ items.length */
   insertAt: number;
+  /** 落点是否可提交：false 时只跟随指针、不画指示线 */
+  valid: boolean;
   /** 指针视口坐标 */
   x: number;
   y: number;
@@ -37,6 +39,16 @@ export interface PointerReorderOptions<T> {
   disabled?: boolean;
   /** 触发拖拽的位移阈值（像素），默认 4 */
   threshold?: number;
+  /**
+   * 落点夹取：返回修正后的槽位
+   * 用于「分组内拖拽」——落点越界时夹到本组范围，避免出现跨组的非法移动。
+   */
+  clampSlot?: (insertAt: number, fromIdx: number) => number;
+  /**
+   * 落点合法性：false 时既不绘制指示线也不提交
+   * 用于拦截结构性非法落点（如把父行拖进它自己的子树）。
+   */
+  isSlotValid?: (insertAt: number, fromIdx: number) => boolean;
 }
 
 export function usePointerReorder<T>({
@@ -48,6 +60,8 @@ export function usePointerReorder<T>({
   axis = 'x',
   disabled = false,
   threshold = 4,
+  clampSlot,
+  isSlotValid,
 }: PointerReorderOptions<T>) {
   const [drag, setDrag] = useState<PointerDragState | null>(null);
   const metaRef = useRef<{
@@ -62,21 +76,31 @@ export function usePointerReorder<T>({
   const grabOffsetRef = useRef({ x: 0, y: 0 });
   const suppressClickRef = useRef(false);
 
-  /** 依据指针坐标计算落点槽位：以每个元素自身的中线为分界 */
+  /**
+   * 依据指针坐标计算落点槽位：以每个元素自身的中线为分界
+   * 几何命中后再过两道修正：先按 clampSlot 夹取（分组内拖拽越界夹回组内），
+   * 再按 isSlotValid 判定合法性（如父行不能拖进自己的子树），非法返回 null。
+   */
   const resolveSlot = useCallback(
-    (clientX: number, clientY: number) => {
+    (clientX: number, clientY: number, fromIdx: number): number | null => {
       const pointer = axis === 'x' ? clientX : clientY;
+      let slot = items.length;
       for (let i = 0; i < items.length; i += 1) {
         const el = getElement(items[i]);
         if (!el) continue;
         const rect = el.getBoundingClientRect();
         const start = axis === 'x' ? rect.left : rect.top;
         const size = axis === 'x' ? rect.width : rect.height;
-        if (pointer < start + size / 2) return i;
+        if (pointer < start + size / 2) {
+          slot = i;
+          break;
+        }
       }
-      return items.length;
+      const clamped = clampSlot ? clampSlot(slot, fromIdx) : slot;
+      if (isSlotValid && !isSlotValid(clamped, fromIdx)) return null;
+      return clamped;
     },
-    [items, getElement, axis],
+    [items, getElement, axis, clampSlot, isSlotValid],
   );
 
   const startDrag = useCallback(
@@ -115,9 +139,12 @@ export function usePointerReorder<T>({
           rafRef.current = null;
           const current = metaRef.current;
           if (!current) return;
+          const slot = resolveSlot(pointerRef.current.x, pointerRef.current.y, current.fromIdx);
           setDrag({
             fromIdx: current.fromIdx,
-            insertAt: resolveSlot(pointerRef.current.x, pointerRef.current.y),
+            // 落点非法时退回原位槽位：指示线不绘制，但幽灵仍跟随指针
+            insertAt: slot === null ? current.fromIdx : slot,
+            valid: slot !== null,
             x: pointerRef.current.x,
             y: pointerRef.current.y,
           });
@@ -147,9 +174,9 @@ export function usePointerReorder<T>({
         window.setTimeout(() => {
           suppressClickRef.current = false;
         }, 0);
-        const insertAt = resolveSlot(upEvent.clientX, upEvent.clientY);
-        // 落在自身左右两侧等同于原位，无需提交
-        if (isSlotNoop(insertAt, meta.fromIdx)) return;
+        const insertAt = resolveSlot(upEvent.clientX, upEvent.clientY, meta.fromIdx);
+        // 落点非法，或落在自身左右两侧等同于原位，均无需提交
+        if (insertAt === null || isSlotNoop(insertAt, meta.fromIdx)) return;
         onReorder(meta.fromIdx, slotToSpliceIndex(insertAt, meta.fromIdx));
       };
 
@@ -165,7 +192,7 @@ export function usePointerReorder<T>({
    */
   const getIndicator = useCallback(
     (idx: number): 'left' | 'right' | null => {
-      if (!drag) return null;
+      if (!drag || !drag.valid) return null;
       const { fromIdx, insertAt } = drag;
       if (isSlotNoop(insertAt, fromIdx)) return null;
       if (insertAt === idx) return 'left';

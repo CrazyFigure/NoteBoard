@@ -126,7 +126,9 @@ export type ColumnOptionAction =
   | { type: 'add'; option: SelectOption }
   | { type: 'update'; optionId: string; label: string; color: SelectOptionColor }
   | { type: 'delete'; optionId: string }
-  | { type: 'move'; optionId: string; direction: 'up' | 'down' };
+  | { type: 'move'; optionId: string; direction: 'up' | 'down' }
+  /** 拖拽换序：把 optionId 对应的选项移动到删除后的 toIndex 处 */
+  | { type: 'reorder'; optionId: string; toIndex: number };
 
 /** 完整多维表格持久化文档模型 */
 export interface BitableDocument {

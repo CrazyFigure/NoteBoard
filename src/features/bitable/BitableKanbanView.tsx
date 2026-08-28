@@ -10,8 +10,9 @@ import type {
 import { OptionBadge } from './BitableOptions';
 import { BITABLE_PALETTE } from './bitableConverter';
 import { BitableMarkdown } from './BitableMarkdown';
-import { FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
-import { previewLongText, resolveLongTextConfig } from './bitableUtils';
+import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
+import { previewLongText, resolveLongTextConfig, slotToFinalPosition } from './bitableUtils';
+import { usePointerReorder } from './usePointerReorder';
 import { FieldSelectButton } from './BitableFieldMeta';
 import type { ColumnOptionAction, SelectOptionColor } from './bitableTypes';
 import {
@@ -24,24 +25,7 @@ import {
   Pencil,
   X,
 } from 'lucide-react';
-import { useState } from 'react';
-
-/** 分组菜单项的统一样式 */
-const MENU_ITEM_STYLE: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 6,
-  padding: '6px 8px',
-  border: 'none',
-  background: 'transparent',
-  cursor: 'pointer',
-  fontSize: 12,
-  lineHeight: 1.2,
-  borderRadius: 4,
-  color: 'var(--editor-text, #1e293b)',
-  textAlign: 'left',
-  width: '100%',
-};
+import { useRef, useState } from 'react';
 
 // 让 lucide svg 与文字 baseline 一致、且不挤压
 const MENU_ICON_STYLE: React.CSSProperties = {
@@ -69,7 +53,6 @@ interface KanbanViewProps {
   rows: BitableRow[];
   groupByColumnId?: string;
   onUpdateGroupByColumnId?: (colId: string) => void;
-  onUpdateRow: (rowId: string, columnId: string, val: unknown) => void;
   onAddRowWithStatus: (columnId: string, optionId: string | null) => void;
   /** 新增分组泳道：为分组列追加一个标签选项 */
   onAddGroupOption?: () => void;
@@ -85,7 +68,6 @@ export function BitableKanbanView({
   rows,
   groupByColumnId,
   onUpdateGroupByColumnId,
-  onUpdateRow,
   onAddRowWithStatus,
   onAddGroupOption,
   onManageColumnOption,
@@ -186,6 +168,35 @@ export function BitableKanbanView({
   // 未分类泳道数据
   const unclassifiedRows = laneMap.get(null) || [];
 
+  // 泳道 DOM 节点表：用于测量泳道位置，支撑「拖拽泳道换分组顺序」的落点计算
+  const laneRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  /**
+   * 拖拽泳道换序 = 调整分组列标签选项的顺序
+   * 仅在以单选中列为分组依据时可用：按普通字段分组时分组由行数据动态派生，没有可持久化的顺序。
+   */
+  const laneDragEnabled = isSelectGroup && Boolean(onManageColumnOption);
+
+  const {
+    drag: laneDrag,
+    startDrag: startLaneDrag,
+    getIndicator: getLaneIndicator,
+    grabOffset: laneGrabOffset,
+  } = usePointerReorder<(typeof lanes)[number]>({
+    items: lanes,
+    getElement: (lane) => laneRefs.current.get(lane.id),
+    axis: 'x',
+    disabled: !laneDragEnabled,
+    onReorder: (fromIdx, toIdx) => {
+      if (!groupColumn || !onManageColumnOption) return;
+      onManageColumnOption(groupColumn.id, {
+        type: 'reorder',
+        optionId: lanes[fromIdx].id,
+        toIndex: toIdx,
+      });
+    },
+  });
+
   return (
     <div
       style={{
@@ -234,9 +245,17 @@ export function BitableKanbanView({
         }}
       >
         {/* 已定义分组泳道 */}
-        {lanes.map((lane) => (
+        {lanes.map((lane, laneIdx) => {
+          // 落点指示线：槽位落在本泳道左侧画左边线，落到末位时画最后一列右边线
+          const laneIndicator = getLaneIndicator(laneIdx);
+
+          return (
           <div
             key={lane.id}
+            ref={(el) => {
+              if (el) laneRefs.current.set(lane.id, el);
+              else laneRefs.current.delete(lane.id);
+            }}
             style={{
               width: 280,
               minWidth: 280,
@@ -246,12 +265,41 @@ export function BitableKanbanView({
               border: '1px solid var(--editor-border, #e2e8f0)',
               display: 'flex',
               flexDirection: 'column',
-              boxShadow: '0 1px 4px rgba(0, 0, 0, 0.02)',
+              // 落点指示条依赖绝对定位，故泳道设为定位上下文；卡片阴影仍由 overflow:hidden 裁剪到圆角内
+              position: 'relative',
               overflow: 'hidden',
+              // 被拖起的泳道整体压暗，明确「哪一组正在被搬运」
+              opacity: laneDrag?.fromIdx === laneIdx ? 0.45 : 1,
             }}
           >
-            {/* 泳道头部 */}
+            {/* 落点指示条：贯穿泳道全高，明确「这组会落到这里」 */}
+            {laneIndicator && (
+              <div
+                aria-hidden
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  bottom: 0,
+                  left: laneIndicator === 'left' ? 0 : 'auto',
+                  right: laneIndicator === 'right' ? 0 : 'auto',
+                  width: 4,
+                  background: '#3b82f6',
+                  // 外侧与泳道圆角对齐，内侧直角，视觉上是泳道边缘被涂蓝
+                  borderTopLeftRadius: laneIndicator === 'left' ? 10 : 0,
+                  borderBottomLeftRadius: laneIndicator === 'left' ? 10 : 0,
+                  borderTopRightRadius: laneIndicator === 'right' ? 10 : 0,
+                  borderBottomRightRadius: laneIndicator === 'right' ? 10 : 0,
+                  boxShadow: '0 0 10px rgba(59, 130, 246, 0.45)',
+                  zIndex: 5,
+                  pointerEvents: 'none',
+                }}
+              />
+            )}
+
+            {/* 泳道头部：整块作为拖拽把手，按下横向拖动即可换分组顺序 */}
             <div
+              onMouseDown={(e) => startLaneDrag(e, laneIdx)}
+              title={laneDragEnabled ? '拖拽分组头部可换分组顺序' : undefined}
               style={{
                 padding: '10px 14px',
                 borderBottom: '1px solid var(--editor-border, #f1f5f9)',
@@ -259,6 +307,8 @@ export function BitableKanbanView({
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 background: 'var(--editor-surface, #ffffff)',
+                cursor: laneDrag ? 'grabbing' : laneDragEnabled ? 'grab' : 'default',
+                userSelect: laneDrag ? 'none' : undefined,
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -270,6 +320,7 @@ export function BitableKanbanView({
               <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <button
                   type="button"
+                  data-no-drag
                   className="nb-bitable-btn-ghost"
                   onClick={() => {
                     if (groupColumn) onAddRowWithStatus(groupColumn.id, lane.id);
@@ -286,6 +337,7 @@ export function BitableKanbanView({
                 {isSelectGroup && onManageColumnOption && (
                   <button
                     type="button"
+                    data-no-drag
                     className="nb-bitable-btn-ghost"
                     onClick={(e) => {
                       const anchor = getAnchorRect(e.currentTarget);
@@ -680,7 +732,8 @@ export function BitableKanbanView({
               )}
             </div>
           </div>
-        ))}
+          );
+        })}
 
         {/* 新增分组泳道：仅在以单选中列为分组依据时可用 */}
         {isSelectGroup && onAddGroupOption && (
@@ -785,6 +838,14 @@ export function BitableKanbanView({
           </div>
         )}
       </div>
+
+      {/* 泳道拖拽时的跟随幽灵：实时提示该分组将落在第几位 */}
+      {laneDrag && (
+        <DragGhost x={laneDrag.x - laneGrabOffset.x} y={laneDrag.y - laneGrabOffset.y + 4}>
+          {lanes[laneDrag.fromIdx]?.label ?? ''}
+          {` · 移动到第 ${slotToFinalPosition(laneDrag.insertAt, laneDrag.fromIdx)} 个分组`}
+        </DragGhost>
+      )}
     </div>
   );
 }

@@ -26,6 +26,8 @@ import {
   compareRowsBySortRules,
   createId,
   createRow,
+  moveOptionByIndex,
+  moveTreeRow,
   pickNextColor,
   previewLongText,
   resolveLongTextConfig,
@@ -334,6 +336,22 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
     [commitChange],
   );
 
+  /**
+   * 拖拽行头换序：父级改写与顺序重排必须在同一次提交内完成
+   * 顺序由 moveTreeRow 基于完整树序计算，被拖行的整棵子树会一起搬走。
+   */
+  const handleMoveRow = useCallback(
+    (draggedRowId: string, beforeRowId: string | null, parentId?: string) => {
+      commitChange((prev) => {
+        const nextRows = moveTreeRow(prev.rows, draggedRowId, beforeRowId, parentId);
+        // 落点非法（如拖进自己的子树）时工具函数原样返回，不产生撤销记录
+        if (nextRows === prev.rows) return prev;
+        return { ...prev, rows: nextRows };
+      });
+    },
+    [commitChange],
+  );
+
   const handleAddRowWithStatus = useCallback(
     (statusColId: string, optionId: string | null) => {
       commitChange((prev) => ({
@@ -466,6 +484,11 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
         } else if (action.type === 'delete') {
           nextOptions = options.filter((o) => o.id !== action.optionId);
           removedId = action.optionId;
+        } else if (action.type === 'reorder') {
+          // 拖拽换序：optionId 为被拖选项，toIndex 为「移除后」的插入索引
+          const from = options.findIndex((o) => o.id === action.optionId);
+          if (from < 0) return prev;
+          nextOptions = moveOptionByIndex(options, from, action.toIndex);
         } else {
           const from = options.findIndex((o) => o.id === action.optionId);
           const to = action.direction === 'up' ? from - 1 : from + 1;
@@ -1112,6 +1135,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             onClearColumn={handleClearColumn}
             onMoveColumn={handleMoveColumn}
             onReorderColumns={handleReorderColumns}
+            onMoveRow={handleMoveRow}
           />
         ) : (
           <BitableKanbanView
@@ -1119,7 +1143,6 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             rows={filteredAndSortedRows}
             groupByColumnId={activeView.groupByColumnId}
             onUpdateGroupByColumnId={handleUpdateGroupByColumnId}
-            onUpdateRow={handleUpdateRow}
             onAddRowWithStatus={handleAddRowWithStatus}
             onAddGroupOption={handleAddGroupOption}
             onManageColumnOption={handleManageColumnOption}
