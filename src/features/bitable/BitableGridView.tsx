@@ -16,10 +16,11 @@ import { BitableCellEditor } from './BitableCellEditor';
 import { SelectOptionsPanel, OptionBadge } from './BitableOptions';
 import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
 import { usePointerReorder } from './usePointerReorder';
-import { getFieldTypeMeta } from './BitableFieldMeta';
+import { getFieldTypeMeta, FieldSelectButton } from './BitableFieldMeta';
 import {
   createId,
   formatCellValue,
+  getSortDirectionLabels,
   groupFlatTreeRows,
   parseClipboardMatrix,
   resolveLongTextConfig,
@@ -48,6 +49,7 @@ import {
   MoveRight,
   ArrowUpNarrowWide,
   ArrowDownWideNarrow,
+  ArrowUpDown,
   SlidersHorizontal,
   X,
   Check,
@@ -62,16 +64,18 @@ export type SelectionState =
 interface GridViewProps {
   columns: BitableColumn[];
   rows: BitableRow[];
-  currentSortRule?: SortRule | null;
+  /** 多字段联合排序规则 */
+  sortRules?: SortRule[];
   /** 表格视图分组依据列 ID：与看板视图共用视图配置中的 groupByColumnId */
   groupByColumnId?: string;
   /** 分组依据变化回调 */
   onUpdateGroupByColumnId?: (colId: string) => void;
+  /** 多字段排序规则变化回调 */
+  onUpdateSortRules?: (sortRules: SortRule[]) => void;
   /** 区域粘贴：以 (rowId, colId) 为左上角写入二维文本矩阵，行数不足时由上层自动补建 */
   onPasteCells?: (rowId: string, colId: string, matrix: string[][]) => void;
   /** 列选项增删改排序：由上层在单次提交内同步列定义与所有关联行数据 */
   onManageColumnOption?: (colId: string, action: ColumnOptionAction) => void;
-  onSortColumn?: (colId: string, direction: 'asc' | 'desc' | null) => void;
   onUpdateRow: (rowId: string, columnId: string, val: unknown) => void;
   onAddRow: () => void;
   onAddSubRow?: (parentRowId: string) => void;
@@ -90,29 +94,6 @@ interface GridViewProps {
   onClearColumn?: (colId: string) => void;
   onMoveColumn?: (colId: string, direction: 'left' | 'right') => void;
   onReorderColumns?: (fromIndex: number, toIndex: number) => void;
-}
-
-/** 获取字段类型的显示图标与中文名称 */
-/** 获取各字段类型专有的排序文案 */
-function getSortLabels(type: BitableFieldType) {
-  switch (type) {
-    case 'number':
-    case 'progress':
-    case 'rating':
-      return { asc: '从小到大升序 (1 → 9)', desc: '从大到小降序 (9 → 1)' };
-    case 'date':
-      return { asc: '从早到晚升序', desc: '从晚到早降序' };
-    case 'checkbox':
-      return { asc: '未勾选优先', desc: '已勾选优先' };
-    case 'select':
-    case 'multiSelect':
-      return { asc: '按标签顺序升序', desc: '按标签顺序降序' };
-    case 'text':
-    case 'longText':
-    case 'link':
-    default:
-      return { asc: '按 A → Z 升序', desc: '按 Z → A 降序' };
-  }
 }
 
 const ALL_FIELD_TYPES: BitableFieldType[] = [
@@ -147,15 +128,132 @@ type GridItem =
   | { type: 'group'; key: string; label: string; count: number; color?: SelectOptionColor }
   | { type: 'row'; treeNode: FlatTreeRow };
 
+interface SortRulesPanelProps {
+  columns: BitableColumn[];
+  sortRules: SortRule[];
+  onChange: (rules: SortRule[]) => void;
+  onClose: () => void;
+}
+
+function SortRulesPanel({ columns, sortRules, onChange, onClose }: SortRulesPanelProps) {
+  const [localRules, setLocalRules] = useState<SortRule[]>(sortRules);
+
+  const updateRule = (index: number, patch: Partial<SortRule>) => {
+    setLocalRules((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+  };
+
+  const removeRule = (index: number) => {
+    setLocalRules((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const addRule = () => {
+    const unusedCol = columns.find((c) => !localRules.some((r) => r.columnId === c.id));
+    if (!unusedCol) {
+      showToast('所有字段都已加入排序');
+      return;
+    }
+    setLocalRules((prev) => [...prev, { columnId: unusedCol.id, direction: 'asc' }]);
+  };
+
+  const apply = () => {
+    onChange(localRules);
+    onClose();
+  };
+
+  const clearAll = () => {
+    onChange([]);
+    onClose();
+  };
+
+  return (
+    <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 10, width: 380 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--editor-text, #1e293b)' }}>排序</span>
+        {sortRules.length > 0 && (
+          <button type="button" onClick={clearAll} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 11, color: 'var(--editor-text-muted, #64748b)' }}>
+            清除全部
+          </button>
+        )}
+      </div>
+
+      {localRules.length === 0 && (
+        <div style={{ fontSize: 12, color: 'var(--editor-text-muted, #94a3b8)', padding: '6px 0' }}>未设置排序字段</div>
+      )}
+
+      {localRules.map((rule, index) => {
+        const col = columns.find((c) => c.id === rule.columnId);
+        if (!col) return null;
+        const labels = getSortDirectionLabels(col.type);
+        const usedColIds = localRules.map((r) => r.columnId);
+        return (
+          <div key={`{rule.columnId}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 11, color: 'var(--editor-text-muted, #94a3b8)', width: 18, flexShrink: 0 }}>{index + 1}</span>
+            <FieldSelectButton
+              columns={columns}
+              value={rule.columnId}
+              onChange={(colId) => colId && updateRule(index, { columnId: colId })}
+              disabledColIds={usedColIds.filter((id) => id !== rule.columnId)}
+              width={140}
+            />
+            <button
+              type="button"
+              onClick={() => updateRule(index, { direction: rule.direction === 'asc' ? 'desc' : 'asc' })}
+              style={{
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                padding: '3px 6px', borderRadius: 4, border: '1px solid var(--editor-border, #cbd5e1)',
+                background: 'var(--editor-bg, #ffffff)', cursor: 'pointer', fontSize: 11, color: 'var(--editor-text, #1e293b)',
+              }}
+            >
+              {rule.direction === 'asc' ? labels.asc : labels.desc}
+            </button>
+            <button
+              type="button"
+              onClick={() => removeRule(index)}
+              title="移除该排序字段"
+              style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, color: 'var(--editor-text-muted, #94a3b8)', display: 'inline-flex', alignItems: 'center' }}
+            >
+              <X size={13} />
+            </button>
+          </div>
+        );
+      })}
+
+      {localRules.length < columns.length && (
+        <button
+          type="button"
+          onClick={addRule}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+            padding: '5px 10px', borderRadius: 4, border: '1px dashed var(--editor-border, #cbd5e1)',
+            background: 'var(--editor-bg, #f8fafc)', cursor: 'pointer', fontSize: 12, color: 'var(--editor-text-muted, #64748b)',
+          }}
+        >
+          <Plus size={13} />
+          <span>添加排序字段</span>
+        </button>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+        <button type="button" onClick={onClose} style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid var(--editor-border, #cbd5e1)', background: 'var(--editor-bg, #ffffff)', cursor: 'pointer', fontSize: 12, color: 'var(--editor-text, #1e293b)' }}>
+          取消
+        </button>
+        <button type="button" onClick={apply} style={{ padding: '4px 10px', borderRadius: 4, border: 'none', background: 'var(--editor-accent, #3b82f6)', cursor: 'pointer', fontSize: 12, color: '#ffffff' }}>
+          应用
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function BitableGridView({
   columns,
   rows,
-  currentSortRule,
+  sortRules = [],
   groupByColumnId,
   onUpdateGroupByColumnId,
+  onUpdateSortRules,
   onPasteCells,
   onManageColumnOption,
-  onSortColumn,
   onUpdateRow,
   onAddRow,
   onAddSubRow,
@@ -186,6 +284,12 @@ export function BitableGridView({
 
   // 折叠的分组键集合：分组行本身可见，其下数据行被隐藏
   const [collapsedGroupKeys, setCollapsedGroupKeys] = useState<Set<string>>(new Set());
+
+  // 多字段排序面板状态
+  const [sortPanelOpen, setSortPanelOpen] = useState(false);
+  const [sortPanelAnchor, setSortPanelAnchor] = useState<AnchorRect | null>(null);
+  const [sortPanelTrigger, setSortPanelTrigger] = useState<HTMLElement | null>(null);
+  const sortButtonRef = useRef<HTMLButtonElement>(null);
 
   // 选区系统状态 (选中单元格/整行/整列)
   const [selection, setSelection] = useState<SelectionState>({ type: 'none' });
@@ -658,71 +762,119 @@ export function BitableGridView({
           zIndex: -1,
         }}
       />
-      {/* 表格视图工具栏：分组依据选择器 */}
+      {/* 表格视图工具栏：分组依据 + 多字段排序入口 */}
       {onUpdateGroupByColumnId && (
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
+            gap: 10,
             padding: '6px 12px',
             borderBottom: '1px solid var(--editor-border, #e2e8f0)',
             background: 'var(--editor-surface, #f8fafc)',
             flexShrink: 0,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--editor-text-muted, #64748b)' }}>
-            <SlidersHorizontal size={13} />
-            <span style={{ fontSize: 12 }}>分组依据</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <SlidersHorizontal size={13} color="var(--editor-text-muted, #64748b)" />
+            <span style={{ fontSize: 12, color: 'var(--editor-text-muted, #64748b)' }}>分组依据</span>
+            <FieldSelectButton
+              columns={columns}
+              value={groupByColumnId || null}
+              placeholder="不分组"
+              onChange={(colId) => onUpdateGroupByColumnId && onUpdateGroupByColumnId(colId || '')}
+              width={150}
+            />
+            {groupByColumnId && (
+              <button
+                type="button"
+                onClick={() => onUpdateGroupByColumnId && onUpdateGroupByColumnId('')}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '2px 6px',
+                  borderRadius: 4,
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--editor-text-muted, #64748b)',
+                  fontSize: 11,
+                  cursor: 'pointer',
+                }}
+              >
+                <X size={11} />
+                <span>清除分组</span>
+              </button>
+            )}
           </div>
-          <select
-            value={groupByColumnId || ''}
-            onChange={(e) => {
-              const value = e.target.value;
-              if (value && onUpdateGroupByColumnId) {
-                onUpdateGroupByColumnId(value);
-              } else if (groupByColumnId && onUpdateGroupByColumnId) {
-                onUpdateGroupByColumnId('');
-              }
-            }}
-            style={{
-              padding: '3px 8px',
-              borderRadius: 4,
-              border: '1px solid var(--editor-border, #cbd5e1)',
-              background: 'var(--editor-bg, #ffffff)',
-              color: 'var(--editor-text, #1e293b)',
-              fontSize: 12,
-              outline: 'none',
-              cursor: 'pointer',
-            }}
-          >
-            <option value="">不分组</option>
-            {columns.map((col) => (
-              <option key={col.id} value={col.id}>
-                {col.name}
-              </option>
-            ))}
-          </select>
-          {groupByColumnId && (
+
+          <div style={{ width: 1, height: 16, background: 'var(--editor-border, #e2e8f0)' }} />
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <button
               type="button"
-              onClick={() => onUpdateGroupByColumnId && onUpdateGroupByColumnId('')}
+              ref={(el) => { if (el) sortButtonRef.current = el; }}
+              onClick={(e) => {
+                const rect = getAnchorRect(e.currentTarget);
+                if (!rect) return;
+                setSortPanelAnchor(rect);
+                setSortPanelTrigger(e.currentTarget);
+                setSortPanelOpen(true);
+              }}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 4,
-                padding: '2px 6px',
+                padding: '3px 8px',
                 borderRadius: 4,
-                border: 'none',
-                background: 'transparent',
-                color: 'var(--editor-text-muted, #64748b)',
-                fontSize: 11,
+                border: '1px solid var(--editor-border, #cbd5e1)',
+                background: sortRules.length > 0 ? 'rgba(59, 130, 246, 0.08)' : 'var(--editor-bg, #ffffff)',
                 cursor: 'pointer',
+                fontSize: 12,
+                color: sortRules.length > 0 ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text, #1e293b)',
               }}
             >
-              <X size={11} />
-              <span>清除分组</span>
+              <ArrowUpDown size={13} />
+              <span>排序{sortRules.length > 0 ? ` ${sortRules.length}` : ''}</span>
             </button>
+            {sortRules.length > 0 && (
+              <button
+                type="button"
+                onClick={() => onUpdateSortRules && onUpdateSortRules([])}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '2px 6px',
+                  borderRadius: 4,
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--editor-text-muted, #64748b)',
+                  fontSize: 11,
+                  cursor: 'pointer',
+                }}
+              >
+                <X size={11} />
+                <span>清除排序</span>
+              </button>
+            )}
+          </div>
+
+          {sortPanelOpen && sortPanelAnchor && sortPanelTrigger && onUpdateSortRules && (
+            <FloatingPanel
+              anchor={sortPanelAnchor}
+              trigger={sortPanelTrigger}
+              width={380}
+              align="left"
+              onClose={() => setSortPanelOpen(false)}
+            >
+              <SortRulesPanel
+                columns={columns}
+                sortRules={sortRules}
+                onChange={onUpdateSortRules}
+                onClose={() => setSortPanelOpen(false)}
+              />
+            </FloatingPanel>
           )}
         </div>
       )}
@@ -764,10 +916,10 @@ export function BitableGridView({
             {/* 各业务数据列头 (支持拖拽排序、列宽拖拽、列头菜单、专有格式排序) */}
             {columns.map((col, colIdx) => {
               const meta = getFieldTypeMeta(col.type);
-              const sortLabels = getSortLabels(col.type);
               const isMenuOpen = columnMenu?.colId === col.id;
               const isColSelected = selection.type === 'col' && selection.colId === col.id;
-              const isSortedByThis = currentSortRule?.columnId === col.id;
+              const sortRuleForCol = sortRules.find((r) => r.columnId === col.id);
+              const sortPriority = sortRuleForCol ? sortRules.findIndex((r) => r.columnId === col.id) + 1 : null;
               const isOptionField = col.type === 'select' || col.type === 'multiSelect';
 
               // 落点指示线：槽位落在自身左侧时画左边缘线，落到末位时画最后一列右边缘线
@@ -863,13 +1015,20 @@ export function BitableGridView({
                         </span>
                       )}
 
-                      {/* 排序状态指示图标 */}
-                      {isSortedByThis && (
+                      {/* 排序状态指示图标：多字段时显示优先级角标 */}
+                      {sortRuleForCol && (
                         <span
-                          title={currentSortRule.direction === 'asc' ? '升序排列' : '降序排列'}
-                          style={{ display: 'flex', alignItems: 'center', color: 'var(--editor-accent, #3b82f6)' }}
+                          title={`第 ${sortPriority} 排序字段 · ${sortRuleForCol.direction === 'asc' ? '升序' : '降序'}`}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 2,
+                            color: 'var(--editor-accent, #3b82f6)',
+                            fontSize: 10,
+                          }}
                         >
-                          {currentSortRule.direction === 'asc' ? <ArrowUpNarrowWide size={13} /> : <ArrowDownWideNarrow size={13} />}
+                          {sortRuleForCol.direction === 'asc' ? <ArrowUpNarrowWide size={13} /> : <ArrowDownWideNarrow size={13} />}
+                          {sortRules.length > 1 && sortPriority}
                         </span>
                       )}
                     </div>
@@ -1051,87 +1210,6 @@ export function BitableGridView({
                                 <span>向右移动</span>
                               </button>
                             </div>
-                            <div style={{ height: 1, background: 'var(--editor-border, #f1f5f9)', margin: '3px 0' }} />
-                          </>
-                        )}
-
-                        {/* 字段专有智能排序菜单项 */}
-                        {onSortColumn && (
-                          <>
-                            <div style={{ padding: '2px 8px', fontSize: 10, color: 'var(--editor-text-muted, #94a3b8)' }}>
-                              当前列排序
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                onSortColumn(col.id, 'asc');
-                                setColumnMenu(null);
-                              }}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 6,
-                                padding: '5px 8px',
-                                border: 'none',
-                                background: isSortedByThis && currentSortRule.direction === 'asc' ? 'var(--editor-bg, #f1f5f9)' : 'transparent',
-                                cursor: 'pointer',
-                                fontSize: 11,
-                                borderRadius: 4,
-                                color: isSortedByThis && currentSortRule.direction === 'asc' ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text, #1e293b)',
-                              }}
-                            >
-                              <ArrowUpNarrowWide size={13} />
-                              <span>{sortLabels.asc}</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                onSortColumn(col.id, 'desc');
-                                setColumnMenu(null);
-                              }}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 6,
-                                padding: '5px 8px',
-                                border: 'none',
-                                background: isSortedByThis && currentSortRule.direction === 'desc' ? 'var(--editor-bg, #f1f5f9)' : 'transparent',
-                                cursor: 'pointer',
-                                fontSize: 11,
-                                borderRadius: 4,
-                                color: isSortedByThis && currentSortRule.direction === 'desc' ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text, #1e293b)',
-                              }}
-                            >
-                              <ArrowDownWideNarrow size={13} />
-                              <span>{sortLabels.desc}</span>
-                            </button>
-
-                            {isSortedByThis && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  onSortColumn(col.id, null);
-                                  setColumnMenu(null);
-                                }}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 6,
-                                  padding: '5px 8px',
-                                  border: 'none',
-                                  background: 'transparent',
-                                  cursor: 'pointer',
-                                  fontSize: 11,
-                                  borderRadius: 4,
-                                  color: 'var(--editor-text-muted, #64748b)',
-                                }}
-                              >
-                                <X size={13} />
-                                <span>清除此列排序</span>
-                              </button>
-                            )}
-
                             <div style={{ height: 1, background: 'var(--editor-border, #f1f5f9)', margin: '3px 0' }} />
                           </>
                         )}

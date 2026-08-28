@@ -8,6 +8,7 @@ import {
   type LongTextConfig,
   type SelectOption,
   type SelectOptionColor,
+  type SortRule,
 } from './bitableTypes';
 
 let idSequence = 0;
@@ -373,4 +374,98 @@ export function groupFlatTreeRows(
     // 非空组按标签自然序排列（中文拼音 + 数字）
     return a.meta.label.localeCompare(b.meta.label, 'zh-CN', { numeric: true });
   });
+}
+
+/**
+ * 单字段比较：按字段类型专有规则比较两个单元格值
+ * 返回负数/0/正数，空值统一后置。
+ */
+function compareCellValues(
+  a: unknown,
+  b: unknown,
+  column: BitableColumn,
+): number {
+  // 空值后置：两边都空视为相等，仅一边空则另一边更大
+  const aEmpty = a === undefined || a === null || a === '';
+  const bEmpty = b === undefined || b === null || b === '';
+  if (aEmpty && bEmpty) return 0;
+  if (aEmpty) return 1;
+  if (bEmpty) return -1;
+
+  const colType = column.type;
+  if (colType === 'number' || colType === 'progress' || colType === 'rating') {
+    return Number(a) - Number(b);
+  }
+  if (colType === 'date') {
+    return String(a).localeCompare(String(b));
+  }
+  if (colType === 'checkbox') {
+    if (Boolean(a) === Boolean(b)) return 0;
+    return a ? 1 : -1;
+  }
+  if (colType === 'select') {
+    const idxA = (column.options || []).findIndex((o) => o.id === a);
+    const idxB = (column.options || []).findIndex((o) => o.id === b);
+    return idxA - idxB;
+  }
+  if (colType === 'multiSelect') {
+    const idsA = Array.isArray(a) ? a : [];
+    const idsB = Array.isArray(b) ? b : [];
+    const options = column.options || [];
+    const idxA = options.findIndex((o) => o.id === idsA[0]);
+    const idxB = options.findIndex((o) => o.id === idsB[0]);
+    if (idxA !== idxB) return idxA - idxB;
+    // 首选项相同时按长度作为次要依据，避免完全相同的数组反复比较
+    return idsA.length - idsB.length;
+  }
+  // 文本、链接、多行文本使用中文拼音/自然排序
+  return String(a).localeCompare(String(b), 'zh-CN', { numeric: true });
+}
+
+/**
+ * 按多字段排序规则比较两行
+ * 规则按数组顺序依次应用：前一条相等时才看下一条；全部相等返回 0。
+ */
+export function compareRowsBySortRules(
+  a: BitableRow,
+  b: BitableRow,
+  columns: BitableColumn[],
+  sortRules: SortRule[],
+): number {
+  for (const rule of sortRules) {
+    const column = columns.find((c) => c.id === rule.columnId);
+    if (!column) continue;
+    const cmp = compareCellValues(a[column.id], b[column.id], column);
+    if (cmp !== 0) {
+      return rule.direction === 'asc' ? cmp : -cmp;
+    }
+  }
+  return 0;
+}
+
+/**
+ * 获取某字段类型的专有排序方向文案
+ * 不同字段类型用不同隐喻（A-Z、0-9、日期先后等），保持与飞书一致。
+ */
+export function getSortDirectionLabels(
+  columnType: BitableColumn['type'],
+): { asc: string; desc: string } {
+  switch (columnType) {
+    case 'number':
+    case 'progress':
+    case 'rating':
+      return { asc: '0 → 9', desc: '9 → 0' };
+    case 'date':
+      return { asc: '最早的日期 → 最晚', desc: '最晚的日期 → 最早' };
+    case 'checkbox':
+      return { asc: '未勾选 → 勾选', desc: '勾选 → 未勾选' };
+    case 'select':
+    case 'multiSelect':
+      return { asc: '选项顺序', desc: '选项逆序' };
+    case 'text':
+    case 'longText':
+    case 'link':
+    default:
+      return { asc: 'A → Z', desc: 'Z → A' };
+  }
 }

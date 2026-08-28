@@ -12,6 +12,7 @@ import { BITABLE_PALETTE } from './bitableConverter';
 import { BitableMarkdown } from './BitableMarkdown';
 import { FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
 import { previewLongText, resolveLongTextConfig } from './bitableUtils';
+import { FieldSelectButton } from './BitableFieldMeta';
 import type { ColumnOptionAction, SelectOptionColor } from './bitableTypes';
 import {
   Plus,
@@ -210,32 +211,15 @@ export function BitableKanbanView({
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--editor-text-muted, #64748b)' }}>
           <SlidersHorizontal size={13} />
-          <span>分组依据:</span>
+          <span>分组依据</span>
         </div>
-        <select
-          value={groupColumn?.id || ''}
-          onChange={(e) => {
-            if (onUpdateGroupByColumnId) {
-              onUpdateGroupByColumnId(e.target.value);
-            }
-          }}
-          style={{
-            padding: '3px 8px',
-            borderRadius: 4,
-            border: '1px solid var(--editor-border, #cbd5e1)',
-            background: 'var(--editor-bg, #ffffff)',
-            color: 'var(--editor-text, #1e293b)',
-            fontSize: 12,
-            outline: 'none',
-            cursor: 'pointer',
-          }}
-        >
-          {columns.map((col) => (
-            <option key={col.id} value={col.id}>
-              {col.name} ({col.type})
-            </option>
-          ))}
-        </select>
+        <FieldSelectButton
+          columns={columns}
+          value={groupColumn?.id || null}
+          placeholder="选择分组字段"
+          onChange={(colId) => onUpdateGroupByColumnId && onUpdateGroupByColumnId(colId || '')}
+          width={180}
+        />
       </div>
 
       {/* 看板泳道列表 */}
