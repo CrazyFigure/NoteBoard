@@ -691,49 +691,7 @@ export function BitableKanbanView({
                       })}
                   </div>
 
-                  {/* 卡片快速状态流转指示 */}
-                  {lanes.length > 1 && (
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        borderTop: '1px dashed var(--editor-border, #f1f5f9)',
-                        paddingTop: 6,
-                        marginTop: 2,
-                        fontSize: 11,
-                        color: 'var(--editor-text-muted, #94a3b8)',
-                      }}
-                    >
-                      <span>移动到:</span>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        {lanes
-                          .filter((l) => l.id !== lane.id)
-                          .slice(0, 2)
-                          .map((targetLane) => (
-                            <button
-                              key={targetLane.id}
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onUpdateRow(row.id, groupColumn.id, targetLane.id);
-                              }}
-                              style={{
-                                padding: '1px 6px',
-                                borderRadius: 4,
-                                border: '1px solid var(--editor-border, #cbd5e1)',
-                                background: 'transparent',
-                                fontSize: 10,
-                                cursor: 'pointer',
-                                color: 'var(--editor-text, #334155)',
-                              }}
-                            >
-                              {targetLane.label}
-                            </button>
-                          ))}
-                      </div>
-                    </div>
-                  )}
+
                 </div>
               ))}
 
