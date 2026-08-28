@@ -1,7 +1,7 @@
 // NoteBoard Infographic TipTap 扩展
 // 自研 infographicBlock 节点 + 视口门控 + 就地编辑 + 模板选择 + 全屏缩放预览与导出
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
 import {
@@ -14,43 +14,228 @@ import {
   AlertCircle,
   Sparkles,
   ChevronDown,
+  Activity,
+  Milestone,
+  Route,
+  Filter,
+  Columns3,
+  LayoutGrid,
+  BarChart3,
 } from 'lucide-react';
 import { parseInfographicCode } from '../infographic/infographicParser';
 import { InfographicRenderer } from '../infographic/infographicRenderer';
 import { INFOGRAPHIC_TEMPLATES } from '../infographic/infographicTemplates';
 import { observe } from './viewportActivation';
-import { schedule } from './viewportWorkScheduler';
+
+/** Infographic 交互微反馈样式注入（支持 Hover 与 Active 动效反馈） */
+const INFOGRAPHIC_STYLES = `
+/* 顶部操作小图标按钮反馈 */
+.nb-info-icon-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: 4px;
+  color: var(--editor-text-muted, #64748b);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.nb-info-icon-btn:hover {
+  background: var(--toolbar-hover, #f1f5f9);
+  color: var(--editor-text, #1e293b);
+  border-color: var(--editor-border, #e2e8f0);
+}
+.nb-info-icon-btn:active {
+  background: var(--toolbar-active, #e2e8f0);
+  transform: scale(0.95);
+}
+
+/* 预设模板触发按钮反馈 */
+.nb-info-tmpl-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--editor-border, #cbd5e1);
+  background: var(--editor-surface, #ffffff);
+  color: var(--editor-accent, #3b82f6);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.nb-info-tmpl-trigger:hover {
+  background: rgba(59, 130, 246, 0.08);
+  border-color: var(--editor-accent, #3b82f6);
+}
+.nb-info-tmpl-trigger:active {
+  background: rgba(59, 130, 246, 0.16);
+  transform: scale(0.96);
+}
+
+/* 下拉菜单项反馈 */
+.nb-info-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--editor-text, #1e293b);
+  border-bottom: 1px solid var(--editor-border, #f1f5f9);
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.nb-info-dropdown-item:last-child {
+  border-bottom: none;
+}
+.nb-info-dropdown-item:hover {
+  background: var(--toolbar-hover, #f1f5f9);
+}
+.nb-info-dropdown-item:active {
+  background: var(--toolbar-active, #e2e8f0);
+  transform: scale(0.985);
+}
+
+/* 主操作按钮（完成） */
+.nb-info-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 10px;
+  border-radius: 4px;
+  background: var(--editor-accent, #3b82f6);
+  color: #ffffff;
+  border: 1px solid transparent;
+  font-size: 12px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.nb-info-btn-primary:hover {
+  background: #2563eb;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+}
+.nb-info-btn-primary:active {
+  background: #1d4ed8;
+  transform: scale(0.96);
+}
+
+/* 次要操作按钮（取消） */
+.nb-info-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--editor-text-muted, #64748b);
+  border: 1px solid var(--editor-border, #e2e8f0);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.nb-info-btn-secondary:hover {
+  background: var(--toolbar-hover, #f1f5f9);
+  color: var(--editor-text, #1e293b);
+  border-color: #cbd5e1;
+}
+.nb-info-btn-secondary:active {
+  background: var(--toolbar-active, #e2e8f0);
+  transform: scale(0.96);
+}
+
+/* 关闭按钮 */
+.nb-info-close-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  color: var(--editor-text-muted, #64748b);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+.nb-info-close-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+.nb-info-close-btn:active {
+  background: rgba(239, 68, 68, 0.2);
+  transform: scale(0.92);
+}
+`;
+
+/** 渲染预设模板对应彩色图标 */
+function renderTemplateIcon(iconName: string, color: string) {
+  const iconProps = { size: 14, color };
+  switch (iconName) {
+    case 'Activity':
+      return <Activity {...iconProps} />;
+    case 'Milestone':
+      return <Milestone {...iconProps} />;
+    case 'Route':
+      return <Route {...iconProps} />;
+    case 'Filter':
+      return <Filter {...iconProps} />;
+    case 'Columns3':
+      return <Columns3 {...iconProps} />;
+    case 'LayoutGrid':
+      return <LayoutGrid {...iconProps} />;
+    case 'BarChart3':
+      return <BarChart3 {...iconProps} />;
+    default:
+      return <Sparkles {...iconProps} />;
+  }
+}
 
 function InfographicComponent({ node, updateAttributes, selected }: NodeViewProps) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false);
-  const [inViewport, setInViewport] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [zoom, setZoom] = useState(1);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const code = node.attrs.code || '';
 
   // 解析当前代码
   const { data, error } = parseInfographicCode(code);
 
-  // 视口门控优化
+  // 视口门控优化监听挂载
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
-    const unobserve = observe(
-      el,
-      () => {
-        setInViewport(true);
-      },
-      { once: true },
-    );
-
+    const unobserve = observe(el, () => {}, { once: true });
     return unobserve;
   }, []);
+
+  // 点击外部自动关闭下拉模板选择面板
+  useEffect(() => {
+    if (!showTemplateDropdown) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as unknown as globalThis.Node)) {
+        setShowTemplateDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [showTemplateDropdown]);
 
   // 复制源码
   const handleCopy = (e: React.MouseEvent) => {
@@ -76,6 +261,7 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
   if (editing) {
     return (
       <NodeViewWrapper as="div" style={{ display: 'block', margin: '14px 0' }}>
+        <style>{INFOGRAPHIC_STYLES}</style>
         <div
           style={{
             border: '1px solid var(--editor-accent, #3b82f6)',
@@ -106,22 +292,11 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
               </span>
 
               {/* 预设模板快速填充下拉 */}
-              <div style={{ position: 'relative' }}>
+              <div ref={dropdownRef} style={{ position: 'relative' }}>
                 <button
                   type="button"
+                  className="nb-info-tmpl-trigger"
                   onClick={() => setShowTemplateDropdown(!showTemplateDropdown)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    padding: '2px 8px',
-                    borderRadius: 4,
-                    border: '1px solid var(--editor-border, #cbd5e1)',
-                    background: 'var(--editor-surface, #ffffff)',
-                    color: 'var(--editor-accent, #3b82f6)',
-                    fontSize: 11,
-                    cursor: 'pointer',
-                  }}
                 >
                   <Sparkles size={12} />
                   <span>载入预设模板</span>
@@ -148,24 +323,29 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
                       <button
                         key={tmpl.id}
                         type="button"
+                        className="nb-info-dropdown-item"
                         onClick={() => {
                           setEditValue(tmpl.code);
                           setShowTemplateDropdown(false);
                         }}
-                        style={{
-                          display: 'block',
-                          width: '100%',
-                          textAlign: 'left',
-                          padding: '6px 10px',
-                          border: 'none',
-                          background: 'transparent',
-                          cursor: 'pointer',
-                          fontSize: 11,
-                          color: 'var(--editor-text, #1e293b)',
-                          borderBottom: '1px solid var(--editor-border, #f1f5f9)',
-                        }}
                       >
-                        <div style={{ fontWeight: 600 }}>{tmpl.label}</div>
+                        {/* 彩色形象图标容器 */}
+                        <div
+                          style={{
+                            width: 24,
+                            height: 24,
+                            borderRadius: 5,
+                            background: tmpl.iconBg,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {renderTemplateIcon(tmpl.iconName, tmpl.iconColor)}
+                        </div>
+                        {/* 纯中文模板名称（无多余英文后缀） */}
+                        <span style={{ fontWeight: 600, fontSize: 12 }}>{tmpl.label}</span>
                       </button>
                     ))}
                   </div>
@@ -176,35 +356,18 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
             <div style={{ display: 'flex', gap: 6 }}>
               <button
                 type="button"
+                className="nb-info-btn-primary"
                 onClick={() => {
                   updateAttributes({ code: editValue });
                   setEditing(false);
-                }}
-                style={{
-                  padding: '3px 10px',
-                  borderRadius: 4,
-                  background: 'var(--editor-accent, #3b82f6)',
-                  color: '#ffffff',
-                  border: 'none',
-                  fontSize: 12,
-                  cursor: 'pointer',
-                  fontWeight: 500,
                 }}
               >
                 完成
               </button>
               <button
                 type="button"
+                className="nb-info-btn-secondary"
                 onClick={() => setEditing(false)}
-                style={{
-                  padding: '3px 8px',
-                  borderRadius: 4,
-                  background: 'transparent',
-                  color: 'var(--editor-text-muted, #64748b)',
-                  border: '1px solid var(--editor-border, #e2e8f0)',
-                  fontSize: 12,
-                  cursor: 'pointer',
-                }}
               >
                 取消
               </button>
@@ -247,6 +410,7 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
 
   return (
     <NodeViewWrapper as="div" style={{ display: 'block', margin: '14px 0' }} selected={selected}>
+      <style>{INFOGRAPHIC_STYLES}</style>
       <div
         ref={containerRef}
         className="nb-infographic-container"
@@ -297,42 +461,23 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <button
               type="button"
+              className="nb-info-icon-btn"
               onClick={() => {
                 setEditValue(code);
                 setEditing(true);
               }}
               title="编辑信息图源码"
-              style={{
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '3px 6px',
-                borderRadius: 4,
-                color: 'var(--editor-text-muted, #64748b)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                fontSize: 11,
-              }}
             >
               <Edit2 size={12} />
               <span>编辑</span>
             </button>
             <button
               type="button"
+              className="nb-info-icon-btn"
               onClick={handleCopy}
               title="复制配置源码"
               style={{
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '3px 6px',
-                borderRadius: 4,
-                color: copied ? '#16a34a' : 'var(--editor-text-muted, #64748b)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                fontSize: 11,
+                color: copied ? '#16a34a' : undefined,
               }}
             >
               {copied ? <Check size={12} /> : <Copy size={12} />}
@@ -340,40 +485,18 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
             </button>
             <button
               type="button"
+              className="nb-info-icon-btn"
               onClick={handleExport}
               title="导出信息图配置"
-              style={{
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '3px 6px',
-                borderRadius: 4,
-                color: 'var(--editor-text-muted, #64748b)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                fontSize: 11,
-              }}
             >
               <Download size={12} />
               <span>导出</span>
             </button>
             <button
               type="button"
+              className="nb-info-icon-btn"
               onClick={() => setFullscreen(true)}
               title="全屏放大查看"
-              style={{
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '3px 6px',
-                borderRadius: 4,
-                color: 'var(--editor-text-muted, #64748b)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                fontSize: 11,
-              }}
             >
               <Maximize2 size={12} />
             </button>
@@ -386,6 +509,7 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
             setEditValue(code);
             setEditing(true);
           }}
+          title="双击进入源码编辑"
           style={{
             padding: '14px',
             display: 'flex',
@@ -393,6 +517,7 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
             justifyContent: 'center',
             overflow: 'auto',
             minHeight: 80,
+            cursor: 'default',
           }}
         >
           {error && (
@@ -458,14 +583,9 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <button
                 type="button"
+                className="nb-info-close-btn"
                 onClick={() => setFullscreen(false)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: 4,
-                  color: 'var(--editor-text-muted, #64748b)',
-                }}
+                title="关闭预览"
               >
                 <X size={20} />
               </button>

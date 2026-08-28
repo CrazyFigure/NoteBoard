@@ -15,7 +15,6 @@ import {
   Check,
   X,
   Sparkles,
-  ArrowRight,
 } from 'lucide-react';
 
 interface InfographicRendererProps {

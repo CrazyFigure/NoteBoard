@@ -5,13 +5,19 @@ export interface InfographicTemplate {
   label: string;
   description: string;
   code: string;
+  iconName: 'Activity' | 'Milestone' | 'Route' | 'Filter' | 'Columns3' | 'LayoutGrid' | 'BarChart3';
+  iconColor: string;
+  iconBg: string;
 }
 
 export const INFOGRAPHIC_TEMPLATES: InfographicTemplate[] = [
   {
     id: 'metric-cards',
-    label: '核心指标看板 (KPI Cards)',
+    label: '核心指标看板',
     description: '展示关键运营指标、数值量级与增减趋势',
+    iconName: 'Activity',
+    iconColor: '#3b82f6',
+    iconBg: 'rgba(59, 130, 246, 0.12)',
     code: `type: metric-cards
 title: 核心运营与业务指标
 data:
@@ -42,8 +48,11 @@ data:
   },
   {
     id: 'timeline',
-    label: '项目里程碑时间线 (Timeline)',
+    label: '项目里程碑时间线',
     description: '直观展示项目演进阶段、时间节点与达成状态',
+    iconName: 'Milestone',
+    iconColor: '#10b981',
+    iconBg: 'rgba(16, 185, 129, 0.12)',
     code: `type: timeline
 title: NoteBoard 产品演进路线图
 data:
@@ -70,8 +79,11 @@ data:
   },
   {
     id: 'process',
-    label: '业务流转与步骤图 (Process Steps)',
+    label: '业务流转与步骤图',
     description: '清晰呈现业务全流程各步骤与衔接关系',
+    iconName: 'Route',
+    iconColor: '#8b5cf6',
+    iconBg: 'rgba(139, 92, 246, 0.12)',
     code: `type: process
 title: 需求研发与交付标准化全流程
 data:
@@ -90,8 +102,11 @@ data:
   },
   {
     id: 'funnel',
-    label: '用户转化与流转漏斗 (Funnel)',
+    label: '用户转化与流转漏斗',
     description: '展示用户在关键链路各阶段的留存与转化',
+    iconName: 'Filter',
+    iconColor: '#ec4899',
+    iconBg: 'rgba(236, 72, 153, 0.12)',
     code: `type: funnel
 title: 新用户激活与转化漏斗分析
 data:
@@ -114,8 +129,11 @@ data:
   },
   {
     id: 'comparison',
-    label: '方案与特性对比表 (Comparison)',
+    label: '方案与特性对比表',
     description: '横向对比不同技术方案、产品版本或优劣势',
+    iconName: 'Columns3',
+    iconColor: '#06b6d4',
+    iconBg: 'rgba(6, 182, 212, 0.12)',
     code: `type: comparison
 title: 架构方案与技术特性对比
 groups:
@@ -154,8 +172,11 @@ groups:
   },
   {
     id: 'quadrant',
-    label: '四象限优先级矩阵 (Quadrant Matrix)',
+    label: '四象限优先级矩阵',
     description: '按价值与紧急/难度等维度科学划分事务优先级',
+    iconName: 'LayoutGrid',
+    iconColor: '#f59e0b',
+    iconBg: 'rgba(245, 158, 11, 0.12)',
     code: `type: quadrant
 title: 产品功能规划四象限分析
 quadrantXLabel: 实现难度 (从低到高)
@@ -197,8 +218,11 @@ points:
   },
   {
     id: 'chart',
-    label: '轻量统计图表 (Chart)',
+    label: '轻量统计图表',
     description: '柱状图、环形饼图与多系列数据直观呈现',
+    iconName: 'BarChart3',
+    iconColor: '#6366f1',
+    iconBg: 'rgba(99, 102, 241, 0.12)',
     code: `type: chart
 title: 各模块使用频次与活跃度分布
 chart:

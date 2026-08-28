@@ -1,7 +1,7 @@
 // NoteBoard Infographic 源码解析与容错单元测试
 
 import { describe, test, expect } from 'vitest';
-import { parseInfographicCode, parseYamlSimple } from '@/features/infographic/infographicParser';
+import { parseInfographicCode } from '@/features/infographic/infographicParser';
 import { INFOGRAPHIC_TEMPLATES } from '@/features/infographic/infographicTemplates';
 
 describe('Infographic 解析器测试 (Parser & Tolerant)', () => {
