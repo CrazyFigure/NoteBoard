@@ -739,7 +739,7 @@ export function TabBar() {
           e.currentTarget.style.background = 'var(--toolbar-hover)';
           e.currentTarget.style.transform = 'scale(1.08)';
         }}
-        title="新建或打开 (Ctrl+N)"
+        title="新建或打开"
         aria-label="新建或打开"
       >
         <Plus size={16} />
@@ -778,7 +778,7 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <FileText size={13} color="var(--editor-accent)" />
-            <span>新建 Markdown 笔记 (Ctrl+N)</span>
+            <span>新建 Markdown 笔记</span>
           </button>
 
           {/* 新建文本文档 (.txt) */}
@@ -797,6 +797,24 @@ export function TabBar() {
           >
             <FileText size={13} color="#64748b" />
             <span>新建文本文档 (.txt)</span>
+          </button>
+
+          {/* 新建多维表格 */}
+          <button
+            type="button"
+            style={getMenuItemStyle(false)}
+            onClick={() => {
+              setNewMenuPos(null);
+              setShowMoreSubMenu(false);
+              newBitable();
+            }}
+            onMouseEnter={handleMenuItemMouseEnter}
+            onMouseLeave={handleMenuItemMouseLeave}
+            onMouseDown={handleMenuItemMouseDown}
+            onMouseUp={handleMenuItemMouseUp}
+          >
+            <Table2 size={13} color="#2563eb" />
+            <span>多维表格 (.bitable)</span>
           </button>
 
           {/* 新建自由画板 */}
@@ -883,24 +901,6 @@ export function TabBar() {
                   minWidth: 175,
                 }}
               >
-                {/* 新建多维表格 */}
-                <button
-                  type="button"
-                  style={getMenuItemStyle(false)}
-                  onClick={() => {
-                    setNewMenuPos(null);
-                    setShowMoreSubMenu(false);
-                    newBitable();
-                  }}
-                  onMouseEnter={handleMenuItemMouseEnter}
-                  onMouseLeave={handleMenuItemMouseLeave}
-                  onMouseDown={handleMenuItemMouseDown}
-                  onMouseUp={handleMenuItemMouseUp}
-                >
-                  <Table2 size={13} color="#2563eb" />
-                  <span>多维表格 (.bitable)</span>
-                </button>
-
                 {/* 新建 Draw.io 架构图 */}
                 <button
                   type="button"
@@ -1067,7 +1067,7 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <FolderOpen size={13} />
-            <span>打开文件夹… (Ctrl+K Ctrl+O)</span>
+            <span>打开文件夹… (Ctrl+Shift+O)</span>
           </button>
 
           {/* 打开暂存区：紧随打开文件夹，载入设置中固定的暂存目录。 */}
