@@ -111,7 +111,9 @@ function getCurrentMermaidTheme(): 'default' | 'dark' | 'forest' {
   return isDark ? 'dark' : 'default';
 }
 
-import { Maximize2, Copy, Download, Check, Edit2, X, AlertCircle } from 'lucide-react';
+import { Maximize2, Edit2, X, AlertCircle } from 'lucide-react';
+import { ChartExportMenu } from '../export/ChartExportMenu';
+import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
 
 // ── React NodeView ──
 
@@ -123,7 +125,6 @@ function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
   const [editValue, setEditValue] = useState('');
   const [inViewport, setInViewport] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [zoom, setZoom] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
   const renderTokenRef = useRef<number>(0);
@@ -184,34 +185,9 @@ function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
     return () => observer.disconnect();
   }, [inViewport, code, doRender]);
 
-  // 复制 SVG 或源码
-  const handleCopy = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (svg) {
-      navigator.clipboard.writeText(svg).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      });
-    } else {
-      navigator.clipboard.writeText(code).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      });
-    }
-  };
-
-  // 导出 SVG 文件
-  const handleExportSvg = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!svg) return;
-    const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `mermaid-${Date.now()}.svg`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  // 导出来源：渲染出 SVG 后复制/导出才可用
+  const exportSource: ChartImageSource | null = svg ? { kind: 'svg', svg } : null;
+  const exportFileName = buildExportFileName('', 'mermaid');
 
   if (editing) {
     return (
@@ -369,48 +345,18 @@ function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
               <Edit2 size={12} />
               <span>编辑</span>
             </button>
-            <button
-              type="button"
-              onClick={handleCopy}
-              title="复制 SVG 矢量代码"
-              style={{
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '3px 6px',
-                borderRadius: 4,
-                color: copied ? 'var(--success-600, #16a34a)' : 'var(--editor-text-muted, #64748b)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                fontSize: 11,
-              }}
-            >
-              {copied ? <Check size={12} /> : <Copy size={12} />}
-              <span>{copied ? '已复制' : '复制'}</span>
-            </button>
-            {svg && (
-              <button
-                type="button"
-                onClick={handleExportSvg}
-                title="导出 SVG 文件"
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: '3px 6px',
-                  borderRadius: 4,
-                  color: 'var(--editor-text-muted, #64748b)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  fontSize: 11,
-                }}
-              >
-                <Download size={12} />
-                <span>导出</span>
-              </button>
-            )}
+            <ChartExportMenu
+              action="copy"
+              variant="ghost"
+              source={exportSource}
+              fileName={exportFileName}
+            />
+            <ChartExportMenu
+              action="download"
+              variant="ghost"
+              source={exportSource}
+              fileName={exportFileName}
+            />
             {svg && (
               <button
                 type="button"
@@ -576,26 +522,18 @@ function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
                   重置
                 </button>
               </div>
-              <button
-                type="button"
-                onClick={handleExportSvg}
-                style={{
-                  padding: '4px 12px',
-                  borderRadius: 4,
-                  background: 'var(--editor-accent, #3b82f6)',
-                  color: '#ffffff',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  fontWeight: 500,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                <Download size={13} />
-                <span>导出 SVG</span>
-              </button>
+              <ChartExportMenu
+                action="copy"
+                variant="outline"
+                source={exportSource}
+                fileName={exportFileName}
+              />
+              <ChartExportMenu
+                action="download"
+                variant="primary"
+                source={exportSource}
+                fileName={exportFileName}
+              />
               <button
                 type="button"
                 onClick={() => setFullscreen(false)}
