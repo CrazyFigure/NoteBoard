@@ -92,18 +92,12 @@ export function FieldSelectButton({
     <>
       <button
         type="button"
+        className="nb-bitable-btn-secondary"
         onClick={handleOpen}
         style={{
-          display: 'inline-flex',
-          alignItems: 'center',
           gap: 6,
           padding: '3px 8px',
-          borderRadius: 4,
-          border: '1px solid var(--editor-border, #cbd5e1)',
-          background: 'var(--editor-bg, #ffffff)',
-          color: 'var(--editor-text, #1e293b)',
           fontSize: 12,
-          cursor: 'pointer',
           minWidth: width,
           maxWidth: width,
         }}
@@ -135,20 +129,13 @@ export function FieldSelectButton({
           <div style={{ display: 'flex', flexDirection: 'column', padding: '4px' }}>
             <button
               type="button"
+              className="nb-bitable-menu-item"
               onClick={() => {
                 onChange(null);
                 setOpen(false);
               }}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '5px 8px',
-                border: 'none',
-                background: value === null ? 'var(--editor-bg, #f1f5f9)' : 'transparent',
-                cursor: 'pointer',
-                fontSize: 12,
-                borderRadius: 4,
+                background: value === null ? 'var(--editor-bg, #f1f5f9)' : undefined,
                 color: 'var(--editor-text-muted, #64748b)',
               }}
             >
@@ -163,21 +150,13 @@ export function FieldSelectButton({
                   <button
                     key={col.id}
                     type="button"
+                    className="nb-bitable-menu-item"
                     onClick={() => {
                       onChange(col.id);
                       setOpen(false);
                     }}
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      padding: '5px 8px',
-                      border: 'none',
-                      background: isSelected ? 'var(--editor-bg, #f1f5f9)' : 'transparent',
-                      cursor: 'pointer',
-                      fontSize: 12,
-                      borderRadius: 4,
-                      color: 'var(--editor-text, #1e293b)',
+                      background: isSelected ? 'var(--editor-bg, #f1f5f9)' : undefined,
                     }}
                   >
                     {colMeta.icon}

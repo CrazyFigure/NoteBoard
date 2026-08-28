@@ -1,5 +1,5 @@
 // NoteBoard 多维表格单元格渲染与交互编辑器
-// 深度还原飞书多维表格各类字段的视觉与交互体验
+// 深度还原多维表格各类字段的视觉与交互体验
 // 单选/多选单元格统一通过「双击」唤出 Portal 选项面板，单击仅选中单元格
 // 多行文本单元格双击唤出编辑弹层，只读展示按列配置的显示模式（只显示第一行 / 全显示）
 
@@ -725,9 +725,9 @@ export function BitableCellEditor({
           <Star
             key={star}
             size={14}
+            className="nb-bitable-star"
             fill={star <= currentRating ? '#f59e0b' : 'none'}
             color={star <= currentRating ? '#f59e0b' : '#cbd5e1'}
-            style={{ cursor: 'pointer', transition: 'transform 0.1s ease' }}
             onClick={() => onChange(star === currentRating ? 0 : star)}
           />
         ))}
@@ -840,7 +840,8 @@ export function BitableCellEditor({
               href={inputValue}
               target="_blank"
               rel="noopener noreferrer"
-              style={{ fontSize: 11, color: 'var(--editor-accent, #3b82f6)' }}
+              className="nb-bitable-btn"
+              style={{ fontSize: 11, color: 'var(--editor-accent, #3b82f6)', display: 'inline-flex', width: 'fit-content' }}
             >
               在新窗口打开链接
             </a>
@@ -916,7 +917,8 @@ export function BitableCellEditor({
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            style={{ color: 'var(--editor-accent, #3b82f6)', display: 'flex', opacity: 0.8 }}
+            className="nb-bitable-btn-ghost"
+            style={{ padding: 2, color: 'var(--editor-accent, #3b82f6)' }}
           >
             <ExternalLink size={12} />
           </a>

@@ -1,4 +1,4 @@
-// NoteBoard 飞书风格多维表格网格视图 (Grid View)
+// NoteBoard 多维表格网格视图 (Grid View)
 // 支持表头指针拖拽换列、各字段格式专有排序、树形子任务展开收起、选区高亮与剪切/复制/粘贴/删除
 // 剪贴板通过隐藏代理输入框接收原生 copy/cut/paste 事件，规避 navigator.clipboard 的读权限弹窗
 
@@ -170,7 +170,7 @@ function SortRulesPanel({ columns, sortRules, onChange, onClose }: SortRulesPane
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--editor-text, #1e293b)' }}>排序</span>
         {sortRules.length > 0 && (
-          <button type="button" onClick={clearAll} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 11, color: 'var(--editor-text-muted, #64748b)' }}>
+          <button type="button" onClick={clearAll} className="nb-bitable-btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }}>
             清除全部
           </button>
         )}
@@ -197,20 +197,22 @@ function SortRulesPanel({ columns, sortRules, onChange, onClose }: SortRulesPane
             />
             <button
               type="button"
+              className="nb-bitable-btn-secondary"
               onClick={() => updateRule(index, { direction: rule.direction === 'asc' ? 'desc' : 'asc' })}
               style={{
-                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-                padding: '3px 6px', borderRadius: 4, border: '1px solid var(--editor-border, #cbd5e1)',
-                background: 'var(--editor-bg, #ffffff)', cursor: 'pointer', fontSize: 11, color: 'var(--editor-text, #1e293b)',
+                flex: 1,
+                padding: '3px 6px',
+                fontSize: 11,
               }}
             >
               {rule.direction === 'asc' ? labels.asc : labels.desc}
             </button>
             <button
               type="button"
+              className="nb-bitable-btn-ghost"
               onClick={() => removeRule(index)}
               title="移除该排序字段"
-              style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, color: 'var(--editor-text-muted, #94a3b8)', display: 'inline-flex', alignItems: 'center' }}
+              style={{ padding: 4 }}
             >
               <X size={13} />
             </button>
@@ -221,11 +223,12 @@ function SortRulesPanel({ columns, sortRules, onChange, onClose }: SortRulesPane
       {localRules.length < columns.length && (
         <button
           type="button"
+          className="nb-bitable-btn-secondary"
           onClick={addRule}
           style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-            padding: '5px 10px', borderRadius: 4, border: '1px dashed var(--editor-border, #cbd5e1)',
-            background: 'var(--editor-bg, #f8fafc)', cursor: 'pointer', fontSize: 12, color: 'var(--editor-text-muted, #64748b)',
+            borderStyle: 'dashed',
+            padding: '5px 10px',
+            color: 'var(--editor-text-muted, #64748b)',
           }}
         >
           <Plus size={13} />
@@ -234,10 +237,10 @@ function SortRulesPanel({ columns, sortRules, onChange, onClose }: SortRulesPane
       )}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
-        <button type="button" onClick={onClose} style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid var(--editor-border, #cbd5e1)', background: 'var(--editor-bg, #ffffff)', cursor: 'pointer', fontSize: 12, color: 'var(--editor-text, #1e293b)' }}>
+        <button type="button" onClick={onClose} className="nb-bitable-btn-secondary" style={{ padding: '4px 10px' }}>
           取消
         </button>
-        <button type="button" onClick={apply} style={{ padding: '4px 10px', borderRadius: 4, border: 'none', background: 'var(--editor-accent, #3b82f6)', cursor: 'pointer', fontSize: 12, color: '#ffffff' }}>
+        <button type="button" onClick={apply} className="nb-bitable-btn-primary" style={{ padding: '4px 12px' }}>
           应用
         </button>
       </div>
@@ -788,18 +791,12 @@ export function BitableGridView({
             {groupByColumnId && (
               <button
                 type="button"
+                className="nb-bitable-btn-ghost"
                 onClick={() => onUpdateGroupByColumnId && onUpdateGroupByColumnId('')}
                 style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
                   gap: 4,
                   padding: '2px 6px',
-                  borderRadius: 4,
-                  border: 'none',
-                  background: 'transparent',
-                  color: 'var(--editor-text-muted, #64748b)',
                   fontSize: 11,
-                  cursor: 'pointer',
                 }}
               >
                 <X size={11} />
@@ -814,6 +811,7 @@ export function BitableGridView({
             <button
               type="button"
               ref={(el) => { if (el) sortButtonRef.current = el; }}
+              className="nb-bitable-btn-secondary"
               onClick={(e) => {
                 const rect = getAnchorRect(e.currentTarget);
                 if (!rect) return;
@@ -822,16 +820,11 @@ export function BitableGridView({
                 setSortPanelOpen(true);
               }}
               style={{
-                display: 'inline-flex',
-                alignItems: 'center',
                 gap: 4,
                 padding: '3px 8px',
-                borderRadius: 4,
-                border: '1px solid var(--editor-border, #cbd5e1)',
-                background: sortRules.length > 0 ? 'rgba(59, 130, 246, 0.08)' : 'var(--editor-bg, #ffffff)',
-                cursor: 'pointer',
-                fontSize: 12,
-                color: sortRules.length > 0 ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text, #1e293b)',
+                background: sortRules.length > 0 ? 'rgba(59, 130, 246, 0.08)' : undefined,
+                color: sortRules.length > 0 ? 'var(--editor-accent, #3b82f6)' : undefined,
+                borderColor: sortRules.length > 0 ? 'var(--editor-accent, #3b82f6)' : undefined,
               }}
             >
               <ArrowUpDown size={13} />
@@ -840,18 +833,12 @@ export function BitableGridView({
             {sortRules.length > 0 && (
               <button
                 type="button"
+                className="nb-bitable-btn-ghost"
                 onClick={() => onUpdateSortRules && onUpdateSortRules([])}
                 style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
                   gap: 4,
                   padding: '2px 6px',
-                  borderRadius: 4,
-                  border: 'none',
-                  background: 'transparent',
-                  color: 'var(--editor-text-muted, #64748b)',
                   fontSize: 11,
-                  cursor: 'pointer',
                 }}
               >
                 <X size={11} />
@@ -1037,6 +1024,7 @@ export function BitableGridView({
                     <button
                       type="button"
                       data-no-drag
+                      className="nb-bitable-btn-ghost"
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1054,14 +1042,8 @@ export function BitableGridView({
                         }
                       }}
                       style={{
-                        border: 'none',
-                        background: isMenuOpen ? 'var(--editor-bg, #f1f5f9)' : 'transparent',
-                        cursor: 'pointer',
                         padding: '2px',
-                        borderRadius: 4,
-                        color: 'var(--editor-text-muted, #64748b)',
-                        display: 'flex',
-                        alignItems: 'center',
+                        background: isMenuOpen ? 'var(--editor-bg, #f1f5f9)' : undefined,
                       }}
                     >
                       <MoreHorizontal size={13} />
@@ -1082,7 +1064,7 @@ export function BitableGridView({
                       }}
                     />
 
-                    {/* 飞书风列配置浮动菜单（Portal 渲染，避免被滚动容器裁剪） */}
+                    {/* 列配置浮动菜单（Portal 渲染，避免被滚动容器裁剪） */}
                     {isMenuOpen && columnMenu && (
                       <FloatingPanel
                         anchor={columnMenu.anchor}
@@ -1094,23 +1076,11 @@ export function BitableGridView({
                       >
                         <button
                           type="button"
+                          className="nb-bitable-menu-item"
                           onClick={() => {
                             setColNameInput(col.name);
                             setEditingColNameId(col.id);
                             setColumnMenu(null);
-                          }}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            padding: '6px 8px',
-                            border: 'none',
-                            background: 'transparent',
-                            cursor: 'pointer',
-                            fontSize: 12,
-                            borderRadius: 4,
-                            color: 'var(--editor-text, #1e293b)',
-                            textAlign: 'left',
                           }}
                         >
                           <Edit2 size={13} />
@@ -1121,6 +1091,7 @@ export function BitableGridView({
                         {isOptionField && (
                           <button
                             type="button"
+                            className="nb-bitable-menu-item"
                             onClick={() => {
                               const anchor = getAnchorRect(headerCellRefs.current.get(col.id));
                               const th = headerCellRefs.current.get(col.id);
@@ -1128,19 +1099,6 @@ export function BitableGridView({
                                 setOptionsEditor({ colId: col.id, anchor, trigger: th });
                               }
                               setColumnMenu(null);
-                            }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 6,
-                              padding: '6px 8px',
-                              border: 'none',
-                              background: 'transparent',
-                              cursor: 'pointer',
-                              fontSize: 12,
-                              borderRadius: 4,
-                              color: 'var(--editor-text, #1e293b)',
-                              textAlign: 'left',
                             }}
                           >
                             {col.type === 'select' ? <Tag size={13} /> : <Tags size={13} />}
@@ -1157,25 +1115,17 @@ export function BitableGridView({
                               <button
                                 type="button"
                                 disabled={colIdx === 0}
+                                className="nb-bitable-btn-secondary"
                                 onClick={() => {
                                   onMoveColumn(col.id, 'left');
                                   setColumnMenu(null);
                                 }}
                                 style={{
                                   flex: 1,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
                                   gap: 4,
                                   padding: '5px 6px',
-                                  minWidth: 26,
-                                  border: 'none',
-                                  background: 'transparent',
-                                  cursor: colIdx === 0 ? 'not-allowed' : 'pointer',
-                                  opacity: colIdx === 0 ? 0.4 : 1,
                                   fontSize: 11,
-                                  borderRadius: 4,
-                                  color: 'var(--editor-text, #1e293b)',
+                                  opacity: colIdx === 0 ? 0.4 : 1,
                                 }}
                               >
                                 <MoveLeft size={12} />
@@ -1185,25 +1135,17 @@ export function BitableGridView({
                               <button
                                 type="button"
                                 disabled={colIdx === columns.length - 1}
+                                className="nb-bitable-btn-secondary"
                                 onClick={() => {
                                   onMoveColumn(col.id, 'right');
                                   setColumnMenu(null);
                                 }}
                                 style={{
                                   flex: 1,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
                                   gap: 4,
                                   padding: '5px 6px',
-                            minWidth: 26,
-                                  border: 'none',
-                                  background: 'transparent',
-                                  cursor: colIdx === columns.length - 1 ? 'not-allowed' : 'pointer',
-                                  opacity: colIdx === columns.length - 1 ? 0.4 : 1,
                                   fontSize: 11,
-                                  borderRadius: 4,
-                                  color: 'var(--editor-text, #1e293b)',
+                                  opacity: colIdx === columns.length - 1 ? 0.4 : 1,
                                 }}
                               >
                                 <MoveRight size={12} />
@@ -1231,6 +1173,7 @@ export function BitableGridView({
                                       key={opt.id}
                                       type="button"
                                       title={opt.hint}
+                                      className={active ? 'nb-bitable-btn-primary' : 'nb-bitable-btn-secondary'}
                                       onClick={() => {
                                         onUpdateColumn(col.id, {
                                           longText: { ...ltConfig, displayMode: opt.id },
@@ -1239,15 +1182,7 @@ export function BitableGridView({
                                       }}
                                       style={{
                                         flex: 1,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        padding: '5px 6px',
-                                        border: 'none',
-                                        borderRadius: 4,
-                                        background: active ? 'var(--editor-accent, #3b82f6)' : 'transparent',
-                                        color: active ? '#ffffff' : 'var(--editor-text, #1e293b)',
-                                        cursor: 'pointer',
+                                        padding: '4px 6px',
                                         fontSize: 11,
                                         fontWeight: active ? 600 : 400,
                                       }}
@@ -1261,6 +1196,7 @@ export function BitableGridView({
                               <button
                                 type="button"
                                 title="开启后以富文本方式编辑与渲染，支持加粗、代码块等 Markdown 语法"
+                                className="nb-bitable-menu-item"
                                 onClick={() => {
                                   onUpdateColumn(col.id, {
                                     longText: { ...ltConfig, markdown: !ltConfig.markdown },
@@ -1268,17 +1204,8 @@ export function BitableGridView({
                                   setColumnMenu(null);
                                 }}
                                 style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 6,
-                                  padding: '5px 8px',
-                                  border: 'none',
-                                  background: 'transparent',
-                                  cursor: 'pointer',
                                   fontSize: 11,
-                                  borderRadius: 4,
-                                  color: ltConfig.markdown ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text, #1e293b)',
-                                  textAlign: 'left',
+                                  color: ltConfig.markdown ? 'var(--editor-accent, #3b82f6)' : undefined,
                                 }}
                               >
                                 <span
@@ -1317,6 +1244,7 @@ export function BitableGridView({
                               <button
                                 key={t}
                                 type="button"
+                                className="nb-bitable-menu-item"
                                 onClick={() => {
                                   onUpdateColumn(col.id, {
                                     type: t,
@@ -1335,17 +1263,8 @@ export function BitableGridView({
                                   setColumnMenu(null);
                                 }}
                                 style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'space-between',
-                                  width: '100%',
-                                  padding: '4px 8px',
-                                  border: 'none',
-                                  background: isCurrent ? 'var(--editor-bg, #f1f5f9)' : 'transparent',
-                                  cursor: 'pointer',
+                                  background: isCurrent ? 'var(--editor-bg, #f1f5f9)' : undefined,
                                   fontSize: 11,
-                                  borderRadius: 4,
-                                  color: 'var(--editor-text, #1e293b)',
                                 }}
                               >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1361,22 +1280,12 @@ export function BitableGridView({
 
                         <button
                           type="button"
+                          className="nb-bitable-menu-item"
                           onClick={() => {
                             onAddColumn('left', col.id);
                             setColumnMenu(null);
                           }}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            padding: '5px 8px',
-                            border: 'none',
-                            background: 'transparent',
-                            cursor: 'pointer',
-                            fontSize: 11,
-                            borderRadius: 4,
-                            color: 'var(--editor-text, #1e293b)',
-                          }}
+                          style={{ fontSize: 11 }}
                         >
                           <ArrowLeft size={12} />
                           <span>在左侧插入列</span>
@@ -1384,22 +1293,12 @@ export function BitableGridView({
 
                         <button
                           type="button"
+                          className="nb-bitable-menu-item"
                           onClick={() => {
                             onAddColumn('right', col.id);
                             setColumnMenu(null);
                           }}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            padding: '5px 8px',
-                            border: 'none',
-                            background: 'transparent',
-                            cursor: 'pointer',
-                            fontSize: 11,
-                            borderRadius: 4,
-                            color: 'var(--editor-text, #1e293b)',
-                          }}
+                          style={{ fontSize: 11 }}
                         >
                           <ArrowRight size={12} />
                           <span>在右侧插入列</span>
@@ -1408,23 +1307,13 @@ export function BitableGridView({
                         {onClearColumn && (
                           <button
                             type="button"
+                            className="nb-bitable-menu-item"
                             onClick={() => {
                               onClearColumn(col.id);
                               setColumnMenu(null);
                               showToast('已清空该列所有数据');
                             }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 6,
-                              padding: '5px 8px',
-                              border: 'none',
-                              background: 'transparent',
-                              cursor: 'pointer',
-                              fontSize: 11,
-                              borderRadius: 4,
-                              color: 'var(--editor-text-muted, #64748b)',
-                            }}
+                            style={{ fontSize: 11, color: 'var(--editor-text-muted, #64748b)' }}
                           >
                             <Eraser size={12} />
                             <span>清空此列数据</span>
@@ -1435,21 +1324,11 @@ export function BitableGridView({
 
                         <button
                           type="button"
+                          className="nb-bitable-btn-danger"
+                          style={{ width: '100%', justifyContent: 'flex-start' }}
                           onClick={() => {
                             onDeleteColumn(col.id);
                             setColumnMenu(null);
-                          }}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            padding: '5px 8px',
-                            border: 'none',
-                            background: 'transparent',
-                            cursor: 'pointer',
-                            fontSize: 11,
-                            borderRadius: 4,
-                            color: '#ef4444',
                           }}
                         >
                           <Trash2 size={14} />
@@ -1478,18 +1357,10 @@ export function BitableGridView({
             >
               <button
                 type="button"
+                className="nb-bitable-btn-ghost"
                 onClick={() => onAddColumn('right')}
                 title="添加新列"
-                style={{
-                  border: 'none',
-                  background: 'transparent',
-                  cursor: 'pointer',
-                  padding: '4px',
-                  borderRadius: 4,
-                  color: 'var(--editor-text-muted, #64748b)',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                }}
+                style={{ padding: '4px' }}
               >
                 <Plus size={14} />
               </button>
@@ -1545,17 +1416,13 @@ export function BitableGridView({
                       >
                         <button
                           type="button"
+                          className="nb-bitable-btn-ghost"
                           onClick={(e) => {
                             e.stopPropagation();
                             toggleGroupCollapse(item.key);
                           }}
                           style={{
-                            border: 'none',
-                            background: 'transparent',
-                            cursor: 'pointer',
-                            padding: 0,
-                            display: 'inline-flex',
-                            alignItems: 'center',
+                            padding: 2,
                             color: 'var(--editor-text-muted, #64748b)',
                           }}
                         >
@@ -1654,8 +1521,8 @@ export function BitableGridView({
                         border: '1px solid var(--editor-border, #cbd5e1)',
                         borderRadius: 6,
                         boxShadow: '0 6px 18px rgba(15,23,42,0.12)',
-                        padding: '4px 5px',
-                        gap: 3,
+                        padding: '3px 4px',
+                        gap: 2,
                         alignItems: 'center',
                       }}
                       onClick={(e) => e.stopPropagation()}
@@ -1664,16 +1531,9 @@ export function BitableGridView({
                         <button
                           type="button"
                           title="展开记录详情"
+                          className="nb-bitable-row-action-btn"
                           onClick={() => onOpenRecord(row.id)}
-                          style={{
-                            border: 'none',
-                            background: 'transparent',
-                            cursor: 'pointer',
-                            padding: '5px 6px',
-                            minWidth: 26,
-                            color: 'var(--editor-accent, #3b82f6)',
-                            display: 'flex',
-                          }}
+                          style={{ color: 'var(--editor-accent, #3b82f6)' }}
                         >
                           <Maximize2 size={14} />
                         </button>
@@ -1687,17 +1547,9 @@ export function BitableGridView({
                               : '该行已是第一级'
                           }
                           disabled={!row.parentId}
+                          className="nb-bitable-row-action-btn"
                           onClick={() => onOutdentRow(row.id)}
-                          style={{
-                            border: 'none',
-                            background: 'transparent',
-                            cursor: row.parentId ? 'pointer' : 'not-allowed',
-                            opacity: row.parentId ? 1 : 0.3,
-                            padding: '5px 6px',
-                            minWidth: 26,
-                            color: 'var(--editor-text, #334155)',
-                            display: 'flex',
-                          }}
+                          style={{ color: 'var(--editor-text, #334155)' }}
                         >
                           <IndentDecrease size={14} />
                         </button>
@@ -1706,16 +1558,9 @@ export function BitableGridView({
                         <button
                           type="button"
                           title="降级为子任务 (Tab)"
+                          className="nb-bitable-row-action-btn"
                           onClick={() => onIndentRow(row.id)}
-                          style={{
-                            border: 'none',
-                            background: 'transparent',
-                            cursor: 'pointer',
-                            padding: '5px 6px',
-                            minWidth: 26,
-                            color: 'var(--editor-text, #334155)',
-                            display: 'flex',
-                          }}
+                          style={{ color: 'var(--editor-text, #334155)' }}
                         >
                           <IndentIncrease size={14} />
                         </button>
@@ -1724,16 +1569,9 @@ export function BitableGridView({
                         <button
                           type="button"
                           title="添加子任务"
+                          className="nb-bitable-row-action-btn"
                           onClick={() => onAddSubRow(row.id)}
-                          style={{
-                            border: 'none',
-                            background: 'transparent',
-                            cursor: 'pointer',
-                            padding: '5px 6px',
-                            minWidth: 26,
-                            color: 'var(--editor-accent, #3b82f6)',
-                            display: 'flex',
-                          }}
+                          style={{ color: 'var(--editor-accent, #3b82f6)' }}
                         >
                           <CornerDownRight size={14} />
                         </button>
@@ -1742,16 +1580,9 @@ export function BitableGridView({
                         <button
                           type="button"
                           title="在上方插入行"
+                          className="nb-bitable-row-action-btn"
                           onClick={() => onInsertRowAbove(row.id)}
-                          style={{
-                            border: 'none',
-                            background: 'transparent',
-                            cursor: 'pointer',
-                            padding: '5px 6px',
-                            minWidth: 26,
-                            color: 'var(--editor-text, #334155)',
-                            display: 'flex',
-                          }}
+                          style={{ color: 'var(--editor-text, #334155)' }}
                         >
                           <ArrowUp size={14} />
                         </button>
@@ -1760,15 +1591,9 @@ export function BitableGridView({
                         <button
                           type="button"
                           title="在下方插入行"
+                          className="nb-bitable-row-action-btn"
                           onClick={() => onInsertRowBelow(row.id)}
-                          style={{
-                            border: 'none',
-                            background: 'transparent',
-                            cursor: 'pointer',
-                            padding: '5px 6px',
-                            color: 'var(--editor-text, #334155)',
-                            display: 'flex',
-                          }}
+                          style={{ color: 'var(--editor-text, #334155)' }}
                         >
                           <ArrowDown size={14} />
                         </button>
@@ -1776,17 +1601,11 @@ export function BitableGridView({
                       <button
                         type="button"
                         title="删除该行"
+                        className="nb-bitable-row-action-btn"
                         onClick={() => onDeleteRow(row.id)}
-                        style={{
-                          border: 'none',
-                          background: 'transparent',
-                          cursor: 'pointer',
-                          padding: '5px 6px',
-                          color: '#ef4444',
-                          display: 'flex',
-                        }}
+                        style={{ color: '#ef4444' }}
                       >
-                        <Trash2 size={12} />
+                        <Trash2 size={13} />
                       </button>
                     </div>
                   </div>
@@ -1846,16 +1665,13 @@ export function BitableGridView({
                             {hasChildren ? (
                               <button
                                 type="button"
+                                className="nb-bitable-btn-ghost"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   toggleCollapse(row.id);
                                 }}
                                 style={{
-                                  border: 'none',
-                                  background: 'transparent',
-                                  cursor: 'pointer',
-                                  padding: 0,
-                                  display: 'flex',
+                                  padding: 1,
                                   color: 'var(--editor-text-muted, #64748b)',
                                 }}
                               >
@@ -1907,28 +1723,13 @@ export function BitableGridView({
             >
               <button
                 type="button"
+                className="nb-bitable-btn-secondary"
                 onClick={onAddRow}
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
+                  borderStyle: 'dashed',
                   padding: '5px 12px',
-                  borderRadius: 5,
-                  border: '1px dashed var(--editor-border, #cbd5e1)',
-                  background: 'transparent',
                   color: 'var(--editor-text-muted, #64748b)',
-                  fontSize: 12,
-                  cursor: 'pointer',
                   fontWeight: 500,
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--editor-accent, #3b82f6)';
-                  e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--editor-border, #cbd5e1)';
-                  e.currentTarget.style.color = 'var(--editor-text-muted, #64748b)';
                 }}
               >
                 <Plus size={13} />

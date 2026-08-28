@@ -8,7 +8,7 @@ import { getOptionColor, BITABLE_PALETTE } from './bitableConverter';
 import { FloatingPanel, type AnchorRect } from './BitableFloating';
 import { Check, Edit2, Trash2, ChevronUp, ChevronDown, X } from 'lucide-react';
 
-/** 飞书风格彩色标签胶囊 */
+/** 彩色标签胶囊 */
 export function OptionBadge({
   option,
   onRemove,
@@ -43,16 +43,13 @@ export function OptionBadge({
       {onRemove && (
         <button
           type="button"
+          className="nb-bitable-btn-ghost"
           onClick={(e) => {
             e.stopPropagation();
             onRemove();
           }}
           style={{
-            border: 'none',
-            background: 'transparent',
-            cursor: 'pointer',
             padding: 0,
-            display: 'flex',
             color: color.text,
             opacity: 0.7,
           }}
@@ -78,6 +75,7 @@ function ColorPickerRow({
         <div
           key={pal.id}
           title={pal.label}
+          className="nb-bitable-color-dot"
           onClick={() => onChange(pal.id as SelectOptionColor)}
           style={{
             width: 14,
@@ -218,16 +216,11 @@ export function SelectOptionsPanel({
                   />
                   <button
                     type="button"
+                    className="nb-bitable-btn-primary"
                     onClick={() => saveEdit(opt.id)}
                     style={{
                       padding: '3px 8px',
-                      borderRadius: 4,
-                      background: 'var(--editor-accent, #3b82f6)',
-                      color: '#ffffff',
-                      border: 'none',
                       fontSize: 11,
-                      cursor: 'pointer',
-                      fontWeight: 500,
                     }}
                   >
                     保存
@@ -275,19 +268,14 @@ export function SelectOptionsPanel({
                         type="button"
                         title="上移"
                         disabled={idx === 0}
+                        className="nb-bitable-btn-ghost"
                         onClick={(e) => {
                           e.stopPropagation();
                           onMoveOption(opt.id, 'up');
                         }}
                         style={{
-                          border: 'none',
-                          background: 'transparent',
-                          cursor: idx === 0 ? 'not-allowed' : 'pointer',
                           opacity: idx === 0 ? 0.25 : 1,
                           padding: 2,
-                          borderRadius: 3,
-                          color: 'var(--editor-text-muted, #94a3b8)',
-                          display: 'flex',
                         }}
                       >
                         <ChevronUp size={11} />
@@ -296,19 +284,14 @@ export function SelectOptionsPanel({
                         type="button"
                         title="下移"
                         disabled={idx === options.length - 1}
+                        className="nb-bitable-btn-ghost"
                         onClick={(e) => {
                           e.stopPropagation();
                           onMoveOption(opt.id, 'down');
                         }}
                         style={{
-                          border: 'none',
-                          background: 'transparent',
-                          cursor: idx === options.length - 1 ? 'not-allowed' : 'pointer',
                           opacity: idx === options.length - 1 ? 0.25 : 1,
                           padding: 2,
-                          borderRadius: 3,
-                          color: 'var(--editor-text-muted, #94a3b8)',
-                          display: 'flex',
                         }}
                       >
                         <ChevronDown size={11} />
@@ -318,34 +301,23 @@ export function SelectOptionsPanel({
                   <button
                     type="button"
                     title="修改选项名称与颜色"
+                    className="nb-bitable-btn-ghost"
                     onClick={(e) => startEdit(e, opt)}
-                    style={{
-                      border: 'none',
-                      background: 'transparent',
-                      cursor: 'pointer',
-                      padding: 2,
-                      borderRadius: 3,
-                      color: 'var(--editor-text-muted, #94a3b8)',
-                      display: 'flex',
-                    }}
+                    style={{ padding: 2 }}
                   >
                     <Edit2 size={11} />
                   </button>
                   <button
                     type="button"
                     title="删除选项"
+                    className="nb-bitable-btn-ghost"
                     onClick={(e) => {
                       e.stopPropagation();
                       onDeleteOption?.(opt.id);
                     }}
                     style={{
-                      border: 'none',
-                      background: 'transparent',
-                      cursor: 'pointer',
                       padding: 2,
-                      borderRadius: 3,
                       color: '#ef4444',
-                      display: 'flex',
                     }}
                   >
                     <Trash2 size={11} />
@@ -398,16 +370,11 @@ export function SelectOptionsPanel({
             />
             <button
               type="button"
+              className="nb-bitable-btn-primary"
               onClick={handleAdd}
               style={{
                 padding: '3px 8px',
-                borderRadius: 4,
-                background: 'var(--editor-accent, #3b82f6)',
-                color: '#ffffff',
-                border: 'none',
                 fontSize: 11,
-                cursor: 'pointer',
-                fontWeight: 500,
               }}
             >
               添加

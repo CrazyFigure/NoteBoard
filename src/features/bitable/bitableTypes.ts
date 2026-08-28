@@ -1,5 +1,5 @@
 // NoteBoard 多维表格 (Bitable) 核心类型定义
-// 深度借鉴飞书多维表格样式与交互架构，支持丰富字段类型、双视图 (表格/看板) 与结构化持久化
+// 完备支持丰富字段类型、双视图 (表格/看板) 与结构化持久化
 
 export type BitableFieldType =
   /** 单行文本：不换行，单元格与表单中均为单行输入 */
@@ -36,7 +36,7 @@ export const DEFAULT_LONG_TEXT_CONFIG: LongTextConfig = {
   markdown: false,
 };
 
-/** 飞书风格马卡龙标签颜色 */
+/** 彩色标签选项颜色 */
 export type SelectOptionColor =
   | 'blue'
   | 'green'
