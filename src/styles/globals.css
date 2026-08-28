@@ -525,7 +525,7 @@ body {
  * Markdown 正文排版
  * ═════════════════════════════════════════════════════════ */
 
-.ProseMirror {
+.ProseMirror:not(.nb-bitable-rte-prose) {
   font-family: var(--content-font-family);
   font-size: var(--content-font-size);
   line-height: var(--content-line-height);

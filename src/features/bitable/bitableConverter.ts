@@ -1,7 +1,14 @@
 // NoteBoard 多维表格序列化、解析与数据转换器
 // 支持 JSON 双向解析、CSV 导出与默认精选项目管理模板构建
 
-import type { BitableDocument, BitableColumn, BitableRow, BitableViewConfig } from './bitableTypes';
+import {
+  DEFAULT_LONG_TEXT_CONFIG,
+  type BitableDocument,
+  type BitableColumn,
+  type BitableFieldType,
+  type BitableRow,
+  type BitableViewConfig,
+} from './bitableTypes';
 
 /** 飞书风格标准颜色清单 */
 export const BITABLE_PALETTE: Array<{ id: string; label: string; bg: string; text: string; border: string }> = [
@@ -64,6 +71,14 @@ export function createDefaultBitableDocument(title = '项目与任务管理多�
       width: 130,
     },
     {
+      id: 'col_notes',
+      key: 'notes',
+      name: '任务说明',
+      type: 'longText',
+      width: 260,
+      longText: { displayMode: 'firstLine', markdown: true },
+    },
+    {
       id: 'col_dueDate',
       key: 'dueDate',
       name: '截止日期',
@@ -96,6 +111,7 @@ export function createDefaultBitableDocument(title = '项目与任务管理多�
       col_dueDate: '2026-08-28',
       col_progress: 100,
       col_rating: 5,
+      col_notes: '对齐飞书多维表格的交互细节，输出 **单元格** 与 **看板** 两套视觉稿。',
     },
     {
       id: 'row_1_1',
@@ -117,6 +133,8 @@ export function createDefaultBitableDocument(title = '项目与任务管理多�
       col_dueDate: '2026-08-29',
       col_progress: 75,
       col_rating: 5,
+      col_notes:
+        '双击单元格可展开编辑弹层。\n\n- 支持 `加粗`、`行内代码`\n- 支持代码块：\n\n```ts\nconst cell = row[col.id];\n```\n\n列头菜单可切换「仅首行 / 全显示」。',
     },
     {
       id: 'row_3',
@@ -170,6 +188,40 @@ export function createDefaultBitableDocument(title = '项目与任务管理多�
   };
 }
 
+/** 已知字段类型清单：用于过滤外部数据中的非法类型，避免未知类型导致渲染分支缺失 */
+const KNOWN_FIELD_TYPES: ReadonlySet<string> = new Set([
+  'text',
+  'longText',
+  'number',
+  'select',
+  'multiSelect',
+  'date',
+  'checkbox',
+  'rating',
+  'progress',
+  'link',
+]);
+
+/**
+ * 单列定义的容错归一
+ * 外部粘贴或手工编辑过的 JSON 可能带有非法字段类型或残缺的 longText 配置，
+ * 在此统一收敛，避免把脏数据带进渲染层。
+ */
+function normalizeColumn(col: BitableColumn): BitableColumn {
+  const type: BitableFieldType = KNOWN_FIELD_TYPES.has(col?.type) ? col.type : 'text';
+  if (type === 'longText') {
+    return {
+      ...col,
+      type,
+      longText: {
+        displayMode: col.longText?.displayMode ?? DEFAULT_LONG_TEXT_CONFIG.displayMode,
+        markdown: col.longText?.markdown ?? DEFAULT_LONG_TEXT_CONFIG.markdown,
+      },
+    };
+  }
+  return { ...col, type };
+}
+
 /** 解析多维表格 JSON 文档，具备完备的容错与升级兼容机制 */
 export function parseBitableDocument(content: string): BitableDocument {
   const trimmed = content.trim();
@@ -184,7 +236,7 @@ export function parseBitableDocument(content: string): BitableDocument {
     }
 
     const columns: BitableColumn[] = Array.isArray(obj.columns) && obj.columns.length > 0
-      ? obj.columns
+      ? obj.columns.map(normalizeColumn)
       : createDefaultBitableDocument().columns;
 
     const rows: BitableRow[] = Array.isArray(obj.rows) ? obj.rows : [];

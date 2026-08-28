@@ -1,16 +1,21 @@
 // NoteBoard 多维表格单元格渲染与交互编辑器
 // 深度还原飞书多维表格各类字段的视觉与交互体验
 // 单选/多选单元格统一通过「双击」唤出 Portal 选项面板，单击仅选中单元格
+// 多行文本单元格双击唤出编辑弹层，只读展示按列配置的显示模式（只显示第一行 / 全显示）
 
 import React, { useState, useRef, useEffect } from 'react';
 import type {
   BitableColumn,
   ColumnOptionAction,
+  LongTextConfig,
   SelectOptionColor,
 } from './bitableTypes';
 import { OptionBadge, SelectOptionsPanel } from './BitableOptions';
 import { getAnchorRect, type AnchorRect } from './BitableFloating';
-import { createId } from './bitableUtils';
+import { createId, previewLongText, resolveLongTextConfig } from './bitableUtils';
+import { BitableMarkdown } from './BitableMarkdown';
+import { BitableRichTextEditor, type RichTextMode } from './BitableRichTextEditor';
+import { BitableLongTextPopover } from './BitableLongTextPopover';
 import { Star, Check, ExternalLink } from 'lucide-react';
 
 /** 表单形态（记录详情侧边栏）下输入控件的统一样式 */
@@ -42,6 +47,93 @@ interface CellEditorProps {
   variant?: 'cell' | 'form';
 }
 
+/** 空值占位的统一表现 */
+const EMPTY_HINT = <span style={{ opacity: 0.5 }}>-</span>;
+
+/**
+ * 多行文本的只读展示
+ * 显示模式由列配置决定：
+ * - firstLine：压成一行并省略超出部分，行高保持紧凑
+ * - full：完整展示（Markdown 列渲染富文本，普通列保留换行），行高由内容撑开
+ */
+function LongTextReadOnly({
+  value,
+  config,
+  onOpenEditor,
+}: {
+  value: unknown;
+  config: LongTextConfig;
+  onOpenEditor: () => void;
+}) {
+  const raw = value === null || value === undefined ? '' : String(value);
+
+  if (!raw.trim()) {
+    return (
+      <div
+        onDoubleClick={onOpenEditor}
+        title="双击编辑内容"
+        style={{
+          width: '100%',
+          padding: '4px 8px',
+          fontSize: 13,
+          color: 'var(--editor-text-muted, #94a3b8)',
+          cursor: 'pointer',
+        }}
+      >
+        {EMPTY_HINT}
+      </div>
+    );
+  }
+
+  // 全显示：内容区自然撑高，外层表格行的高度会随之增长
+  if (config.displayMode === 'full') {
+    return (
+      <div
+        onDoubleClick={onOpenEditor}
+        title="双击编辑内容"
+        style={{
+          width: '100%',
+          padding: '5px 8px',
+          fontSize: 13,
+          lineHeight: 1.6,
+          color: 'var(--editor-text, #1e293b)',
+          cursor: 'pointer',
+          // 内容整体可点击展开编辑，但 Markdown 里的代码块滚动不应被误触发
+          overflow: 'hidden',
+        }}
+      >
+        {config.markdown ? (
+          <BitableMarkdown source={raw} density="compact" />
+        ) : (
+          <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{raw}</div>
+        )}
+      </div>
+    );
+  }
+
+  // 只显示第一行：压平为单行并省略，保持表格紧凑
+  return (
+    <div
+      onDoubleClick={onOpenEditor}
+      title={raw}
+      style={{
+        width: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        padding: '4px 8px',
+        fontSize: 13,
+        color: 'var(--editor-text, #1e293b)',
+        cursor: 'pointer',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {previewLongText(raw, config)}
+    </div>
+  );
+}
+
 export function BitableCellEditor({
   column,
   value,
@@ -53,6 +145,9 @@ export function BitableCellEditor({
   const [inputValue, setInputValue] = useState<string>('');
   // 选项面板锚点：面板通过 Portal 渲染，彻底规避单元格 overflow 裁剪问题
   const [panelAnchor, setPanelAnchor] = useState<AnchorRect | null>(null);
+  // 多行文本编辑弹层的开关与编辑形态（可视化 / Markdown 源码）
+  const [longTextEditorOpen, setLongTextEditorOpen] = useState(false);
+  const [richMode, setRichMode] = useState<RichTextMode>('rich');
 
   const cellRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -77,25 +172,25 @@ export function BitableCellEditor({
   // 表单模式下控件常驻可编辑，需随外部值变化同步内部输入态
   useEffect(() => {
     if (variant !== 'form') return;
-    if (column.type === 'text' || column.type === 'number' || column.type === 'link') {
+    if (column.type === 'text' || column.type === 'longText' || column.type === 'number' || column.type === 'link') {
       setInputValue(value === null || value === undefined ? '' : String(value));
     }
   }, [variant, column.id, column.type, value]);
 
-  // ── 1. 文本字段 (Text) ──
+  // ── 1. 单行文本字段 (Text) ──
+  // 单行文本在任何形态下都不承载换行：回车即提交，需要多行内容请改用「多行文本」字段
   if (column.type === 'text') {
-    // 表单形态：常驻可编辑的多行文本框，回车提交、Shift+回车换行
+    // 表单形态：常驻可编辑的单行输入框
     if (variant === 'form') {
       return (
-        <textarea
-          rows={2}
+        <input
+          type="text"
           value={inputValue}
           placeholder="请输入内容"
           onChange={(e) => setInputValue(e.target.value)}
           onBlur={() => onChange(inputValue)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
+            if (e.key === 'Enter') {
               onChange(inputValue);
               e.currentTarget.blur();
             } else if (e.key === 'Escape') {
@@ -103,7 +198,7 @@ export function BitableCellEditor({
               e.currentTarget.blur();
             }
           }}
-          style={{ ...FORM_INPUT_STYLE, minHeight: 54, resize: 'vertical' }}
+          style={FORM_INPUT_STYLE}
         />
       );
     }
@@ -163,8 +258,82 @@ export function BitableCellEditor({
           whiteSpace: 'nowrap',
         }}
       >
-        {String(value ?? '') || <span style={{ opacity: 0.5 }}>-</span>}
+        {String(value ?? '') || EMPTY_HINT}
       </div>
+    );
+  }
+
+  // ── 1.5 多行文本字段 (LongText) ──
+  // 单元格形态：双击唤出编辑弹层；表单形态：内嵌编辑器，高度与渲染方式随列配置变化
+  if (column.type === 'longText') {
+    const config = resolveLongTextConfig(column);
+
+    if (variant === 'form') {
+      // Markdown 列在侧边栏直接用富文本编辑器，编辑体验与单元格弹层一致
+      if (config.markdown) {
+        return (
+          <div
+            style={{
+              border: '1px solid var(--editor-border, #cbd5e1)',
+              borderRadius: 6,
+              background: 'var(--editor-bg, #ffffff)',
+              overflow: 'hidden',
+            }}
+          >
+            <BitableRichTextEditor
+              value={inputValue}
+              onChange={setInputValue}
+              // 失焦即落库：inputValue 已由 onChange 同步到最新，此时提交不会丢字
+              onBlurCommit={() => onChange(inputValue)}
+              mode={richMode}
+              onModeChange={setRichMode}
+              // 全显示模式给足高度，只在首行模式下保持紧凑
+              minHeight={config.displayMode === 'full' ? 200 : 120}
+            />
+          </div>
+        );
+      }
+
+      return (
+        <textarea
+          value={inputValue}
+          placeholder="请输入内容，回车换行"
+          rows={config.displayMode === 'full' ? 8 : 3}
+          onChange={(e) => setInputValue(e.target.value)}
+          onBlur={() => onChange(inputValue)}
+          onKeyDown={(e) => {
+            // 单行模式下回车直接提交，避免误以为换行已生效
+            if (e.key === 'Enter' && config.displayMode === 'firstLine' && !e.shiftKey) {
+              e.preventDefault();
+              onChange(inputValue);
+              e.currentTarget.blur();
+            } else if (e.key === 'Escape') {
+              setInputValue(value === null || value === undefined ? '' : String(value));
+              e.currentTarget.blur();
+            }
+          }}
+          style={{ ...FORM_INPUT_STYLE, resize: 'vertical', lineHeight: 1.6 }}
+        />
+      );
+    }
+
+    return (
+      <>
+        <LongTextReadOnly
+          value={value}
+          config={config}
+          onOpenEditor={() => setLongTextEditorOpen(true)}
+        />
+        {longTextEditorOpen && (
+          <BitableLongTextPopover
+            column={column}
+            value={value}
+            config={config}
+            onCommit={(next) => onChange(next)}
+            onClose={() => setLongTextEditorOpen(false)}
+          />
+        )}
+      </>
     );
   }
 
