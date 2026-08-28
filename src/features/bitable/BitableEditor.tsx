@@ -1,5 +1,5 @@
 // NoteBoard 多维表格主编辑器 (Bitable Editor)
-// 深度还原飞书多维表格多视图管理（多看板/多表格）+ 拖拽换列 + 树形子任务 + 各字段专有排序 + 撤销重做
+// 深度还原多维表格多视图管理（多看板/多表格）+ 拖拽换列 + 树形子任务 + 各字段专有排序 + 撤销重做
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type {
@@ -788,7 +788,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
         overflow: 'hidden',
       }}
     >
-      {/* 顶部飞书风格多视图 Tab 栏 + 搜索 + 导出 + 添加行 */}
+      {/* 顶部多视图 Tab 栏 + 搜索 + 导出 + 添加行 */}
       <div
         style={{
           height: 42,
@@ -820,6 +820,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                 }}
                 onMouseDown={(e) => startViewDrag(e, viewIdx)}
                 title="拖拽可调整视图顺序 · 双击名称重命名"
+                className={`nb-bitable-tab${isActive ? ' is-active' : ''}`}
                 style={{
                   position: 'relative',
                   display: 'flex',
@@ -833,7 +834,6 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                   cursor: viewDrag ? 'grabbing' : 'grab',
                   fontWeight: isActive ? 600 : 400,
                   fontSize: 12,
-                  transition: 'background 0.15s ease',
                   flexShrink: 0,
                   // 被拖起的 Tab 半透明，落点处绘制插入指示线
                   opacity: viewDrag?.fromIdx === viewIdx ? 0.45 : 1,
@@ -890,6 +890,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                 <button
                   type="button"
                   data-no-drag
+                  className="nb-bitable-btn-ghost"
                   onMouseDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -903,14 +904,9 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                     }
                   }}
                   style={{
-                    border: 'none',
-                    background: 'transparent',
-                    cursor: 'pointer',
-                    padding: 0,
+                    padding: 2,
                     color: 'inherit',
-                    opacity: 0.6,
-                    display: 'flex',
-                    alignItems: 'center',
+                    opacity: 0.75,
                   }}
                 >
                   <ChevronDown size={11} />
@@ -926,22 +922,11 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                   >
                     <button
                       type="button"
+                      className="nb-bitable-menu-item"
                       onClick={() => {
                         setViewNameInput(v.name);
                         setEditingViewId(v.id);
                         setViewMenu(null);
-                      }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        padding: '4px 8px',
-                        border: 'none',
-                        background: 'transparent',
-                        cursor: 'pointer',
-                        fontSize: 12,
-                        borderRadius: 4,
-                        color: 'var(--editor-text, #1e293b)',
                       }}
                     >
                       <Edit2 size={12} />
@@ -949,19 +934,8 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                     </button>
                     <button
                       type="button"
+                      className="nb-bitable-menu-item"
                       onClick={() => handleDuplicateView(v)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        padding: '4px 8px',
-                        border: 'none',
-                        background: 'transparent',
-                        cursor: 'pointer',
-                        fontSize: 12,
-                        borderRadius: 4,
-                        color: 'var(--editor-text, #1e293b)',
-                      }}
                     >
                       <Copy size={12} />
                       <span>复制视图</span>
@@ -969,19 +943,9 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                     {data.views.length > 1 && (
                       <button
                         type="button"
+                        className="nb-bitable-btn-danger"
+                        style={{ width: '100%', justifyContent: 'flex-start' }}
                         onClick={() => handleDeleteView(v.id)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          padding: '4px 8px',
-                          border: 'none',
-                          background: 'transparent',
-                          cursor: 'pointer',
-                          fontSize: 12,
-                          borderRadius: 4,
-                          color: '#ef4444',
-                        }}
                       >
                         <Trash2 size={12} />
                         <span>删除视图</span>
@@ -997,6 +961,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
           <div style={{ position: 'relative' }}>
             <button
               type="button"
+              className="nb-bitable-btn-secondary"
               onClick={(e) => {
                 if (addViewMenu) {
                   setAddViewMenu(null);
@@ -1009,16 +974,11 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
               }}
               title="新建视图"
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
                 width: 26,
                 height: 26,
-                borderRadius: 4,
-                border: '1px solid var(--editor-border, #cbd5e1)',
-                background: addViewMenu ? 'var(--editor-bg, #f1f5f9)' : 'var(--editor-bg, #ffffff)',
+                padding: 0,
+                background: addViewMenu ? 'var(--editor-bg, #f1f5f9)' : undefined,
                 color: 'var(--editor-text-muted, #64748b)',
-                cursor: 'pointer',
               }}
             >
               <Plus size={13} />
@@ -1033,38 +993,16 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
               >
                 <button
                   type="button"
+                  className="nb-bitable-menu-item"
                   onClick={() => handleCreateView('grid')}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '5px 8px',
-                    border: 'none',
-                    background: 'transparent',
-                    cursor: 'pointer',
-                    fontSize: 12,
-                    borderRadius: 4,
-                    color: 'var(--editor-text, #1e293b)',
-                  }}
                 >
                   <TableIcon size={13} color="#3b82f6" />
                   <span>新建表格视图</span>
                 </button>
                 <button
                   type="button"
+                  className="nb-bitable-menu-item"
                   onClick={() => handleCreateView('kanban')}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '5px 8px',
-                    border: 'none',
-                    background: 'transparent',
-                    cursor: 'pointer',
-                    fontSize: 12,
-                    borderRadius: 4,
-                    color: 'var(--editor-text, #1e293b)',
-                  }}
                 >
                   <Kanban size={13} color="#8b5cf6" />
                   <span>新建看板视图</span>
@@ -1107,8 +1045,9 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             {searchQuery && (
               <button
                 type="button"
+                className="nb-bitable-btn-ghost"
                 onClick={() => setSearchQuery('')}
-                style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0 }}
+                style={{ padding: 1 }}
               >
                 <X size={12} />
               </button>
@@ -1118,20 +1057,9 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
           {/* 导出按钮 */}
           <button
             type="button"
+            className="nb-bitable-btn-secondary"
             onClick={handleExportCsv}
             title="导出为 CSV 表格"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '4px 8px',
-              borderRadius: 5,
-              border: '1px solid var(--editor-border, #e2e8f0)',
-              background: 'var(--editor-bg, #ffffff)',
-              color: 'var(--editor-text, #1e293b)',
-              cursor: 'pointer',
-              fontSize: 12,
-            }}
           >
             <FileSpreadsheet size={13} />
             <span>导出 CSV</span>
@@ -1140,20 +1068,8 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
           {/* 新增记录按钮 */}
           <button
             type="button"
+            className="nb-bitable-btn-primary"
             onClick={handleAddRow}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '4px 10px',
-              borderRadius: 5,
-              border: 'none',
-              background: 'var(--editor-accent, #3b82f6)',
-              color: '#ffffff',
-              cursor: 'pointer',
-              fontSize: 12,
-              fontWeight: 500,
-            }}
           >
             <Plus size={13} />
             <span>新建记录</span>

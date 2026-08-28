@@ -10,7 +10,7 @@ import {
   type BitableViewConfig,
 } from './bitableTypes';
 
-/** 飞书风格标准颜色清单 */
+/** 标准多维表格颜色清单 */
 export const BITABLE_PALETTE: Array<{ id: string; label: string; bg: string; text: string; border: string }> = [
   { id: 'blue', label: '沉稳蓝', bg: '#eff6ff', text: '#2563eb', border: '#bfdbfe' },
   { id: 'green', label: '清新绿', bg: '#f0fdf4', text: '#16a34a', border: '#bbf7d0' },
@@ -111,7 +111,7 @@ export function createDefaultBitableDocument(title = '项目与任务管理多�
       col_dueDate: '2026-08-28',
       col_progress: 100,
       col_rating: 5,
-      col_notes: '对齐飞书多维表格的交互细节，输出 **单元格** 与 **看板** 两套视觉稿。',
+      col_notes: '对齐多维表格的交互细节，输出 **单元格** 与 **看板** 两套视觉稿。',
     },
     {
       id: 'row_1_1',
@@ -126,7 +126,7 @@ export function createDefaultBitableDocument(title = '项目与任务管理多�
     },
     {
       id: 'row_2',
-      col_name: '实现飞书风格单元格与标签选择器',
+      col_name: '实现多维表格单元格与标签选择器',
       col_status: 'opt_doing',
       col_priority: 'p_p0',
       col_assignee: '前端研发',

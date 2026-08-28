@@ -89,8 +89,10 @@ const EDITOR_CSS = `
   display: inline-flex; align-items: center; justify-content: center;
   width: 26px; height: 26px; padding: 0; border: none; border-radius: 4px;
   background: transparent; color: var(--editor-text-secondary, #64748b); cursor: pointer; flex-shrink: 0;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .nb-bitable-rte-btn:hover { background: var(--editor-hover-background, rgba(59,130,246,0.10)); color: var(--editor-text, #1e293b); }
+.nb-bitable-rte-btn:active { transform: scale(0.92); }
 .nb-bitable-rte-btn.active { background: var(--editor-selection-background, rgba(59,130,246,0.16)); color: var(--editor-accent, #3b82f6); }
 .nb-bitable-rte-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .nb-bitable-rte-sep { width: 1px; height: 16px; margin: 0 3px; background: var(--editor-border, #e5e7eb); flex-shrink: 0; }
@@ -427,16 +429,12 @@ export function BitableRichTextEditor({
       >
         <button
           type="button"
+          className="nb-bitable-btn-secondary"
           onClick={mode === 'rich' ? handleSwitchToSource : handleSwitchToRich}
           title={mode === 'rich' ? '查看与编辑 Markdown 源码' : '返回可视化编辑'}
           style={{
             padding: '3px 8px',
-            borderRadius: 4,
-            border: '1px solid var(--editor-border, #e5e7eb)',
-            background: 'var(--editor-bg, #ffffff)',
-            color: 'var(--editor-text-secondary, #64748b)',
             fontSize: 11,
-            cursor: 'pointer',
           }}
         >
           {mode === 'rich' ? 'Markdown 源码' : '返回可视化'}

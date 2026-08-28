@@ -129,7 +129,7 @@ export function WelcomeScreen({
   const moreFormats = [
     {
       icon: Table2,
-      label: '飞书多维表格 (.bitable)',
+      label: '多维表格 (.bitable)',
       desc: '结构化数据、标签筛选与看板视图',
       color: '#2563eb',
       onClick: onNewBitable,

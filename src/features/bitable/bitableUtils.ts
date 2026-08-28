@@ -95,7 +95,7 @@ function splitDelimitedLine(line: string): string[] {
 
 /**
  * 解析剪贴板文本为二维矩阵
- * 兼容 Excel / 飞书表格复制出的 TSV 与 CSV 格式，末尾空行会被丢弃
+ * 兼容电子表格复制出的 TSV 与 CSV 格式，末尾空行会被丢弃
  */
 export function parseClipboardMatrix(text: string): string[][] {
   const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
@@ -365,7 +365,7 @@ export function groupFlatTreeRows(
     group.rows.push(node);
   });
 
-  // 空值组始终放在最后，与飞书行为一致
+  // 空值组始终放在最后
   return order.map((k) => groupMap.get(k)!).sort((a, b) => {
     const aEmpty = a.meta.key === '__empty__';
     const bEmpty = b.meta.key === '__empty__';
@@ -445,7 +445,7 @@ export function compareRowsBySortRules(
 
 /**
  * 获取某字段类型的专有排序方向文案
- * 不同字段类型用不同隐喻（A-Z、0-9、日期先后等），保持与飞书一致。
+ * 不同字段类型用不同隐喻（A-Z、0-9、日期先后等）。
  */
 export function getSortDirectionLabels(
   columnType: BitableColumn['type'],

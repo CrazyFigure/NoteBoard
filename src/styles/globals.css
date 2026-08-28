@@ -1766,3 +1766,291 @@ button:not(:disabled) {
   display: flex !important;
 }
 
+/* ── 多维表格 (Bitable) 按钮与交互元素状态反馈 ── */
+
+/* 通用按钮过渡与基础交互 */
+.nb-bitable-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  user-select: none;
+  font-family: inherit;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast), opacity var(--transition-fast);
+  box-sizing: border-box;
+}
+
+.nb-bitable-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+/* 主操作按钮（新建记录、保存、应用等） */
+.nb-bitable-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: var(--editor-accent, #3b82f6);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  transition: all var(--transition-fast);
+  box-sizing: border-box;
+}
+
+.nb-bitable-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(59, 130, 246, 0.28);
+}
+
+.nb-bitable-btn-primary:active:not(:disabled) {
+  filter: brightness(0.95);
+  transform: translateY(0) scale(0.96);
+  box-shadow: none;
+}
+
+.nb-bitable-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 次级/轮廓按钮（导出 CSV、取消、字段选择触发器等） */
+.nb-bitable-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--editor-border, #cbd5e1);
+  background: var(--editor-bg, #ffffff);
+  color: var(--editor-text, #1e293b);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  transition: all var(--transition-fast);
+  box-sizing: border-box;
+}
+
+.nb-bitable-btn-secondary:hover:not(:disabled) {
+  background: var(--toolbar-hover, #f1f5f9);
+  border-color: var(--editor-border-focus, #94a3b8);
+  color: var(--editor-text, #0f172a);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.nb-bitable-btn-secondary:active:not(:disabled) {
+  background: var(--toolbar-active, #e2e8f0);
+  transform: translateY(0) scale(0.96);
+  box-shadow: none;
+}
+
+.nb-bitable-btn-secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 幽灵/小图标按钮（列更多菜单、关闭、加号等） */
+.nb-bitable-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--editor-text-muted, #64748b);
+  cursor: pointer;
+  padding: 3px;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast), opacity var(--transition-fast);
+  box-sizing: border-box;
+}
+
+.nb-bitable-btn-ghost:hover:not(:disabled) {
+  background: var(--toolbar-hover, rgba(148, 163, 184, 0.14));
+  color: var(--editor-text, #1e293b);
+  transform: scale(1.06);
+}
+
+.nb-bitable-btn-ghost:active:not(:disabled) {
+  background: var(--toolbar-active, rgba(148, 163, 184, 0.25));
+  transform: scale(0.92);
+}
+
+.nb-bitable-btn-ghost:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* 危险操作按钮（删除视图、删除列、删除卡片等） */
+.nb-bitable-btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #ef4444;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+  box-sizing: border-box;
+}
+
+.nb-bitable-btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, #ef4444 12%, var(--editor-surface, #ffffff));
+  color: #dc2626;
+  transform: scale(1.02);
+}
+
+.nb-bitable-btn-danger:active:not(:disabled) {
+  background: color-mix(in srgb, #ef4444 22%, var(--editor-surface, #ffffff));
+  transform: scale(0.97);
+}
+
+/* 浮动菜单项按钮 */
+.nb-bitable-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--editor-text, #1e293b);
+  text-align: left;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+  box-sizing: border-box;
+}
+
+.nb-bitable-menu-item:hover:not(:disabled) {
+  background: var(--toolbar-hover, #f1f5f9);
+  color: var(--editor-text, #0f172a);
+}
+
+.nb-bitable-menu-item:active:not(:disabled) {
+  background: var(--toolbar-active, #e2e8f0);
+  transform: scale(0.98);
+}
+
+.nb-bitable-menu-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 视图 Tab 标签项交互 */
+.nb-bitable-tab {
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-bitable-tab:hover {
+  background: var(--toolbar-hover, rgba(148, 163, 184, 0.12)) !important;
+}
+
+.nb-bitable-tab.is-active:hover {
+  background: var(--editor-bg, #ffffff) !important;
+}
+
+.nb-bitable-tab:active {
+  transform: scale(0.98);
+}
+
+/* 看板卡片悬浮与点击反馈 */
+.nb-bitable-kanban-card {
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+
+.nb-bitable-kanban-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--editor-border-focus, #cbd5e1) !important;
+  box-shadow: 0 5px 14px rgba(15, 23, 42, 0.07) !important;
+}
+
+.nb-bitable-kanban-card:active {
+  transform: translateY(0) scale(0.985);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04) !important;
+}
+
+/* 拾色器圆点交互 */
+.nb-bitable-color-dot {
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.nb-bitable-color-dot:hover {
+  transform: scale(1.3);
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.25);
+  z-index: 2;
+}
+
+.nb-bitable-color-dot:active {
+  transform: scale(1.05);
+}
+
+/* 星级评分星星动效 */
+.nb-bitable-star {
+  transition: transform var(--transition-fast), opacity var(--transition-fast);
+}
+
+.nb-bitable-star:hover {
+  transform: scale(1.3);
+}
+
+.nb-bitable-star:active {
+  transform: scale(1.05);
+}
+
+/* 标签徽章动效 */
+.nb-bitable-badge {
+  transition: transform var(--transition-fast), filter var(--transition-fast);
+}
+
+.nb-bitable-badge:hover {
+  filter: brightness(0.96);
+  transform: scale(1.03);
+}
+
+.nb-bitable-badge:active {
+  transform: scale(0.97);
+}
+
+/* 行快捷操作栏按钮 */
+.nb-bitable-row-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 5px 6px;
+  min-width: 26px;
+  border-radius: 4px;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-bitable-row-action-btn:hover:not(:disabled) {
+  background: var(--toolbar-hover, #f1f5f9);
+  transform: scale(1.12);
+}
+
+.nb-bitable-row-action-btn:active:not(:disabled) {
+  background: var(--toolbar-active, #e2e8f0);
+  transform: scale(0.92);
+}
+
+.nb-bitable-row-action-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+

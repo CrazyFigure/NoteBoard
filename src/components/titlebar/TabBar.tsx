@@ -898,7 +898,7 @@ export function TabBar() {
                   onMouseUp={handleMenuItemMouseUp}
                 >
                   <Table2 size={13} color="#2563eb" />
-                  <span>飞书多维表格 (.bitable)</span>
+                  <span>多维表格 (.bitable)</span>
                 </button>
 
                 {/* 新建 Draw.io 架构图 */}

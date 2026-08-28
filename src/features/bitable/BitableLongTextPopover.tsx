@@ -124,16 +124,11 @@ export function BitableLongTextPopover({
           </div>
           <button
             type="button"
+            className="nb-bitable-btn-ghost"
             onClick={() => finish(false)}
             title="取消编辑"
             style={{
-              border: 'none',
-              background: 'transparent',
-              cursor: 'pointer',
               padding: 3,
-              borderRadius: 4,
-              color: 'var(--editor-text-muted, #64748b)',
-              display: 'flex',
               flexShrink: 0,
             }}
           >
@@ -194,34 +189,20 @@ export function BitableLongTextPopover({
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               type="button"
+              className="nb-bitable-btn-secondary"
               onClick={() => finish(false)}
-              style={{
-                padding: '5px 12px',
-                borderRadius: 6,
-                border: '1px solid var(--editor-border, #e2e8f0)',
-                background: 'var(--editor-surface, #ffffff)',
-                color: 'var(--editor-text, #1e293b)',
-                fontSize: 12,
-                cursor: 'pointer',
-              }}
+              style={{ padding: '5px 12px' }}
             >
               取消
             </button>
             <button
               type="button"
+              className="nb-bitable-btn-primary"
               onClick={() => finish(true)}
               style={{
-                display: 'flex',
-                alignItems: 'center',
                 gap: 5,
                 padding: '5px 14px',
-                borderRadius: 6,
-                border: 'none',
-                background: 'var(--editor-accent, #3b82f6)',
-                color: '#ffffff',
-                fontSize: 12,
                 fontWeight: 500,
-                cursor: 'pointer',
               }}
             >
               <Check size={13} />

@@ -58,7 +58,7 @@ data:
     status: done
     color: emerald
   - label: 2026 Q3
-    title: 信息图与飞书多维表格
+    title: 信息图与多维表格
     desc: 推出现代化 Infographic 渲染与 Bitable 表格
     status: active
     color: blue
@@ -130,7 +130,7 @@ groups:
       - name: 启动速度与资源占用
         value: < 200ms 秒级启动
         included: true
-      - name: 飞书多维表格支持
+      - name: 多维表格支持
         value: 完整支持双向切换
         included: true
       - name: 离线无网可用性
@@ -145,7 +145,7 @@ groups:
       - name: 启动速度与资源占用
         value: 较慢 (1~3s)
         included: false
-      - name: 飞书多维表格支持
+      - name: 多维表格支持
         value: 部分支持或需付费
         included: false
       - name: 离线无网可用性
@@ -179,7 +179,7 @@ points:
     y: 85
     color: emerald
     desc: 高颜值 Markdown 扩展
-  - name: 飞书多维表格
+  - name: 多维表格
     x: 45
     y: 90
     color: blue

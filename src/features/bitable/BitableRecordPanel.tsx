@@ -208,16 +208,11 @@ export function BitableRecordPanel({
         </div>
         <button
           type="button"
+          className="nb-bitable-btn-ghost"
           onClick={onClose}
           title="关闭详情"
           style={{
-            border: 'none',
-            background: 'transparent',
-            cursor: 'pointer',
             padding: 3,
-            borderRadius: 4,
-            color: 'var(--editor-text-muted, #64748b)',
-            display: 'flex',
             flexShrink: 0,
           }}
         >
@@ -301,24 +296,18 @@ export function BitableRecordPanel({
         >
           <button
             type="button"
+            className="nb-bitable-btn-danger"
             onClick={() => {
               onDeleteRow(row.id);
               onClose();
             }}
             style={{
-              display: 'flex',
-              alignItems: 'center',
               gap: 5,
               padding: '5px 10px',
-              borderRadius: 6,
-              border: '1px solid var(--editor-border, #e2e8f0)',
-              background: 'transparent',
-              color: '#ef4444',
               fontSize: 12,
-              cursor: 'pointer',
             }}
           >
-            <Trash2 size={12} />
+            <Trash2 size={13} />
             <span>删除该记录</span>
           </button>
         </div>

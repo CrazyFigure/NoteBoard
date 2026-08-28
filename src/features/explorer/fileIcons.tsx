@@ -81,7 +81,7 @@ export function getExplorerFileIcon(
     case 'dio':
       return <Layout {...iconProps} color="#ea580c" />;
 
-    // ── 多维表格（飞书多维表格风格蓝色）──
+    // ── 多维表格（多维表格风格蓝色）──
     case 'bitable':
     case 'table':
       return <Table {...iconProps} color="#2563eb" />;
