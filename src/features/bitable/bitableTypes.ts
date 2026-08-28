@@ -2,7 +2,10 @@
 // 深度借鉴飞书多维表格样式与交互架构，支持丰富字段类型、双视图 (表格/看板) 与结构化持久化
 
 export type BitableFieldType =
+  /** 单行文本：不换行，单元格与表单中均为单行输入 */
   | 'text'
+  /** 多行文本：保留换行，支持 Markdown 富文本，可在列头设置显示模式 */
+  | 'longText'
   | 'number'
   | 'select'
   | 'multiSelect'
@@ -11,6 +14,27 @@ export type BitableFieldType =
   | 'rating'
   | 'progress'
   | 'link';
+
+/**
+ * 多行文本的显示模式
+ * - firstLine：只显示第一行，行高保持紧凑（超出部分省略号）
+ * - full：完整显示全部内容，行高随内容自适应变高
+ */
+export type LongTextDisplayMode = 'firstLine' | 'full';
+
+/** 多行文本字段的显示与编辑配置（仅对 longText 生效） */
+export interface LongTextConfig {
+  /** 显示模式，默认 firstLine */
+  displayMode: LongTextDisplayMode;
+  /** 是否启用 Markdown 富文本（可视化编辑 + 渲染），默认 false */
+  markdown: boolean;
+}
+
+/** 多行文本配置的默认值 */
+export const DEFAULT_LONG_TEXT_CONFIG: LongTextConfig = {
+  displayMode: 'firstLine',
+  markdown: false,
+};
 
 /** 飞书风格马卡龙标签颜色 */
 export type SelectOptionColor =
@@ -39,6 +63,8 @@ export interface BitableColumn {
   type: BitableFieldType;
   width?: number; // 像素宽度，默认 160
   options?: SelectOption[]; // 用于 select 和 multiSelect
+  /** 多行文本的显示与编辑配置，仅 type === 'longText' 时生效 */
+  longText?: Partial<LongTextConfig>;
 }
 
 /** 记录行定义 */

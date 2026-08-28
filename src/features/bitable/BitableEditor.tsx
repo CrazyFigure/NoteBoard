@@ -26,6 +26,8 @@ import {
   createId,
   createRow,
   pickNextColor,
+  previewLongText,
+  resolveLongTextConfig,
   slotToFinalPosition,
 } from './bitableUtils';
 import { useDocumentStore } from '../../stores/documentStore';
@@ -776,10 +778,17 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
     if (!recordPanelRow || !recordPanelRow.parentId) return undefined;
     const parent = data.rows.find((r) => r.id === recordPanelRow.parentId);
     if (!parent) return undefined;
-    const titleCol = data.columns.find((c) => c.type === 'text');
-    if (!titleCol) return undefined;
-    const val = parent[titleCol.id];
-    return val === undefined || val === null ? undefined : String(val);
+    // 标题列优先单行文本，其次多行文本（多行只取首行）
+    const textCol = data.columns.find((c) => c.type === 'text');
+    if (textCol) {
+      const val = parent[textCol.id];
+      return val === undefined || val === null ? undefined : String(val);
+    }
+    const longTextCol = data.columns.find((c) => c.type === 'longText');
+    if (!longTextCol) return undefined;
+    const val = parent[longTextCol.id];
+    if (val === undefined || val === null) return undefined;
+    return previewLongText(String(val), resolveLongTextConfig(longTextCol)) || undefined;
   }, [recordPanelRow, data.rows, data.columns]);
 
   // 全局撤销/重做快捷键

@@ -4,6 +4,7 @@
 import type { BitableFieldType } from './bitableTypes';
 import {
   Type,
+  AlignLeft,
   Hash,
   Tag,
   Tags,
@@ -23,7 +24,9 @@ export interface FieldTypeMeta {
 export function getFieldTypeMeta(type: BitableFieldType): FieldTypeMeta {
   switch (type) {
     case 'text':
-      return { icon: <Type size={13} color="#3b82f6" />, label: '文本' };
+      return { icon: <Type size={13} color="#3b82f6" />, label: '单行文本' };
+    case 'longText':
+      return { icon: <AlignLeft size={13} color="#0ea5e9" />, label: '多行文本' };
     case 'number':
       return { icon: <Hash size={13} color="#10b981" />, label: '数字' };
     case 'select':
@@ -40,5 +43,8 @@ export function getFieldTypeMeta(type: BitableFieldType): FieldTypeMeta {
       return { icon: <BarChart2 size={13} color="#3b82f6" />, label: '进度' };
     case 'link':
       return { icon: <Link size={13} color="#6366f1" />, label: '超链接' };
+    default:
+      // 未知类型兜底：外部数据可能携带本版本不认识的字段类型，不能让渲染崩掉
+      return { icon: <Type size={13} color="#94a3b8" />, label: '未知字段' };
   }
 }

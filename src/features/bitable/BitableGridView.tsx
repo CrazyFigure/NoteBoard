@@ -8,6 +8,7 @@ import type {
   BitableRow,
   BitableFieldType,
   ColumnOptionAction,
+  LongTextDisplayMode,
   SortRule,
 } from './bitableTypes';
 import { BitableCellEditor } from './BitableCellEditor';
@@ -19,6 +20,7 @@ import {
   createId,
   formatCellValue,
   parseClipboardMatrix,
+  resolveLongTextConfig,
   slotToFinalPosition,
 } from './bitableUtils';
 import { showToast } from '../../stores/toastStore';
@@ -45,6 +47,7 @@ import {
   ArrowUpNarrowWide,
   ArrowDownWideNarrow,
   X,
+  Check,
 } from 'lucide-react';
 
 export type SelectionState =
@@ -98,6 +101,7 @@ function getSortLabels(type: BitableFieldType) {
     case 'multiSelect':
       return { asc: '按标签顺序升序', desc: '按标签顺序降序' };
     case 'text':
+    case 'longText':
     case 'link':
     default:
       return { asc: '按 A → Z 升序', desc: '按 Z → A 降序' };
@@ -106,6 +110,7 @@ function getSortLabels(type: BitableFieldType) {
 
 const ALL_FIELD_TYPES: BitableFieldType[] = [
   'text',
+  'longText',
   'number',
   'select',
   'multiSelect',
@@ -114,6 +119,12 @@ const ALL_FIELD_TYPES: BitableFieldType[] = [
   'rating',
   'progress',
   'link',
+];
+
+/** 多行文本显示模式的菜单项 */
+const DISPLAY_MODE_OPTIONS: Array<{ id: LongTextDisplayMode; label: string; hint: string }> = [
+  { id: 'firstLine', label: '仅首行', hint: '只显示第一行，行高保持紧凑' },
+  { id: 'full', label: '全显示', hint: '显示全部内容，行高随内容变高' },
 ];
 
 interface FlatTreeRow {
@@ -444,6 +455,19 @@ export function BitableGridView({
         );
       },
     });
+
+  /**
+   * 是否存在「全显示」模式的多行文本列
+   * 存在时行高必须交给内容决定：若继续锁死 38px，超出的内容会被裁掉，
+   * 「全显示」就名不副实。其余列仍按固定行高垂直居中。
+   */
+  const hasFullLongTextColumn = useMemo(
+    () =>
+      columns.some(
+        (c) => c.type === 'longText' && resolveLongTextConfig(c).displayMode === 'full',
+      ),
+    [columns],
+  );
 
   /** 拖拽幽灵宽度与被拖列一致，视觉上等同于「整列被拎起来」 */
   const colDragWidth = useMemo(() => {
@@ -978,11 +1002,102 @@ export function BitableGridView({
                           </>
                         )}
 
+                        {/* 多行文本专有的显示与格式配置（列级设置，对该列所有单元格生效） */}
+                        {col.type === 'longText' && (() => {
+                          const ltConfig = resolveLongTextConfig(col);
+                          return (
+                            <>
+                              <div style={{ height: 1, background: 'var(--editor-border, #f1f5f9)', margin: '3px 0' }} />
+                              <div style={{ padding: '2px 8px', fontSize: 10, color: 'var(--editor-text-muted, #94a3b8)' }}>
+                                显示模式
+                              </div>
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                {DISPLAY_MODE_OPTIONS.map((opt) => {
+                                  const active = ltConfig.displayMode === opt.id;
+                                  return (
+                                    <button
+                                      key={opt.id}
+                                      type="button"
+                                      title={opt.hint}
+                                      onClick={() => {
+                                        onUpdateColumn(col.id, {
+                                          longText: { ...ltConfig, displayMode: opt.id },
+                                        });
+                                        setColumnMenu(null);
+                                      }}
+                                      style={{
+                                        flex: 1,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        padding: '5px 6px',
+                                        border: 'none',
+                                        borderRadius: 4,
+                                        background: active ? 'var(--editor-accent, #3b82f6)' : 'transparent',
+                                        color: active ? '#ffffff' : 'var(--editor-text, #1e293b)',
+                                        cursor: 'pointer',
+                                        fontSize: 11,
+                                        fontWeight: active ? 600 : 400,
+                                      }}
+                                    >
+                                      {opt.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              <button
+                                type="button"
+                                title="开启后以富文本方式编辑与渲染，支持加粗、代码块等 Markdown 语法"
+                                onClick={() => {
+                                  onUpdateColumn(col.id, {
+                                    longText: { ...ltConfig, markdown: !ltConfig.markdown },
+                                  });
+                                  setColumnMenu(null);
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 6,
+                                  padding: '5px 8px',
+                                  border: 'none',
+                                  background: 'transparent',
+                                  cursor: 'pointer',
+                                  fontSize: 11,
+                                  borderRadius: 4,
+                                  color: ltConfig.markdown ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text, #1e293b)',
+                                  textAlign: 'left',
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    width: 12,
+                                    height: 12,
+                                    borderRadius: 3,
+                                    border: ltConfig.markdown
+                                      ? 'none'
+                                      : '1.5px solid var(--editor-border, #cbd5e1)',
+                                    background: ltConfig.markdown ? 'var(--editor-accent, #3b82f6)' : 'transparent',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: '#ffffff',
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {ltConfig.markdown && <Check size={10} strokeWidth={3.5} />}
+                                </span>
+                                <span>Markdown 富文本</span>
+                              </button>
+                            </>
+                          );
+                        })()}
+
                         {/* 修改字段类型子列表 */}
                         <div style={{ padding: '2px 8px', fontSize: 10, color: 'var(--editor-text-muted, #94a3b8)' }}>
                           更改字段类型
                         </div>
-                        <div style={{ maxHeight: 130, overflowY: 'auto' }}>
+                        <div style={{ maxHeight: 160, overflowY: 'auto' }}>
                           {ALL_FIELD_TYPES.map((t) => {
                             const tMeta = getFieldTypeMeta(t);
                             const isCurrent = col.type === t;
@@ -999,6 +1114,11 @@ export function BitableGridView({
                                           { id: 'opt_2', label: '选项 2', color: 'green' },
                                         ]
                                       : col.options,
+                                    // 切为多行文本时补齐一份显式配置，避免只存在于内存中的默认值与落盘数据不一致
+                                    longText:
+                                      t === 'longText'
+                                        ? resolveLongTextConfig(col)
+                                        : col.longText,
                                   });
                                   setColumnMenu(null);
                                 }}
@@ -1175,7 +1295,9 @@ export function BitableGridView({
               <tr
                 key={row.id}
                 style={{
-                  height: 38,
+                  // 存在全显示多行文本列时，height 退化为最小高度，实际行高由内容撑开
+                  height: hasFullLongTextColumn ? undefined : 38,
+                  minHeight: 38,
                   background: isRowSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--editor-surface, #ffffff)',
                   transition: 'background var(--transition-fast)',
                 }}
@@ -1373,6 +1495,9 @@ export function BitableGridView({
                     selection.type === 'cell' && selection.rowId === row.id && selection.colId === col.id;
                   const isColSelected = selection.type === 'col' && selection.colId === col.id;
                   const isFirstCol = colIdx === 0;
+                  // 全显示的多行文本列需放开高度约束并顶部对齐，否则内容撑不开、也看不出起始位置
+                  const isExpandedLongText =
+                    col.type === 'longText' && resolveLongTextConfig(col).displayMode === 'full';
 
                   return (
                     <td
@@ -1383,7 +1508,7 @@ export function BitableGridView({
                         borderRight: '1px solid var(--editor-border, #f1f5f9)',
                         padding: 0,
                         height: 38,
-                        verticalAlign: 'middle',
+                        verticalAlign: isExpandedLongText ? 'top' : 'middle',
                         position: 'relative',
                         overflow: 'visible',
                         background: isCellSelected
@@ -1395,7 +1520,16 @@ export function BitableGridView({
                         outlineOffset: -2,
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', width: '100%', height: '100%', position: 'relative', overflow: 'visible' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: isExpandedLongText ? 'flex-start' : 'center',
+                          width: '100%',
+                          height: isExpandedLongText ? 'auto' : '100%',
+                          position: 'relative',
+                          overflow: 'visible',
+                        }}
+                      >
                         {/* 第一列渲染子行层级缩进与折叠展开箭头 */}
                         {isFirstCol && (
                           <div
@@ -1430,7 +1564,14 @@ export function BitableGridView({
                           </div>
                         )}
 
-                        <div style={{ flex: 1, height: '100%', position: 'relative', overflow: 'visible' }}>
+                        <div
+                          style={{
+                            flex: 1,
+                            height: isExpandedLongText ? 'auto' : '100%',
+                            position: 'relative',
+                            overflow: 'visible',
+                          }}
+                        >
                           <BitableCellEditor
                             column={col}
                             value={row[col.id]}

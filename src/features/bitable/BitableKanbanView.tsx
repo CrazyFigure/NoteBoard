@@ -9,7 +9,9 @@ import type {
 } from './bitableTypes';
 import { OptionBadge } from './BitableOptions';
 import { BITABLE_PALETTE } from './bitableConverter';
+import { BitableMarkdown } from './BitableMarkdown';
 import { FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
+import { previewLongText, resolveLongTextConfig } from './bitableUtils';
 import type { ColumnOptionAction, SelectOptionColor } from './bitableTypes';
 import {
   Plus,
@@ -46,6 +48,20 @@ const MENU_ICON_STYLE: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
 };
+
+/**
+ * 取卡片主标题
+ * 多行文本按列配置折算：仅首行模式只取首行并剥离 Markdown 标记，避免把整段内容塞进标题。
+ */
+function resolveCardTitle(titleCol: BitableColumn | undefined, row: BitableRow): string {
+  if (!titleCol) return '未命名任务';
+  const val = row[titleCol.id];
+  if (val === undefined || val === null || String(val).trim() === '') return '未命名任务';
+  if (titleCol.type === 'longText') {
+    return previewLongText(String(val), resolveLongTextConfig(titleCol)) || '未命名任务';
+  }
+  return String(val);
+}
 
 interface KanbanViewProps {
   columns: BitableColumn[];
@@ -96,7 +112,11 @@ export function BitableKanbanView({
 
   const isSelectGroup = groupColumn?.type === 'select';
   const options: SelectOption[] = isSelectGroup ? groupColumn?.options || [] : [];
-  const titleCol = columns.find((c) => c.type === 'text') || columns[0];
+  // 卡片主标题：优先单行文本，其次多行文本，都没有时退回第一列
+  const titleCol =
+    columns.find((c) => c.type === 'text') ||
+    columns.find((c) => c.type === 'longText') ||
+    columns[0];
 
   // 按分组列对行进行归类
   const laneMap = new Map<string | null, BitableRow[]>();
@@ -532,7 +552,7 @@ export function BitableKanbanView({
                   {/* 卡片头部与删除按钮 */}
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--editor-text, #1e293b)', lineHeight: 1.4, flex: 1 }}>
-                      {titleCol ? String(row[titleCol.id] || '未命名任务') : '未命名任务'}
+                      {resolveCardTitle(titleCol, row)}
                     </div>
                     <button
                       type="button"
@@ -570,6 +590,54 @@ export function BitableKanbanView({
                       .map((c) => {
                         const val = row[c.id];
                         if (val === undefined || val === null || val === '') return null;
+
+                        // 多行文本：按列配置渲染，全显示时不套胶囊样式，否则整段内容会被挤成一行
+                        if (c.type === 'longText') {
+                          const ltConfig = resolveLongTextConfig(c);
+                          const text = String(val);
+                          if (ltConfig.displayMode === 'full') {
+                            return (
+                              <div
+                                key={c.id}
+                                style={{
+                                  width: '100%',
+                                  padding: '6px 8px',
+                                  borderRadius: 6,
+                                  background: 'var(--editor-bg, #f8fafc)',
+                                  color: 'var(--editor-text, #1e293b)',
+                                  fontSize: 12,
+                                  lineHeight: 1.6,
+                                  overflow: 'hidden',
+                                }}
+                              >
+                                {ltConfig.markdown ? (
+                                  <BitableMarkdown source={text} density="compact" />
+                                ) : (
+                                  <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{text}</div>
+                                )}
+                              </div>
+                            );
+                          }
+                          return (
+                            <span
+                              key={c.id}
+                              title={text}
+                              style={{
+                                fontSize: 11,
+                                padding: '1px 6px',
+                                borderRadius: 4,
+                                background: 'var(--editor-bg, #f1f5f9)',
+                                color: 'var(--editor-text-muted, #64748b)',
+                                maxWidth: '100%',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {previewLongText(text, ltConfig)}
+                            </span>
+                          );
+                        }
 
                         if (c.type === 'select') {
                           const optionItem = c.options?.find((o) => o.id === val);
@@ -811,7 +879,7 @@ export function BitableKanbanView({
                   }}
                 >
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--editor-text, #1e293b)' }}>
-                    {titleCol ? String(row[titleCol.id] || '未命名任务') : '未命名任务'}
+                    {resolveCardTitle(titleCol, row)}
                   </div>
                 </div>
               ))}

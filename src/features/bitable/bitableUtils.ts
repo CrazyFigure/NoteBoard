@@ -1,11 +1,13 @@
 // NoteBoard 多维表格通用工具集
 // 覆盖唯一 ID 生成、剪贴板矩阵解析、单元格值类型归一（粘贴/填充）与纯文本展示格式化
 
-import type {
-  BitableColumn,
-  BitableRow,
-  SelectOption,
-  SelectOptionColor,
+import {
+  DEFAULT_LONG_TEXT_CONFIG,
+  type BitableColumn,
+  type BitableRow,
+  type LongTextConfig,
+  type SelectOption,
+  type SelectOptionColor,
 } from './bitableTypes';
 
 let idSequence = 0;
@@ -112,6 +114,68 @@ function normalizeDateInput(raw: string): string {
 }
 
 /**
+ * 解析多行文本字段的有效配置
+ * 列定义上的 longText 允许部分缺省，读取时统一补全，避免各渲染点各自写默认值造成不一致。
+ */
+export function resolveLongTextConfig(column: BitableColumn): LongTextConfig {
+  return {
+    displayMode: column.longText?.displayMode ?? DEFAULT_LONG_TEXT_CONFIG.displayMode,
+    markdown: column.longText?.markdown ?? DEFAULT_LONG_TEXT_CONFIG.markdown,
+  };
+}
+
+/**
+ * 去掉 Markdown 标记，转为用于单行预览的纯文本
+ * 只剥离常见标记字符，不做完整 AST 解析：预览场景只需「读起来像原文」，
+ * 用正则逐条替换的成本远低于引入完整解析器。
+ */
+export function stripMarkdown(raw: string): string {
+  return raw
+    // 代码围栏整体移除（含内部内容），避免 ``` 与语言名出现在预览里
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/~~~[\s\S]*?~~~/g, ' ')
+    // 标题、引用、列表、分割线等行首标记
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s{0,3}>\s?/gm, '')
+    .replace(/^\s{0,3}([-*+]|\d+[.)])\s+/gm, '')
+    .replace(/^\s{0,3}([-*_])(\s*\1){2,}\s*$/gm, '')
+    // 行内标记：加粗、斜体、删除线、行内代码、图片
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/(\*\*|__)(.*?)\1/g, '$2')
+    .replace(/(\*|_)(.*?)\1/g, '$2')
+    .replace(/~~(.*?)~~/g, '$1')
+    // 合并替换产生的多余空格，并把换行压成空格
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s*\n+\s*/g, ' ')
+    .trim();
+}
+
+/**
+ * 取多行文本的首行预览文本
+ * 首行为空时会继续向后寻找第一个非空行，避免整格显示空白。
+ */
+export function firstLineOf(raw: string): string {
+  const lines = String(raw ?? '').split(/\r?\n/);
+  for (const line of lines) {
+    if (line.trim()) return line.trim();
+  }
+  return '';
+}
+
+/**
+ * 生成多行文本的预览文本
+ * firstLine 模式取首行（并剥离 Markdown 标记），full 模式返回原文。
+ */
+export function previewLongText(raw: string, config: LongTextConfig): string {
+  const text = raw === null || raw === undefined ? '' : String(raw);
+  if (config.displayMode === 'full') return text;
+  const first = firstLineOf(text);
+  return config.markdown ? stripMarkdown(first) : first;
+}
+
+/**
  * 按字段类型把原始文本归一为合法单元格值
  * 对 select / multiSelect 而言，文本匹配不到的标签会自动创建新选项，
  * 并通过返回更新后的 column 让调用方一次性提交，避免「先改列再改行」的两次提交互相覆盖。
@@ -188,6 +252,10 @@ export function coerceCellValue(
 /** 单元格值的纯文本展示形式，用于复制到剪贴板与 CSV 导出 */
 export function formatCellValue(column: BitableColumn, value: unknown): string {
   if (value === undefined || value === null) return '';
+  // 多行文本的换行会破坏 TSV 行结构，导出/复制时压平为空格
+  if (column.type === 'longText') {
+    return String(value).replace(/\r?\n/g, ' ').trim();
+  }
   if (column.type === 'select') {
     return column.options?.find((o) => o.id === value)?.label || '';
   }
