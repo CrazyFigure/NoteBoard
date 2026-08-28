@@ -14,16 +14,10 @@ import {
   AlertCircle,
   Sparkles,
   ChevronDown,
-  Activity,
-  Milestone,
-  Route,
-  Filter,
-  Columns3,
-  LayoutGrid,
-  BarChart3,
 } from 'lucide-react';
 import { parseInfographicCode } from '../infographic/infographicParser';
 import { InfographicRenderer } from '../infographic/infographicRenderer';
+import { InfographicTemplateIcon } from '../infographic/infographicTemplateIcon';
 import { INFOGRAPHIC_TEMPLATES } from '../infographic/infographicTemplates';
 import { observe } from './viewportActivation';
 
@@ -179,29 +173,6 @@ const INFOGRAPHIC_STYLES = `
 }
 `;
 
-/** 渲染预设模板对应彩色图标 */
-function renderTemplateIcon(iconName: string, color: string) {
-  const iconProps = { size: 14, color };
-  switch (iconName) {
-    case 'Activity':
-      return <Activity {...iconProps} />;
-    case 'Milestone':
-      return <Milestone {...iconProps} />;
-    case 'Route':
-      return <Route {...iconProps} />;
-    case 'Filter':
-      return <Filter {...iconProps} />;
-    case 'Columns3':
-      return <Columns3 {...iconProps} />;
-    case 'LayoutGrid':
-      return <LayoutGrid {...iconProps} />;
-    case 'BarChart3':
-      return <BarChart3 {...iconProps} />;
-    default:
-      return <Sparkles {...iconProps} />;
-  }
-}
-
 function InfographicComponent({ node, updateAttributes, selected }: NodeViewProps) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
@@ -342,7 +313,7 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
                             flexShrink: 0,
                           }}
                         >
-                          {renderTemplateIcon(tmpl.iconName, tmpl.iconColor)}
+                          <InfographicTemplateIcon iconName={tmpl.iconName} color={tmpl.iconColor} size={14} />
                         </div>
                         {/* 纯中文模板名称（无多余英文后缀） */}
                         <span style={{ fontWeight: 600, fontSize: 12 }}>{tmpl.label}</span>

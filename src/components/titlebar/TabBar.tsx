@@ -41,6 +41,7 @@ import {
   GitMerge,
   Archive,
   Table2,
+  ChartColumn,
 } from 'lucide-react';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
@@ -54,6 +55,7 @@ import {
   newBoard,
   newMermaid,
   newPlantUml,
+  newInfographic,
   newJson,
   newYaml,
   newSql,
@@ -917,6 +919,24 @@ export function TabBar() {
                 >
                   <Layout size={13} color="#ea580c" />
                   <span>Draw.io 架构图 (.drawio)</span>
+                </button>
+
+                {/* 新建信息图（.infographic 声明式源码，与 md 内嵌信息图块同源） */}
+                <button
+                  type="button"
+                  style={getMenuItemStyle(false)}
+                  onClick={() => {
+                    setNewMenuPos(null);
+                    setShowMoreSubMenu(false);
+                    newInfographic();
+                  }}
+                  onMouseEnter={handleMenuItemMouseEnter}
+                  onMouseLeave={handleMenuItemMouseLeave}
+                  onMouseDown={handleMenuItemMouseDown}
+                  onMouseUp={handleMenuItemMouseUp}
+                >
+                  <ChartColumn size={13} color="#14b8a6" />
+                  <span>信息图 (.infographic)</span>
                 </button>
 
                 {/* 新建 Mermaid 图表 */}

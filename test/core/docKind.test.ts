@@ -44,6 +44,8 @@ describe('docKind 扩展名映射', () => {
       'uml',
       'bitable',
       'table',
+      'infographic',
+      'ig',
     ];
     for (const ext of requiredExts) {
       expect(KIND_BY_EXT[ext]).toBeDefined();
@@ -86,6 +88,8 @@ describe('docKind 扩展名映射', () => {
     expect(kindFromPath('arch.drawio')).toBe<DocumentKind>('drawio');
     expect(kindFromPath('tasks.bitable')).toBe<DocumentKind>('bitable');
     expect(kindFromPath('project.table')).toBe<DocumentKind>('bitable');
+    expect(kindFromPath('kpi.infographic')).toBe<DocumentKind>('code');
+    expect(kindFromPath('kpi.ig')).toBe<DocumentKind>('code');
     expect(kindFromPath('photo.png')).toBe<DocumentKind>('image');
     expect(kindFromPath('animation.gif')).toBe<DocumentKind>('image');
     expect(kindFromPath('modern.webp')).toBe<DocumentKind>('image');
@@ -106,6 +110,8 @@ describe('docKind 扩展名映射', () => {
     expect(languageFromPath('arch.plantuml')).toBe('plantuml');
     expect(languageFromPath('arch.uml')).toBe('plantuml');
     expect(languageFromPath('tasks.bitable')).toBe('json');
+    expect(languageFromPath('kpi.infographic')).toBe('infographic');
+    expect(languageFromPath('kpi.ig')).toBe('infographic');
     expect(languageFromPath('notes.txt')).toBe('plaintext');
     expect(languageFromPath('unknown.xyz')).toBe('plaintext');
   });

@@ -30,6 +30,7 @@ import { MindmapEditor } from '../features/mindmap/MindmapEditor';
 import { DrawioEditor } from '../features/drawio/DrawioEditor';
 import { BitableEditor } from '../features/bitable/BitableEditor';
 import { DiagramSplitEditor } from '../features/diagram-preview/DiagramSplitEditor';
+import { InfographicSplitEditor } from '../features/infographic/InfographicSplitEditor';
 import { OutlinePanel } from '../features/outline/OutlinePanel';
 import { UnsavedGuardDialog } from '../features/editor-code/UnsavedGuardDialog';
 import { Explorer } from '../features/explorer/Explorer';
@@ -59,6 +60,7 @@ import {
   newBoard,
   newMermaid,
   newPlantUml,
+  newInfographic,
   newJson,
   newYaml,
   newSql,
@@ -547,6 +549,7 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                     onNewBitable={newBitable}
                     onNewMermaid={newMermaid}
                     onNewPlantUml={newPlantUml}
+                    onNewInfographic={newInfographic}
                     onNewJson={newJson}
                     onNewYaml={newYaml}
                     onNewSql={newSql}
@@ -593,7 +596,9 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                           ) : tab.kind === 'bitable' ? (
                             <BitableEditor docKey={tab.key} />
                           ) : tab.kind === 'code' ? (
-                            tab.language === 'mermaid' || tab.language === 'plantuml' ? (
+                            tab.language === 'infographic' ? (
+                              <InfographicSplitEditor docKey={tab.key} />
+                            ) : tab.language === 'mermaid' || tab.language === 'plantuml' ? (
                               <DiagramSplitEditor docKey={tab.key} />
                             ) : (
                               <CodeEditor docKey={tab.key} />

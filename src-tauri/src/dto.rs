@@ -32,6 +32,8 @@ pub enum LanguageId {
     Xml,
     Mermaid,
     Plantuml,
+    /// NoteBoard 自研信息图声明式源码（YAML/JSON），与 mermaid / plantuml 同为可独立成文件的图表脚本
+    Infographic,
     Plaintext,
 }
 
@@ -253,6 +255,7 @@ pub fn kind_by_ext(ext: &str) -> (DocumentKind, LanguageId) {
         "bitable" | "table" => (DocumentKind::Bitable, LanguageId::Json),
         "mmd" | "mermaid" => (DocumentKind::Code, LanguageId::Mermaid),
         "puml" | "plantuml" | "iuml" | "uml" => (DocumentKind::Code, LanguageId::Plantuml),
+        "infographic" | "ig" => (DocumentKind::Code, LanguageId::Infographic),
         "sql" => (DocumentKind::Code, LanguageId::Sql),
         "json" => (DocumentKind::Code, LanguageId::Json),
         "yaml" | "yml" => (DocumentKind::Code, LanguageId::Yaml),

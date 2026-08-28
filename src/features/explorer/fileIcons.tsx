@@ -28,6 +28,7 @@ import {
   Workflow,
   GitMerge,
   Layout,
+  ChartColumn,
 } from 'lucide-react';
 import { extFromPath } from '../../core/docKind';
 
@@ -90,6 +91,11 @@ export function getExplorerFileIcon(
     case 'mmd':
     case 'mermaid':
       return <Workflow {...iconProps} color="#00bfb2" />;
+
+    // ── 信息图脚本（.infographic，青碧绿区别于 Mermaid 与 PlantUML）──
+    case 'infographic':
+    case 'ig':
+      return <ChartColumn {...iconProps} color="#14b8a6" />;
 
     // ── UML / PlantUML 建模图（优雅洋紫）──
     case 'puml':
