@@ -11,8 +11,10 @@ import {
   slotToSpliceIndex,
   slotToFinalPosition,
   isSlotNoop,
+  resolveGroupKey,
+  groupFlatTreeRows,
 } from '@/features/bitable/bitableUtils';
-import type { BitableColumn } from '@/features/bitable/bitableTypes';
+import type { BitableColumn, BitableRow } from '@/features/bitable/bitableTypes';
 
 /** 按游标语义模拟一次拖拽落库：先删除原元素，再插入到换算后的索引 */
 function applyReorder<T>(list: T[], fromIdx: number, insertAt: number): T[] {
@@ -133,5 +135,87 @@ describe('多维表格通用工具测试', () => {
     expect(a.id).not.toBe(b.id);
     expect(a['cp']).toBe(0);
     expect(a['c3']).toEqual([]);
+  });
+
+  test('resolveGroupKey 对空列返回未指定占位', () => {
+    const row: BitableRow = { id: 'r1', c1: '内容' };
+    expect(resolveGroupKey(row, undefined)).toEqual({ key: '__empty__', label: '未指定' });
+  });
+
+  test('resolveGroupKey 对文本字段按字符串分组', () => {
+    const row: BitableRow = { id: 'r1', c1: 'Alice' };
+    expect(resolveGroupKey(row, textCol)).toEqual({ key: 'Alice', label: 'Alice' });
+  });
+
+  test('resolveGroupKey 对空文本字段返回未指定占位', () => {
+    const row: BitableRow = { id: 'r1', c1: '' };
+    expect(resolveGroupKey(row, textCol)).toEqual({ key: '__empty__', label: '未指定' });
+  });
+
+  test('resolveGroupKey 对单选字段返回选项标签与颜色', () => {
+    const row: BitableRow = { id: 'r1', c2: 'opt_done' };
+    expect(resolveGroupKey(row, selectCol)).toEqual({ key: 'opt_done', label: '已完成', color: 'green' });
+  });
+
+  test('resolveGroupKey 对多选字段取首个选项并返回其颜色', () => {
+    const col: BitableColumn = {
+      ...multiCol,
+      options: [
+        { id: 'tag_a', label: '前端', color: 'blue' },
+        { id: 'tag_b', label: '后端', color: 'purple' },
+      ],
+    };
+    const row: BitableRow = { id: 'r1', c3: ['tag_b', 'tag_a'] };
+    expect(resolveGroupKey(row, col)).toEqual({ key: 'tag_b', label: '后端', color: 'purple' });
+  });
+
+  test('resolveGroupKey 对未选择的多选字段返回未指定占位', () => {
+    const row: BitableRow = { id: 'r1', c3: [] };
+    expect(resolveGroupKey(row, multiCol)).toEqual({ key: '__empty__', label: '未指定' });
+  });
+
+  test('groupFlatTreeRows 按文本列分组并保持组内顺序，空值组排在最后', () => {
+    const flatRows = [
+      { row: { id: 'r1', c1: 'Bob' } as BitableRow, depth: 0, hasChildren: false, isCollapsed: false, rowNumber: 1 },
+      { row: { id: 'r2', c1: 'Alice' } as BitableRow, depth: 0, hasChildren: false, isCollapsed: false, rowNumber: 2 },
+      { row: { id: 'r3', c1: 'Bob' } as BitableRow, depth: 0, hasChildren: false, isCollapsed: false, rowNumber: 3 },
+      { row: { id: 'r4', c1: '' } as BitableRow, depth: 0, hasChildren: false, isCollapsed: false, rowNumber: 4 },
+    ];
+    const groups = groupFlatTreeRows(flatRows, textCol);
+    expect(groups.map((g) => g.meta.label)).toEqual(['Alice', 'Bob', '未指定']);
+    expect(groups.map((g) => g.rows.length)).toEqual([1, 2, 1]);
+    expect(groups[1].rows.map((n) => n.row.id)).toEqual(['r1', 'r3']);
+  });
+
+  test('groupFlatTreeRows 对单选列按选项标签自然序排序', () => {
+    const col: BitableColumn = {
+      id: 'c2',
+      key: 'status',
+      name: '状态',
+      type: 'select',
+      options: [
+        { id: 'opt_done', label: '已完成', color: 'green' },
+        { id: 'opt_todo', label: '未开始', color: 'gray' },
+        { id: 'opt_doing', label: '进行中', color: 'blue' },
+      ],
+    };
+    const flatRows = [
+      { row: { id: 'r1', c2: 'opt_done' } as BitableRow, depth: 0, hasChildren: false, isCollapsed: false, rowNumber: 1 },
+      { row: { id: 'r2', c2: 'opt_todo' } as BitableRow, depth: 0, hasChildren: false, isCollapsed: false, rowNumber: 2 },
+      { row: { id: 'r3', c2: 'opt_doing' } as BitableRow, depth: 0, hasChildren: false, isCollapsed: false, rowNumber: 3 },
+    ];
+    const groups = groupFlatTreeRows(flatRows, col);
+    expect(groups.map((g) => g.meta.label)).toEqual(['进行中', '未开始', '已完成']);
+  });
+
+  test('groupFlatTreeRows 对未分组列返回按原顺序的单组', () => {
+    const flatRows = [
+      { row: { id: 'r1', c1: 'Bob' } as BitableRow, depth: 0, hasChildren: false, isCollapsed: false, rowNumber: 1 },
+      { row: { id: 'r2', c1: 'Alice' } as BitableRow, depth: 0, hasChildren: false, isCollapsed: false, rowNumber: 2 },
+    ];
+    const groups = groupFlatTreeRows(flatRows, undefined);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].meta.label).toBe('未指定');
+    expect(groups[0].rows).toHaveLength(2);
   });
 });

@@ -1210,6 +1210,8 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             columns={data.columns}
             rows={filteredAndSortedRows}
             currentSortRule={activeView.sortRules?.[0] || null}
+            groupByColumnId={activeView.groupByColumnId}
+            onUpdateGroupByColumnId={handleUpdateGroupByColumnId}
             onPasteCells={handlePasteCells}
             onManageColumnOption={handleManageColumnOption}
             onSortColumn={handleSortColumn}

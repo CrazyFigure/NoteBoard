@@ -287,3 +287,90 @@ export function createRow(
   if (extra) Object.assign(row, extra);
   return row;
 }
+
+/** 分组元数据：用于构建分组头部与折叠状态键 */
+export interface GroupMeta {
+  key: string;
+  label: string;
+  color?: SelectOptionColor;
+}
+
+/**
+ * 获取行的分组键与展示标签
+ * - select：按选项 ID 分组，返回选项标签与颜色
+ * - multiSelect：按首个选中选项分组（不支持多个分组），未选归到空值
+ * - 其他字段：按原始值字符串分组，空/undefined/null 归到空值组
+ */
+export function resolveGroupKey(
+  row: BitableRow,
+  column: BitableColumn | undefined,
+): { key: string; label: string; color?: SelectOptionColor } {
+  if (!column) return { key: '__empty__', label: '未指定' };
+  const raw = row[column.id];
+
+  if (column.type === 'select') {
+    if (raw === undefined || raw === null || raw === '') return { key: '__empty__', label: '未指定' };
+    const opt = (column.options || []).find((o) => o.id === raw);
+    return {
+      key: String(raw),
+      label: opt?.label ?? String(raw),
+      color: opt?.color,
+    };
+  }
+
+  if (column.type === 'multiSelect') {
+    if (!Array.isArray(raw) || raw.length === 0) return { key: '__empty__', label: '未指定' };
+    const firstId = raw[0];
+    const opt = (column.options || []).find((o) => o.id === firstId);
+    return {
+      key: String(firstId),
+      label: opt?.label ?? String(firstId),
+      color: opt?.color,
+    };
+  }
+
+  if (raw === undefined || raw === null || String(raw).trim() === '') {
+    return { key: '__empty__', label: '未指定' };
+  }
+
+  // 多行文本分组时取首行预览，避免把整个 Markdown 塞进标题
+  if (column.type === 'longText') {
+    const text = previewLongText(String(raw), resolveLongTextConfig(column)) || String(raw);
+    return { key: String(raw), label: text };
+  }
+
+  return { key: String(raw), label: String(raw) };
+}
+
+/**
+ * 对扁平树行按指定列分组
+ * 保持组内原有顺序；组与组之间通过渲染层插入间距实现视觉分隔。
+ */
+export function groupFlatTreeRows(
+  flatRows: { row: BitableRow; depth: number; hasChildren: boolean; isCollapsed: boolean; rowNumber: number }[],
+  column: BitableColumn | undefined,
+): Array<{ meta: GroupMeta; rows: typeof flatRows[number][] }> {
+  const groupMap = new Map<string, { meta: GroupMeta; rows: typeof flatRows[number][] }>();
+  const order: string[] = [];
+
+  flatRows.forEach((node) => {
+    const { key, label, color } = resolveGroupKey(node.row, column);
+    let group = groupMap.get(key);
+    if (!group) {
+      group = { meta: { key, label, color }, rows: [] };
+      groupMap.set(key, group);
+      order.push(key);
+    }
+    group.rows.push(node);
+  });
+
+  // 空值组始终放在最后，与飞书行为一致
+  return order.map((k) => groupMap.get(k)!).sort((a, b) => {
+    const aEmpty = a.meta.key === '__empty__';
+    const bEmpty = b.meta.key === '__empty__';
+    if (aEmpty && !bEmpty) return 1;
+    if (!aEmpty && bEmpty) return -1;
+    // 非空组按标签自然序排列（中文拼音 + 数字）
+    return a.meta.label.localeCompare(b.meta.label, 'zh-CN', { numeric: true });
+  });
+}

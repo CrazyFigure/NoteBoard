@@ -9,16 +9,18 @@ import type {
   BitableFieldType,
   ColumnOptionAction,
   LongTextDisplayMode,
+  SelectOptionColor,
   SortRule,
 } from './bitableTypes';
 import { BitableCellEditor } from './BitableCellEditor';
-import { SelectOptionsPanel } from './BitableOptions';
+import { SelectOptionsPanel, OptionBadge } from './BitableOptions';
 import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
 import { usePointerReorder } from './usePointerReorder';
 import { getFieldTypeMeta } from './BitableFieldMeta';
 import {
   createId,
   formatCellValue,
+  groupFlatTreeRows,
   parseClipboardMatrix,
   resolveLongTextConfig,
   slotToFinalPosition,
@@ -46,6 +48,7 @@ import {
   MoveRight,
   ArrowUpNarrowWide,
   ArrowDownWideNarrow,
+  SlidersHorizontal,
   X,
   Check,
 } from 'lucide-react';
@@ -60,6 +63,10 @@ interface GridViewProps {
   columns: BitableColumn[];
   rows: BitableRow[];
   currentSortRule?: SortRule | null;
+  /** 表格视图分组依据列 ID：与看板视图共用视图配置中的 groupByColumnId */
+  groupByColumnId?: string;
+  /** 分组依据变化回调 */
+  onUpdateGroupByColumnId?: (colId: string) => void;
   /** 区域粘贴：以 (rowId, colId) 为左上角写入二维文本矩阵，行数不足时由上层自动补建 */
   onPasteCells?: (rowId: string, colId: string, matrix: string[][]) => void;
   /** 列选项增删改排序：由上层在单次提交内同步列定义与所有关联行数据 */
@@ -135,10 +142,17 @@ interface FlatTreeRow {
   rowNumber: number;
 }
 
+/** 表格视图渲染项：分组标题行或普通数据行 */
+type GridItem =
+  | { type: 'group'; key: string; label: string; count: number; color?: SelectOptionColor }
+  | { type: 'row'; treeNode: FlatTreeRow };
+
 export function BitableGridView({
   columns,
   rows,
   currentSortRule,
+  groupByColumnId,
+  onUpdateGroupByColumnId,
   onPasteCells,
   onManageColumnOption,
   onSortColumn,
@@ -169,6 +183,9 @@ export function BitableGridView({
 
   // 折叠的行 ID 集合
   const [collapsedRowIds, setCollapsedRowIds] = useState<Set<string>>(new Set());
+
+  // 折叠的分组键集合：分组行本身可见，其下数据行被隐藏
+  const [collapsedGroupKeys, setCollapsedGroupKeys] = useState<Set<string>>(new Set());
 
   // 选区系统状态 (选中单元格/整行/整列)
   const [selection, setSelection] = useState<SelectionState>({ type: 'none' });
@@ -244,7 +261,55 @@ export function BitableGridView({
     });
   };
 
-  // 2. 剪贴板读写：统一通过隐藏代理输入框接收原生 copy / cut / paste 事件
+  // 2. 按分组字段把扁平树行组织为「分组标题 + 数据行」列表
+  const groupColumn = useMemo(
+    () => columns.find((c) => c.id === groupByColumnId),
+    [columns, groupByColumnId],
+  );
+
+  const gridItems = useMemo(() => {
+    if (!groupByColumnId || !groupColumn) {
+      return flatTreeRows.map<GridItem>((node) => ({ type: 'row', treeNode: node }));
+    }
+
+    const groups = groupFlatTreeRows(flatTreeRows, groupColumn);
+    const items: GridItem[] = [];
+    let visibleCounter = 0;
+
+    groups.forEach((group) => {
+      items.push({
+        type: 'group',
+        key: group.meta.key,
+        label: group.meta.label,
+        count: group.rows.length,
+        color: group.meta.color,
+      });
+      const collapsed = collapsedGroupKeys.has(group.meta.key);
+      if (!collapsed) {
+        group.rows.forEach((node) => {
+          visibleCounter += 1;
+          items.push({
+            type: 'row',
+            treeNode: { ...node, rowNumber: visibleCounter },
+          });
+        });
+      }
+    });
+
+    return items;
+  }, [flatTreeRows, groupByColumnId, groupColumn, collapsedGroupKeys]);
+
+  /** 切换分组折叠/展开 */
+  const toggleGroupCollapse = (key: string) => {
+    setCollapsedGroupKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  // 3. 剪贴板读写：统一通过隐藏代理输入框接收原生 copy / cut / paste 事件
   // 直接调用 navigator.clipboard.readText() 会触发浏览器的「是否允许粘贴」权限弹窗，
   // 且在 WebView 受限环境下经常静默失败；改为监听原生剪贴板事件后无需任何授权。
 
@@ -593,6 +658,75 @@ export function BitableGridView({
           zIndex: -1,
         }}
       />
+      {/* 表格视图工具栏：分组依据选择器 */}
+      {onUpdateGroupByColumnId && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '6px 12px',
+            borderBottom: '1px solid var(--editor-border, #e2e8f0)',
+            background: 'var(--editor-surface, #f8fafc)',
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--editor-text-muted, #64748b)' }}>
+            <SlidersHorizontal size={13} />
+            <span style={{ fontSize: 12 }}>分组依据</span>
+          </div>
+          <select
+            value={groupByColumnId || ''}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (value && onUpdateGroupByColumnId) {
+                onUpdateGroupByColumnId(value);
+              } else if (groupByColumnId && onUpdateGroupByColumnId) {
+                onUpdateGroupByColumnId('');
+              }
+            }}
+            style={{
+              padding: '3px 8px',
+              borderRadius: 4,
+              border: '1px solid var(--editor-border, #cbd5e1)',
+              background: 'var(--editor-bg, #ffffff)',
+              color: 'var(--editor-text, #1e293b)',
+              fontSize: 12,
+              outline: 'none',
+              cursor: 'pointer',
+            }}
+          >
+            <option value="">不分组</option>
+            {columns.map((col) => (
+              <option key={col.id} value={col.id}>
+                {col.name}
+              </option>
+            ))}
+          </select>
+          {groupByColumnId && (
+            <button
+              type="button"
+              onClick={() => onUpdateGroupByColumnId && onUpdateGroupByColumnId('')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '2px 6px',
+                borderRadius: 4,
+                border: 'none',
+                background: 'transparent',
+                color: 'var(--editor-text-muted, #64748b)',
+                fontSize: 11,
+                cursor: 'pointer',
+              }}
+            >
+              <X size={11} />
+              <span>清除分组</span>
+            </button>
+          )}
+        </div>
+      )}
+
       <table
         style={{
           borderCollapse: 'separate',
@@ -1285,10 +1419,101 @@ export function BitableGridView({
           </tr>
         </thead>
 
-        {/* 表格记录行内容 (树形子任务与选区渲染) */}
+        {/* 表格记录行内容 (树形子任务、分组标题与选区渲染) */}
         <tbody>
-          {flatTreeRows.map((treeNode) => {
-            const { row, depth, hasChildren, isCollapsed, rowNumber } = treeNode;
+          {gridItems.map((item, itemIndex) => {
+            // 分组标题行：显示分组名称与记录数，支持展开/折叠与组间间距
+            if (item.type === 'group') {
+              const isCollapsed = collapsedGroupKeys.has(item.key);
+              const isFirstGroup = itemIndex === 0 || !gridItems.slice(0, itemIndex).some((i) => i.type === 'group');
+              return (
+                <React.Fragment key={`group-${item.key}`}>
+                  {!isFirstGroup && (
+                    <tr aria-hidden="true" style={{ height: 10 }}>
+                      <td
+                        colSpan={columns.length + 2}
+                        style={{
+                          border: 'none',
+                          padding: 0,
+                          background: 'transparent',
+                        }}
+                      />
+                    </tr>
+                  )}
+                  <tr
+                    style={{
+                      height: 36,
+                      background: 'var(--editor-surface, #f8fafc)',
+                    }}
+                  >
+                    <td
+                      colSpan={columns.length + 2}
+                      onClick={() => toggleGroupCollapse(item.key)}
+                      style={{
+                        borderBottom: '1px solid var(--editor-border, #e2e8f0)',
+                        borderTop: isFirstGroup ? '1px solid var(--editor-border, #e2e8f0)' : undefined,
+                        padding: '0 12px',
+                        cursor: 'pointer',
+                        background: 'var(--editor-surface, #f8fafc)',
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          height: '100%',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleGroupCollapse(item.key);
+                          }}
+                          style={{
+                            border: 'none',
+                            background: 'transparent',
+                            cursor: 'pointer',
+                            padding: 0,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            color: 'var(--editor-text-muted, #64748b)',
+                          }}
+                        >
+                          {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+                        </button>
+
+                        {item.color ? (
+                          <OptionBadge option={{ id: item.key, label: item.label, color: item.color }} />
+                        ) : (
+                          <span
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 600,
+                              color: 'var(--editor-text, #1e293b)',
+                            }}
+                          >
+                            {item.label}
+                          </span>
+                        )}
+
+                        <span
+                          style={{
+                            fontSize: 12,
+                            color: 'var(--editor-text-muted, #94a3b8)',
+                          }}
+                        >
+                          总数 {item.count}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                </React.Fragment>
+              );
+            }
+
+            const { row, depth, hasChildren, isCollapsed, rowNumber } = item.treeNode;
             const isRowSelected = selection.type === 'row' && selection.rowId === row.id;
 
             return (
