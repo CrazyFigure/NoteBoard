@@ -1962,7 +1962,7 @@ export function BitableGridView({
                   >
                     <span>{rowNumber}</span>
 
-                    {/* 行快捷操作 (添加子任务、向上插入、向下插入、删除) */}
+                    {/* 行快捷操作 (展开详情、升级、降级、添加子任务、向上插入、向下插入、删除) */}
                     {/* data-no-drag：这些按钮位于行头内部，但按下时不应触发拖拽换行 */}
                     <div
                       data-no-drag
@@ -1970,15 +1970,17 @@ export function BitableGridView({
                         display: isRowSelected ? 'flex' : 'none',
                         position: 'absolute',
                         left: '100%',
-                        top: 0,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
                         zIndex: 99,
                         background: 'var(--editor-surface, #ffffff)',
                         border: '1px solid var(--editor-border, #cbd5e1)',
-                        borderRadius: 6,
-                        boxShadow: '0 6px 18px rgba(15,23,42,0.12)',
-                        padding: '3px 4px',
-                        gap: 2,
+                        borderRadius: 7,
+                        boxShadow: '0 6px 18px rgba(15,23,42,0.14)',
+                        padding: '4px 6px',
+                        gap: 3,
                         alignItems: 'center',
+                        marginLeft: 4,
                       }}
                       onClick={(e) => e.stopPropagation()}
                     >
@@ -2060,7 +2062,7 @@ export function BitableGridView({
                         onClick={() => onDeleteRow(row.id)}
                         style={{ color: '#ef4444' }}
                       >
-                        <Trash2 size={13} />
+                        <Trash2 size={14} />
                       </button>
                     </div>
                   </div>

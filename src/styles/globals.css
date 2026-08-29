@@ -2034,14 +2034,15 @@ button:not(:disabled) {
   background: transparent;
   cursor: pointer;
   padding: 5px 6px;
-  min-width: 26px;
-  border-radius: 4px;
+  min-width: 28px;
+  height: 28px;
+  border-radius: 5px;
   transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
 }
 
 .nb-bitable-row-action-btn:hover:not(:disabled) {
   background: var(--toolbar-hover, #f1f5f9);
-  transform: scale(1.12);
+  transform: scale(1.1);
 }
 
 .nb-bitable-row-action-btn:active:not(:disabled) {
@@ -2069,6 +2070,81 @@ button:not(:disabled) {
 }
 
 /* ── 多维表格日期 / 时间选择器 ── */
+
+/* 日历头部年月快速切换按钮 */
+.nb-bitable-cal-title-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--editor-text, #1e293b);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-bitable-cal-title-btn:hover {
+  background: var(--toolbar-hover, #f1f5f9);
+  color: var(--editor-accent, #3b82f6);
+}
+
+.nb-bitable-cal-title-btn:active {
+  background: var(--toolbar-active, #e2e8f0);
+  transform: scale(0.96);
+}
+
+/* 月份 / 年份选择格 */
+.nb-bitable-month-cell,
+.nb-bitable-year-cell {
+  height: 38px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--editor-text, #1e293b);
+  font-size: 12px;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast), border-color var(--transition-fast);
+}
+
+.nb-bitable-month-cell:hover,
+.nb-bitable-year-cell:hover {
+  background: var(--toolbar-hover, #f1f5f9);
+  transform: scale(1.04);
+}
+
+.nb-bitable-month-cell:active,
+.nb-bitable-year-cell:active {
+  transform: scale(0.96);
+}
+
+.nb-bitable-month-cell.is-selected,
+.nb-bitable-month-cell.is-selected:hover,
+.nb-bitable-year-cell.is-selected,
+.nb-bitable-year-cell.is-selected:hover {
+  background: var(--editor-accent, #3b82f6);
+  border-color: var(--editor-accent, #3b82f6);
+  color: #ffffff;
+  font-weight: 600;
+  transform: none;
+}
+
+.nb-bitable-month-cell.is-current:not(.is-selected),
+.nb-bitable-year-cell.is-current:not(.is-selected) {
+  border-color: var(--editor-accent, #3b82f6);
+  color: var(--editor-accent, #3b82f6);
+  font-weight: 600;
+}
 
 /* 单元格与表单中的日期触发器：悬停浮现底色，按下轻微收缩 */
 .nb-bitable-date-trigger {
