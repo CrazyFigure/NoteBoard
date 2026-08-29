@@ -2,7 +2,9 @@
 // 支持 JSON 双向解析、CSV 导出与默认精选项目管理模板构建
 
 import {
+  DEFAULT_DATE_TIME_CONFIG,
   DEFAULT_LONG_TEXT_CONFIG,
+  isDateTimeFieldType,
   type BitableDocument,
   type BitableColumn,
   type BitableFieldType,
@@ -84,6 +86,9 @@ export function createDefaultBitableDocument(title = '项目与任务管理多�
       name: '截止日期',
       type: 'date',
       width: 140,
+      // 显式写一份格式配置：模板生成的文档不经过解析期补全，
+      // 只留内存默认值会让落盘数据与界面表现对不上
+      dateTime: { ...DEFAULT_DATE_TIME_CONFIG },
     },
     {
       id: 'col_progress',
@@ -196,6 +201,8 @@ const KNOWN_FIELD_TYPES: ReadonlySet<string> = new Set([
   'select',
   'multiSelect',
   'date',
+  'time',
+  'dateTime',
   'checkbox',
   'rating',
   'progress',
@@ -216,6 +223,17 @@ function normalizeColumn(col: BitableColumn): BitableColumn {
       longText: {
         displayMode: col.longText?.displayMode ?? DEFAULT_LONG_TEXT_CONFIG.displayMode,
         markdown: col.longText?.markdown ?? DEFAULT_LONG_TEXT_CONFIG.markdown,
+      },
+    };
+  }
+  // 日期时间类同样补齐显式格式配置，保证渲染层读到的永远是完整配置
+  if (isDateTimeFieldType(type)) {
+    return {
+      ...col,
+      type,
+      dateTime: {
+        dateFormat: col.dateTime?.dateFormat ?? DEFAULT_DATE_TIME_CONFIG.dateFormat,
+        timeFormat: col.dateTime?.timeFormat ?? DEFAULT_DATE_TIME_CONFIG.timeFormat,
       },
     };
   }

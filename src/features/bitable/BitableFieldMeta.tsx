@@ -11,6 +11,8 @@ import {
   Tag,
   Tags,
   Calendar,
+  CalendarClock,
+  Clock,
   CheckSquare,
   Star,
   BarChart2,
@@ -38,6 +40,10 @@ export function getFieldTypeMeta(type: BitableFieldType): FieldTypeMeta {
       return { icon: <Tags size={13} color="#ec4899" />, label: '多选' };
     case 'date':
       return { icon: <Calendar size={13} color="#f59e0b" />, label: '日期' };
+    case 'time':
+      return { icon: <Clock size={13} color="#14b8a6" />, label: '时间' };
+    case 'dateTime':
+      return { icon: <CalendarClock size={13} color="#6366f1" />, label: '日期时间' };
     case 'checkbox':
       return { icon: <CheckSquare size={13} color="#06b6d4" />, label: '勾选' };
     case 'rating':

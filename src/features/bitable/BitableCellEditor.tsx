@@ -4,11 +4,12 @@
 // 多行文本单元格双击唤出编辑弹层，只读展示按列配置的显示模式（只显示第一行 / 全显示）
 
 import React, { useState, useRef, useEffect } from 'react';
-import type {
-  BitableColumn,
-  ColumnOptionAction,
-  LongTextConfig,
-  SelectOptionColor,
+import {
+  isDateTimeFieldType,
+  type BitableColumn,
+  type ColumnOptionAction,
+  type LongTextConfig,
+  type SelectOptionColor,
 } from './bitableTypes';
 import { OptionBadge, SelectOptionsPanel } from './BitableOptions';
 import { getAnchorRect, type AnchorRect } from './BitableFloating';
@@ -16,6 +17,7 @@ import { createId, previewLongText, resolveLongTextConfig } from './bitableUtils
 import { BitableMarkdown } from './BitableMarkdown';
 import { BitableRichTextEditor, type RichTextMode } from './BitableRichTextEditor';
 import { BitableLongTextPopover } from './BitableLongTextPopover';
+import { DateTimeFieldEditor } from './BitableDateTimePicker';
 import { Star, Check, ExternalLink } from 'lucide-react';
 
 /** 表单形态（记录详情侧边栏）下输入控件的统一样式 */
@@ -32,6 +34,29 @@ const FORM_INPUT_STYLE: React.CSSProperties = {
   background: 'var(--editor-bg, #ffffff)',
   color: 'var(--editor-text, #1e293b)',
 };
+
+/** 数字输入框的类名：隐藏原生上下微调箭头（样式见 globals.css 的 .nb-bitable-num-input） */
+const NUMBER_INPUT_CLASS = 'nb-bitable-num-input';
+
+/**
+ * 拦截数字输入框的上下键步进
+ * 表格里数字基本是手动录入的，原生步进既容易误改数值，又与键盘选区导航语义冲突。
+ * 返回 true 表示事件已被消费，调用方应直接 return。
+ */
+function blockNumberStepKeys(e: React.KeyboardEvent<HTMLInputElement>): boolean {
+  if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return false;
+  e.preventDefault();
+  return true;
+}
+
+/**
+ * 数字输入框聚焦时滚轮会直接加减数值，与表格滚动冲突
+ * React 的 wheel 监听注册为被动监听、无法 preventDefault，故改为让输入框失焦，
+ * 失焦后滚轮回归正常的页面滚动行为。
+ */
+function blurNumberOnWheel(e: React.WheelEvent<HTMLInputElement>): void {
+  e.currentTarget.blur();
+}
 
 interface CellEditorProps {
   column: BitableColumn;
@@ -343,11 +368,14 @@ export function BitableCellEditor({
       return (
         <input
           type="number"
+          className={NUMBER_INPUT_CLASS}
           value={inputValue}
           placeholder="请输入数字"
           onChange={(e) => setInputValue(e.target.value)}
+          onWheel={blurNumberOnWheel}
           onBlur={() => onChange(inputValue.trim() === '' ? null : Number(inputValue))}
           onKeyDown={(e) => {
+            if (blockNumberStepKeys(e)) return;
             if (e.key === 'Enter') {
               onChange(inputValue.trim() === '' ? null : Number(inputValue));
               e.currentTarget.blur();
@@ -366,14 +394,17 @@ export function BitableCellEditor({
         <input
           ref={inputRef}
           type="number"
+          className={NUMBER_INPUT_CLASS}
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
+          onWheel={blurNumberOnWheel}
           onBlur={() => {
             const num = inputValue.trim() === '' ? null : Number(inputValue);
             onChange(num);
             setEditing(false);
           }}
           onKeyDown={(e) => {
+            if (blockNumberStepKeys(e)) return;
             if (e.key === 'Enter') {
               const num = inputValue.trim() === '' ? null : Number(inputValue);
               onChange(num);
@@ -601,28 +632,15 @@ export function BitableCellEditor({
     );
   }
 
-  // ── 5. 日期 (Date) ──
-  if (column.type === 'date') {
+  // ── 5. 日期 / 时间 / 日期时间 ──
+  // 三者共用一套自研选择器：展示文本按列上的格式配置渲染，编辑时按类型给出日历、时间表盘或两者组合。
+  if (isDateTimeFieldType(column.type)) {
     return (
-      <input
-        type="date"
-        value={typeof value === 'string' ? value : ''}
-        onChange={(e) => onChange(e.target.value || null)}
-        style={
-          variant === 'form'
-            ? FORM_INPUT_STYLE
-            : {
-                width: '100%',
-                height: '100%',
-                border: 'none',
-                background: 'transparent',
-                padding: '2px 6px',
-                fontSize: 12,
-                color: 'var(--editor-text, #1e293b)',
-                cursor: 'pointer',
-                outline: 'none',
-              }
-        }
+      <DateTimeFieldEditor
+        column={column}
+        value={value}
+        onChange={onChange}
+        variant={variant}
       />
     );
   }
@@ -755,8 +773,11 @@ export function BitableCellEditor({
             type="number"
             min={0}
             max={100}
+            className={NUMBER_INPUT_CLASS}
             value={progressVal}
             onChange={(e) => onChange(Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
+            onWheel={blurNumberOnWheel}
+            onKeyDown={blockNumberStepKeys}
             style={{ ...FORM_INPUT_STYLE, width: 64, textAlign: 'right' }}
           />
           <span style={{ fontSize: 12, color: 'var(--editor-text-muted, #94a3b8)' }}>%</span>
@@ -798,8 +819,11 @@ export function BitableCellEditor({
           type="number"
           min={0}
           max={100}
+          className={NUMBER_INPUT_CLASS}
           value={progressVal}
           onChange={(e) => onChange(Number(e.target.value))}
+          onWheel={blurNumberOnWheel}
+          onKeyDown={blockNumberStepKeys}
           style={{
             width: 44,
             border: 'none',

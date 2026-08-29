@@ -2054,3 +2054,133 @@ button:not(:disabled) {
   cursor: not-allowed;
 }
 
+/* ── 多维表格数字输入：禁用原生上下微调箭头与滚轮调整 ──
+   number 输入框聚焦后滚轮会直接改值，与表格滚动严重冲突；
+   微调箭头在紧凑单元格里也极易误触，故统一屏蔽，只允许键盘直接输入。 */
+.nb-bitable-num-input::-webkit-outer-spin-button,
+.nb-bitable-num-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.nb-bitable-num-input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* ── 多维表格日期 / 时间选择器 ── */
+
+/* 单元格与表单中的日期触发器：悬停浮现底色，按下轻微收缩 */
+.nb-bitable-date-trigger {
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+/* 触发器本身带内联背景色（表单形态为白底、单元格形态为透明），
+   故 hover/active 必须加 !important 才能盖过内联样式生效。 */
+.nb-bitable-date-trigger:hover {
+  background: var(--toolbar-hover, #f1f5f9) !important;
+  border-color: var(--editor-border-focus, #cbd5e1) !important;
+}
+
+.nb-bitable-date-trigger:active {
+  background: var(--toolbar-active, #e2e8f0) !important;
+  transform: scale(0.985);
+}
+
+/* 日历格：6×7 网格，选中态用强调色实心，今日态用细描边区分 */
+.nb-bitable-date-cell {
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--editor-text, #1e293b);
+  font-size: 12px;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast), border-color var(--transition-fast);
+}
+
+.nb-bitable-date-cell:hover {
+  background: var(--toolbar-hover, #f1f5f9);
+  transform: scale(1.06);
+}
+
+.nb-bitable-date-cell:active {
+  transform: scale(0.94);
+}
+
+/* 前后补齐的相邻月日期淡化，避免误以为是本月的有效日期 */
+.nb-bitable-date-cell.is-outside {
+  color: var(--editor-text-muted, #94a3b8);
+  opacity: 0.55;
+}
+
+.nb-bitable-date-cell.is-today:not(.is-selected) {
+  border-color: var(--editor-accent, #3b82f6);
+  color: var(--editor-accent, #3b82f6);
+  font-weight: 600;
+}
+
+.nb-bitable-date-cell.is-selected,
+.nb-bitable-date-cell.is-selected:hover {
+  background: var(--editor-accent, #3b82f6);
+  border-color: var(--editor-accent, #3b82f6);
+  color: #ffffff;
+  font-weight: 600;
+  transform: none;
+}
+
+/* 时间列项：时 / 分 / 秒 */
+.nb-bitable-time-item {
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--editor-text, #1e293b);
+  font-size: 12px;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-bitable-time-item:hover {
+  background: var(--toolbar-hover, #f1f5f9);
+}
+
+.nb-bitable-time-item:active {
+  background: var(--toolbar-active, #e2e8f0);
+  transform: scale(0.94);
+}
+
+.nb-bitable-time-item.is-selected,
+.nb-bitable-time-item.is-selected:hover {
+  background: var(--editor-accent, #3b82f6);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* 日历月份翻页箭头 */
+.nb-bitable-cal-nav {
+  padding: 3px;
+  border-radius: 4px;
+}
+
+/* 时间列滚动区：细滚动条，避免抢视觉焦点 */
+.nb-bitable-scroll {
+  scrollbar-width: thin;
+}
+
+/* 字段类型二级菜单的一级项：展开态保持高亮，右侧箭头指示可延伸 */
+.nb-bitable-menu-item.has-submenu {
+  justify-content: space-between;
+}
+
+.nb-bitable-menu-item.is-submenu-open {
+  background: var(--toolbar-hover, #f1f5f9);
+}
+

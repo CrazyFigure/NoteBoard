@@ -3,14 +3,17 @@
 // 剪贴板通过隐藏代理输入框接收原生 copy/cut/paste 事件，规避 navigator.clipboard 的读权限弹窗
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import type {
-  BitableColumn,
-  BitableRow,
-  BitableFieldType,
-  ColumnOptionAction,
-  LongTextDisplayMode,
-  SelectOptionColor,
-  SortRule,
+import {
+  DATE_FORMAT_OPTIONS,
+  TIME_FORMAT_OPTIONS,
+  isDateTimeFieldType,
+  type BitableColumn,
+  type BitableRow,
+  type BitableFieldType,
+  type ColumnOptionAction,
+  type LongTextDisplayMode,
+  type SelectOptionColor,
+  type SortRule,
 } from './bitableTypes';
 import { BitableCellEditor } from './BitableCellEditor';
 import { SelectOptionsPanel, OptionBadge } from './BitableOptions';
@@ -26,6 +29,7 @@ import {
   isSlotNoop,
   parseClipboardMatrix,
   previewLongText,
+  resolveDateTimeConfig,
   resolveLongTextConfig,
   slotToFinalPosition,
   slotToSpliceIndex,
@@ -54,6 +58,7 @@ import {
   ArrowUpNarrowWide,
   ArrowDownWideNarrow,
   ArrowUpDown,
+  CalendarClock,
   SlidersHorizontal,
   X,
   Check,
@@ -105,18 +110,50 @@ interface GridViewProps {
   onMoveRow?: (draggedRowId: string, beforeRowId: string | null, parentId?: string) => void;
 }
 
+/**
+ * 一级字段类型清单
+ * 日期与时间三个类型不再平铺在这里，而是收进「日期与时间」分组项下的二级菜单，
+ * 避免类型列表越来越长、翻找困难。
+ */
 const ALL_FIELD_TYPES: BitableFieldType[] = [
   'text',
   'longText',
   'number',
   'select',
   'multiSelect',
-  'date',
   'checkbox',
   'rating',
   'progress',
   'link',
 ];
+
+/** 「日期与时间」分组下的二级类型 */
+const DATETIME_FIELD_TYPES: BitableFieldType[] = ['date', 'time', 'dateTime'];
+
+/**
+ * 切换字段类型时随列一起落库的补充字段
+ * 集中成一处，保证「标签默认值 / 多行文本配置 / 日期时间格式」三条补全规则只写一遍，
+ * 也避免新增类型时漏掉某一处导致「内存默认值与落盘数据不一致」。
+ */
+function buildFieldTypePatch(
+  col: BitableColumn,
+  nextType: BitableFieldType,
+): Partial<BitableColumn> {
+  return {
+    type: nextType,
+    options:
+      (nextType === 'select' || nextType === 'multiSelect') && !col.options?.length
+        ? [
+            { id: 'opt_1', label: '选项 1', color: 'blue' },
+            { id: 'opt_2', label: '选项 2', color: 'green' },
+          ]
+        : col.options,
+    // 切为多行文本时补齐一份显式配置，避免只存在于内存中的默认值与落盘数据不一致
+    longText: nextType === 'longText' ? resolveLongTextConfig(col) : col.longText,
+    // 切为日期时间类时同理补齐格式配置，后续改格式才会基于已落盘的默认值
+    dateTime: isDateTimeFieldType(nextType) ? resolveDateTimeConfig(col) : col.dateTime,
+  };
+}
 
 /** 多行文本显示模式的菜单项 */
 const DISPLAY_MODE_OPTIONS: Array<{ id: LongTextDisplayMode; label: string; hint: string }> = [
@@ -304,6 +341,14 @@ export function BitableGridView({
   const [editingColNameId, setEditingColNameId] = useState<string | null>(null);
   const [colNameInput, setColNameInput] = useState('');
 
+  // 「日期与时间」二级菜单：记录锚点（一级菜单项的位置）与触发元素
+  // 该菜单是列头菜单派生的更上层浮层，FloatingPanel 的浮层栈会保证点它不会关掉列头菜单。
+  const [datetimeSubmenu, setDatetimeSubmenu] = useState<{
+    anchor: AnchorRect;
+    trigger: HTMLElement;
+  } | null>(null);
+  const datetimeItemRef = useRef<HTMLButtonElement>(null);
+
   // 折叠的行 ID 集合
   const [collapsedRowIds, setCollapsedRowIds] = useState<Set<string>>(new Set());
 
@@ -336,6 +381,27 @@ export function BitableGridView({
 
   // 拖拽调整列宽状态
   const resizingColRef = useRef<{ colId: string; startX: number; startW: number } | null>(null);
+
+  /**
+   * 关闭列头菜单，并连带收起由它派生的「日期与时间」二级菜单
+   * 统一出口避免两处状态不同步：漏关子菜单会留下一个悬空的孤儿浮层。
+   */
+  const closeColumnMenu = useCallback(() => {
+    setColumnMenu(null);
+    setDatetimeSubmenu(null);
+  }, []);
+
+  /**
+   * 打开「日期与时间」二级菜单
+   * 锚点取一级菜单项的实测位置，使子菜单紧贴该项右侧延伸；右侧空间不足时
+   * FloatingPanel 会自动翻到左侧，二者都不会被视口边缘裁掉。
+   */
+  const openDatetimeSubmenu = useCallback(() => {
+    const el = datetimeItemRef.current;
+    if (!el) return;
+    const rect = getAnchorRect(el);
+    if (rect) setDatetimeSubmenu({ anchor: rect, trigger: el });
+  }, []);
 
   // 1. 构建树形扁平展示行列表 (计算层级深度 depth 与折叠状态)
   const flatTreeRows = useMemo(() => {
@@ -903,7 +969,7 @@ export function BitableGridView({
       }}
       onClick={(e) => {
         // 点击空白处取消菜单并把焦点交还剪贴板代理
-        setColumnMenu(null);
+        closeColumnMenu();
         if (e.target === e.currentTarget) {
           setSelection({ type: 'none' });
         }
@@ -1224,7 +1290,7 @@ export function BitableGridView({
                       onClick={(e) => {
                         e.stopPropagation();
                         if (isMenuOpen) {
-                          setColumnMenu(null);
+                          closeColumnMenu();
                           return;
                         }
                         const anchor = getAnchorRect(headerCellRefs.current.get(col.id));
@@ -1259,15 +1325,17 @@ export function BitableGridView({
                       }}
                     />
 
-                    {/* 列配置浮动菜单（Portal 渲染，避免被滚动容器裁剪） */}
+                    {/* 列配置浮动菜单（Portal 渲染，避免被滚动容器裁剪；宽度设为 240px 保证中文日期/时间格式单行完整展示） */}
                     {isMenuOpen && columnMenu && (
                       <FloatingPanel
                         anchor={columnMenu.anchor}
                         trigger={columnMenu.trigger}
-                        width={220}
+                        width={240}
                         gap={1}
                         align="right"
-                        onClose={() => setColumnMenu(null)}
+                        // 菜单整体滚动会让二级菜单与一级项错位，滚动即收起
+                        onScroll={() => setDatetimeSubmenu(null)}
+                        onClose={() => closeColumnMenu()}
                       >
                         <button
                           type="button"
@@ -1275,7 +1343,7 @@ export function BitableGridView({
                           onClick={() => {
                             setColNameInput(col.name);
                             setEditingColNameId(col.id);
-                            setColumnMenu(null);
+                            closeColumnMenu();
                           }}
                         >
                           <Edit2 size={13} />
@@ -1293,7 +1361,7 @@ export function BitableGridView({
                               if (anchor && th) {
                                 setOptionsEditor({ colId: col.id, anchor, trigger: th });
                               }
-                              setColumnMenu(null);
+                              closeColumnMenu();
                             }}
                           >
                             {col.type === 'select' ? <Tag size={13} /> : <Tags size={13} />}
@@ -1313,7 +1381,7 @@ export function BitableGridView({
                                 className="nb-bitable-btn-secondary"
                                 onClick={() => {
                                   onMoveColumn(col.id, 'left');
-                                  setColumnMenu(null);
+                                  closeColumnMenu();
                                 }}
                                 style={{
                                   flex: 1,
@@ -1333,7 +1401,7 @@ export function BitableGridView({
                                 className="nb-bitable-btn-secondary"
                                 onClick={() => {
                                   onMoveColumn(col.id, 'right');
-                                  setColumnMenu(null);
+                                  closeColumnMenu();
                                 }}
                                 style={{
                                   flex: 1,
@@ -1373,7 +1441,7 @@ export function BitableGridView({
                                         onUpdateColumn(col.id, {
                                           longText: { ...ltConfig, displayMode: opt.id },
                                         });
-                                        setColumnMenu(null);
+                                        closeColumnMenu();
                                       }}
                                       style={{
                                         flex: 1,
@@ -1396,7 +1464,7 @@ export function BitableGridView({
                                   onUpdateColumn(col.id, {
                                     longText: { ...ltConfig, markdown: !ltConfig.markdown },
                                   });
-                                  setColumnMenu(null);
+                                  closeColumnMenu();
                                 }}
                                 style={{
                                   fontSize: 11,
@@ -1427,11 +1495,96 @@ export function BitableGridView({
                           );
                         })()}
 
-                        {/* 修改字段类型子列表 */}
+                        {/* 日期时间字段专有的显示格式（列级设置，对该列所有单元格生效） */}
+                        {isDateTimeFieldType(col.type) && (() => {
+                          const dtConfig = resolveDateTimeConfig(col);
+                          const showDateFormat = col.type === 'date' || col.type === 'dateTime';
+                          const showTimeFormat = col.type === 'time' || col.type === 'dateTime';
+                          return (
+                            <>
+                              <div style={{ height: 1, background: 'var(--editor-border, #f1f5f9)', margin: '3px 0' }} />
+                              {showDateFormat && (
+                                <>
+                                  <div style={{ padding: '2px 8px', fontSize: 10, color: 'var(--editor-text-muted, #94a3b8)' }}>
+                                    日期格式
+                                  </div>
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                                    {DATE_FORMAT_OPTIONS.map((opt) => {
+                                      const active = dtConfig.dateFormat === opt.id;
+                                      return (
+                                        <button
+                                          key={opt.id}
+                                          type="button"
+                                          title={opt.label}
+                                          className={active ? 'nb-bitable-btn-primary' : 'nb-bitable-btn-secondary'}
+                                          onClick={() => {
+                                            onUpdateColumn(col.id, {
+                                              dateTime: { ...dtConfig, dateFormat: opt.id },
+                                            });
+                                            closeColumnMenu();
+                                          }}
+                                          style={{
+                                            padding: '4px 5px',
+                                            fontSize: 11,
+                                            fontWeight: active ? 600 : 400,
+                                            whiteSpace: 'nowrap',
+                                          }}
+                                        >
+                                          {opt.sample}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </>
+                              )}
+
+                              {showTimeFormat && (
+                                <>
+                                  <div style={{ padding: '2px 8px', fontSize: 10, color: 'var(--editor-text-muted, #94a3b8)' }}>
+                                    时间格式
+                                  </div>
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                                    {TIME_FORMAT_OPTIONS.map((opt) => {
+                                      const active = dtConfig.timeFormat === opt.id;
+                                      return (
+                                        <button
+                                          key={opt.id}
+                                          type="button"
+                                          title={opt.label}
+                                          className={active ? 'nb-bitable-btn-primary' : 'nb-bitable-btn-secondary'}
+                                          onClick={() => {
+                                            onUpdateColumn(col.id, {
+                                              dateTime: { ...dtConfig, timeFormat: opt.id },
+                                            });
+                                            closeColumnMenu();
+                                          }}
+                                          style={{
+                                            padding: '4px 5px',
+                                            fontSize: 11,
+                                            fontWeight: active ? 600 : 400,
+                                            whiteSpace: 'nowrap',
+                                          }}
+                                        >
+                                          {opt.sample}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </>
+                              )}
+                            </>
+                          );
+                        })()}
+
+                        {/* 修改字段类型列表 */}
                         <div style={{ padding: '2px 8px', fontSize: 10, color: 'var(--editor-text-muted, #94a3b8)' }}>
                           更改字段类型
                         </div>
-                        <div style={{ maxHeight: 160, overflowY: 'auto' }}>
+                        <div
+                          // 列表滚动会让一级项与右侧二级菜单错位，滚动时直接收起二级菜单
+                          onScroll={() => setDatetimeSubmenu(null)}
+                          style={{ maxHeight: 160, overflowY: 'auto' }}
+                        >
                           {ALL_FIELD_TYPES.map((t) => {
                             const tMeta = getFieldTypeMeta(t);
                             const isCurrent = col.type === t;
@@ -1440,22 +1593,11 @@ export function BitableGridView({
                                 key={t}
                                 type="button"
                                 className="nb-bitable-menu-item"
+                                // 鼠标移到别的类型项上时收起二级菜单，避免残留一个孤儿浮层
+                                onMouseEnter={() => setDatetimeSubmenu(null)}
                                 onClick={() => {
-                                  onUpdateColumn(col.id, {
-                                    type: t,
-                                    options: (t === 'select' || t === 'multiSelect') && !col.options?.length
-                                      ? [
-                                          { id: 'opt_1', label: '选项 1', color: 'blue' },
-                                          { id: 'opt_2', label: '选项 2', color: 'green' },
-                                        ]
-                                      : col.options,
-                                    // 切为多行文本时补齐一份显式配置，避免只存在于内存中的默认值与落盘数据不一致
-                                    longText:
-                                      t === 'longText'
-                                        ? resolveLongTextConfig(col)
-                                        : col.longText,
-                                  });
-                                  setColumnMenu(null);
+                                  onUpdateColumn(col.id, buildFieldTypePatch(col, t));
+                                  closeColumnMenu();
                                 }}
                                 style={{
                                   background: isCurrent ? 'var(--editor-bg, #f1f5f9)' : undefined,
@@ -1469,7 +1611,74 @@ export function BitableGridView({
                               </button>
                             );
                           })}
+
+                          {/* 日期与时间：一级项，悬停或点击在其右侧延伸出二级菜单 */}
+                          <button
+                            ref={datetimeItemRef}
+                            type="button"
+                            className={[
+                              'nb-bitable-menu-item',
+                              'has-submenu',
+                              datetimeSubmenu ? 'is-submenu-open' : '',
+                            ].filter(Boolean).join(' ')}
+                            // 桌面端级联菜单用 hover 打开最顺手；click 作为兜底，触屏不是主场景
+                            onMouseEnter={openDatetimeSubmenu}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openDatetimeSubmenu();
+                            }}
+                            style={{
+                              background:
+                                isDateTimeFieldType(col.type) && !datetimeSubmenu
+                                  ? 'var(--editor-bg, #f1f5f9)'
+                                  : undefined,
+                              fontSize: 11,
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <CalendarClock size={13} color="#f59e0b" />
+                              <span>日期与时间</span>
+                            </div>
+                            <ChevronRight size={12} style={{ opacity: 0.55, flexShrink: 0 }} />
+                          </button>
                         </div>
+
+                        {/* 二级菜单：从一级项右侧延伸；贴边时由 FloatingPanel 自动翻向左侧 */}
+                        {datetimeSubmenu && (
+                          <FloatingPanel
+                            anchor={datetimeSubmenu.anchor}
+                            trigger={datetimeSubmenu.trigger}
+                            placement="side"
+                            width={150}
+                            gap={2}
+                            onClose={() => setDatetimeSubmenu(null)}
+                          >
+                            {DATETIME_FIELD_TYPES.map((t) => {
+                              const tMeta = getFieldTypeMeta(t);
+                              const isCurrent = col.type === t;
+                              return (
+                                <button
+                                  key={t}
+                                  type="button"
+                                  className="nb-bitable-menu-item"
+                                  onClick={() => {
+                                    onUpdateColumn(col.id, buildFieldTypePatch(col, t));
+                                    closeColumnMenu();
+                                  }}
+                                  style={{
+                                    background: isCurrent ? 'var(--editor-bg, #f1f5f9)' : undefined,
+                                    fontSize: 11,
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    {tMeta.icon}
+                                    <span>{tMeta.label}</span>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </FloatingPanel>
+                        )}
 
                         <div style={{ height: 1, background: 'var(--editor-border, #f1f5f9)', margin: '3px 0' }} />
 
@@ -1478,7 +1687,7 @@ export function BitableGridView({
                           className="nb-bitable-menu-item"
                           onClick={() => {
                             onAddColumn('left', col.id);
-                            setColumnMenu(null);
+                            closeColumnMenu();
                           }}
                           style={{ fontSize: 11 }}
                         >
@@ -1491,7 +1700,7 @@ export function BitableGridView({
                           className="nb-bitable-menu-item"
                           onClick={() => {
                             onAddColumn('right', col.id);
-                            setColumnMenu(null);
+                            closeColumnMenu();
                           }}
                           style={{ fontSize: 11 }}
                         >
@@ -1505,7 +1714,7 @@ export function BitableGridView({
                             className="nb-bitable-menu-item"
                             onClick={() => {
                               onClearColumn(col.id);
-                              setColumnMenu(null);
+                              closeColumnMenu();
                               showToast('已清空该列所有数据');
                             }}
                             style={{ fontSize: 11, color: 'var(--editor-text-muted, #64748b)' }}
@@ -1523,7 +1732,7 @@ export function BitableGridView({
                           style={{ width: '100%', justifyContent: 'flex-start' }}
                           onClick={() => {
                             onDeleteColumn(col.id);
-                            setColumnMenu(null);
+                            closeColumnMenu();
                           }}
                         >
                           <Trash2 size={14} />

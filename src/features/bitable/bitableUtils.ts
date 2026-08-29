@@ -2,13 +2,19 @@
 // 覆盖唯一 ID 生成、剪贴板矩阵解析、单元格值类型归一（粘贴/填充）与纯文本展示格式化
 
 import {
+  DEFAULT_DATE_TIME_CONFIG,
   DEFAULT_LONG_TEXT_CONFIG,
+  isDateTimeFieldType,
   type BitableColumn,
   type BitableRow,
+  type DateFormatId,
+  type DateTimeConfig,
+  type DateTimeFieldType,
   type LongTextConfig,
   type SelectOption,
   type SelectOptionColor,
   type SortRule,
+  type TimeFormatId,
 } from './bitableTypes';
 
 let idSequence = 0;
@@ -104,14 +110,178 @@ export function parseClipboardMatrix(text: string): string[][] {
   return trimmed.split('\n').map(splitDelimitedLine);
 }
 
-/** 将常见日期写法归一为 YYYY-MM-DD，无法识别时原样返回 */
-function normalizeDateInput(raw: string): string {
-  const matched = raw.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+// ── 日期时间工具集 ──
+// 存储与显示彻底解耦：库里只存「可字典序排序」的规范串（YYYY-MM-DD / HH:mm:ss / YYYY-MM-DD HH:mm:ss），
+// 展示时再按列上的格式配置渲染。这样换格式不会改动数据，排序也天然正确。
+
+/** 补零到两位 */
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+/**
+ * 宽松解析日期文本为 YYYY-MM-DD
+ * 兼容 2026-8-29 / 2026/8/29 / 2026.8.29 / 2026年8月29日 等常见写法。
+ */
+export function normalizeDateInput(raw: string): string | null {
+  const text = raw.trim();
+  if (!text) return null;
+  // 中文写法先剔除「年月日」再走数字分支，避免正则里堆一堆可选字符
+  const cn = text.match(/^(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?$/);
+  if (cn) {
+    const [, y, m, d] = cn;
+    return `${y}-${pad2(Number(m))}-${pad2(Number(d))}`;
+  }
+  const matched = text.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
   if (matched) {
     const [, y, m, d] = matched;
-    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    return `${y}-${pad2(Number(m))}-${pad2(Number(d))}`;
   }
-  return raw;
+  return null;
+}
+
+/** 宽松解析时间文本为 HH:mm:ss，缺秒补 00；12 小时制（含上午/下午）也一并识别 */
+export function normalizeTimeInput(raw: string): string | null {
+  const text = raw.trim();
+  if (!text) return null;
+  const cn = text.match(/^(上午|下午|早上|晚上)?\s*(\d{1,2})\s*[:时]\s*(\d{1,2})(?:\s*[:分]\s*(\d{1,2}))?\s*分?秒?$/);
+  if (cn) {
+    const [, ampm, h, m, s] = cn;
+    let hour = Number(h);
+    // 12 小时制只在 1~12 区间生效，且 12 点特殊：下午 12 点即 12 时，上午 12 点是 0 时
+    if ((ampm === '下午' || ampm === '晚上') && hour < 12) hour += 12;
+    if ((ampm === '上午' || ampm === '早上') && hour === 12) hour = 0;
+    if (hour > 23 || Number(m) > 59 || (s !== undefined && Number(s) > 59)) return null;
+    return `${pad2(hour)}:${pad2(Number(m))}:${pad2(Number(s ?? 0))}`;
+  }
+  return null;
+}
+
+/**
+ * 拆分一段文本中的日期与时间成分
+ * 允许「只有日期」「只有时间」「日期 + 时间（空格或 T 分隔）」三种形态，
+ * 供三种字段类型各自取用所需的部分。
+ */
+export function parseDateTimeInput(raw: string): { date: string | null; time: string | null } {
+  const text = raw.trim();
+  if (!text) return { date: null, time: null };
+
+  // 先按空白或 T 切成两段，分别尝试按日期/时间解析，兼容「日期在前」与「时间在前」
+  const parts = text.split(/[\sT]+/).filter(Boolean);
+  let date: string | null = null;
+  let time: string | null = null;
+  parts.forEach((part) => {
+    if (!date) date = normalizeDateInput(part);
+    if (!time) time = normalizeTimeInput(part);
+  });
+  return { date, time };
+}
+
+/** 取今天的日期串 YYYY-MM-DD（按本地时区，避免 toISOString 的 UTC 偏移串日期） */
+export function todayDateString(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+}
+
+/** 取当前时刻串 HH:mm:ss（按本地时区） */
+export function nowTimeString(): string {
+  const now = new Date();
+  return `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
+}
+
+/** 解析日期存储值为 { y, m, d } 三个数字，非法返回 null */
+function splitDateValue(value: string): { y: string; m: string; d: string } | null {
+  const matched = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!matched) return null;
+  const [, y, m, d] = matched;
+  return { y, m, d };
+}
+
+/** 解析时间存储值为时/分/秒数字，非法返回 null */
+function splitTimeValue(value: string): { h: number; m: number; s: number } | null {
+  const matched = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+  if (!matched) return null;
+  const [, h, m, s] = matched;
+  return { h: Number(h), m: Number(m), s: Number(s ?? 0) };
+}
+
+/** 按日期格式渲染日期部分（入参为 YYYY-MM-DD） */
+export function formatDatePart(date: string, format: DateFormatId): string {
+  const parts = splitDateValue(date);
+  if (!parts) return date;
+  const { y, m, d } = parts;
+  switch (format) {
+    case 'ymd-slash':
+      return `${y}/${m}/${d}`;
+    case 'ymd-dot':
+      return `${y}.${m}.${d}`;
+    case 'ymd-cn':
+      return `${y}年${m}月${d}日`;
+    case 'mdy-slash':
+      return `${m}/${d}/${y}`;
+    case 'md-cn':
+      return `${m}月${d}日`;
+    case 'ymd-dash':
+    default:
+      return `${y}-${m}-${d}`;
+  }
+}
+
+/** 按时间格式渲染时间部分（入参为 HH:mm[:ss]） */
+export function formatTimePart(time: string, format: TimeFormatId): string {
+  const parts = splitTimeValue(time);
+  if (!parts) return time;
+  const { h, m, s } = parts;
+  switch (format) {
+    case 'hms':
+      return `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
+    case 'hm-cn':
+      return `${pad2(h)}时${pad2(m)}分`;
+    case 'hms-cn':
+      return `${pad2(h)}时${pad2(m)}分${pad2(s)}秒`;
+    case 'hm-12': {
+      const ampm = h < 12 ? '上午' : '下午';
+      const hour12 = h % 12 === 0 ? 12 : h % 12;
+      return `${ampm} ${pad2(hour12)}:${pad2(m)}`;
+    }
+    case 'hm':
+    default:
+      return `${pad2(h)}:${pad2(m)}`;
+  }
+}
+
+/**
+ * 解析日期时间字段的有效配置
+ * 列定义上的 dateTime 允许部分缺省，读取时统一补全，避免各渲染点各自写默认值造成不一致。
+ */
+export function resolveDateTimeConfig(column: BitableColumn): DateTimeConfig {
+  return {
+    dateFormat: column.dateTime?.dateFormat ?? DEFAULT_DATE_TIME_CONFIG.dateFormat,
+    timeFormat: column.dateTime?.timeFormat ?? DEFAULT_DATE_TIME_CONFIG.timeFormat,
+  };
+}
+
+/**
+ * 按字段类型与格式配置渲染日期时间单元格
+ * 三种类型的存储形态不同，这里统一收敛为一个出口，供表格、看板、侧边栏与 CSV 复用。
+ */
+export function formatDateTimeValue(
+  value: unknown,
+  type: DateTimeFieldType,
+  config: DateTimeConfig,
+): string {
+  if (value === undefined || value === null || value === '') return '';
+  const raw = String(value).trim();
+
+  if (type === 'date') return formatDatePart(raw, config.dateFormat);
+  if (type === 'time') return formatTimePart(raw, config.timeFormat);
+
+  // dateTime：存储形态为 `YYYY-MM-DD HH:mm:ss`，按空格切开分别套用两部分格式
+  const [datePart, timePart] = raw.split(/[\sT]+/);
+  if (!datePart) return raw;
+  const dateText = formatDatePart(datePart, config.dateFormat);
+  if (!timePart) return dateText;
+  return `${dateText} ${formatTimePart(timePart, config.timeFormat)}`;
 }
 
 /**
@@ -204,8 +374,27 @@ export function coerceCellValue(
         value: ['true', '1', 'yes', 'y', '是', '√', '✓'].includes(text.toLowerCase()),
         column: null,
       };
-    case 'date':
-      return { value: text ? normalizeDateInput(text) : null, column: null };
+    case 'date': {
+      if (!text) return { value: null, column: null };
+      // 粘贴「2026-08-29 09:00」时只取日期部分，避免整串写进日期列后无法格式化
+      const { date } = parseDateTimeInput(text);
+      return { value: date, column: null };
+    }
+    case 'time': {
+      if (!text) return { value: null, column: null };
+      const { time } = parseDateTimeInput(text);
+      return { value: time, column: null };
+    }
+    case 'dateTime': {
+      if (!text) return { value: null, column: null };
+      const { date, time } = parseDateTimeInput(text);
+      // 只给日期则时间补零点；只给时间则日期补今天，保证存储形态始终是完整的可排序串
+      if (!date && !time) return { value: null, column: null };
+      return {
+        value: `${date || todayDateString()} ${time || '00:00:00'}`,
+        column: null,
+      };
+    }
     case 'select': {
       if (!text) return { value: null, column: null };
       const options = column.options || [];
@@ -266,6 +455,10 @@ export function formatCellValue(column: BitableColumn, value: unknown): string {
   }
   if (column.type === 'checkbox') {
     return value ? '是' : '否';
+  }
+  // 日期时间类按列上的格式配置输出，保证复制出去的文本与界面所见一致
+  if (isDateTimeFieldType(column.type)) {
+    return formatDateTimeValue(value, column.type, resolveDateTimeConfig(column));
   }
   return String(value);
 }
@@ -396,7 +589,8 @@ function compareCellValues(
   if (colType === 'number' || colType === 'progress' || colType === 'rating') {
     return Number(a) - Number(b);
   }
-  if (colType === 'date') {
+  // 日期时间三类的存储串都是「高位在前、定长补零」，字典序即时间序，无需再解析成 Date
+  if (colType === 'date' || colType === 'time' || colType === 'dateTime') {
     return String(a).localeCompare(String(b));
   }
   if (colType === 'checkbox') {
@@ -563,6 +757,10 @@ export function getSortDirectionLabels(
       return { asc: '0 → 9', desc: '9 → 0' };
     case 'date':
       return { asc: '最早的日期 → 最晚', desc: '最晚的日期 → 最早' };
+    case 'time':
+      return { asc: '最早的时间 → 最晚', desc: '最晚的时间 → 最早' };
+    case 'dateTime':
+      return { asc: '最早的时间 → 最晚', desc: '最晚的时间 → 最早' };
     case 'checkbox':
       return { asc: '未勾选 → 勾选', desc: '勾选 → 未勾选' };
     case 'select':

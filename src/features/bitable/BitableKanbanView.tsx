@@ -2,22 +2,30 @@
 // 按单选分组字段（如状态、优先级）自动分列泳道，支持卡片流转与泳道内快速新增
 
 import React from 'react';
-import type {
-  BitableColumn,
-  BitableRow,
-  SelectOption,
+import {
+  isDateTimeFieldType,
+  type BitableColumn,
+  type BitableRow,
+  type SelectOption,
 } from './bitableTypes';
 import { OptionBadge } from './BitableOptions';
 import { BITABLE_PALETTE } from './bitableConverter';
 import { BitableMarkdown } from './BitableMarkdown';
 import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
-import { previewLongText, resolveLongTextConfig, slotToFinalPosition } from './bitableUtils';
+import {
+  formatDateTimeValue,
+  previewLongText,
+  resolveDateTimeConfig,
+  resolveLongTextConfig,
+  slotToFinalPosition,
+} from './bitableUtils';
 import { usePointerReorder } from './usePointerReorder';
 import { FieldSelectButton } from './BitableFieldMeta';
 import type { ColumnOptionAction, SelectOptionColor } from './bitableTypes';
 import {
   Plus,
   Calendar,
+  Clock,
   Star,
   SlidersHorizontal,
   Trash2,
@@ -649,7 +657,8 @@ export function BitableKanbanView({
                           return optionItem ? <OptionBadge key={c.id} option={optionItem} /> : null;
                         }
 
-                        if (c.type === 'date') {
+                        // 日期 / 时间 / 日期时间：图标按类型区分，文本按列格式渲染
+                        if (isDateTimeFieldType(c.type)) {
                           return (
                             <div
                               key={c.id}
@@ -659,10 +668,20 @@ export function BitableKanbanView({
                                 gap: 3,
                                 fontSize: 11,
                                 color: 'var(--editor-text-muted, #64748b)',
+                                maxWidth: '100%',
+                                overflow: 'hidden',
                               }}
                             >
-                              <Calendar size={11} />
-                              <span>{String(val)}</span>
+                              {c.type === 'time' ? <Clock size={11} /> : <Calendar size={11} />}
+                              <span
+                                style={{
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {formatDateTimeValue(val, c.type, resolveDateTimeConfig(c))}
+                              </span>
                             </div>
                           );
                         }
