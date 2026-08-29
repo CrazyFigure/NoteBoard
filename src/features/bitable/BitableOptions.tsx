@@ -70,7 +70,7 @@ function ColorPickerRow({
   onChange: (color: SelectOptionColor) => void;
 }) {
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '2px 0' }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '3px 0' }}>
       {BITABLE_PALETTE.map((pal) => (
         <div
           key={pal.id}
@@ -78,13 +78,13 @@ function ColorPickerRow({
           className="nb-bitable-color-dot"
           onClick={() => onChange(pal.id as SelectOptionColor)}
           style={{
-            width: 14,
-            height: 14,
+            width: 18,
+            height: 18,
             borderRadius: '50%',
             background: pal.text,
             cursor: 'pointer',
             boxSizing: 'border-box',
-            border: value === pal.id ? '2px solid var(--editor-text, #0f172a)' : '1px solid rgba(15,23,42,0.12)',
+            border: value === pal.id ? '2px solid var(--editor-text, #0f172a)' : '1px solid rgba(15,23,42,0.15)',
           }}
         />
       ))}
@@ -158,7 +158,7 @@ export function SelectOptionsPanel({
   };
 
   return (
-    <FloatingPanel anchor={anchor} width={248} trigger={trigger} onClose={onClose}>
+    <FloatingPanel anchor={anchor} width={264} trigger={trigger} onClose={onClose}>
       {title && (
         <div
           style={{
@@ -173,7 +173,7 @@ export function SelectOptionsPanel({
       )}
 
       {/* 选项列表 */}
-      <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <div style={{ maxHeight: 210, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
         {options.map((opt, idx) => {
           const isSelected = selectedIds.includes(opt.id);
           const isEditingThis = editingId === opt.id;
@@ -205,7 +205,7 @@ export function SelectOptionsPanel({
                     style={{
                       flex: 1,
                       minWidth: 0,
-                      padding: '3px 6px',
+                      padding: '4px 8px',
                       fontSize: 12,
                       border: '1px solid var(--editor-accent, #3b82f6)',
                       borderRadius: 4,
@@ -219,8 +219,8 @@ export function SelectOptionsPanel({
                     className="nb-bitable-btn-primary"
                     onClick={() => saveEdit(opt.id)}
                     style={{
-                      padding: '3px 8px',
-                      fontSize: 11,
+                      padding: '4px 10px',
+                      fontSize: 12,
                     }}
                   >
                     保存
@@ -257,11 +257,11 @@ export function SelectOptionsPanel({
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0, overflow: 'hidden' }}>
                 <OptionBadge option={opt} />
-                {isSelected && <Check size={13} color="#3b82f6" />}
+                {isSelected && <Check size={14} color="#3b82f6" />}
               </div>
 
               {manageable && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 1 }} onClick={(e) => e.stopPropagation()}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 2 }} onClick={(e) => e.stopPropagation()}>
                   {onMoveOption && (
                     <>
                       <button
@@ -275,10 +275,13 @@ export function SelectOptionsPanel({
                         }}
                         style={{
                           opacity: idx === 0 ? 0.25 : 1,
-                          padding: 2,
+                          padding: '3px 4px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
                         }}
                       >
-                        <ChevronUp size={11} />
+                        <ChevronUp size={13} />
                       </button>
                       <button
                         type="button"
@@ -291,10 +294,13 @@ export function SelectOptionsPanel({
                         }}
                         style={{
                           opacity: idx === options.length - 1 ? 0.25 : 1,
-                          padding: 2,
+                          padding: '3px 4px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
                         }}
                       >
-                        <ChevronDown size={11} />
+                        <ChevronDown size={13} />
                       </button>
                     </>
                   )}
@@ -303,9 +309,14 @@ export function SelectOptionsPanel({
                     title="修改选项名称与颜色"
                     className="nb-bitable-btn-ghost"
                     onClick={(e) => startEdit(e, opt)}
-                    style={{ padding: 2 }}
+                    style={{
+                      padding: '3px 4px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
                   >
-                    <Edit2 size={11} />
+                    <Edit2 size={13} />
                   </button>
                   <button
                     type="button"
@@ -316,11 +327,14 @@ export function SelectOptionsPanel({
                       onDeleteOption?.(opt.id);
                     }}
                     style={{
-                      padding: 2,
+                      padding: '3px 4px',
                       color: '#ef4444',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                     }}
                   >
-                    <Trash2 size={11} />
+                    <Trash2 size={13} />
                   </button>
                 </div>
               )}
@@ -359,8 +373,8 @@ export function SelectOptionsPanel({
               style={{
                 flex: 1,
                 minWidth: 0,
-                padding: '3px 6px',
-                fontSize: 11,
+                padding: '4px 8px',
+                fontSize: 12,
                 border: '1px solid var(--editor-border, #cbd5e1)',
                 borderRadius: 4,
                 outline: 'none',
@@ -373,8 +387,8 @@ export function SelectOptionsPanel({
               className="nb-bitable-btn-primary"
               onClick={handleAdd}
               style={{
-                padding: '3px 8px',
-                fontSize: 11,
+                padding: '4px 10px',
+                fontSize: 12,
               }}
             >
               添加

@@ -134,16 +134,22 @@ function TimeColumn({
   );
 }
 
+const MONTH_NAMES = ['1 月', '2 月', '3 月', '4 月', '5 月', '6 月', '7 月', '8 月', '9 月', '10 月', '11 月', '12 月'];
+
 interface DatePanelProps {
   value: string | null;
   onPick: (date: string) => void;
 }
 
-/** 日历面板：月翻页 + 6×7 日期格 + 今天快捷 */
+/** 日历面板：月翻页 + 年月快速选择 + 6×7 日期格 + 今天快捷 */
 function DatePanel({ value, onPick }: DatePanelProps) {
   const initial = parseYearMonth(value);
   const [year, setYear] = useState(initial.year);
   const [month, setMonth] = useState(initial.month);
+  // 视图模式：'days' 日期网格 | 'months' 月份网格 | 'years' 年份网格
+  const [viewMode, setViewMode] = useState<'days' | 'months' | 'years'>('days');
+  // 年份选择页的起始年份窗口（12 年一页）
+  const [yearWindow, setYearWindow] = useState(() => Math.floor(initial.year / 12) * 12);
   const today = todayDateString();
 
   const cells = useMemo(() => buildMonthMatrix(year, month), [year, month]);
@@ -156,76 +162,228 @@ function DatePanel({ value, onPick }: DatePanelProps) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-        <button
-          type="button"
-          className="nb-bitable-btn-ghost nb-bitable-cal-nav"
-          title="上一月"
-          onClick={() => shiftMonth(-1)}
-        >
-          <ChevronLeft size={14} />
-        </button>
+      {/* 头部导航与年月切换入口 */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+        {viewMode === 'days' && (
+          <>
+            <button
+              type="button"
+              className="nb-bitable-btn-ghost nb-bitable-cal-nav"
+              title="上一月"
+              onClick={() => shiftMonth(-1)}
+            >
+              <ChevronLeft size={14} />
+            </button>
+            {/* 年月可点击切换到对应网格选择器 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <button
+                type="button"
+                className="nb-bitable-cal-title-btn"
+                title="选择年份"
+                onClick={() => {
+                  setYearWindow(Math.floor(year / 12) * 12);
+                  setViewMode('years');
+                }}
+              >
+                {year} 年
+              </button>
+              <button
+                type="button"
+                className="nb-bitable-cal-title-btn"
+                title="选择月份"
+                onClick={() => setViewMode('months')}
+              >
+                {month + 1} 月
+              </button>
+            </div>
+            <button
+              type="button"
+              className="nb-bitable-btn-ghost nb-bitable-cal-nav"
+              title="下一月"
+              onClick={() => shiftMonth(1)}
+            >
+              <ChevronRight size={14} />
+            </button>
+          </>
+        )}
+
+        {viewMode === 'months' && (
+          <>
+            <button
+              type="button"
+              className="nb-bitable-btn-ghost nb-bitable-cal-nav"
+              title="上一年"
+              onClick={() => setYear((y) => y - 1)}
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <button
+              type="button"
+              className="nb-bitable-cal-title-btn"
+              title="选择年份"
+              onClick={() => {
+                setYearWindow(Math.floor(year / 12) * 12);
+                setViewMode('years');
+              }}
+            >
+              {year} 年
+            </button>
+            <button
+              type="button"
+              className="nb-bitable-btn-ghost nb-bitable-cal-nav"
+              title="下一年"
+              onClick={() => setYear((y) => y + 1)}
+            >
+              <ChevronRight size={14} />
+            </button>
+          </>
+        )}
+
+        {viewMode === 'years' && (
+          <>
+            <button
+              type="button"
+              className="nb-bitable-btn-ghost nb-bitable-cal-nav"
+              title="前 12 年"
+              onClick={() => setYearWindow((w) => w - 12)}
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--editor-text, #1e293b)' }}>
+              {yearWindow} 年 - {yearWindow + 11} 年
+            </div>
+            <button
+              type="button"
+              className="nb-bitable-btn-ghost nb-bitable-cal-nav"
+              title="后 12 年"
+              onClick={() => setYearWindow((w) => w + 12)}
+            >
+              <ChevronRight size={14} />
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* 日期网格视图 */}
+      {viewMode === 'days' && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
+            {WEEK_LABELS.map((w) => (
+              <div
+                key={w}
+                style={{
+                  textAlign: 'center',
+                  fontSize: 10,
+                  padding: '2px 0',
+                  color: 'var(--editor-text-muted, #94a3b8)',
+                }}
+              >
+                {w}
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
+            {cells.map((cell) => {
+              const isSelected = cell.date === value;
+              const isToday = cell.date === today;
+              return (
+                <button
+                  key={cell.date}
+                  type="button"
+                  title={cell.date}
+                  className={[
+                    'nb-bitable-date-cell',
+                    isSelected ? 'is-selected' : '',
+                    isToday ? 'is-today' : '',
+                    cell.inCurrentMonth ? '' : 'is-outside',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  onClick={() => onPick(cell.date)}
+                >
+                  {cell.day}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {/* 月份网格视图 (3×4) */}
+      {viewMode === 'months' && (
         <div
           style={{
-            flex: 1,
-            textAlign: 'center',
-            fontSize: 12,
-            fontWeight: 600,
-            color: 'var(--editor-text, #1e293b)',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: 6,
+            padding: '4px 0',
+            minHeight: 182,
           }}
         >
-          {year} 年 {month + 1} 月
+          {MONTH_NAMES.map((mName, mIdx) => {
+            const isSelected = initial.year === year && initial.month === mIdx;
+            const now = new Date();
+            const isCurrent = now.getFullYear() === year && now.getMonth() === mIdx;
+            return (
+              <button
+                key={mName}
+                type="button"
+                className={[
+                  'nb-bitable-month-cell',
+                  isSelected ? 'is-selected' : '',
+                  isCurrent ? 'is-current' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                onClick={() => {
+                  setMonth(mIdx);
+                  setViewMode('days');
+                }}
+              >
+                {mName}
+              </button>
+            );
+          })}
         </div>
-        <button
-          type="button"
-          className="nb-bitable-btn-ghost nb-bitable-cal-nav"
-          title="下一月"
-          onClick={() => shiftMonth(1)}
+      )}
+
+      {/* 年份网格视图 (3×4) */}
+      {viewMode === 'years' && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: 6,
+            padding: '4px 0',
+            minHeight: 182,
+          }}
         >
-          <ChevronRight size={14} />
-        </button>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
-        {WEEK_LABELS.map((w) => (
-          <div
-            key={w}
-            style={{
-              textAlign: 'center',
-              fontSize: 10,
-              padding: '2px 0',
-              color: 'var(--editor-text-muted, #94a3b8)',
-            }}
-          >
-            {w}
-          </div>
-        ))}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
-        {cells.map((cell) => {
-          const isSelected = cell.date === value;
-          const isToday = cell.date === today;
-          return (
-            <button
-              key={cell.date}
-              type="button"
-              title={cell.date}
-              className={[
-                'nb-bitable-date-cell',
-                isSelected ? 'is-selected' : '',
-                isToday ? 'is-today' : '',
-                cell.inCurrentMonth ? '' : 'is-outside',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              onClick={() => onPick(cell.date)}
-            >
-              {cell.day}
-            </button>
-          );
-        })}
-      </div>
+          {Array.from({ length: 12 }, (_, i) => yearWindow + i).map((y) => {
+            const isSelected = y === year;
+            const isCurrent = y === new Date().getFullYear();
+            return (
+              <button
+                key={y}
+                type="button"
+                className={[
+                  'nb-bitable-year-cell',
+                  isSelected ? 'is-selected' : '',
+                  isCurrent ? 'is-current' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                onClick={() => {
+                  setYear(y);
+                  setViewMode('months');
+                }}
+              >
+                {y}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
