@@ -175,7 +175,14 @@ _deepMergeLocales(${defaultExportName}, _extraLocales);
 
 // Vite 配置
 // 注意：base 必须是 './'，Tauri 用 file:// 加载
-// server.port 必须与 tauri.conf.json 的 devUrl 一致，且 strictPort: true
+// 标准 Tauri 开发命令会注入系统分配的空闲端口；直接运行 Vite 时才使用 1421 作为起始端口。
+const configuredDevPort = Number.parseInt(process.env.NOTEBOARD_DEV_PORT ?? '', 10);
+const hasAllocatedDevPort = Number.isInteger(configuredDevPort)
+  && configuredDevPort > 0
+  && configuredDevPort <= 65535;
+const devPort = hasAllocatedDevPort ? configuredDevPort : 1421;
+
+// Vite 与 Tauri 必须使用同一端口；动态端口已预选完成时禁止 Vite 静默切换，避免 WebView 串线。
 export default defineConfig({
   base: './',
   plugins: [react(), tailwindcss(), excalidrawLocalesPlugin()],
@@ -189,8 +196,9 @@ export default defineConfig({
     },
   },
   server: {
-    port: 1420,
-    strictPort: true,
+    host: '127.0.0.1',
+    port: devPort,
+    strictPort: hasAllocatedDevPort,
   },
   build: {
     target: 'chrome105', // WebView2 基线

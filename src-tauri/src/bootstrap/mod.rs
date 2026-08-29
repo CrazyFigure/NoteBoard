@@ -9,6 +9,12 @@ use tauri::Manager;
 
 /// setup 钩子
 pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(debug_assertions)]
+    if let Some(window) = app.get_webview_window("nb-main") {
+        // 开发版可与安装版并行运行，标题必须明确区分，避免调试时误操作正式实例。
+        let _ = window.set_title("NoteBoard Dev");
+    }
+
     // 注册主窗口
     let state = app.state::<Mutex<AppState>>();
     {
