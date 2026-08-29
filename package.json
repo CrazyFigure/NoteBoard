@@ -10,7 +10,7 @@
     "prebuild": "node scripts/sync-version.mjs",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "tauri": "tauri",
+    "tauri": "node scripts/run-tauri.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "test:unit": "vitest run",
