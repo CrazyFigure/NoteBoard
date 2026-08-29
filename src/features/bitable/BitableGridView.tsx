@@ -2184,24 +2184,33 @@ export function BitableGridView({
               padding: '8px 12px',
               borderTop: '1px solid var(--editor-border, #e2e8f0)',
               background: 'var(--editor-surface, #ffffff)',
-              position: 'sticky',
-              left: 0,
             }}
           >
-            <button
-              type="button"
-              className="nb-bitable-btn-secondary"
-              onClick={onAddRow}
+            {/* 水平粘性容器：表格横向滚动时，「添加一行记录」按钮始终固定在视口左侧可见位置 */}
+            <div
               style={{
-                borderStyle: 'dashed',
-                padding: '5px 12px',
-                color: 'var(--editor-text-muted, #64748b)',
-                fontWeight: 500,
+                position: 'sticky',
+                left: 12,
+                display: 'inline-flex',
+                alignItems: 'center',
+                width: 'fit-content',
               }}
             >
-              <Plus size={13} />
-              <span>添加一行记录</span>
-            </button>
+              <button
+                type="button"
+                className="nb-bitable-btn-secondary"
+                onClick={onAddRow}
+                style={{
+                  borderStyle: 'dashed',
+                  padding: '5px 12px',
+                  color: 'var(--editor-text-muted, #64748b)',
+                  fontWeight: 500,
+                }}
+              >
+                <Plus size={13} />
+                <span>添加一行记录</span>
+              </button>
+            </div>
           </td>
         </tr>
       </tfoot>
