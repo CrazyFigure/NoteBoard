@@ -64,8 +64,8 @@ export function WelcomeScreen({
 }: WelcomeScreenProps) {
   const [showMoreFormats, setShowMoreFormats] = useState(false);
 
-  // 主界面 9 大核心卡片（3 行 3 列整齐布局）
-  const primaryActions = [
+  // 常用新建操作列表（5 大核心卡片，排入 3 列网格）
+  const primaryCreateActions = [
     {
       icon: FilePlus,
       label: '新建 Markdown 笔记',
@@ -106,42 +106,58 @@ export function WelcomeScreen({
       color: '#f97316',
       onClick: onNewMindmap,
     },
+  ];
+
+  // 打开与工作区操作列表（3 个操作，整齐排成 1 行 3 列，配置多主题自适应微色调）
+  const openActions = [
     {
       icon: FileSearch,
       label: '打开文件…',
-      desc: '打开本地已有的笔记或图表',
+      desc: '打开已有文档或图表',
       shortcut: 'Ctrl+O',
       color: 'var(--editor-accent, #3b82f6)',
+      bg: 'rgba(59, 130, 246, 0.05)',
+      border: 'rgba(59, 130, 246, 0.18)',
+      hoverBg: 'rgba(59, 130, 246, 0.10)',
+      hoverBorder: 'rgba(59, 130, 246, 0.38)',
+      iconBg: 'rgba(59, 130, 246, 0.10)',
+      badgeBg: 'rgba(59, 130, 246, 0.08)',
+      badgeBorder: 'rgba(59, 130, 246, 0.22)',
       onClick: onOpenFile,
     },
     {
       icon: FolderOpen,
       label: '打开文件夹…',
-      desc: '将工作区目录加载到侧边栏',
+      desc: '载入工作区目录',
       shortcut: 'Ctrl+Shift+O',
       color: '#f59e0b',
+      bg: 'rgba(245, 158, 11, 0.05)',
+      border: 'rgba(245, 158, 11, 0.18)',
+      hoverBg: 'rgba(245, 158, 11, 0.10)',
+      hoverBorder: 'rgba(245, 158, 11, 0.38)',
+      iconBg: 'rgba(245, 158, 11, 0.10)',
+      badgeBg: 'rgba(245, 158, 11, 0.08)',
+      badgeBorder: 'rgba(245, 158, 11, 0.22)',
       onClick: onOpenFolder,
     },
     {
       icon: Archive,
       label: '打开暂存区',
-      desc: '查看关闭或异常退出的副本',
+      desc: '恢复未保存或异常副本',
       shortcut: '',
       color: '#8b5cf6',
+      bg: 'rgba(139, 92, 246, 0.05)',
+      border: 'rgba(139, 92, 246, 0.18)',
+      hoverBg: 'rgba(139, 92, 246, 0.10)',
+      hoverBorder: 'rgba(139, 92, 246, 0.38)',
+      iconBg: 'rgba(139, 92, 246, 0.10)',
+      badgeBg: 'rgba(139, 92, 246, 0.08)',
+      badgeBorder: 'rgba(139, 92, 246, 0.22)',
       onClick: onOpenStaging,
-    },
-    {
-      icon: Sparkles,
-      label: showMoreFormats ? '收起其他格式' : '更多格式新建',
-      desc: 'Draw.io、Mermaid、UML 等',
-      shortcut: '',
-      color: 'var(--editor-accent, #3b82f6)',
-      isToggleMore: true,
-      onClick: () => setShowMoreFormats((prev) => !prev),
     },
   ];
 
-  // 更多格式（Draw.io, Mermaid, PlantUML, JSON, YAML, SQL, XML）
+  // 更多格式列表（8 项：Draw.io, 信息图, Mermaid, PlantUML, JSON, SQL, YAML, XML）
   const moreFormats = [
     {
       icon: Layout,
@@ -218,14 +234,14 @@ export function WelcomeScreen({
         overflowY: 'auto',
       }}
     >
-      {/* Logo + 标题 */}
+      {/* 顶部 Logo 与系统标语 */}
       <div
         style={{
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           gap: 12,
-          marginBottom: 28,
+          marginBottom: 26,
         }}
       >
         <img
@@ -251,7 +267,7 @@ export function WelcomeScreen({
         </span>
       </div>
 
-      {/* 主核心区：3 行 3 列网格 */}
+      {/* 第一部分：常用新建核心卡片区（3 列网格） */}
       <div
         style={{
           display: 'grid',
@@ -261,105 +277,159 @@ export function WelcomeScreen({
           maxWidth: 840,
         }}
       >
-        {primaryActions.map((action, i) => {
-          const isExpandBtn = Boolean(action.isToggleMore);
-          return (
-            <button
-              key={i}
-              type="button"
-              className="nb-btn-card"
-              onClick={action.onClick ?? (() => {})}
+        {primaryCreateActions.map((action, i) => (
+          <button
+            key={i}
+            type="button"
+            className="nb-btn-card"
+            onClick={action.onClick ?? (() => {})}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '10px 14px',
+              border: '1px solid var(--editor-border)',
+              borderRadius: 8,
+              background: 'var(--editor-surface)',
+              cursor: 'pointer',
+              fontSize: 13,
+              color: 'var(--editor-text)',
+              boxShadow: 'var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.04))',
+              transition: 'all var(--transition-fast, 150ms ease)',
+              textAlign: 'left',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'var(--editor-surface)';
+              e.currentTarget.style.borderColor = 'var(--editor-border)';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.transform = 'scale(0.98)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+          >
+            {/* 图标容器 */}
+            <div
               style={{
+                width: 32,
+                height: 32,
+                borderRadius: 6,
+                background: 'var(--editor-bg)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 12,
-                padding: '10px 14px',
-                border: isExpandBtn && showMoreFormats ? '1px solid var(--editor-border-focus)' : '1px solid var(--editor-border)',
-                borderRadius: 8,
-                background: isExpandBtn && showMoreFormats ? 'var(--toolbar-hover)' : 'var(--editor-surface)',
-                cursor: 'pointer',
-                fontSize: 13,
-                color: 'var(--editor-text)',
-                boxShadow: 'var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.04))',
-                transition: 'all var(--transition-fast, 150ms ease)',
-                textAlign: 'left',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--toolbar-hover)';
-                e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = isExpandBtn && showMoreFormats ? 'var(--toolbar-hover)' : 'var(--editor-surface)';
-                e.currentTarget.style.borderColor = isExpandBtn && showMoreFormats ? 'var(--editor-border-focus)' : 'var(--editor-border)';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
-              onMouseDown={(e) => {
-                e.currentTarget.style.transform = 'scale(0.98)';
-              }}
-              onMouseUp={(e) => {
-                e.currentTarget.style.transform = 'translateY(-1px)';
+                justifyContent: 'center',
+                flexShrink: 0,
               }}
             >
-              <div
+              <action.icon size={18} color={action.color} />
+            </div>
+            {/* 标题与描述 */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 500, lineHeight: 1.3, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                {action.label}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--editor-text-muted)', marginTop: 2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                {action.desc}
+              </div>
+            </div>
+            {action.shortcut ? (
+              <span
                 style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 6,
+                  color: 'var(--editor-text-muted)',
+                  fontSize: 10,
+                  padding: '2px 5px',
                   background: 'var(--editor-bg)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  borderRadius: 4,
+                  border: '1px solid var(--editor-border)',
                   flexShrink: 0,
                 }}
               >
-                <action.icon size={18} color={action.color} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 500, lineHeight: 1.3, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                  {action.label}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--editor-text-muted)', marginTop: 2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                  {action.desc}
-                </div>
-              </div>
-              {action.shortcut ? (
-                <span
-                  style={{
-                    color: 'var(--editor-text-muted)',
-                    fontSize: 11,
-                    padding: '2px 6px',
-                    background: 'var(--editor-bg)',
-                    borderRadius: 4,
-                    border: '1px solid var(--editor-border)',
-                    flexShrink: 0,
-                  }}
-                >
-                  {action.shortcut}
-                </span>
-              ) : isExpandBtn ? (
-                showMoreFormats ? <ChevronUp size={16} color="var(--editor-text-muted)" /> : <ChevronDown size={16} color="var(--editor-text-muted)" />
-              ) : null}
-            </button>
-          );
-        })}
+                {action.shortcut}
+              </span>
+            ) : null}
+          </button>
+        ))}
       </div>
 
-      {/* 展开的更多格式卡片网格 */}
+      {/* 第二部分：横在中间的“更多格式”折叠通栏按钮 */}
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 840,
+          marginTop: 12,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setShowMoreFormats((prev) => !prev)}
+          style={{
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            padding: '8px 16px',
+            border: showMoreFormats ? '1px solid var(--editor-border-focus)' : '1px solid var(--editor-border)',
+            borderRadius: 8,
+            background: showMoreFormats ? 'var(--toolbar-hover)' : 'var(--editor-surface)',
+            cursor: 'pointer',
+            fontSize: 12,
+            color: 'var(--editor-text)',
+            transition: 'all var(--transition-fast, 150ms ease)',
+            boxShadow: 'var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.03))',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
+            e.currentTarget.style.transform = 'translateY(-0.5px)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = showMoreFormats ? 'var(--toolbar-hover)' : 'var(--editor-surface)';
+            e.currentTarget.style.borderColor = showMoreFormats ? 'var(--editor-border-focus)' : 'var(--editor-border)';
+            e.currentTarget.style.transform = 'translateY(0)';
+          }}
+          onMouseDown={(e) => {
+            e.currentTarget.style.transform = 'scale(0.99)';
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+        >
+          <Sparkles size={14} color="var(--editor-accent, #3b82f6)" />
+          <span style={{ fontWeight: 500 }}>
+            {showMoreFormats ? '收起更多格式' : '更多格式新建'}
+          </span>
+          {showMoreFormats ? (
+            <ChevronUp size={14} color="var(--editor-text-muted)" />
+          ) : (
+            <ChevronDown size={14} color="var(--editor-text-muted)" />
+          )}
+        </button>
+      </div>
+
+      {/* 第三部分：展开的更多格式卡片区（3 列网格） */}
       {showMoreFormats && (
         <div
           style={{
-            marginTop: 14,
+            marginTop: 10,
             width: '100%',
             maxWidth: 840,
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
             gap: 10,
-            padding: 14,
+            padding: 12,
             background: 'var(--editor-surface)',
             border: '1px solid var(--editor-border)',
-            borderRadius: 10,
+            borderRadius: 8,
             boxShadow: 'var(--shadow-sm)',
+            boxSizing: 'border-box',
           }}
         >
           {moreFormats.map((fmt, idx) => (
@@ -371,7 +441,7 @@ export function WelcomeScreen({
                 display: 'flex',
                 alignItems: 'center',
                 gap: 10,
-                padding: '8px 10px',
+                padding: '8px 12px',
                 border: '1px solid var(--editor-border)',
                 borderRadius: 6,
                 background: 'var(--editor-bg)',
@@ -411,6 +481,99 @@ export function WelcomeScreen({
           ))}
         </div>
       )}
+
+      {/* 第四部分：打开与工作区操作区（3 列网格，整齐 1 行 3 列，专属微色调背景） */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+          gap: 12,
+          width: '100%',
+          maxWidth: 840,
+          marginTop: 12,
+        }}
+      >
+        {openActions.map((action, i) => (
+          <button
+            key={i}
+            type="button"
+            className="nb-btn-card"
+            onClick={action.onClick ?? (() => {})}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '10px 14px',
+              border: `1px solid ${action.border}`,
+              borderRadius: 8,
+              background: action.bg,
+              cursor: 'pointer',
+              fontSize: 13,
+              color: 'var(--editor-text)',
+              boxShadow: 'var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.03))',
+              transition: 'all var(--transition-fast, 150ms ease)',
+              textAlign: 'left',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = action.hoverBg;
+              e.currentTarget.style.borderColor = action.hoverBorder;
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = action.bg;
+              e.currentTarget.style.borderColor = action.border;
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.transform = 'scale(0.98)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+          >
+            {/* 图标容器（带主题协调的轻底色） */}
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 6,
+                background: action.iconBg,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <action.icon size={18} color={action.color} />
+            </div>
+            {/* 标题与描述 */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 500, lineHeight: 1.3, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                {action.label}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--editor-text-muted)', marginTop: 2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                {action.desc}
+              </div>
+            </div>
+            {action.shortcut ? (
+              <span
+                style={{
+                  color: 'var(--editor-text-secondary, var(--editor-text-muted))',
+                  fontSize: 10,
+                  padding: '2px 5px',
+                  background: action.badgeBg,
+                  borderRadius: 4,
+                  border: `1px solid ${action.badgeBorder}`,
+                  flexShrink: 0,
+                }}
+              >
+                {action.shortcut}
+              </span>
+            ) : null}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
+
