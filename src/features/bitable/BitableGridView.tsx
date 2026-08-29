@@ -956,13 +956,12 @@ export function BitableGridView({
 
   return (
     <div
-      ref={scrollContainerRef}
       style={{
         width: '100%',
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        overflow: 'auto',
+        overflow: 'hidden',
         background: 'var(--editor-bg, #ffffff)',
         // 拖拽换列 / 换行期间禁用文本选中，避免拖出蓝色选区
         userSelect: colDrag || rowDrag ? 'none' : undefined,
@@ -1127,14 +1126,31 @@ export function BitableGridView({
         </div>
       )}
 
-      <table
+      {/* 表格主体滚动区：水平滚动仅发生在此区域内 */}
+      <div
+        ref={scrollContainerRef}
         style={{
-          borderCollapse: 'separate',
-          borderSpacing: 0,
-          width: 'max-content',
-          minWidth: '100%',
+          flex: 1,
+          overflow: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+        onClick={(e) => {
+          // 点击滚动区空白处（非表格单元格）取消当前选区
+          if (e.target === e.currentTarget) {
+            setSelection({ type: 'none' });
+            focusClipboardProxy();
+          }
         }}
       >
+        <table
+          style={{
+            borderCollapse: 'separate',
+            borderSpacing: 0,
+            width: 'max-content',
+            minWidth: '100%',
+          }}
+        >
         {/* 表头 */}
         <thead>
           <tr style={{ background: 'var(--editor-surface, #f8fafc)', height: 36 }}>
@@ -2157,35 +2173,38 @@ export function BitableGridView({
           })}
         </tbody>
 
-        {/* 底部统计栏与快速添加行 */}
-        <tfoot>
-          <tr>
-            <td
-              colSpan={columns.length + 2}
+      {/* 底部统计栏与快速添加行：放在表格末尾原位，水平方向粘在左侧避免随滚动移动 */}
+      <tfoot>
+        <tr>
+          <td
+            colSpan={columns.length + 2}
+            style={{
+              padding: '8px 12px',
+              borderTop: '1px solid var(--editor-border, #e2e8f0)',
+              background: 'var(--editor-surface, #ffffff)',
+              position: 'sticky',
+              left: 0,
+            }}
+          >
+            <button
+              type="button"
+              className="nb-bitable-btn-secondary"
+              onClick={onAddRow}
               style={{
-                padding: '8px 12px',
-                borderTop: '1px solid var(--editor-border, #e2e8f0)',
-                background: 'var(--editor-surface, #ffffff)',
+                borderStyle: 'dashed',
+                padding: '5px 12px',
+                color: 'var(--editor-text-muted, #64748b)',
+                fontWeight: 500,
               }}
             >
-              <button
-                type="button"
-                className="nb-bitable-btn-secondary"
-                onClick={onAddRow}
-                style={{
-                  borderStyle: 'dashed',
-                  padding: '5px 12px',
-                  color: 'var(--editor-text-muted, #64748b)',
-                  fontWeight: 500,
-                }}
-              >
-                <Plus size={13} />
-                <span>添加一行记录</span>
-              </button>
-            </td>
-          </tr>
-        </tfoot>
-      </table>
+              <Plus size={13} />
+              <span>添加一行记录</span>
+            </button>
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+    </div>
 
       {/* 单选 / 多选中列表头的选项管理面板（Portal 渲染） */}
       {optionsEditor &&
