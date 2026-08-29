@@ -9,11 +9,80 @@ export type BitableFieldType =
   | 'number'
   | 'select'
   | 'multiSelect'
+  /** 日期：只含年月日，存储为 YYYY-MM-DD */
   | 'date'
+  /** 时间：只含时分秒，存储为 HH:mm:ss */
+  | 'time'
+  /** 日期时间：年月日 + 时分秒，存储为 YYYY-MM-DD HH:mm:ss（空格分隔以便字典序即时间序） */
+  | 'dateTime'
   | 'checkbox'
   | 'rating'
   | 'progress'
   | 'link';
+
+/**
+ * 日期格式 ID
+ * sample 为「示例值」，用于列头菜单里直接预览效果，避免只看到抽象的 ID。
+ */
+export type DateFormatId =
+  /** 2026-08-29 */
+  | 'ymd-dash'
+  /** 2026/08/29 */
+  | 'ymd-slash'
+  /** 2026.08.29 */
+  | 'ymd-dot'
+  /** 2026年08月29日 */
+  | 'ymd-cn'
+  /** 08/29/2026 */
+  | 'mdy-slash'
+  /** 08月29日 */
+  | 'md-cn';
+
+/** 时间格式 ID */
+export type TimeFormatId =
+  /** 09:00 */
+  | 'hm'
+  /** 09:00:41 */
+  | 'hms'
+  /** 09时00分 */
+  | 'hm-cn'
+  /** 09时00分41秒 */
+  | 'hms-cn'
+  /** 上午 09:00 */
+  | 'hm-12';
+
+/** 日期时间字段的显示配置（仅对 date / time / dateTime 生效） */
+export interface DateTimeConfig {
+  /** 日期格式，默认 ymd-dash */
+  dateFormat: DateFormatId;
+  /** 时间格式，默认 hm */
+  timeFormat: TimeFormatId;
+}
+
+/** 日期时间配置的默认值 */
+export const DEFAULT_DATE_TIME_CONFIG: DateTimeConfig = {
+  dateFormat: 'ymd-dash',
+  timeFormat: 'hm',
+};
+
+/** 日期格式选项：label 用于菜单展示，sample 为该格式下的示例文本 */
+export const DATE_FORMAT_OPTIONS: Array<{ id: DateFormatId; label: string; sample: string }> = [
+  { id: 'ymd-dash', label: '- 间隔', sample: '2026-08-29' },
+  { id: 'ymd-slash', label: '/ 间隔', sample: '2026/08/29' },
+  { id: 'ymd-dot', label: '. 间隔', sample: '2026.08.29' },
+  { id: 'ymd-cn', label: '年月日', sample: '2026年08月29日' },
+  { id: 'mdy-slash', label: '月/日/年', sample: '08/29/2026' },
+  { id: 'md-cn', label: '月日', sample: '08月29日' },
+];
+
+/** 时间格式选项 */
+export const TIME_FORMAT_OPTIONS: Array<{ id: TimeFormatId; label: string; sample: string }> = [
+  { id: 'hm', label: ': 间隔（时:分）', sample: '09:00' },
+  { id: 'hms', label: ': 间隔（时:分:秒）', sample: '09:00:41' },
+  { id: 'hm-cn', label: '时分', sample: '09时00分' },
+  { id: 'hms-cn', label: '时分秒', sample: '09时00分41秒' },
+  { id: 'hm-12', label: '12 小时制', sample: '上午 09:00' },
+];
 
 /**
  * 多行文本的显示模式
@@ -65,6 +134,16 @@ export interface BitableColumn {
   options?: SelectOption[]; // 用于 select 和 multiSelect
   /** 多行文本的显示与编辑配置，仅 type === 'longText' 时生效 */
   longText?: Partial<LongTextConfig>;
+  /** 日期时间的显示格式配置，仅 type 为 date / time / dateTime 时生效 */
+  dateTime?: Partial<DateTimeConfig>;
+}
+
+/** 日期时间三兄弟：凡是要按「日期类字段」统一处理的地方都用它，避免各处手写联合类型漏项 */
+export type DateTimeFieldType = Extract<BitableFieldType, 'date' | 'time' | 'dateTime'>;
+
+/** 判断字段类型是否属于日期时间类 */
+export function isDateTimeFieldType(type: BitableFieldType): type is DateTimeFieldType {
+  return type === 'date' || type === 'time' || type === 'dateTime';
 }
 
 /** 记录行定义 */

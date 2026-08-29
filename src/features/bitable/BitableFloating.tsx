@@ -86,8 +86,20 @@ interface FloatingPanelProps {
   gap?: number;
   /** left：浮层左边缘对齐锚点左边缘；right：浮层右边缘对齐锚点右边缘 */
   align?: 'left' | 'right';
+  /**
+   * 展开方向：
+   * - bottom：在锚点下方展开（默认，普通下拉菜单）
+   * - side：贴着锚点右侧展开（级联子菜单），右侧空间不足时自动翻到左侧；
+   *   用于「二级菜单要从对应的一级菜单项位置延伸出来」的场景。
+   */
+  placement?: 'bottom' | 'side';
   /** 触发元素：点击其内部时不触发关闭，保证触发按钮自身的 toggle 逻辑生效 */
   trigger?: HTMLElement | null;
+  /**
+   * 面板自身滚动时的回调
+   * 派生的级联子菜单锚定在面板内某个条目上，面板一滚锚点就失效，调用方可借此收起子菜单。
+   */
+  onScroll?: () => void;
   onClose: () => void;
   children: React.ReactNode;
 }
@@ -107,7 +119,9 @@ export function FloatingPanel({
   width = 240,
   gap = 6,
   align = 'left',
+  placement = 'bottom',
   trigger,
+  onScroll,
   onClose,
   children,
 }: FloatingPanelProps) {
@@ -123,13 +137,30 @@ export function FloatingPanel({
     };
   }, []);
 
-  // 依据锚点与实测高度计算定位：优先向下展开，下方空间不足则向上翻转
+  // 依据锚点与实测高度计算定位：
+  // - bottom：优先在锚点下方展开，下方空间不足则向上翻转
+  // - side：贴锚点右侧展开并对齐其顶边，右侧放不下就翻到左侧，最后统一夹进视口
   useLayoutEffect(() => {
     const el = panelRef.current;
     if (!el) return;
     const height = el.offsetHeight;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
+
+    const clampTop = (t: number) => Math.max(VIEWPORT_PADDING, Math.min(t, vh - height - VIEWPORT_PADDING));
+
+    if (placement === 'side') {
+      const rightSideLeft = anchor.right + 4;
+      const left =
+        rightSideLeft + width <= vw - VIEWPORT_PADDING
+          ? rightSideLeft
+          : // 右侧放不下再试左侧；左侧也放不下就贴着视口边缘，避免被裁掉
+            Math.max(VIEWPORT_PADDING, anchor.left - 4 - width);
+      // 顶边与锚点对齐（略微上移 4px 让首行与菜单项齐平），再夹进视口
+      const top = clampTop(anchor.top - 4);
+      setLayout({ top, left, maxHeight: Math.max(120, vh - top - VIEWPORT_PADDING) });
+      return;
+    }
 
     const rawLeft = align === 'right' ? anchor.right - width : anchor.left;
     const left = Math.max(VIEWPORT_PADDING, Math.min(rawLeft, vw - width - VIEWPORT_PADDING));
@@ -149,7 +180,7 @@ export function FloatingPanel({
     }
 
     setLayout({ top, left, maxHeight: Math.max(120, maxHeight) });
-  }, [anchor.top, anchor.bottom, anchor.left, anchor.right, width, align]);
+  }, [anchor.top, anchor.bottom, anchor.left, anchor.right, width, align, placement]);
 
   // 外部点击、Esc、外部滚动与窗口尺寸变化时关闭浮层
   useEffect(() => {
@@ -210,6 +241,8 @@ export function FloatingPanel({
       onClick={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.stopPropagation()}
+      // scroll 事件不冒泡，只能逐个绑定到面板自身；内部滚动容器的滚动需由调用方另行处理
+      onScroll={onScroll}
       style={{
         position: 'fixed',
         top: layout?.top ?? anchor.bottom + 4,
