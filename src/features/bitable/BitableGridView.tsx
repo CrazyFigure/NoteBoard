@@ -21,10 +21,12 @@ import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './Bita
 import { usePointerReorder } from './usePointerReorder';
 import { getFieldTypeMeta, FieldSelectButton } from './BitableFieldMeta';
 import {
+  calculateAutoFillValues,
+  collectDescendantRowIds,
   createId,
+  createRow,
   formatCellValue,
   getSortDirectionLabels,
-  collectDescendantRowIds,
   groupFlatTreeRows,
   isSlotNoop,
   parseClipboardMatrix,
@@ -33,6 +35,7 @@ import {
   resolveLongTextConfig,
   slotToFinalPosition,
   slotToSpliceIndex,
+  tileMatrix,
 } from './bitableUtils';
 import { showToast } from '../../stores/toastStore';
 import {
@@ -62,13 +65,23 @@ import {
   SlidersHorizontal,
   X,
   Check,
+  Scissors,
+  Clipboard,
+  Copy,
 } from 'lucide-react';
+
+export interface CellRange {
+  startRowId: string;
+  startColId: string;
+  endRowId: string;
+  endColId: string;
+}
 
 export type SelectionState =
   | { type: 'none' }
-  | { type: 'cell'; rowId: string; colId: string }
-  | { type: 'row'; rowId: string }
-  | { type: 'col'; colId: string };
+  | { type: 'range'; range: CellRange }
+  | { type: 'row'; startRowId: string; endRowId?: string }
+  | { type: 'col'; startColId: string; endColId?: string };
 
 interface GridViewProps {
   columns: BitableColumn[];
@@ -83,6 +96,11 @@ interface GridViewProps {
   onUpdateSortRules?: (sortRules: SortRule[]) => void;
   /** 区域粘贴：以 (rowId, colId) 为左上角写入二维文本矩阵，行数不足时由上层自动补建 */
   onPasteCells?: (rowId: string, colId: string, matrix: string[][]) => void;
+  /** 批量更新单元格数据（单次事务合并撤销记录） */
+  onBatchUpdateCells?: (
+    updates: Array<{ rowId: string; colId: string; value: unknown }>,
+    newRowsToAppend?: BitableRow[],
+  ) => void;
   /** 列选项增删改排序：由上层在单次提交内同步列定义与所有关联行数据 */
   onManageColumnOption?: (colId: string, action: ColumnOptionAction) => void;
   onUpdateRow: (rowId: string, columnId: string, val: unknown) => void;
@@ -314,6 +332,7 @@ export function BitableGridView({
   onUpdateGroupByColumnId,
   onUpdateSortRules,
   onPasteCells,
+  onBatchUpdateCells,
   onManageColumnOption,
   onUpdateRow,
   onAddRow,
@@ -361,8 +380,32 @@ export function BitableGridView({
   const [sortPanelTrigger, setSortPanelTrigger] = useState<HTMLElement | null>(null);
   const sortButtonRef = useRef<HTMLButtonElement>(null);
 
-  // 选区系统状态 (选中单元格/整行/整列)
+  // 选区系统状态 (选中单元格区域/整行/整列)
   const [selection, setSelection] = useState<SelectionState>({ type: 'none' });
+
+  // 鼠标按住拖拽框选状态
+  const isSelectingCellsRef = useRef(false);
+  const dragStartCellRef = useRef<{ rowId: string; colId: string } | null>(null);
+
+  // 单元格悬浮右键菜单状态
+  const [cellContextMenu, setCellContextMenu] = useState<{
+    x: number;
+    y: number;
+    targetRowId: string;
+    targetColId: string;
+  } | null>(null);
+
+  // 填充柄拖拽预测选区预览状态
+  const [fillPreview, setFillPreview] = useState<{
+    direction: 'forward' | 'backward';
+    axis: 'row' | 'col';
+    fromRow: number;
+    toRow: number;
+    fromCol: number;
+    toCol: number;
+  } | null>(null);
+
+  const tbodyRef = useRef<HTMLTableSectionElement>(null);
 
   // 表头 DOM 节点表：用于测量列位置，支撑拖拽落点计算与浮层锚点
   const headerCellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
@@ -592,89 +635,693 @@ export function BitableGridView({
     [rowSlots, rows],
   );
 
+  // 行 ID -> 扁平行序号的快速映射
+  const rowIdxMap = useMemo(() => {
+    const map = new Map<string, number>();
+    flatTreeRows.forEach((item, idx) => {
+      map.set(item.row.id, idx);
+    });
+    return map;
+  }, [flatTreeRows]);
+
+  // 列 ID -> 列序号的快速映射
+  const colIdxMap = useMemo(() => {
+    const map = new Map<string, number>();
+    columns.forEach((col, idx) => {
+      map.set(col.id, idx);
+    });
+    return map;
+  }, [columns]);
+
+  // 规整化选区矩形范围 (minRowIdx, maxRowIdx, minColIdx, maxColIdx)
+  const normalizedSelection = useMemo(() => {
+    if (selection.type === 'range') {
+      const sRowIdx = rowIdxMap.get(selection.range.startRowId) ?? -1;
+      const sColIdx = colIdxMap.get(selection.range.startColId) ?? -1;
+      const eRowIdx = rowIdxMap.get(selection.range.endRowId) ?? -1;
+      const eColIdx = colIdxMap.get(selection.range.endColId) ?? -1;
+      if (sRowIdx < 0 || sColIdx < 0 || eRowIdx < 0 || eColIdx < 0) return null;
+
+      const minRowIdx = Math.min(sRowIdx, eRowIdx);
+      const maxRowIdx = Math.max(sRowIdx, eRowIdx);
+      const minColIdx = Math.min(sColIdx, eColIdx);
+      const maxColIdx = Math.max(sColIdx, eColIdx);
+
+      const selectedRowIds: string[] = [];
+      for (let r = minRowIdx; r <= maxRowIdx; r += 1) {
+        if (flatTreeRows[r]) selectedRowIds.push(flatTreeRows[r].row.id);
+      }
+      const selectedColIds: string[] = [];
+      for (let c = minColIdx; c <= maxColIdx; c += 1) {
+        if (columns[c]) selectedColIds.push(columns[c].id);
+      }
+
+      return {
+        minRowIdx,
+        maxRowIdx,
+        minColIdx,
+        maxColIdx,
+        anchorRowIdx: sRowIdx,
+        anchorColIdx: sColIdx,
+        selectedRowIds,
+        selectedColIds,
+        isSingleCell: minRowIdx === maxRowIdx && minColIdx === maxColIdx,
+      };
+    }
+
+    if (selection.type === 'row') {
+      const sRowIdx = rowIdxMap.get(selection.startRowId) ?? -1;
+      const eRowIdx = selection.endRowId ? (rowIdxMap.get(selection.endRowId) ?? sRowIdx) : sRowIdx;
+      if (sRowIdx < 0) return null;
+
+      const minRowIdx = Math.min(sRowIdx, eRowIdx);
+      const maxRowIdx = Math.max(sRowIdx, eRowIdx);
+      const minColIdx = 0;
+      const maxColIdx = columns.length - 1;
+
+      const selectedRowIds: string[] = [];
+      for (let r = minRowIdx; r <= maxRowIdx; r += 1) {
+        if (flatTreeRows[r]) selectedRowIds.push(flatTreeRows[r].row.id);
+      }
+
+      return {
+        minRowIdx,
+        maxRowIdx,
+        minColIdx,
+        maxColIdx,
+        anchorRowIdx: sRowIdx,
+        anchorColIdx: 0,
+        selectedRowIds,
+        selectedColIds: columns.map((c) => c.id),
+        isSingleCell: false,
+      };
+    }
+
+    if (selection.type === 'col') {
+      const sColIdx = colIdxMap.get(selection.startColId) ?? -1;
+      const eColIdx = selection.endColId ? (colIdxMap.get(selection.endColId) ?? sColIdx) : sColIdx;
+      if (sColIdx < 0) return null;
+
+      const minRowIdx = 0;
+      const maxRowIdx = flatTreeRows.length - 1;
+      const minColIdx = Math.min(sColIdx, eColIdx);
+      const maxColIdx = Math.max(sColIdx, eColIdx);
+
+      const selectedColIds: string[] = [];
+      for (let c = minColIdx; c <= maxColIdx; c += 1) {
+        if (columns[c]) selectedColIds.push(columns[c].id);
+      }
+
+      return {
+        minRowIdx,
+        maxRowIdx,
+        minColIdx,
+        maxColIdx,
+        anchorRowIdx: 0,
+        anchorColIdx: sColIdx,
+        selectedRowIds: flatTreeRows.map((n) => n.row.id),
+        selectedColIds,
+        isSingleCell: false,
+      };
+    }
+
+    return null;
+  }, [selection, rowIdxMap, colIdxMap, flatTreeRows, columns]);
+
+  // 单元格鼠标按下：开始框选或 Shift 扩展选区
+  const handleCellMouseDown = (e: React.MouseEvent, rowId: string, colId: string) => {
+    if (e.button !== 0) return; // 仅左键处理框选
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-fill-handle], [data-no-drag], input, textarea, button')) {
+      return;
+    }
+
+    if (e.shiftKey && selection.type === 'range') {
+      e.preventDefault();
+      setSelection({
+        type: 'range',
+        range: {
+          startRowId: selection.range.startRowId,
+          startColId: selection.range.startColId,
+          endRowId: rowId,
+          endColId: colId,
+        },
+      });
+      return;
+    }
+
+    isSelectingCellsRef.current = true;
+    dragStartCellRef.current = { rowId, colId };
+    setSelection({
+      type: 'range',
+      range: {
+        startRowId: rowId,
+        startColId: colId,
+        endRowId: rowId,
+        endColId: colId,
+      },
+    });
+  };
+
+  // 单元格鼠标悬停：拖拽框选中实时扩展焦点
+  const handleCellMouseEnter = (rowId: string, colId: string) => {
+    if (!isSelectingCellsRef.current || !dragStartCellRef.current) return;
+    setSelection({
+      type: 'range',
+      range: {
+        startRowId: dragStartCellRef.current.rowId,
+        startColId: dragStartCellRef.current.colId,
+        endRowId: rowId,
+        endColId: colId,
+      },
+    });
+  };
+
+  // 单元格右键上下文菜单
+  const handleCellContextMenu = (e: React.MouseEvent, rowId: string, colId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const rIdx = rowIdxMap.get(rowId) ?? -1;
+    const cIdx = colIdxMap.get(colId) ?? -1;
+    const isInsideSelection =
+      normalizedSelection &&
+      rIdx >= normalizedSelection.minRowIdx &&
+      rIdx <= normalizedSelection.maxRowIdx &&
+      cIdx >= normalizedSelection.minColIdx &&
+      cIdx <= normalizedSelection.maxColIdx;
+
+    if (!isInsideSelection) {
+      setSelection({
+        type: 'range',
+        range: {
+          startRowId: rowId,
+          startColId: colId,
+          endRowId: rowId,
+          endColId: colId,
+        },
+      });
+    }
+
+    setCellContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      targetRowId: rowId,
+      targetColId: colId,
+    });
+  };
+
+  // 全局鼠标松开：结束矩形框选
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      isSelectingCellsRef.current = false;
+      dragStartCellRef.current = null;
+    };
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
+  }, []);
+
+  // 右键菜单外部点击与 Escape 关闭
+  useEffect(() => {
+    if (!cellContextMenu) return;
+    const handleClickOutside = () => setCellContextMenu(null);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setCellContextMenu(null);
+    };
+    window.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [cellContextMenu]);
+
   // 3. 剪贴板读写：统一通过隐藏代理输入框接收原生 copy / cut / paste 事件
   // 直接调用 navigator.clipboard.readText() 会触发浏览器的「是否允许粘贴」权限弹窗，
   // 且在 WebView 受限环境下经常静默失败；改为监听原生剪贴板事件后无需任何授权。
 
-  /** 将当前选区序列化为可粘贴的纯文本 */
+  /** 将当前选区序列化为可粘贴的 TSV 纯文本 */
   const buildClipboardPayload = useCallback((): string | null => {
-    if (selection.type === 'cell') {
-      const row = rows.find((r) => r.id === selection.rowId);
-      const col = columns.find((c) => c.id === selection.colId);
-      if (!row || !col) return null;
-      return formatCellValue(col, row[col.id]);
+    if (!normalizedSelection) return null;
+
+    if (selection.type === 'range') {
+      const lines: string[] = [];
+      for (let r = normalizedSelection.minRowIdx; r <= normalizedSelection.maxRowIdx; r += 1) {
+        const rowNode = flatTreeRows[r];
+        if (!rowNode) continue;
+        const rowCells: string[] = [];
+        for (let c = normalizedSelection.minColIdx; c <= normalizedSelection.maxColIdx; c += 1) {
+          const col = columns[c];
+          if (!col) continue;
+          rowCells.push(formatCellValue(col, rowNode.row[col.id]));
+        }
+        lines.push(rowCells.join('\t'));
+      }
+      return lines.join('\n');
     }
+
     if (selection.type === 'row') {
-      const row = rows.find((r) => r.id === selection.rowId);
-      if (!row) return null;
-      return columns.map((c) => formatCellValue(c, row[c.id])).join('\t');
+      const lines: string[] = [];
+      for (let r = normalizedSelection.minRowIdx; r <= normalizedSelection.maxRowIdx; r += 1) {
+        const rowNode = flatTreeRows[r];
+        if (!rowNode) continue;
+        lines.push(columns.map((c) => formatCellValue(c, rowNode.row[c.id])).join('\t'));
+      }
+      return lines.join('\n');
     }
+
     if (selection.type === 'col') {
-      const col = columns.find((c) => c.id === selection.colId);
-      if (!col) return null;
-      return rows.map((r) => formatCellValue(col, r[col.id])).join('\n');
+      const lines: string[] = [];
+      for (let r = 0; r < flatTreeRows.length; r += 1) {
+        const rowNode = flatTreeRows[r];
+        const rowCells: string[] = [];
+        for (let c = normalizedSelection.minColIdx; c <= normalizedSelection.maxColIdx; c += 1) {
+          const col = columns[c];
+          rowCells.push(formatCellValue(col, rowNode.row[col.id]));
+        }
+        lines.push(rowCells.join('\t'));
+      }
+      return lines.join('\n');
     }
+
     return null;
-  }, [selection, rows, columns]);
+  }, [normalizedSelection, selection.type, flatTreeRows, columns]);
 
   /** 剪切：内容写入剪贴板后清空选区数据 */
   const clearSelectedRange = useCallback(() => {
-    if (selection.type === 'cell') {
-      onUpdateRow(selection.rowId, selection.colId, null);
-      showToast('已剪切单元格数据');
-      return;
-    }
-    if (selection.type === 'row') {
-      onDeleteRow(selection.rowId);
-      setSelection({ type: 'none' });
-      showToast('已剪切整行数据');
-      return;
-    }
-    if (selection.type === 'col' && onClearColumn) {
-      onClearColumn(selection.colId);
-      showToast('已剪切整列数据');
-    }
-  }, [selection, onUpdateRow, onDeleteRow, onClearColumn]);
+    if (!normalizedSelection) return;
 
-  /** 粘贴：按选区类型把二维矩阵写入单元格 / 整行 / 整列 */
+    if (selection.type === 'range') {
+      const updates: Array<{ rowId: string; colId: string; value: unknown }> = [];
+      for (let r = normalizedSelection.minRowIdx; r <= normalizedSelection.maxRowIdx; r += 1) {
+        const rowNode = flatTreeRows[r];
+        if (!rowNode) continue;
+        for (let c = normalizedSelection.minColIdx; c <= normalizedSelection.maxColIdx; c += 1) {
+          const col = columns[c];
+          if (!col) continue;
+          updates.push({ rowId: rowNode.row.id, colId: col.id, value: null });
+        }
+      }
+      if (onBatchUpdateCells) {
+        onBatchUpdateCells(updates);
+      } else {
+        updates.forEach((u) => onUpdateRow(u.rowId, u.colId, null));
+      }
+      showToast(normalizedSelection.isSingleCell ? '已清空单元格' : '已清空选区数据');
+      return;
+    }
+
+    if (selection.type === 'row') {
+      for (let r = normalizedSelection.minRowIdx; r <= normalizedSelection.maxRowIdx; r += 1) {
+        const rowNode = flatTreeRows[r];
+        if (rowNode) onDeleteRow(rowNode.row.id);
+      }
+      setSelection({ type: 'none' });
+      showToast('已删除选中行');
+      return;
+    }
+
+    if (selection.type === 'col' && onClearColumn) {
+      for (let c = normalizedSelection.minColIdx; c <= normalizedSelection.maxColIdx; c += 1) {
+        const col = columns[c];
+        if (col) onClearColumn(col.id);
+      }
+      showToast('已清空整列数据');
+    }
+  }, [
+    normalizedSelection,
+    selection.type,
+    flatTreeRows,
+    columns,
+    onBatchUpdateCells,
+    onUpdateRow,
+    onDeleteRow,
+    onClearColumn,
+  ]);
+
+  /** 粘贴：按选区类型把二维矩阵写入单元格 / 区域 / 整行 / 整列 */
   const applyPaste = useCallback(
     (text: string) => {
       const matrix = parseClipboardMatrix(text);
-      if (!matrix.length) return;
+      if (!matrix.length || !normalizedSelection) {
+        showToast('请先选中单元格后再粘贴');
+        return;
+      }
 
-      if (selection.type === 'cell') {
-        if (onPasteCells) {
-          onPasteCells(selection.rowId, selection.colId, matrix);
-          showToast(matrix.length > 1 || (matrix[0]?.length ?? 0) > 1 ? '已粘贴区域数据' : '已粘贴数据');
+      const mRows = matrix.length;
+      const mCols = matrix[0]?.length || 1;
+
+      const selRows = normalizedSelection.maxRowIdx - normalizedSelection.minRowIdx + 1;
+      const selCols = normalizedSelection.maxColIdx - normalizedSelection.minColIdx + 1;
+
+      // 目标范围：如果是多选区域且大于粘贴矩阵，按 Excel 规则平铺/复制；如果是单格，按矩阵尺寸向右向下展开
+      const targetRows = normalizedSelection.isSingleCell ? mRows : selRows;
+      const targetCols = normalizedSelection.isSingleCell ? mCols : selCols;
+
+      const finalMatrix = tileMatrix(matrix, targetRows, targetCols);
+
+      const startRowIdx = normalizedSelection.minRowIdx;
+      const startColIdx = normalizedSelection.minColIdx;
+
+      const updates: Array<{ rowId: string; colId: string; value: unknown }> = [];
+      const newRowsToAppend: BitableRow[] = [];
+
+      finalMatrix.forEach((line, rOffset) => {
+        const rIdx = startRowIdx + rOffset;
+        let targetRowId: string;
+        if (rIdx < flatTreeRows.length) {
+          targetRowId = flatTreeRows[rIdx].row.id;
         } else {
-          onUpdateRow(selection.rowId, selection.colId, matrix[0][0] ?? '');
-          showToast('已粘贴数据');
+          // 行数不足时新建行
+          const anchorParentId = flatTreeRows[startRowIdx]?.row.parentId;
+          const newRow = { ...createRow(columns), parentId: anchorParentId };
+          newRowsToAppend.push(newRow);
+          targetRowId = newRow.id;
         }
-        return;
-      }
 
-      if (selection.type === 'row') {
-        if (onPasteCells && columns.length) {
-          onPasteCells(selection.rowId, columns[0].id, [matrix[0] ?? []]);
-          showToast('已粘贴整行数据');
-        }
-        return;
-      }
+        line.forEach((val, cOffset) => {
+          const cIdx = startColIdx + cOffset;
+          if (cIdx >= columns.length) return;
+          const col = columns[cIdx];
+          updates.push({ rowId: targetRowId, colId: col.id, value: val });
+        });
+      });
 
-      if (selection.type === 'col') {
-        if (!onPasteCells || !rows.length) {
-          showToast('请先选中单元格后再粘贴');
-          return;
-        }
-        onPasteCells(rows[0].id, selection.colId, matrix.map((line) => [line[0] ?? '']));
-        showToast('已粘贴整列数据');
-        return;
+      if (onBatchUpdateCells) {
+        onBatchUpdateCells(updates, newRowsToAppend);
+        showToast(updates.length > 1 ? '已粘贴区域数据' : '已粘贴数据');
+      } else if (onPasteCells) {
+        onPasteCells(flatTreeRows[startRowIdx].row.id, columns[startColIdx].id, matrix);
+        showToast('已粘贴数据');
+      } else {
+        updates.forEach((u) => onUpdateRow(u.rowId, u.colId, u.value));
+        showToast('已粘贴数据');
       }
-
-      showToast('请先选中单元格后再粘贴');
     },
-    [selection, columns, rows, onPasteCells, onUpdateRow],
+    [normalizedSelection, flatTreeRows, columns, onBatchUpdateCells, onPasteCells, onUpdateRow],
   );
+
+  /** 智能自动补齐执行入口 */
+  const applyAutoFill = useCallback(
+    (
+      range: {
+        minRowIdx: number;
+        maxRowIdx: number;
+        minColIdx: number;
+        maxColIdx: number;
+      },
+      preview: {
+        direction: 'forward' | 'backward';
+        axis: 'row' | 'col';
+        fromRow: number;
+        toRow: number;
+        fromCol: number;
+        toCol: number;
+      },
+    ) => {
+      const updates: Array<{ rowId: string; colId: string; value: unknown }> = [];
+      const newRowsToAppend: BitableRow[] = [];
+
+      if (preview.axis === 'row') {
+        const targetRowCount = preview.toRow - preview.fromRow + 1;
+        if (targetRowCount <= 0) return;
+
+        const targetRowIds: string[] = [];
+        for (let r = preview.fromRow; r <= preview.toRow; r += 1) {
+          if (r < flatTreeRows.length) {
+            targetRowIds.push(flatTreeRows[r].row.id);
+          } else {
+            const anchorParentId = flatTreeRows[range.maxRowIdx]?.row.parentId;
+            const newRow = { ...createRow(columns), parentId: anchorParentId };
+            newRowsToAppend.push(newRow);
+            targetRowIds.push(newRow.id);
+          }
+        }
+
+        for (let c = range.minColIdx; c <= range.maxColIdx; c += 1) {
+          const col = columns[c];
+          if (!col) continue;
+
+          const sourceValues: unknown[] = [];
+          for (let r = range.minRowIdx; r <= range.maxRowIdx; r += 1) {
+            sourceValues.push(flatTreeRows[r]?.row[col.id]);
+          }
+
+          const filledValues = calculateAutoFillValues(
+            col,
+            sourceValues,
+            targetRowCount,
+            preview.direction,
+          );
+
+          filledValues.forEach((val, idx) => {
+            const rowId = targetRowIds[idx];
+            if (rowId) {
+              updates.push({ rowId, colId: col.id, value: val });
+            }
+          });
+        }
+
+        const newMinRow = Math.min(range.minRowIdx, preview.fromRow);
+        const newMaxRow = Math.max(range.maxRowIdx, preview.toRow);
+        const newStartRowId = flatTreeRows[newMinRow]?.row.id || targetRowIds[0];
+        const newEndRowId =
+          newMaxRow < flatTreeRows.length
+            ? flatTreeRows[newMaxRow].row.id
+            : targetRowIds[targetRowIds.length - 1];
+
+        if (onBatchUpdateCells) {
+          onBatchUpdateCells(updates, newRowsToAppend);
+        } else {
+          updates.forEach((u) => onUpdateRow(u.rowId, u.colId, u.value));
+        }
+
+        if (newStartRowId && newEndRowId) {
+          setSelection({
+            type: 'range',
+            range: {
+              startRowId: newStartRowId,
+              startColId: columns[range.minColIdx].id,
+              endRowId: newEndEndId(newEndRowId),
+              endColId: columns[range.maxColIdx].id,
+            },
+          });
+        }
+        showToast('已自动填充数据');
+      } else {
+        const targetColCount = preview.toCol - preview.fromCol + 1;
+        if (targetColCount <= 0) return;
+
+        for (let r = range.minRowIdx; r <= range.maxRowIdx; r += 1) {
+          const rowNode = flatTreeRows[r];
+          if (!rowNode) continue;
+
+          const sourceValues: unknown[] = [];
+          for (let c = range.minColIdx; c <= range.maxColIdx; c += 1) {
+            const col = columns[c];
+            if (col) sourceValues.push(rowNode.row[col.id]);
+          }
+
+          for (let c = preview.fromCol; c <= preview.toCol; c += 1) {
+            const targetCol = columns[c];
+            if (!targetCol) continue;
+
+            const offset = preview.direction === 'forward' ? c - preview.fromCol : preview.toCol - c;
+            const filled = calculateAutoFillValues(targetCol, sourceValues, targetColCount, preview.direction);
+            const val = filled[offset];
+            updates.push({ rowId: rowNode.row.id, colId: targetCol.id, value: val });
+          }
+        }
+
+        if (onBatchUpdateCells) {
+          onBatchUpdateCells(updates);
+        } else {
+          updates.forEach((u) => onUpdateRow(u.rowId, u.colId, u.value));
+        }
+
+        const newMinCol = Math.min(range.minColIdx, preview.fromCol);
+        const newMaxCol = Math.max(range.maxColIdx, preview.toCol);
+        setSelection({
+          type: 'range',
+          range: {
+            startRowId: flatTreeRows[range.minRowIdx].row.id,
+            startColId: columns[newMinCol].id,
+            endRowId: flatTreeRows[range.maxRowIdx].row.id,
+            endColId: columns[newMaxCol].id,
+          },
+        });
+        showToast('已自动填充数据');
+      }
+    },
+    [flatTreeRows, columns, onBatchUpdateCells, onUpdateRow],
+  );
+
+  function newEndEndId(id: string): string {
+    return id;
+  }
+
+  // 拖拽填充柄启动
+  const startFillDrag = (e: React.MouseEvent, range: NonNullable<typeof normalizedSelection>) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const startMaxRow = range.maxRowIdx;
+    const startMinRow = range.minRowIdx;
+    const startMaxCol = range.maxColIdx;
+    const startMinCol = range.minColIdx;
+
+    let currentPreview: {
+      direction: 'forward' | 'backward';
+      axis: 'row' | 'col';
+      fromRow: number;
+      toRow: number;
+      fromCol: number;
+      toCol: number;
+    } | null = null;
+
+    const onMouseMove = (ev: MouseEvent) => {
+      const target = document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null;
+      const td = target?.closest('td[data-cell-row-idx]') as HTMLTableCellElement | null;
+      let hoverRow = startMaxRow;
+      let hoverCol = startMaxCol;
+
+      if (td) {
+        const rStr = td.getAttribute('data-cell-row-idx');
+        const cStr = td.getAttribute('data-cell-col-idx');
+        if (rStr !== null) hoverRow = parseInt(rStr, 10);
+        if (cStr !== null) hoverCol = parseInt(cStr, 10);
+      } else {
+        const tbody = tbodyRef.current;
+        if (tbody) {
+          const tbodyRect = tbody.getBoundingClientRect();
+          if (ev.clientY > tbodyRect.bottom) {
+            const extraRows = Math.floor((ev.clientY - tbodyRect.bottom) / 38) + 1;
+            hoverRow = flatTreeRows.length - 1 + extraRows;
+          }
+        }
+      }
+
+      const dDown = hoverRow - startMaxRow;
+      const dUp = startMinRow - hoverRow;
+      const dRight = hoverCol - startMaxCol;
+      const dLeft = startMinCol - hoverCol;
+
+      const maxDelta = Math.max(dDown, dUp, dRight, dLeft);
+
+      if (maxDelta <= 0) {
+        currentPreview = null;
+        setFillPreview(null);
+        return;
+      }
+
+      if (maxDelta === dDown) {
+        currentPreview = {
+          direction: 'forward',
+          axis: 'row',
+          fromRow: startMaxRow + 1,
+          toRow: hoverRow,
+          fromCol: startMinCol,
+          toCol: startMaxCol,
+        };
+      } else if (maxDelta === dUp) {
+        currentPreview = {
+          direction: 'backward',
+          axis: 'row',
+          fromRow: hoverRow,
+          toRow: startMinRow - 1,
+          fromCol: startMinCol,
+          toCol: startMaxCol,
+        };
+      } else if (maxDelta === dRight) {
+        currentPreview = {
+          direction: 'forward',
+          axis: 'col',
+          fromRow: startMinRow,
+          toRow: startMaxRow,
+          fromCol: startMaxCol + 1,
+          toCol: Math.min(columns.length - 1, hoverCol),
+        };
+      } else {
+        currentPreview = {
+          direction: 'backward',
+          axis: 'col',
+          fromRow: startMinRow,
+          toRow: startMaxRow,
+          fromCol: Math.max(0, hoverCol),
+          toCol: startMinCol - 1,
+        };
+      }
+
+      setFillPreview(currentPreview);
+    };
+
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      setFillPreview(null);
+
+      if (!currentPreview) return;
+      applyAutoFill(range, currentPreview);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
+
+  // 双击填充柄：快速向下补齐至相邻列非空末尾
+  const handleDoubleClickFill = (
+    e: React.MouseEvent,
+    range: NonNullable<typeof normalizedSelection>,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (range.maxRowIdx >= flatTreeRows.length - 1) {
+      showToast('已到达表格末尾');
+      return;
+    }
+
+    let targetLastRowIdx = -1;
+    const checkColIdxs = [range.minColIdx - 1, range.maxColIdx + 1].filter(
+      (c) => c >= 0 && c < columns.length,
+    );
+
+    for (const cIdx of checkColIdxs) {
+      const col = columns[cIdx];
+      let lastFilledRow = range.maxRowIdx;
+      for (let r = range.maxRowIdx + 1; r < flatTreeRows.length; r += 1) {
+        const v = flatTreeRows[r].row[col.id];
+        if (v !== null && v !== undefined && v !== '') {
+          lastFilledRow = r;
+        } else {
+          break;
+        }
+      }
+      if (lastFilledRow > targetLastRowIdx) {
+        targetLastRowIdx = lastFilledRow;
+      }
+    }
+
+    if (targetLastRowIdx <= range.maxRowIdx) {
+      targetLastRowIdx = flatTreeRows.length - 1;
+    }
+
+    if (targetLastRowIdx <= range.maxRowIdx) {
+      showToast('下方无更多行可填充');
+      return;
+    }
+
+    const preview = {
+      direction: 'forward' as const,
+      axis: 'row' as const,
+      fromRow: range.maxRowIdx + 1,
+      toRow: targetLastRowIdx,
+      fromCol: range.minColIdx,
+      toCol: range.maxColIdx,
+    };
+
+    applyAutoFill(range, preview);
+  };
 
   /**
    * 保持焦点停留在隐藏代理输入框上，使表格始终能接收到原生剪贴板事件
@@ -699,7 +1346,7 @@ export function BitableGridView({
     focusClipboardProxy();
   }, [selection, focusClipboardProxy]);
 
-  // 3. 键盘快捷键监听（删除、清空、取消选区；复制/剪切/粘贴交由原生剪贴板事件处理）
+  // 3. 键盘快捷键监听（方向键导航与 Shift 扩展、Ctrl+A 全选、删除、清空、取消选区；复制/剪切/粘贴交由原生剪贴板事件处理）
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // 避免在单元格编辑框与列重命名框内触发表格级快捷键
@@ -711,49 +1358,120 @@ export function BitableGridView({
         }
       }
 
-      // Escape 取消选区
+      // Escape 取消选区与右键菜单
       if (e.key === 'Escape') {
         setSelection({ type: 'none' });
+        setCellContextMenu(null);
         return;
       }
 
-      // Delete / Backspace 删除或清空
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (selection.type === 'cell') {
+      // Ctrl + A / Meta + A 全选表格
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        if (flatTreeRows.length > 0 && columns.length > 0) {
           e.preventDefault();
-          onUpdateRow(selection.rowId, selection.colId, null);
-          showToast('已清空单元格');
-        } else if (selection.type === 'row') {
-          e.preventDefault();
-          onDeleteRow(selection.rowId);
-          setSelection({ type: 'none' });
-          showToast('已删除选中行');
-        } else if (selection.type === 'col') {
-          e.preventDefault();
-          if (onClearColumn) {
-            onClearColumn(selection.colId);
-            showToast('已清空整列数据');
+          setSelection({
+            type: 'range',
+            range: {
+              startRowId: flatTreeRows[0].row.id,
+              startColId: columns[0].id,
+              endRowId: flatTreeRows[flatTreeRows.length - 1].row.id,
+              endColId: columns[columns.length - 1].id,
+            },
+          });
+        }
+        return;
+      }
+
+      // 方向键移动焦点或按住 Shift 扩展选区
+      if (
+        (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') &&
+        normalizedSelection
+      ) {
+        e.preventDefault();
+        const currentEndRowIdx =
+          selection.type === 'range'
+            ? (rowIdxMap.get(selection.range.endRowId) ?? normalizedSelection.maxRowIdx)
+            : normalizedSelection.maxRowIdx;
+        const currentEndColIdx =
+          selection.type === 'range'
+            ? (colIdxMap.get(selection.range.endColId) ?? normalizedSelection.maxColIdx)
+            : normalizedSelection.maxColIdx;
+
+        let dRow = 0;
+        let dCol = 0;
+        if (e.key === 'ArrowUp') dRow = -1;
+        if (e.key === 'ArrowDown') dRow = 1;
+        if (e.key === 'ArrowLeft') dCol = -1;
+        if (e.key === 'ArrowRight') dCol = 1;
+
+        const nextRowIdx = Math.max(0, Math.min(flatTreeRows.length - 1, currentEndRowIdx + dRow));
+        const nextColIdx = Math.max(0, Math.min(columns.length - 1, currentEndColIdx + dCol));
+        const nextRowId = flatTreeRows[nextRowIdx]?.row.id;
+        const nextColId = columns[nextColIdx]?.id;
+
+        if (nextRowId && nextColId) {
+          if (e.shiftKey && selection.type === 'range') {
+            setSelection({
+              type: 'range',
+              range: {
+                startRowId: selection.range.startRowId,
+                startColId: selection.range.startColId,
+                endRowId: nextRowId,
+                endColId: nextColId,
+              },
+            });
+          } else {
+            setSelection({
+              type: 'range',
+              range: {
+                startRowId: nextRowId,
+                startColId: nextColId,
+                endRowId: nextRowId,
+                endColId: nextColId,
+              },
+            });
           }
         }
         return;
       }
 
+      // Delete / Backspace 删除或清空
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        clearSelectedRange();
+        return;
+      }
+
       // Tab / Shift+Tab 快速调整行层级：Shift+Tab 升级为上一级，Tab 降级为子任务
       if (e.key === 'Tab') {
-        if (selection.type !== 'row' && selection.type !== 'cell') return;
-        e.preventDefault();
-        const targetRowId = selection.rowId;
-        if (e.shiftKey) {
-          if (onOutdentRow) onOutdentRow(targetRowId);
-        } else if (onIndentRow) {
-          onIndentRow(targetRowId);
+        if (normalizedSelection && (selection.type === 'row' || selection.type === 'range')) {
+          e.preventDefault();
+          const targetRowId =
+            selection.type === 'row'
+              ? selection.startRowId
+              : selection.range.startRowId;
+          if (e.shiftKey) {
+            if (onOutdentRow) onOutdentRow(targetRowId);
+          } else if (onIndentRow) {
+            onIndentRow(targetRowId);
+          }
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selection, onUpdateRow, onDeleteRow, onClearColumn, onOutdentRow, onIndentRow]);
+  }, [
+    normalizedSelection,
+    selection,
+    flatTreeRows,
+    columns,
+    rowIdxMap,
+    colIdxMap,
+    clearSelectedRange,
+    onOutdentRow,
+    onIndentRow,
+  ]);
   // 4. 拖拽调整列宽
   const handleResizeStart = (e: React.MouseEvent, col: BitableColumn) => {
     e.preventDefault();
@@ -986,11 +1704,13 @@ export function BitableGridView({
           e.clipboardData.setData('text/plain', payload);
           e.preventDefault();
           showToast(
-            selection.type === 'cell'
+            normalizedSelection?.isSingleCell
               ? '已复制单元格数据'
               : selection.type === 'row'
                 ? '已复制整行数据'
-                : '已复制整列数据',
+                : selection.type === 'col'
+                  ? '已复制整列数据'
+                  : '已复制选区数据',
           );
         }}
         onCut={(e) => {
@@ -1181,7 +1901,11 @@ export function BitableGridView({
             {columns.map((col, colIdx) => {
               const meta = getFieldTypeMeta(col.type);
               const isMenuOpen = columnMenu?.colId === col.id;
-              const isColSelected = selection.type === 'col' && selection.colId === col.id;
+              const isColSelected =
+                normalizedSelection !== null &&
+                selection.type === 'col' &&
+                colIdx >= normalizedSelection.minColIdx &&
+                colIdx <= normalizedSelection.maxColIdx;
               const sortRuleForCol = sortRules.find((r) => r.columnId === col.id);
               const sortPriority = sortRuleForCol ? sortRules.findIndex((r) => r.columnId === col.id) + 1 : null;
               const isOptionField = col.type === 'select' || col.type === 'multiSelect';
@@ -1203,7 +1927,30 @@ export function BitableGridView({
                     else headerCellRefs.current.delete(col.id);
                   }}
                   onMouseDown={(e) => startColDrag(e, colIdx)}
-                  onClick={() => setSelection({ type: 'col', colId: col.id })}
+                  onClick={(e) => {
+                    if (e.shiftKey && selection.type === 'col') {
+                      setSelection({
+                        type: 'col',
+                        startColId: selection.startColId,
+                        endColId: col.id,
+                      });
+                    } else {
+                      setSelection({ type: 'col', startColId: col.id, endColId: col.id });
+                    }
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!isColSelected) {
+                      setSelection({ type: 'col', startColId: col.id, endColId: col.id });
+                    }
+                    setCellContextMenu({
+                      x: e.clientX,
+                      y: e.clientY,
+                      targetRowId: flatTreeRows[0]?.row.id || '',
+                      targetColId: col.id,
+                    });
+                  }}
                   title={isOptionField ? '单击编辑选项 · 拖拽换列 · 双击名称重命名' : '拖拽表头可换列 · 双击名称重命名'}
                   style={{
                     width: col.width || 160,
@@ -1789,7 +2536,7 @@ export function BitableGridView({
         </thead>
 
         {/* 表格记录行内容 (树形子任务、分组标题与选区渲染) */}
-        <tbody>
+        <tbody ref={tbodyRef}>
           {gridItems.map((item, itemIndex) => {
             // 分组标题行：显示分组名称与记录数，支持展开/折叠与组间间距
             if (item.type === 'group') {
@@ -1879,8 +2626,13 @@ export function BitableGridView({
             }
 
             const { row, depth, hasChildren, isCollapsed, rowNumber } = item.treeNode;
-            const isRowSelected = selection.type === 'row' && selection.rowId === row.id;
             const rowSlotIdx = rowSlotIndex.get(row.id) ?? -1;
+            const rIdx = rowSlotIdx >= 0 ? rowSlotIdx : (rowIdxMap.get(row.id) ?? -1);
+            const isRowSelected =
+              normalizedSelection !== null &&
+              selection.type === 'row' &&
+              rIdx >= normalizedSelection.minRowIdx &&
+              rIdx <= normalizedSelection.maxRowIdx;
             const isRowDragging = rowDrag?.fromIdx === rowSlotIdx;
 
             // 落点指示线：槽位落在本行上方画顶边线，落到末行之后画底边线
@@ -1921,7 +2673,28 @@ export function BitableGridView({
                     e.stopPropagation();
                     // 拖拽结束紧跟的 click 不应再改变选区
                     if (consumeRowDraggedFlag()) return;
-                    setSelection({ type: 'row', rowId: row.id });
+                    if (e.shiftKey && selection.type === 'row') {
+                      setSelection({
+                        type: 'row',
+                        startRowId: selection.startRowId,
+                        endRowId: row.id,
+                      });
+                    } else {
+                      setSelection({ type: 'row', startRowId: row.id, endRowId: row.id });
+                    }
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!isRowSelected) {
+                      setSelection({ type: 'row', startRowId: row.id, endRowId: row.id });
+                    }
+                    setCellContextMenu({
+                      x: e.clientX,
+                      y: e.clientY,
+                      targetRowId: row.id,
+                      targetColId: columns[0]?.id || '',
+                    });
                   }}
                   onDoubleClick={(e) => {
                     e.stopPropagation();
@@ -2068,20 +2841,85 @@ export function BitableGridView({
                   </div>
                 </td>
 
-                {/* 各单元格内容 (修复 overflow 避免裁剪下拉面板) */}
+                {/* 各单元格内容 (支持矩形跨单元格选区、填充柄与悬浮菜单) */}
                 {columns.map((col, colIdx) => {
+                  const cIdx = colIdx;
                   const isCellSelected =
-                    selection.type === 'cell' && selection.rowId === row.id && selection.colId === col.id;
-                  const isColSelected = selection.type === 'col' && selection.colId === col.id;
+                    normalizedSelection !== null &&
+                    rIdx >= normalizedSelection.minRowIdx &&
+                    rIdx <= normalizedSelection.maxRowIdx &&
+                    cIdx >= normalizedSelection.minColIdx &&
+                    cIdx <= normalizedSelection.maxColIdx;
+
+                  const isAnchor =
+                    normalizedSelection !== null &&
+                    rIdx === normalizedSelection.anchorRowIdx &&
+                    cIdx === normalizedSelection.anchorColIdx;
+
+                  const isColSelected =
+                    normalizedSelection !== null &&
+                    selection.type === 'col' &&
+                    cIdx >= normalizedSelection.minColIdx &&
+                    cIdx <= normalizedSelection.maxColIdx;
+
+                  const isTopEdge = isCellSelected && rIdx === normalizedSelection.minRowIdx;
+                  const isBottomEdge = isCellSelected && rIdx === normalizedSelection.maxRowIdx;
+                  const isLeftEdge = isCellSelected && cIdx === normalizedSelection.minColIdx;
+                  const isRightEdge = isCellSelected && cIdx === normalizedSelection.maxColIdx;
+                  const isBottomRightCorner = isCellSelected && isBottomEdge && isRightEdge;
+
+                  // 填充预览区域判定
+                  const isInFillPreview =
+                    fillPreview !== null &&
+                    rIdx >= fillPreview.fromRow &&
+                    rIdx <= fillPreview.toRow &&
+                    cIdx >= fillPreview.fromCol &&
+                    cIdx <= fillPreview.toCol;
+                  const isFillTop = isInFillPreview && rIdx === fillPreview.fromRow;
+                  const isFillBottom = isInFillPreview && rIdx === fillPreview.toRow;
+                  const isFillLeft = isInFillPreview && cIdx === fillPreview.fromCol;
+                  const isFillRight = isInFillPreview && cIdx === fillPreview.toCol;
+
                   const isFirstCol = colIdx === 0;
-                  // 全显示的多行文本列需放开高度约束并顶部对齐，否则内容撑不开、也看不出起始位置
                   const isExpandedLongText =
                     col.type === 'longText' && resolveLongTextConfig(col).displayMode === 'full';
+
+                  // 边框阴影组合
+                  const shadows: string[] = [];
+                  if (rowDropShadow) shadows.push(rowDropShadow);
+                  if (isCellSelected) {
+                    if (isTopEdge) shadows.push('inset 0 2px 0 0 var(--editor-accent, #3b82f6)');
+                    if (isBottomEdge) shadows.push('inset 0 -2px 0 0 var(--editor-accent, #3b82f6)');
+                    if (isLeftEdge) shadows.push('inset 2px 0 0 0 var(--editor-accent, #3b82f6)');
+                    if (isRightEdge) shadows.push('inset -2px 0 0 0 var(--editor-accent, #3b82f6)');
+                  }
+                  if (isInFillPreview) {
+                    if (isFillTop) shadows.push('inset 0 2px 0 0 #60a5fa');
+                    if (isFillBottom) shadows.push('inset 0 -2px 0 0 #60a5fa');
+                    if (isFillLeft) shadows.push('inset 2px 0 0 0 #60a5fa');
+                    if (isFillRight) shadows.push('inset -2px 0 0 0 #60a5fa');
+                  }
+
+                  let cellBg = 'inherit';
+                  if (isInFillPreview) {
+                    cellBg = 'rgba(59, 130, 246, 0.15)';
+                  } else if (isCellSelected) {
+                    cellBg =
+                      isAnchor && !normalizedSelection.isSingleCell
+                        ? 'rgba(59, 130, 246, 0.04)'
+                        : 'rgba(59, 130, 246, 0.08)';
+                  } else if (isColSelected) {
+                    cellBg = 'rgba(59, 130, 246, 0.05)';
+                  }
 
                   return (
                     <td
                       key={col.id}
-                      onClick={() => setSelection({ type: 'cell', rowId: row.id, colId: col.id })}
+                      data-cell-row-idx={rIdx}
+                      data-cell-col-idx={cIdx}
+                      onMouseDown={(e) => handleCellMouseDown(e, row.id, col.id)}
+                      onMouseEnter={() => handleCellMouseEnter(row.id, col.id)}
+                      onContextMenu={(e) => handleCellContextMenu(e, row.id, col.id)}
                       style={{
                         borderBottom: '1px solid var(--editor-border, #f1f5f9)',
                         borderRight: '1px solid var(--editor-border, #f1f5f9)',
@@ -2090,15 +2928,8 @@ export function BitableGridView({
                         verticalAlign: isExpandedLongText ? 'top' : 'middle',
                         position: 'relative',
                         overflow: 'visible',
-                        background: isCellSelected
-                          ? 'rgba(59, 130, 246, 0.08)'
-                          : isColSelected
-                          ? 'rgba(59, 130, 246, 0.05)'
-                          : 'inherit',
-                        outline: isCellSelected ? '2px solid var(--editor-accent, #3b82f6)' : 'none',
-                        outlineOffset: -2,
-                        // 落点指示线画在数据单元格上：tr 的 box-shadow 不可靠，必须逐格画
-                        boxShadow: rowDropShadow,
+                        background: cellBg,
+                        boxShadow: shadows.length > 0 ? shadows.join(', ') : undefined,
                       }}
                     >
                       <div
@@ -2158,6 +2989,30 @@ export function BitableGridView({
                           />
                         </div>
                       </div>
+
+                      {/* 选区右下角 Excel 风格填充柄 */}
+                      {isBottomRightCorner && normalizedSelection && (
+                        <div
+                          data-fill-handle
+                          title="拖拽自动填充 · 双击向下快速填充"
+                          onMouseDown={(e) => startFillDrag(e, normalizedSelection)}
+                          onDoubleClick={(e) => handleDoubleClickFill(e, normalizedSelection)}
+                          style={{
+                            position: 'absolute',
+                            right: -4,
+                            bottom: -4,
+                            width: 7,
+                            height: 7,
+                            background: 'var(--editor-accent, #3b82f6)',
+                            border: '1px solid #ffffff',
+                            borderRadius: 1,
+                            cursor: 'crosshair',
+                            zIndex: 10,
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                          }}
+                          className="nb-bitable-fill-handle"
+                        />
+                      )}
                     </td>
                   );
                 })}
@@ -2166,7 +3021,6 @@ export function BitableGridView({
                 <td
                   style={{
                     borderBottom: '1px solid var(--editor-border, #f1f5f9)',
-                    // 落点指示线必须延伸到行尾的留白格，否则右侧看不到落点
                     boxShadow: rowDropShadow,
                   }}
                 />
@@ -2270,6 +3124,234 @@ export function BitableGridView({
             ? ` · 移动到${isGrouped ? '组内' : ''}第 ${rowDropPosition} 行`
             : ' · 此处不可放置'}
         </DragGhost>
+      )}
+
+      {/* 单元格与选区悬浮右键上下文菜单 */}
+      {cellContextMenu && (
+        <div
+          data-no-drag
+          style={{
+            position: 'fixed',
+            left: Math.min(cellContextMenu.x, window.innerWidth - 180),
+            top: Math.min(cellContextMenu.y, window.innerHeight - 380),
+            zIndex: 9999,
+            background: 'var(--editor-surface, #ffffff)',
+            border: '1px solid var(--editor-border, #cbd5e1)',
+            borderRadius: 8,
+            boxShadow: '0 10px 25px rgba(15,23,42,0.15)',
+            padding: 4,
+            minWidth: 160,
+            fontSize: 12,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="nb-bitable-menu-item"
+            onClick={() => {
+              const payload = buildClipboardPayload();
+              if (payload !== null) {
+                if (navigator.clipboard?.writeText) {
+                  navigator.clipboard.writeText(payload).catch(() => {});
+                }
+                showToast(
+                  normalizedSelection?.isSingleCell
+                    ? '已复制单元格数据'
+                    : '已复制选区数据',
+                );
+              }
+              setCellContextMenu(null);
+            }}
+          >
+            <Copy size={13} color="var(--editor-text-muted, #64748b)" />
+            <span style={{ flex: 1 }}>复制</span>
+            <span style={{ fontSize: 10, opacity: 0.5 }}>Ctrl+C</span>
+          </button>
+
+          <button
+            type="button"
+            className="nb-bitable-menu-item"
+            onClick={() => {
+              const payload = buildClipboardPayload();
+              if (payload !== null) {
+                if (navigator.clipboard?.writeText) {
+                  navigator.clipboard.writeText(payload).catch(() => {});
+                }
+              }
+              clearSelectedRange();
+              setCellContextMenu(null);
+            }}
+          >
+            <Scissors size={13} color="var(--editor-text-muted, #64748b)" />
+            <span style={{ flex: 1 }}>剪切</span>
+            <span style={{ fontSize: 10, opacity: 0.5 }}>Ctrl+X</span>
+          </button>
+
+          <button
+            type="button"
+            className="nb-bitable-menu-item"
+            onClick={async () => {
+              setCellContextMenu(null);
+              try {
+                if (navigator.clipboard?.readText) {
+                  const text = await navigator.clipboard.readText();
+                  if (text) {
+                    applyPaste(text);
+                    return;
+                  }
+                }
+              } catch {
+                // fallback
+              }
+              showToast('请使用快捷键 Ctrl+V 粘贴');
+            }}
+          >
+            <Clipboard size={13} color="var(--editor-text-muted, #64748b)" />
+            <span style={{ flex: 1 }}>粘贴</span>
+            <span style={{ fontSize: 10, opacity: 0.5 }}>Ctrl+V</span>
+          </button>
+
+          <button
+            type="button"
+            className="nb-bitable-menu-item"
+            onClick={() => {
+              clearSelectedRange();
+              setCellContextMenu(null);
+            }}
+          >
+            <Eraser size={13} color="var(--editor-text-muted, #64748b)" />
+            <span style={{ flex: 1 }}>清空选区</span>
+            <span style={{ fontSize: 10, opacity: 0.5 }}>Del</span>
+          </button>
+
+          <div style={{ height: 1, background: 'var(--editor-border, #e2e8f0)', margin: '3px 0' }} />
+
+          {onInsertRowAbove && (
+            <button
+              type="button"
+              className="nb-bitable-menu-item"
+              onClick={() => {
+                onInsertRowAbove(cellContextMenu.targetRowId);
+                setCellContextMenu(null);
+                showToast('已在上方插入行');
+              }}
+            >
+              <ArrowUp size={13} color="var(--editor-text-muted, #64748b)" />
+              <span>在上方插入行</span>
+            </button>
+          )}
+
+          {onInsertRowBelow && (
+            <button
+              type="button"
+              className="nb-bitable-menu-item"
+              onClick={() => {
+                onInsertRowBelow(cellContextMenu.targetRowId);
+                setCellContextMenu(null);
+                showToast('已在下方插入行');
+              }}
+            >
+              <ArrowDown size={13} color="var(--editor-text-muted, #64748b)" />
+              <span>在下方插入行</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="nb-bitable-menu-item"
+            style={{ color: '#ef4444' }}
+            onClick={() => {
+              if (normalizedSelection && selection.type === 'row') {
+                normalizedSelection.selectedRowIds.forEach((id) => onDeleteRow(id));
+              } else {
+                onDeleteRow(cellContextMenu.targetRowId);
+              }
+              setSelection({ type: 'none' });
+              setCellContextMenu(null);
+              showToast('已删除行');
+            }}
+          >
+            <Trash2 size={13} color="#ef4444" />
+            <span>删除行</span>
+          </button>
+
+          <div style={{ height: 1, background: 'var(--editor-border, #e2e8f0)', margin: '3px 0' }} />
+
+          <button
+            type="button"
+            className="nb-bitable-menu-item"
+            onClick={() => {
+              onAddColumn('left', cellContextMenu.targetColId);
+              setCellContextMenu(null);
+              showToast('已在左侧插入列');
+            }}
+          >
+            <MoveLeft size={13} color="var(--editor-text-muted, #64748b)" />
+            <span>在左侧插入列</span>
+          </button>
+
+          <button
+            type="button"
+            className="nb-bitable-menu-item"
+            onClick={() => {
+              onAddColumn('right', cellContextMenu.targetColId);
+              setCellContextMenu(null);
+              showToast('已在右侧插入列');
+            }}
+          >
+            <MoveRight size={13} color="var(--editor-text-muted, #64748b)" />
+            <span>在右侧插入列</span>
+          </button>
+
+          {onClearColumn && (
+            <button
+              type="button"
+              className="nb-bitable-menu-item"
+              onClick={() => {
+                onClearColumn(cellContextMenu.targetColId);
+                setCellContextMenu(null);
+                showToast('已清空整列数据');
+              }}
+            >
+              <Eraser size={13} color="var(--editor-text-muted, #64748b)" />
+              <span>清空整列数据</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="nb-bitable-menu-item"
+            style={{ color: '#ef4444' }}
+            onClick={() => {
+              onDeleteColumn(cellContextMenu.targetColId);
+              setSelection({ type: 'none' });
+              setCellContextMenu(null);
+            }}
+          >
+            <Trash2 size={13} color="#ef4444" />
+            <span>删除列</span>
+          </button>
+
+          {onOpenRecord && cellContextMenu.targetRowId && (
+            <>
+              <div style={{ height: 1, background: 'var(--editor-border, #e2e8f0)', margin: '3px 0' }} />
+              <button
+                type="button"
+                className="nb-bitable-menu-item"
+                onClick={() => {
+                  onOpenRecord(cellContextMenu.targetRowId);
+                  setCellContextMenu(null);
+                }}
+              >
+                <Maximize2 size={13} color="var(--editor-accent, #3b82f6)" />
+                <span>展开记录详情</span>
+              </button>
+            </>
+          )}
+        </div>
       )}
     </div>
   );

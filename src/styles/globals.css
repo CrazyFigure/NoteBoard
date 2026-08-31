@@ -2055,6 +2055,22 @@ button:not(:disabled) {
   cursor: not-allowed;
 }
 
+/* 多维表格右下角填充柄 (Fill Handle) */
+.nb-bitable-fill-handle {
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
+}
+
+.nb-bitable-fill-handle:hover {
+  transform: scale(1.35);
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.7) !important;
+  background: var(--editor-accent-hover, #2563eb) !important;
+}
+
+.nb-bitable-fill-handle:active {
+  transform: scale(1.1);
+  background: var(--editor-accent-active, #1d4ed8) !important;
+}
+
 /* ── 多维表格数字输入：禁用原生上下微调箭头与滚轮调整 ──
    number 输入框聚焦后滚轮会直接改值，与表格滚动严重冲突；
    微调箭头在紧凑单元格里也极易误触，故统一屏蔽，只允许键盘直接输入。 */

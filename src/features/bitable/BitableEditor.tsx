@@ -449,6 +449,52 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
     [commitChange],
   );
 
+  /**
+   * 批量更新单元格数据（选区清空 / 拖拽填充 / 批量修改）
+   * 单次提交避免产生多条撤销记录，并支持自动创建不存在的行
+   */
+  const handleBatchUpdateCells = useCallback(
+    (
+      updates: Array<{ rowId: string; colId: string; value: unknown }>,
+      newRowsToAppend?: BitableRow[],
+    ) => {
+      commitChange((prev) => {
+        let nextRows = [...prev.rows];
+        let nextColumns = [...prev.columns];
+
+        if (newRowsToAppend && newRowsToAppend.length > 0) {
+          nextRows = [...nextRows, ...newRowsToAppend];
+        }
+
+        const rowMap = new Map<string, BitableRow>();
+        nextRows.forEach((r) => rowMap.set(r.id, { ...r }));
+
+        updates.forEach(({ rowId, colId, value }) => {
+          const row = rowMap.get(rowId);
+          if (!row) return;
+
+          const col = nextColumns.find((c) => c.id === colId);
+          if (!col) return;
+
+          if (typeof value === 'string') {
+            const { value: coerced, column: updatedCol } = coerceCellValue(col, value);
+            if (updatedCol) {
+              nextColumns = nextColumns.map((c) => (c.id === colId ? updatedCol : c));
+            }
+            row[colId] = coerced;
+          } else {
+            row[colId] = value;
+          }
+          row._updatedAt = Date.now();
+        });
+
+        const finalRows = nextRows.map((r) => rowMap.get(r.id) || r);
+        return { ...prev, columns: nextColumns, rows: finalRows };
+      });
+    },
+    [commitChange],
+  );
+
   // ── 列与字段管理 ──
 
   const handleUpdateColumn = useCallback(
@@ -1119,6 +1165,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             onUpdateGroupByColumnId={handleUpdateGroupByColumnId}
             onUpdateSortRules={handleUpdateSortRules}
             onPasteCells={handlePasteCells}
+            onBatchUpdateCells={handleBatchUpdateCells}
             onManageColumnOption={handleManageColumnOption}
             onUpdateRow={handleUpdateRow}
             onAddRow={handleAddRow}
