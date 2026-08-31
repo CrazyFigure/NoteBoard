@@ -319,7 +319,7 @@ function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontWeight: 600, color: 'var(--editor-accent, #3b82f6)' }}>Mermaid</span>
-            {loading && <span>渲染中…</span>}
+            {loading && <span>渲染中</span>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <button
@@ -405,7 +405,7 @@ function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
 
           {inViewport && loading && !svg && (
             <div style={{ color: 'var(--editor-text-muted, #64748b)', fontSize: 13 }}>
-              <span>渲染中…</span>
+              <span>渲染中</span>
             </div>
           )}
 

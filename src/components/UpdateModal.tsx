@@ -258,7 +258,7 @@ export function UpdateModal({
                 color="var(--accent-strong)"
               />
               <span style={{ fontSize: 13, color: 'var(--editor-text-secondary)' }}>
-                正在连接 GitHub 检查最新版本...
+                正在连接 GitHub 检查最新版本
               </span>
             </div>
           )}
@@ -395,7 +395,7 @@ export function UpdateModal({
                       color: 'var(--editor-text-muted)',
                     }}
                   >
-                    <span>正在下载安装包...</span>
+                    <span>正在下载安装包</span>
                     <span>
                       {downloadProgress
                         ? `${formatBytes(downloadProgress.downloadedBytes)} / ${formatBytes(
@@ -516,7 +516,7 @@ export function UpdateModal({
               }}
             >
               <Download size={14} />
-              <span>{downloading ? '正在下载...' : '下载并安装'}</span>
+              <span>{downloading ? '正在下载' : '下载并安装'}</span>
             </button>
           )}
         </div>

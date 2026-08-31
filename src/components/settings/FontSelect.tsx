@@ -143,7 +143,7 @@ export function FontSelect({
   onChange,
   isMonospaceOnly = false,
   filterType,
-  placeholder = '选择或输入字体…',
+  placeholder = '选择或输入字体',
 }: FontSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [fonts, setFonts] = useState<FontFamily[]>(cachedFontOptions ?? []);
@@ -351,7 +351,7 @@ export function FontSelect({
             <input
               ref={searchInputRef}
               type="text"
-              placeholder="搜索或直接输入字体名称…"
+              placeholder="搜索或直接输入字体名称"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -461,7 +461,7 @@ export function FontSelect({
                 }}
               >
                 <Loader2 size={14} className="animate-spin" />
-                <span>扫描系统字体中…</span>
+                <span>扫描系统字体中</span>
               </div>
             ) : filteredFonts.length === 0 ? (
               <div style={{ padding: '12px 16px', fontSize: 12, color: 'var(--editor-text-muted)', textAlign: 'center' }}>

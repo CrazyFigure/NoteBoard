@@ -67,6 +67,7 @@ import {
   newXml,
   newText,
 } from '../features/welcome/welcomeActions';
+import { useFavoritesStore } from '../features/favorites/favoritesStore';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { discardStagedDocuments, stashPendingDocuments } from '../features/staging/stagingManager';
 import { showToast } from '../stores/toastStore';
@@ -541,6 +542,7 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                     onOpenFile={openFileDialog}
                     onOpenFolder={openFolderDialog}
                     onOpenStaging={openStagingArea}
+                    onOpenFavorites={() => useFavoritesStore.getState().openFavoritesModal()}
                     onNewMarkdown={newMarkdown}
                     onNewText={newText}
                     onNewBoard={newBoard}

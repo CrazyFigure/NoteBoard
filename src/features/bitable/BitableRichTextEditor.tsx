@@ -32,7 +32,7 @@ const MarkdownCompatibleCode = Code.extend({ excludes: '' });
  * 构建多行文本编辑器的扩展集
  * 单独导出以便单元测试直接验证「扩展装配 + Markdown 往返」，无需挂载 React 组件。
  */
-export function buildLongTextExtensions(placeholder = '输入内容，支持 Markdown…') {
+export function buildLongTextExtensions(placeholder = '输入内容，支持 Markdown') {
   return [
     StarterKit.configure({
       // 换用允许与粗体/斜体嵌套的 Code 扩展，避免同名扩展与 schema 冲突
@@ -178,7 +178,7 @@ function ToolButton({
 export function BitableRichTextEditor({
   value,
   onChange,
-  placeholder = '输入内容，支持 Markdown…',
+  placeholder = '输入内容，支持 Markdown',
   minHeight = 160,
   mode,
   onModeChange,

@@ -205,7 +205,7 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
           <span>Draw.io 绘图编辑器</span>
           {!isLoaded && !loadError && (
             <span style={{ fontSize: 11, color: 'var(--editor-text-muted)', fontWeight: 400 }}>
-              加载引擎中…
+              加载引擎中
             </span>
           )}
         </div>

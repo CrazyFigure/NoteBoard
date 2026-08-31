@@ -24,6 +24,7 @@ import type {
   StagingResult,
   SessionSnapshot,
   FontPackStatus,
+  FavoritesData,
 } from './types';
 
 // ── 窗口 ──
@@ -252,6 +253,16 @@ export function deleteDraft(key: string): Promise<void> {
 
 export function listDrafts(): Promise<unknown[]> {
   return invoke<unknown[]>('list_drafts');
+}
+
+// ── 收藏夹 ──
+
+export function loadFavorites(): Promise<FavoritesData> {
+  return invoke<FavoritesData>('load_favorites');
+}
+
+export function saveFavorites(favorites: FavoritesData): Promise<void> {
+  return invoke<void>('save_favorites', { favorites });
 }
 
 // ── 应用更新与外部链接 ──

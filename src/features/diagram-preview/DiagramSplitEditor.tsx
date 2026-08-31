@@ -288,7 +288,7 @@ export function DiagramSplitEditor({ docKey }: DiagramSplitEditorProps) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
             <FileCode size={16} color="var(--editor-accent, #3b82f6)" />
             <span>{diagramType === 'mermaid' ? 'Mermaid 图表' : 'PlantUML / UML'}</span>
-            {isRendering && <span style={{ fontSize: 11, color: 'var(--editor-text-muted)', fontWeight: 400 }}>渲染中…</span>}
+            {isRendering && <span style={{ fontSize: 11, color: 'var(--editor-text-muted)', fontWeight: 400 }}>渲染中</span>}
           </div>
 
           <div

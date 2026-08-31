@@ -209,7 +209,7 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // 占位符
     Placeholder.configure({
-      placeholder: '开始输入，或键入 / 插入内容…',
+      placeholder: '开始输入，或键入 / 插入内容',
       emptyEditorClass: 'is-empty',
     }),
 

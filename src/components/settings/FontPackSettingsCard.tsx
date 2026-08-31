@@ -97,7 +97,7 @@ export function FontPackSettingsCard() {
       {action === 'download' ? (
         <div className="nb-font-pack-progress" aria-live="polite">
           <div className="nb-font-pack-progress-copy">
-            <span>正在下载并校验字体包…</span>
+            <span>正在下载并校验字体包</span>
             <span>{Math.min(100, Math.max(0, percent))}%</span>
           </div>
           <div className="nb-font-pack-progress-track">
@@ -117,17 +117,17 @@ export function FontPackSettingsCard() {
       <div className="nb-font-pack-settings-actions">
         <button className="nb-btn-secondary" disabled={busy} onClick={handleImport} type="button">
           <Upload size={15} />
-          {action === 'import' ? '正在导入…' : '手动导入字体包'}
+          {action === 'import' ? '正在导入' : '手动导入字体包'}
         </button>
         {ready ? (
           <button className="nb-font-pack-remove-button" disabled={busy} onClick={handleRemove} type="button">
             <Trash2 size={15} />
-            {action === 'remove' ? '正在删除…' : '删除字体包'}
+            {action === 'remove' ? '正在删除' : '删除字体包'}
           </button>
         ) : (
           <button className="nb-btn-primary" disabled={busy} onClick={handleDownload} type="button">
             <Download size={15} />
-            {action === 'download' ? '正在下载…' : status?.state === 'invalid' ? '修复字体包' : '下载并启用'}
+            {action === 'download' ? '正在下载' : status?.state === 'invalid' ? '修复字体包' : '下载并启用'}
           </button>
         )}
       </div>

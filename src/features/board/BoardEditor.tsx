@@ -568,7 +568,7 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
   if (!Component || !stableInitialData) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--editor-text-muted)' }}>
-        加载画板组件…
+        加载画板组件
       </div>
     );
   }

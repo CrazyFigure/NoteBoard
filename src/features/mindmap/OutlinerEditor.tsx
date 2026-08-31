@@ -767,7 +767,7 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
                   }}
                   type="text"
                   value={item.node.text}
-                  placeholder={isRoot ? '输入中心主题…' : '输入大纲要点… (按 Enter 换行，Shift+Enter 添加备注)'}
+                  placeholder={isRoot ? '输入中心主题' : '输入大纲要点 (按 Enter 换行，Shift+Enter 添加备注)'}
                   onChange={(e) => handleTextChange(item.node.id, e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
@@ -1031,7 +1031,7 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
                         }}
                         rows={Math.min(6, (item.node.note?.split('\n').length || 1))}
                         value={item.node.note || ''}
-                        placeholder="添加备注… (支持多行文字，直接按 Ctrl+V 粘贴图片)"
+                        placeholder="添加备注 (支持多行文字，直接按 Ctrl+V 粘贴图片)"
                         onChange={(e) => handleNoteChange(item.node.id, e.target.value)}
                         onPaste={(e) => handlePasteInNote(e, item.node.id)}
                         onKeyDown={(e) => {

@@ -15,6 +15,7 @@ pub mod font_pack;
 pub mod bootstrap;
 pub mod updater;
 pub mod staging;
+pub mod favorites;
 
 use state::AppState;
 use std::sync::Mutex;
@@ -85,6 +86,9 @@ pub fn run() {
             session::commands::write_draft,
             session::commands::delete_draft,
             session::commands::list_drafts,
+            // favorites
+            favorites::commands::load_favorites,
+            favorites::commands::save_favorites,
             // sysfont
             sysfont::commands::list_system_fonts,
             // 应用内字体资源包

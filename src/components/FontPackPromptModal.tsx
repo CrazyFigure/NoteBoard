@@ -62,7 +62,7 @@ export function FontPackPromptModal({
         {downloading ? (
           <div className="nb-font-pack-progress" aria-live="polite">
             <div className="nb-font-pack-progress-copy">
-              <span>正在下载并校验字体包…</span>
+              <span>正在下载并校验字体包</span>
               <span>{Math.min(100, Math.max(0, percent))}%</span>
             </div>
             <div className="nb-font-pack-progress-track">
@@ -83,7 +83,7 @@ export function FontPackPromptModal({
           </button>
           <button autoFocus className="nb-btn-primary" disabled={busy} onClick={handleDownload} type="button">
             <Download size={16} />
-            {downloading ? '正在下载…' : '下载并启用（推荐）'}
+            {downloading ? '正在下载' : '下载并启用（推荐）'}
           </button>
         </div>
       </div>

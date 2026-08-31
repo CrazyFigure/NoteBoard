@@ -162,7 +162,7 @@ export function UnsavedGuardDialog({
             }}
           >
             <Archive size={14} />
-            {staging ? '暂存中…' : '暂存'}
+            {staging ? '正在暂存' : '暂存'}
           </button>
 
           {/* 核心主操作：突出显示保存按钮 */}
@@ -181,7 +181,7 @@ export function UnsavedGuardDialog({
             }}
           >
             <Save size={14} />
-            {saving ? '保存中…' : '保存'}
+            {saving ? '正在保存' : '保存'}
           </button>
         </div>
       </div>
