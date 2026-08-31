@@ -94,6 +94,13 @@ export async function saveAs(originalKey: string, content: string): Promise<bool
       { name: 'Markdown 笔记 (*.md)', extensions: ['md', 'markdown'] },
       { name: '全部文件 (*.*)', extensions: ['*'] },
     ];
+  } else if (doc?.kind === 'bitable' || originalKey.includes('bitable') || originalKey.includes('table')) {
+    // 多维表格保存为 .bitable 格式，避免因 language 为 json 误回退到 .json 扩展名
+    defaultExtension = 'bitable';
+    filters = [
+      { name: '多维表格 (*.bitable)', extensions: ['bitable', 'table'] },
+      { name: '全部文件 (*.*)', extensions: ['*'] },
+    ];
   } else if (doc?.kind === 'mindmap' || originalKey.includes('mindmap')) {
     defaultExtension = 'mindmap';
     filters = [
