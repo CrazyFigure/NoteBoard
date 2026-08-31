@@ -112,7 +112,7 @@ export function WelcomeScreen({
   const openActions = [
     {
       icon: FileSearch,
-      label: '打开文件…',
+      label: '打开文件',
       desc: '打开已有文档或图表',
       shortcut: 'Ctrl+O',
       color: 'var(--editor-accent, #3b82f6)',
@@ -127,7 +127,7 @@ export function WelcomeScreen({
     },
     {
       icon: FolderOpen,
-      label: '打开文件夹…',
+      label: '打开文件夹',
       desc: '载入工作区目录',
       shortcut: 'Ctrl+Shift+O',
       color: '#f59e0b',
