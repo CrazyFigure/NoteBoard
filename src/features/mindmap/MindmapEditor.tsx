@@ -26,6 +26,7 @@ import { MindmapRenderer } from './MindmapRenderer';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
+import { exportBlobWithDialog } from '../export/chartExport';
 import {
   initializeDocumentHistory,
   registerDocumentHistoryAdapter,
@@ -122,34 +123,47 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [docKey]);
 
-  // 导出为 .xmind 文件
+  // 导出为 .xmind 文件（弹系统另存为对话框）
   const handleExportXmind = async () => {
     try {
       const blob = await exportToXmindZip(rootNode);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${rootNode.text || '思维导图'}.xmind`;
-      a.click();
-      URL.revokeObjectURL(url);
-      showToast('成功导出为 XMind 文件');
+      const baseName = rootNode.text?.trim() || '思维导图';
+      const defaultFilename = `${baseName}.xmind`;
+      const filters = [
+        { name: 'XMind 思维导图 (*.xmind)', extensions: ['xmind'] },
+        { name: '全部文件 (*.*)', extensions: ['*'] },
+      ];
+      // 唤起原生对话框保存文件
+      const saved = await exportBlobWithDialog(blob, defaultFilename, filters);
+      if (saved) {
+        showToast('成功导出为 XMind 文件', 'success');
+      }
     } catch (err) {
       console.error('导出 XMind 失败:', err);
-      showToast('导出 XMind 失败');
+      showToast('导出 XMind 失败', 'error');
     }
   };
 
-  // 导出为 Markdown 大纲
-  const handleExportMarkdown = () => {
-    const md = mindNodeToMarkdown(rootNode);
-    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${rootNode.text || '大纲'}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('成功导出为 Markdown 大纲');
+  // 导出为 Markdown 大纲（弹系统另存为对话框）
+  const handleExportMarkdown = async () => {
+    try {
+      const md = mindNodeToMarkdown(rootNode);
+      const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+      const baseName = rootNode.text?.trim() || '大纲';
+      const defaultFilename = `${baseName}.md`;
+      const filters = [
+        { name: 'Markdown 大纲 (*.md)', extensions: ['md'] },
+        { name: '全部文件 (*.*)', extensions: ['*'] },
+      ];
+      // 唤起原生对话框保存文件
+      const saved = await exportBlobWithDialog(blob, defaultFilename, filters);
+      if (saved) {
+        showToast('成功导出为 Markdown 大纲', 'success');
+      }
+    } catch (err) {
+      console.error('导出 Markdown 失败:', err);
+      showToast('导出 Markdown 失败', 'error');
+    }
   };
 
   // 导入 .xmind 文件

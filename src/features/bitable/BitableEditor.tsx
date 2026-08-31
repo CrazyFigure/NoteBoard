@@ -36,6 +36,7 @@ import {
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
+import { exportBlobWithDialog } from '../export/chartExport';
 import {
   initializeDocumentHistory,
   registerDocumentHistoryAdapter,
@@ -757,21 +758,26 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
     [commitChange],
   );
 
-  // 导出 CSV
-  const handleExportCsv = () => {
+  // 导出 CSV 表格数据（弹出系统另存为对话框）
+  const handleExportCsv = async () => {
     try {
       const csv = exportBitableToCsv(data);
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${data.title || '多维表格'}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-      showToast('成功导出为 CSV 表格数据');
+      // 添加 UTF-8 BOM，确保 Excel 等软件打开中文不乱码
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+      const baseName = data.title?.trim() || '多维表格';
+      const defaultFilename = `${baseName}.csv`;
+      const filters = [
+        { name: 'CSV 表格文件 (*.csv)', extensions: ['csv'] },
+        { name: '全部文件 (*.*)', extensions: ['*'] },
+      ];
+      // 唤起原生对话框保存文件
+      const saved = await exportBlobWithDialog(blob, defaultFilename, filters);
+      if (saved) {
+        showToast('成功导出为 CSV 表格数据', 'success');
+      }
     } catch (e) {
       console.error('导出 CSV 失败:', e);
-      showToast('导出 CSV 失败');
+      showToast('导出 CSV 失败', 'error');
     }
   };
 

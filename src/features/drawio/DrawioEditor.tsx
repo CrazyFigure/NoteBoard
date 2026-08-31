@@ -2,12 +2,13 @@
 // 基于 Diagrams.net Embed 协议 + postMessage 双向通信 + 主题联动与自动保存 + Ctrl+S 统一保存
 // 详见 docs/09-开发路线图.md
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { RefreshCw, Download, FileCode, WifiOff, Save } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Download, FileCode, RefreshCw, WifiOff } from 'lucide-react';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
 import { saveDocument } from '../editor-code/orchestration/saveDocument';
+import { buildExportFileName, exportBlobWithDialog } from '../export/chartExport';
 
 interface DrawioEditorProps {
   docKey: string;
@@ -47,26 +48,8 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
   // 获取当前主题
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
 
-  // 构建 Diagrams.net 嵌入 URL
-  const embedUrl = `https://embed.diagrams.net/?embed=1&ui=min&spin=1&proto=json&libraries=1${isDark ? '&dark=1' : '&dark=0'}`;
-
-  // 保存处理
-  const handleSave = useCallback(async () => {
-    // 触发 iframe export xml 保持最新
-    if (iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(
-        JSON.stringify({
-          action: 'export',
-          format: 'xml',
-        }),
-        '*',
-      );
-    }
-    const ok = await saveDocument(docKey);
-    if (ok) {
-      showToast('Draw.io 图表已保存');
-    }
-  }, [docKey]);
+  // 构建 Diagrams.net 嵌入 URL（添加 saveAndExit=0&noSaveBtn=1&noExitBtn=1 隐藏内置保存与退出按钮）
+  const embedUrl = `https://embed.diagrams.net/?embed=1&ui=min&spin=1&proto=json&libraries=1&saveAndExit=0&noSaveBtn=1&noExitBtn=1${isDark ? '&dark=1' : '&dark=0'}`;
 
   // 监听 Draw.io postMessage 事件
   useEffect(() => {
@@ -134,11 +117,35 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
           if (msg.format === 'xml' && msg.data) {
             setContent(docKey, msg.data);
           } else if (msg.data && msg.format !== 'xml') {
-            const a = document.createElement('a');
-            a.href = msg.data;
-            a.download = `drawio-export-${Date.now()}.${msg.format || 'png'}`;
-            a.click();
-            showToast('绘图已成功导出');
+            const format = msg.format === 'svg' ? 'svg' : 'png';
+            let blob: Blob;
+            if (typeof msg.data === 'string' && msg.data.startsWith('data:')) {
+              const resp = await fetch(msg.data);
+              blob = await resp.blob();
+            } else if (typeof msg.data === 'string' && format === 'svg') {
+              blob = new Blob([msg.data], { type: 'image/svg+xml;charset=utf-8' });
+            } else {
+              blob = new Blob([msg.data], { type: 'image/png' });
+            }
+
+            const baseName = buildExportFileName(doc?.displayName, 'drawio');
+            const defaultFilename = `${baseName}.${format}`;
+            const filters =
+              format === 'svg'
+                ? [
+                    { name: 'SVG 矢量图 (*.svg)', extensions: ['svg'] },
+                    { name: '全部文件 (*.*)', extensions: ['*'] },
+                  ]
+                : [
+                    { name: 'PNG 图片 (*.png)', extensions: ['png'] },
+                    { name: '全部文件 (*.*)', extensions: ['*'] },
+                  ];
+
+            // 唤起系统原生保存文件对话框
+            const saved = await exportBlobWithDialog(blob, defaultFilename, filters);
+            if (saved) {
+              showToast(`绘图已成功导出为 ${format.toUpperCase()}`, 'success');
+            }
           }
         }
       } catch (err) {
@@ -151,23 +158,11 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
       if (timeoutTimer) clearTimeout(timeoutTimer);
       window.removeEventListener('message', handleMessage);
     };
-  }, [docKey, doc?.content, setContent, setDirty, setTabDirty, isLoaded]);
+  }, [docKey, doc?.content, doc?.displayName, setContent, setDirty, setTabDirty, isLoaded]);
 
-  // 触发导出请求
-  const handleRequestExport = (format: 'png' | 'svg' | 'xml') => {
+  // 触发导出请求 (SVG 或 PNG)
+  const handleRequestExport = (format: 'png' | 'svg') => {
     if (!iframeRef.current?.contentWindow) return;
-    if (format === 'xml') {
-      const xml = doc?.content || DEFAULT_DRAWIO_XML;
-      const blob = new Blob([xml], { type: 'application/xml;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `diagram-${Date.now()}.drawio`;
-      a.click();
-      URL.revokeObjectURL(url);
-      showToast('已导出 Draw.io XML');
-      return;
-    }
 
     iframeRef.current.contentWindow.postMessage(
       JSON.stringify({
@@ -216,29 +211,7 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {/* 保存按钮 */}
-          <button
-            type="button"
-            onClick={handleSave}
-            title="保存当前图表 (Ctrl+S)"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '3px 10px',
-              borderRadius: 4,
-              border: 'none',
-              background: 'var(--editor-accent, #3b82f6)',
-              color: '#ffffff',
-              cursor: 'pointer',
-              fontSize: 11,
-              fontWeight: 500,
-            }}
-          >
-            <Save size={12} />
-            <span>保存</span>
-          </button>
-
+          {/* 导出 SVG 按钮 */}
           <button
             type="button"
             onClick={() => handleRequestExport('svg')}
@@ -259,6 +232,7 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
             <Download size={12} />
             <span>导出 SVG</span>
           </button>
+          {/* 导出 PNG 按钮 */}
           <button
             type="button"
             onClick={() => handleRequestExport('png')}
@@ -278,26 +252,6 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
           >
             <Download size={12} />
             <span>导出 PNG</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleRequestExport('xml')}
-            title="导出 .drawio 源文件"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '3px 8px',
-              borderRadius: 4,
-              border: '1px solid var(--editor-border, #e2e8f0)',
-              background: 'var(--editor-bg, #ffffff)',
-              color: 'var(--editor-text, #1e293b)',
-              cursor: 'pointer',
-              fontSize: 11,
-            }}
-          >
-            <Download size={12} />
-            <span>导出 Draw.io</span>
           </button>
         </div>
       </div>
