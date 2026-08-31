@@ -893,7 +893,7 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <FileText size={13} color="var(--editor-accent)" />
-            <span>新建 Markdown 笔记</span>
+            <span>新建 Markdown 笔记 (.md)</span>
           </button>
 
           {/* 新建文本文档 (.txt) */}
@@ -929,7 +929,7 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <Table2 size={13} color="#2563eb" />
-            <span>多维表格 (.bitable)</span>
+            <span>新建多维表格 (.bitable)</span>
           </button>
 
           {/* 新建自由画板 */}
@@ -1218,7 +1218,7 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <Star size={13} color="#f97316" fill="#f97316" />
-            <span>收藏夹</span>
+            <span>打开收藏夹</span>
           </button>
 
           {/* 打开暂存区：紧随打开文件夹，载入设置中固定的暂存目录。 */}
