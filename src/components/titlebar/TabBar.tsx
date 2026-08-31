@@ -20,6 +20,8 @@ import {
   X,
   Plus,
   Home,
+  Save,
+  SaveAll,
   FileText,
   File,
   Database,
@@ -47,6 +49,7 @@ import { useWindowStore, type Tab } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useExplorerStore } from '../../features/explorer/explorerStore';
 import { moveToNewWindow } from '../../features/window/windowManager';
+import { saveDocument, saveAs } from '../../features/editor-code/orchestration/saveDocument';
 import {
   newMarkdown,
   newMindmap,
@@ -526,6 +529,11 @@ function handleMenuItemMouseUp(e: React.MouseEvent<HTMLButtonElement>) {
 export function TabBar() {
   const { tabs, activeKey, activateTab, requestCloseTab, reorderTabs } = useWindowStore();
   const scrollRef = useRef<HTMLDivElement>(null);
+  // 保存弹出菜单状态及引用
+  const [saveMenuPos, setSaveMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const saveMenuRef = useRef<HTMLDivElement>(null);
+  const saveBtnRef = useRef<HTMLButtonElement>(null);
+
   const [newMenuPos, setNewMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [showMoreSubMenu, setShowMoreSubMenu] = useState(false);
   const [flipSubMenuLeft, setFlipSubMenuLeft] = useState(false);
@@ -561,20 +569,31 @@ export function TabBar() {
   );
 
   useEffect(() => {
-    if (!newMenuPos) return;
+    if (!newMenuPos && !saveMenuPos) return;
     const handleDown = (e: MouseEvent) => {
-      // 点击菜单及加号按钮外部时关闭菜单
+      const target = e.target as Node;
+      // 点击菜单及加号按钮外部时关闭新建菜单
       if (
+        newMenuPos &&
         newMenuRef.current &&
-        !newMenuRef.current.contains(e.target as Node) &&
-        !newBtnRef.current?.contains(e.target as Node)
+        !newMenuRef.current.contains(target) &&
+        !newBtnRef.current?.contains(target)
       ) {
         setNewMenuPos(null);
+      }
+      // 点击菜单及保存按钮外部时关闭保存菜单
+      if (
+        saveMenuPos &&
+        saveMenuRef.current &&
+        !saveMenuRef.current.contains(target) &&
+        !saveBtnRef.current?.contains(target)
+      ) {
+        setSaveMenuPos(null);
       }
     };
     document.addEventListener('mousedown', handleDown);
     return () => document.removeEventListener('mousedown', handleDown);
-  }, [newMenuPos]);
+  }, [newMenuPos, saveMenuPos]);
 
   const handleDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
@@ -664,11 +683,67 @@ export function TabBar() {
         </DndContext>
       </div>
 
+      {/* 保存文档按钮（带保存/另存为下拉菜单） */}
+      <button
+        ref={saveBtnRef}
+        type="button"
+        style={newBtnStyle}
+        onClick={(e) => {
+          e.stopPropagation();
+          setNewMenuPos(null);
+          setShowMoreSubMenu(false);
+          // 单击保存按钮切换弹出/关闭菜单
+          if (saveMenuPos) {
+            setSaveMenuPos(null);
+          } else {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const menuWidth = 160;
+            const x = Math.min(rect.left, window.innerWidth - menuWidth - 8);
+            setSaveMenuPos({ x, y: rect.bottom + 4 });
+          }
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setNewMenuPos(null);
+          setShowMoreSubMenu(false);
+          // 右键保存按钮弹出菜单
+          setSaveMenuPos({ x: e.clientX, y: e.clientY });
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = 'var(--toolbar-hover)';
+          e.currentTarget.style.borderColor = 'var(--tab-border)';
+          e.currentTarget.style.color = 'var(--editor-accent)';
+          e.currentTarget.style.transform = 'scale(1.08)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'transparent';
+          e.currentTarget.style.borderColor = 'transparent';
+          e.currentTarget.style.color = 'var(--editor-text-secondary)';
+          e.currentTarget.style.transform = 'scale(1)';
+        }}
+        onMouseDown={(e) => {
+          e.currentTarget.style.background = 'var(--toolbar-active)';
+          e.currentTarget.style.transform = 'scale(0.92)';
+        }}
+        onMouseUp={(e) => {
+          e.currentTarget.style.background = 'var(--toolbar-hover)';
+          e.currentTarget.style.transform = 'scale(1.08)';
+        }}
+        title="保存与另存为"
+        aria-label="保存与另存为"
+      >
+        <Save size={15} />
+      </button>
+
       {/* 回到主界面 Home 按钮 */}
       <button
         type="button"
         style={newBtnStyle}
         onClick={() => {
+          setSaveMenuPos(null);
+          setNewMenuPos(null);
+          setShowMoreSubMenu(false);
           // 切换回到主界面 (将 activeKey 置为 null，保留已打开 tabs)
           useWindowStore.setState({ activeKey: null });
         }}
@@ -705,6 +780,7 @@ export function TabBar() {
         style={newBtnStyle}
         onClick={(e) => {
           e.stopPropagation();
+          setSaveMenuPos(null);
           // 单击加号按钮切换弹出/关闭菜单
           if (newMenuPos) {
             setNewMenuPos(null);
@@ -718,6 +794,7 @@ export function TabBar() {
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
+          setSaveMenuPos(null);
           // 右键加号按钮弹出菜单
           setNewMenuPos({ x: e.clientX, y: e.clientY });
         }}
@@ -1106,6 +1183,66 @@ export function TabBar() {
           >
             <Archive size={13} color="#8b5cf6" />
             <span>打开暂存区</span>
+          </button>
+        </div>
+      )}
+
+      {/* 保存弹出菜单 */}
+      {saveMenuPos && (
+        <div
+          ref={saveMenuRef}
+          style={{
+            position: 'fixed',
+            top: saveMenuPos.y,
+            left: saveMenuPos.x,
+            zIndex: 9999,
+            background: 'var(--editor-surface)',
+            border: '1px solid var(--editor-border)',
+            borderRadius: 'var(--radius-sm)',
+            boxShadow: 'var(--shadow-md)',
+            padding: '4px',
+            minWidth: 160,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* 保存当前文件 */}
+          <button
+            type="button"
+            disabled={!activeKey}
+            style={getMenuItemStyle(!activeKey)}
+            onClick={() => {
+              setSaveMenuPos(null);
+              if (activeKey) {
+                saveDocument(activeKey);
+              }
+            }}
+            onMouseEnter={handleMenuItemMouseEnter}
+            onMouseLeave={handleMenuItemMouseLeave}
+            onMouseDown={handleMenuItemMouseDown}
+            onMouseUp={handleMenuItemMouseUp}
+          >
+            <Save size={13} color={activeKey ? 'var(--editor-accent)' : undefined} />
+            <span>保存 (Ctrl+S)</span>
+          </button>
+
+          {/* 另存为 */}
+          <button
+            type="button"
+            disabled={!activeKey}
+            style={getMenuItemStyle(!activeKey)}
+            onClick={() => {
+              setSaveMenuPos(null);
+              if (activeKey) {
+                saveAs(activeKey, '');
+              }
+            }}
+            onMouseEnter={handleMenuItemMouseEnter}
+            onMouseLeave={handleMenuItemMouseLeave}
+            onMouseDown={handleMenuItemMouseDown}
+            onMouseUp={handleMenuItemMouseUp}
+          >
+            <SaveAll size={13} color={activeKey ? '#06b6d4' : undefined} />
+            <span>另存为 (Ctrl+Shift+S)</span>
           </button>
         </div>
       )}
