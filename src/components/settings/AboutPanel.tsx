@@ -112,7 +112,7 @@ export function AboutPanel() {
             }}
           >
             <RefreshCw size={12} className={checkingUpdate ? 'spin' : ''} style={checkingUpdate ? { animation: 'spin 1s linear infinite' } : undefined} />
-            <span>{checkingUpdate ? '正在检查...' : '检测更新'}</span>
+            <span>{checkingUpdate ? '正在检查' : '检测更新'}</span>
           </button>
         </div>
         <p style={{ margin: '4px 0' }}>许可证: GPL-3.0</p>

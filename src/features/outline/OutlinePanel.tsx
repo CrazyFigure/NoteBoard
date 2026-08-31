@@ -148,6 +148,7 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
       tr.replaceWith(pos + 1, pos + 1 + node.content.size, textNode);
       editor.view.dispatch(tr);
 
+
       setEditingId(null);
     },
     [editor, editValue],
@@ -241,7 +242,7 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
         <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--editor-border)', flexShrink: 0 }}>
           <input
             type="text"
-            placeholder="搜索大纲标题…"
+            placeholder="搜索大纲标题"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{
@@ -278,134 +279,134 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
           ref={scrollContainerRef}
           style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}
         >
-        <div ref={listRef}>
-          {filteredHeadings.map((h) => {
-            const isHidden = hiddenIds.has(h.id);
-            if (isHidden) return null;
+          <div ref={listRef}>
+            {filteredHeadings.map((h) => {
+              const isHidden = hiddenIds.has(h.id);
+              if (isHidden) return null;
 
-            const isActive = h.id === activeId;
-            const isEditing = h.id === editingId;
-            const hasChildren = hasChildrenMap.get(h.id) ?? false;
-            const isCollapsedItem = collapsed.has(h.id);
+              const isActive = h.id === activeId;
+              const isEditing = h.id === editingId;
+              const hasChildren = hasChildrenMap.get(h.id) ?? false;
+              const isCollapsedItem = collapsed.has(h.id);
 
-            return (
-              <div
-                key={h.id}
-                data-heading-id={h.id}
-                onClick={() => handleHeadingClick(h)}
-                onDoubleClick={() => handleDoubleClick(h)}
-                onMouseEnter={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.background = 'var(--toolbar-hover)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.background = 'transparent';
-                  }
-                  e.currentTarget.style.transform = 'scale(1)';
-                }}
-                onMouseDown={(e) => {
-                  e.currentTarget.style.transform = 'scale(0.985)';
-                }}
-                onMouseUp={(e) => {
-                  e.currentTarget.style.transform = 'scale(1)';
-                }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  height: 24,
-                  paddingLeft: getIndent(h.level),
-                  paddingRight: 8,
-                  cursor: 'pointer',
-                  fontSize: getFontSize(h.level),
-                  color: isActive ? 'var(--editor-accent)' : 'var(--editor-text)',
-                  fontWeight: isActive ? 600 : 400,
-                  background: isActive ? 'var(--editor-selection-background)' : 'transparent',
-                  borderLeft: isActive ? '2px solid var(--editor-accent)' : '2px solid transparent',
-                  userSelect: 'none',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  transition: 'all var(--transition-fast)',
-                }}
-                title={h.text}
-              >
-                {/* 折叠/展开按钮 */}
-                {hasChildren ? (
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleCollapse(h.id);
-                    }}
-                    style={{
-                      display: 'inline-flex',
-                      width: 16,
-                      height: 16,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                      cursor: 'pointer',
-                      color: 'var(--editor-text-muted)',
-                      transform: isCollapsedItem ? 'none' : 'rotate(90deg)',
-                      transition: 'transform var(--transition-fast), color var(--transition-fast)',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = 'var(--editor-text)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = 'var(--editor-text-muted)';
-                    }}
-                    title={isCollapsedItem ? '展开' : '折叠'}
-                  >
-                    <ChevronRight size={12} strokeWidth={2.2} />
-                  </span>
-                ) : (
-                  <span style={{ width: 16, flexShrink: 0 }} />
-                )}
+              return (
+                <div
+                  key={h.id}
+                  data-heading-id={h.id}
+                  onClick={() => handleHeadingClick(h)}
+                  onDoubleClick={() => handleDoubleClick(h)}
+                  onMouseEnter={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.background = 'var(--toolbar-hover)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.background = 'transparent';
+                    }
+                    e.currentTarget.style.transform = 'scale(1)';
+                  }}
+                  onMouseDown={(e) => {
+                    e.currentTarget.style.transform = 'scale(0.985)';
+                  }}
+                  onMouseUp={(e) => {
+                    e.currentTarget.style.transform = 'scale(1)';
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    height: 24,
+                    paddingLeft: getIndent(h.level),
+                    paddingRight: 8,
+                    cursor: 'pointer',
+                    fontSize: getFontSize(h.level),
+                    color: isActive ? 'var(--editor-accent)' : 'var(--editor-text)',
+                    fontWeight: isActive ? 600 : 400,
+                    background: isActive ? 'var(--editor-selection-background)' : 'transparent',
+                    borderLeft: isActive ? '2px solid var(--editor-accent)' : '2px solid transparent',
+                    userSelect: 'none',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    transition: 'all var(--transition-fast)',
+                  }}
+                  title={h.text}
+                >
+                  {/* 折叠/展开按钮 */}
+                  {hasChildren ? (
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleCollapse(h.id);
+                      }}
+                      style={{
+                        display: 'inline-flex',
+                        width: 16,
+                        height: 16,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                        cursor: 'pointer',
+                        color: 'var(--editor-text-muted)',
+                        transform: isCollapsedItem ? 'none' : 'rotate(90deg)',
+                        transition: 'transform var(--transition-fast), color var(--transition-fast)',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.color = 'var(--editor-text)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = 'var(--editor-text-muted)';
+                      }}
+                      title={isCollapsedItem ? '展开' : '折叠'}
+                    >
+                      <ChevronRight size={12} strokeWidth={2.2} />
+                    </span>
+                  ) : (
+                    <span style={{ width: 16, flexShrink: 0 }} />
+                  )}
 
-                {/* 标题文本 / 编辑输入 */}
-                {isEditing ? (
-                  <input
-                    ref={editInputRef}
-                    type="text"
-                    value={editValue}
-                    autoFocus
-                    onChange={(e) => setEditValue(e.target.value)}
-                    onBlur={() => handleRename(h)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleRename(h);
-                      }
-                      if (e.key === 'Escape') {
-                        e.preventDefault();
-                        setEditingId(null);
-                      }
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    onDoubleClick={(e) => e.stopPropagation()}
-                    style={{
-                      flex: 1,
-                      padding: '2px 4px',
-                      fontSize: getFontSize(h.level),
-                      border: '1px solid var(--editor-accent)',
-                      borderRadius: 2,
-                      background: 'var(--editor-surface)',
-                      color: 'var(--editor-text)',
-                      outline: 'none',
-                    }}
-                  />
-                ) : (
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {h.text}
-                  </span>
-                )}
-              </div>
-            );
-          })}
+                  {/* 标题文本 / 编辑输入 */}
+                  {isEditing ? (
+                    <input
+                      ref={editInputRef}
+                      type="text"
+                      value={editValue}
+                      autoFocus
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onBlur={() => handleRename(h)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleRename(h);
+                        }
+                        if (e.key === 'Escape') {
+                          e.preventDefault();
+                          setEditingId(null);
+                        }
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      onDoubleClick={(e) => e.stopPropagation()}
+                      style={{
+                        flex: 1,
+                        padding: '2px 4px',
+                        fontSize: getFontSize(h.level),
+                        border: '1px solid var(--editor-accent)',
+                        borderRadius: 2,
+                        background: 'var(--editor-surface)',
+                        color: 'var(--editor-text)',
+                        outline: 'none',
+                      }}
+                    />
+                  ) : (
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {h.text}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
       )}
     </div>
   );

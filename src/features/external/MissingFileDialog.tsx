@@ -68,7 +68,7 @@ export function MissingFileDialog() {
           <button type="button" className="nb-btn-secondary" onClick={handleClose} disabled={saving}>关闭标签</button>
           {canSaveAs && (
             <button type="button" className="nb-btn-primary" onClick={handleSaveAs} disabled={saving}>
-              {saving ? '另存中…' : '另存为…'}
+              {saving ? '正在另存' : '另存为'}
             </button>
           )}
         </div>

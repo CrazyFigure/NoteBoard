@@ -335,3 +335,29 @@ export interface UpdateDownloadProgress {
   percent?: number;
 }
 
+// ── 收藏夹相关类型 ──
+
+export interface FavoriteFileItem {
+  id: string;
+  type: 'file';
+  name: string;
+  path: string;
+  createdAt: number;
+}
+
+export interface FavoriteFolderItem {
+  id: string;
+  type: 'folder';
+  name: string;
+  createdAt: number;
+  children: FavoriteNode[];
+}
+
+export type FavoriteNode = FavoriteFileItem | FavoriteFolderItem;
+
+export interface FavoritesData {
+  schemaVersion: number;
+  roots: FavoriteNode[];
+}
+
+

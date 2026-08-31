@@ -3,12 +3,15 @@ import { AppShell } from './components/AppShell';
 import { SettingsModal } from './components/settings/SettingsModal';
 import { UpdateModal } from './components/UpdateModal';
 import { FontPackPromptModal } from './components/FontPackPromptModal';
+import { FavoritesManagerModal } from './features/favorites/FavoritesManagerModal';
+import { AddFavoriteModal } from './features/favorites/AddFavoriteModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useSettingsStore } from './stores/settingsStore';
 import { useLayoutStore } from './stores/layoutStore';
 import { useWindowStore } from './stores/windowStore';
 import { useUpdateStore } from './stores/updateStore';
 import { useFontPackStore } from './stores/fontPackStore';
+import { useFavoritesStore } from './features/favorites/favoritesStore';
 import * as ipc from './core/ipc/commands';
 import { resolveSystemFontFallbackPatch, shouldPromptForFontPack } from './app/fontPack';
 import { initShortcuts, registerShortcut } from './core/shortcuts';
@@ -56,6 +59,10 @@ export default function App() {
     // 先加载设置和窗口意图；普通空启动才自动恢复最近文件，显式打开文件时不抢占用户操作。
     const initializeWindow = async () => {
       await init();
+      // 初始化加载收藏夹数据
+      useFavoritesStore.getState().loadFavorites().catch((err) => {
+        console.error('加载收藏夹失败:', err);
+      });
       if (disposed) return;
       const intent = await initWindow();
       if (!disposed && intent.type === 'empty' && useSettingsStore.getState().settings.file.restoreSession) {
@@ -209,7 +216,7 @@ export default function App() {
           fontFamily: 'var(--content-font-family)',
         }}
       >
-        <span style={{ color: 'var(--editor-text-muted)', fontSize: 13 }}>NoteBoard 加载中…</span>
+        <span style={{ color: 'var(--editor-text-muted)', fontSize: 13 }}>NoteBoard 加载中</span>
       </div>
     );
   }
@@ -236,6 +243,10 @@ export default function App() {
           onEnabled={() => setFontPackPromptOpen(false)}
           onUseSystem={handleUseSystemFonts}
         />
+        {/* 全局收藏夹管理弹窗 */}
+        <FavoritesManagerModal />
+        {/* 全局添加/编辑收藏弹窗 */}
+        <AddFavoriteModal />
       </div>
     </ErrorBoundary>
   );

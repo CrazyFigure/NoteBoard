@@ -44,10 +44,13 @@ import {
   Archive,
   Table2,
   ChartColumn,
+  Star,
 } from 'lucide-react';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useExplorerStore } from '../../features/explorer/explorerStore';
+import { useFavoritesStore } from '../../features/favorites/favoritesStore';
+import { findFavoriteByPath } from '../../features/favorites/favoritesUtils';
 import { moveToNewWindow } from '../../features/window/windowManager';
 import { saveDocument, saveAs } from '../../features/editor-code/orchestration/saveDocument';
 import {
@@ -112,6 +115,9 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
   const hasLeft = currentIndex > 0;
   const hasRight = currentIndex >= 0 && currentIndex < tabs.length - 1;
   const hasOther = tabs.length > 1;
+
+  const favoritesData = useFavoritesStore((s) => s.data);
+  const isFavorited = Boolean(tab.path && findFavoriteByPath(favoritesData.roots, tab.path));
 
   useEffect(() => {
     if (!menuPos) return;
@@ -416,6 +422,31 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
 
           {tab.path && (
             <>
+              {/* 加入收藏夹 / 编辑收藏 */}
+              <button
+                type="button"
+                style={getMenuItemStyle(false)}
+                onClick={() => {
+                  setMenuPos(null);
+                  useFavoritesStore.getState().openAddModal({
+                    key: tab.key,
+                    displayName: tab.displayName,
+                    path: tab.path ?? undefined,
+                  });
+                }}
+                onMouseEnter={handleMenuItemMouseEnter}
+                onMouseLeave={handleMenuItemMouseLeave}
+                onMouseDown={handleMenuItemMouseDown}
+                onMouseUp={handleMenuItemMouseUp}
+              >
+                <Star
+                  size={13}
+                  color="#f97316"
+                  style={{ fill: isFavorited ? '#f97316' : 'none' }}
+                />
+                <span>{isFavorited ? '编辑收藏' : '加入收藏夹'}</span>
+              </button>
+
               {/* 复制文件名 */}
               <button
                 type="button"
@@ -1145,8 +1176,8 @@ export function TabBar() {
             onMouseDown={handleMenuItemMouseDown}
             onMouseUp={handleMenuItemMouseUp}
           >
-            <File size={13} />
-            <span>打开文件… (Ctrl+O)</span>
+            <File size={13} color="#3b82f6" />
+            <span>打开文件 (Ctrl+O)</span>
           </button>
 
           {/* 打开文件夹 */}
@@ -1163,8 +1194,26 @@ export function TabBar() {
             onMouseDown={handleMenuItemMouseDown}
             onMouseUp={handleMenuItemMouseUp}
           >
-            <FolderOpen size={13} />
-            <span>打开文件夹… (Ctrl+Shift+O)</span>
+            <FolderOpen size={13} color="#eab308" />
+            <span>打开文件夹 (Ctrl+Shift+O)</span>
+          </button>
+
+          {/* 收藏夹：打开收藏夹管理弹窗 */}
+          <button
+            type="button"
+            style={getMenuItemStyle(false)}
+            onClick={() => {
+              setNewMenuPos(null);
+              setShowMoreSubMenu(false);
+              useFavoritesStore.getState().openFavoritesModal();
+            }}
+            onMouseEnter={handleMenuItemMouseEnter}
+            onMouseLeave={handleMenuItemMouseLeave}
+            onMouseDown={handleMenuItemMouseDown}
+            onMouseUp={handleMenuItemMouseUp}
+          >
+            <Star size={13} color="#f97316" fill="#f97316" />
+            <span>收藏夹</span>
           </button>
 
           {/* 打开暂存区：紧随打开文件夹，载入设置中固定的暂存目录。 */}

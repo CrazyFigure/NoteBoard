@@ -150,7 +150,7 @@ export function BitableLongTextPopover({
             <textarea
               value={draft}
               autoFocus
-              placeholder="输入内容，回车换行…"
+              placeholder="输入内容，回车换行"
               onChange={(e) => setDraft(e.target.value)}
               style={{
                 width: '100%',

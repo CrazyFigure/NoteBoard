@@ -58,9 +58,9 @@ export function StatusBar() {
 
   if (doc.isDirty) {
     if (doc.savePolicy === 'auto') {
-      saveStatus = '保存中…';
+      saveStatus = '正在保存';
       saveStatusColor = 'var(--accent-strong)';
-      saveStatusTitle = '正在自动保存…';
+      saveStatusTitle = '正在自动保存';
     } else {
       saveStatus = '未保存';
       saveStatusColor = 'var(--accent-strong)';

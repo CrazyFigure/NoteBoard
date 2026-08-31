@@ -1019,7 +1019,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <div>
                   <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>文件与保存设置</h3>
                   <p style={{ fontSize: 12, color: 'var(--editor-text-muted)', margin: 0 }}>
-                    独立配置 Markdown、自由画板与代码文本的自动保存策略，以及工作区文件管理选项。
+                    独立配置 Markdown、自由画板与代码文本的自动保存策略，以及本地文件管理选项。
                   </p>
                 </div>
 
@@ -1073,7 +1073,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </label>
                 </div>
 
-                {/* ── 4.2 文件与工作区管理 ── */}
+                {/* ── 4.2 文件与目录管理 ── */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
                     <Folder size={15} color="var(--accent-strong)" />
@@ -1140,7 +1140,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     style={{ ...inputStyle, width: '100%', maxWidth: 'none', padding: '6px 10px' }}
                   />
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button type="button" className="nb-btn-secondary" onClick={handleChooseStagingDirectory}>选择位置…</button>
+                    <button type="button" className="nb-btn-secondary" onClick={handleChooseStagingDirectory}>选择位置</button>
                     <button type="button" className="nb-btn-secondary" onClick={handleResetStagingDirectory}>恢复默认</button>
                     <button type="button" className="nb-btn-secondary" onClick={handleOpenStagingDirectory}>在资源管理器中打开</button>
                   </div>
@@ -1299,7 +1299,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     }}
                   >
                     <RefreshCw size={15} className={checkingUpdate ? 'spin' : ''} style={checkingUpdate ? { animation: 'spin 1s linear infinite' } : undefined} />
-                    <span>{checkingUpdate ? '正在检查...' : '检测更新'}</span>
+                    <span>{checkingUpdate ? '正在检查' : '检测更新'}</span>
                   </button>
 
                   <button

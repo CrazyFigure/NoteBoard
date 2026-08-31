@@ -321,7 +321,7 @@ export function Explorer() {
               color: 'var(--explorer-text-muted)',
             }}
           >
-            加载中…
+            加载中
           </div>
         )}
         {rootChildren && rootChildren.length > 0 ? (

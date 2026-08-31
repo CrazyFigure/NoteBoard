@@ -96,7 +96,7 @@ export function FilePanel() {
             style={{ ...inputStyle, maxWidth: 360, width: '100%' }}
           />
           <div style={{ display: 'flex', gap: 6 }}>
-            <button type="button" className="nb-btn-secondary" onClick={chooseStagingDirectory}>选择位置…</button>
+            <button type="button" className="nb-btn-secondary" onClick={chooseStagingDirectory}>选择位置</button>
             <button type="button" className="nb-btn-secondary" onClick={resetStagingDirectory}>恢复默认</button>
             <button type="button" className="nb-btn-secondary" onClick={revealStagingDirectory}>打开</button>
           </div>

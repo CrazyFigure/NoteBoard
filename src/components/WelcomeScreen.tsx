@@ -23,12 +23,14 @@ import {
   Sparkles,
   Archive,
   Table2,
+  Star,
 } from 'lucide-react';
 
 interface WelcomeScreenProps {
   onOpenFile?: () => void;
   onOpenFolder?: () => void;
   onOpenStaging?: () => void;
+  onOpenFavorites?: () => void;
   onNewMarkdown?: () => void;
   onNewText?: () => void;
   onNewMindmap?: () => void;
@@ -48,6 +50,7 @@ export function WelcomeScreen({
   onOpenFile,
   onOpenFolder,
   onOpenStaging,
+  onOpenFavorites,
   onNewMarkdown,
   onNewText,
   onNewMindmap,
@@ -108,7 +111,7 @@ export function WelcomeScreen({
     },
   ];
 
-  // 打开与工作区操作列表（3 个操作，整齐排成 1 行 3 列，配置多主题自适应微色调）
+  // 打开与常用操作列表（4 个操作，整齐排成 2x2 网格，配置多主题自适应微色调）
   const openActions = [
     {
       icon: FileSearch,
@@ -128,17 +131,33 @@ export function WelcomeScreen({
     {
       icon: FolderOpen,
       label: '打开文件夹',
-      desc: '载入工作区目录',
+      desc: '载入本地文件夹',
       shortcut: 'Ctrl+Shift+O',
-      color: '#f59e0b',
-      bg: 'rgba(245, 158, 11, 0.05)',
-      border: 'rgba(245, 158, 11, 0.18)',
-      hoverBg: 'rgba(245, 158, 11, 0.10)',
-      hoverBorder: 'rgba(245, 158, 11, 0.38)',
-      iconBg: 'rgba(245, 158, 11, 0.10)',
-      badgeBg: 'rgba(245, 158, 11, 0.08)',
-      badgeBorder: 'rgba(245, 158, 11, 0.22)',
+      color: '#eab308',
+      bg: 'rgba(234, 179, 8, 0.04)',
+      border: 'rgba(234, 179, 8, 0.16)',
+      hoverBg: 'rgba(234, 179, 8, 0.09)',
+      hoverBorder: 'rgba(234, 179, 8, 0.35)',
+      iconBg: 'rgba(234, 179, 8, 0.09)',
+      badgeBg: 'rgba(234, 179, 8, 0.07)',
+      badgeBorder: 'rgba(234, 179, 8, 0.20)',
       onClick: onOpenFolder,
+    },
+    {
+      icon: Star,
+      iconFill: '#f97316',
+      label: '收藏夹',
+      desc: '查看与整理收藏文件',
+      shortcut: '',
+      color: '#f97316',
+      bg: 'rgba(249, 115, 22, 0.05)',
+      border: 'rgba(249, 115, 22, 0.18)',
+      hoverBg: 'rgba(249, 115, 22, 0.10)',
+      hoverBorder: 'rgba(249, 115, 22, 0.38)',
+      iconBg: 'rgba(249, 115, 22, 0.10)',
+      badgeBg: 'rgba(249, 115, 22, 0.08)',
+      badgeBorder: 'rgba(249, 115, 22, 0.22)',
+      onClick: onOpenFavorites,
     },
     {
       icon: Archive,
@@ -482,11 +501,11 @@ export function WelcomeScreen({
         </div>
       )}
 
-      {/* 第四部分：打开与工作区操作区（3 列网格，整齐 1 行 3 列，专属微色调背景） */}
+      {/* 第四部分：打开与常用操作区（2x2 网格，整齐 2 行 2 列，专属微色调背景） */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
           gap: 12,
           width: '100%',
           maxWidth: 840,
@@ -544,7 +563,11 @@ export function WelcomeScreen({
                 flexShrink: 0,
               }}
             >
-              <action.icon size={18} color={action.color} />
+              <action.icon
+                size={18}
+                color={action.color}
+                fill={action.iconFill || 'none'}
+              />
             </div>
             {/* 标题与描述 */}
             <div style={{ flex: 1, minWidth: 0 }}>
