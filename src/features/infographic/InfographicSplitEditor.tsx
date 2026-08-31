@@ -28,6 +28,7 @@ import { INFOGRAPHIC_TEMPLATES } from './infographicTemplates';
 import { InfographicTemplateIcon } from './infographicTemplateIcon';
 import { loadLanguageExtension } from '../editor-code/languages';
 import { ChartExportMenu } from '../export/ChartExportMenu';
+import { Tooltip } from '../../components/Tooltip';
 import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
 
 interface InfographicSplitEditorProps {
@@ -235,16 +236,18 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
 
   // 布局切换按钮统一样式
   const layoutButton = (mode: LayoutMode, icon: React.ReactNode, label: string, title: string) => (
-    <button
-      type="button"
-      onClick={() => setLayoutMode(mode)}
-      title={title}
-      className="nb-ig-layout-btn"
-      data-active={layoutMode === mode ? 'true' : 'false'}
-    >
-      {icon}
-      <span>{label}</span>
-    </button>
+    <Tooltip content={title} side="bottom" sideOffset={4}>
+      <button
+        type="button"
+        onClick={() => setLayoutMode(mode)}
+        aria-label={title}
+        className="nb-ig-layout-btn"
+        data-active={layoutMode === mode ? 'true' : 'false'}
+      >
+        {icon}
+        <span>{label}</span>
+      </button>
+    </Tooltip>
   );
 
   return (
@@ -365,16 +368,18 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
 
           {/* 预设模板填充 */}
           <div ref={templateMenuRef} style={{ position: 'relative' }}>
-            <button
-              type="button"
-              className="nb-ig-icon-btn"
-              onClick={() => setShowTemplateMenu((prev) => !prev)}
-              title="从预设模板填充源码"
-            >
-              <Sparkles size={13} />
-              <span>模板</span>
-              <ChevronDown size={12} />
-            </button>
+            <Tooltip content="从预设模板填充源码" side="bottom" sideOffset={4}>
+              <button
+                type="button"
+                className="nb-ig-icon-btn"
+                onClick={() => setShowTemplateMenu((prev) => !prev)}
+                aria-label="从预设模板填充源码"
+              >
+                <Sparkles size={13} />
+                <span>模板</span>
+                <ChevronDown size={12} />
+              </button>
+            </Tooltip>
 
             {showTemplateMenu && (
               <div
@@ -392,43 +397,44 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
                 }}
               >
                 {INFOGRAPHIC_TEMPLATES.map((tmpl) => (
-                  <button
-                    key={tmpl.id}
-                    type="button"
-                    className="nb-ig-tmpl-item"
-                    onClick={() => applyTemplate(tmpl.code)}
-                    title={tmpl.description}
-                  >
-                    {/* 彩色形象图标容器：与 Markdown 内嵌块模板下拉保持统一视觉 */}
-                    <div
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 5,
-                        background: tmpl.iconBg,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                      }}
+                  <Tooltip key={tmpl.id} content={tmpl.description} side="right" sideOffset={6}>
+                    <button
+                      type="button"
+                      className="nb-ig-tmpl-item"
+                      onClick={() => applyTemplate(tmpl.code)}
+                      aria-label={tmpl.label}
                     >
-                      <InfographicTemplateIcon iconName={tmpl.iconName} color={tmpl.iconColor} size={14} />
-                    </div>
-                    {/* 纯中文模板名称（无多余英文后缀） */}
-                    <span
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                        fontWeight: 600,
-                        fontSize: 12,
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
-                    >
-                      {tmpl.label}
-                    </span>
-                  </button>
+                      {/* 彩色形象图标容器：与 Markdown 内嵌块模板下拉保持统一视觉 */}
+                      <div
+                        style={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: 5,
+                          background: tmpl.iconBg,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <InfographicTemplateIcon iconName={tmpl.iconName} color={tmpl.iconColor} size={14} />
+                      </div>
+                      {/* 纯中文模板名称（无多余英文后缀） */}
+                      <span
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          fontWeight: 600,
+                          fontSize: 12,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {tmpl.label}
+                      </span>
+                    </button>
+                  </Tooltip>
                 ))}
               </div>
             )}
@@ -438,37 +444,43 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {layoutMode !== 'code' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginRight: 8 }}>
-              <button
-                type="button"
-                className="nb-ig-icon-btn"
-                style={{ padding: '2px 6px' }}
-                onClick={() => setZoom((z) => Math.max(0.2, z - 0.15))}
-                title="缩小"
-              >
-                <ZoomOut size={13} />
-              </button>
+              <Tooltip content="缩小" side="bottom" sideOffset={4}>
+                <button
+                  type="button"
+                  className="nb-ig-icon-btn"
+                  style={{ padding: '2px 6px' }}
+                  onClick={() => setZoom((z) => Math.max(0.2, z - 0.15))}
+                  aria-label="缩小"
+                >
+                  <ZoomOut size={13} />
+                </button>
+              </Tooltip>
               <span style={{ fontSize: 11, minWidth: 40, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
-              <button
-                type="button"
-                className="nb-ig-icon-btn"
-                style={{ padding: '2px 6px' }}
-                onClick={() => setZoom((z) => Math.min(4, z + 0.15))}
-                title="放大"
-              >
-                <ZoomIn size={13} />
-              </button>
-              <button
-                type="button"
-                className="nb-ig-icon-btn"
-                style={{ padding: '2px 6px' }}
-                onClick={() => {
-                  setZoom(1);
-                  setPan({ x: 0, y: 0 });
-                }}
-                title="复位视图"
-              >
-                <RotateCcw size={13} />
-              </button>
+              <Tooltip content="放大" side="bottom" sideOffset={4}>
+                <button
+                  type="button"
+                  className="nb-ig-icon-btn"
+                  style={{ padding: '2px 6px' }}
+                  onClick={() => setZoom((z) => Math.min(4, z + 0.15))}
+                  aria-label="放大"
+                >
+                  <ZoomIn size={13} />
+                </button>
+              </Tooltip>
+              <Tooltip content="复位视图" side="bottom" sideOffset={4}>
+                <button
+                  type="button"
+                  className="nb-ig-icon-btn"
+                  style={{ padding: '2px 6px' }}
+                  onClick={() => {
+                    setZoom(1);
+                    setPan({ x: 0, y: 0 });
+                  }}
+                  aria-label="复位视图"
+                >
+                  <RotateCcw size={13} />
+                </button>
+              </Tooltip>
             </div>
           )}
 
@@ -478,7 +490,6 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
             label="复制图片"
             source={exportSource}
             fileName={exportFileName}
-            title="复制为 SVG 矢量图或 PNG 图片"
           />
 
           <ChartExportMenu
@@ -487,7 +498,6 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
             label="导出图片"
             source={exportSource}
             fileName={exportFileName}
-            title="导出为 SVG 矢量图或 PNG 图片"
           />
         </div>
       </div>
@@ -517,32 +527,40 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
 
         {/* 分栏可拖拽分隔条 */}
         {layoutMode === 'split' && (
-          <div
-            onMouseDown={handleResizerMouseDown}
-            onDoubleClick={() => setSplitRatio(0.5)}
-            title="拖拽调节分栏比例，双击居中复位 (50%)"
-            style={{
-              width: 8,
-              height: '100%',
-              cursor: 'col-resize',
-              background: isResizing ? 'var(--editor-accent, #3b82f6)' : 'transparent',
-              position: 'relative',
-              flexShrink: 0,
-              zIndex: 10,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'background 0.15s ease',
-            }}
-            onMouseEnter={(e) => {
-              if (!isResizing) e.currentTarget.style.background = 'var(--toolbar-hover, rgba(59, 130, 246, 0.2))';
-            }}
-            onMouseLeave={(e) => {
-              if (!isResizing) e.currentTarget.style.background = 'transparent';
-            }}
-          >
-            <div style={{ width: 1, height: '100%', background: 'var(--editor-border, #e2e8f0)' }} />
-          </div>
+          <Tooltip content="拖拽调节分栏比例，双击居中复位 (50%)" side="top" sideOffset={6}>
+            <div
+              onMouseDown={handleResizerMouseDown}
+              onDoubleClick={() => setSplitRatio(0.5)}
+              aria-label="拖拽调节分栏比例，双击居中复位 (50%)"
+              style={{
+                width: 8,
+                height: '100%',
+                cursor: 'col-resize',
+                background: isResizing ? 'var(--editor-accent, #3b82f6)' : 'transparent',
+                position: 'relative',
+                flexShrink: 0,
+                zIndex: 10,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'background 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                if (!isResizing) e.currentTarget.style.background = 'var(--toolbar-hover, rgba(59, 130, 246, 0.2))';
+              }}
+              onMouseLeave={(e) => {
+                if (!isResizing) e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <div
+                style={{
+                  width: 1,
+                  height: '100%',
+                  background: 'var(--editor-border, #e2e8f0)',
+                }}
+              />
+            </div>
+          </Tooltip>
         )}
 
         {/* 右侧实时渲染预览区 */}

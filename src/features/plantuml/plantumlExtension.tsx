@@ -11,6 +11,7 @@ import { observe } from '../editor-md/viewportActivation';
 import { schedule } from '../editor-md/viewportWorkScheduler';
 import { ChartExportMenu } from '../export/ChartExportMenu';
 import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
+import { Tooltip } from '../../components/Tooltip';
 
 function PlantUmlComponent({ node, updateAttributes, selected }: NodeViewProps) {
   const [svg, setSvg] = useState<string | null>(null);
@@ -220,46 +221,14 @@ function PlantUmlComponent({ node, updateAttributes, selected }: NodeViewProps) 
             {loading && <span>渲染中</span>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <button
-              type="button"
-              onClick={() => {
-                setEditValue(code);
-                setEditing(true);
-              }}
-              title="编辑图表源码"
-              style={{
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '3px 6px',
-                borderRadius: 4,
-                color: 'var(--editor-text-muted, #64748b)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                fontSize: 11,
-              }}
-            >
-              <Edit2 size={12} />
-              <span>编辑</span>
-            </button>
-            <ChartExportMenu
-              action="copy"
-              variant="ghost"
-              source={exportSource}
-              fileName={exportFileName}
-            />
-            <ChartExportMenu
-              action="download"
-              variant="ghost"
-              source={exportSource}
-              fileName={exportFileName}
-            />
-            {svg && (
+            <Tooltip content="编辑图表源码" side="top" sideOffset={4}>
               <button
                 type="button"
-                onClick={() => setFullscreen(true)}
-                title="全屏放大查看"
+                onClick={() => {
+                  setEditValue(code);
+                  setEditing(true);
+                }}
+                aria-label="编辑图表源码"
                 style={{
                   background: 'transparent',
                   border: 'none',
@@ -273,8 +242,44 @@ function PlantUmlComponent({ node, updateAttributes, selected }: NodeViewProps) 
                   fontSize: 11,
                 }}
               >
-                <Maximize2 size={12} />
+                <Edit2 size={12} />
+                <span>编辑</span>
               </button>
+            </Tooltip>
+            <ChartExportMenu
+              action="copy"
+              variant="ghost"
+              source={exportSource}
+              fileName={exportFileName}
+            />
+            <ChartExportMenu
+              action="download"
+              variant="ghost"
+              source={exportSource}
+              fileName={exportFileName}
+            />
+            {svg && (
+              <Tooltip content="全屏放大查看" side="top" sideOffset={4}>
+                <button
+                  type="button"
+                  onClick={() => setFullscreen(true)}
+                  aria-label="全屏放大查看"
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '3px 6px',
+                    borderRadius: 4,
+                    color: 'var(--editor-text-muted, #64748b)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    fontSize: 11,
+                  }}
+                >
+                  <Maximize2 size={12} />
+                </button>
+              </Tooltip>
             )}
           </div>
         </div>

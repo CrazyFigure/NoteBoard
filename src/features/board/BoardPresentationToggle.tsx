@@ -3,6 +3,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Maximize2, Minimize2 } from 'lucide-react';
+import { Tooltip } from '../../components/Tooltip';
 
 interface BoardPresentationToggleProps {
   /** 当前是否已经进入纯净全屏演示模式 */
@@ -43,7 +44,8 @@ export function BoardPresentationToggle({ enabled, onToggle }: BoardPresentation
 
   const isHighlighted = isHovered || isFocused;
   const isVisible = isHighlighted || inHotZone;
-  const title = enabled ? '退出全屏演示 (Esc)' : '全屏演示画板';
+  const tooltipContent = enabled ? '退出全屏演示' : '全屏演示画板';
+  const tooltipShortcut = enabled ? 'Esc' : undefined;
   const Icon = enabled ? Minimize2 : Maximize2;
 
   return (
@@ -63,10 +65,10 @@ export function BoardPresentationToggle({ enabled, onToggle }: BoardPresentation
         }}
       />
 
-      <button
-        type="button"
-        title={title}
-        aria-label={title}
+      <Tooltip content={tooltipContent} shortcut={tooltipShortcut} side="bottom" sideOffset={6} disabled={!isVisible}>
+        <button
+          type="button"
+          aria-label={tooltipContent}
         aria-pressed={enabled}
         onClick={onToggle}
         onMouseEnter={() => setIsHovered(true)}
@@ -131,6 +133,7 @@ export function BoardPresentationToggle({ enabled, onToggle }: BoardPresentation
       >
         <Icon size={17} strokeWidth={2.1} />
       </button>
-    </>
-  );
+    </Tooltip>
+  </>
+);
 }

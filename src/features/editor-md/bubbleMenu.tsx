@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { handleLinkClick } from './linkHandler';
 import { useWindowStore } from '../../stores/windowStore';
+import { Tooltip } from '../../components/Tooltip';
 
 interface BubbleButtonProps {
   icon: ReactNode;
@@ -54,10 +55,9 @@ function BubbleButton({ icon, onClick, active, title, danger }: BubbleButtonProp
     }
   }
 
-  return (
+  const btn = (
     <button
       type="button"
-      title={title}
       onMouseDown={(e) => {
         e.preventDefault();
         setPressed(true);
@@ -87,10 +87,21 @@ function BubbleButton({ icon, onClick, active, title, danger }: BubbleButtonProp
         transition: 'all var(--transition-fast)',
         userSelect: 'none',
       }}
+      aria-label={title}
     >
       {icon}
     </button>
   );
+
+  if (title) {
+    return (
+      <Tooltip content={title} side="top" sideOffset={6}>
+        {btn}
+      </Tooltip>
+    );
+  }
+
+  return btn;
 }
 
 /** 分组垂直分割线 */
@@ -166,34 +177,39 @@ function HighlightPalette({
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
         {HIGHLIGHT_COLORS.map((item) => (
-          <button
-            key={item.color}
-            type="button"
-            title={item.name}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
-              editor.chain().focus().toggleHighlight({ color: item.color }).run();
-              onClose();
-            }}
-            style={{
-              width: 32,
-              height: 26,
-              background: item.color,
-              border: `1px solid ${item.border}`,
-              borderRadius: 4,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'transform 100ms ease',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'scale(1.1)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'scale(1)';
-            }}
-          />
+          <Tooltip key={item.color} content={item.name} side="top" sideOffset={4}>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                editor.chain().focus().toggleHighlight({ color: item.color }).run();
+                onClose();
+              }}
+              style={{
+                width: 32,
+                height: 26,
+                background: item.color,
+                border: `1px solid ${item.border}`,
+                borderRadius: 4,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'transform 100ms ease',
+              }}
+              aria-label={item.name}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+            >
+              {editor.isActive('highlight', { color: item.color }) && (
+                <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.6)', fontWeight: 'bold' }}>✓</span>
+              )}
+            </button>
+          </Tooltip>
         ))}
       </div>
       <button
@@ -343,32 +359,34 @@ export function EditorBubbleMenu({
 
         {/* 多色高亮按钮与调色盘 */}
         <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-          <button
-            type="button"
-            title="文本多色高亮"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => setShowColorPicker((v) => !v)}
-            style={{
-              height: 32,
-              padding: '0 6px',
-              border: 'none',
-              background: editor.isActive('highlight')
-                ? 'var(--editor-selection-background, rgba(59, 130, 246, 0.15))'
-                : showColorPicker
-                ? 'var(--editor-hover-background, rgba(0,0,0,0.06))'
-                : 'transparent',
-              color: editor.isActive('highlight') ? 'var(--accent-500, #3b82f6)' : 'var(--editor-text)',
-              cursor: 'pointer',
-              borderRadius: 6,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 2,
-              transition: 'all 120ms ease',
-            }}
-          >
-            <Highlighter size={16} />
-            <ChevronDown size={12} style={{ opacity: 0.7 }} />
-          </button>
+          <Tooltip content="文本多色高亮" side="top" sideOffset={6} disabled={showColorPicker}>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setShowColorPicker((v) => !v)}
+              style={{
+                height: 32,
+                padding: '0 6px',
+                border: 'none',
+                background: editor.isActive('highlight')
+                  ? 'var(--editor-selection-background, rgba(59, 130, 246, 0.15))'
+                  : showColorPicker
+                  ? 'var(--editor-hover-background, rgba(0,0,0,0.06))'
+                  : 'transparent',
+                color: editor.isActive('highlight') ? 'var(--accent-500, #3b82f6)' : 'var(--editor-text)',
+                cursor: 'pointer',
+                borderRadius: 6,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 2,
+                transition: 'all 120ms ease',
+              }}
+              aria-label="文本多色高亮"
+            >
+              <Highlighter size={16} />
+              <ChevronDown size={12} style={{ opacity: 0.7 }} />
+            </button>
+          </Tooltip>
 
           {showColorPicker && (
             <HighlightPalette editor={editor} onClose={() => setShowColorPicker(false)} />

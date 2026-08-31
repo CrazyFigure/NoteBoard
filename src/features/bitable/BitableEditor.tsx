@@ -21,6 +21,7 @@ import { BitableKanbanView } from './BitableKanbanView';
 import { BitableRecordPanel } from './BitableRecordPanel';
 import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
 import { usePointerReorder } from './usePointerReorder';
+import { Tooltip } from '../../components/Tooltip';
 import {
   coerceCellValue,
   compareRowsBySortRules,
@@ -913,177 +914,178 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             const viewIndicator = getViewIndicator(viewIdx);
 
             return (
-              <div
-                key={v.id}
-                ref={(el) => {
-                  if (el) viewTabRefs.current.set(v.id, el);
-                  else viewTabRefs.current.delete(v.id);
-                }}
-                onMouseDown={(e) => startViewDrag(e, viewIdx)}
-                title="拖拽可调整视图顺序 · 双击名称重命名"
-                className={`nb-bitable-tab${isActive ? ' is-active' : ''}`}
-                style={{
-                  position: 'relative',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '4px 10px',
-                  borderRadius: 6,
-                  border: isActive ? '1px solid var(--editor-border, #cbd5e1)' : '1px solid transparent',
-                  background: isActive ? 'var(--editor-bg, #ffffff)' : 'transparent',
-                  color: isActive ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-muted, #64748b)',
-                  cursor: viewDrag ? 'grabbing' : 'grab',
-                  fontWeight: isActive ? 600 : 400,
-                  fontSize: 12,
-                  flexShrink: 0,
-                  // 被拖起的 Tab 半透明，落点处绘制插入指示线
-                  opacity: viewDrag?.fromIdx === viewIdx ? 0.45 : 1,
-                  boxShadow:
-                    viewIndicator === 'left'
-                      ? 'inset 3px 0 0 #3b82f6'
-                      : viewIndicator === 'right'
-                        ? 'inset -3px 0 0 #3b82f6'
-                        : undefined,
-                }}
-                onClick={() => {
-                  // 拖拽结束会紧跟一次 click，需避免误切换视图
-                  if (consumeDraggedFlag()) return;
-                  handleSelectView(v.id);
-                }}
-              >
-                {v.type === 'grid' ? <TableIcon size={13} /> : <Kanban size={13} />}
-
-                {isEditingThis ? (
-                  <input
-                    type="text"
-                    data-no-drag
-                    value={viewNameInput}
-                    autoFocus
-                    onChange={(e) => setViewNameInput(e.target.value)}
-                    onBlur={() => handleRenameView(v.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleRenameView(v.id);
-                      if (e.key === 'Escape') setEditingViewId(null);
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      width: 90,
-                      fontSize: 12,
-                      padding: '1px 4px',
-                      border: '1px solid var(--editor-accent, #3b82f6)',
-                      borderRadius: 3,
-                      outline: 'none',
-                    }}
-                  />
-                ) : (
-                  <span
-                    onDoubleClick={(e) => {
-                      e.stopPropagation();
-                      setViewNameInput(v.name);
-                      setEditingViewId(v.id);
-                    }}
-                  >
-                    {v.name}
-                  </span>
-                )}
-
-                {/* 视图下拉更多菜单按钮 */}
-                <button
-                  type="button"
-                  data-no-drag
-                  className="nb-bitable-btn-ghost"
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (isMenuOpen) {
-                      setViewMenu(null);
-                      return;
-                    }
-                    const anchor = getAnchorRect(e.currentTarget);
-                    if (anchor) {
-                      setViewMenu({ viewId: v.id, anchor, trigger: e.currentTarget as HTMLElement });
-                    }
+              <Tooltip key={v.id} content="拖拽可调整视图顺序 · 双击名称重命名" disabled={Boolean(isEditingThis || viewDrag || isMenuOpen)} side="bottom" sideOffset={4}>
+                <div
+                  ref={(el) => {
+                    if (el) viewTabRefs.current.set(v.id, el);
+                    else viewTabRefs.current.delete(v.id);
                   }}
+                  onMouseDown={(e) => startViewDrag(e, viewIdx)}
+                  className={`nb-bitable-tab${isActive ? ' is-active' : ''}`}
                   style={{
-                    padding: 2,
-                    color: 'inherit',
-                    opacity: 0.75,
+                    position: 'relative',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '4px 10px',
+                    borderRadius: 6,
+                    border: isActive ? '1px solid var(--editor-border, #cbd5e1)' : '1px solid transparent',
+                    background: isActive ? 'var(--editor-bg, #ffffff)' : 'transparent',
+                    color: isActive ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-muted, #64748b)',
+                    cursor: viewDrag ? 'grabbing' : 'grab',
+                    fontWeight: isActive ? 600 : 400,
+                    fontSize: 12,
+                    flexShrink: 0,
+                    // 被拖起的 Tab 半透明，落点处绘制插入指示线
+                    opacity: viewDrag?.fromIdx === viewIdx ? 0.45 : 1,
+                    boxShadow:
+                      viewIndicator === 'left'
+                        ? 'inset 3px 0 0 #3b82f6'
+                        : viewIndicator === 'right'
+                          ? 'inset -3px 0 0 #3b82f6'
+                          : undefined,
+                  }}
+                  onClick={() => {
+                    // 拖拽结束会紧跟一次 click，需避免误切换视图
+                    if (consumeDraggedFlag()) return;
+                    handleSelectView(v.id);
                   }}
                 >
-                  <ChevronDown size={11} />
-                </button>
+                  {v.type === 'grid' ? <TableIcon size={13} /> : <Kanban size={13} />}
 
-                {/* 视图配置浮动菜单（Portal 渲染，避免被 Tab 栏的 overflow 裁剪） */}
-                {isMenuOpen && viewMenu && (
-                  <FloatingPanel
-                    anchor={viewMenu.anchor}
-                    trigger={viewMenu.trigger}
-                    width={140}
-                    onClose={() => setViewMenu(null)}
-                  >
-                    <button
-                      type="button"
-                      className="nb-bitable-menu-item"
-                      onClick={() => {
+                  {isEditingThis ? (
+                    <input
+                      type="text"
+                      data-no-drag
+                      value={viewNameInput}
+                      autoFocus
+                      onChange={(e) => setViewNameInput(e.target.value)}
+                      onBlur={() => handleRenameView(v.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleRenameView(v.id);
+                        if (e.key === 'Escape') setEditingViewId(null);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        width: 90,
+                        fontSize: 12,
+                        padding: '1px 4px',
+                        border: '1px solid var(--editor-accent, #3b82f6)',
+                        borderRadius: 3,
+                        outline: 'none',
+                      }}
+                    />
+                  ) : (
+                    <span
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
                         setViewNameInput(v.name);
                         setEditingViewId(v.id);
-                        setViewMenu(null);
                       }}
                     >
-                      <Edit2 size={12} />
-                      <span>重命名</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="nb-bitable-menu-item"
-                      onClick={() => handleDuplicateView(v)}
+                      {v.name}
+                    </span>
+                  )}
+
+                  {/* 视图下拉更多菜单按钮 */}
+                  <button
+                    type="button"
+                    data-no-drag
+                    className="nb-bitable-btn-ghost"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (isMenuOpen) {
+                        setViewMenu(null);
+                        return;
+                      }
+                      const anchor = getAnchorRect(e.currentTarget);
+                      if (anchor) {
+                        setViewMenu({ viewId: v.id, anchor, trigger: e.currentTarget as HTMLElement });
+                      }
+                    }}
+                    style={{
+                      padding: 2,
+                      color: 'inherit',
+                      opacity: 0.75,
+                    }}
+                  >
+                    <ChevronDown size={11} />
+                  </button>
+
+                  {/* 视图配置浮动菜单（Portal 渲染，避免被 Tab 栏的 overflow 裁剪） */}
+                  {isMenuOpen && viewMenu && (
+                    <FloatingPanel
+                      anchor={viewMenu.anchor}
+                      trigger={viewMenu.trigger}
+                      width={140}
+                      onClose={() => setViewMenu(null)}
                     >
-                      <Copy size={12} />
-                      <span>复制视图</span>
-                    </button>
-                    {data.views.length > 1 && (
                       <button
                         type="button"
-                        className="nb-bitable-btn-danger"
-                        style={{ width: '100%', justifyContent: 'flex-start' }}
-                        onClick={() => handleDeleteView(v.id)}
+                        className="nb-bitable-menu-item"
+                        onClick={() => {
+                          setViewNameInput(v.name);
+                          setEditingViewId(v.id);
+                          setViewMenu(null);
+                        }}
                       >
-                        <Trash2 size={12} />
-                        <span>删除视图</span>
+                        <Edit2 size={12} />
+                        <span>重命名</span>
                       </button>
-                    )}
-                  </FloatingPanel>
-                )}
-              </div>
+                      <button
+                        type="button"
+                        className="nb-bitable-menu-item"
+                        onClick={() => handleDuplicateView(v)}
+                      >
+                        <Copy size={12} />
+                        <span>复制视图</span>
+                      </button>
+                      {data.views.length > 1 && (
+                        <button
+                          type="button"
+                          className="nb-bitable-btn-danger"
+                          style={{ width: '100%', justifyContent: 'flex-start' }}
+                          onClick={() => handleDeleteView(v.id)}
+                        >
+                          <Trash2 size={12} />
+                          <span>删除视图</span>
+                        </button>
+                      )}
+                    </FloatingPanel>
+                  )}
+                </div>
+              </Tooltip>
             );
           })}
 
           {/* 新建视图 `+` 按钮与下拉菜单（Portal 渲染，避免被 Tab 栏的 overflow 裁剪） */}
           <div style={{ position: 'relative' }}>
-            <button
-              type="button"
-              className="nb-bitable-btn-secondary"
-              onClick={(e) => {
-                if (addViewMenu) {
-                  setAddViewMenu(null);
-                  return;
-                }
-                const anchor = getAnchorRect(e.currentTarget);
-                if (anchor) {
-                  setAddViewMenu({ anchor, trigger: e.currentTarget as HTMLElement });
-                }
-              }}
-              title="新建视图"
-              style={{
-                width: 26,
-                height: 26,
-                padding: 0,
-                background: addViewMenu ? 'var(--editor-bg, #f1f5f9)' : undefined,
-                color: 'var(--editor-text-muted, #64748b)',
-              }}
-            >
-              <Plus size={13} />
-            </button>
+            <Tooltip content="新建视图" disabled={Boolean(addViewMenu)} side="bottom" sideOffset={4}>
+              <button
+                type="button"
+                className="nb-bitable-btn-secondary"
+                onClick={(e) => {
+                  if (addViewMenu) {
+                    setAddViewMenu(null);
+                    return;
+                  }
+                  const anchor = getAnchorRect(e.currentTarget);
+                  if (anchor) {
+                    setAddViewMenu({ anchor, trigger: e.currentTarget as HTMLElement });
+                  }
+                }}
+                style={{
+                  width: 26,
+                  height: 26,
+                  padding: 0,
+                  background: addViewMenu ? 'var(--editor-bg, #f1f5f9)' : undefined,
+                  color: 'var(--editor-text-muted, #64748b)',
+                }}
+              >
+                <Plus size={13} />
+              </button>
+            </Tooltip>
 
             {addViewMenu && (
               <FloatingPanel
@@ -1156,15 +1158,16 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
           </div>
 
           {/* 导出按钮 */}
-          <button
-            type="button"
-            className="nb-bitable-btn-secondary"
-            onClick={handleExportCsv}
-            title="导出为 CSV 表格"
-          >
-            <FileSpreadsheet size={13} />
-            <span>导出 CSV</span>
-          </button>
+          <Tooltip content="导出为 CSV 表格" side="bottom" sideOffset={4}>
+            <button
+              type="button"
+              className="nb-bitable-btn-secondary"
+              onClick={handleExportCsv}
+            >
+              <FileSpreadsheet size={13} />
+              <span>导出 CSV</span>
+            </button>
+          </Tooltip>
 
           {/* 新增记录按钮及下拉菜单 */}
           <div style={{ position: 'relative' }}>

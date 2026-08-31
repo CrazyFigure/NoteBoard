@@ -21,6 +21,7 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import * as ipc from '../../core/ipc/commands';
 import { extFromPath } from '../../core/docKind';
 import { showToast } from '../../stores/toastStore';
+import { Tooltip } from '../../components/Tooltip';
 
 interface ImageViewerProps {
   filePath: string;
@@ -290,147 +291,159 @@ export function ImageViewer({ filePath, fileName, fileSize }: ImageViewerProps) 
         }}
       >
         {/* 缩小 */}
-        <button
-          type="button"
-          onClick={zoomOut}
-          style={btnStyle}
-          title="缩小 (滚轮下滑)"
-          aria-label="缩小"
-        >
-          <ZoomOut size={15} />
-        </button>
+        <Tooltip content="缩小 (滚轮下滑)" side="bottom" sideOffset={6}>
+          <button
+            type="button"
+            onClick={zoomOut}
+            style={btnStyle}
+            aria-label="缩小"
+          >
+            <ZoomOut size={15} />
+          </button>
+        </Tooltip>
 
         {/* 缩放百分比 / 1:1 快捷切换 */}
-        <button
-          type="button"
-          onClick={resetToActual}
-          style={{
-            ...btnStyle,
-            minWidth: 48,
-            fontSize: 12,
-            fontWeight: 500,
-            fontFamily: 'var(--mono-font-family, monospace)',
-          }}
-          title="点击重置为 100% 实际大小"
-        >
-          {Math.round(scale * 100)}%
-        </button>
+        <Tooltip content="点击重置为 100% 实际大小" side="bottom" sideOffset={6}>
+          <button
+            type="button"
+            onClick={resetToActual}
+            style={{
+              ...btnStyle,
+              minWidth: 48,
+              fontSize: 12,
+              fontWeight: 500,
+              fontFamily: 'var(--mono-font-family, monospace)',
+            }}
+            aria-label="重置为 100%"
+          >
+            {Math.round(scale * 100)}%
+          </button>
+        </Tooltip>
 
         {/* 放大 */}
-        <button
-          type="button"
-          onClick={zoomIn}
-          style={btnStyle}
-          title="放大 (滚轮上滑)"
-          aria-label="放大"
-        >
-          <ZoomIn size={15} />
-        </button>
+        <Tooltip content="放大 (滚轮上滑)" side="bottom" sideOffset={6}>
+          <button
+            type="button"
+            onClick={zoomIn}
+            style={btnStyle}
+            aria-label="放大"
+          >
+            <ZoomIn size={15} />
+          </button>
+        </Tooltip>
 
         {/* 自适应窗口 */}
-        <button
-          type="button"
-          onClick={fitToWindow}
-          style={btnStyle}
-          title="自适应窗口大小"
-          aria-label="自适应窗口"
-        >
-          <Maximize2 size={15} />
-        </button>
+        <Tooltip content="自适应窗口大小" side="bottom" sideOffset={6}>
+          <button
+            type="button"
+            onClick={fitToWindow}
+            style={btnStyle}
+            aria-label="自适应窗口"
+          >
+            <Maximize2 size={15} />
+          </button>
+        </Tooltip>
 
         <div style={{ width: 1, height: 16, background: 'var(--editor-border)', margin: '0 4px' }} />
 
         {/* 逆时针旋转 */}
-        <button
-          type="button"
-          onClick={rotateCcw}
-          style={btnStyle}
-          title="逆时针旋转 90°"
-          aria-label="逆时针旋转 90°"
-        >
-          <RotateCcw size={15} />
-        </button>
+        <Tooltip content="逆时针旋转 90°" side="bottom" sideOffset={6}>
+          <button
+            type="button"
+            onClick={rotateCcw}
+            style={btnStyle}
+            aria-label="逆时针旋转 90°"
+          >
+            <RotateCcw size={15} />
+          </button>
+        </Tooltip>
 
         {/* 顺时针旋转 */}
-        <button
-          type="button"
-          onClick={rotateCw}
-          style={btnStyle}
-          title="顺时针旋转 90°"
-          aria-label="顺时针旋转 90°"
-        >
-          <RotateCw size={15} />
-        </button>
+        <Tooltip content="顺时针旋转 90°" side="bottom" sideOffset={6}>
+          <button
+            type="button"
+            onClick={rotateCw}
+            style={btnStyle}
+            aria-label="顺时针旋转 90°"
+          >
+            <RotateCw size={15} />
+          </button>
+        </Tooltip>
 
         {/* 水平翻转 */}
-        <button
-          type="button"
-          onClick={toggleFlipH}
-          style={{
-            ...btnStyle,
-            background: flipH ? 'var(--toolbar-hover)' : 'transparent',
-          }}
-          title="水平翻转"
-          aria-label="水平翻转"
-        >
-          <FlipHorizontal size={15} />
-        </button>
+        <Tooltip content="水平翻转" side="bottom" sideOffset={6}>
+          <button
+            type="button"
+            onClick={toggleFlipH}
+            style={{
+              ...btnStyle,
+              background: flipH ? 'var(--toolbar-hover)' : 'transparent',
+            }}
+            aria-label="水平翻转"
+          >
+            <FlipHorizontal size={15} />
+          </button>
+        </Tooltip>
 
         <div style={{ width: 1, height: 16, background: 'var(--editor-border)', margin: '0 4px' }} />
 
         {/* 棋盘/纯色背景切换 */}
-        <button
-          type="button"
-          onClick={() => {
-            const nextMode: Record<BgMode, BgMode> = {
-              grid: 'dark',
-              dark: 'light',
-              light: 'black',
-              black: 'grid',
-            };
-            setBgMode(nextMode[bgMode]);
-          }}
-          style={btnStyle}
-          title={`切换查看背景 (当前: ${bgMode})`}
-          aria-label="切换背景"
-        >
-          <Grid size={15} />
-        </button>
+        <Tooltip content={`切换查看背景 (当前: ${bgMode})`} side="bottom" sideOffset={6}>
+          <button
+            type="button"
+            onClick={() => {
+              const nextMode: Record<BgMode, BgMode> = {
+                grid: 'dark',
+                dark: 'light',
+                light: 'black',
+                black: 'grid',
+              };
+              setBgMode(nextMode[bgMode]);
+            }}
+            style={btnStyle}
+            aria-label="切换背景"
+          >
+            <Grid size={15} />
+          </button>
+        </Tooltip>
 
         <div style={{ width: 1, height: 16, background: 'var(--editor-border)', margin: '0 4px' }} />
 
         {/* 复制图片 */}
-        <button
-          type="button"
-          onClick={handleCopyImage}
-          style={btnStyle}
-          title="复制图片到剪贴板"
-          aria-label="复制图片"
-        >
-          {copied ? <Check size={15} color="var(--success-600)" /> : <Copy size={15} />}
-        </button>
+        <Tooltip content="复制图片到剪贴板" side="bottom" sideOffset={6}>
+          <button
+            type="button"
+            onClick={handleCopyImage}
+            style={btnStyle}
+            aria-label="复制图片"
+          >
+            {copied ? <Check size={15} color="var(--success-600)" /> : <Copy size={15} />}
+          </button>
+        </Tooltip>
 
         {/* 在文件管理器中定位 */}
-        <button
-          type="button"
-          onClick={() => ipc.revealInExplorer(filePath)}
-          style={btnStyle}
-          title="在文件管理器中定位"
-          aria-label="在文件管理器中定位"
-        >
-          <FolderOpen size={15} />
-        </button>
+        <Tooltip content="在文件管理器中定位" side="bottom" sideOffset={6}>
+          <button
+            type="button"
+            onClick={() => ipc.revealInExplorer(filePath)}
+            style={btnStyle}
+            aria-label="在文件管理器中定位"
+          >
+            <FolderOpen size={15} />
+          </button>
+        </Tooltip>
 
         {/* 用系统默认应用打开 */}
-        <button
-          type="button"
-          onClick={() => ipc.openWithDefaultApp(filePath)}
-          style={btnStyle}
-          title="用系统默认程序打开"
-          aria-label="用系统默认程序打开"
-        >
-          <ExternalLink size={15} />
-        </button>
+        <Tooltip content="用系统默认程序打开" side="bottom" sideOffset={6}>
+          <button
+            type="button"
+            onClick={() => ipc.openWithDefaultApp(filePath)}
+            style={btnStyle}
+            aria-label="用系统默认程序打开"
+          >
+            <ExternalLink size={15} />
+          </button>
+        </Tooltip>
       </div>
 
       {/* 图片主视口渲染画布 */}
@@ -542,17 +555,18 @@ export function ImageViewer({ filePath, fileName, fileSize }: ImageViewerProps) 
           >
             {ext}
           </span>
-          <span
-            style={{
-              maxWidth: 240,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-            title={name}
-          >
-            {name}
-          </span>
+          <Tooltip content={name} side="top" sideOffset={4}>
+            <span
+              style={{
+                maxWidth: 240,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {name}
+            </span>
+          </Tooltip>
         </div>
 
         {/* 右侧：分辨率、宽高比、大小与缩放率 */}

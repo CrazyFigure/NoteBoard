@@ -7,6 +7,7 @@ import type { SelectOption, SelectOptionColor } from './bitableTypes';
 import { getOptionColor, BITABLE_PALETTE } from './bitableConverter';
 import { FloatingPanel, type AnchorRect } from './BitableFloating';
 import { Check, Edit2, Trash2, ChevronUp, ChevronDown, X } from 'lucide-react';
+import { Tooltip } from '../../components/Tooltip';
 
 /** 彩色标签胶囊 */
 export function OptionBadge({
@@ -72,21 +73,21 @@ function ColorPickerRow({
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '3px 0' }}>
       {BITABLE_PALETTE.map((pal) => (
-        <div
-          key={pal.id}
-          title={pal.label}
-          className="nb-bitable-color-dot"
-          onClick={() => onChange(pal.id as SelectOptionColor)}
-          style={{
-            width: 18,
-            height: 18,
-            borderRadius: '50%',
-            background: pal.text,
-            cursor: 'pointer',
-            boxSizing: 'border-box',
-            border: value === pal.id ? '2px solid var(--editor-text, #0f172a)' : '1px solid rgba(15,23,42,0.15)',
-          }}
-        />
+        <Tooltip key={pal.id} content={pal.label} side="top" sideOffset={4}>
+          <div
+            className="nb-bitable-color-dot"
+            onClick={() => onChange(pal.id as SelectOptionColor)}
+            style={{
+              width: 18,
+              height: 18,
+              borderRadius: '50%',
+              background: pal.text,
+              cursor: 'pointer',
+              boxSizing: 'border-box',
+              border: value === pal.id ? '2px solid var(--editor-text, #0f172a)' : '1px solid rgba(15,23,42,0.15)',
+            }}
+          />
+        </Tooltip>
       ))}
     </div>
   );
@@ -264,78 +265,86 @@ export function SelectOptionsPanel({
                 <div style={{ display: 'flex', alignItems: 'center', gap: 2 }} onClick={(e) => e.stopPropagation()}>
                   {onMoveOption && (
                     <>
-                      <button
-                        type="button"
-                        title="上移"
-                        disabled={idx === 0}
-                        className="nb-bitable-btn-ghost"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onMoveOption(opt.id, 'up');
-                        }}
-                        style={{
-                          opacity: idx === 0 ? 0.25 : 1,
-                          padding: '3px 4px',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <ChevronUp size={13} />
-                      </button>
-                      <button
-                        type="button"
-                        title="下移"
-                        disabled={idx === options.length - 1}
-                        className="nb-bitable-btn-ghost"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onMoveOption(opt.id, 'down');
-                        }}
-                        style={{
-                          opacity: idx === options.length - 1 ? 0.25 : 1,
-                          padding: '3px 4px',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <ChevronDown size={13} />
-                      </button>
+                      <Tooltip content="上移" side="top" sideOffset={4} disabled={idx === 0}>
+                        <button
+                          type="button"
+                          disabled={idx === 0}
+                          aria-label="上移"
+                          className="nb-bitable-btn-ghost"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onMoveOption(opt.id, 'up');
+                          }}
+                          style={{
+                            opacity: idx === 0 ? 0.25 : 1,
+                            padding: '3px 4px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <ChevronUp size={13} />
+                        </button>
+                      </Tooltip>
+                      <Tooltip content="下移" side="top" sideOffset={4} disabled={idx === options.length - 1}>
+                        <button
+                          type="button"
+                          disabled={idx === options.length - 1}
+                          aria-label="下移"
+                          className="nb-bitable-btn-ghost"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onMoveOption(opt.id, 'down');
+                          }}
+                          style={{
+                            opacity: idx === options.length - 1 ? 0.25 : 1,
+                            padding: '3px 4px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <ChevronDown size={13} />
+                        </button>
+                      </Tooltip>
                     </>
                   )}
-                  <button
-                    type="button"
-                    title="修改选项名称与颜色"
-                    className="nb-bitable-btn-ghost"
-                    onClick={(e) => startEdit(e, opt)}
-                    style={{
-                      padding: '3px 4px',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Edit2 size={13} />
-                  </button>
-                  <button
-                    type="button"
-                    title="删除选项"
-                    className="nb-bitable-btn-ghost"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDeleteOption?.(opt.id);
-                    }}
-                    style={{
-                      padding: '3px 4px',
-                      color: '#ef4444',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Trash2 size={13} />
-                  </button>
+                  <Tooltip content="修改选项名称与颜色" side="top" sideOffset={4}>
+                    <button
+                      type="button"
+                      aria-label="修改选项名称与颜色"
+                      className="nb-bitable-btn-ghost"
+                      onClick={(e) => startEdit(e, opt)}
+                      style={{
+                        padding: '3px 4px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Edit2 size={13} />
+                    </button>
+                  </Tooltip>
+                  <Tooltip content="删除选项" side="top" sideOffset={4}>
+                    <button
+                      type="button"
+                      aria-label="删除选项"
+                      className="nb-bitable-btn-ghost"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteOption?.(opt.id);
+                      }}
+                      style={{
+                        padding: '3px 4px',
+                        color: '#ef4444',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </Tooltip>
                 </div>
               )}
             </div>

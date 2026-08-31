@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Link, Link2, Type, X, Trash2, Check } from 'lucide-react';
+import { Tooltip } from '../../components/Tooltip';
 
 export interface LinkModalProps {
   /** 弹窗是否可见 */
@@ -149,33 +150,35 @@ export function LinkModal({
               {isEditing ? '编辑超链接' : '插入超链接'}
             </span>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            title="关闭 (Esc)"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'var(--editor-text-muted, #64748b)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 4,
-              borderRadius: 'var(--radius-sm, 4px)',
-              transition: 'all var(--transition-fast, 150ms ease)',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--toolbar-hover, rgba(0, 0, 0, 0.06))';
-              e.currentTarget.style.color = 'var(--editor-text, #0f172a)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.color = 'var(--editor-text-muted, #64748b)';
-            }}
-          >
-            <X size={15} />
-          </button>
+          <Tooltip content="关闭 (Esc)" side="bottom" sideOffset={4}>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="关闭"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--editor-text-muted, #64748b)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 4,
+                borderRadius: 'var(--radius-sm, 4px)',
+                transition: 'all var(--transition-fast, 150ms ease)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--toolbar-hover, rgba(0, 0, 0, 0.06))';
+                e.currentTarget.style.color = 'var(--editor-text, #0f172a)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = 'var(--editor-text-muted, #64748b)';
+              }}
+            >
+              <X size={16} />
+            </button>
+          </Tooltip>
         </div>
 
         {/* 表单输入区域 */}

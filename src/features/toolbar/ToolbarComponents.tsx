@@ -4,6 +4,7 @@
 
 import React, { useState, useEffect, useRef, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight, Check } from 'lucide-react';
+import { Tooltip } from '../../components/Tooltip';
 
 // ── 基础工具栏按钮 ──
 
@@ -40,9 +41,6 @@ export function ToolbarButton({
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
 
-  // 组装 Tooltip 文本（带快捷键）
-  const tooltipText = [title, shortcut ? `(${shortcut})` : ''].filter(Boolean).join(' ');
-
   // 动态计算背景色与文字颜色
   let background = 'transparent';
   let color = 'var(--editor-text-secondary, var(--editor-text))';
@@ -67,65 +65,66 @@ export function ToolbarButton({
   }
 
   return (
-    <button
-      type="button"
-      title={tooltipText}
-      aria-label={tooltipText || label}
-      disabled={disabled}
-      onMouseDown={(e) => {
-        if (!disabled) {
-          e.preventDefault();
-          setPressed(true);
-        }
-      }}
-      onMouseUp={() => setPressed(false)}
-      onClick={(e) => {
-        if (!disabled && onClick) {
-          onClick(e);
-        }
-      }}
-      onMouseEnter={() => !disabled && setHovered(true)}
-      onMouseLeave={() => {
-        setHovered(false);
-        setPressed(false);
-      }}
-      style={{
-        height: 28,
-        minWidth: label ? undefined : 28,
-        padding: label ? '0 8px' : '0 6px',
-        border,
-        background,
-        color,
-        opacity: disabled ? 0.38 : 1,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        fontSize: 12,
-        fontFamily: 'var(--ui-font-family, inherit)',
-        borderRadius: 5,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 4,
-        transform: !disabled && pressed ? 'scale(0.93)' : !disabled && hovered ? 'scale(1.04)' : 'scale(1)',
-        transition: 'all var(--transition-fast, 150ms ease)',
-        userSelect: 'none',
-        flexShrink: 0,
-        ...style,
-      }}
-    >
-      {icon && <span style={{ display: 'flex', alignItems: 'center', fontSize: 14 }}>{icon}</span>}
-      {label && <span style={{ fontWeight: active ? 600 : 450, whiteSpace: 'nowrap' }}>{label}</span>}
-      {hasDropdown && (
-        <ChevronDown
-          size={12}
-          strokeWidth={2}
-          style={{
-            opacity: 0.7,
-            marginLeft: label ? 2 : -2,
-            transition: 'transform var(--transition-fast)',
-          }}
-        />
-      )}
-    </button>
+    <Tooltip content={title} shortcut={shortcut} disabled={disabled || !title} side="bottom" sideOffset={6}>
+      <button
+        type="button"
+        aria-label={title || label}
+        disabled={disabled}
+        onMouseDown={(e) => {
+          if (!disabled) {
+            e.preventDefault();
+            setPressed(true);
+          }
+        }}
+        onMouseUp={() => setPressed(false)}
+        onClick={(e) => {
+          if (!disabled && onClick) {
+            onClick(e);
+          }
+        }}
+        onMouseEnter={() => !disabled && setHovered(true)}
+        onMouseLeave={() => {
+          setHovered(false);
+          setPressed(false);
+        }}
+        style={{
+          height: 28,
+          minWidth: label ? undefined : 28,
+          padding: label ? '0 8px' : '0 6px',
+          border,
+          background,
+          color,
+          opacity: disabled ? 0.38 : 1,
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          fontSize: 12,
+          fontFamily: 'var(--ui-font-family, inherit)',
+          borderRadius: 5,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 4,
+          transform: !disabled && pressed ? 'scale(0.93)' : !disabled && hovered ? 'scale(1.04)' : 'scale(1)',
+          transition: 'all var(--transition-fast, 150ms ease)',
+          userSelect: 'none',
+          flexShrink: 0,
+          ...style,
+        }}
+      >
+        {icon && <span style={{ display: 'flex', alignItems: 'center', fontSize: 14 }}>{icon}</span>}
+        {label && <span style={{ fontWeight: active ? 600 : 450, whiteSpace: 'nowrap' }}>{label}</span>}
+        {hasDropdown && (
+          <ChevronDown
+            size={12}
+            strokeWidth={2}
+            style={{
+              opacity: 0.7,
+              marginLeft: label ? 2 : -2,
+              transition: 'transform var(--transition-fast)',
+            }}
+          />
+        )}
+      </button>
+    </Tooltip>
   );
 }
 
@@ -465,29 +464,29 @@ export function HighlightColorPicker({
         }}
       >
         {HIGHLIGHT_COLORS.map((item) => (
-          <button
-            key={item.color}
-            type="button"
-            title={item.name}
-            onClick={() => onSelectColor(item.color)}
-            style={{
-              width: 32,
-              height: 24,
-              borderRadius: 4,
-              background: item.color,
-              border: `1px solid ${item.border}`,
-              cursor: 'pointer',
-              transition: 'transform var(--transition-fast), box-shadow var(--transition-fast)',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'scale(1.15)';
-              e.currentTarget.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'scale(1)';
-              e.currentTarget.style.boxShadow = 'none';
-            }}
-          />
+          <Tooltip key={item.color} content={item.name} side="top" sideOffset={4}>
+            <button
+              type="button"
+              onClick={() => onSelectColor(item.color)}
+              style={{
+                width: 32,
+                height: 24,
+                borderRadius: 4,
+                background: item.color,
+                border: `1px solid ${item.border}`,
+                cursor: 'pointer',
+                transition: 'transform var(--transition-fast), box-shadow var(--transition-fast)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.15)';
+                e.currentTarget.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = 'none';
+              }}
+            />
+          </Tooltip>
         ))}
       </div>
       {/* 清除高亮按钮 */}

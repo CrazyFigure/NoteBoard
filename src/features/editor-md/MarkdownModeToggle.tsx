@@ -4,6 +4,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Eye, Code } from 'lucide-react';
+import { Tooltip } from '../../components/Tooltip';
 
 interface MarkdownModeToggleProps {
   viewMode: 'visual' | 'source';
@@ -102,132 +103,134 @@ export function MarkdownModeToggle({ viewMode, onToggle }: MarkdownModeTogglePro
         }}
       >
         {/* 可视化模式按钮 */}
-        <button
-          type="button"
-          onClick={() => {
-            if (viewMode !== 'visual') onToggle('visual');
-          }}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
-          title="可视化模式 (所见即所得)"
-          aria-label="切换至可视化模式"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            padding: '4px 8px',
-            borderRadius: 6,
-            border: 'none',
-            fontSize: 12,
-            fontFamily: 'var(--ui-font-family, inherit)',
-            cursor: 'pointer',
-            transition: 'all var(--transition-fast)',
-            background:
-              viewMode === 'visual'
-                ? 'var(--tab-active-bg, var(--editor-bg))'
-                : 'transparent',
-            color:
-              viewMode === 'visual' ? 'var(--editor-text)' : 'var(--editor-text-muted)',
-            fontWeight: viewMode === 'visual' ? 500 : 400,
-            boxShadow:
-              viewMode === 'visual' ? '0 1px 3px rgba(0, 0, 0, 0.08)' : 'none',
-            outline:
-              viewMode === 'visual'
-                ? '1px solid var(--editor-border-focus)'
-                : 'none',
-          }}
-          onMouseEnter={(e) => {
-            if (viewMode !== 'visual') {
-              e.currentTarget.style.background = 'var(--toolbar-hover)';
-              e.currentTarget.style.color = 'var(--editor-text)';
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (viewMode !== 'visual') {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.color = 'var(--editor-text-muted)';
-            }
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
-          onMouseDown={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-active)';
-            e.currentTarget.style.transform = 'scale(0.94)';
-          }}
-          onMouseUp={(e) => {
-            e.currentTarget.style.background =
-              viewMode === 'visual'
-                ? 'var(--tab-active-bg, var(--editor-bg))'
-                : 'var(--toolbar-hover)';
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
-        >
-          <Eye size={13} style={{ flexShrink: 0 }} />
-          <span>可视化</span>
-        </button>
+        <Tooltip content="可视化模式 (所见即所得)" side="top" sideOffset={6} disabled={!isVisible}>
+          <button
+            type="button"
+            onClick={() => {
+              if (viewMode !== 'visual') onToggle('visual');
+            }}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            aria-label="切换至可视化模式"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '4px 8px',
+              borderRadius: 6,
+              border: 'none',
+              fontSize: 12,
+              fontFamily: 'var(--ui-font-family, inherit)',
+              cursor: 'pointer',
+              transition: 'all var(--transition-fast)',
+              background:
+                viewMode === 'visual'
+                  ? 'var(--tab-active-bg, var(--editor-bg))'
+                  : 'transparent',
+              color:
+                viewMode === 'visual' ? 'var(--editor-text)' : 'var(--editor-text-muted)',
+              fontWeight: viewMode === 'visual' ? 500 : 400,
+              boxShadow:
+                viewMode === 'visual' ? '0 1px 3px rgba(0, 0, 0, 0.08)' : 'none',
+              outline:
+                viewMode === 'visual'
+                  ? '1px solid var(--editor-border-focus)'
+                  : 'none',
+            }}
+            onMouseEnter={(e) => {
+              if (viewMode !== 'visual') {
+                e.currentTarget.style.background = 'var(--toolbar-hover)';
+                e.currentTarget.style.color = 'var(--editor-text)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (viewMode !== 'visual') {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = 'var(--editor-text-muted)';
+              }
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-active)';
+              e.currentTarget.style.transform = 'scale(0.94)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.background =
+                viewMode === 'visual'
+                  ? 'var(--tab-active-bg, var(--editor-bg))'
+                  : 'var(--toolbar-hover)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+          >
+            <Eye size={13} style={{ flexShrink: 0 }} />
+            <span>可视化</span>
+          </button>
+        </Tooltip>
 
         {/* 源码模式按钮 */}
-        <button
-          type="button"
-          onClick={() => {
-            if (viewMode !== 'source') onToggle('source');
-          }}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
-          title="源码模式 (Markdown 原文 · Ctrl+/)"
-          aria-label="切换至源码模式"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            padding: '4px 8px',
-            borderRadius: 6,
-            border: 'none',
-            fontSize: 12,
-            fontFamily: 'var(--ui-font-family, inherit)',
-            cursor: 'pointer',
-            transition: 'all var(--transition-fast)',
-            background:
-              viewMode === 'source'
-                ? 'var(--tab-active-bg, var(--editor-bg))'
-                : 'transparent',
-            color:
-              viewMode === 'source' ? 'var(--editor-text)' : 'var(--editor-text-muted)',
-            fontWeight: viewMode === 'source' ? 500 : 400,
-            boxShadow:
-              viewMode === 'source' ? '0 1px 3px rgba(0, 0, 0, 0.08)' : 'none',
-            outline:
-              viewMode === 'source'
-                ? '1px solid var(--editor-border-focus)'
-                : 'none',
-          }}
-          onMouseEnter={(e) => {
-            if (viewMode !== 'source') {
-              e.currentTarget.style.background = 'var(--toolbar-hover)';
-              e.currentTarget.style.color = 'var(--editor-text)';
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (viewMode !== 'source') {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.color = 'var(--editor-text-muted)';
-            }
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
-          onMouseDown={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-active)';
-            e.currentTarget.style.transform = 'scale(0.94)';
-          }}
-          onMouseUp={(e) => {
-            e.currentTarget.style.background =
-              viewMode === 'source'
-                ? 'var(--tab-active-bg, var(--editor-bg))'
-                : 'var(--toolbar-hover)';
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
-        >
-          <Code size={13} style={{ flexShrink: 0 }} />
-          <span>源码</span>
-        </button>
+        <Tooltip content="源码模式 (Markdown 原文)" shortcut="Ctrl+/" side="top" sideOffset={6} disabled={!isVisible}>
+          <button
+            type="button"
+            onClick={() => {
+              if (viewMode !== 'source') onToggle('source');
+            }}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            aria-label="切换至源码模式"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '4px 8px',
+              borderRadius: 6,
+              border: 'none',
+              fontSize: 12,
+              fontFamily: 'var(--ui-font-family, inherit)',
+              cursor: 'pointer',
+              transition: 'all var(--transition-fast)',
+              background:
+                viewMode === 'source'
+                  ? 'var(--tab-active-bg, var(--editor-bg))'
+                  : 'transparent',
+              color:
+                viewMode === 'source' ? 'var(--editor-text)' : 'var(--editor-text-muted)',
+              fontWeight: viewMode === 'source' ? 500 : 400,
+              boxShadow:
+                viewMode === 'source' ? '0 1px 3px rgba(0, 0, 0, 0.08)' : 'none',
+              outline:
+                viewMode === 'source'
+                  ? '1px solid var(--editor-border-focus)'
+                  : 'none',
+            }}
+            onMouseEnter={(e) => {
+              if (viewMode !== 'source') {
+                e.currentTarget.style.background = 'var(--toolbar-hover)';
+                e.currentTarget.style.color = 'var(--editor-text)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (viewMode !== 'source') {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = 'var(--editor-text-muted)';
+              }
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-active)';
+              e.currentTarget.style.transform = 'scale(0.94)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.background =
+                viewMode === 'source'
+                  ? 'var(--tab-active-bg, var(--editor-bg))'
+                  : 'var(--toolbar-hover)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+          >
+            <Code size={13} style={{ flexShrink: 0 }} />
+            <span>源码</span>
+          </button>
+        </Tooltip>
       </div>
     </>
   );

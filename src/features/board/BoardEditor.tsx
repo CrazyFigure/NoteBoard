@@ -9,6 +9,7 @@ import { parseScene, serializeScene, createEmptyScene, cleanAppState, isVersionS
 import { mapTheme } from './excalidrawTheme';
 import { BoardPresentationToggle } from './BoardPresentationToggle';
 import { FlowchartQuickConnect } from './FlowchartQuickConnect';
+import { Tooltip } from '../../components/Tooltip';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { useWindowStore } from '../../stores/windowStore';
@@ -673,105 +674,109 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
         <span>📊 {elementCount} 图元</span>
 
         {/* 自动吸附对齐开关 */}
-        <button
-          type="button"
-          onClick={handleToggleSnapMode}
-          style={{
-            background: isSnapEnabled ? 'var(--primary-subtle, rgba(14, 127, 214, 0.12))' : 'transparent',
-            border: isSnapEnabled ? '1px solid var(--primary-500, #0e7fd6)' : '1px solid var(--editor-border)',
-            borderRadius: 4,
-            padding: '2px 8px',
-            cursor: 'pointer',
-            color: isSnapEnabled ? 'var(--primary-500, #0e7fd6)' : 'inherit',
-            fontSize: 11,
-            fontWeight: isSnapEnabled ? 500 : 400,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            transition: 'all var(--transition-fast)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = isSnapEnabled
-              ? 'var(--primary-subtle-hover, rgba(14, 127, 214, 0.2))'
-              : 'var(--toolbar-hover)';
-            e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
-            if (!isSnapEnabled) e.currentTarget.style.color = 'var(--editor-text)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = isSnapEnabled
-              ? 'var(--primary-subtle, rgba(14, 127, 214, 0.12))'
-              : 'transparent';
-            e.currentTarget.style.borderColor = isSnapEnabled
-              ? 'var(--primary-500, #0e7fd6)'
-              : 'var(--editor-border)';
-            e.currentTarget.style.color = isSnapEnabled ? 'var(--primary-500, #0e7fd6)' : 'inherit';
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
-          onMouseDown={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-active)';
-            e.currentTarget.style.transform = 'scale(0.92)';
-          }}
-          onMouseUp={(e) => {
-            e.currentTarget.style.background = isSnapEnabled
-              ? 'var(--primary-subtle-hover, rgba(14, 127, 214, 0.2))'
-              : 'var(--toolbar-hover)';
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
-          title="自动吸附对齐 (Alt+S) - 移动图元时自动靠近边缘与中心线对齐，并显示对齐辅助虚线"
-        >
-          <span>🧲 自动吸附</span>
-          <span style={{ fontSize: 10, opacity: 0.85 }}>[{isSnapEnabled ? '开' : '关'}]</span>
-        </button>
+        <Tooltip content="自动吸附对齐 - 移动图元时自动靠近边缘与中心线对齐，并显示对齐辅助虚线" shortcut="Alt+S" side="top" sideOffset={6}>
+          <button
+            type="button"
+            onClick={handleToggleSnapMode}
+            style={{
+              background: isSnapEnabled ? 'var(--primary-subtle, rgba(14, 127, 214, 0.12))' : 'transparent',
+              border: isSnapEnabled ? '1px solid var(--primary-500, #0e7fd6)' : '1px solid var(--editor-border)',
+              borderRadius: 4,
+              padding: '2px 8px',
+              cursor: 'pointer',
+              color: isSnapEnabled ? 'var(--primary-500, #0e7fd6)' : 'inherit',
+              fontSize: 11,
+              fontWeight: isSnapEnabled ? 500 : 400,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = isSnapEnabled
+                ? 'var(--primary-subtle-hover, rgba(14, 127, 214, 0.2))'
+                : 'var(--toolbar-hover)';
+              e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
+              if (!isSnapEnabled) e.currentTarget.style.color = 'var(--editor-text)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = isSnapEnabled
+                ? 'var(--primary-subtle, rgba(14, 127, 214, 0.12))'
+                : 'transparent';
+              e.currentTarget.style.borderColor = isSnapEnabled
+                ? 'var(--primary-500, #0e7fd6)'
+                : 'var(--editor-border)';
+              e.currentTarget.style.color = isSnapEnabled ? 'var(--primary-500, #0e7fd6)' : 'inherit';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-active)';
+              e.currentTarget.style.transform = 'scale(0.92)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.background = isSnapEnabled
+                ? 'var(--primary-subtle-hover, rgba(14, 127, 214, 0.2))'
+                : 'var(--toolbar-hover)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            aria-label="自动吸附对齐"
+          >
+            <span>🧲 自动吸附</span>
+            <span style={{ fontSize: 10, opacity: 0.85 }}>[{isSnapEnabled ? '开' : '关'}]</span>
+          </button>
+        </Tooltip>
 
-        <button
-          type="button"
-          onClick={() => {
-            const currentScene = sceneRef.current;
-            if (apiRef.current && currentScene) {
-              apiRef.current.updateScene({
-                appState: {
-                  ...currentScene.appState,
-                  scrollX: 0,
-                  scrollY: 0,
-                  zoom: 1,
-                } as ExcalidrawScene['appState'],
-              });
-              setZoomLevel(1);
-            }
-          }}
-          style={{
-            background: 'transparent',
-            border: '1px solid var(--editor-border)',
-            borderRadius: 4,
-            padding: '2px 8px',
-            cursor: 'pointer',
-            color: 'inherit',
-            fontSize: 11,
-            transition: 'all var(--transition-fast)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
-            e.currentTarget.style.color = 'var(--editor-text)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.borderColor = 'var(--editor-border)';
-            e.currentTarget.style.color = 'inherit';
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
-          onMouseDown={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-active)';
-            e.currentTarget.style.transform = 'scale(0.92)';
-          }}
-          onMouseUp={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
-          title="重置缩放 (100%)"
-        >
-          {Math.round(zoomLevel * 100)}%
-        </button>
+        <Tooltip content="重置缩放" shortcut="100%" side="top" sideOffset={6}>
+          <button
+            type="button"
+            onClick={() => {
+              const currentScene = sceneRef.current;
+              if (apiRef.current && currentScene) {
+                apiRef.current.updateScene({
+                  appState: {
+                    ...currentScene.appState,
+                    scrollX: 0,
+                    scrollY: 0,
+                    zoom: 1,
+                  } as ExcalidrawScene['appState'],
+                });
+                setZoomLevel(1);
+              }
+            }}
+            style={{
+              background: 'transparent',
+              border: '1px solid var(--editor-border)',
+              borderRadius: 4,
+              padding: '2px 8px',
+              cursor: 'pointer',
+              color: 'inherit',
+              fontSize: 11,
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
+              e.currentTarget.style.color = 'var(--editor-text)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.borderColor = 'var(--editor-border)';
+              e.currentTarget.style.color = 'inherit';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-active)';
+              e.currentTarget.style.transform = 'scale(0.92)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            aria-label="重置缩放"
+          >
+            {Math.round(zoomLevel * 100)}%
+          </button>
+        </Tooltip>
         </div>
       )}
     </div>

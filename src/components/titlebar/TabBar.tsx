@@ -46,6 +46,7 @@ import {
   ChartColumn,
   Star,
 } from 'lucide-react';
+import { Tooltip } from '../Tooltip';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useExplorerStore } from '../../features/explorer/explorerStore';
@@ -191,106 +192,107 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
 
   return (
     <>
-      <div
-        ref={setNodeRef}
-        style={style}
-        {...attributes}
-        {...listeners}
-        onClick={onActivate}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setMenuPos({ x: e.clientX, y: e.clientY });
-        }}
-        onAuxClick={(e) => {
-          if (e.button === 1) {
+      <Tooltip content={tab.path ?? tab.displayName} disabled={Boolean(menuPos)} side="bottom" sideOffset={6}>
+        <div
+          ref={setNodeRef}
+          style={style}
+          {...attributes}
+          {...listeners}
+          onClick={onActivate}
+          onContextMenu={(e) => {
             e.preventDefault();
-            onClose();
-          }
-        }}
-        role="tab"
-        aria-selected={isActive}
-        title={tab.path ?? tab.displayName}
-        onMouseEnter={(e) => {
-          if (!isActive) {
-            e.currentTarget.style.background = 'var(--tab-hover-bg)';
-            e.currentTarget.style.color = 'var(--editor-text)';
-          }
-          const closeBtn = e.currentTarget.querySelector('.tab-close') as HTMLElement;
-          if (closeBtn) {
-            closeBtn.style.display = 'flex';
-          }
-        }}
-        onMouseLeave={(e) => {
-          if (!isActive) {
-            e.currentTarget.style.background = 'var(--tab-inactive-bg)';
-            e.currentTarget.style.color = 'var(--editor-text-secondary)';
+            e.stopPropagation();
+            setMenuPos({ x: e.clientX, y: e.clientY });
+          }}
+          onAuxClick={(e) => {
+            if (e.button === 1) {
+              e.preventDefault();
+              onClose();
+            }
+          }}
+          role="tab"
+          aria-selected={isActive}
+          onMouseEnter={(e) => {
+            if (!isActive) {
+              e.currentTarget.style.background = 'var(--tab-hover-bg)';
+              e.currentTarget.style.color = 'var(--editor-text)';
+            }
             const closeBtn = e.currentTarget.querySelector('.tab-close') as HTMLElement;
             if (closeBtn) {
-              closeBtn.style.display = 'none';
+              closeBtn.style.display = 'flex';
             }
-          }
-        }}
-      >
-        {/* 未保存圆点 */}
-        {tab.isDirty && (
-          <span
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              background: 'var(--tab-dirty-dot)',
-              flexShrink: 0,
-            }}
-          />
-        )}
-
-        {/* 类型图标 */}
-        {getTabIcon(tab)}
-
-        {/* 文件名（自适应占满中间区域，超出以省略号展示） */}
-        <span
-          style={{
-            flex: 1,
-            minWidth: 0,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            fontStyle: tab.isPreview ? 'italic' : 'normal',
-          }}
-        >
-          {tab.displayName}
-        </span>
-
-        {/* 关闭按钮（固定靠在 Tab 最右侧） */}
-        <button
-          className="tab-close"
-          style={closeBtnStyle}
-          onClick={(e) => {
-            e.stopPropagation();
-            onClose();
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.transform = 'scale(1.1)';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.transform = 'scale(1)';
+            if (!isActive) {
+              e.currentTarget.style.background = 'var(--tab-inactive-bg)';
+              e.currentTarget.style.color = 'var(--editor-text-secondary)';
+              const closeBtn = e.currentTarget.querySelector('.tab-close') as HTMLElement;
+              if (closeBtn) {
+                closeBtn.style.display = 'none';
+              }
+            }
           }}
-          onMouseDown={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-active)';
-            e.currentTarget.style.transform = 'scale(0.9)';
-          }}
-          onMouseUp={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.transform = 'scale(1.1)';
-          }}
-          aria-label={`关闭 ${tab.displayName}`}
         >
-          <X size={12} />
-        </button>
-      </div>
+          {/* 未保存圆点 */}
+          {tab.isDirty && (
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: 'var(--tab-dirty-dot)',
+                flexShrink: 0,
+              }}
+            />
+          )}
+
+          {/* 类型图标 */}
+          {getTabIcon(tab)}
+
+          {/* 文件名（自适应占满中间区域，超出以省略号展示） */}
+          <span
+            style={{
+              flex: 1,
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              fontStyle: tab.isPreview ? 'italic' : 'normal',
+            }}
+          >
+            {tab.displayName}
+          </span>
+
+          {/* 关闭按钮（固定靠在 Tab 最右侧） */}
+          <button
+            className="tab-close"
+            style={closeBtnStyle}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.transform = 'scale(1.1)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-active)';
+              e.currentTarget.style.transform = 'scale(0.9)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.transform = 'scale(1.1)';
+            }}
+            aria-label={`关闭 ${tab.displayName}`}
+          >
+            <X size={12} />
+          </button>
+        </div>
+      </Tooltip>
 
       {/* Tab 右键上下文菜单 */}
       {menuPos && (
@@ -714,146 +716,149 @@ export function TabBar() {
         </DndContext>
       </div>
 
-      {/* 保存文档按钮（带保存/另存为下拉菜单） */}
-      <button
-        ref={saveBtnRef}
-        type="button"
-        style={newBtnStyle}
-        onClick={(e) => {
-          e.stopPropagation();
-          setNewMenuPos(null);
-          setShowMoreSubMenu(false);
-          // 单击保存按钮切换弹出/关闭菜单
-          if (saveMenuPos) {
-            setSaveMenuPos(null);
-          } else {
-            const rect = e.currentTarget.getBoundingClientRect();
-            const menuWidth = 160;
-            const x = Math.min(rect.left, window.innerWidth - menuWidth - 8);
-            setSaveMenuPos({ x, y: rect.bottom + 4 });
-          }
-        }}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setNewMenuPos(null);
-          setShowMoreSubMenu(false);
-          // 右键保存按钮弹出菜单
-          setSaveMenuPos({ x: e.clientX, y: e.clientY });
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-hover)';
-          e.currentTarget.style.borderColor = 'var(--tab-border)';
-          e.currentTarget.style.color = 'var(--editor-accent)';
-          e.currentTarget.style.transform = 'scale(1.08)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = 'transparent';
-          e.currentTarget.style.borderColor = 'transparent';
-          e.currentTarget.style.color = 'var(--editor-text-secondary)';
-          e.currentTarget.style.transform = 'scale(1)';
-        }}
-        onMouseDown={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-active)';
-          e.currentTarget.style.transform = 'scale(0.92)';
-        }}
-        onMouseUp={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-hover)';
-          e.currentTarget.style.transform = 'scale(1.08)';
-        }}
-        title="保存与另存为"
-        aria-label="保存与另存为"
-      >
-        <Save size={15} />
-      </button>
+      {/* 保存与另存为快捷按钮 */}
+      <Tooltip content="保存与另存为" side="bottom" sideOffset={6} disabled={Boolean(saveMenuPos)}>
+        <button
+          ref={saveBtnRef}
+          type="button"
+          style={newBtnStyle}
+          onClick={(e) => {
+            e.stopPropagation();
+            setNewMenuPos(null);
+            setShowMoreSubMenu(false);
+            // 单击保存按钮切换弹出/关闭菜单
+            if (saveMenuPos) {
+              setSaveMenuPos(null);
+            } else {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const menuWidth = 160;
+              const x = Math.min(rect.left, window.innerWidth - menuWidth - 8);
+              setSaveMenuPos({ x, y: rect.bottom + 4 });
+            }
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setNewMenuPos(null);
+            setShowMoreSubMenu(false);
+            // 右键保存按钮弹出菜单
+            setSaveMenuPos({ x: e.clientX, y: e.clientY });
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.borderColor = 'var(--tab-border)';
+            e.currentTarget.style.color = 'var(--editor-accent)';
+            e.currentTarget.style.transform = 'scale(1.08)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.borderColor = 'transparent';
+            e.currentTarget.style.color = 'var(--editor-text-secondary)';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          onMouseDown={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-active)';
+            e.currentTarget.style.transform = 'scale(0.92)';
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.transform = 'scale(1.08)';
+          }}
+          aria-label="保存与另存为"
+        >
+          <Save size={15} />
+        </button>
+      </Tooltip>
 
       {/* 回到主界面 Home 按钮 */}
-      <button
-        type="button"
-        style={newBtnStyle}
-        onClick={() => {
-          setSaveMenuPos(null);
-          setNewMenuPos(null);
-          setShowMoreSubMenu(false);
-          // 切换回到主界面 (将 activeKey 置为 null，保留已打开 tabs)
-          useWindowStore.setState({ activeKey: null });
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-hover)';
-          e.currentTarget.style.borderColor = 'var(--tab-border)';
-          e.currentTarget.style.color = 'var(--editor-accent)';
-          e.currentTarget.style.transform = 'scale(1.08)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = 'transparent';
-          e.currentTarget.style.borderColor = 'transparent';
-          e.currentTarget.style.color = 'var(--editor-text-secondary)';
-          e.currentTarget.style.transform = 'scale(1)';
-        }}
-        onMouseDown={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-active)';
-          e.currentTarget.style.transform = 'scale(0.92)';
-        }}
-        onMouseUp={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-hover)';
-          e.currentTarget.style.transform = 'scale(1.08)';
-        }}
-        title="回到主界面"
-        aria-label="回到主界面"
-      >
-        <Home size={15} />
-      </button>
+      <Tooltip content="回到主界面" side="bottom" sideOffset={6}>
+        <button
+          type="button"
+          style={newBtnStyle}
+          onClick={() => {
+            setSaveMenuPos(null);
+            setNewMenuPos(null);
+            setShowMoreSubMenu(false);
+            // 切换回到主界面 (将 activeKey 置为 null，保留已打开 tabs)
+            useWindowStore.setState({ activeKey: null });
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.borderColor = 'var(--tab-border)';
+            e.currentTarget.style.color = 'var(--editor-accent)';
+            e.currentTarget.style.transform = 'scale(1.08)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.borderColor = 'transparent';
+            e.currentTarget.style.color = 'var(--editor-text-secondary)';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          onMouseDown={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-active)';
+            e.currentTarget.style.transform = 'scale(0.92)';
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.transform = 'scale(1.08)';
+          }}
+          aria-label="回到主界面"
+        >
+          <Home size={15} />
+        </button>
+      </Tooltip>
 
       {/* 新建标签按钮（+） */}
-      <button
-        ref={newBtnRef}
-        type="button"
-        style={newBtnStyle}
-        onClick={(e) => {
-          e.stopPropagation();
-          setSaveMenuPos(null);
-          // 单击加号按钮切换弹出/关闭菜单
-          if (newMenuPos) {
-            setNewMenuPos(null);
-          } else {
-            const rect = e.currentTarget.getBoundingClientRect();
-            const menuWidth = 180;
-            const x = Math.min(rect.left, window.innerWidth - menuWidth - 8);
-            setNewMenuPos({ x, y: rect.bottom + 4 });
-          }
-        }}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setSaveMenuPos(null);
-          // 右键加号按钮弹出菜单
-          setNewMenuPos({ x: e.clientX, y: e.clientY });
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-hover)';
-          e.currentTarget.style.borderColor = 'var(--tab-border)';
-          e.currentTarget.style.color = 'var(--editor-text)';
-          e.currentTarget.style.transform = 'scale(1.08)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = 'transparent';
-          e.currentTarget.style.borderColor = 'transparent';
-          e.currentTarget.style.color = 'var(--editor-text-secondary)';
-          e.currentTarget.style.transform = 'scale(1)';
-        }}
-        onMouseDown={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-active)';
-          e.currentTarget.style.transform = 'scale(0.92)';
-        }}
-        onMouseUp={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-hover)';
-          e.currentTarget.style.transform = 'scale(1.08)';
-        }}
-        title="新建或打开"
-        aria-label="新建或打开"
-      >
-        <Plus size={16} />
-      </button>
+      <Tooltip content="新建或打开" side="bottom" sideOffset={6} disabled={Boolean(newMenuPos)}>
+        <button
+          ref={newBtnRef}
+          type="button"
+          style={newBtnStyle}
+          onClick={(e) => {
+            e.stopPropagation();
+            setSaveMenuPos(null);
+            // 单击加号按钮切换弹出/关闭菜单
+            if (newMenuPos) {
+              setNewMenuPos(null);
+            } else {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const menuWidth = 180;
+              const x = Math.min(rect.left, window.innerWidth - menuWidth - 8);
+              setNewMenuPos({ x, y: rect.bottom + 4 });
+            }
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setSaveMenuPos(null);
+            // 右键加号按钮弹出菜单
+            setNewMenuPos({ x: e.clientX, y: e.clientY });
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.borderColor = 'var(--tab-border)';
+            e.currentTarget.style.color = 'var(--editor-text)';
+            e.currentTarget.style.transform = 'scale(1.08)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.borderColor = 'transparent';
+            e.currentTarget.style.color = 'var(--editor-text-secondary)';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          onMouseDown={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-active)';
+            e.currentTarget.style.transform = 'scale(0.92)';
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.transform = 'scale(1.08)';
+          }}
+          aria-label="新建或打开"
+        >
+          <Plus size={16} />
+        </button>
+      </Tooltip>
 
       {/* 新建弹出菜单 */}
       {newMenuPos && (

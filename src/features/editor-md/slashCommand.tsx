@@ -929,7 +929,7 @@ function SlashMenu({
                   itemRefs.current[index] = el;
                 }}
                 type="button"
-                title={item.shortcutHint ? `快捷触发词：${item.shortcutHint}` : undefined}
+                aria-label={item.shortcutHint ? `快捷触发词：${item.shortcutHint}` : undefined}
                 onMouseEnter={() => {
                   setSelectedIndex(index);
                   if (isGroup) {
@@ -1144,7 +1144,7 @@ function SlashMenu({
                     subItemRefs.current[subIdx] = el;
                   }}
                   type="button"
-                  title={subLeaf.shortcutHint ? `快捷触发词：${subLeaf.shortcutHint}` : undefined}
+                  aria-label={subLeaf.shortcutHint ? `快捷触发词：${subLeaf.shortcutHint}` : undefined}
                   onMouseEnter={() => {
                     setIsFocusInSubmenu(true);
                     setSubSelectedIndex(subIdx);

@@ -7,6 +7,7 @@ import { createPortal } from 'react-dom';
 import type { BitableColumn, LongTextConfig } from './bitableTypes';
 import { BitableRichTextEditor, type RichTextMode } from './BitableRichTextEditor';
 import { X, Check } from 'lucide-react';
+import { Tooltip } from '../../components/Tooltip';
 
 interface LongTextPopoverProps {
   /** 所属列，用于取字段名与 Markdown 配置 */
@@ -122,18 +123,20 @@ export function BitableLongTextPopover({
               多行文本{config.markdown ? ' · Markdown 富文本' : ''} · Esc 取消 · Ctrl+Enter 保存
             </div>
           </div>
-          <button
-            type="button"
-            className="nb-bitable-btn-ghost"
-            onClick={() => finish(false)}
-            title="取消编辑"
-            style={{
-              padding: 3,
-              flexShrink: 0,
-            }}
-          >
-            <X size={15} />
-          </button>
+          <Tooltip content="取消编辑" side="bottom" sideOffset={4}>
+            <button
+              type="button"
+              className="nb-bitable-btn-ghost"
+              onClick={() => finish(false)}
+              aria-label="取消编辑"
+              style={{
+                padding: 3,
+                flexShrink: 0,
+              }}
+            >
+              <X size={15} />
+            </button>
+          </Tooltip>
         </div>
 
         {/* 编辑区：Markdown 列走富文本，普通列走纯文本多行输入 */}

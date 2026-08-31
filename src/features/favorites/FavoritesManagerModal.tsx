@@ -23,6 +23,7 @@ import {
   searchFavorites,
   isDescendantOrSelf,
 } from './favoritesUtils';
+import { Tooltip } from '../../components/Tooltip';
 import type {
   FavoriteNode,
   FavoriteFolderItem,
@@ -309,33 +310,35 @@ export function FavoritesManagerModal() {
             <Star size={17} style={{ color: '#f97316', fill: '#f97316' }} />
             <span style={{ fontWeight: 600, fontSize: 15 }}>收藏夹</span>
           </div>
-          <button
-            type="button"
-            onClick={closeFavoritesModal}
-            title="关闭 (Esc)"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'var(--editor-text-muted, #64748b)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 4,
-              borderRadius: 'var(--radius-sm, 4px)',
-              transition: 'all var(--transition-fast)',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--toolbar-hover, rgba(0, 0, 0, 0.06))';
-              e.currentTarget.style.color = 'var(--editor-text, #0f172a)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.color = 'var(--editor-text-muted, #64748b)';
-            }}
-          >
-            <X size={16} />
-          </button>
+          <Tooltip content="关闭 (Esc)" side="bottom" sideOffset={4}>
+            <button
+              type="button"
+              onClick={closeFavoritesModal}
+              aria-label="关闭"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--editor-text-muted, #64748b)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 4,
+                borderRadius: 'var(--radius-sm, 4px)',
+                transition: 'all var(--transition-fast)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--toolbar-hover, rgba(0, 0, 0, 0.06))';
+                e.currentTarget.style.color = 'var(--editor-text, #0f172a)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = 'var(--editor-text-muted, #64748b)';
+              }}
+            >
+              <X size={16} />
+            </button>
+          </Tooltip>
         </div>
 
         {/* 主体两栏布局 */}
@@ -1189,26 +1192,30 @@ function FavoriteFolderRow({
 
       {!isEditing && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={(e) => e.stopPropagation()}>
-          <button
-            type="button"
-            title="重命名"
-            onClick={onStartRename}
-            style={iconBtnStyle}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--toolbar-hover)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-          >
-            <Edit2 size={13} />
-          </button>
-          <button
-            type="button"
-            title="删除文件夹"
-            onClick={onRemove}
-            style={{ ...iconBtnStyle, color: 'var(--error-500)' }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--error-surface, rgba(239, 68, 68, 0.1))')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-          >
-            <X size={14} />
-          </button>
+          <Tooltip content="重命名" side="top" sideOffset={4}>
+            <button
+              type="button"
+              aria-label="重命名"
+              onClick={onStartRename}
+              style={iconBtnStyle}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--toolbar-hover)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <Edit2 size={13} />
+            </button>
+          </Tooltip>
+          <Tooltip content="删除文件夹" side="top" sideOffset={4}>
+            <button
+              type="button"
+              aria-label="删除文件夹"
+              onClick={onRemove}
+              style={{ ...iconBtnStyle, color: 'var(--error-500)' }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--error-surface, rgba(239, 68, 68, 0.1))')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <X size={14} />
+            </button>
+          </Tooltip>
         </div>
       )}
     </div>
@@ -1305,23 +1312,24 @@ function FavoriteFileRow({
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  onStartRename();
-                }}
-                title={item.name}
-                style={{
-                  fontWeight: 500,
-                  fontSize: 13,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  color: exists ? 'var(--editor-text)' : 'var(--editor-text-muted)',
-                }}
-              >
-                {item.name}
-              </span>
+              <Tooltip content={item.name} side="top" sideOffset={4}>
+                <span
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    onStartRename();
+                  }}
+                  style={{
+                    fontWeight: 500,
+                    fontSize: 13,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    color: exists ? 'var(--editor-text)' : 'var(--editor-text-muted)',
+                  }}
+                >
+                  {item.name}
+                </span>
+              </Tooltip>
 
               {/* 失效文件警示标签 */}
               {!exists && (
@@ -1345,18 +1353,19 @@ function FavoriteFileRow({
             </div>
 
             {/* 文件路径 */}
-            <span
-              style={{
-                fontSize: 11,
-                color: 'var(--editor-text-muted, #64748b)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-              title={item.path}
-            >
-              {item.path}
-            </span>
+            <Tooltip content={item.path} side="bottom" sideOffset={4}>
+              <span
+                style={{
+                  fontSize: 11,
+                  color: 'var(--editor-text-muted, #64748b)',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {item.path}
+              </span>
+            </Tooltip>
           </div>
         )}
       </div>
@@ -1364,39 +1373,45 @@ function FavoriteFileRow({
       {!isEditing && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={(e) => e.stopPropagation()}>
           {exists && (
+            <Tooltip content="在文件管理器中定位" side="top" sideOffset={4}>
+              <button
+                type="button"
+                aria-label="在文件管理器中定位"
+                onClick={() => ipc.revealInExplorer(item.path)}
+                style={iconBtnStyle}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--toolbar-hover)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <FolderOpen size={13} />
+              </button>
+            </Tooltip>
+          )}
+
+          <Tooltip content="编辑" side="top" sideOffset={4}>
             <button
               type="button"
-              title="在文件管理器中定位"
-              onClick={() => ipc.revealInExplorer(item.path)}
+              aria-label="编辑"
+              onClick={onEdit}
               style={iconBtnStyle}
               onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--toolbar-hover)')}
               onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             >
-              <FolderOpen size={13} />
+              <Edit2 size={13} />
             </button>
-          )}
+          </Tooltip>
 
-          <button
-            type="button"
-            title="编辑"
-            onClick={onEdit}
-            style={iconBtnStyle}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--toolbar-hover)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-          >
-            <Edit2 size={13} />
-          </button>
-
-          <button
-            type="button"
-            title="移除收藏"
-            onClick={onRemove}
-            style={{ ...iconBtnStyle, color: 'var(--error-500)' }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--error-surface, rgba(239, 68, 68, 0.1))')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-          >
-            <X size={14} />
-          </button>
+          <Tooltip content="移除收藏" side="top" sideOffset={4}>
+            <button
+              type="button"
+              aria-label="移除收藏"
+              onClick={onRemove}
+              style={{ ...iconBtnStyle, color: 'var(--error-500)' }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--error-surface, rgba(239, 68, 68, 0.1))')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <X size={14} />
+            </button>
+          </Tooltip>
         </div>
       )}
     </div>

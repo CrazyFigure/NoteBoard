@@ -12,6 +12,7 @@ import {
   AlertCircle,
   Sparkles,
 } from 'lucide-react';
+import { Tooltip } from './Tooltip';
 import type { UpdateCheckResult, UpdateDownloadProgress } from '../core/ipc/types';
 import * as ipc from '../core/ipc/commands';
 
@@ -180,53 +181,55 @@ export function UpdateModal({
                 : '软件更新'}
             </span>
           </div>
-          <button
-            type="button"
-            disabled={downloading}
-            onClick={onClose}
-            title="关闭 (Esc)"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              cursor: downloading ? 'not-allowed' : 'pointer',
-              color: 'var(--editor-text-muted)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 4,
-              borderRadius: 'var(--radius-sm)',
-              opacity: downloading ? 0.5 : 1,
-              transition: 'all var(--transition-fast)',
-            }}
-            onMouseEnter={(e) => {
-              if (!downloading) {
-                e.currentTarget.style.background = 'var(--toolbar-hover)';
-                e.currentTarget.style.color = 'var(--editor-text)';
-                e.currentTarget.style.transform = 'scale(1.08)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!downloading) {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = 'var(--editor-text-muted)';
-                e.currentTarget.style.transform = 'scale(1)';
-              }
-            }}
-            onMouseDown={(e) => {
-              if (!downloading) {
-                e.currentTarget.style.background = 'var(--toolbar-active)';
-                e.currentTarget.style.transform = 'scale(0.92)';
-              }
-            }}
-            onMouseUp={(e) => {
-              if (!downloading) {
-                e.currentTarget.style.background = 'var(--toolbar-hover)';
-                e.currentTarget.style.transform = 'scale(1.08)';
-              }
-            }}
-          >
-            <X size={16} />
-          </button>
+          <Tooltip content="关闭" shortcut="Esc" side="bottom" sideOffset={4}>
+            <button
+              type="button"
+              disabled={downloading}
+              onClick={onClose}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: downloading ? 'not-allowed' : 'pointer',
+                color: 'var(--editor-text-muted)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 4,
+                borderRadius: 'var(--radius-sm)',
+                opacity: downloading ? 0.5 : 1,
+                transition: 'all var(--transition-fast)',
+              }}
+              onMouseEnter={(e) => {
+                if (!downloading) {
+                  e.currentTarget.style.background = 'var(--toolbar-hover)';
+                  e.currentTarget.style.color = 'var(--editor-text)';
+                  e.currentTarget.style.transform = 'scale(1.08)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!downloading) {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = 'var(--editor-text-muted)';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }
+              }}
+              onMouseDown={(e) => {
+                if (!downloading) {
+                  e.currentTarget.style.background = 'var(--toolbar-active)';
+                  e.currentTarget.style.transform = 'scale(0.92)';
+                }
+              }}
+              onMouseUp={(e) => {
+                if (!downloading) {
+                  e.currentTarget.style.background = 'var(--toolbar-hover)';
+                  e.currentTarget.style.transform = 'scale(1.08)';
+                }
+              }}
+              aria-label="关闭更新弹窗"
+            >
+              <X size={16} />
+            </button>
+          </Tooltip>
         </div>
 
         {/* 主体内容 */}

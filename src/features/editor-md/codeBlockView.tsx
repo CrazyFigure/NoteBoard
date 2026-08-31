@@ -7,6 +7,7 @@ import { NodeViewWrapper, NodeViewContent, ReactNodeViewRenderer, type NodeViewP
 import CodeBlock from '@tiptap/extension-code-block';
 import { Copy, Check, ChevronDown, Search, X } from 'lucide-react';
 import { normalizeLanguage } from './lowlight';
+import { Tooltip } from '../../components/Tooltip';
 
 /** 语言配置结构定义 */
 interface LanguageItem {
@@ -332,44 +333,46 @@ function CodeBlockComponent({ node, updateAttributes }: NodeViewProps) {
         </div>
 
         {/* 复制按钮 */}
-        <button
-          type="button"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            color: copied ? 'var(--success-600)' : 'var(--editor-text-muted)',
-            fontSize: 12,
-            padding: '2px 6px',
-            borderRadius: 'var(--radius-sm)',
-            transition: 'all var(--transition-fast)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.color = 'var(--editor-text)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = copied ? 'var(--success-600)' : 'var(--editor-text-muted)';
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
-          onMouseDown={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-active)';
-            e.currentTarget.style.transform = 'scale(0.94)';
-          }}
-          onMouseUp={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
-          onClick={handleCopy}
-          title="复制代码内容"
-        >
-          {copied ? <Check size={13} /> : <Copy size={13} />}
-          <span>{copied ? '已复制' : '复制'}</span>
-        </button>
+        <Tooltip content="复制代码内容" side="top" sideOffset={4}>
+          <button
+            type="button"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              color: copied ? 'var(--success-600)' : 'var(--editor-text-muted)',
+              fontSize: 12,
+              padding: '2px 6px',
+              borderRadius: 'var(--radius-sm)',
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.color = 'var(--editor-text)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = copied ? 'var(--success-600)' : 'var(--editor-text-muted)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-active)';
+              e.currentTarget.style.transform = 'scale(0.94)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            onClick={handleCopy}
+            aria-label="复制代码内容"
+          >
+            {copied ? <Check size={13} /> : <Copy size={13} />}
+            <span>{copied ? '已复制' : '复制'}</span>
+          </button>
+        </Tooltip>
       </div>
 
       {/* 代码内容区域（TipTap 可直接输入） */}
@@ -407,4 +410,3 @@ export const CodeBlockView = CodeBlock.extend({
     return ReactNodeViewRenderer(CodeBlockComponent);
   },
 });
-

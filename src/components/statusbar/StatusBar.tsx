@@ -7,6 +7,7 @@ import { useDocumentStore } from '../../stores/documentStore';
 import { saveDocument } from '../../features/editor-code/orchestration/saveDocument';
 import { emit } from '../../core/emitter';
 import { Eye, Code } from 'lucide-react';
+import { Tooltip } from '../Tooltip';
 
 export function StatusBar() {
   const activeKey = useWindowStore((s) => s.activeKey);
@@ -130,48 +131,54 @@ export function StatusBar() {
 
       {/* 类型 / Markdown 模式切换 */}
       {doc.kind === 'markdown' ? (
-        <div
-          style={{
-            ...sectionStyle,
-            borderRadius: 3,
-            transition: 'all var(--transition-fast)',
-          }}
-          title={`当前：Markdown (${activeTab?.viewMode === 'source' ? '源码模式' : '可视化模式'}) · 点击切换 (Ctrl+/)`}
-          onClick={() => {
-            if (activeKey) {
-              emit('toggle-md-view-mode', { key: activeKey });
-            }
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.color = 'var(--editor-text)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = 'var(--statusbar-text)';
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
-          onMouseDown={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-active)';
-            e.currentTarget.style.transform = 'scale(0.96)';
-          }}
-          onMouseUp={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
+        <Tooltip
+          content={`当前：Markdown (${activeTab?.viewMode === 'source' ? '源码模式' : '可视化模式'}) · 点击切换`}
+          shortcut="Ctrl+/"
+          side="top"
+          sideOffset={6}
         >
-          {activeTab?.viewMode === 'source' ? (
-            <>
-              <Code size={13} style={{ flexShrink: 0 }} />
-              <span>Markdown (源码)</span>
-            </>
-          ) : (
-            <>
-              <Eye size={13} style={{ flexShrink: 0 }} />
-              <span>Markdown (可视化)</span>
-            </>
-          )}
-        </div>
+          <div
+            style={{
+              ...sectionStyle,
+              borderRadius: 3,
+              transition: 'all var(--transition-fast)',
+            }}
+            onClick={() => {
+              if (activeKey) {
+                emit('toggle-md-view-mode', { key: activeKey });
+              }
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.color = 'var(--editor-text)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = 'var(--statusbar-text)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-active)';
+              e.currentTarget.style.transform = 'scale(0.96)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+          >
+            {activeTab?.viewMode === 'source' ? (
+              <>
+                <Code size={13} style={{ flexShrink: 0 }} />
+                <span>Markdown (源码)</span>
+              </>
+            ) : (
+              <>
+                <Eye size={13} style={{ flexShrink: 0 }} />
+                <span>Markdown (可视化)</span>
+              </>
+            )}
+          </div>
+        </Tooltip>
       ) : (
         <div style={sectionStyle}>
           <span>{typeLabel}</span>
@@ -180,17 +187,18 @@ export function StatusBar() {
       <div style={dividerStyle} />
 
       {/* 保存状态 */}
-      <div
-        style={{ ...sectionStyle, color: saveStatusColor }}
-        title={saveStatusTitle}
-        onClick={() => {
-          if (doc.isDirty && activeKey) {
-            saveDocument(activeKey);
-          }
-        }}
-      >
-        <span>{saveStatus}</span>
-      </div>
+      <Tooltip content={saveStatusTitle} side="top" sideOffset={6}>
+        <div
+          style={{ ...sectionStyle, color: saveStatusColor }}
+          onClick={() => {
+            if (doc.isDirty && activeKey) {
+              saveDocument(activeKey);
+            }
+          }}
+        >
+          <span>{saveStatus}</span>
+        </div>
+      </Tooltip>
 
       {/* 右侧空白 */}
       <div style={{ flex: 1 }} />

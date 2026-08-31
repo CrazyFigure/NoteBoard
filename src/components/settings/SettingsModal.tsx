@@ -14,6 +14,7 @@ import { APP_VERSION } from '../../core/version';
 import { open } from '@tauri-apps/plugin-dialog';
 import { showToast } from '../../stores/toastStore';
 import { FontPackSettingsCard } from './FontPackSettingsCard';
+import { Tooltip } from '../Tooltip';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -138,43 +139,45 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             <img src="/logo.ico" alt="NoteBoard" width={18} height={18} />
             <span style={{ fontWeight: 600, fontSize: 14 }}>NoteBoard 设置</span>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            title="关闭设置 (Esc)"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'var(--editor-text-muted)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 4,
-              borderRadius: 'var(--radius-sm)',
-              transition: 'all var(--transition-fast)',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--toolbar-hover)';
-              e.currentTarget.style.color = 'var(--editor-text)';
-              e.currentTarget.style.transform = 'scale(1.08)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.color = 'var(--editor-text-muted)';
-              e.currentTarget.style.transform = 'scale(1)';
-            }}
-            onMouseDown={(e) => {
-              e.currentTarget.style.background = 'var(--toolbar-active)';
-              e.currentTarget.style.transform = 'scale(0.92)';
-            }}
-            onMouseUp={(e) => {
-              e.currentTarget.style.background = 'var(--toolbar-hover)';
-              e.currentTarget.style.transform = 'scale(1.08)';
-            }}
-          >
-            <X size={16} />
-          </button>
+          <Tooltip content="关闭设置" shortcut="Esc" side="bottom" sideOffset={4}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--editor-text-muted)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 4,
+                borderRadius: 'var(--radius-sm)',
+                transition: 'all var(--transition-fast)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--toolbar-hover)';
+                e.currentTarget.style.color = 'var(--editor-text)';
+                e.currentTarget.style.transform = 'scale(1.08)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = 'var(--editor-text-muted)';
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+              onMouseDown={(e) => {
+                e.currentTarget.style.background = 'var(--toolbar-active)';
+                e.currentTarget.style.transform = 'scale(0.92)';
+              }}
+              onMouseUp={(e) => {
+                e.currentTarget.style.background = 'var(--toolbar-hover)';
+                e.currentTarget.style.transform = 'scale(1.08)';
+              }}
+              aria-label="关闭设置"
+            >
+              <X size={16} />
+            </button>
+          </Tooltip>
         </div>
 
         {/* 主体两栏内容 */}
@@ -1132,13 +1135,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>
                     新建文件和有修改的文件会另存为“时间-序号-文件名”。编辑期间持续覆盖同一副本，正常保存后自动清理；暂存关闭或异常退出时保留。
                   </div>
-                  <input
-                    type="text"
-                    readOnly
-                    value={settings.file.stagingDirectory ?? ''}
-                    title={settings.file.stagingDirectory ?? ''}
-                    style={{ ...inputStyle, width: '100%', maxWidth: 'none', padding: '6px 10px' }}
-                  />
+                  <Tooltip content={settings.file.stagingDirectory ?? ''} disabled={!settings.file.stagingDirectory} side="top" sideOffset={4}>
+                    <input
+                      type="text"
+                      readOnly
+                      value={settings.file.stagingDirectory ?? ''}
+                      style={{ ...inputStyle, width: '100%', maxWidth: 'none', padding: '6px 10px' }}
+                    />
+                  </Tooltip>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button type="button" className="nb-btn-secondary" onClick={handleChooseStagingDirectory}>选择位置</button>
                     <button type="button" className="nb-btn-secondary" onClick={handleResetStagingDirectory}>恢复默认</button>
@@ -1461,11 +1465,17 @@ function ThemeCard({
       </div>
       <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>{desc}</span>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
-        <div style={{ width: 22, height: 22, borderRadius: '50%', background: bg, border: '1px solid var(--editor-border)' }} title="背景色" />
-        <div style={{ width: 22, height: 22, borderRadius: '50%', background: accent }} title="强调色" />
-        <div style={{ width: 22, height: 22, borderRadius: '50%', background: codeBg, border: '1px solid var(--editor-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: codeColor, fontSize: 9, fontWeight: 'bold' }} title="代码块色">
-          &lt;&gt;
-        </div>
+        <Tooltip content="背景色" side="top" sideOffset={4}>
+          <div style={{ width: 22, height: 22, borderRadius: '50%', background: bg, border: '1px solid var(--editor-border)', cursor: 'default' }} />
+        </Tooltip>
+        <Tooltip content="强调色" side="top" sideOffset={4}>
+          <div style={{ width: 22, height: 22, borderRadius: '50%', background: accent, border: '1px solid transparent', cursor: 'default' }} />
+        </Tooltip>
+        <Tooltip content="代码块色" side="top" sideOffset={4}>
+          <div style={{ width: 22, height: 22, borderRadius: '50%', background: codeBg, border: '1px solid var(--editor-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: codeColor, fontSize: 9, fontWeight: 'bold', cursor: 'default' }}>
+            &lt;&gt;
+          </div>
+        </Tooltip>
       </div>
     </div>
   );

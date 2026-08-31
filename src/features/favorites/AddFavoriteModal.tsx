@@ -6,6 +6,7 @@ import { Star, Folder, X, Trash2, Check, FolderPlus } from 'lucide-react';
 import { useFavoritesStore } from './favoritesStore';
 import { getAllFolders, findFavoriteByPath, findParentFolder } from './favoritesUtils';
 import { showToast } from '../../stores/toastStore';
+import { Tooltip } from '../../components/Tooltip';
 
 export function AddFavoriteModal() {
   const {
@@ -180,33 +181,35 @@ export function AddFavoriteModal() {
               {isFavorited ? '编辑收藏' : '添加到收藏夹'}
             </span>
           </div>
-          <button
-            type="button"
-            onClick={closeAddModal}
-            title="关闭 (Esc)"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'var(--editor-text-muted, #64748b)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 4,
-              borderRadius: 'var(--radius-sm, 4px)',
-              transition: 'all var(--transition-fast, 150ms ease)',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--toolbar-hover, rgba(0, 0, 0, 0.06))';
-              e.currentTarget.style.color = 'var(--editor-text, #0f172a)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.color = 'var(--editor-text-muted, #64748b)';
-            }}
-          >
-            <X size={15} />
-          </button>
+          <Tooltip content="关闭 (Esc)" side="bottom" sideOffset={4}>
+            <button
+              type="button"
+              onClick={closeAddModal}
+              aria-label="关闭"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--editor-text-muted, #64748b)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 4,
+                borderRadius: 'var(--radius-sm, 4px)',
+                transition: 'all var(--transition-fast, 150ms ease)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--toolbar-hover, rgba(0, 0, 0, 0.06))';
+                e.currentTarget.style.color = 'var(--editor-text, #0f172a)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = 'var(--editor-text-muted, #64748b)';
+              }}
+            >
+              <X size={15} />
+            </button>
+          </Tooltip>
         </div>
 
         {/* 表单输入区域 */}
@@ -263,23 +266,24 @@ export function AddFavoriteModal() {
             >
               路径
             </label>
-            <div
-              style={{
-                padding: '6px 10px',
-                borderRadius: 'var(--radius-md, 6px)',
-                border: '1px solid var(--editor-border, #cbd5e1)',
-                background: 'var(--editor-bg, #f8fafc)',
-                color: 'var(--editor-text-muted, #64748b)',
-                fontSize: 12,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                userSelect: 'text',
-              }}
-              title={targetPath}
-            >
-              {targetPath || '未保存文件'}
-            </div>
+            <Tooltip content={targetPath || '未保存文件'} side="top" sideOffset={4}>
+              <div
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: 'var(--radius-md, 6px)',
+                  border: '1px solid var(--editor-border, #cbd5e1)',
+                  background: 'var(--editor-bg, #f8fafc)',
+                  color: 'var(--editor-text-muted, #64748b)',
+                  fontSize: 12,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  userSelect: 'text',
+                }}
+              >
+                {targetPath || '未保存文件'}
+              </div>
+            </Tooltip>
           </div>
 
           {/* 文件夹选择 */}

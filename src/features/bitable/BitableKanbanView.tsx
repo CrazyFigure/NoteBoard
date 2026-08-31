@@ -12,6 +12,7 @@ import { OptionBadge } from './BitableOptions';
 import { BITABLE_PALETTE } from './bitableConverter';
 import { BitableMarkdown } from './BitableMarkdown';
 import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
+import { Tooltip } from '../../components/Tooltip';
 import {
   formatDateTimeValue,
   previewLongText,
@@ -307,7 +308,6 @@ export function BitableKanbanView({
             {/* 泳道头部：整块作为拖拽把手，按下横向拖动即可换分组顺序 */}
             <div
               onMouseDown={(e) => startLaneDrag(e, laneIdx)}
-              title={laneDragEnabled ? '拖拽分组头部可换分组顺序' : undefined}
               style={{
                 padding: '10px 14px',
                 borderBottom: '1px solid var(--editor-border, #f1f5f9)',
@@ -326,45 +326,49 @@ export function BitableKanbanView({
                 </span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <button
-                  type="button"
-                  data-no-drag
-                  className="nb-bitable-btn-ghost"
-                  onClick={() => {
-                    if (groupColumn) onAddRowWithStatus(groupColumn.id, lane.id);
-                  }}
-                  title="在当前分组下添加卡片"
-                  style={{
-                    padding: 3,
-                    borderRadius: 4,
-                  }}
-                >
-                  <Plus size={14} />
-                </button>
-
-                {isSelectGroup && onManageColumnOption && (
+                <Tooltip content="在当前分组下添加卡片" side="top" sideOffset={4}>
                   <button
                     type="button"
                     data-no-drag
                     className="nb-bitable-btn-ghost"
-                    onClick={(e) => {
-                      const anchor = getAnchorRect(e.currentTarget);
-                      if (!anchor) return;
-                      setPendingDeleteId(null);
-                      setGroupMenu((prev) =>
-                        prev && prev.optionId === lane.id
-                          ? null
-                          : { optionId: lane.id, anchor, trigger: e.currentTarget as HTMLElement },
-                      );
+                    onClick={() => {
+                      if (groupColumn) onAddRowWithStatus(groupColumn.id, lane.id);
                     }}
-                    title="编辑或删除该分组"
+                    aria-label="在当前分组下添加卡片"
                     style={{
-                      background: groupMenu && groupMenu.optionId === lane.id ? 'var(--editor-bg, #f1f5f9)' : undefined,
                       padding: 3,
+                      borderRadius: 4,
                     }}
                   >
-                    <MoreHorizontal size={14} />
+                    <Plus size={14} />
                   </button>
+                </Tooltip>
+
+                {isSelectGroup && onManageColumnOption && (
+                  <Tooltip content="编辑或删除该分组" side="top" sideOffset={4}>
+                    <button
+                      type="button"
+                      data-no-drag
+                      className="nb-bitable-btn-ghost"
+                      onClick={(e) => {
+                        const anchor = getAnchorRect(e.currentTarget);
+                        if (!anchor) return;
+                        setPendingDeleteId(null);
+                        setGroupMenu((prev) =>
+                          prev && prev.optionId === lane.id
+                            ? null
+                            : { optionId: lane.id, anchor, trigger: e.currentTarget as HTMLElement },
+                        );
+                      }}
+                      aria-label="编辑或删除该分组"
+                      style={{
+                        background: groupMenu && groupMenu.optionId === lane.id ? 'var(--editor-bg, #f1f5f9)' : undefined,
+                        padding: 3,
+                      }}
+                    >
+                      <MoreHorizontal size={14} />
+                    </button>
+                  </Tooltip>
                 )}
               </div>
             </div>
@@ -414,41 +418,43 @@ export function BitableKanbanView({
                       outline: 'none',
                     }}
                   />
-                  <button
-                    type="button"
-                    title="取消编辑"
-                    className="nb-bitable-btn-ghost"
-                    onClick={() => setEditingGroup(null)}
-                    style={{ padding: 2 }}
-                  >
-                    <X size={13} />
-                  </button>
+                  <Tooltip content="取消编辑" side="top" sideOffset={4}>
+                    <button
+                      type="button"
+                      aria-label="取消编辑"
+                      className="nb-bitable-btn-ghost"
+                      onClick={() => setEditingGroup(null)}
+                      style={{ padding: 2 }}
+                    >
+                      <X size={13} />
+                    </button>
+                  </Tooltip>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   {BITABLE_PALETTE.map((pal) => (
-                    <div
-                      key={pal.id}
-                      title={pal.label}
-                      className="nb-bitable-color-dot"
-                      onClick={() =>
-                        setEditingGroup((prev) =>
-                          prev ? { ...prev, color: pal.id as SelectOptionColor } : prev,
-                        )
-                      }
-                      style={{
-                        width: 14,
-                        height: 14,
-                        borderRadius: '50%',
-                        background: pal.text,
-                        cursor: 'pointer',
-                        boxSizing: 'border-box',
-                        border:
-                          editingGroup.color === pal.id
-                            ? '2px solid var(--editor-text, #0f172a)'
-                            : '1px solid rgba(15,23,42,0.12)',
-                      }}
-                    />
+                    <Tooltip key={pal.id} content={pal.label} side="bottom" sideOffset={4}>
+                      <div
+                        className="nb-bitable-color-dot"
+                        onClick={() =>
+                          setEditingGroup((prev) =>
+                            prev ? { ...prev, color: pal.id as SelectOptionColor } : prev,
+                          )
+                        }
+                        style={{
+                          width: 14,
+                          height: 14,
+                          borderRadius: '50%',
+                          background: pal.text,
+                          cursor: 'pointer',
+                          boxSizing: 'border-box',
+                          border:
+                            editingGroup.color === pal.id
+                              ? '2px solid var(--editor-text, #0f172a)'
+                              : '1px solid rgba(15,23,42,0.12)',
+                        }}
+                      />
+                    </Tooltip>
                   ))}
                 </div>
 
@@ -552,7 +558,6 @@ export function BitableKanbanView({
                   key={row.id}
                   className="nb-bitable-kanban-card"
                   onClick={() => onOpenRecord && onOpenRecord(row.id)}
-                  title={onOpenRecord ? '点击展开记录详情' : undefined}
                   style={{
                     padding: '12px 14px',
                     borderRadius: 8,
@@ -571,29 +576,31 @@ export function BitableKanbanView({
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--editor-text, #1e293b)', lineHeight: 1.4, flex: 1 }}>
                       {resolveCardTitle(titleCol, row)}
                     </div>
-                    <button
-                      type="button"
-                      title="删除卡片"
-                      className="nb-bitable-btn-ghost"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDeleteRow(row.id);
-                      }}
-                      style={{
-                        padding: 2,
-                        opacity: 0.6,
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.color = '#ef4444';
-                        e.currentTarget.style.opacity = '1';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.color = 'var(--editor-text-muted, #64748b)';
-                        e.currentTarget.style.opacity = '0.6';
-                      }}
-                    >
-                      <Trash2 size={12} />
-                    </button>
+                    <Tooltip content="删除卡片" side="top" sideOffset={4}>
+                      <button
+                        type="button"
+                        aria-label="删除卡片"
+                        className="nb-bitable-btn-ghost"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteRow(row.id);
+                        }}
+                        style={{
+                          padding: 2,
+                          opacity: 0.6,
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.color = '#ef4444';
+                          e.currentTarget.style.opacity = '1';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.color = 'var(--editor-text-muted, #64748b)';
+                          e.currentTarget.style.opacity = '0.6';
+                        }}
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </Tooltip>
                   </div>
 
                   {/* 关键属性标签与元数据摘要 */}
@@ -632,23 +639,23 @@ export function BitableKanbanView({
                             );
                           }
                           return (
-                            <span
-                              key={c.id}
-                              title={text}
-                              style={{
-                                fontSize: 11,
-                                padding: '1px 6px',
-                                borderRadius: 4,
-                                background: 'var(--editor-bg, #f1f5f9)',
-                                color: 'var(--editor-text-muted, #64748b)',
-                                maxWidth: '100%',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {previewLongText(text, ltConfig)}
-                            </span>
+                            <Tooltip key={c.id} content={text} side="bottom" sideOffset={4}>
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  padding: '1px 6px',
+                                  borderRadius: 4,
+                                  background: 'var(--editor-bg, #f1f5f9)',
+                                  color: 'var(--editor-text-muted, #64748b)',
+                                  maxWidth: '100%',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {previewLongText(text, ltConfig)}
+                              </span>
+                            </Tooltip>
                           );
                         }
 
@@ -769,21 +776,23 @@ export function BitableKanbanView({
               minHeight: 56,
             }}
           >
-            <button
-              type="button"
-              className="nb-bitable-btn-secondary"
-              onClick={onAddGroupOption}
-              title="新增一个分组"
-              style={{
-                borderStyle: 'dashed',
-                padding: '6px 12px',
-                color: 'var(--editor-text-muted, #64748b)',
-                fontWeight: 500,
-              }}
-            >
-              <Plus size={14} />
-              <span>新增分组</span>
-            </button>
+            <Tooltip content="新增一个分组" side="top" sideOffset={4}>
+              <button
+                type="button"
+                className="nb-bitable-btn-secondary"
+                onClick={onAddGroupOption}
+                aria-label="新增一个分组"
+                style={{
+                  borderStyle: 'dashed',
+                  padding: '6px 12px',
+                  color: 'var(--editor-text-muted, #64748b)',
+                  fontWeight: 500,
+                }}
+              >
+                <Plus size={14} />
+                <span>新增分组</span>
+              </button>
+            </Tooltip>
           </div>
         )}
 
@@ -835,7 +844,6 @@ export function BitableKanbanView({
                   key={row.id}
                   className="nb-bitable-kanban-card"
                   onClick={() => onOpenRecord && onOpenRecord(row.id)}
-                  title={onOpenRecord ? '点击展开记录详情' : undefined}
                   style={{
                     padding: '12px 14px',
                     borderRadius: 8,

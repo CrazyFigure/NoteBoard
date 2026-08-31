@@ -8,6 +8,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Copy, Download, Check, ChevronDown, FileImage, Loader2, Image as ImageIcon } from 'lucide-react';
+import { Tooltip } from '../../components/Tooltip';
 import { showToast } from '../../stores/toastStore';
 import {
   copyChartImage,
@@ -241,21 +242,22 @@ export function ChartExportMenu({
 
   return (
     <>
-      <button
-        ref={anchorRef}
-        type="button"
-        className="nb-chart-export-btn"
-        data-variant={variant}
-        disabled={isDisabled}
-        title={isDisabled && !busy ? '图表尚未渲染完成' : buttonTitle}
-        onClick={handleToggle}
-        // mousedown 阶段就拦截，防止 Markdown 编辑器把这次点击处理成拖拽/选区变更
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <Icon size={variant === 'ghost' ? 12 : 13} className={busy ? 'nb-spin' : undefined} />
-        {!compact && <span>{busy ? '处理中' : copied && !open ? '已复制' : shownLabel}</span>}
-        <ChevronDown size={variant === 'ghost' ? 10 : 12} className="nb-chart-export-caret" />
-      </button>
+      <Tooltip content={isDisabled && !busy ? '图表尚未渲染完成' : buttonTitle} disabled={open} side="bottom" sideOffset={4}>
+        <button
+          ref={anchorRef}
+          type="button"
+          className="nb-chart-export-btn"
+          data-variant={variant}
+          disabled={isDisabled}
+          onClick={handleToggle}
+          // mousedown 阶段就拦截，防止 Markdown 编辑器把这次点击处理成拖拽/选区变更
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <Icon size={variant === 'ghost' ? 12 : 13} className={busy ? 'nb-spin' : undefined} />
+          {!compact && <span>{busy ? '处理中' : copied && !open ? '已复制' : shownLabel}</span>}
+          <ChevronDown size={variant === 'ghost' ? 10 : 12} className="nb-chart-export-caret" />
+        </button>
+      </Tooltip>
 
       {open &&
         menuPos &&

@@ -15,6 +15,7 @@ import {
 import type { MindNode } from './mindmapTypes';
 import { generateNodeId, moveMindNode, isMindNodeDescendant } from './mindmapConverter';
 import { MindmapIconPicker } from './MindmapIconPicker';
+import { Tooltip } from '../../components/Tooltip';
 
 interface MindmapRendererProps {
   root: MindNode;
@@ -928,35 +929,37 @@ export function MindmapRenderer({
               >
                 {/* 节点前置图标 */}
                 {hasIcon && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      setIconPickerState({
-                        nodeId: n.node.id,
-                        currentIcon: n.node.icon,
-                        x: rect.left,
-                        y: rect.bottom + 4,
-                      });
-                    }}
-                    title="点击修改或移除图标"
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: isRoot ? 18 : 14,
-                      lineHeight: 1,
-                      padding: '0 2px',
-                      marginRight: 4,
-                      flexShrink: 0,
-                      transition: 'transform 0.12s ease',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.2)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-                  >
-                    {n.node.icon}
-                  </button>
+                  <Tooltip content="点击修改或移除图标" side="top" sideOffset={4}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setIconPickerState({
+                          nodeId: n.node.id,
+                          currentIcon: n.node.icon,
+                          x: rect.left,
+                          y: rect.bottom + 4,
+                        });
+                      }}
+                      aria-label="点击修改或移除图标"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: isRoot ? 18 : 14,
+                        lineHeight: 1,
+                        padding: '0 2px',
+                        marginRight: 4,
+                        flexShrink: 0,
+                        transition: 'transform 0.12s ease',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.2)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                    >
+                      {n.node.icon}
+                    </button>
+                  </Tooltip>
                 )}
 
                 {/* 标题文本 / 输入框 */}
@@ -985,49 +988,51 @@ export function MindmapRenderer({
                     }}
                   />
                 ) : (
-                  <span
-                    style={{
-                      flex: 1,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      fontSize: isRoot ? 14 : isLevel1 ? 13 : 12,
-                      fontWeight: isRoot ? 600 : isLevel1 ? 500 : 400,
-                      textAlign: hasNote || hasImage ? 'left' : 'center',
-                    }}
-                    title={n.node.text}
-                  >
-                    {n.node.text || '未命名'}
-                  </span>
+                  <Tooltip content={n.node.text || '未命名'} side="top" sideOffset={4}>
+                    <span
+                      style={{
+                        flex: 1,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        fontSize: isRoot ? 14 : isLevel1 ? 13 : 12,
+                        fontWeight: isRoot ? 600 : isLevel1 ? 500 : 400,
+                        textAlign: hasNote || hasImage ? 'left' : 'center',
+                      }}
+                    >
+                      {n.node.text || '未命名'}
+                    </span>
+                  </Tooltip>
                 )}
               </div>
 
               {/* 浅色小字备注 (支持多行文本与换行) */}
               {hasNote && (
-                <div
-                  title={n.node.note}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setEditingNoteNodeId(n.node.id);
-                    setEditNoteText(n.node.note || '');
-                  }}
-                  style={{
-                    fontSize: 11,
-                    lineHeight: 1.45,
-                    color: isRoot ? 'rgba(255, 255, 255, 0.85)' : 'var(--editor-text-secondary, #64748b)',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                    textAlign: 'left',
-                    width: '100%',
-                    marginTop: 3,
-                    paddingTop: 3,
-                    borderTop: isRoot ? '1px solid rgba(255, 255, 255, 0.2)' : '1px solid var(--editor-border, #f1f5f9)',
-                    opacity: 0.9,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {n.node.note}
-                </div>
+                <Tooltip content={n.node.note} side="bottom" sideOffset={4}>
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingNoteNodeId(n.node.id);
+                      setEditNoteText(n.node.note || '');
+                    }}
+                    style={{
+                      fontSize: 11,
+                      lineHeight: 1.45,
+                      color: isRoot ? 'rgba(255, 255, 255, 0.85)' : 'var(--editor-text-secondary, #64748b)',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      textAlign: 'left',
+                      width: '100%',
+                      marginTop: 3,
+                      paddingTop: 3,
+                      borderTop: isRoot ? '1px solid rgba(255, 255, 255, 0.2)' : '1px solid var(--editor-border, #f1f5f9)',
+                      opacity: 0.9,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {n.node.note}
+                  </div>
+                </Tooltip>
               )}
 
               {/* 挂载图片缩略图 */}
@@ -1042,50 +1047,53 @@ export function MindmapRenderer({
                     border: '1px solid var(--editor-border, rgba(0,0,0,0.08))',
                   }}
                 >
-                  <img
-                    src={n.node.image}
-                    alt="节点缩略图"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPreviewImage(n.node.image!);
-                    }}
-                    title="点击放大查看大图"
-                    style={{
-                      width: '100%',
-                      height: 54,
-                      objectFit: 'cover',
-                      display: 'block',
-                      cursor: 'zoom-in',
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteImage(n.node.id);
-                    }}
-                    title="删除图片"
-                    style={{
-                      position: 'absolute',
-                      top: 3,
-                      right: 3,
-                      background: 'rgba(0, 0, 0, 0.65)',
-                      color: '#ffffff',
-                      border: 'none',
-                      borderRadius: '50%',
-                      width: 16,
-                      height: 16,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      padding: 0,
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.9)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(0, 0, 0, 0.65)')}
-                  >
-                    <X size={10} />
-                  </button>
+                  <Tooltip content="点击放大查看大图" side="top" sideOffset={4}>
+                    <img
+                      src={n.node.image}
+                      alt="节点缩略图"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPreviewImage(n.node.image!);
+                      }}
+                      style={{
+                        width: '100%',
+                        height: 54,
+                        objectFit: 'cover',
+                        display: 'block',
+                        cursor: 'zoom-in',
+                      }}
+                    />
+                  </Tooltip>
+                  <Tooltip content="删除图片" side="top" sideOffset={4}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteImage(n.node.id);
+                      }}
+                      aria-label="删除图片"
+                      style={{
+                        position: 'absolute',
+                        top: 3,
+                        right: 3,
+                        background: 'rgba(0, 0, 0, 0.65)',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '50%',
+                        width: 16,
+                        height: 16,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 0,
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.9)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(0, 0, 0, 0.65)')}
+                    >
+                      <X size={10} />
+                    </button>
+                  </Tooltip>
                 </div>
               )}
 
@@ -1108,185 +1116,203 @@ export function MindmapRenderer({
                   zIndex: 20,
                 }}
               >
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setIconPickerState({
-                      nodeId: n.node.id,
-                      currentIcon: n.node.icon,
-                      x: rect.left,
-                      y: rect.bottom + 4,
-                    });
-                  }}
-                  title="设置图标"
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: 'var(--editor-text-secondary, #64748b)',
-                    padding: 3,
-                    borderRadius: 3,
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
-                >
-                  <Smile size={12} />
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setEditingNoteNodeId(n.node.id);
-                    setEditNoteText(n.node.note || '');
-                  }}
-                  title="添加/编辑备注"
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: hasNote ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-secondary, #64748b)',
-                    padding: 3,
-                    borderRadius: 3,
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
-                >
-                  <FileText size={12} />
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    uploadTargetNodeIdRef.current = n.node.id;
-                    fileInputRef.current?.click();
-                  }}
-                  title="上传/替换图片"
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: hasImage ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-secondary, #64748b)',
-                    padding: 3,
-                    borderRadius: 3,
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
-                >
-                  <ImageIcon size={12} />
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleAddChild(n.node.id);
-                  }}
-                  title="添加子分支"
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: 'var(--editor-accent, #3b82f6)',
-                    padding: 3,
-                    borderRadius: 3,
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
-                >
-                  <Plus size={12} />
-                </button>
-                {!isRoot && (
+                <Tooltip content="设置图标" side="top" sideOffset={4}>
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDeleteNode(n.node.id);
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      setIconPickerState({
+                        nodeId: n.node.id,
+                        currentIcon: n.node.icon,
+                        x: rect.left,
+                        y: rect.bottom + 4,
+                      });
                     }}
-                    title="删除节点"
+                    aria-label="设置图标"
                     style={{
                       background: 'transparent',
                       border: 'none',
                       cursor: 'pointer',
-                      color: '#ef4444',
+                      color: 'var(--editor-text-secondary, #64748b)',
                       padding: 3,
                       borderRadius: 3,
                       display: 'flex',
                       alignItems: 'center',
                     }}
                   >
-                    <Trash2 size={12} />
+                    <Smile size={12} />
                   </button>
+                </Tooltip>
+
+                <Tooltip content="添加/编辑备注" side="top" sideOffset={4}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingNoteNodeId(n.node.id);
+                      setEditNoteText(n.node.note || '');
+                    }}
+                    aria-label="添加/编辑备注"
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: hasNote ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-secondary, #64748b)',
+                      padding: 3,
+                      borderRadius: 3,
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <FileText size={12} />
+                  </button>
+                </Tooltip>
+
+                <Tooltip content="上传/替换图片" side="top" sideOffset={4}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      uploadTargetNodeIdRef.current = n.node.id;
+                      fileInputRef.current?.click();
+                    }}
+                    aria-label="上传/替换图片"
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: hasImage ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-secondary, #64748b)',
+                      padding: 3,
+                      borderRadius: 3,
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <ImageIcon size={12} />
+                  </button>
+                </Tooltip>
+
+                <Tooltip content="添加子分支" side="top" sideOffset={4}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAddChild(n.node.id);
+                    }}
+                    aria-label="添加子分支"
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: 'var(--editor-accent, #3b82f6)',
+                      padding: 3,
+                      borderRadius: 3,
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Plus size={12} />
+                  </button>
+                </Tooltip>
+
+                {!isRoot && (
+                  <Tooltip content="删除节点" side="top" sideOffset={4}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteNode(n.node.id);
+                      }}
+                      aria-label="删除节点"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: '#ef4444',
+                        padding: 3,
+                        borderRadius: 3,
+                        display: 'flex',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </Tooltip>
                 )}
               </div>
 
               {/* 折叠/展开徽标 */}
               {hasChildren && (
+                <Tooltip content={isExpanded ? '收起子分支' : '展开子分支'} side="right" sideOffset={4}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggleExpand(n.node.id);
+                    }}
+                    aria-label={isExpanded ? '收起子分支' : '展开子分支'}
+                    style={{
+                      position: 'absolute',
+                      right: -9,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      width: 16,
+                      height: 16,
+                      borderRadius: '50%',
+                      background: isRoot ? '#ffffff' : nodeColor,
+                      color: isRoot ? 'var(--editor-accent, #3b82f6)' : '#ffffff',
+                      border: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 10,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+                      padding: 0,
+                      zIndex: 5,
+                    }}
+                  >
+                    {isExpanded ? '-' : n.node.children.length}
+                  </button>
+                </Tooltip>
+              )}
+
+              {/* 悬停添加子节点按钮 */}
+              <Tooltip content="添加子分支" side="right" sideOffset={4}>
                 <button
                   type="button"
+                  className="nb-node-add-btn"
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleToggleExpand(n.node.id);
+                    handleAddChild(n.node.id);
                   }}
-                  title={isExpanded ? '收起子分支' : '展开子分支'}
+                  aria-label="添加子分支"
                   style={{
                     position: 'absolute',
-                    right: -9,
+                    right: hasChildren ? -28 : -14,
                     top: '50%',
                     transform: 'translateY(-50%)',
                     width: 16,
                     height: 16,
                     borderRadius: '50%',
-                    background: isRoot ? '#ffffff' : nodeColor,
-                    color: isRoot ? 'var(--editor-accent, #3b82f6)' : '#ffffff',
+                    background: 'var(--editor-accent, #3b82f6)',
+                    color: '#ffffff',
                     border: 'none',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    fontSize: 10,
-                    fontWeight: 700,
+                    fontSize: 12,
                     cursor: 'pointer',
-                    boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
-                    padding: 0,
+                    opacity: 0,
+                    transition: 'opacity 0.15s ease',
                     zIndex: 5,
                   }}
                 >
-                  {isExpanded ? '-' : n.node.children.length}
+                  +
                 </button>
-              )}
-
-              {/* 悬停添加子节点按钮 */}
-              <button
-                type="button"
-                className="nb-node-add-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleAddChild(n.node.id);
-                }}
-                title="添加子分支"
-                style={{
-                  position: 'absolute',
-                  right: hasChildren ? -28 : -14,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  width: 16,
-                  height: 16,
-                  borderRadius: '50%',
-                  background: 'var(--editor-accent, #3b82f6)',
-                  color: '#ffffff',
-                  border: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 12,
-                  cursor: 'pointer',
-                  opacity: 0,
-                  transition: 'opacity 0.15s ease',
-                  zIndex: 5,
-                }}
-              >
-                +
-              </button>
+              </Tooltip>
             </div>
           );
         })}

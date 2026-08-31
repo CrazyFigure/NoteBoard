@@ -20,6 +20,7 @@ import { SelectOptionsPanel, OptionBadge } from './BitableOptions';
 import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
 import { usePointerReorder } from './usePointerReorder';
 import { getFieldTypeMeta, FieldSelectButton } from './BitableFieldMeta';
+import { Tooltip } from '../../components/Tooltip';
 import {
   calculateAutoFillValues,
   collectDescendantRowIds,
@@ -283,15 +284,17 @@ function SortRulesPanel({ columns, sortRules, onChange, onClose }: SortRulesPane
             >
               {rule.direction === 'asc' ? labels.asc : labels.desc}
             </button>
-            <button
-              type="button"
-              className="nb-bitable-btn-ghost"
-              onClick={() => removeRule(index)}
-              title="移除该排序字段"
-              style={{ padding: 4 }}
-            >
-              <X size={13} />
-            </button>
+            <Tooltip content="移除该排序字段" side="top" sideOffset={4}>
+              <button
+                type="button"
+                className="nb-bitable-btn-ghost"
+                onClick={() => removeRule(index)}
+                aria-label="移除该排序字段"
+                style={{ padding: 4 }}
+              >
+                <X size={13} />
+              </button>
+            </Tooltip>
           </div>
         );
       })}
@@ -1951,7 +1954,6 @@ export function BitableGridView({
                       targetColId: col.id,
                     });
                   }}
-                  title={isOptionField ? '单击编辑选项 · 拖拽换列 · 双击名称重命名' : '拖拽表头可换列 · 双击名称重命名'}
                   style={{
                     width: col.width || 160,
                     minWidth: 90,
@@ -2014,64 +2016,70 @@ export function BitableGridView({
                           }}
                         />
                       ) : (
-                        <span
-                          onDoubleClick={(e) => {
-                            e.stopPropagation();
-                            setColNameInput(col.name);
-                            setEditingColNameId(col.id);
-                          }}
-                          style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}
-                        >
-                          {col.name}
-                        </span>
+                        <Tooltip content={isOptionField ? '单击编辑选项 · 拖拽换列 · 双击名称重命名' : '拖拽表头可换列 · 双击名称重命名'} disabled={Boolean(colDrag)} side="bottom" sideOffset={4}>
+                          <span
+                            onDoubleClick={(e) => {
+                              e.stopPropagation();
+                              setColNameInput(col.name);
+                              setEditingColNameId(col.id);
+                            }}
+                            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}
+                          >
+                            {col.name}
+                          </span>
+                        </Tooltip>
                       )}
 
                       {/* 排序状态指示图标：多字段时显示优先级角标 */}
                       {sortRuleForCol && (
-                        <span
-                          title={`第 ${sortPriority} 排序字段 · ${sortRuleForCol.direction === 'asc' ? '升序' : '降序'}`}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 2,
-                            color: 'var(--editor-accent, #3b82f6)',
-                            fontSize: 10,
-                          }}
-                        >
-                          {sortRuleForCol.direction === 'asc' ? <ArrowUpNarrowWide size={13} /> : <ArrowDownWideNarrow size={13} />}
-                          {sortRules.length > 1 && sortPriority}
-                        </span>
+                        <Tooltip content={`第 ${sortPriority} 排序字段 · ${sortRuleForCol.direction === 'asc' ? '升序' : '降序'}`} side="top" sideOffset={4}>
+                          <span
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 2,
+                              color: 'var(--editor-accent, #3b82f6)',
+                              fontSize: 10,
+                            }}
+                          >
+                            {sortRuleForCol.direction === 'asc' ? <ArrowUpNarrowWide size={13} /> : <ArrowDownWideNarrow size={13} />}
+                            {sortRules.length > 1 && sortPriority}
+                          </span>
+                        </Tooltip>
                       )}
                     </div>
 
                     {/* 列操作菜单唤起按钮 */}
-                    <button
-                      type="button"
-                      data-no-drag
-                      className="nb-bitable-btn-ghost"
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (isMenuOpen) {
-                          closeColumnMenu();
-                          return;
-                        }
-                        const anchor = getAnchorRect(headerCellRefs.current.get(col.id));
-                        if (anchor) {
-                          setColumnMenu({
-                            colId: col.id,
-                            anchor,
-                            trigger: e.currentTarget as HTMLElement,
-                          });
-                        }
-                      }}
-                      style={{
-                        padding: '2px',
-                        background: isMenuOpen ? 'var(--editor-bg, #f1f5f9)' : undefined,
-                      }}
-                    >
-                      <MoreHorizontal size={13} />
-                    </button>
+                    <Tooltip content="字段配置与操作" side="bottom" sideOffset={4}>
+                      <button
+                        type="button"
+                        data-no-drag
+                        className="nb-bitable-btn-ghost"
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isMenuOpen) {
+                            closeColumnMenu();
+                            return;
+                          }
+                          const anchor = getAnchorRect(headerCellRefs.current.get(col.id));
+                          if (anchor) {
+                            setColumnMenu({
+                              colId: col.id,
+                              anchor,
+                              trigger: e.currentTarget as HTMLElement,
+                            });
+                          }
+                        }}
+                        style={{
+                          padding: '2px',
+                          background: isMenuOpen ? 'var(--editor-bg, #f1f5f9)' : undefined,
+                        }}
+                        aria-label="字段配置与操作"
+                      >
+                        <MoreHorizontal size={13} />
+                      </button>
+                    </Tooltip>
 
                     {/* 拖拽列宽调整把手 */}
                     <div
@@ -2195,45 +2203,45 @@ export function BitableGridView({
                                 {DISPLAY_MODE_OPTIONS.map((opt) => {
                                   const active = ltConfig.displayMode === opt.id;
                                   return (
-                                    <button
-                                      key={opt.id}
-                                      type="button"
-                                      title={opt.hint}
-                                      className={active ? 'nb-bitable-btn-primary' : 'nb-bitable-btn-secondary'}
-                                      onClick={() => {
-                                        onUpdateColumn(col.id, {
-                                          longText: { ...ltConfig, displayMode: opt.id },
-                                        });
-                                        closeColumnMenu();
-                                      }}
-                                      style={{
-                                        flex: 1,
-                                        padding: '4px 6px',
-                                        fontSize: 11,
-                                        fontWeight: active ? 600 : 400,
-                                      }}
-                                    >
-                                      {opt.label}
-                                    </button>
+                                    <Tooltip key={opt.id} content={opt.hint} side="top" sideOffset={4}>
+                                      <button
+                                        type="button"
+                                        className={active ? 'nb-bitable-btn-primary' : 'nb-bitable-btn-secondary'}
+                                        onClick={() => {
+                                          onUpdateColumn(col.id, {
+                                            longText: { ...ltConfig, displayMode: opt.id },
+                                          });
+                                          closeColumnMenu();
+                                        }}
+                                        style={{
+                                          flex: 1,
+                                          padding: '4px 6px',
+                                          fontSize: 11,
+                                          fontWeight: active ? 600 : 400,
+                                        }}
+                                      >
+                                        {opt.label}
+                                      </button>
+                                    </Tooltip>
                                   );
                                 })}
                               </div>
 
-                              <button
-                                type="button"
-                                title="开启后以富文本方式编辑与渲染，支持加粗、代码块等 Markdown 语法"
-                                className="nb-bitable-menu-item"
-                                onClick={() => {
-                                  onUpdateColumn(col.id, {
-                                    longText: { ...ltConfig, markdown: !ltConfig.markdown },
-                                  });
-                                  closeColumnMenu();
-                                }}
-                                style={{
-                                  fontSize: 11,
-                                  color: ltConfig.markdown ? 'var(--editor-accent, #3b82f6)' : undefined,
-                                }}
-                              >
+                              <Tooltip content="开启后以富文本方式编辑与渲染，支持加粗、代码块等 Markdown 语法" side="bottom" sideOffset={4}>
+                                <button
+                                  type="button"
+                                  className="nb-bitable-menu-item"
+                                  onClick={() => {
+                                    onUpdateColumn(col.id, {
+                                      longText: { ...ltConfig, markdown: !ltConfig.markdown },
+                                    });
+                                    closeColumnMenu();
+                                  }}
+                                  style={{
+                                    fontSize: 11,
+                                    color: ltConfig.markdown ? 'var(--editor-accent, #3b82f6)' : undefined,
+                                  }}
+                                >
                                 <span
                                   style={{
                                     width: 12,
@@ -2254,7 +2262,8 @@ export function BitableGridView({
                                 </span>
                                 <span>Markdown 富文本</span>
                               </button>
-                            </>
+                            </Tooltip>
+                          </>
                           );
                         })()}
 
@@ -2275,26 +2284,26 @@ export function BitableGridView({
                                     {DATE_FORMAT_OPTIONS.map((opt) => {
                                       const active = dtConfig.dateFormat === opt.id;
                                       return (
-                                        <button
-                                          key={opt.id}
-                                          type="button"
-                                          title={opt.label}
-                                          className={active ? 'nb-bitable-btn-primary' : 'nb-bitable-btn-secondary'}
-                                          onClick={() => {
-                                            onUpdateColumn(col.id, {
-                                              dateTime: { ...dtConfig, dateFormat: opt.id },
-                                            });
-                                            closeColumnMenu();
-                                          }}
-                                          style={{
-                                            padding: '4px 5px',
-                                            fontSize: 11,
-                                            fontWeight: active ? 600 : 400,
-                                            whiteSpace: 'nowrap',
-                                          }}
-                                        >
-                                          {opt.sample}
-                                        </button>
+                                        <Tooltip key={opt.id} content={opt.label} side="top" sideOffset={4}>
+                                          <button
+                                            type="button"
+                                            className={active ? 'nb-bitable-btn-primary' : 'nb-bitable-btn-secondary'}
+                                            onClick={() => {
+                                              onUpdateColumn(col.id, {
+                                                dateTime: { ...dtConfig, dateFormat: opt.id },
+                                              });
+                                              closeColumnMenu();
+                                            }}
+                                            style={{
+                                              padding: '4px 5px',
+                                              fontSize: 11,
+                                              fontWeight: active ? 600 : 400,
+                                              whiteSpace: 'nowrap',
+                                            }}
+                                          >
+                                            {opt.sample}
+                                          </button>
+                                        </Tooltip>
                                       );
                                     })}
                                   </div>
@@ -2310,26 +2319,26 @@ export function BitableGridView({
                                     {TIME_FORMAT_OPTIONS.map((opt) => {
                                       const active = dtConfig.timeFormat === opt.id;
                                       return (
-                                        <button
-                                          key={opt.id}
-                                          type="button"
-                                          title={opt.label}
-                                          className={active ? 'nb-bitable-btn-primary' : 'nb-bitable-btn-secondary'}
-                                          onClick={() => {
-                                            onUpdateColumn(col.id, {
-                                              dateTime: { ...dtConfig, timeFormat: opt.id },
-                                            });
-                                            closeColumnMenu();
-                                          }}
-                                          style={{
-                                            padding: '4px 5px',
-                                            fontSize: 11,
-                                            fontWeight: active ? 600 : 400,
-                                            whiteSpace: 'nowrap',
-                                          }}
-                                        >
-                                          {opt.sample}
-                                        </button>
+                                        <Tooltip key={opt.id} content={opt.label} side="top" sideOffset={4}>
+                                          <button
+                                            type="button"
+                                            className={active ? 'nb-bitable-btn-primary' : 'nb-bitable-btn-secondary'}
+                                            onClick={() => {
+                                              onUpdateColumn(col.id, {
+                                                dateTime: { ...dtConfig, timeFormat: opt.id },
+                                              });
+                                              closeColumnMenu();
+                                            }}
+                                            style={{
+                                              padding: '4px 5px',
+                                              fontSize: 11,
+                                              fontWeight: active ? 600 : 400,
+                                              whiteSpace: 'nowrap',
+                                            }}
+                                          >
+                                            {opt.sample}
+                                          </button>
+                                        </Tooltip>
                                       );
                                     })}
                                   </div>
@@ -2522,15 +2531,17 @@ export function BitableGridView({
                 textAlign: 'center',
               }}
             >
-              <button
-                type="button"
-                className="nb-bitable-btn-ghost"
-                onClick={() => onAddColumn('right')}
-                title="添加新列"
-                style={{ padding: '4px' }}
-              >
-                <Plus size={14} />
-              </button>
+              <Tooltip content="添加新列" side="bottom" sideOffset={4}>
+                <button
+                  type="button"
+                  className="nb-bitable-btn-ghost"
+                  onClick={() => onAddColumn('right')}
+                  aria-label="添加新列"
+                  style={{ padding: '4px' }}
+                >
+                  <Plus size={14} />
+                </button>
+              </Tooltip>
             </th>
           </tr>
         </thead>
@@ -2700,13 +2711,6 @@ export function BitableGridView({
                     e.stopPropagation();
                     if (onOpenRecord) onOpenRecord(row.id);
                   }}
-                  title={
-                    !rowDragEnabled
-                      ? '存在排序规则时行序由排序决定，无法手动拖动'
-                      : isGrouped
-                        ? '拖拽可在分组内换行 · 单击选中整行 · 双击展开详情'
-                        : '拖拽行头可换序 · 单击选中整行 · 双击展开详情'
-                  }
                   style={{
                     position: 'sticky',
                     left: 0,
@@ -2733,7 +2737,20 @@ export function BitableGridView({
                       position: 'relative',
                     }}
                   >
-                    <span>{rowNumber}</span>
+                    <Tooltip
+                      content={
+                        !rowDragEnabled
+                          ? '存在排序规则时行序由排序决定，无法手动拖动'
+                          : isGrouped
+                            ? '拖拽可在分组内换行 · 单击选中整行 · 双击展开详情'
+                            : '拖拽行头可换序 · 单击选中整行 · 双击展开详情'
+                      }
+                      disabled={Boolean(rowDrag)}
+                      side="right"
+                      sideOffset={4}
+                    >
+                      <span style={{ cursor: 'inherit', display: 'inline-block', width: '100%', lineHeight: 'inherit' }}>{rowNumber}</span>
+                    </Tooltip>
 
                     {/* 行快捷操作 (展开详情、升级、降级、添加子任务、向上插入、向下插入、删除) */}
                     {/* data-no-drag：这些按钮位于行头内部，但按下时不应触发拖拽换行 */}
@@ -2758,85 +2775,101 @@ export function BitableGridView({
                       onClick={(e) => e.stopPropagation()}
                     >
                       {onOpenRecord && (
-                        <button
-                          type="button"
-                          title="展开记录详情"
-                          className="nb-bitable-row-action-btn"
-                          onClick={() => onOpenRecord(row.id)}
-                          style={{ color: 'var(--editor-accent, #3b82f6)' }}
-                        >
-                          <Maximize2 size={14} />
-                        </button>
+                        <Tooltip content="展开记录详情" side="top" sideOffset={4}>
+                          <button
+                            type="button"
+                            aria-label="展开记录详情"
+                            className="nb-bitable-row-action-btn"
+                            onClick={() => onOpenRecord(row.id)}
+                            style={{ color: 'var(--editor-accent, #3b82f6)' }}
+                          >
+                            <Maximize2 size={14} />
+                          </button>
+                        </Tooltip>
                       )}
                       {onOutdentRow && (
-                        <button
-                          type="button"
-                          title={
-                            row.parentId
-                              ? '升级为上一级 (Shift+Tab)'
-                              : '该行已是第一级'
-                          }
+                        <Tooltip
+                          content={row.parentId ? '升级为上一级' : '该行已是第一级'}
+                          shortcut={row.parentId ? 'Shift+Tab' : undefined}
+                          side="top"
+                          sideOffset={4}
                           disabled={!row.parentId}
-                          className="nb-bitable-row-action-btn"
-                          onClick={() => onOutdentRow(row.id)}
-                          style={{ color: 'var(--editor-text, #334155)' }}
                         >
-                          <IndentDecrease size={14} />
-                        </button>
+                          <button
+                            type="button"
+                            aria-label="升级为上一级"
+                            disabled={!row.parentId}
+                            className="nb-bitable-row-action-btn"
+                            onClick={() => onOutdentRow(row.id)}
+                            style={{ color: 'var(--editor-text, #334155)' }}
+                          >
+                            <IndentDecrease size={14} />
+                          </button>
+                        </Tooltip>
                       )}
                       {onIndentRow && (
-                        <button
-                          type="button"
-                          title="降级为子任务 (Tab)"
-                          className="nb-bitable-row-action-btn"
-                          onClick={() => onIndentRow(row.id)}
-                          style={{ color: 'var(--editor-text, #334155)' }}
-                        >
-                          <IndentIncrease size={14} />
-                        </button>
+                        <Tooltip content="降级为子任务" shortcut="Tab" side="top" sideOffset={4}>
+                          <button
+                            type="button"
+                            aria-label="降级为子任务"
+                            className="nb-bitable-row-action-btn"
+                            onClick={() => onIndentRow(row.id)}
+                            style={{ color: 'var(--editor-text, #334155)' }}
+                          >
+                            <IndentIncrease size={14} />
+                          </button>
+                        </Tooltip>
                       )}
                       {onAddSubRow && (
-                        <button
-                          type="button"
-                          title="添加子任务"
-                          className="nb-bitable-row-action-btn"
-                          onClick={() => onAddSubRow(row.id)}
-                          style={{ color: 'var(--editor-accent, #3b82f6)' }}
-                        >
-                          <CornerDownRight size={14} />
-                        </button>
+                        <Tooltip content="添加子任务" side="top" sideOffset={4}>
+                          <button
+                            type="button"
+                            aria-label="添加子任务"
+                            className="nb-bitable-row-action-btn"
+                            onClick={() => onAddSubRow(row.id)}
+                            style={{ color: 'var(--editor-accent, #3b82f6)' }}
+                          >
+                            <CornerDownRight size={14} />
+                          </button>
+                        </Tooltip>
                       )}
                       {onInsertRowAbove && (
-                        <button
-                          type="button"
-                          title="在上方插入行"
-                          className="nb-bitable-row-action-btn"
-                          onClick={() => onInsertRowAbove(row.id)}
-                          style={{ color: 'var(--editor-text, #334155)' }}
-                        >
-                          <ArrowUp size={14} />
-                        </button>
+                        <Tooltip content="在上方插入行" side="top" sideOffset={4}>
+                          <button
+                            type="button"
+                            aria-label="在上方插入行"
+                            className="nb-bitable-row-action-btn"
+                            onClick={() => onInsertRowAbove(row.id)}
+                            style={{ color: 'var(--editor-text, #334155)' }}
+                          >
+                            <ArrowUp size={14} />
+                          </button>
+                        </Tooltip>
                       )}
                       {onInsertRowBelow && (
+                        <Tooltip content="在下方插入行" side="top" sideOffset={4}>
+                          <button
+                            type="button"
+                            aria-label="在下方插入行"
+                            className="nb-bitable-row-action-btn"
+                            onClick={() => onInsertRowBelow(row.id)}
+                            style={{ color: 'var(--editor-text, #334155)' }}
+                          >
+                            <ArrowDown size={14} />
+                          </button>
+                        </Tooltip>
+                      )}
+                      <Tooltip content="删除该行" side="top" sideOffset={4}>
                         <button
                           type="button"
-                          title="在下方插入行"
+                          aria-label="删除该行"
                           className="nb-bitable-row-action-btn"
-                          onClick={() => onInsertRowBelow(row.id)}
-                          style={{ color: 'var(--editor-text, #334155)' }}
+                          onClick={() => onDeleteRow(row.id)}
+                          style={{ color: '#ef4444' }}
                         >
-                          <ArrowDown size={14} />
+                          <Trash2 size={14} />
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        title="删除该行"
-                        className="nb-bitable-row-action-btn"
-                        onClick={() => onDeleteRow(row.id)}
-                        style={{ color: '#ef4444' }}
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      </Tooltip>
                     </div>
                   </div>
                 </td>
@@ -2992,26 +3025,27 @@ export function BitableGridView({
 
                       {/* 选区右下角 Excel 风格填充柄 */}
                       {isBottomRightCorner && normalizedSelection && (
-                        <div
-                          data-fill-handle
-                          title="拖拽自动填充 · 双击向下快速填充"
-                          onMouseDown={(e) => startFillDrag(e, normalizedSelection)}
-                          onDoubleClick={(e) => handleDoubleClickFill(e, normalizedSelection)}
-                          style={{
-                            position: 'absolute',
-                            right: -4,
-                            bottom: -4,
-                            width: 7,
-                            height: 7,
-                            background: 'var(--editor-accent, #3b82f6)',
-                            border: '1px solid #ffffff',
-                            borderRadius: 1,
-                            cursor: 'crosshair',
-                            zIndex: 10,
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-                          }}
-                          className="nb-bitable-fill-handle"
-                        />
+                        <Tooltip content="拖拽自动填充 · 双击向下快速填充" side="bottom" sideOffset={4}>
+                          <div
+                            data-fill-handle
+                            onMouseDown={(e) => startFillDrag(e, normalizedSelection)}
+                            onDoubleClick={(e) => handleDoubleClickFill(e, normalizedSelection)}
+                            style={{
+                              position: 'absolute',
+                              right: -4,
+                              bottom: -4,
+                              width: 7,
+                              height: 7,
+                              background: 'var(--editor-accent, #3b82f6)',
+                              border: '1px solid #ffffff',
+                              borderRadius: 1,
+                              cursor: 'crosshair',
+                              zIndex: 10,
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                            }}
+                            className="nb-bitable-fill-handle"
+                          />
+                        </Tooltip>
                       )}
                     </td>
                   );

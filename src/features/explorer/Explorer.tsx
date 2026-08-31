@@ -17,6 +17,7 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
 import { ExplorerBreadcrumb } from './ExplorerBreadcrumb';
+import { Tooltip } from '../../components/Tooltip';
 
 // ── Explorer 组件 ──
 
@@ -191,76 +192,81 @@ export function Explorer() {
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           {/* 定位当前激活的文件与目录 */}
-          <button
-            type="button"
-            onClick={handleLocateActive}
-            style={actionBtnStyle}
-            onMouseEnter={handleBtnMouseEnter}
-            onMouseLeave={handleBtnMouseLeave}
-            onMouseDown={handleBtnMouseDown}
-            onMouseUp={handleBtnMouseUp}
-            title="定位当前打开的文件与目录"
-          >
-            <LocateFixed size={15} />
-          </button>
+          <Tooltip content="定位当前打开的文件与目录">
+            <button
+              type="button"
+              onClick={handleLocateActive}
+              style={actionBtnStyle}
+              onMouseEnter={handleBtnMouseEnter}
+              onMouseLeave={handleBtnMouseLeave}
+              onMouseDown={handleBtnMouseDown}
+              onMouseUp={handleBtnMouseUp}
+            >
+              <LocateFixed size={15} />
+            </button>
+          </Tooltip>
           {/* 新建文件 */}
-          <button
-            type="button"
-            onClick={() => {
-              setCreatingType('file');
-              setCreatingName('');
-            }}
-            style={actionBtnStyle}
-            onMouseEnter={handleBtnMouseEnter}
-            onMouseLeave={handleBtnMouseLeave}
-            onMouseDown={handleBtnMouseDown}
-            onMouseUp={handleBtnMouseUp}
-            title="新建文件"
-          >
-            <FilePlus size={15} />
-          </button>
+          <Tooltip content="新建文件">
+            <button
+              type="button"
+              onClick={() => {
+                setCreatingType('file');
+                setCreatingName('');
+              }}
+              style={actionBtnStyle}
+              onMouseEnter={handleBtnMouseEnter}
+              onMouseLeave={handleBtnMouseLeave}
+              onMouseDown={handleBtnMouseDown}
+              onMouseUp={handleBtnMouseUp}
+            >
+              <FilePlus size={15} />
+            </button>
+          </Tooltip>
           {/* 新建文件夹 */}
-          <button
-            type="button"
-            onClick={() => {
-              setCreatingType('folder');
-              setCreatingName('');
-            }}
-            style={actionBtnStyle}
-            onMouseEnter={handleBtnMouseEnter}
-            onMouseLeave={handleBtnMouseLeave}
-            onMouseDown={handleBtnMouseDown}
-            onMouseUp={handleBtnMouseUp}
-            title="新建文件夹"
-          >
-            <FolderPlus size={15} />
-          </button>
+          <Tooltip content="新建文件夹">
+            <button
+              type="button"
+              onClick={() => {
+                setCreatingType('folder');
+                setCreatingName('');
+              }}
+              style={actionBtnStyle}
+              onMouseEnter={handleBtnMouseEnter}
+              onMouseLeave={handleBtnMouseLeave}
+              onMouseDown={handleBtnMouseDown}
+              onMouseUp={handleBtnMouseUp}
+            >
+              <FolderPlus size={15} />
+            </button>
+          </Tooltip>
           {/* 刷新目录 */}
-          <button
-            type="button"
-            onClick={handleRefresh}
-            style={actionBtnStyle}
-            onMouseEnter={handleBtnMouseEnter}
-            onMouseLeave={handleBtnMouseLeave}
-            onMouseDown={handleBtnMouseDown}
-            onMouseUp={handleBtnMouseUp}
-            title="刷新目录"
-          >
-            <RotateCw size={15} />
-          </button>
+          <Tooltip content="刷新目录">
+            <button
+              type="button"
+              onClick={handleRefresh}
+              style={actionBtnStyle}
+              onMouseEnter={handleBtnMouseEnter}
+              onMouseLeave={handleBtnMouseLeave}
+              onMouseDown={handleBtnMouseDown}
+              onMouseUp={handleBtnMouseUp}
+            >
+              <RotateCw size={15} />
+            </button>
+          </Tooltip>
           {/* 打开文件夹 */}
-          <button
-            type="button"
-            onClick={openFolderDialog}
-            style={actionBtnStyle}
-            onMouseEnter={handleBtnMouseEnter}
-            onMouseLeave={handleBtnMouseLeave}
-            onMouseDown={handleBtnMouseDown}
-            onMouseUp={handleBtnMouseUp}
-            title="打开文件夹"
-          >
-            <FolderOpen size={15} />
-          </button>
+          <Tooltip content="打开文件夹">
+            <button
+              type="button"
+              onClick={openFolderDialog}
+              style={actionBtnStyle}
+              onMouseEnter={handleBtnMouseEnter}
+              onMouseLeave={handleBtnMouseLeave}
+              onMouseDown={handleBtnMouseDown}
+              onMouseUp={handleBtnMouseUp}
+            >
+              <FolderOpen size={15} />
+            </button>
+          </Tooltip>
         </div>
       </div>
 

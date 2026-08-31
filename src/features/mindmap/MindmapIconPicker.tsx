@@ -4,6 +4,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
+import { Tooltip } from '../../components/Tooltip';
 
 interface MindmapIconPickerProps {
   currentIcon?: string;
@@ -103,32 +104,34 @@ export function MindmapIconPicker({
           设置节点图标
         </span>
         {currentIcon && (
-          <button
-            type="button"
-            onClick={() => {
-              onSelect(undefined);
-              onClose();
-            }}
-            title="移除当前图标"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 3,
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: 11,
-              color: 'var(--editor-text-muted, #94a3b8)',
-              padding: '2px 4px',
-              borderRadius: 4,
-              transition: 'color 0.15s ease',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--editor-text-muted, #94a3b8)')}
-          >
-            <X size={11} />
-            <span>清除</span>
-          </button>
+          <Tooltip content="移除当前图标" side="top" sideOffset={4}>
+            <button
+              type="button"
+              onClick={() => {
+                onSelect(undefined);
+                onClose();
+              }}
+              aria-label="移除当前图标"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 3,
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 11,
+                color: 'var(--editor-text-muted, #94a3b8)',
+                padding: '2px 4px',
+                borderRadius: 4,
+                transition: 'color 0.15s ease',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--editor-text-muted, #94a3b8)')}
+            >
+              <X size={11} />
+              <span>清除</span>
+            </button>
+          </Tooltip>
         )}
       </div>
 
