@@ -87,6 +87,12 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
     anchor: AnchorRect;
     trigger: HTMLElement;
   } | null>(null);
+  // 新建记录下拉菜单与自定义行数状态
+  const [addRecordMenu, setAddRecordMenu] = useState<{
+    anchor: AnchorRect;
+    trigger: HTMLElement;
+  } | null>(null);
+  const [customRowCount, setCustomRowCount] = useState<string>('3');
 
   // 右侧记录详情侧边栏：以「收集单」形式编辑单条记录
   const [recordPanelRowId, setRecordPanelRowId] = useState<string | null>(null);
@@ -287,9 +293,29 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
     [commitChange],
   );
 
+  // 批量新建记录行
+  const handleAddRows = useCallback(
+    (count: number = 1) => {
+      const n = Math.max(1, Math.min(1000, Math.floor(count) || 1));
+      commitChange((prev) => {
+        const newRows: BitableRow[] = [];
+        for (let i = 0; i < n; i++) {
+          newRows.push(createRow(prev.columns));
+        }
+        return { ...prev, rows: [...prev.rows, ...newRows] };
+      });
+      if (n > 1) {
+        showToast(`已新建 ${n} 条记录`);
+      }
+      setAddRecordMenu(null);
+    },
+    [commitChange],
+  );
+
+  // 新建单行记录
   const handleAddRow = useCallback(() => {
-    commitChange((prev) => ({ ...prev, rows: [...prev.rows, createRow(prev.columns)] }));
-  }, [commitChange]);
+    handleAddRows(1);
+  }, [handleAddRows]);
 
   const handleAddSubRow = useCallback(
     (parentRowId: string) => {
@@ -1140,15 +1166,124 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             <span>导出 CSV</span>
           </button>
 
-          {/* 新增记录按钮 */}
-          <button
-            type="button"
-            className="nb-bitable-btn-primary"
-            onClick={handleAddRow}
-          >
-            <Plus size={13} />
-            <span>新建记录</span>
-          </button>
+          {/* 新增记录按钮及下拉菜单 */}
+          <div style={{ position: 'relative' }}>
+            <button
+              type="button"
+              className="nb-bitable-btn-primary"
+              onClick={(e) => {
+                if (addRecordMenu) {
+                  setAddRecordMenu(null);
+                  return;
+                }
+                const anchor = getAnchorRect(e.currentTarget);
+                if (anchor) {
+                  setAddRecordMenu({ anchor, trigger: e.currentTarget as HTMLElement });
+                }
+              }}
+              style={{
+                gap: 4,
+              }}
+            >
+              <Plus size={13} />
+              <span>新建记录</span>
+              <ChevronDown size={11} style={{ opacity: 0.8 }} />
+            </button>
+
+            {addRecordMenu && (
+              <FloatingPanel
+                anchor={addRecordMenu.anchor}
+                trigger={addRecordMenu.trigger}
+                align="right"
+                width={180}
+                onClose={() => setAddRecordMenu(null)}
+              >
+                {/* 单行新建 */}
+                <button
+                  type="button"
+                  className="nb-bitable-menu-item"
+                  onClick={() => handleAddRows(1)}
+                >
+                  <Plus size={13} />
+                  <span>新建一行</span>
+                </button>
+
+                {/* 自定义批量新建行 */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '5px 8px',
+                    fontSize: 12,
+                    color: 'var(--editor-text, #1e293b)',
+                    whiteSpace: 'nowrap',
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>新建</span>
+                  {/* 数字输入框：屏蔽默认上下微调箭头与滚轮改值 */}
+                  <input
+                    type="number"
+                    min={1}
+                    max={1000}
+                    className="nb-bitable-num-input"
+                    value={customRowCount}
+                    onChange={(e) => setCustomRowCount(e.target.value)}
+                    onWheel={(e) => e.currentTarget.blur()}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const count = parseInt(customRowCount, 10);
+                        if (Number.isFinite(count) && count > 0) {
+                          handleAddRows(count);
+                        }
+                      }
+                    }}
+                    style={{
+                      width: 44,
+                      height: 24,
+                      padding: '2px 4px',
+                      fontSize: 12,
+                      border: '1px solid var(--editor-border, #cbd5e1)',
+                      borderRadius: 4,
+                      background: 'var(--editor-bg, #ffffff)',
+                      color: 'var(--editor-text, #1e293b)',
+                      textAlign: 'center',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                      flexShrink: 0,
+                    }}
+                    autoFocus
+                  />
+                  <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>行</span>
+                  {/* 确定提交按钮 */}
+                  <button
+                    type="button"
+                    className="nb-bitable-btn-secondary"
+                    onClick={() => {
+                      const count = parseInt(customRowCount, 10);
+                      if (Number.isFinite(count) && count > 0) {
+                        handleAddRows(count);
+                      }
+                    }}
+                    style={{
+                      padding: '2px 8px',
+                      fontSize: 11,
+                      marginLeft: 'auto',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
+                      height: 24,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    确定
+                  </button>
+                </div>
+              </FloatingPanel>
+            )}
+          </div>
         </div>
       </div>
 
