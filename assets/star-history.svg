@@ -51,14 +51,14 @@
     <text class="axis-label" x="54" y="78" text-anchor="end">10</text>
     <text class="axis-label" x="68" y="410" text-anchor="middle">2026-08-19</text>
     <text class="axis-label" x="254" y="410" text-anchor="middle">2026-08-22</text>
-    <text class="axis-label" x="440" y="410" text-anchor="middle">2026-08-24</text>
-    <text class="axis-label" x="626" y="410" text-anchor="middle">2026-08-27</text>
-    <text class="axis-label" x="812" y="410" text-anchor="middle">2026-08-30</text>
+    <text class="axis-label" x="440" y="410" text-anchor="middle">2026-08-25</text>
+    <text class="axis-label" x="626" y="410" text-anchor="middle">2026-08-28</text>
+    <text class="axis-label" x="812" y="410" text-anchor="middle">2026-08-31</text>
   </g>
-  <path class="area" d="M 68 368 H 68.01 V 368 H 117.83 V 250.4 H 186.33 V 221 H 254.13 V 132.8 H 322.74 V 103.4 H 390.97 V 103.4 H 458.87 V 103.4 H 527.44 V 74 H 619.95 V 74 H 693.07 V 74 H 746.92 V 74 H 812 V 74 L 812 368 L 68 368 Z" />
-  <path class="line" d="M 68 368 H 68.01 V 368 H 117.83 V 250.4 H 186.33 V 221 H 254.13 V 132.8 H 322.74 V 103.4 H 390.97 V 103.4 H 458.87 V 103.4 H 527.44 V 74 H 619.95 V 74 H 693.07 V 74 H 746.92 V 74 H 812 V 74" />
+  <path class="area" d="M 68 368 H 68.01 V 368 H 113.6 V 250.4 H 176.29 V 221 H 238.34 V 132.8 H 301.13 V 103.4 H 363.57 V 103.4 H 425.7 V 103.4 H 488.46 V 74 H 573.12 V 74 H 640.04 V 74 H 689.32 V 74 H 748.87 V 74 H 812 V 74 L 812 368 L 68 368 Z" />
+  <path class="line" d="M 68 368 H 68.01 V 368 H 113.6 V 250.4 H 176.29 V 221 H 238.34 V 132.8 H 301.13 V 103.4 H 363.57 V 103.4 H 425.7 V 103.4 H 488.46 V 74 H 573.12 V 74 H 640.04 V 74 H 689.32 V 74 H 748.87 V 74 H 812 V 74" />
   <circle class="dot" cx="812" cy="74" r="6" />
   <rect class="badge" x="682" y="28" width="130" height="34" rx="17" />
   <text class="badge-text" x="747" y="50" text-anchor="middle">10 stars</text>
-  <text class="status" x="812" y="428" text-anchor="end">Observed snapshots: 2026-08-19 – 2026-08-30</text>
+  <text class="status" x="812" y="428" text-anchor="end">Observed snapshots: 2026-08-19 – 2026-08-31</text>
 </svg>
