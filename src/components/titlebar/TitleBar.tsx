@@ -207,7 +207,7 @@ export function TitleBar() {
           e.currentTarget.style.background = 'var(--toolbar-hover)';
           e.currentTarget.style.transform = 'scale(1.05)';
         }}
-        title="设置 (Ctrl+,)"
+        title="设置"
         aria-label="打开设置"
       >
         <SettingsIcon size={15} />
