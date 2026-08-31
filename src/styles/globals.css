@@ -59,6 +59,69 @@ body {
 }
 
 /* ═════════════════════════════════════════════════════════
+ * 现代通用复选框控件 (Checkbox)
+ * 具备精致微圆角、稍大尺寸（16px）、即时 Hover/Active 动效与主题强调色自适应
+ * ═════════════════════════════════════════════════════════ */
+
+/* 基础形态：微圆角、16px尺寸与柔和边框 */
+input[type="checkbox"]:not(.nb-raw-checkbox) {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+  vertical-align: middle;
+  background-color: var(--editor-bg);
+  border: 1.5px solid color-mix(in srgb, var(--editor-border) 55%, var(--editor-text-muted) 45%);
+  border-radius: var(--radius-sm, 4px);
+  outline: none;
+  flex-shrink: 0;
+  transition:
+    background-color var(--transition-fast, 150ms ease),
+    border-color var(--transition-fast, 150ms ease),
+    transform var(--transition-fast, 150ms ease),
+    box-shadow var(--transition-fast, 150ms ease);
+  position: relative;
+  box-sizing: border-box;
+}
+
+/* 悬浮反馈：边框加亮、背景微亮并有轻微放大动效 */
+input[type="checkbox"]:not(.nb-raw-checkbox):hover {
+  border-color: var(--accent-strong);
+  background-color: var(--toolbar-hover);
+  transform: scale(1.06);
+}
+
+/* 按压反馈：轻微回弹缩放 */
+input[type="checkbox"]:not(.nb-raw-checkbox):active {
+  transform: scale(0.92);
+}
+
+/* 勾选激活状态：填充主题强调色并展示高清圆润白勾 */
+input[type="checkbox"]:not(.nb-raw-checkbox):checked {
+  background-color: var(--accent-strong);
+  border-color: var(--accent-strong);
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3.8 8.4L6.8 11.4L12.4 4.8' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+}
+
+/* 勾选状态下的悬浮反馈 */
+input[type="checkbox"]:not(.nb-raw-checkbox):checked:hover {
+  filter: brightness(1.08);
+}
+
+/* 键盘操作焦点反馈 */
+input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
+  outline: 2px solid var(--editor-border-focus);
+  outline-offset: 2px;
+}
+
+/* ═════════════════════════════════════════════════════════
  * 尺度层（三套主题共用）
  * ═════════════════════════════════════════════════════════ */
 
@@ -938,11 +1001,9 @@ body {
 .ProseMirror li[data-type="taskItem"] > label input[type="checkbox"],
 .ProseMirror li[data-checked] > label input[type="checkbox"] {
   cursor: pointer;
-  width: 1em;
-  height: 1em;
+  width: 1.05em;
+  height: 1.05em;
   margin: 0;
-  accent-color: var(--editor-accent, #3b82f6);
-  border-radius: 3px;
   vertical-align: middle;
 }
 
