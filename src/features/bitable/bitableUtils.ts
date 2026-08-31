@@ -398,7 +398,7 @@ export function coerceCellValue(
     case 'select': {
       if (!text) return { value: null, column: null };
       const options = column.options || [];
-      const hit = options.find((o) => o.label.toLowerCase() === text.toLowerCase());
+      const hit = options.find((o) => o.id === text || o.label.toLowerCase() === text.toLowerCase());
       if (hit) return { value: hit.id, column: null };
       const created: SelectOption = {
         id: createId('opt'),
@@ -415,7 +415,7 @@ export function coerceCellValue(
       let changed = false;
       const ids: string[] = [];
       tokens.forEach((token) => {
-        const hit = options.find((o) => o.label.toLowerCase() === token.toLowerCase());
+        const hit = options.find((o) => o.id === token || o.label.toLowerCase() === token.toLowerCase());
         if (hit) {
           ids.push(hit.id);
           return;
@@ -772,4 +772,202 @@ export function getSortDirectionLabels(
     default:
       return { asc: 'A → Z', desc: 'Z → A' };
   }
+}
+
+/**
+ * 日期增减指定天数并返回 YYYY-MM-DD
+ */
+function addDaysToDateString(dateStr: string, days: number): string {
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  const y = Number(parts[0]);
+  const m = Number(parts[1]) - 1;
+  const d = Number(parts[2]);
+  const date = new Date(y, m, d);
+  date.setDate(date.getDate() + days);
+  const nextY = date.getFullYear();
+  const nextM = String(date.getMonth() + 1).padStart(2, '0');
+  const nextD = String(date.getDate()).padStart(2, '0');
+  return `${nextY}-${nextM}-${nextD}`;
+}
+
+/**
+ * 智能序列自动补齐算法 (AutoFill)
+ * 支持数字等差递增、文本数字后缀自动步进 (如 Task 1 -> Task 2)、日期按天递增以及其他类型的周期循环
+ *
+ * @param column 当前列配置
+ * @param sourceValues 选区源值列表（有序）
+ * @param targetCount 需要生成的填充值数量
+ * @param direction 填充方向：forward (向下/向右) 或 backward (向上/向左)
+ */
+export function calculateAutoFillValues(
+  column: BitableColumn,
+  sourceValues: unknown[],
+  targetCount: number,
+  direction: 'forward' | 'backward' = 'forward',
+): unknown[] {
+  if (targetCount <= 0) return [];
+  if (!sourceValues.length) return Array(targetCount).fill(null);
+
+  const colType = column.type;
+
+  // 1. 数字类型 (number / progress / rating)
+  if (colType === 'number' || colType === 'progress' || colType === 'rating') {
+    const isAllNumeric = sourceValues.every(
+      (v) => v !== null && v !== undefined && v !== '' && !Number.isNaN(Number(v)),
+    );
+
+    if (isAllNumeric) {
+      const numbers = sourceValues.map(Number);
+      let step = 0;
+      if (numbers.length >= 2) {
+        step = (numbers[numbers.length - 1] - numbers[0]) / (numbers.length - 1);
+      } else {
+        // 单个数字默认重复
+        step = 0;
+      }
+
+      const results: unknown[] = [];
+      for (let i = 0; i < targetCount; i += 1) {
+        let val: number;
+        if (direction === 'forward') {
+          val = numbers[numbers.length - 1] + step * (i + 1);
+        } else {
+          val = numbers[0] - step * (targetCount - i);
+        }
+
+        // 消除浮点数累加误差
+        val = Number(val.toFixed(6));
+
+        // 范围限制
+        if (colType === 'progress') {
+          val = Math.max(0, Math.min(100, Math.round(val)));
+        } else if (colType === 'rating') {
+          val = Math.max(0, Math.min(5, Math.round(val)));
+        }
+
+        results.push(val);
+      }
+      return results;
+    }
+  }
+
+  // 2. 日期与日期时间类型 (date / dateTime)
+  if (colType === 'date' || colType === 'dateTime') {
+    const isAllDates =
+      sourceValues.length > 0 &&
+      sourceValues.every(
+        (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v.trim()),
+      );
+
+    if (isAllDates) {
+      const dateStrs = sourceValues.map((v) => String(v).trim());
+      const pureDates = dateStrs.map((s) => s.split(/[\sT]+/)[0]);
+      const timeSuffixes = dateStrs.map((s) => {
+        const parts = s.split(/[\sT]+/);
+        return parts.length > 1 ? ` ${parts[1]}` : '';
+      });
+
+      let stepDays = 1;
+      if (dateStrs.length >= 2) {
+        const d0 = Date.parse(pureDates[0]);
+        const dLast = Date.parse(pureDates[pureDates.length - 1]);
+        if (!Number.isNaN(d0) && !Number.isNaN(dLast)) {
+          stepDays = Math.round((dLast - d0) / (dateStrs.length - 1) / (24 * 3600 * 1000));
+        }
+      }
+
+      const results: unknown[] = [];
+      for (let i = 0; i < targetCount; i += 1) {
+        if (direction === 'forward') {
+          const baseDate = pureDates[pureDates.length - 1];
+          const suffix = timeSuffixes[timeSuffixes.length - 1];
+          results.push(`${addDaysToDateString(baseDate, stepDays * (i + 1))}${suffix}`);
+        } else {
+          const baseDate = pureDates[0];
+          const suffix = timeSuffixes[0];
+          results.push(`${addDaysToDateString(baseDate, -stepDays * (targetCount - i))}${suffix}`);
+        }
+      }
+      return results;
+    }
+  }
+
+  // 3. 文本类 (text / link / longText)：识别末尾数字后缀 (如 "任务 1", "Item-01", "Day 1")
+  if (colType === 'text' || colType === 'link' || colType === 'longText') {
+    const stringVals = sourceValues.map((v) => (v === null || v === undefined ? '' : String(v)));
+    const matchedPatterns = stringVals.map((str) => {
+      const match = str.match(/^(.*?)(\d+)$/);
+      if (!match) return null;
+      return { prefix: match[1], numStr: match[2], num: Number(match[2]), padLen: match[2].length };
+    });
+
+    const hasConsistentSuffix =
+      matchedPatterns.every((m) => m !== null) &&
+      matchedPatterns.every((m) => m!.prefix === matchedPatterns[0]!.prefix);
+
+    if (hasConsistentSuffix && matchedPatterns.length > 0) {
+      const prefix = matchedPatterns[0]!.prefix;
+      const padLen = matchedPatterns[0]!.padLen;
+      let step = 1;
+      if (matchedPatterns.length >= 2) {
+        step =
+          (matchedPatterns[matchedPatterns.length - 1]!.num - matchedPatterns[0]!.num) /
+          (matchedPatterns.length - 1);
+      }
+
+      const results: unknown[] = [];
+      for (let i = 0; i < targetCount; i += 1) {
+        let nextNum: number;
+        if (direction === 'forward') {
+          nextNum = matchedPatterns[matchedPatterns.length - 1]!.num + step * (i + 1);
+        } else {
+          nextNum = matchedPatterns[0]!.num - step * (targetCount - i);
+        }
+        const formattedNum = String(Math.max(0, Math.round(nextNum))).padStart(padLen, '0');
+        results.push(`${prefix}${formattedNum}`);
+      }
+      return results;
+    }
+  }
+
+  // 4. 通用周期循环回退 (单选/多选/勾选及无规律文本)
+  const results: unknown[] = [];
+  const len = sourceValues.length;
+  for (let i = 0; i < targetCount; i += 1) {
+    if (direction === 'forward') {
+      results.push(sourceValues[i % len]);
+    } else {
+      const offset = (len - ((targetCount - i) % len)) % len;
+      results.push(sourceValues[offset]);
+    }
+  }
+  return results;
+}
+
+/**
+ * 区域矩阵平铺工具：将源二维数据平铺/扩展到目标尺寸 (targetRows x targetCols)
+ */
+export function tileMatrix<T>(
+  sourceMatrix: T[][],
+  targetRows: number,
+  targetCols: number,
+): T[][] {
+  if (!sourceMatrix.length || !sourceMatrix[0]?.length || targetRows <= 0 || targetCols <= 0) {
+    return [];
+  }
+
+  const sRows = sourceMatrix.length;
+  const sCols = sourceMatrix[0].length;
+  const result: T[][] = [];
+
+  for (let r = 0; r < targetRows; r += 1) {
+    const row: T[] = [];
+    for (let c = 0; c < targetCols; c += 1) {
+      row.push(sourceMatrix[r % sRows][c % sCols]);
+    }
+    result.push(row);
+  }
+
+  return result;
 }

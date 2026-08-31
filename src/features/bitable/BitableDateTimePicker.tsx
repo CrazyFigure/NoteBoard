@@ -439,14 +439,14 @@ export function DateTimeFieldEditor({
   const type = column.type as DateTimeFieldType;
   const config = resolveDateTimeConfig(column);
   const [anchor, setAnchor] = useState<AnchorRect | null>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
 
   const raw = value === undefined || value === null || value === '' ? null : String(value);
   // 展示文本按列格式渲染，保证界面所见与复制到剪贴板的内容一致
   const displayText = raw ? formatDateTimeValue(raw, type, config) : '';
   const showSeconds = config.timeFormat === 'hms' || config.timeFormat === 'hms-cn';
 
-  const togglePanel = (e: React.MouseEvent<HTMLButtonElement>) => {
+  const togglePanel = (e: React.MouseEvent<HTMLElement>) => {
     e.stopPropagation();
     // 浮层的外部点击监听会放行触发器自身的点击，故这里必须自己完成 toggle，
     // 否则已打开时再点触发器只会被忽略，看起来像「点了没反应」
@@ -492,11 +492,12 @@ export function DateTimeFieldEditor({
 
   return (
     <>
-      <button
+      <div
         ref={triggerRef}
-        type="button"
-        title={displayText || '点击选择'}
-        onClick={togglePanel}
+        role={isForm ? 'button' : undefined}
+        title={displayText || (isForm ? '点击选择' : '双击选择')}
+        onClick={isForm ? togglePanel : undefined}
+        onDoubleClick={togglePanel}
         className="nb-bitable-date-trigger"
         style={{
           display: 'flex',
@@ -514,6 +515,7 @@ export function DateTimeFieldEditor({
           fontFamily: 'inherit',
           cursor: 'pointer',
           overflow: 'hidden',
+          userSelect: 'none',
         }}
       >
         {type === 'time' ? <Clock size={12} /> : <Calendar size={12} />}
@@ -534,6 +536,7 @@ export function DateTimeFieldEditor({
           <span
             role="button"
             tabIndex={-1}
+            data-no-drag
             title="清除"
             className="nb-bitable-btn-ghost"
             onClick={(e) => {
@@ -545,7 +548,7 @@ export function DateTimeFieldEditor({
             <X size={11} />
           </span>
         )}
-      </button>
+      </div>
 
       {anchor && triggerRef.current && (
         <FloatingPanel
