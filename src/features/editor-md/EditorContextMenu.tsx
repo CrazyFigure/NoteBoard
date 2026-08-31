@@ -5,6 +5,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import type { Editor } from '@tiptap/core';
+import { isInTable } from '@tiptap/pm/tables';
+import { applyTablePaste } from './tableClipboard';
 import {
   Bold,
   Italic,
@@ -200,6 +202,35 @@ export function EditorContextMenu({
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Copy size={15} color="var(--accent-500, #3b82f6)" />
                 <span>复制 (Ctrl+C)</span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              style={btnStyle}
+              onClick={async () => {
+                onClose();
+                try {
+                  const text = await navigator.clipboard.readText();
+                  if (text) {
+                    if (isInTable(editor.state) && applyTablePaste(editor, text)) {
+                      return;
+                    }
+                    editor.chain().focus().insertContent(text).run();
+                  }
+                } catch {
+                  document.execCommand('paste');
+                }
+              }}
+              onMouseEnter={(e) => {
+                setActiveSubmenu(null);
+                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
+              }}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Clipboard size={15} color="var(--accent-500, #3b82f6)" />
+                <span>粘贴 (Ctrl+V)</span>
               </div>
             </button>
 
@@ -426,6 +457,9 @@ export function EditorContextMenu({
                 try {
                   const text = await navigator.clipboard.readText();
                   if (text) {
+                    if (isInTable(editor.state) && applyTablePaste(editor, text)) {
+                      return;
+                    }
                     editor.chain().focus().insertContent(text).run();
                   }
                 } catch {
@@ -452,6 +486,9 @@ export function EditorContextMenu({
                 try {
                   const text = await navigator.clipboard.readText();
                   if (text) {
+                    if (isInTable(editor.state) && applyTablePaste(editor, text)) {
+                      return;
+                    }
                     editor.chain().focus().insertContent({ type: 'text', text }).run();
                   }
                 } catch {

@@ -30,6 +30,7 @@ import { GitHubAlert } from '../alertExtension';
 import { slashSuggestion } from '../slashCommand';
 
 import { handleLinkClick } from '../linkHandler';
+import { TableClipboard } from '../tableClipboard';
 import { useWindowStore } from '../../../stores/windowStore';
 
 import Suggestion from '@tiptap/suggestion';
@@ -224,7 +225,8 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
       },
     }),
 
-    // 表格
+    // 表格及表格剪贴板增强（支持标准 TSV 复制与二维矩阵粘贴）
+    TableClipboard,
     Table.configure({
       resizable: true,
       HTMLAttributes: {
