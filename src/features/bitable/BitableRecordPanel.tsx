@@ -9,6 +9,7 @@ import { BitableCellEditor } from './BitableCellEditor';
 import { getFieldTypeMeta } from './BitableFieldMeta';
 import { previewLongText, resolveLongTextConfig } from './bitableUtils';
 import { X, Trash2 } from 'lucide-react';
+import { Tooltip } from '../../components/Tooltip';
 
 interface RecordPanelProps {
   row: BitableRow;
@@ -149,26 +150,28 @@ export function BitableRecordPanel({
       }}
     >
       {/* 左侧拖拽手柄：5px 透明区，hover 与拖拽中显示蓝色高亮条 */}
-      <div
-        onMouseDown={handleResizeStart}
-        title="拖拽调整侧栏宽度"
-        style={{
-          position: 'absolute',
-          top: 0,
-          bottom: 0,
-          left: 0,
-          width: 5,
-          cursor: 'col-resize',
-          background: resizing ? 'var(--editor-accent, #3b82f6)' : 'transparent',
-          zIndex: 1,
-        }}
-        onMouseEnter={(e) => {
-          if (!resizing) e.currentTarget.style.background = 'var(--editor-accent, #3b82f6)';
-        }}
-        onMouseLeave={(e) => {
-          if (!resizing) e.currentTarget.style.background = 'transparent';
-        }}
-      />
+      <Tooltip content="拖拽调整侧栏宽度" side="left" sideOffset={6}>
+        <div
+          onMouseDown={handleResizeStart}
+          aria-label="拖拽调整侧栏宽度"
+          style={{
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            left: 0,
+            width: 5,
+            cursor: 'col-resize',
+            background: resizing ? 'var(--editor-accent, #3b82f6)' : 'transparent',
+            zIndex: 1,
+          }}
+          onMouseEnter={(e) => {
+            if (!resizing) e.currentTarget.style.background = 'var(--editor-accent, #3b82f6)';
+          }}
+          onMouseLeave={(e) => {
+            if (!resizing) e.currentTarget.style.background = 'transparent';
+          }}
+        />
+      </Tooltip>
 
       {/* 面板头部：记录标题与关闭 */}
       <div
@@ -186,38 +189,41 @@ export function BitableRecordPanel({
           <div style={{ fontSize: 11, color: 'var(--editor-text-muted, #94a3b8)', marginBottom: 2 }}>
             记录详情
           </div>
-          <div
-            title={title}
-            style={{
-              fontSize: 14,
-              fontWeight: 600,
-              color: 'var(--editor-text, #1e293b)',
-              lineHeight: 1.4,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {title}
-          </div>
+          <Tooltip content={title} side="bottom" sideOffset={4}>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 600,
+                color: 'var(--editor-text, #1e293b)',
+                lineHeight: 1.4,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {title}
+            </div>
+          </Tooltip>
           {parentTitle && (
             <div style={{ fontSize: 11, color: 'var(--editor-text-muted, #94a3b8)', marginTop: 2 }}>
               子任务 · 上级：{parentTitle}
             </div>
           )}
         </div>
-        <button
-          type="button"
-          className="nb-bitable-btn-ghost"
-          onClick={onClose}
-          title="关闭详情"
-          style={{
-            padding: 3,
-            flexShrink: 0,
-          }}
-        >
-          <X size={15} />
-        </button>
+        <Tooltip content="关闭详情" side="bottom" sideOffset={4}>
+          <button
+            type="button"
+            className="nb-bitable-btn-ghost"
+            onClick={onClose}
+            aria-label="关闭详情"
+            style={{
+              padding: 3,
+              flexShrink: 0,
+            }}
+          >
+            <X size={15} />
+          </button>
+        </Tooltip>
       </div>
 
       {/* 字段表单：逐字段纵向排列的收集单 */}
@@ -247,21 +253,22 @@ export function BitableRecordPanel({
                 <span style={{ fontSize: 12, fontWeight: 600 }}>{col.name}</span>
                 <span style={{ fontSize: 10, opacity: 0.75 }}>{meta.label}</span>
                 {ltConfig && (
-                  <span
-                    title="该列的显示模式，可在表格列头菜单中修改"
-                    style={{
-                      marginLeft: 'auto',
-                      fontSize: 10,
-                      padding: '1px 6px',
-                      borderRadius: 4,
-                      background: 'var(--editor-bg, #f1f5f9)',
-                      color: 'var(--editor-text-muted, #64748b)',
-                      flexShrink: 0,
-                    }}
-                  >
-                    {ltConfig.displayMode === 'full' ? '全显示' : '仅首行'}
-                    {ltConfig.markdown ? ' · MD' : ''}
-                  </span>
+                  <Tooltip content="该列的显示模式，可在表格列头菜单中修改" side="top" sideOffset={4}>
+                    <span
+                      style={{
+                        marginLeft: 'auto',
+                        fontSize: 10,
+                        padding: '1px 6px',
+                        borderRadius: 4,
+                        background: 'var(--editor-bg, #f1f5f9)',
+                        color: 'var(--editor-text-muted, #64748b)',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {ltConfig.displayMode === 'full' ? '全显示' : '仅首行'}
+                      {ltConfig.markdown ? ' · MD' : ''}
+                    </span>
+                  </Tooltip>
                 )}
               </div>
 

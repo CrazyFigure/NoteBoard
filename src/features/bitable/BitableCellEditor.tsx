@@ -96,7 +96,6 @@ function LongTextReadOnly({
     return (
       <div
         onDoubleClick={onOpenEditor}
-        title="双击编辑内容"
         style={{
           width: '100%',
           padding: '4px 8px',
@@ -115,7 +114,6 @@ function LongTextReadOnly({
     return (
       <div
         onDoubleClick={onOpenEditor}
-        title="双击编辑内容"
         style={{
           width: '100%',
           padding: '5px 8px',
@@ -140,7 +138,6 @@ function LongTextReadOnly({
   return (
     <div
       onDoubleClick={onOpenEditor}
-      title={raw}
       style={{
         width: '100%',
         display: 'flex',
@@ -268,7 +265,6 @@ export function BitableCellEditor({
           setInputValue(String(value ?? ''));
           setEditing(true);
         }}
-        title="双击进行编辑"
         style={{
           width: '100%',
           height: '100%',
@@ -434,7 +430,6 @@ export function BitableCellEditor({
           setInputValue(value !== null && value !== undefined ? String(value) : '');
           setEditing(true);
         }}
-        title="双击进行数字编辑"
         style={{
           width: '100%',
           height: '100%',
@@ -486,7 +481,6 @@ export function BitableCellEditor({
         // 表单形态单击即可选择，单元格形态沿用双击以免与选区点击冲突
         onClick={isForm ? openSelectPanel : undefined}
         onDoubleClick={openSelectPanel}
-        title={isForm ? '点击选择或新建标签' : '双击选择或新建标签'}
         style={{
           position: 'relative',
           width: '100%',
@@ -568,7 +562,6 @@ export function BitableCellEditor({
         // 表单形态单击即可选择，单元格形态沿用双击以免与选区点击冲突
         onClick={isForm ? openSelectPanel : undefined}
         onDoubleClick={openSelectPanel}
-        title={isForm ? '点击选择或新建标签' : '双击选择或新建标签'}
         style={{
           position: 'relative',
           width: '100%',

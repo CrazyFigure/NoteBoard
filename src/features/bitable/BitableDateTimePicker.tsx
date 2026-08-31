@@ -13,6 +13,7 @@ import {
 } from './bitableUtils';
 import { FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
 import { Calendar, Check, ChevronLeft, ChevronRight, Clock, X } from 'lucide-react';
+import { Tooltip } from '../../components/Tooltip';
 
 /** 星期表头，周日起始（与 Date.getDay() 一致） */
 const WEEK_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
@@ -166,20 +167,69 @@ function DatePanel({ value, onPick }: DatePanelProps) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
         {viewMode === 'days' && (
           <>
-            <button
-              type="button"
-              className="nb-bitable-btn-ghost nb-bitable-cal-nav"
-              title="上一月"
-              onClick={() => shiftMonth(-1)}
-            >
-              <ChevronLeft size={14} />
-            </button>
+            <Tooltip content="上一月" side="top" sideOffset={4}>
+              <button
+                type="button"
+                className="nb-bitable-btn-ghost nb-bitable-cal-nav"
+                onClick={() => shiftMonth(-1)}
+                aria-label="上一月"
+              >
+                <ChevronLeft size={14} />
+              </button>
+            </Tooltip>
             {/* 年月可点击切换到对应网格选择器 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Tooltip content="选择年份" side="top" sideOffset={4}>
+                <button
+                  type="button"
+                  className="nb-bitable-cal-title-btn"
+                  onClick={() => {
+                    setYearWindow(Math.floor(year / 12) * 12);
+                    setViewMode('years');
+                  }}
+                >
+                  {year} 年
+                </button>
+              </Tooltip>
+              <Tooltip content="选择月份" side="top" sideOffset={4}>
+                <button
+                  type="button"
+                  className="nb-bitable-cal-title-btn"
+                  onClick={() => setViewMode('months')}
+                >
+                  {month + 1} 月
+                </button>
+              </Tooltip>
+            </div>
+            <Tooltip content="下一月" side="top" sideOffset={4}>
+              <button
+                type="button"
+                className="nb-bitable-btn-ghost nb-bitable-cal-nav"
+                onClick={() => shiftMonth(1)}
+                aria-label="下一月"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </Tooltip>
+          </>
+        )}
+
+        {viewMode === 'months' && (
+          <>
+            <Tooltip content="上一年" side="top" sideOffset={4}>
+              <button
+                type="button"
+                className="nb-bitable-btn-ghost nb-bitable-cal-nav"
+                onClick={() => setYear((y) => y - 1)}
+                aria-label="上一年"
+              >
+                <ChevronLeft size={14} />
+              </button>
+            </Tooltip>
+            <Tooltip content="选择年份" side="top" sideOffset={4}>
               <button
                 type="button"
                 className="nb-bitable-cal-title-btn"
-                title="选择年份"
                 onClick={() => {
                   setYearWindow(Math.floor(year / 12) * 12);
                   setViewMode('years');
@@ -187,79 +237,45 @@ function DatePanel({ value, onPick }: DatePanelProps) {
               >
                 {year} 年
               </button>
+            </Tooltip>
+            <Tooltip content="下一年" side="top" sideOffset={4}>
               <button
                 type="button"
-                className="nb-bitable-cal-title-btn"
-                title="选择月份"
-                onClick={() => setViewMode('months')}
+                className="nb-bitable-btn-ghost nb-bitable-cal-nav"
+                onClick={() => setYear((y) => y + 1)}
+                aria-label="下一年"
               >
-                {month + 1} 月
+                <ChevronRight size={14} />
               </button>
-            </div>
-            <button
-              type="button"
-              className="nb-bitable-btn-ghost nb-bitable-cal-nav"
-              title="下一月"
-              onClick={() => shiftMonth(1)}
-            >
-              <ChevronRight size={14} />
-            </button>
-          </>
-        )}
-
-        {viewMode === 'months' && (
-          <>
-            <button
-              type="button"
-              className="nb-bitable-btn-ghost nb-bitable-cal-nav"
-              title="上一年"
-              onClick={() => setYear((y) => y - 1)}
-            >
-              <ChevronLeft size={14} />
-            </button>
-            <button
-              type="button"
-              className="nb-bitable-cal-title-btn"
-              title="选择年份"
-              onClick={() => {
-                setYearWindow(Math.floor(year / 12) * 12);
-                setViewMode('years');
-              }}
-            >
-              {year} 年
-            </button>
-            <button
-              type="button"
-              className="nb-bitable-btn-ghost nb-bitable-cal-nav"
-              title="下一年"
-              onClick={() => setYear((y) => y + 1)}
-            >
-              <ChevronRight size={14} />
-            </button>
+            </Tooltip>
           </>
         )}
 
         {viewMode === 'years' && (
           <>
-            <button
-              type="button"
-              className="nb-bitable-btn-ghost nb-bitable-cal-nav"
-              title="前 12 年"
-              onClick={() => setYearWindow((w) => w - 12)}
-            >
-              <ChevronLeft size={14} />
-            </button>
+            <Tooltip content="前 12 年" side="top" sideOffset={4}>
+              <button
+                type="button"
+                className="nb-bitable-btn-ghost nb-bitable-cal-nav"
+                onClick={() => setYearWindow((w) => w - 12)}
+                aria-label="前 12 年"
+              >
+                <ChevronLeft size={14} />
+              </button>
+            </Tooltip>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--editor-text, #1e293b)' }}>
               {yearWindow} 年 - {yearWindow + 11} 年
             </div>
-            <button
-              type="button"
-              className="nb-bitable-btn-ghost nb-bitable-cal-nav"
-              title="后 12 年"
-              onClick={() => setYearWindow((w) => w + 12)}
-            >
-              <ChevronRight size={14} />
-            </button>
+            <Tooltip content="后 12 年" side="top" sideOffset={4}>
+              <button
+                type="button"
+                className="nb-bitable-btn-ghost nb-bitable-cal-nav"
+                onClick={() => setYearWindow((w) => w + 12)}
+                aria-label="后 12 年"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </Tooltip>
           </>
         )}
       </div>
@@ -291,7 +307,7 @@ function DatePanel({ value, onPick }: DatePanelProps) {
                 <button
                   key={cell.date}
                   type="button"
-                  title={cell.date}
+                  aria-label={cell.date}
                   className={[
                     'nb-bitable-date-cell',
                     isSelected ? 'is-selected' : '',
@@ -495,7 +511,7 @@ export function DateTimeFieldEditor({
       <div
         ref={triggerRef}
         role={isForm ? 'button' : undefined}
-        title={displayText || (isForm ? '点击选择' : '双击选择')}
+        aria-label={displayText || (isForm ? '点击选择' : '双击选择')}
         onClick={isForm ? togglePanel : undefined}
         onDoubleClick={togglePanel}
         className="nb-bitable-date-trigger"
@@ -533,20 +549,22 @@ export function DateTimeFieldEditor({
         </span>
         {/* 已有值时给一个就地清除入口，省去打开面板再点清除 */}
         {raw && (
-          <span
-            role="button"
-            tabIndex={-1}
-            data-no-drag
-            title="清除"
-            className="nb-bitable-btn-ghost"
-            onClick={(e) => {
-              e.stopPropagation();
-              onChange(null);
-            }}
-            style={{ padding: 0, display: 'inline-flex', opacity: 0.55, flexShrink: 0, marginLeft: 'auto' }}
-          >
-            <X size={11} />
-          </span>
+          <Tooltip content="清除" side="top" sideOffset={4}>
+            <span
+              role="button"
+              tabIndex={-1}
+              data-no-drag
+              aria-label="清除"
+              className="nb-bitable-btn-ghost"
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange(null);
+              }}
+              style={{ padding: 0, display: 'inline-flex', opacity: 0.55, flexShrink: 0, marginLeft: 'auto' }}
+            >
+              <X size={11} />
+            </span>
+          </Tooltip>
         )}
       </div>
 

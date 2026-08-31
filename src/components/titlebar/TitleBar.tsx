@@ -8,6 +8,7 @@ import { Settings as SettingsIcon, RefreshCw } from 'lucide-react';
 import { TabBar } from './TabBar';
 import { WindowControls } from './WindowControls';
 import { ThemeMenu } from './ThemeMenu';
+import { Tooltip } from '../Tooltip';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { useUpdateStore } from '../../stores/updateStore';
 
@@ -44,45 +45,47 @@ export function TitleBar() {
   return (
     <div style={titleBarStyle} role="banner">
       {/* 应用图标 16px，点击可打开设置中心 */}
-      <div
-        data-tauri-drag-region
-        style={{
-          width: 36,
-          height: 36,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-          cursor: 'pointer',
-          transition: 'all var(--transition-fast)',
-        }}
-        onClick={toggleSettingsModal}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-hover)';
-          e.currentTarget.style.transform = 'scale(1.05)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = 'transparent';
-          e.currentTarget.style.transform = 'scale(1)';
-        }}
-        onMouseDown={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-active)';
-          e.currentTarget.style.transform = 'scale(0.92)';
-        }}
-        onMouseUp={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-hover)';
-          e.currentTarget.style.transform = 'scale(1.05)';
-        }}
-        title="NoteBoard (点击打开设置)"
-      >
-        <img
-          src="/logo.ico"
-          alt="NoteBoard"
-          width={16}
-          height={16}
-          style={{ pointerEvents: 'none' }}
-        />
-      </div>
+      <Tooltip content="NoteBoard (点击打开设置)" side="bottom" sideOffset={6}>
+        <div
+          data-tauri-drag-region
+          style={{
+            width: 36,
+            height: 36,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            cursor: 'pointer',
+            transition: 'all var(--transition-fast)',
+          }}
+          onClick={toggleSettingsModal}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.transform = 'scale(1.05)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          onMouseDown={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-active)';
+            e.currentTarget.style.transform = 'scale(0.92)';
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.transform = 'scale(1.05)';
+          }}
+          aria-label="NoteBoard"
+        >
+          <img
+            src="/logo.ico"
+            alt="NoteBoard"
+            width={16}
+            height={16}
+            style={{ pointerEvents: 'none' }}
+          />
+        </div>
+      </Tooltip>
 
       {/* Tab 栏 */}
       <TabBar />
@@ -98,120 +101,122 @@ export function TitleBar() {
       />
 
       {/* 检测更新按钮（主动检测更新，有新版本时标上小红点） */}
-      <button
-        type="button"
-        onClick={() => checkForUpdates(false)}
-        style={{
-          width: 36,
-          height: 36,
-          position: 'relative',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          border: 'none',
-          background: 'transparent',
-          color: hasUpdate ? 'var(--accent-strong)' : 'var(--editor-text-secondary)',
-          cursor: checkingUpdate ? 'not-allowed' : 'pointer',
-          flexShrink: 0,
-          transition: 'all var(--transition-fast)',
-        }}
-        onMouseEnter={(e) => {
-          if (!checkingUpdate) {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.color = 'var(--editor-text)';
-            e.currentTarget.style.transform = 'scale(1.05)';
-          }
-        }}
-        onMouseLeave={(e) => {
-          if (!checkingUpdate) {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = hasUpdate
-              ? 'var(--accent-strong)'
-              : 'var(--editor-text-secondary)';
-            e.currentTarget.style.transform = 'scale(1)';
-          }
-        }}
-        onMouseDown={(e) => {
-          if (!checkingUpdate) {
-            e.currentTarget.style.background = 'var(--toolbar-active)';
-            e.currentTarget.style.transform = 'scale(0.92)';
-          }
-        }}
-        onMouseUp={(e) => {
-          if (!checkingUpdate) {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.transform = 'scale(1.05)';
-          }
-        }}
-        title={hasUpdate ? '发现新版本 NoteBoard (点击查看)' : '检测更新'}
-        aria-label="检测更新"
-      >
-        <RefreshCw
-          size={14}
-          className={checkingUpdate ? 'spin' : ''}
-          style={checkingUpdate ? { animation: 'spin 1s linear infinite' } : undefined}
-        />
-        {/* 新版本小红点提示 */}
-        {hasUpdate && (
-          <span
-            style={{
-              position: 'absolute',
-              top: 7,
-              right: 7,
-              width: 7,
-              height: 7,
-              borderRadius: '50%',
-              background: '#ef4444',
-              boxShadow: '0 0 0 1.5px var(--titlebar-bg)',
-              pointerEvents: 'none',
-            }}
+      <Tooltip content={hasUpdate ? '发现新版本 NoteBoard (点击查看)' : '检测更新'} side="bottom" sideOffset={6}>
+        <button
+          type="button"
+          onClick={() => checkForUpdates(false)}
+          style={{
+            width: 36,
+            height: 36,
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: 'none',
+            background: 'transparent',
+            color: hasUpdate ? 'var(--accent-strong)' : 'var(--editor-text-secondary)',
+            cursor: checkingUpdate ? 'not-allowed' : 'pointer',
+            flexShrink: 0,
+            transition: 'all var(--transition-fast)',
+          }}
+          onMouseEnter={(e) => {
+            if (!checkingUpdate) {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.color = 'var(--editor-text)';
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!checkingUpdate) {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = hasUpdate
+                ? 'var(--accent-strong)'
+                : 'var(--editor-text-secondary)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }
+          }}
+          onMouseDown={(e) => {
+            if (!checkingUpdate) {
+              e.currentTarget.style.background = 'var(--toolbar-active)';
+              e.currentTarget.style.transform = 'scale(0.92)';
+            }
+          }}
+          onMouseUp={(e) => {
+            if (!checkingUpdate) {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }
+          }}
+          aria-label="检测更新"
+        >
+          <RefreshCw
+            size={14}
+            className={checkingUpdate ? 'spin' : ''}
+            style={checkingUpdate ? { animation: 'spin 1s linear infinite' } : undefined}
           />
-        )}
-      </button>
+          {/* 新版本小红点提示 */}
+          {hasUpdate && (
+            <span
+              style={{
+                position: 'absolute',
+                top: 7,
+                right: 7,
+                width: 7,
+                height: 7,
+                borderRadius: '50%',
+                background: '#ef4444',
+                boxShadow: '0 0 0 1.5px var(--titlebar-bg)',
+                pointerEvents: 'none',
+              }}
+            />
+          )}
+        </button>
+      </Tooltip>
 
       {/* 快捷主题切换菜单 */}
       <ThemeMenu />
 
       {/* 设置中心按钮 */}
-      <button
-        type="button"
-        onClick={toggleSettingsModal}
-        style={{
-          width: 36,
-          height: 36,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          border: 'none',
-          background: 'transparent',
-          color: 'var(--editor-text-secondary)',
-          cursor: 'pointer',
-          flexShrink: 0,
-          transition: 'all var(--transition-fast)',
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-hover)';
-          e.currentTarget.style.color = 'var(--editor-text)';
-          e.currentTarget.style.transform = 'scale(1.05)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = 'transparent';
-          e.currentTarget.style.color = 'var(--editor-text-secondary)';
-          e.currentTarget.style.transform = 'scale(1)';
-        }}
-        onMouseDown={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-active)';
-          e.currentTarget.style.transform = 'scale(0.92)';
-        }}
-        onMouseUp={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-hover)';
-          e.currentTarget.style.transform = 'scale(1.05)';
-        }}
-        title="设置"
-        aria-label="打开设置"
-      >
-        <SettingsIcon size={15} />
-      </button>
+      <Tooltip content="设置" side="bottom" sideOffset={6}>
+        <button
+          type="button"
+          onClick={toggleSettingsModal}
+          style={{
+            width: 36,
+            height: 36,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: 'none',
+            background: 'transparent',
+            color: 'var(--editor-text-secondary)',
+            cursor: 'pointer',
+            flexShrink: 0,
+            transition: 'all var(--transition-fast)',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.color = 'var(--editor-text)';
+            e.currentTarget.style.transform = 'scale(1.05)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.color = 'var(--editor-text-secondary)';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          onMouseDown={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-active)';
+            e.currentTarget.style.transform = 'scale(0.92)';
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.transform = 'scale(1.05)';
+          }}
+          aria-label="打开设置"
+        >
+          <SettingsIcon size={15} />
+        </button>
+      </Tooltip>
 
       {/* 窗口控制按钮 */}
       <WindowControls />

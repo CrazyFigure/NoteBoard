@@ -9,6 +9,7 @@ import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
 import { saveDocument } from '../editor-code/orchestration/saveDocument';
 import { buildExportFileName, exportBlobWithDialog } from '../export/chartExport';
+import { Tooltip } from '../../components/Tooltip';
 
 interface DrawioEditorProps {
   docKey: string;
@@ -212,47 +213,51 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {/* 导出 SVG 按钮 */}
-          <button
-            type="button"
-            onClick={() => handleRequestExport('svg')}
-            title="导出为 SVG 矢量图"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '3px 8px',
-              borderRadius: 4,
-              border: '1px solid var(--editor-border, #e2e8f0)',
-              background: 'var(--editor-bg, #ffffff)',
-              color: 'var(--editor-text, #1e293b)',
-              cursor: 'pointer',
-              fontSize: 11,
-            }}
-          >
-            <Download size={12} />
-            <span>导出 SVG</span>
-          </button>
+          <Tooltip content="导出为 SVG 矢量图" side="bottom" sideOffset={4}>
+            <button
+              type="button"
+              onClick={() => handleRequestExport('svg')}
+              aria-label="导出为 SVG 矢量图"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '3px 8px',
+                borderRadius: 4,
+                border: '1px solid var(--editor-border, #e2e8f0)',
+                background: 'var(--editor-bg, #ffffff)',
+                color: 'var(--editor-text, #1e293b)',
+                cursor: 'pointer',
+                fontSize: 11,
+              }}
+            >
+              <Download size={12} />
+              <span>导出 SVG</span>
+            </button>
+          </Tooltip>
           {/* 导出 PNG 按钮 */}
-          <button
-            type="button"
-            onClick={() => handleRequestExport('png')}
-            title="导出为 PNG 图片"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '3px 8px',
-              borderRadius: 4,
-              border: '1px solid var(--editor-border, #e2e8f0)',
-              background: 'var(--editor-bg, #ffffff)',
-              color: 'var(--editor-text, #1e293b)',
-              cursor: 'pointer',
-              fontSize: 11,
-            }}
-          >
-            <Download size={12} />
-            <span>导出 PNG</span>
-          </button>
+          <Tooltip content="导出为 PNG 图片" side="bottom" sideOffset={4}>
+            <button
+              type="button"
+              onClick={() => handleRequestExport('png')}
+              aria-label="导出为 PNG 图片"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '3px 8px',
+                borderRadius: 4,
+                border: '1px solid var(--editor-border, #e2e8f0)',
+                background: 'var(--editor-bg, #ffffff)',
+                color: 'var(--editor-text, #1e293b)',
+                cursor: 'pointer',
+                fontSize: 11,
+              }}
+            >
+              <Download size={12} />
+              <span>导出 PNG</span>
+            </button>
+          </Tooltip>
         </div>
       </div>
 

@@ -18,6 +18,7 @@ import {
   resolveTopLevelDropTarget,
   type TopLevelDropTarget,
 } from './blockReorder';
+import { Tooltip } from '../../components/Tooltip';
 
 /** 超过此位移才进入拖动，避免单击把手时误触排序。 */
 const DRAG_START_DISTANCE = 4;
@@ -428,36 +429,36 @@ export function BlockDragHandle({ editor }: { editor: Editor | null }) {
 
   return (
     <>
-      <button
-        ref={handleRef}
-        type="button"
-        contentEditable={false}
-        className={`nb-block-drag-handle${isHoveringHandle ? ' is-hovered' : ''}${isDragging ? ' is-dragging' : ''}`}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerCancel}
-        onLostPointerCapture={() => {
-          if (dragSessionRef.current) cleanupDrag();
-        }}
-        onMouseEnter={() => {
-          isHoveringHandleRef.current = true;
-          setIsHoveringHandle(true);
-          clearHideTimer();
-        }}
-        onMouseLeave={() => {
-          isHoveringHandleRef.current = false;
-          if (!dragSessionRef.current) setIsHoveringHandle(false);
-        }}
-        style={{
-          top: state.top + 2,
-          left: state.left,
-        }}
-        aria-label={`拖动${blockLabel}`}
-        title={`按住并拖动以移动${blockLabel}`}
-      >
-        ⠿
-      </button>
+      <Tooltip content={`按住并拖动以移动${blockLabel}`} side="left" sideOffset={6}>
+        <button
+          ref={handleRef}
+          type="button"
+          className={`nb-block-drag-handle${isHoveringHandle ? ' is-hovered' : ''}${isDragging ? ' is-dragging' : ''}`}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+          onLostPointerCapture={() => {
+            if (dragSessionRef.current) cleanupDrag();
+          }}
+          onMouseEnter={() => {
+            isHoveringHandleRef.current = true;
+            setIsHoveringHandle(true);
+            clearHideTimer();
+          }}
+          onMouseLeave={() => {
+            isHoveringHandleRef.current = false;
+            if (!dragSessionRef.current) setIsHoveringHandle(false);
+          }}
+          style={{
+            top: state.top + 2,
+            left: state.left,
+          }}
+          aria-label={`拖动${blockLabel}`}
+        >
+          ⠿
+        </button>
+      </Tooltip>
 
       {dragFeedback?.valid && dragFeedback.indicatorTop !== null && (
         <div

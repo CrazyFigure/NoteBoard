@@ -6,6 +6,7 @@ import { FontPackPromptModal } from './components/FontPackPromptModal';
 import { FavoritesManagerModal } from './features/favorites/FavoritesManagerModal';
 import { AddFavoriteModal } from './features/favorites/AddFavoriteModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { TooltipProvider } from './components/Tooltip';
 import { useSettingsStore } from './stores/settingsStore';
 import { useLayoutStore } from './stores/layoutStore';
 import { useWindowStore } from './stores/windowStore';
@@ -223,31 +224,33 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', position: 'relative' }}>
-        <AppShell />
-        <SettingsModal
-          isOpen={settingsModalVisible}
-          onClose={() => setSettingsModalVisible(false)}
-        />
-        {/* 全局更新模态弹窗（供标题栏与关于页面共享） */}
-        <UpdateModal
-          isOpen={updateModalOpen}
-          onClose={closeUpdateModal}
-          result={updateResult}
-          checkError={checkError}
-          checking={checkingUpdate}
-          onRecheck={() => checkForUpdates(false)}
-        />
-        <FontPackPromptModal
-          open={fontPackPromptOpen}
-          onEnabled={() => setFontPackPromptOpen(false)}
-          onUseSystem={handleUseSystemFonts}
-        />
-        {/* 全局收藏夹管理弹窗 */}
-        <FavoritesManagerModal />
-        {/* 全局添加/编辑收藏弹窗 */}
-        <AddFavoriteModal />
-      </div>
+      <TooltipProvider delayDuration={100} skipDelayDuration={300}>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', position: 'relative' }}>
+          <AppShell />
+          <SettingsModal
+            isOpen={settingsModalVisible}
+            onClose={() => setSettingsModalVisible(false)}
+          />
+          {/* 全局更新模态弹窗（供标题栏与关于页面共享） */}
+          <UpdateModal
+            isOpen={updateModalOpen}
+            onClose={closeUpdateModal}
+            result={updateResult}
+            checkError={checkError}
+            checking={checkingUpdate}
+            onRecheck={() => checkForUpdates(false)}
+          />
+          <FontPackPromptModal
+            open={fontPackPromptOpen}
+            onEnabled={() => setFontPackPromptOpen(false)}
+            onUseSystem={handleUseSystemFonts}
+          />
+          {/* 全局收藏夹管理弹窗 */}
+          <FavoritesManagerModal />
+          {/* 全局添加/编辑收藏弹窗 */}
+          <AddFavoriteModal />
+        </div>
+      </TooltipProvider>
     </ErrorBoundary>
   );
 }

@@ -20,6 +20,7 @@ import { INFOGRAPHIC_TEMPLATES } from '../infographic/infographicTemplates';
 import { observe } from './viewportActivation';
 import { ChartExportMenu } from '../export/ChartExportMenu';
 import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
+import { Tooltip } from '../../components/Tooltip';
 
 /** Infographic 交互微反馈样式注入（支持 Hover 与 Active 动效反馈） */
 const INFOGRAPHIC_STYLES = `
@@ -419,40 +420,42 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <button
-              type="button"
-              className="nb-info-icon-btn"
-              onClick={() => {
-                setEditValue(code);
-                setEditing(true);
-              }}
-              title="编辑信息图源码"
-            >
-              <Edit2 size={12} />
-              <span>编辑</span>
-            </button>
+            <Tooltip content="编辑信息图源码" side="top" sideOffset={4}>
+              <button
+                type="button"
+                className="nb-info-icon-btn"
+                onClick={() => {
+                  setEditValue(code);
+                  setEditing(true);
+                }}
+                aria-label="编辑信息图源码"
+              >
+                <Edit2 size={12} />
+                <span>编辑</span>
+              </button>
+            </Tooltip>
             <ChartExportMenu
               action="copy"
               variant="ghost"
               source={exportSource}
               fileName={exportFileName}
-              title="复制为 SVG 矢量图或 PNG 图片"
             />
             <ChartExportMenu
               action="download"
               variant="ghost"
               source={exportSource}
               fileName={exportFileName}
-              title="导出为 SVG 矢量图或 PNG 图片"
             />
-            <button
-              type="button"
-              className="nb-info-icon-btn"
-              onClick={() => setFullscreen(true)}
-              title="全屏放大查看"
-            >
-              <Maximize2 size={12} />
-            </button>
+            <Tooltip content="全屏放大查看" side="top" sideOffset={4}>
+              <button
+                type="button"
+                className="nb-info-icon-btn"
+                onClick={() => setFullscreen(true)}
+                aria-label="全屏放大查看"
+              >
+                <Maximize2 size={12} />
+              </button>
+            </Tooltip>
           </div>
         </div>
 
@@ -462,7 +465,6 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
             setEditValue(code);
             setEditing(true);
           }}
-          title="双击进入源码编辑"
           style={{
             padding: '14px',
             display: 'flex',
@@ -550,14 +552,16 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
                 source={exportSource}
                 fileName={exportFileName}
               />
-              <button
-                type="button"
-                className="nb-info-close-btn"
-                onClick={() => setFullscreen(false)}
-                title="关闭预览"
-              >
-                <X size={20} />
-              </button>
+              <Tooltip content="关闭预览" side="bottom" sideOffset={4}>
+                <button
+                  type="button"
+                  className="nb-info-close-btn"
+                  onClick={() => setFullscreen(false)}
+                  aria-label="关闭预览"
+                >
+                  <X size={20} />
+                </button>
+              </Tooltip>
             </div>
           </div>
           <div

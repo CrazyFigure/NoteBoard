@@ -3,6 +3,7 @@
 
 import { useToastStore } from '../stores/toastStore';
 import { AlertCircle, AlertTriangle, CheckCircle, Info, X } from 'lucide-react';
+import { Tooltip } from './Tooltip';
 
 export function ToastContainer() {
   const { toasts, removeToast } = useToastStore();
@@ -69,41 +70,43 @@ export function ToastContainer() {
             {icon}
             <span style={{ flex: 1 }}>{toast.message}</span>
             {/* 关闭提示按钮，带 Hover 与 Active 反馈 */}
-            <button
-              type="button"
-              onClick={() => removeToast(toast.id)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--editor-text-muted)',
-                cursor: 'pointer',
-                padding: 2,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: 4,
-                transition: 'all var(--transition-fast)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = 'var(--editor-text)';
-                e.currentTarget.style.background = 'var(--toolbar-hover)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = 'var(--editor-text-muted)';
-                e.currentTarget.style.background = 'transparent';
-              }}
-              onMouseDown={(e) => {
-                e.currentTarget.style.background = 'var(--toolbar-active)';
-                e.currentTarget.style.transform = 'scale(0.92)';
-              }}
-              onMouseUp={(e) => {
-                e.currentTarget.style.background = 'var(--toolbar-hover)';
-                e.currentTarget.style.transform = 'scale(1)';
-              }}
-              title="关闭提示"
-            >
-              <X size={14} />
-            </button>
+            <Tooltip content="关闭提示" side="top" sideOffset={4}>
+              <button
+                type="button"
+                onClick={() => removeToast(toast.id)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--editor-text-muted)',
+                  padding: 2,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 4,
+                  transition: 'all var(--transition-fast)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = 'var(--editor-text)';
+                  e.currentTarget.style.background = 'var(--toolbar-hover)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = 'var(--editor-text-muted)';
+                  e.currentTarget.style.background = 'transparent';
+                }}
+                onMouseDown={(e) => {
+                  e.currentTarget.style.background = 'var(--toolbar-active)';
+                  e.currentTarget.style.transform = 'scale(0.92)';
+                }}
+                onMouseUp={(e) => {
+                  e.currentTarget.style.background = 'var(--toolbar-hover)';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+                aria-label="关闭提示"
+              >
+                <X size={14} />
+              </button>
+            </Tooltip>
           </div>
         );
       })}

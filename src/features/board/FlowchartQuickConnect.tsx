@@ -9,6 +9,7 @@ import {
   type FlowchartDirection,
   type FlowchartShapeType,
 } from './flowchartExtension';
+import { Tooltip } from '../../components/Tooltip';
 
 interface FlowchartQuickConnectProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -216,47 +217,56 @@ export function FlowchartQuickConnect({
         }}
         onMouseLeave={handleMouseLeaveDirection}
       >
-        {SHAPE_OPTIONS.map((shape) => (
-          <button
-            key={shape.type}
-            type="button"
-            title={`向${direction === 'right' ? '右' : direction === 'left' ? '左' : direction === 'down' ? '下' : '上'}延伸: ${shape.label}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              handleCreateShape(direction, shape.type);
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 32,
-              height: 32,
-              borderRadius: 6,
-              border: 'none',
-              background: 'transparent',
-              color: isDark ? '#e6edf3' : '#24292f',
-              cursor: 'pointer',
-              transition: 'background 0.12s ease, transform 0.12s ease',
-              padding: 0,
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.06)';
-              e.currentTarget.style.transform = 'scale(1.1)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.transform = 'scale(1)';
-            }}
-            onMouseDown={(e) => {
-              e.currentTarget.style.transform = 'scale(0.92)';
-            }}
-            onMouseUp={(e) => {
-              e.currentTarget.style.transform = 'scale(1.1)';
-            }}
-          >
-            {shape.renderIcon()}
-          </button>
-        ))}
+        {SHAPE_OPTIONS.map((shape) => {
+          const tooltipSide = direction === 'up' ? 'bottom' : direction === 'down' ? 'top' : direction === 'left' ? 'right' : 'left';
+          return (
+            <Tooltip
+              key={shape.type}
+              content={`向${direction === 'right' ? '右' : direction === 'left' ? '左' : direction === 'down' ? '下' : '上'}延伸: ${shape.label}`}
+              side={tooltipSide}
+              sideOffset={6}
+            >
+              <button
+                type="button"
+                aria-label={`向${direction === 'right' ? '右' : direction === 'left' ? '左' : direction === 'down' ? '下' : '上'}延伸: ${shape.label}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCreateShape(direction, shape.type);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 32,
+                  height: 32,
+                  borderRadius: 6,
+                  border: 'none',
+                  background: 'transparent',
+                  color: isDark ? '#e6edf3' : '#24292f',
+                  cursor: 'pointer',
+                  transition: 'background 0.12s ease, transform 0.12s ease',
+                  padding: 0,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.06)';
+                  e.currentTarget.style.transform = 'scale(1.1)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+                onMouseDown={(e) => {
+                  e.currentTarget.style.transform = 'scale(0.92)';
+                }}
+                onMouseUp={(e) => {
+                  e.currentTarget.style.transform = 'scale(1.1)';
+                }}
+              >
+                {shape.renderIcon()}
+              </button>
+            </Tooltip>
+          );
+        })}
       </div>
     );
   };
@@ -296,7 +306,7 @@ export function FlowchartQuickConnect({
       >
         <button
           type="button"
-          title="向右延伸流程图节点 (点击快捷生成 / 悬浮选择图形)"
+          aria-label="向右延伸流程图节点 (点击快捷生成 / 悬浮选择图形)"
           onClick={(e) => handleQuickArrowClick('right', e)}
           style={{
             background: hoveredDirection === 'right' ? arrowHoverColor : 'transparent',
@@ -339,7 +349,7 @@ export function FlowchartQuickConnect({
       >
         <button
           type="button"
-          title="向下延伸流程图节点 (点击快捷生成 / 悬浮选择图形)"
+          aria-label="向下延伸流程图节点 (点击快捷生成 / 悬浮选择图形)"
           onClick={(e) => handleQuickArrowClick('down', e)}
           style={{
             background: hoveredDirection === 'down' ? arrowHoverColor : 'transparent',
@@ -382,7 +392,7 @@ export function FlowchartQuickConnect({
       >
         <button
           type="button"
-          title="向左延伸流程图节点 (点击快捷生成 / 悬浮选择图形)"
+          aria-label="向左延伸流程图节点 (点击快捷生成 / 悬浮选择图形)"
           onClick={(e) => handleQuickArrowClick('left', e)}
           style={{
             background: hoveredDirection === 'left' ? arrowHoverColor : 'transparent',
@@ -425,7 +435,7 @@ export function FlowchartQuickConnect({
       >
         <button
           type="button"
-          title="向上延伸流程图节点 (点击快捷生成 / 悬浮选择图形)"
+          aria-label="向上延伸流程图节点 (点击快捷生成 / 悬浮选择图形)"
           onClick={(e) => handleQuickArrowClick('up', e)}
           style={{
             background: hoveredDirection === 'up' ? arrowHoverColor : 'transparent',

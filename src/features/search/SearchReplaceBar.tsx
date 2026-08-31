@@ -11,6 +11,7 @@ import {
   Replace,
   Grid2X2,
 } from 'lucide-react';
+import { Tooltip } from '../../components/Tooltip';
 import { useSearchStore } from '../../stores/searchStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
@@ -294,130 +295,136 @@ export function SearchReplaceBar() {
         </div>
 
         {/* 上一个匹配项 */}
-        <button
-          type="button"
-          onClick={handleFindPrev}
-          title="上一个匹配项 (Shift+Enter 或 Shift+F3)"
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 6,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            border: 'none',
-            background: 'transparent',
-            color: 'var(--editor-text-secondary)',
-            cursor: 'pointer',
-            flexShrink: 0,
-            boxSizing: 'border-box',
-            transition: 'all var(--transition-fast)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.color = 'var(--editor-text)';
-            e.currentTarget.style.transform = 'scale(1.08)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = 'var(--editor-text-secondary)';
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
-          onMouseDown={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-active)';
-            e.currentTarget.style.transform = 'scale(0.92)';
-          }}
-          onMouseUp={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.transform = 'scale(1.08)';
-          }}
-        >
-          <ChevronUp size={16} />
-        </button>
+        <Tooltip content="上一个匹配项" shortcut="Shift+Enter" side="bottom" sideOffset={4}>
+          <button
+            type="button"
+            onClick={handleFindPrev}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 6,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--editor-text-secondary)',
+              cursor: 'pointer',
+              flexShrink: 0,
+              boxSizing: 'border-box',
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.color = 'var(--editor-text)';
+              e.currentTarget.style.transform = 'scale(1.08)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = 'var(--editor-text-secondary)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-active)';
+              e.currentTarget.style.transform = 'scale(0.92)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.transform = 'scale(1.08)';
+            }}
+            aria-label="上一个匹配项"
+          >
+            <ChevronUp size={16} />
+          </button>
+        </Tooltip>
 
         {/* 下一个匹配项 */}
-        <button
-          type="button"
-          onClick={handleFindNext}
-          title="下一个匹配项 (Enter 或 F3)"
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 6,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            border: 'none',
-            background: 'transparent',
-            color: 'var(--editor-text-secondary)',
-            cursor: 'pointer',
-            flexShrink: 0,
-            boxSizing: 'border-box',
-            transition: 'all var(--transition-fast)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.color = 'var(--editor-text)';
-            e.currentTarget.style.transform = 'scale(1.08)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = 'var(--editor-text-secondary)';
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
-          onMouseDown={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-active)';
-            e.currentTarget.style.transform = 'scale(0.92)';
-          }}
-          onMouseUp={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.transform = 'scale(1.08)';
-          }}
-        >
-          <ChevronDown size={16} />
-        </button>
+        <Tooltip content="下一个匹配项" shortcut="Enter" side="bottom" sideOffset={4}>
+          <button
+            type="button"
+            onClick={handleFindNext}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 6,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--editor-text-secondary)',
+              cursor: 'pointer',
+              flexShrink: 0,
+              boxSizing: 'border-box',
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.color = 'var(--editor-text)';
+              e.currentTarget.style.transform = 'scale(1.08)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = 'var(--editor-text-secondary)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-active)';
+              e.currentTarget.style.transform = 'scale(0.92)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.transform = 'scale(1.08)';
+            }}
+            aria-label="下一个匹配项"
+          >
+            <ChevronDown size={16} />
+          </button>
+        </Tooltip>
 
         {/* 关闭按钮 */}
-        <button
-          type="button"
-          onClick={handleClose}
-          title="关闭"
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 6,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            border: 'none',
-            background: 'transparent',
-            color: 'var(--editor-text-secondary)',
-            cursor: 'pointer',
-            flexShrink: 0,
-            boxSizing: 'border-box',
-            transition: 'all var(--transition-fast)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.color = 'var(--editor-text)';
-            e.currentTarget.style.transform = 'scale(1.08)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = 'var(--editor-text-secondary)';
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
-          onMouseDown={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-active)';
-            e.currentTarget.style.transform = 'scale(0.92)';
-          }}
-          onMouseUp={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.transform = 'scale(1.08)';
-          }}
-        >
-          <X size={16} />
-        </button>
+        <Tooltip content="关闭" shortcut="Esc" side="bottom" sideOffset={4}>
+          <button
+            type="button"
+            onClick={handleClose}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 6,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--editor-text-secondary)',
+              cursor: 'pointer',
+              flexShrink: 0,
+              boxSizing: 'border-box',
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.color = 'var(--editor-text)';
+              e.currentTarget.style.transform = 'scale(1.08)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = 'var(--editor-text-secondary)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-active)';
+              e.currentTarget.style.transform = 'scale(0.92)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.transform = 'scale(1.08)';
+            }}
+            aria-label="关闭搜索栏"
+          >
+            <X size={16} />
+          </button>
+        </Tooltip>
       </div>
 
       {/* ── 第二行：替换输入框 + 替换按钮 + 全部替换按钮 ── */}
@@ -438,17 +445,19 @@ export function SearchReplaceBar() {
           }}
           onFocus={(e) => {
             e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
+            e.currentTarget.style.boxShadow = '0 0 0 2px var(--focus-ring)';
           }}
           onBlur={(e) => {
             e.currentTarget.style.borderColor = 'var(--editor-border)';
+            e.currentTarget.style.boxShadow = 'none';
           }}
         >
-          <Replace size={14} style={{ color: 'var(--editor-text-muted)', flexShrink: 0 }} />
+          <Replace size={15} color="var(--editor-text-muted)" style={{ flexShrink: 0 }} />
           <input
             ref={replaceInputRef}
             type="text"
+            placeholder="替换文本..."
             value={replaceText}
-            placeholder="替换为..."
             onChange={(e) => setReplaceText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
@@ -475,94 +484,97 @@ export function SearchReplaceBar() {
         </div>
 
         {/* 替换当前匹配项 */}
-        <button
-          type="button"
-          onClick={handleReplace}
-          title="替换当前匹配 (Enter)"
-          style={{
-            height: 32,
-            padding: '0 8px',
-            borderRadius: 8,
-            border: '1px solid var(--editor-border)',
-            background: 'var(--editor-bg)',
-            color: 'var(--editor-text)',
-            fontSize: 12,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            cursor: 'pointer',
-            flexShrink: 0,
-            whiteSpace: 'nowrap',
-            boxSizing: 'border-box',
-            transition: 'all var(--transition-fast)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
-            e.currentTarget.style.transform = 'translateY(-1px)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'var(--editor-bg)';
-            e.currentTarget.style.borderColor = 'var(--editor-border)';
-            e.currentTarget.style.transform = 'translateY(0)';
-          }}
-          onMouseDown={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-active)';
-            e.currentTarget.style.transform = 'translateY(0) scale(0.96)';
-          }}
-          onMouseUp={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.transform = 'translateY(-1px)';
-          }}
-        >
-          <Replace size={13} />
-          <span>替换</span>
-        </button>
+        <Tooltip content="替换当前匹配" shortcut="Enter" side="bottom" sideOffset={4}>
+          <button
+            type="button"
+            onClick={handleReplace}
+            style={{
+              height: 32,
+              padding: '0 8px',
+              borderRadius: 8,
+              border: '1px solid var(--editor-border)',
+              background: 'var(--editor-bg)',
+              color: 'var(--editor-text)',
+              fontSize: 12,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              cursor: 'pointer',
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
+              boxSizing: 'border-box',
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'var(--editor-bg)';
+              e.currentTarget.style.borderColor = 'var(--editor-border)';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-active)';
+              e.currentTarget.style.transform = 'translateY(0) scale(0.96)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+          >
+            <Replace size={13} />
+            <span>替换</span>
+          </button>
+        </Tooltip>
 
         {/* 替换全部匹配项 */}
-        <button
-          type="button"
-          onClick={handleReplaceAll}
-          title="全部替换 (Ctrl+Alt+Enter)"
-          style={{
-            height: 32,
-            padding: '0 8px',
-            borderRadius: 8,
-            border: '1px solid var(--editor-border)',
-            background: 'var(--editor-bg)',
-            color: 'var(--editor-text)',
-            fontSize: 12,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            cursor: 'pointer',
-            flexShrink: 0,
-            whiteSpace: 'nowrap',
-            boxSizing: 'border-box',
-            transition: 'all var(--transition-fast)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
-            e.currentTarget.style.transform = 'translateY(-1px)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'var(--editor-bg)';
-            e.currentTarget.style.borderColor = 'var(--editor-border)';
-            e.currentTarget.style.transform = 'translateY(0)';
-          }}
-          onMouseDown={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-active)';
-            e.currentTarget.style.transform = 'translateY(0) scale(0.96)';
-          }}
-          onMouseUp={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.transform = 'translateY(-1px)';
-          }}
-        >
-          <Grid2X2 size={13} />
-          <span>全部</span>
-        </button>
+        <Tooltip content="全部替换" shortcut="Ctrl+Alt+Enter" side="bottom" sideOffset={4}>
+          <button
+            type="button"
+            onClick={handleReplaceAll}
+            style={{
+              height: 32,
+              padding: '0 8px',
+              borderRadius: 8,
+              border: '1px solid var(--editor-border)',
+              background: 'var(--editor-bg)',
+              color: 'var(--editor-text)',
+              fontSize: 12,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              cursor: 'pointer',
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
+              boxSizing: 'border-box',
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'var(--editor-bg)';
+              e.currentTarget.style.borderColor = 'var(--editor-border)';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-active)';
+              e.currentTarget.style.transform = 'translateY(0) scale(0.96)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            aria-label="全部替换"
+          >
+            <Grid2X2 size={13} />
+            <span>全部</span>
+          </button>
+        </Tooltip>
       </div>
 
       {/* ── 第三行：选项设置（区分大小写 / 全字匹配 / 正则表达式） ── */}

@@ -3,6 +3,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Palette, Check, Sparkles } from 'lucide-react';
+import { Tooltip } from '../Tooltip';
 import { useSettingsStore } from '../../stores/settingsStore';
 import type { ThemeMode } from '../../core/ipc/types';
 
@@ -93,50 +94,51 @@ export function ThemeMenu() {
   return (
     <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
       {/* 顶部主题快捷按钮 */}
-      <button
-        ref={buttonRef}
-        type="button"
-        onClick={() => setIsOpen((prev) => !prev)}
-        style={{
-          width: 36,
-          height: 36,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          border: 'none',
-          background: isOpen ? 'var(--toolbar-hover)' : 'transparent',
-          color: isOpen ? 'var(--accent-strong)' : 'var(--editor-text-secondary)',
-          cursor: 'pointer',
-          flexShrink: 0,
-          transition: 'all var(--transition-fast)',
-        }}
-        onMouseEnter={(e) => {
-          if (!isOpen) {
+      <Tooltip content="快捷切换主题" disabled={isOpen} side="bottom" sideOffset={6}>
+        <button
+          ref={buttonRef}
+          type="button"
+          onClick={() => setIsOpen((prev) => !prev)}
+          style={{
+            width: 36,
+            height: 36,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: 'none',
+            background: isOpen ? 'var(--toolbar-hover)' : 'transparent',
+            color: isOpen ? 'var(--accent-strong)' : 'var(--editor-text-secondary)',
+            cursor: 'pointer',
+            flexShrink: 0,
+            transition: 'all var(--transition-fast)',
+          }}
+          onMouseEnter={(e) => {
+            if (!isOpen) {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.color = 'var(--editor-text)';
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!isOpen) {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = 'var(--editor-text-secondary)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }
+          }}
+          onMouseDown={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-active)';
+            e.currentTarget.style.transform = 'scale(0.92)';
+          }}
+          onMouseUp={(e) => {
             e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.color = 'var(--editor-text)';
             e.currentTarget.style.transform = 'scale(1.05)';
-          }
-        }}
-        onMouseLeave={(e) => {
-          if (!isOpen) {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = 'var(--editor-text-secondary)';
-            e.currentTarget.style.transform = 'scale(1)';
-          }
-        }}
-        onMouseDown={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-active)';
-          e.currentTarget.style.transform = 'scale(0.92)';
-        }}
-        onMouseUp={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-hover)';
-          e.currentTarget.style.transform = 'scale(1.05)';
-        }}
-        title="快捷切换主题"
-        aria-label="快捷切换主题"
-      >
-        <Palette size={15} />
-      </button>
+          }}
+          aria-label="快捷切换主题"
+        >
+          <Palette size={15} />
+        </button>
+      </Tooltip>
 
       {/* 快捷主题选择浮层 */}
       {isOpen && (

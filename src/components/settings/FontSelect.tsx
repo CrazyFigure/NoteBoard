@@ -4,6 +4,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ChevronDown, Search, Loader2, Check, X, RotateCcw } from 'lucide-react';
+import { Tooltip } from '../Tooltip';
 import * as ipc from '../../core/ipc/commands';
 import type { FontFamily } from '../../core/ipc/types';
 import {
@@ -275,35 +276,37 @@ export function FontSelect({
 
         {/* 若已有选定值，显示清除重置按钮 */}
         {value ? (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onChange('');
-            }}
-            title="恢复系统默认"
-            style={{
-              border: 'none',
-              background: 'transparent',
-              padding: 2,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--editor-text-muted)',
-              borderRadius: 3,
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = 'var(--editor-text)';
-              e.currentTarget.style.background = 'var(--toolbar-hover)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = 'var(--editor-text-muted)';
-              e.currentTarget.style.background = 'transparent';
-            }}
-          >
-            <X size={13} />
-          </button>
+          <Tooltip content="恢复系统默认" side="top" sideOffset={4}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange('');
+              }}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                padding: 2,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--editor-text-muted)',
+                borderRadius: 3,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--editor-text)';
+                e.currentTarget.style.background = 'var(--toolbar-hover)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--editor-text-muted)';
+                e.currentTarget.style.background = 'transparent';
+              }}
+              aria-label="恢复系统默认"
+            >
+              <X size={13} />
+            </button>
+          </Tooltip>
         ) : null}
 
         <ChevronDown

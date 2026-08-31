@@ -24,6 +24,7 @@ import {
   RemoveFormatting,
   Minus,
 } from 'lucide-react';
+import { Tooltip } from '../../components/Tooltip';
 
 /** Markdown 允许粗体/斜体包裹行内代码；默认 Code 的 excludes: '_' 会导致解析出非法 marks */
 const MarkdownCompatibleCode = Code.extend({ excludes: '' });
@@ -148,7 +149,7 @@ function ensureStyleInjected() {
 }
 
 /** 工具栏按钮：按下时不抢占焦点，避免编辑器失焦导致选区丢失 */
-function ToolButton({
+function ToolbarBtn({
   active,
   disabled,
   title,
@@ -162,16 +163,18 @@ function ToolButton({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      title={title}
-      disabled={disabled}
-      className={`nb-bitable-rte-btn${active ? ' active' : ''}`}
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={onClick}
-    >
-      {children}
-    </button>
+    <Tooltip content={title} disabled={disabled} side="top" sideOffset={4}>
+      <button
+        type="button"
+        aria-label={title}
+        disabled={disabled}
+        className={`nb-bitable-rte-btn${active ? ' active' : ''}`}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onClick}
+      >
+        {children}
+      </button>
+    </Tooltip>
   );
 }
 
@@ -275,111 +278,111 @@ export function BitableRichTextEditor({
     const ed: Editor = editor;
     return (
       <>
-        <ToolButton
+        <ToolbarBtn
           title="加粗 (Ctrl+B)"
           active={ed.isActive('bold')}
           onClick={() => ed.chain().focus().toggleBold().run()}
         >
           <Bold size={14} />
-        </ToolButton>
-        <ToolButton
+        </ToolbarBtn>
+        <ToolbarBtn
           title="斜体 (Ctrl+I)"
           active={ed.isActive('italic')}
           onClick={() => ed.chain().focus().toggleItalic().run()}
         >
           <Italic size={14} />
-        </ToolButton>
-        <ToolButton
+        </ToolbarBtn>
+        <ToolbarBtn
           title="删除线"
           active={ed.isActive('strike')}
           onClick={() => ed.chain().focus().toggleStrike().run()}
         >
           <Strikethrough size={14} />
-        </ToolButton>
-        <ToolButton
+        </ToolbarBtn>
+        <ToolbarBtn
           title="行内代码"
           active={ed.isActive('code')}
           onClick={() => ed.chain().focus().toggleCode().run()}
         >
           <CodeIcon size={14} />
-        </ToolButton>
-        <ToolButton
+        </ToolbarBtn>
+        <ToolbarBtn
           title="链接"
           active={ed.isActive('link')}
           onClick={handleLink}
         >
           <Link2 size={14} />
-        </ToolButton>
+        </ToolbarBtn>
 
         <span className="nb-bitable-rte-sep" />
 
-        <ToolButton
+        <ToolbarBtn
           title="代码块"
           active={ed.isActive('codeBlock')}
           onClick={() => ed.chain().focus().toggleCodeBlock().run()}
         >
           <Braces size={14} />
-        </ToolButton>
-        <ToolButton
+        </ToolbarBtn>
+        <ToolbarBtn
           title="一级标题"
           active={ed.isActive('heading', { level: 1 })}
           onClick={() => ed.chain().focus().toggleHeading({ level: 1 }).run()}
         >
           <Heading1 size={14} />
-        </ToolButton>
-        <ToolButton
+        </ToolbarBtn>
+        <ToolbarBtn
           title="二级标题"
           active={ed.isActive('heading', { level: 2 })}
           onClick={() => ed.chain().focus().toggleHeading({ level: 2 }).run()}
         >
           <Heading2 size={14} />
-        </ToolButton>
-        <ToolButton
+        </ToolbarBtn>
+        <ToolbarBtn
           title="三级标题"
           active={ed.isActive('heading', { level: 3 })}
           onClick={() => ed.chain().focus().toggleHeading({ level: 3 }).run()}
         >
           <Heading3 size={14} />
-        </ToolButton>
+        </ToolbarBtn>
 
         <span className="nb-bitable-rte-sep" />
 
-        <ToolButton
+        <ToolbarBtn
           title="无序列表"
           active={ed.isActive('bulletList')}
           onClick={() => ed.chain().focus().toggleBulletList().run()}
         >
           <List size={14} />
-        </ToolButton>
-        <ToolButton
+        </ToolbarBtn>
+        <ToolbarBtn
           title="有序列表"
           active={ed.isActive('orderedList')}
           onClick={() => ed.chain().focus().toggleOrderedList().run()}
         >
           <ListOrdered size={14} />
-        </ToolButton>
-        <ToolButton
+        </ToolbarBtn>
+        <ToolbarBtn
           title="引用"
           active={ed.isActive('blockquote')}
           onClick={() => ed.chain().focus().toggleBlockquote().run()}
         >
           <Quote size={14} />
-        </ToolButton>
-        <ToolButton
+        </ToolbarBtn>
+        <ToolbarBtn
           title="分割线"
           onClick={() => ed.chain().focus().setHorizontalRule().run()}
         >
           <Minus size={14} />
-        </ToolButton>
+        </ToolbarBtn>
 
         <span className="nb-bitable-rte-sep" />
 
-        <ToolButton
+        <ToolbarBtn
           title="清除格式"
           onClick={() => ed.chain().focus().unsetAllMarks().clearNodes().run()}
         >
           <RemoveFormatting size={14} />
-        </ToolButton>
+        </ToolbarBtn>
       </>
     );
   }, [editor, handleLink]);
@@ -427,18 +430,20 @@ export function BitableRichTextEditor({
           flexShrink: 0,
         }}
       >
-        <button
-          type="button"
-          className="nb-bitable-btn-secondary"
-          onClick={mode === 'rich' ? handleSwitchToSource : handleSwitchToRich}
-          title={mode === 'rich' ? '查看与编辑 Markdown 源码' : '返回可视化编辑'}
-          style={{
-            padding: '3px 8px',
-            fontSize: 11,
-          }}
-        >
-          {mode === 'rich' ? 'Markdown 源码' : '返回可视化'}
-        </button>
+        <Tooltip content={mode === 'rich' ? '查看与编辑 Markdown 源码' : '返回可视化编辑'} side="top" sideOffset={4}>
+          <button
+            type="button"
+            className="nb-bitable-btn-secondary"
+            onClick={mode === 'rich' ? handleSwitchToSource : handleSwitchToRich}
+            aria-label={mode === 'rich' ? '查看与编辑 Markdown 源码' : '返回可视化编辑'}
+            style={{
+              padding: '3px 8px',
+              fontSize: 11,
+            }}
+          >
+            {mode === 'rich' ? 'Markdown 源码' : '返回可视化'}
+          </button>
+        </Tooltip>
       </div>
     </div>
   );

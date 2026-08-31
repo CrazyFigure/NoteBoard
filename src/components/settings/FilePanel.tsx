@@ -6,6 +6,7 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { open } from '@tauri-apps/plugin-dialog';
 import * as ipc from '../../core/ipc/commands';
 import { showToast } from '../../stores/toastStore';
+import { Tooltip } from '../Tooltip';
 
 export function FilePanel() {
   const settings = useSettingsStore((s) => s.settings);
@@ -88,13 +89,14 @@ export function FilePanel() {
       <div style={{ ...rowStyle, alignItems: 'flex-start' }}>
         <span style={{ ...labelStyle, paddingTop: 5 }}>暂存位置</span>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
-          <input
-            type="text"
-            readOnly
-            value={settings.file.stagingDirectory ?? ''}
-            title={settings.file.stagingDirectory ?? ''}
-            style={{ ...inputStyle, maxWidth: 360, width: '100%' }}
-          />
+          <Tooltip content={settings.file.stagingDirectory ?? ''} disabled={!settings.file.stagingDirectory} side="top" sideOffset={4}>
+            <input
+              type="text"
+              readOnly
+              value={settings.file.stagingDirectory ?? ''}
+              style={{ ...inputStyle, maxWidth: 360, width: '100%' }}
+            />
+          </Tooltip>
           <div style={{ display: 'flex', gap: 6 }}>
             <button type="button" className="nb-btn-secondary" onClick={chooseStagingDirectory}>选择位置</button>
             <button type="button" className="nb-btn-secondary" onClick={resetStagingDirectory}>恢复默认</button>

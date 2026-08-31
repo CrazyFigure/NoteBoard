@@ -13,6 +13,7 @@ import {
   FilePlus,
   FolderPlus,
 } from 'lucide-react';
+import { Tooltip } from '../../components/Tooltip';
 import type { FileTreeNode } from '../../core/ipc/types';
 import { useExplorerStore } from './explorerStore';
 import { useTreeData } from './useTreeData';
@@ -302,94 +303,95 @@ export const TreeNode = memo(function TreeNode({
 
   return (
     <div role="treeitem" aria-expanded={node.isDir ? expanded : undefined} aria-level={depth + 1}>
-      <div
-        ref={rowRef}
-        style={rowStyle}
-        tabIndex={0}
-        onMouseEnter={handleHover}
-        onMouseLeave={handleLeave}
-        onClick={handleClick}
-        onDoubleClick={handleDoubleClick}
-        onContextMenu={handleContextMenu}
-        onKeyDown={handleKeyDown}
-        title={node.path}
-      >
-        {/* 展开箭头 */}
-        {node.isDir ? (
-          <span
-            onClick={handleArrowClick}
-            style={{
-              width: 12,
-              height: 12,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-              transform: expanded ? 'rotate(90deg)' : 'none',
-              transition: 'transform var(--transition-fast)',
-            }}
-          >
-            <ChevronRight size={12} color="var(--explorer-text-muted)" />
-          </span>
-        ) : (
-          <span style={{ width: 12, flexShrink: 0 }} />
-        )}
+      <Tooltip content={node.path} disabled={Boolean(menuPos) || isRenaming} side="right" sideOffset={6}>
+        <div
+          ref={rowRef}
+          style={rowStyle}
+          tabIndex={0}
+          onMouseEnter={handleHover}
+          onMouseLeave={handleLeave}
+          onClick={handleClick}
+          onDoubleClick={handleDoubleClick}
+          onContextMenu={handleContextMenu}
+          onKeyDown={handleKeyDown}
+        >
+          {/* 展开箭头 */}
+          {node.isDir ? (
+            <span
+              onClick={handleArrowClick}
+              style={{
+                width: 12,
+                height: 12,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                transform: expanded ? 'rotate(90deg)' : 'none',
+                transition: 'transform var(--transition-fast)',
+              }}
+            >
+              <ChevronRight size={12} color="var(--explorer-text-muted)" />
+            </span>
+          ) : (
+            <span style={{ width: 12, flexShrink: 0 }} />
+          )}
 
-        {/* 文件/目录优雅图标 */}
-        {getExplorerFileIcon(node.path, {
-          isDir: node.isDir,
-          isOpen: expanded,
-          size: 14,
-        })}
+          {/* 文件/目录优雅图标 */}
+          {getExplorerFileIcon(node.path, {
+            isDir: node.isDir,
+            isOpen: expanded,
+            size: 14,
+          })}
 
-        {/* 文件名或行内重命名输入框 */}
-        {isRenaming ? (
-          <input
-            ref={inputRef}
-            type="text"
-            value={editName}
-            onClick={(e) => e.stopPropagation()}
-            onDoubleClick={(e) => e.stopPropagation()}
-            onChange={(e) => setEditName(e.target.value)}
-            onBlur={handleRenameSubmit}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                e.stopPropagation();
-                handleRenameSubmit();
-              } else if (e.key === 'Escape') {
-                e.preventDefault();
-                e.stopPropagation();
-                setIsRenaming(false);
-                setEditName(node.name);
-              }
-            }}
-            style={{
-              flex: 1,
-              padding: '1px 4px',
-              fontSize: 'inherit',
-              fontFamily: 'inherit',
-              border: '1px solid var(--editor-accent)',
-              borderRadius: 2,
-              background: 'var(--editor-surface)',
-              color: 'var(--editor-text)',
-              outline: 'none',
-              height: 'calc(var(--explorer-item-height, 24px) - 6px)',
-              minWidth: 60,
-              boxSizing: 'border-box',
-            }}
-          />
-        ) : (
-          <span
-            style={{
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
-          >
-            {node.name}
-          </span>
-        )}
-      </div>
+          {/* 文件名或行内重命名输入框 */}
+          {isRenaming ? (
+            <input
+              ref={inputRef}
+              type="text"
+              value={editName}
+              onClick={(e) => e.stopPropagation()}
+              onDoubleClick={(e) => e.stopPropagation()}
+              onChange={(e) => setEditName(e.target.value)}
+              onBlur={handleRenameSubmit}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleRenameSubmit();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsRenaming(false);
+                  setEditName(node.name);
+                }
+              }}
+              style={{
+                flex: 1,
+                padding: '1px 4px',
+                fontSize: 'inherit',
+                fontFamily: 'inherit',
+                border: '1px solid var(--editor-accent)',
+                borderRadius: 2,
+                background: 'var(--editor-surface)',
+                color: 'var(--editor-text)',
+                outline: 'none',
+                height: 'calc(var(--explorer-item-height, 24px) - 6px)',
+                minWidth: 60,
+                boxSizing: 'border-box',
+              }}
+            />
+          ) : (
+            <span
+              style={{
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {node.name}
+            </span>
+          )}
+        </div>
+      </Tooltip>
 
       {/* 右键上下文菜单 */}
       {menuPos && (

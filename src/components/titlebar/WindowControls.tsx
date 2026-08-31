@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Minus, Square, Copy, X } from 'lucide-react';
+import { Tooltip } from '../Tooltip';
 import { requestCurrentWindowClose } from '../../features/window/windowManager';
 
 export function WindowControls() {
@@ -46,74 +47,80 @@ export function WindowControls() {
 
   return (
     <div style={{ display: 'flex', height: '100%' }}>
-      <button
-        onClick={handleMinimize}
-        style={btnStyle}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-hover)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = 'transparent';
-          e.currentTarget.style.transform = 'scale(1)';
-        }}
-        onMouseDown={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-active)';
-          e.currentTarget.style.transform = 'scale(0.92)';
-        }}
-        onMouseUp={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-hover)';
-          e.currentTarget.style.transform = 'scale(1)';
-        }}
-        aria-label="最小化"
-      >
-        <Minus size={16} />
-      </button>
-      <button
-        onClick={handleMaximize}
-        style={btnStyle}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-hover)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = 'transparent';
-          e.currentTarget.style.transform = 'scale(1)';
-        }}
-        onMouseDown={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-active)';
-          e.currentTarget.style.transform = 'scale(0.92)';
-        }}
-        onMouseUp={(e) => {
-          e.currentTarget.style.background = 'var(--toolbar-hover)';
-          e.currentTarget.style.transform = 'scale(1)';
-        }}
-        aria-label={isMaximized ? '还原' : '最大化'}
-      >
-        {isMaximized ? <Copy size={14} /> : <Square size={14} />}
-      </button>
-      <button
-        onClick={handleClose}
-        style={closeBtnStyle}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = '#e81123';
-          e.currentTarget.style.color = '#ffffff';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = 'transparent';
-          e.currentTarget.style.color = 'var(--editor-text-secondary)';
-          e.currentTarget.style.transform = 'scale(1)';
-        }}
-        onMouseDown={(e) => {
-          e.currentTarget.style.background = '#c4101e';
-          e.currentTarget.style.transform = 'scale(0.92)';
-        }}
-        onMouseUp={(e) => {
-          e.currentTarget.style.background = '#e81123';
-          e.currentTarget.style.transform = 'scale(1)';
-        }}
-        aria-label="关闭"
-      >
-        <X size={16} />
-      </button>
+      <Tooltip content="最小化" side="bottom" sideOffset={6}>
+        <button
+          onClick={handleMinimize}
+          style={btnStyle}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          onMouseDown={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-active)';
+            e.currentTarget.style.transform = 'scale(0.92)';
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          aria-label="最小化"
+        >
+          <Minus size={16} />
+        </button>
+      </Tooltip>
+      <Tooltip content={isMaximized ? '向下还原' : '最大化'} side="bottom" sideOffset={6}>
+        <button
+          onClick={handleMaximize}
+          style={btnStyle}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          onMouseDown={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-active)';
+            e.currentTarget.style.transform = 'scale(0.92)';
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.background = 'var(--toolbar-hover)';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          aria-label={isMaximized ? '还原' : '最大化'}
+        >
+          {isMaximized ? <Copy size={14} /> : <Square size={14} />}
+        </button>
+      </Tooltip>
+      <Tooltip content="关闭" side="bottom" sideOffset={6}>
+        <button
+          onClick={handleClose}
+          style={closeBtnStyle}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = '#e81123';
+            e.currentTarget.style.color = '#ffffff';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.color = 'var(--editor-text-secondary)';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          onMouseDown={(e) => {
+            e.currentTarget.style.background = '#c4101e';
+            e.currentTarget.style.transform = 'scale(0.92)';
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.background = '#e81123';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+          aria-label="关闭"
+        >
+          <X size={16} />
+        </button>
+      </Tooltip>
     </div>
   );
 }

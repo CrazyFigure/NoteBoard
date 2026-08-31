@@ -23,6 +23,7 @@ import {
 } from './mindmapConverter';
 import { OutlinerEditor } from './OutlinerEditor';
 import { MindmapRenderer } from './MindmapRenderer';
+import { Tooltip } from '../../components/Tooltip';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
@@ -226,50 +227,52 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
               boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)',
             }}
           >
-            <button
-              type="button"
-              onClick={() => handleSwitchViewMode('mindmap')}
-              title="思维导图展示模式"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '4px 10px',
-                borderRadius: 4,
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: 12,
-                fontWeight: viewMode === 'mindmap' ? 600 : 400,
-                background: viewMode === 'mindmap' ? 'var(--toolbar-active, rgba(59, 130, 246, 0.12))' : 'transparent',
-                color: viewMode === 'mindmap' ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-muted, #64748b)',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <Network size={14} />
-              <span>思维导图</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSwitchViewMode('outliner')}
-              title="幕布式大纲编辑模式"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '4px 10px',
-                borderRadius: 4,
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: 12,
-                fontWeight: viewMode === 'outliner' ? 600 : 400,
-                background: viewMode === 'outliner' ? 'var(--toolbar-active, rgba(59, 130, 246, 0.12))' : 'transparent',
-                color: viewMode === 'outliner' ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-muted, #64748b)',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <ListTree size={14} />
-              <span>大纲模式</span>
-            </button>
+            <Tooltip content="思维导图展示模式" side="bottom" sideOffset={4}>
+              <button
+                type="button"
+                onClick={() => handleSwitchViewMode('mindmap')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '4px 10px',
+                  borderRadius: 4,
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  fontWeight: viewMode === 'mindmap' ? 600 : 400,
+                  background: viewMode === 'mindmap' ? 'var(--toolbar-active, rgba(59, 130, 246, 0.12))' : 'transparent',
+                  color: viewMode === 'mindmap' ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-muted, #64748b)',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <Network size={14} />
+                <span>思维导图</span>
+              </button>
+            </Tooltip>
+            <Tooltip content="幕布式大纲编辑模式" side="bottom" sideOffset={4}>
+              <button
+                type="button"
+                onClick={() => handleSwitchViewMode('outliner')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '4px 10px',
+                  borderRadius: 4,
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  fontWeight: viewMode === 'outliner' ? 600 : 400,
+                  background: viewMode === 'outliner' ? 'var(--toolbar-active, rgba(59, 130, 246, 0.12))' : 'transparent',
+                  color: viewMode === 'outliner' ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-muted, #64748b)',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <ListTree size={14} />
+                <span>大纲模式</span>
+              </button>
+            </Tooltip>
           </div>
         </div>
 
@@ -277,124 +280,130 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {viewMode === 'mindmap' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginRight: 6 }}>
-              <button
-                type="button"
-                onClick={() => setZoom((z) => Math.max(0.2, z - 0.15))}
-                title="缩小画布"
-                style={{
-                  background: 'transparent',
-                  border: '1px solid var(--editor-border)',
-                  borderRadius: 4,
-                  padding: '3px 6px',
-                  cursor: 'pointer',
-                }}
-              >
-                <ZoomOut size={13} />
-              </button>
+              <Tooltip content="缩小画布" side="bottom" sideOffset={4}>
+                <button
+                  type="button"
+                  onClick={() => setZoom((z) => Math.max(0.2, z - 0.15))}
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid var(--editor-border)',
+                    borderRadius: 4,
+                    padding: '3px 6px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <ZoomOut size={13} />
+                </button>
+              </Tooltip>
               <span style={{ fontSize: 11, minWidth: 42, textAlign: 'center' }}>
                 {Math.round(zoom * 100)}%
               </span>
-              <button
-                type="button"
-                onClick={() => setZoom((z) => Math.min(3, z + 0.15))}
-                title="放大画布"
-                style={{
-                  background: 'transparent',
-                  border: '1px solid var(--editor-border)',
-                  borderRadius: 4,
-                  padding: '3px 6px',
-                  cursor: 'pointer',
-                }}
-              >
-                <ZoomIn size={13} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setZoom(1)}
-                title="复位 100%"
-                style={{
-                  background: 'transparent',
-                  border: '1px solid var(--editor-border)',
-                  borderRadius: 4,
-                  padding: '3px 6px',
-                  cursor: 'pointer',
-                }}
-              >
-                <RotateCcw size={13} />
-              </button>
+              <Tooltip content="放大画布" side="bottom" sideOffset={4}>
+                <button
+                  type="button"
+                  onClick={() => setZoom((z) => Math.min(3, z + 0.15))}
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid var(--editor-border)',
+                    borderRadius: 4,
+                    padding: '3px 6px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <ZoomIn size={13} />
+                </button>
+              </Tooltip>
+              <Tooltip content="复位 100%" side="bottom" sideOffset={4}>
+                <button
+                  type="button"
+                  onClick={() => setZoom(1)}
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid var(--editor-border)',
+                    borderRadius: 4,
+                    padding: '3px 6px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <RotateCcw size={13} />
+                </button>
+              </Tooltip>
             </div>
           )}
 
           {/* 导入 XMind 隐藏 input */}
-          <label
-            title="导入 .xmind 文件"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '4px 8px',
-              borderRadius: 5,
-              border: '1px solid var(--editor-border, #e2e8f0)',
-              background: 'var(--editor-bg, #ffffff)',
-              color: 'var(--editor-text, #1e293b)',
-              cursor: 'pointer',
-              fontSize: 12,
-            }}
-          >
-            <Upload size={13} />
-            <span>导入 XMind</span>
-            <input
-              type="file"
-              accept=".xmind"
-              style={{ display: 'none' }}
-              onChange={handleImportXmind}
-            />
-          </label>
+          <Tooltip content="导入 .xmind 文件" side="bottom" sideOffset={4}>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '4px 8px',
+                borderRadius: 5,
+                border: '1px solid var(--editor-border, #e2e8f0)',
+                background: 'var(--editor-bg, #ffffff)',
+                color: 'var(--editor-text, #1e293b)',
+                cursor: 'pointer',
+                fontSize: 12,
+              }}
+            >
+              <Upload size={13} />
+              <span>导入 XMind</span>
+              <input
+                type="file"
+                accept=".xmind"
+                style={{ display: 'none' }}
+                onChange={handleImportXmind}
+              />
+            </label>
+          </Tooltip>
 
           {/* 导出 Markdown */}
-          <button
-            type="button"
-            onClick={handleExportMarkdown}
-            title="导出为 Markdown 大纲文本"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '4px 8px',
-              borderRadius: 5,
-              border: '1px solid var(--editor-border, #e2e8f0)',
-              background: 'var(--editor-bg, #ffffff)',
-              color: 'var(--editor-text, #1e293b)',
-              cursor: 'pointer',
-              fontSize: 12,
-            }}
-          >
-            <FileText size={13} />
-            <span>导出 Markdown</span>
-          </button>
+          <Tooltip content="导出为 Markdown 大纲文本" side="bottom" sideOffset={4}>
+            <button
+              type="button"
+              onClick={handleExportMarkdown}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '4px 8px',
+                borderRadius: 5,
+                border: '1px solid var(--editor-border, #e2e8f0)',
+                background: 'var(--editor-bg, #ffffff)',
+                color: 'var(--editor-text, #1e293b)',
+                cursor: 'pointer',
+                fontSize: 12,
+              }}
+            >
+              <FileText size={13} />
+              <span>导出 Markdown</span>
+            </button>
+          </Tooltip>
 
           {/* 导出 XMind */}
-          <button
-            type="button"
-            onClick={handleExportXmind}
-            title="导出为 .xmind 文件"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '4px 10px',
-              borderRadius: 5,
-              border: 'none',
-              background: 'var(--editor-accent, #3b82f6)',
-              color: '#ffffff',
-              cursor: 'pointer',
-              fontSize: 12,
-              fontWeight: 500,
-            }}
-          >
-            <Download size={13} />
-            <span>导出 XMind</span>
-          </button>
+          <Tooltip content="导出为 .xmind 文件" side="bottom" sideOffset={4}>
+            <button
+              type="button"
+              onClick={handleExportXmind}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '4px 10px',
+                borderRadius: 5,
+                border: 'none',
+                background: 'var(--editor-accent, #3b82f6)',
+                color: '#ffffff',
+                cursor: 'pointer',
+                fontSize: 12,
+                fontWeight: 500,
+              }}
+            >
+              <Download size={13} />
+              <span>导出 XMind</span>
+            </button>
+          </Tooltip>
         </div>
       </div>
 

@@ -26,6 +26,7 @@ import { useWindowStore } from '../../stores/windowStore';
 import { useExplorerStore } from '../explorer/explorerStore';
 import { resolveRelativeDocPath } from './linkHandler';
 import { openDocument } from '../editor-code/orchestration/openDocument';
+import { Tooltip } from '../../components/Tooltip';
 
 /** 大图预览 Lightbox 模态框组件 */
 function ImageLightboxModal({
@@ -91,75 +92,89 @@ function ImageLightboxModal({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <button
-          type="button"
-          title="缩小 (Zoom Out)"
-          onClick={() => setScale((s) => Math.max(0.2, s - 0.2))}
-          style={modalBtnStyle}
-        >
-          <ZoomOut size={16} />
-        </button>
+        <Tooltip content="缩小 (Zoom Out)" side="bottom" sideOffset={6}>
+          <button
+            type="button"
+            aria-label="缩小"
+            onClick={() => setScale((s) => Math.max(0.2, s - 0.2))}
+            style={modalBtnStyle}
+          >
+            <ZoomOut size={16} />
+          </button>
+        </Tooltip>
         <span style={{ fontSize: 12, minWidth: 44, textAlign: 'center' }}>
           {Math.round(scale * 100)}%
         </span>
-        <button
-          type="button"
-          title="放大 (Zoom In)"
-          onClick={() => setScale((s) => Math.min(4, s + 0.2))}
-          style={modalBtnStyle}
-        >
-          <ZoomIn size={16} />
-        </button>
-        <button
-          type="button"
-          title="顺时针旋转 90°"
-          onClick={() => setRotate((r) => (r + 90) % 360)}
-          style={modalBtnStyle}
-        >
-          <RotateCw size={16} />
-        </button>
-        <button
-          type="button"
-          title="还原 100%"
-          onClick={() => {
+        <Tooltip content="放大 (Zoom In)" side="bottom" sideOffset={6}>
+          <button
+            type="button"
+            aria-label="放大"
+            onClick={() => setScale((s) => Math.min(4, s + 0.2))}
+            style={modalBtnStyle}
+          >
+            <ZoomIn size={16} />
+          </button>
+        </Tooltip>
+        <Tooltip content="顺时针旋转 90°" side="bottom" sideOffset={6}>
+          <button
+            type="button"
+            aria-label="顺时针旋转 90°"
+            onClick={() => setRotate((r) => (r + 90) % 360)}
+            style={modalBtnStyle}
+          >
+            <RotateCw size={16} />
+          </button>
+        </Tooltip>
+        <Tooltip content="还原 100%" side="bottom" sideOffset={6}>
+          <button
+            type="button"
+            aria-label="还原 100%"
+            onClick={() => {
             setScale(1);
             setRotate(0);
           }}
-          style={modalBtnStyle}
-        >
-          <Maximize2 size={16} />
-        </button>
-
-        {onOpenInTab && (
-          <button
-            type="button"
-            title="在独立图片标签页中打开"
-            onClick={onOpenInTab}
             style={modalBtnStyle}
           >
-            <ExternalLink size={16} />
+            <Maximize2 size={16} />
           </button>
+        </Tooltip>
+
+        {onOpenInTab && (
+          <Tooltip content="在独立图片标签页中打开" side="bottom" sideOffset={6}>
+            <button
+              type="button"
+              aria-label="在独立图片标签页中打开"
+              onClick={onOpenInTab}
+              style={modalBtnStyle}
+            >
+              <ExternalLink size={16} />
+            </button>
+          </Tooltip>
         )}
 
         {onRevealInDir && (
-          <button
-            type="button"
-            title="在文件夹中显示原图"
-            onClick={onRevealInDir}
-            style={modalBtnStyle}
-          >
-            <FolderOpen size={16} />
-          </button>
+          <Tooltip content="在文件夹中显示原图" side="bottom" sideOffset={6}>
+            <button
+              type="button"
+              aria-label="在文件夹中显示原图"
+              onClick={onRevealInDir}
+              style={modalBtnStyle}
+            >
+              <FolderOpen size={16} />
+            </button>
+          </Tooltip>
         )}
 
-        <button
-          type="button"
-          title="关闭 (Esc)"
-          onClick={onClose}
-          style={{ ...modalBtnStyle, color: '#f87171' }}
-        >
-          <X size={18} />
-        </button>
+        <Tooltip content="关闭 (Esc)" side="bottom" sideOffset={6}>
+          <button
+            type="button"
+            aria-label="关闭预览"
+            onClick={onClose}
+            style={{ ...modalBtnStyle, color: '#f87171' }}
+          >
+            <X size={18} />
+          </button>
+        </Tooltip>
       </div>
 
       {/* 图片主视图 */}
@@ -368,109 +383,125 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
             onMouseDown={(e) => e.stopPropagation()}
           >
             {/* 查看大图 */}
-            <button
-              type="button"
-              title="查看大图 / 放大预览"
-              onClick={() => setLightboxOpen(true)}
-              style={actionBtnStyle}
-            >
-              <Maximize2 size={14} color="var(--accent-strong)" />
-            </button>
+            <Tooltip content="查看大图 / 放大预览" side="top" sideOffset={4}>
+              <button
+                type="button"
+                aria-label="查看大图 / 放大预览"
+                onClick={() => setLightboxOpen(true)}
+                style={actionBtnStyle}
+              >
+                <Maximize2 size={14} color="var(--accent-strong)" />
+              </button>
+            </Tooltip>
 
             <div style={{ width: 1, height: 14, background: 'var(--editor-border)' }} />
 
             {/* 对齐方式 */}
-            <button
-              type="button"
-              title="居左对齐"
-              onClick={() => updateAttributes({ align: 'left' })}
-              style={{
-                ...actionBtnStyle,
-                background: align === 'left' ? 'var(--toolbar-active)' : 'transparent',
-              }}
-            >
-              <AlignLeft size={14} />
-            </button>
-            <button
-              type="button"
-              title="居中对齐"
-              onClick={() => updateAttributes({ align: 'center' })}
-              style={{
-                ...actionBtnStyle,
-                background: align === 'center' ? 'var(--toolbar-active)' : 'transparent',
-              }}
-            >
-              <AlignCenter size={14} />
-            </button>
-            <button
-              type="button"
-              title="居右对齐"
-              onClick={() => updateAttributes({ align: 'right' })}
-              style={{
-                ...actionBtnStyle,
-                background: align === 'right' ? 'var(--toolbar-active)' : 'transparent',
-              }}
-            >
-              <AlignRight size={14} />
-            </button>
+            <Tooltip content="居左对齐" side="top" sideOffset={4}>
+              <button
+                type="button"
+                aria-label="居左对齐"
+                onClick={() => updateAttributes({ align: 'left' })}
+                style={{
+                  ...actionBtnStyle,
+                  background: align === 'left' ? 'var(--toolbar-active)' : 'transparent',
+                }}
+              >
+                <AlignLeft size={14} />
+              </button>
+            </Tooltip>
+            <Tooltip content="居中对齐" side="top" sideOffset={4}>
+              <button
+                type="button"
+                aria-label="居中对齐"
+                onClick={() => updateAttributes({ align: 'center' })}
+                style={{
+                  ...actionBtnStyle,
+                  background: align === 'center' ? 'var(--toolbar-active)' : 'transparent',
+                }}
+              >
+                <AlignCenter size={14} />
+              </button>
+            </Tooltip>
+            <Tooltip content="居右对齐" side="top" sideOffset={4}>
+              <button
+                type="button"
+                aria-label="居右对齐"
+                onClick={() => updateAttributes({ align: 'right' })}
+                style={{
+                  ...actionBtnStyle,
+                  background: align === 'right' ? 'var(--toolbar-active)' : 'transparent',
+                }}
+              >
+                <AlignRight size={14} />
+              </button>
+            </Tooltip>
 
             <div style={{ width: 1, height: 14, background: 'var(--editor-border)' }} />
 
             {/* 快速缩放预设 */}
-            <button
-              type="button"
-              title="缩放为 50%"
-              onClick={() => updateAttributes({ width: '50%' })}
-              style={{
-                ...actionBtnStyle,
-                fontSize: 11,
-                fontWeight: 600,
-                color: width === '50%' ? 'var(--accent-strong)' : 'inherit',
-                background: width === '50%' ? 'var(--toolbar-active)' : 'transparent',
-              }}
-            >
-              50%
-            </button>
-            <button
-              type="button"
-              title="缩放为 75%"
-              onClick={() => updateAttributes({ width: '75%' })}
-              style={{
-                ...actionBtnStyle,
-                fontSize: 11,
-                fontWeight: 600,
-                color: width === '75%' ? 'var(--accent-strong)' : 'inherit',
-                background: width === '75%' ? 'var(--toolbar-active)' : 'transparent',
-              }}
-            >
-              75%
-            </button>
-            <button
-              type="button"
-              title="缩放为 100%"
-              onClick={() => updateAttributes({ width: '100%' })}
-              style={{
-                ...actionBtnStyle,
-                fontSize: 11,
-                fontWeight: 600,
-                color: width === '100%' ? 'var(--accent-strong)' : 'inherit',
-                background: width === '100%' ? 'var(--toolbar-active)' : 'transparent',
-              }}
-            >
-              100%
-            </button>
+            <Tooltip content="缩放为 50%" side="top" sideOffset={4}>
+              <button
+                type="button"
+                aria-label="缩放为 50%"
+                onClick={() => updateAttributes({ width: '50%' })}
+                style={{
+                  ...actionBtnStyle,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: width === '50%' ? 'var(--accent-strong)' : 'inherit',
+                  background: width === '50%' ? 'var(--toolbar-active)' : 'transparent',
+                }}
+              >
+                50%
+              </button>
+            </Tooltip>
+            <Tooltip content="缩放为 75%" side="top" sideOffset={4}>
+              <button
+                type="button"
+                aria-label="缩放为 75%"
+                onClick={() => updateAttributes({ width: '75%' })}
+                style={{
+                  ...actionBtnStyle,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: width === '75%' ? 'var(--accent-strong)' : 'inherit',
+                  background: width === '75%' ? 'var(--toolbar-active)' : 'transparent',
+                }}
+              >
+                75%
+              </button>
+            </Tooltip>
+            <Tooltip content="缩放为 100%" side="top" sideOffset={4}>
+              <button
+                type="button"
+                aria-label="缩放为 100%"
+                onClick={() => updateAttributes({ width: '100%' })}
+                style={{
+                  ...actionBtnStyle,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: width === '100%' ? 'var(--accent-strong)' : 'inherit',
+                  background: width === '100%' ? 'var(--toolbar-active)' : 'transparent',
+                }}
+              >
+                100%
+              </button>
+            </Tooltip>
 
             <div style={{ width: 1, height: 14, background: 'var(--editor-border)' }} />
 
             {/* 删除图片 */}
-            <button
-              type="button"
-              title="删除图片"
-              onClick={deleteNode}
-              style={{ ...actionBtnStyle, color: '#ef4444' }}
-            >
-              <Trash2 size={14} />
-            </button>
+            <Tooltip content="删除图片" side="top" sideOffset={4}>
+              <button
+                type="button"
+                aria-label="删除图片"
+                onClick={deleteNode}
+                style={{ ...actionBtnStyle, color: '#ef4444' }}
+              >
+                <Trash2 size={14} />
+              </button>
+            </Tooltip>
           </div>
         )}
 
@@ -545,23 +576,25 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
 
         {/* 拖拽缩放手柄（右下角） */}
         {hovered && !loadError && (
-          <div
-            onMouseDown={handleResizeStart}
-            title="拖拽拉伸调节图片尺寸"
-            style={{
-              position: 'absolute',
-              bottom: 4,
-              right: 4,
-              width: 14,
-              height: 14,
-              background: 'var(--accent-strong, #3b82f6)',
-              borderRadius: '50%',
-              cursor: 'ew-resize',
-              border: '2px solid #ffffff',
-              boxShadow: '0 2px 4px rgba(0, 0, 0, 0.25)',
-              zIndex: 20,
-            }}
-          />
+          <Tooltip content="拖拽拉伸调节图片尺寸" side="left" sideOffset={6}>
+            <div
+              onMouseDown={handleResizeStart}
+              aria-label="拖拽拉伸调节图片尺寸"
+              style={{
+                position: 'absolute',
+                bottom: 4,
+                right: 4,
+                width: 14,
+                height: 14,
+                background: 'var(--accent-strong, #3b82f6)',
+                borderRadius: '50%',
+                cursor: 'ew-resize',
+                border: '2px solid #ffffff',
+                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.25)',
+                zIndex: 20,
+              }}
+            />
+          </Tooltip>
         )}
 
         {/* 替代文本 Caption 说明 */}

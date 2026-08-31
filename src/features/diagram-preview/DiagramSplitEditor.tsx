@@ -23,6 +23,7 @@ import { renderPlantUmlToSvg } from '../plantuml/plantumlEncoder';
 import { extFromPath } from '../../core/docKind';
 import { ChartExportMenu } from '../export/ChartExportMenu';
 import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
+import { Tooltip } from '../../components/Tooltip';
 
 interface DiagramSplitEditorProps {
   docKey: string;
@@ -301,69 +302,75 @@ export function DiagramSplitEditor({ docKey }: DiagramSplitEditorProps) {
               border: '1px solid var(--editor-border, #e2e8f0)',
             }}
           >
-            <button
-              type="button"
-              onClick={() => setLayoutMode('split')}
-              title="双栏分屏"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '3px 8px',
-                borderRadius: 4,
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: 11,
-                fontWeight: layoutMode === 'split' ? 600 : 400,
-                background: layoutMode === 'split' ? 'var(--toolbar-active, rgba(59, 130, 246, 0.12))' : 'transparent',
-                color: layoutMode === 'split' ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-muted, #64748b)',
-              }}
-            >
-              <Columns size={13} />
-              <span>分屏</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setLayoutMode('code')}
-              title="仅源码"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '3px 8px',
-                borderRadius: 4,
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: 11,
-                fontWeight: layoutMode === 'code' ? 600 : 400,
-                background: layoutMode === 'code' ? 'var(--toolbar-active, rgba(59, 130, 246, 0.12))' : 'transparent',
-                color: layoutMode === 'code' ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-muted, #64748b)',
-              }}
-            >
-              <Code2 size={13} />
-              <span>源码</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setLayoutMode('preview')}
-              title="仅预览"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '3px 8px',
-                borderRadius: 4,
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: 11,
-                fontWeight: layoutMode === 'preview' ? 600 : 400,
-                background: layoutMode === 'preview' ? 'var(--toolbar-active, rgba(59, 130, 246, 0.12))' : 'transparent',
-                color: layoutMode === 'preview' ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-muted, #64748b)',
-              }}
-            >
-              <Eye size={13} />
-              <span>预览</span>
-            </button>
+            <Tooltip content="双栏分屏" side="bottom" sideOffset={4}>
+              <button
+                type="button"
+                onClick={() => setLayoutMode('split')}
+                aria-label="双栏分屏"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '3px 8px',
+                  borderRadius: 4,
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  fontWeight: layoutMode === 'split' ? 600 : 400,
+                  background: layoutMode === 'split' ? 'var(--toolbar-active, rgba(59, 130, 246, 0.12))' : 'transparent',
+                  color: layoutMode === 'split' ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-muted, #64748b)',
+                }}
+              >
+                <Columns size={13} />
+                <span>分屏</span>
+              </button>
+            </Tooltip>
+            <Tooltip content="仅源码" side="bottom" sideOffset={4}>
+              <button
+                type="button"
+                onClick={() => setLayoutMode('code')}
+                aria-label="仅源码"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '3px 8px',
+                  borderRadius: 4,
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  fontWeight: layoutMode === 'code' ? 600 : 400,
+                  background: layoutMode === 'code' ? 'var(--toolbar-active, rgba(59, 130, 246, 0.12))' : 'transparent',
+                  color: layoutMode === 'code' ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-muted, #64748b)',
+                }}
+              >
+                <Code2 size={13} />
+                <span>源码</span>
+              </button>
+            </Tooltip>
+            <Tooltip content="仅预览" side="bottom" sideOffset={4}>
+              <button
+                type="button"
+                onClick={() => setLayoutMode('preview')}
+                aria-label="仅预览"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '3px 8px',
+                  borderRadius: 4,
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  fontWeight: layoutMode === 'preview' ? 600 : 400,
+                  background: layoutMode === 'preview' ? 'var(--toolbar-active, rgba(59, 130, 246, 0.12))' : 'transparent',
+                  color: layoutMode === 'preview' ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-muted, #64748b)',
+                }}
+              >
+                <Eye size={13} />
+                <span>预览</span>
+              </button>
+            </Tooltip>
           </div>
         </div>
 
@@ -371,54 +378,60 @@ export function DiagramSplitEditor({ docKey }: DiagramSplitEditorProps) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {layoutMode !== 'code' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginRight: 8 }}>
-              <button
-                type="button"
-                onClick={() => setZoom((z) => Math.max(0.2, z - 0.15))}
-                title="缩小"
-                style={{
-                  background: 'transparent',
-                  border: '1px solid var(--editor-border)',
-                  borderRadius: 4,
-                  padding: '2px 6px',
-                  cursor: 'pointer',
-                }}
-              >
-                <ZoomOut size={13} />
-              </button>
+              <Tooltip content="缩小" side="bottom" sideOffset={4}>
+                <button
+                  type="button"
+                  onClick={() => setZoom((z) => Math.max(0.2, z - 0.15))}
+                  aria-label="缩小"
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid var(--editor-border)',
+                    borderRadius: 4,
+                    padding: '2px 6px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <ZoomOut size={13} />
+                </button>
+              </Tooltip>
               <span style={{ fontSize: 11, minWidth: 40, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
-              <button
-                type="button"
-                onClick={() => setZoom((z) => Math.min(4, z + 0.15))}
-                title="放大"
-                style={{
-                  background: 'transparent',
-                  border: '1px solid var(--editor-border)',
-                  borderRadius: 4,
-                  padding: '2px 6px',
-                  cursor: 'pointer',
-                }}
-              >
-                <ZoomIn size={13} />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setZoom(1);
-                  setPan({ x: 0, y: 0 });
-                }}
-                title="复位视图"
-                style={{
-                  background: 'transparent',
-                  border: '1px solid var(--editor-border)',
-                  borderRadius: 4,
-                  padding: '2px 6px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
-              >
-                <RotateCcw size={13} />
-              </button>
+              <Tooltip content="放大" side="bottom" sideOffset={4}>
+                <button
+                  type="button"
+                  onClick={() => setZoom((z) => Math.min(4, z + 0.15))}
+                  aria-label="放大"
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid var(--editor-border)',
+                    borderRadius: 4,
+                    padding: '2px 6px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <ZoomIn size={13} />
+                </button>
+              </Tooltip>
+              <Tooltip content="复位视图" side="bottom" sideOffset={4}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setZoom(1);
+                    setPan({ x: 0, y: 0 });
+                  }}
+                  aria-label="复位视图"
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid var(--editor-border)',
+                    borderRadius: 4,
+                    padding: '2px 6px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <RotateCcw size={13} />
+                </button>
+              </Tooltip>
             </div>
           )}
 
@@ -465,10 +478,11 @@ export function DiagramSplitEditor({ docKey }: DiagramSplitEditorProps) {
 
         {/* 分栏可拖拽分隔条 (Sash) */}
         {layoutMode === 'split' && (
-          <div
-            onMouseDown={handleResizerMouseDown}
-            onDoubleClick={() => setSplitRatio(0.5)}
-            title="拖拽调节分栏比例，双击居中复位 (50%)"
+          <Tooltip content="拖拽调节分栏比例，双击居中复位 (50%)" side="top" sideOffset={6}>
+            <div
+              onMouseDown={handleResizerMouseDown}
+              onDoubleClick={() => setSplitRatio(0.5)}
+              aria-label="拖拽调节分栏比例，双击居中复位 (50%)"
             style={{
               width: 8,
               height: '100%',
@@ -497,7 +511,8 @@ export function DiagramSplitEditor({ docKey }: DiagramSplitEditorProps) {
               }}
             />
           </div>
-        )}
+        </Tooltip>
+      )}
 
         {/* 右侧实时渲染预览区（常驻 DOM） */}
         <div

@@ -4,6 +4,7 @@
 
 import { useRef, useEffect } from 'react';
 import { ChevronRight, HardDrive, Folder } from 'lucide-react';
+import { Tooltip } from '../../components/Tooltip';
 import { useExplorerStore } from './explorerStore';
 import { useTreeData } from './useTreeData';
 
@@ -138,7 +139,6 @@ export function ExplorerBreadcrumb({ root, onRefresh }: ExplorerBreadcrumbProps)
         userSelect: 'none',
         boxSizing: 'border-box',
       }}
-      title={root}
     >
       {segments.map((seg, idx) => {
         return (
@@ -167,54 +167,56 @@ export function ExplorerBreadcrumb({ root, onRefresh }: ExplorerBreadcrumbProps)
             )}
 
             {/* 面包屑可点击项 */}
-            <button
-              type="button"
-              onClick={() => handleSegmentClick(seg)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 3,
-                height: 18,
-                padding: '0 4px',
-                border: 'none',
-                borderRadius: 3,
-                background: 'transparent',
-                color: seg.isLast ? 'var(--explorer-text)' : 'var(--explorer-text-muted)',
-                fontWeight: seg.isLast ? 600 : 400,
-                fontSize: 11,
-                cursor: 'pointer',
-                transition: 'all var(--transition-fast)',
-                whiteSpace: 'nowrap',
-                maxWidth: 160,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--explorer-hover)';
-                e.currentTarget.style.color = 'var(--explorer-text)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = seg.isLast
-                  ? 'var(--explorer-text)'
-                  : 'var(--explorer-text-muted)';
-                e.currentTarget.style.transform = 'scale(1)';
-              }}
-              onMouseDown={(e) => {
-                e.currentTarget.style.transform = 'scale(0.96)';
-              }}
-              onMouseUp={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-              }}
-              title={seg.fullPath}
-            >
-              {seg.isDrive ? (
-                <HardDrive size={11} style={{ flexShrink: 0, opacity: 0.75 }} />
-              ) : (
-                <Folder size={11} style={{ flexShrink: 0, opacity: 0.7 }} />
-              )}
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{seg.name}</span>
-            </button>
+            <Tooltip content={seg.fullPath} side="bottom" sideOffset={4}>
+              <button
+                type="button"
+                onClick={() => handleSegmentClick(seg)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  height: 18,
+                  padding: '0 4px',
+                  border: 'none',
+                  borderRadius: 3,
+                  background: 'transparent',
+                  color: seg.isLast ? 'var(--explorer-text)' : 'var(--explorer-text-muted)',
+                  fontWeight: seg.isLast ? 600 : 400,
+                  fontSize: 11,
+                  cursor: 'pointer',
+                  transition: 'all var(--transition-fast)',
+                  whiteSpace: 'nowrap',
+                  maxWidth: 160,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--explorer-hover)';
+                  e.currentTarget.style.color = 'var(--editor-text)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = seg.isLast
+                    ? 'var(--explorer-text)'
+                    : 'var(--explorer-text-muted)';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+                onMouseDown={(e) => {
+                  e.currentTarget.style.transform = 'scale(0.96)';
+                }}
+                onMouseUp={(e) => {
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+                aria-label={seg.fullPath}
+              >
+                {seg.isDrive ? (
+                  <HardDrive size={11} style={{ flexShrink: 0, opacity: 0.75 }} />
+                ) : (
+                  <Folder size={11} style={{ flexShrink: 0, opacity: 0.7 }} />
+                )}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{seg.name}</span>
+              </button>
+            </Tooltip>
           </div>
         );
       })}

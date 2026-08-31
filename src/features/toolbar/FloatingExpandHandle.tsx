@@ -4,6 +4,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronDown } from 'lucide-react';
+import { Tooltip } from '../../components/Tooltip';
 
 interface FloatingExpandHandleProps {
   onExpand: () => void;
@@ -67,59 +68,60 @@ export function FloatingExpandHandle({ onExpand }: FloatingExpandHandleProps) {
       />
 
       {/* 悬浮恢复胶囊本体 */}
-      <button
-        type="button"
-        title="展开顶部操作栏"
-        aria-label="展开顶部操作栏"
-        onClick={onExpand}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => {
-          setIsHovered(false);
-          setIsPressed(false);
-        }}
-        onMouseDown={() => setIsPressed(true)}
-        onMouseUp={() => setIsPressed(false)}
-        style={{
-          position: 'absolute',
-          top: 6,
-          left: '50%',
-          transform: `${transform} ${isPressed ? 'scale(0.94)' : ''}`,
-          zIndex: 27,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 4,
-          padding: '3px 10px',
-          borderRadius: 14,
-          background: isHighlighted
-            ? 'var(--editor-surface, #ffffff)'
-            : 'var(--editor-bg, #f9fafb)',
-          border: isHighlighted
-            ? '1px solid var(--editor-border-focus, #3b82f6)'
-            : inHotZone
-            ? '1px solid var(--editor-border, #e5e7eb)'
-            : '1px solid transparent',
-          boxShadow: isHighlighted
-            ? '0 4px 14px rgba(0, 0, 0, 0.16)'
-            : inHotZone
-            ? '0 2px 8px rgba(0, 0, 0, 0.08)'
-            : 'none',
-          color: isHighlighted
-            ? 'var(--accent-500, #3b82f6)'
-            : 'var(--editor-text-secondary, #6b7280)',
-          fontSize: 11,
-          fontFamily: 'var(--ui-font-family, inherit)',
-          cursor: 'pointer',
-          userSelect: 'none',
-          opacity,
-          pointerEvents: isVisible ? 'auto' : 'none',
-          backdropFilter: 'blur(8px)',
-          transition:
-            'opacity var(--transition-normal), transform var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), color var(--transition-fast)',
-        }}
-      >
-        <ChevronDown size={13} strokeWidth={2.2} />
-        <span style={{ fontWeight: 500 }}>展开操作栏</span>
-      </button>
+      <Tooltip content="展开顶部操作栏" side="bottom" sideOffset={4} disabled={!isVisible}>
+        <button
+          type="button"
+          aria-label="展开顶部操作栏"
+          onClick={onExpand}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => {
+            setIsHovered(false);
+            setIsPressed(false);
+          }}
+          onMouseDown={() => setIsPressed(true)}
+          onMouseUp={() => setIsPressed(false)}
+          style={{
+            position: 'absolute',
+            top: 6,
+            left: '50%',
+            transform: `${transform} ${isPressed ? 'scale(0.94)' : ''}`,
+            zIndex: 27,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '3px 10px',
+            borderRadius: 14,
+            background: isHighlighted
+              ? 'var(--editor-surface, #ffffff)'
+              : 'var(--editor-bg, #f9fafb)',
+            border: isHighlighted
+              ? '1px solid var(--editor-border-focus, #3b82f6)'
+              : inHotZone
+              ? '1px solid var(--editor-border, #e5e7eb)'
+              : '1px solid transparent',
+            boxShadow: isHighlighted
+              ? '0 4px 14px rgba(0, 0, 0, 0.16)'
+              : inHotZone
+              ? '0 2px 8px rgba(0, 0, 0, 0.08)'
+              : 'none',
+            color: isHighlighted
+              ? 'var(--accent-500, #3b82f6)'
+              : 'var(--editor-text-secondary, #6b7280)',
+            fontSize: 11,
+            fontFamily: 'var(--ui-font-family, inherit)',
+            cursor: 'pointer',
+            userSelect: 'none',
+            opacity,
+            pointerEvents: isVisible ? 'auto' : 'none',
+            backdropFilter: 'blur(8px)',
+            transition:
+              'opacity var(--transition-normal), transform var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), color var(--transition-fast)',
+          }}
+        >
+          <ChevronDown size={13} strokeWidth={2.2} />
+          <span style={{ fontWeight: 500 }}>展开操作栏</span>
+        </button>
+      </Tooltip>
     </>
   );
 }

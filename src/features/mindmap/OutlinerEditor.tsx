@@ -17,6 +17,7 @@ import {
 import type { MindNode } from './mindmapTypes';
 import { generateNodeId, moveMindNode, isMindNodeDescendant } from './mindmapConverter';
 import { MindmapIconPicker } from './MindmapIconPicker';
+import { Tooltip } from '../../components/Tooltip';
 
 interface OutlinerEditorProps {
   root: MindNode;
@@ -637,41 +638,43 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
               >
                 {/* 拖拽把手 */}
                 {!isRoot && (
-                  <div
-                    className="nb-drag-handle"
-                    onPointerDown={(e) => handlePointerDownHandle(e, item)}
-                    onPointerUp={handlePointerUp}
-                    title="按住拖拽整行换到其他行或调整层级"
-                    style={{
-                      width: 18,
-                      height: 24,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: isDragging ? 'grabbing' : 'grab',
-                      color: 'var(--editor-text-secondary, #64748b)',
-                      opacity: 0.6,
-                      transition: 'opacity 0.15s ease, color 0.15s ease',
-                      flexShrink: 0,
-                      marginRight: 2,
-                      touchAction: 'none',
-                      userSelect: 'none',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isDragging) {
-                        e.currentTarget.style.opacity = '1';
-                        e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isDragging) {
-                        e.currentTarget.style.opacity = '0.6';
-                        e.currentTarget.style.color = 'var(--editor-text-secondary, #64748b)';
-                      }
-                    }}
-                  >
-                    <GripVertical size={14} />
-                  </div>
+                  <Tooltip content="按住拖拽整行换到其他行或调整层级" side="left" sideOffset={4}>
+                    <div
+                      className="nb-drag-handle"
+                      onPointerDown={(e) => handlePointerDownHandle(e, item)}
+                      onPointerUp={handlePointerUp}
+                      aria-label="按住拖拽整行换到其他行或调整层级"
+                      style={{
+                        width: 18,
+                        height: 24,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: isDragging ? 'grabbing' : 'grab',
+                        color: 'var(--editor-text-secondary, #64748b)',
+                        opacity: 0.6,
+                        transition: 'opacity 0.15s ease, color 0.15s ease',
+                        flexShrink: 0,
+                        marginRight: 2,
+                        touchAction: 'none',
+                        userSelect: 'none',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isDragging) {
+                          e.currentTarget.style.opacity = '1';
+                          e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isDragging) {
+                          e.currentTarget.style.opacity = '0.6';
+                          e.currentTarget.style.color = 'var(--editor-text-secondary, #64748b)';
+                        }
+                      }}
+                    >
+                      <GripVertical size={14} />
+                    </div>
+                  </Tooltip>
                 )}
 
                 {/* 展开/折叠指示箭头与大纲圆点 */}
@@ -726,37 +729,39 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
 
                 {/* 节点前置图标按钮（有图标则直接渲染，点击可修改或移除） */}
                 {item.node.icon && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      setIconPickerState({
-                        nodeId: item.node.id,
-                        currentIcon: item.node.icon,
-                        x: rect.left,
-                        y: rect.bottom + 4,
-                      });
-                    }}
-                    title="点击更改或移除图标"
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: isRoot ? 20 : 16,
-                      lineHeight: 1,
-                      padding: '0 4px',
-                      marginRight: 4,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderRadius: 4,
-                      transition: 'transform 0.12s ease',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.2)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-                  >
-                    {item.node.icon}
-                  </button>
+                  <Tooltip content="点击更改或移除图标" side="top" sideOffset={4}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setIconPickerState({
+                          nodeId: item.node.id,
+                          currentIcon: item.node.icon,
+                          x: rect.left,
+                          y: rect.bottom + 4,
+                        });
+                      }}
+                      aria-label="点击更改或移除图标"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: isRoot ? 20 : 16,
+                        lineHeight: 1,
+                        padding: '0 4px',
+                        marginRight: 4,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: 4,
+                        transition: 'transform 0.12s ease',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.2)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                    >
+                      {item.node.icon}
+                    </button>
+                  </Tooltip>
                 )}
 
                 {/* 节点标题输入栏 */}
@@ -825,159 +830,19 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
                   }}
                 >
                   {/* 设置/更换图标按钮 */}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      setIconPickerState({
-                        nodeId: item.node.id,
-                        currentIcon: item.node.icon,
-                        x: rect.left,
-                        y: rect.bottom + 4,
-                      });
-                    }}
-                    title="设置节点图标/标记"
-                    style={{
-                      background: 'transparent',
-                      border: '1px solid transparent',
-                      borderRadius: 4,
-                      cursor: 'pointer',
-                      padding: '3px 5px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'var(--editor-text-secondary, #475569)',
-                      transition: 'all 0.12s ease',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'var(--toolbar-hover, rgba(59, 130, 246, 0.12))';
-                      e.currentTarget.style.borderColor = 'var(--editor-border, #cbd5e1)';
-                      e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
-                      e.currentTarget.style.transform = 'scale(1.05)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent';
-                      e.currentTarget.style.borderColor = 'transparent';
-                      e.currentTarget.style.color = 'var(--editor-text-secondary, #475569)';
-                      e.currentTarget.style.transform = 'scale(1)';
-                    }}
-                  >
-                    <Smile size={13} />
-                  </button>
-
-                  {/* 添加/聚焦备注按钮 */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (item.node.note === undefined) {
-                        handleNoteChange(item.node.id, '');
-                      }
-                      focusNoteTargetIdRef.current = item.node.id;
-                    }}
-                    title="添加/编辑备注 (Shift+Enter)"
-                    style={{
-                      background: 'transparent',
-                      border: '1px solid transparent',
-                      borderRadius: 4,
-                      cursor: 'pointer',
-                      padding: '3px 5px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: hasNote ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-secondary, #475569)',
-                      transition: 'all 0.12s ease',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'var(--toolbar-hover, rgba(59, 130, 246, 0.12))';
-                      e.currentTarget.style.borderColor = 'var(--editor-border, #cbd5e1)';
-                      e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
-                      e.currentTarget.style.transform = 'scale(1.05)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent';
-                      e.currentTarget.style.borderColor = 'transparent';
-                      e.currentTarget.style.color = hasNote ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-secondary, #475569)';
-                      e.currentTarget.style.transform = 'scale(1)';
-                    }}
-                  >
-                    <FileText size={13} />
-                  </button>
-
-                  {/* 插入图片按钮 */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      uploadTargetNodeIdRef.current = item.node.id;
-                      fileInputRef.current?.click();
-                    }}
-                    title="上传/添加图片"
-                    style={{
-                      background: 'transparent',
-                      border: '1px solid transparent',
-                      borderRadius: 4,
-                      cursor: 'pointer',
-                      padding: '3px 5px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: hasImage ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-secondary, #475569)',
-                      transition: 'all 0.12s ease',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'var(--toolbar-hover, rgba(59, 130, 246, 0.12))';
-                      e.currentTarget.style.borderColor = 'var(--editor-border, #cbd5e1)';
-                      e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
-                      e.currentTarget.style.transform = 'scale(1.05)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent';
-                      e.currentTarget.style.borderColor = 'transparent';
-                      e.currentTarget.style.color = hasImage ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-secondary, #475569)';
-                      e.currentTarget.style.transform = 'scale(1)';
-                    }}
-                  >
-                    <ImageIcon size={13} />
-                  </button>
-
-                  {/* 添加同级要点按钮 */}
-                  <button
-                    type="button"
-                    onClick={() => handleEnterKey(item)}
-                    title="添加同级要点 (Enter)"
-                    style={{
-                      background: 'transparent',
-                      border: '1px solid transparent',
-                      borderRadius: 4,
-                      cursor: 'pointer',
-                      padding: '3px 5px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'var(--editor-text-secondary, #475569)',
-                      transition: 'all 0.12s ease',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'var(--toolbar-hover, rgba(59, 130, 246, 0.12))';
-                      e.currentTarget.style.borderColor = 'var(--editor-border, #cbd5e1)';
-                      e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
-                      e.currentTarget.style.transform = 'scale(1.05)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent';
-                      e.currentTarget.style.borderColor = 'transparent';
-                      e.currentTarget.style.color = 'var(--editor-text-secondary, #475569)';
-                      e.currentTarget.style.transform = 'scale(1)';
-                    }}
-                  >
-                    <Plus size={14} />
-                  </button>
-
-                  {/* 删除此要点 */}
-                  {!isRoot && (
+                  <Tooltip content="设置节点图标/标记" side="top" sideOffset={4}>
                     <button
                       type="button"
-                      onClick={() => handleBackspaceKey(item, idx)}
-                      title="删除此要点及子要点"
+                      onClick={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setIconPickerState({
+                          nodeId: item.node.id,
+                          currentIcon: item.node.icon,
+                          x: rect.left,
+                          y: rect.bottom + 4,
+                        });
+                      }}
+                      aria-label="设置节点图标/标记"
                       style={{
                         background: 'transparent',
                         border: '1px solid transparent',
@@ -991,9 +856,9 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
                         transition: 'all 0.12s ease',
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)';
-                        e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)';
-                        e.currentTarget.style.color = '#ef4444';
+                        e.currentTarget.style.background = 'var(--toolbar-hover, rgba(59, 130, 246, 0.12))';
+                        e.currentTarget.style.borderColor = 'var(--editor-border, #cbd5e1)';
+                        e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
                         e.currentTarget.style.transform = 'scale(1.05)';
                       }}
                       onMouseLeave={(e) => {
@@ -1003,8 +868,158 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
                         e.currentTarget.style.transform = 'scale(1)';
                       }}
                     >
-                      <Trash2 size={14} />
+                      <Smile size={13} />
                     </button>
+                  </Tooltip>
+
+                  {/* 添加/聚焦备注按钮 */}
+                  <Tooltip content="添加/编辑备注 (Shift+Enter)" side="top" sideOffset={4}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (item.node.note === undefined) {
+                          handleNoteChange(item.node.id, '');
+                        }
+                        focusNoteTargetIdRef.current = item.node.id;
+                      }}
+                      aria-label="添加/编辑备注 (Shift+Enter)"
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid transparent',
+                        borderRadius: 4,
+                        cursor: 'pointer',
+                        padding: '3px 5px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: hasNote ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-secondary, #475569)',
+                        transition: 'all 0.12s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'var(--toolbar-hover, rgba(59, 130, 246, 0.12))';
+                        e.currentTarget.style.borderColor = 'var(--editor-border, #cbd5e1)';
+                        e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
+                        e.currentTarget.style.transform = 'scale(1.05)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.borderColor = 'transparent';
+                        e.currentTarget.style.color = hasNote ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-secondary, #475569)';
+                        e.currentTarget.style.transform = 'scale(1)';
+                      }}
+                    >
+                      <FileText size={13} />
+                    </button>
+                  </Tooltip>
+
+                  {/* 插入图片按钮 */}
+                  <Tooltip content="上传/添加图片" side="top" sideOffset={4}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        uploadTargetNodeIdRef.current = item.node.id;
+                        fileInputRef.current?.click();
+                      }}
+                      aria-label="上传/添加图片"
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid transparent',
+                        borderRadius: 4,
+                        cursor: 'pointer',
+                        padding: '3px 5px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: hasImage ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-secondary, #475569)',
+                        transition: 'all 0.12s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'var(--toolbar-hover, rgba(59, 130, 246, 0.12))';
+                        e.currentTarget.style.borderColor = 'var(--editor-border, #cbd5e1)';
+                        e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
+                        e.currentTarget.style.transform = 'scale(1.05)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.borderColor = 'transparent';
+                        e.currentTarget.style.color = hasImage ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-secondary, #475569)';
+                        e.currentTarget.style.transform = 'scale(1)';
+                      }}
+                    >
+                      <ImageIcon size={13} />
+                    </button>
+                  </Tooltip>
+
+                  {/* 添加同级要点按钮 */}
+                  <Tooltip content="添加同级要点 (Enter)" side="top" sideOffset={4}>
+                    <button
+                      type="button"
+                      onClick={() => handleEnterKey(item)}
+                      aria-label="添加同级要点 (Enter)"
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid transparent',
+                        borderRadius: 4,
+                        cursor: 'pointer',
+                        padding: '3px 5px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--editor-text-secondary, #475569)',
+                        transition: 'all 0.12s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'var(--toolbar-hover, rgba(59, 130, 246, 0.12))';
+                        e.currentTarget.style.borderColor = 'var(--editor-border, #cbd5e1)';
+                        e.currentTarget.style.color = 'var(--editor-accent, #3b82f6)';
+                        e.currentTarget.style.transform = 'scale(1.05)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.borderColor = 'transparent';
+                        e.currentTarget.style.color = 'var(--editor-text-secondary, #475569)';
+                        e.currentTarget.style.transform = 'scale(1)';
+                      }}
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </Tooltip>
+
+                  {/* 删除此要点 */}
+                  {!isRoot && (
+                    <Tooltip content="删除此要点及子要点" side="top" sideOffset={4}>
+                      <button
+                        type="button"
+                        onClick={() => handleBackspaceKey(item, idx)}
+                        aria-label="删除此要点及子要点"
+                        style={{
+                          background: 'transparent',
+                          border: '1px solid transparent',
+                          borderRadius: 4,
+                          cursor: 'pointer',
+                          padding: '3px 5px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: 'var(--editor-text-secondary, #475569)',
+                          transition: 'all 0.12s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)';
+                          e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                          e.currentTarget.style.color = '#ef4444';
+                          e.currentTarget.style.transform = 'scale(1.05)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'transparent';
+                          e.currentTarget.style.borderColor = 'transparent';
+                          e.currentTarget.style.color = 'var(--editor-text-secondary, #475569)';
+                          e.currentTarget.style.transform = 'scale(1)';
+                        }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </Tooltip>
                   )}
                 </div>
               </div>
@@ -1063,27 +1078,29 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
                         onFocus={(e) => (e.target.style.borderColor = 'var(--editor-accent, #3b82f6)')}
                         onBlur={(e) => (e.target.style.borderColor = 'var(--editor-border, #e2e8f0)')}
                       />
-                      <button
-                        type="button"
-                        onClick={() => handleNoteChange(item.node.id, undefined)}
-                        title="删除备注"
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          cursor: 'pointer',
-                          color: 'var(--editor-text-muted, #94a3b8)',
-                          padding: 2,
-                          marginTop: 4,
-                          borderRadius: 4,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
-                        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--editor-text-muted, #94a3b8)')}
-                      >
-                        <X size={13} />
-                      </button>
+                      <Tooltip content="删除备注" side="top" sideOffset={4}>
+                        <button
+                          type="button"
+                          onClick={() => handleNoteChange(item.node.id, undefined)}
+                          aria-label="删除备注"
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: 'var(--editor-text-muted, #94a3b8)',
+                            padding: 2,
+                            marginTop: 4,
+                            borderRadius: 4,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--editor-text-muted, #94a3b8)')}
+                        >
+                          <X size={13} />
+                        </button>
+                      </Tooltip>
                     </div>
                   )}
 
@@ -1100,45 +1117,48 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
                         background: 'var(--editor-surface, #ffffff)',
                       }}
                     >
-                      <img
-                        src={item.node.image}
-                        alt="节点图片"
-                        onClick={() => setPreviewImage(item.node.image!)}
-                        style={{
-                          display: 'block',
-                          maxWidth: '100%',
-                          maxHeight: 180,
-                          objectFit: 'contain',
-                          cursor: 'zoom-in',
-                          transition: 'transform 0.15s ease',
-                        }}
-                        title="点击全屏放大预览"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleImageChange(item.node.id, undefined)}
-                        title="删除图片"
-                        style={{
-                          position: 'absolute',
-                          top: 4,
-                          right: 4,
-                          background: 'rgba(0, 0, 0, 0.65)',
-                          color: '#ffffff',
-                          border: 'none',
-                          borderRadius: '50%',
-                          width: 20,
-                          height: 20,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          transition: 'background 0.15s ease',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.9)')}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(0, 0, 0, 0.65)')}
-                      >
-                        <X size={12} />
-                      </button>
+                      <Tooltip content="点击全屏放大预览" side="top" sideOffset={4}>
+                        <img
+                          src={item.node.image}
+                          alt="节点图片"
+                          onClick={() => setPreviewImage(item.node.image!)}
+                          style={{
+                            display: 'block',
+                            maxWidth: '100%',
+                            maxHeight: 180,
+                            objectFit: 'contain',
+                            cursor: 'zoom-in',
+                            transition: 'transform 0.15s ease',
+                          }}
+                        />
+                      </Tooltip>
+                      <Tooltip content="删除图片" side="top" sideOffset={4}>
+                        <button
+                          type="button"
+                          onClick={() => handleImageChange(item.node.id, undefined)}
+                          aria-label="删除图片"
+                          style={{
+                            position: 'absolute',
+                            top: 4,
+                            right: 4,
+                            background: 'rgba(0, 0, 0, 0.65)',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '50%',
+                            width: 20,
+                            height: 20,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'background 0.15s ease',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.9)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(0, 0, 0, 0.65)')}
+                        >
+                          <X size={12} />
+                        </button>
+                      </Tooltip>
                     </div>
                   )}
                 </div>
