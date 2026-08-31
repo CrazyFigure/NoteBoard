@@ -71,7 +71,7 @@ export function WelcomeScreen({
   const primaryCreateActions = [
     {
       icon: FilePlus,
-      label: '新建 Markdown 笔记',
+      label: '新建 Markdown 笔记 (.md)',
       desc: '富文本与源码双模笔记',
       shortcut: '',
       color: 'var(--editor-accent, #3b82f6)',
@@ -87,7 +87,7 @@ export function WelcomeScreen({
     },
     {
       icon: Table2,
-      label: '多维表格 (.bitable)',
+      label: '新建多维表格 (.bitable)',
       desc: '结构化数据与看板视图',
       shortcut: '',
       color: '#2563eb',
@@ -95,7 +95,7 @@ export function WelcomeScreen({
     },
     {
       icon: PencilRuler,
-      label: '新建自由画板',
+      label: '新建自由画板 (.excalidraw)',
       desc: 'Excalidraw 自由手绘与白板',
       shortcut: '',
       color: 'var(--accent-strong, #8b5cf6)',
@@ -103,8 +103,8 @@ export function WelcomeScreen({
     },
     {
       icon: Network,
-      label: '新建思维导图 / XMind',
-      desc: '幕布大纲 ⇄ 脑图双模切换',
+      label: '新建思维导图 (.mindmap)',
+      desc: '大纲 ⇄ 脑图双模切换',
       shortcut: '',
       color: '#f97316',
       onClick: onNewMindmap,
@@ -146,7 +146,7 @@ export function WelcomeScreen({
     {
       icon: Star,
       iconFill: '#f97316',
-      label: '收藏夹',
+      label: '打开收藏夹',
       desc: '查看与整理收藏文件',
       shortcut: '',
       color: '#f97316',
@@ -194,21 +194,21 @@ export function WelcomeScreen({
     },
     {
       icon: Workflow,
-      label: 'Mermaid 脚本图表 (.mmd)',
+      label: 'Mermaid 图表 (.mmd)',
       desc: '时序图、流程图与状态机脚本',
       color: '#00bfb2',
       onClick: onNewMermaid,
     },
     {
       icon: GitMerge,
-      label: 'PlantUML 架构建模 (.puml)',
+      label: 'PlantUML 建模 (.puml)',
       desc: '类图、时序图与系统组件图',
       color: '#a855f7',
       onClick: onNewPlantUml,
     },
     {
       icon: Braces,
-      label: 'JSON 数据配置 (.json)',
+      label: 'JSON 配置文件 (.json)',
       desc: 'JSON 数据、格式化与校验',
       color: '#eab308',
       onClick: onNewJson,
