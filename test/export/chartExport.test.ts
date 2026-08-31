@@ -5,6 +5,7 @@ import { describe, expect, test } from 'vitest';
 import {
   buildExportFileName,
   elementToSvgString,
+  exportBlobWithDialog,
   normalizeSvg,
   parseSvgSize,
   stripExtension,
@@ -139,5 +140,15 @@ describe('导出文件名', () => {
   test('文档名为空时回退到「前缀-时间戳」', () => {
     const name = buildExportFileName('', 'infographic');
     expect(name).toMatch(/^infographic-\d+$/);
+  });
+});
+
+describe('exportBlobWithDialog 与 saveBlobToFile 导出保存', () => {
+  test('非 Tauri 浏览器环境下调用 exportBlobWithDialog 触发浏览器下载并返回 true', async () => {
+    const blob = new Blob(['test content'], { type: 'text/plain' });
+    const result = await exportBlobWithDialog(blob, 'test.txt', [
+      { name: '文本文件 (*.txt)', extensions: ['txt'] },
+    ]);
+    expect(result).toBe(true);
   });
 });

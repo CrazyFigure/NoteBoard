@@ -330,6 +330,9 @@ export async function copyImage(blob: Blob): Promise<void> {
 
 /** 浏览器环境（非 Tauri）下的兜底下载：必须挂到 DOM 上，否则 WebView 不触发 */
 function downloadBlob(blob: Blob, filename: string): void {
+  if (typeof URL.createObjectURL !== 'function') {
+    return;
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -338,11 +341,50 @@ function downloadBlob(blob: Blob, filename: string): void {
   a.click();
   document.body.removeChild(a);
   // 撤销必须延后，同步撤销会让下载在真正开始前就失去数据源
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  setTimeout(() => {
+    if (typeof URL.revokeObjectURL === 'function') {
+      URL.revokeObjectURL(url);
+    }
+  }, 1000);
+}
+
+/** 对话框文件类型过滤器类型 */
+export interface DialogFilter {
+  name: string;
+  extensions: string[];
 }
 
 /**
- * 弹系统另存为对话框并写入文件
+ * 弹系统另存为对话框并保存二进制 Blob 文件
+ * 支持 Tauri WebView2 本地文件系统直写，以及浏览器环境下的 Blob 链接下载兜底
+ * @returns 用户取消时返回 false，成功保存返回 true
+ */
+export async function exportBlobWithDialog(
+  blob: Blob,
+  defaultFilename: string,
+  filters: DialogFilter[],
+): Promise<boolean> {
+  // 浏览器非 Tauri 环境下走 <a> 链接模拟点击下载
+  if (!isTauri()) {
+    downloadBlob(blob, defaultFilename);
+    return true;
+  }
+
+  // 唤起系统原生保存文件对话框
+  const selectedPath = await save({ defaultPath: defaultFilename, filters });
+  if (!selectedPath) return false;
+
+  // 将 Blob 转为二进制数组并通过 Rust IPC 写入本地文件
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const result = await ipc.saveBinaryFile(selectedPath, bytes);
+  if (!result.ok) {
+    throw new Error(result.error ? describeWriteError(result.error) : '写入文件失败');
+  }
+  return true;
+}
+
+/**
+ * 弹系统另存为对话框并写入图片文件
  * Tauri 环境下必须走这条路径：WebView 不处理 blob 下载，按钮会「点了没反应」
  * @returns 用户取消时返回 false，不视为错误
  */
@@ -355,7 +397,7 @@ export async function saveBlobToFile(
   const filename = defaultName.endsWith(`.${extension}`)
     ? defaultName
     : `${defaultName}.${extension}`;
-  const filters =
+  const filters: DialogFilter[] =
     format === 'svg'
       ? [
           { name: 'SVG 矢量图 (*.svg)', extensions: ['svg'] },
@@ -366,20 +408,8 @@ export async function saveBlobToFile(
           { name: '全部文件 (*.*)', extensions: ['*'] },
         ];
 
-  if (!isTauri()) {
-    downloadBlob(blob, filename);
-    return true;
-  }
-
-  const selectedPath = await save({ defaultPath: filename, filters });
-  if (!selectedPath) return false;
-
-  const bytes = new Uint8Array(await blob.arrayBuffer());
-  const result = await ipc.saveBinaryFile(selectedPath, bytes);
-  if (!result.ok) {
-    throw new Error(result.error ? describeWriteError(result.error) : '写入文件失败');
-  }
-  return true;
+  // 复用统一的文件另存为对话框与写盘逻辑
+  return await exportBlobWithDialog(blob, filename, filters);
 }
 
 /** 把 Rust 侧返回的写盘错误翻译成用户能看懂的提示 */
