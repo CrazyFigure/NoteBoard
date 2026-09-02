@@ -51,14 +51,14 @@
     <text class="axis-label" x="54" y="78" text-anchor="end">20</text>
     <text class="axis-label" x="68" y="410" text-anchor="middle">2026-08-19</text>
     <text class="axis-label" x="254" y="410" text-anchor="middle">2026-08-22</text>
-    <text class="axis-label" x="440" y="410" text-anchor="middle">2026-08-25</text>
+    <text class="axis-label" x="440" y="410" text-anchor="middle">2026-08-26</text>
     <text class="axis-label" x="626" y="410" text-anchor="middle">2026-08-29</text>
-    <text class="axis-label" x="812" y="410" text-anchor="middle">2026-09-01</text>
+    <text class="axis-label" x="812" y="410" text-anchor="middle">2026-09-02</text>
   </g>
-  <path class="area" d="M 68 368 H 68.01 V 368 H 110.18 V 309.2 H 168.17 V 294.5 H 225.56 V 250.4 H 283.64 V 235.7 H 341.4 V 235.7 H 398.87 V 235.7 H 456.92 V 221 H 535.23 V 221 H 597.13 V 221 H 642.71 V 221 H 697.8 V 221 H 756.19 V 221 H 812 V 206.3 L 812 368 L 68 368 Z" />
-  <path class="line" d="M 68 368 H 68.01 V 368 H 110.18 V 309.2 H 168.17 V 294.5 H 225.56 V 250.4 H 283.64 V 235.7 H 341.4 V 235.7 H 398.87 V 235.7 H 456.92 V 221 H 535.23 V 221 H 597.13 V 221 H 642.71 V 221 H 697.8 V 221 H 756.19 V 221 H 812 V 206.3" />
+  <path class="area" d="M 68 368 H 68.01 V 368 H 107.18 V 309.2 H 161.05 V 294.5 H 214.37 V 250.4 H 268.32 V 235.7 H 321.98 V 235.7 H 375.37 V 235.7 H 429.29 V 221 H 502.04 V 221 H 559.54 V 221 H 601.88 V 221 H 653.06 V 221 H 707.3 V 221 H 759.15 V 206.3 H 812 V 206.3 L 812 368 L 68 368 Z" />
+  <path class="line" d="M 68 368 H 68.01 V 368 H 107.18 V 309.2 H 161.05 V 294.5 H 214.37 V 250.4 H 268.32 V 235.7 H 321.98 V 235.7 H 375.37 V 235.7 H 429.29 V 221 H 502.04 V 221 H 559.54 V 221 H 601.88 V 221 H 653.06 V 221 H 707.3 V 221 H 759.15 V 206.3 H 812 V 206.3" />
   <circle class="dot" cx="812" cy="206.3" r="6" />
   <rect class="badge" x="682" y="28" width="130" height="34" rx="17" />
   <text class="badge-text" x="747" y="50" text-anchor="middle">11 stars</text>
-  <text class="status" x="812" y="428" text-anchor="end">Observed snapshots: 2026-08-19 – 2026-09-01</text>
+  <text class="status" x="812" y="428" text-anchor="end">Observed snapshots: 2026-08-19 – 2026-09-02</text>
 </svg>
