@@ -390,13 +390,14 @@ export function BitableGridView({
   const isSelectingCellsRef = useRef(false);
   const dragStartCellRef = useRef<{ rowId: string; colId: string } | null>(null);
 
-  // 单元格悬浮右键菜单状态
+  // 单元格悬浮右键菜单状态与 DOM 引用
   const [cellContextMenu, setCellContextMenu] = useState<{
     x: number;
     y: number;
     targetRowId: string;
     targetColId: string;
   } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   // 填充柄拖拽预测选区预览状态
   const [fillPreview, setFillPreview] = useState<{
@@ -847,7 +848,13 @@ export function BitableGridView({
   // 右键菜单外部点击与 Escape 关闭
   useEffect(() => {
     if (!cellContextMenu) return;
-    const handleClickOutside = () => setCellContextMenu(null);
+    // 点击右键菜单外部区域时才关闭菜单；菜单内部点击交给菜单项的 onClick 触发并自行关闭
+    const handleClickOutside = (e: MouseEvent) => {
+      if (contextMenuRef.current && contextMenuRef.current.contains(e.target as Node)) {
+        return;
+      }
+      setCellContextMenu(null);
+    };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setCellContextMenu(null);
     };
@@ -3163,6 +3170,7 @@ export function BitableGridView({
       {/* 单元格与选区悬浮右键上下文菜单 */}
       {cellContextMenu && (
         <div
+          ref={contextMenuRef}
           data-no-drag
           style={{
             position: 'fixed',
@@ -3180,6 +3188,8 @@ export function BitableGridView({
             flexDirection: 'column',
             gap: 2,
           }}
+          // 阻止 mousedown 冒泡，防止外部监听提前关闭菜单导致按钮 onClick 无法触发
+          onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
           <button
