@@ -13,7 +13,7 @@ import {
 } from './bitableTypes';
 import { OptionBadge, SelectOptionsPanel } from './BitableOptions';
 import { getAnchorRect, type AnchorRect } from './BitableFloating';
-import { createId, previewLongText, resolveLongTextConfig } from './bitableUtils';
+import { areCellValuesEqual, createId, previewLongText, resolveLongTextConfig } from './bitableUtils';
 import { BitableMarkdown } from './BitableMarkdown';
 import { BitableRichTextEditor, type RichTextMode } from './BitableRichTextEditor';
 import { BitableLongTextPopover } from './BitableLongTextPopover';
@@ -210,10 +210,16 @@ export function BitableCellEditor({
           value={inputValue}
           placeholder="请输入内容"
           onChange={(e) => setInputValue(e.target.value)}
-          onBlur={() => onChange(inputValue)}
+          onBlur={() => {
+            if (!areCellValuesEqual(value, inputValue)) {
+              onChange(inputValue);
+            }
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
-              onChange(inputValue);
+              if (!areCellValuesEqual(value, inputValue)) {
+                onChange(inputValue);
+              }
               e.currentTarget.blur();
             } else if (e.key === 'Escape') {
               setInputValue(value === null || value === undefined ? '' : String(value));
@@ -233,12 +239,16 @@ export function BitableCellEditor({
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onBlur={() => {
-            onChange(inputValue);
+            if (!areCellValuesEqual(value, inputValue)) {
+              onChange(inputValue);
+            }
             setEditing(false);
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
-              onChange(inputValue);
+              if (!areCellValuesEqual(value, inputValue)) {
+                onChange(inputValue);
+              }
               setEditing(false);
             } else if (e.key === 'Escape') {
               setEditing(false);
@@ -369,11 +379,19 @@ export function BitableCellEditor({
           placeholder="请输入数字"
           onChange={(e) => setInputValue(e.target.value)}
           onWheel={blurNumberOnWheel}
-          onBlur={() => onChange(inputValue.trim() === '' ? null : Number(inputValue))}
+          onBlur={() => {
+            const num = inputValue.trim() === '' ? null : Number(inputValue);
+            if (!areCellValuesEqual(value, num)) {
+              onChange(num);
+            }
+          }}
           onKeyDown={(e) => {
             if (blockNumberStepKeys(e)) return;
             if (e.key === 'Enter') {
-              onChange(inputValue.trim() === '' ? null : Number(inputValue));
+              const num = inputValue.trim() === '' ? null : Number(inputValue);
+              if (!areCellValuesEqual(value, num)) {
+                onChange(num);
+              }
               e.currentTarget.blur();
             } else if (e.key === 'Escape') {
               setInputValue(value === null || value === undefined ? '' : String(value));
@@ -396,14 +414,18 @@ export function BitableCellEditor({
           onWheel={blurNumberOnWheel}
           onBlur={() => {
             const num = inputValue.trim() === '' ? null : Number(inputValue);
-            onChange(num);
+            if (!areCellValuesEqual(value, num)) {
+              onChange(num);
+            }
             setEditing(false);
           }}
           onKeyDown={(e) => {
             if (blockNumberStepKeys(e)) return;
             if (e.key === 'Enter') {
               const num = inputValue.trim() === '' ? null : Number(inputValue);
-              onChange(num);
+              if (!areCellValuesEqual(value, num)) {
+                onChange(num);
+              }
               setEditing(false);
             } else if (e.key === 'Escape') {
               setEditing(false);
@@ -843,10 +865,16 @@ export function BitableCellEditor({
             value={inputValue}
             placeholder="https://example.com"
             onChange={(e) => setInputValue(e.target.value)}
-            onBlur={() => onChange(inputValue)}
+            onBlur={() => {
+              if (!areCellValuesEqual(value, inputValue)) {
+                onChange(inputValue);
+              }
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
-                onChange(inputValue);
+                if (!areCellValuesEqual(value, inputValue)) {
+                  onChange(inputValue);
+                }
                 e.currentTarget.blur();
               }
             }}
@@ -875,12 +903,16 @@ export function BitableCellEditor({
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onBlur={() => {
-            onChange(inputValue);
+            if (!areCellValuesEqual(value, inputValue)) {
+              onChange(inputValue);
+            }
             setEditing(false);
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
-              onChange(inputValue);
+              if (!areCellValuesEqual(value, inputValue)) {
+                onChange(inputValue);
+              }
               setEditing(false);
             } else if (e.key === 'Escape') {
               setEditing(false);

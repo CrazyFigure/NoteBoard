@@ -59,6 +59,40 @@ export function slotToFinalPosition(insertAt: number, fromIdx: number): number {
   return insertAt > fromIdx ? insertAt : insertAt + 1;
 }
 
+/**
+ * 比较两个多维表格单元格值是否实质相等
+ * 统一处理 null / undefined / 空字符串等价性，以及数组浅比较，防止无实质变动的编辑污染文档脏状态
+ */
+export function areCellValuesEqual(a: unknown, b: unknown): boolean {
+  // 1. 全等（同基本类型且同值，或同一对象引用）
+  if (a === b) return true;
+
+  // 2. 空值归一化：undefined, null, '' 在语义上均代表空单元格
+  const isAEmpty = a === undefined || a === null || a === '';
+  const isBEmpty = b === undefined || b === null || b === '';
+  if (isAEmpty && isBEmpty) return true;
+  if (isAEmpty !== isBEmpty) return false;
+
+  // 3. 数组形式比较（主要用于 multiSelect 选项数组）
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }
+
+  // 4. 数字与字符串宽松对比（例如 42 与 '42'）
+  if (typeof a === 'number' && typeof b === 'string') {
+    return String(a) === b.trim();
+  }
+  if (typeof a === 'string' && typeof b === 'number') {
+    return a.trim() === String(b);
+  }
+
+  return false;
+}
+
 /** 槽位是否等价于原位：落在自身左右两侧时移动后顺序不变，无需提交 */
 export function isSlotNoop(insertAt: number, fromIdx: number): boolean {
   return insertAt === fromIdx || insertAt === fromIdx + 1;
@@ -513,8 +547,13 @@ export function resolveGroupKey(
   }
 
   if (column.type === 'multiSelect') {
-    if (!Array.isArray(raw) || raw.length === 0) return { key: '__empty__', label: '未指定' };
-    const firstId = raw[0];
+    const ids = Array.isArray(raw)
+      ? raw
+      : typeof raw === 'string' && raw.trim() !== ''
+        ? (raw.includes(',') ? raw.split(',').map((s) => s.trim()) : [raw.trim()])
+        : [];
+    if (ids.length === 0) return { key: '__empty__', label: '未指定' };
+    const firstId = ids[0];
     const opt = (column.options || []).find((o) => o.id === firstId);
     return {
       key: String(firstId),

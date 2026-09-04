@@ -3,6 +3,7 @@
 
 import { describe, test, expect } from 'vitest';
 import {
+  areCellValuesEqual,
   createId,
   parseClipboardMatrix,
   coerceCellValue,
@@ -257,5 +258,59 @@ describe('多维表格通用工具测试', () => {
     expect(getSortDirectionLabels('checkbox')).toEqual({ asc: '未勾选 → 勾选', desc: '勾选 → 未勾选' });
     expect(getSortDirectionLabels('select')).toEqual({ asc: '选项顺序', desc: '选项逆序' });
     expect(getSortDirectionLabels('text')).toEqual({ asc: 'A → Z', desc: 'Z → A' });
+  });
+
+  test('resolveGroupKey 对 multiSelect 字段支持数组与逗号分隔字符串并返回选项名称', () => {
+    const projectCol: BitableColumn = {
+      id: 'col_proj',
+      key: 'proj',
+      name: '项目',
+      type: 'multiSelect',
+      options: [
+        { id: 'opt_ga', label: '广安', color: 'blue' },
+        { id: 'opt_bs', label: '宝山', color: 'green' },
+      ],
+    };
+
+    // 数组形式
+    const resArr = resolveGroupKey({ id: 'r1', col_proj: ['opt_bs'] }, projectCol);
+    expect(resArr.label).toBe('宝山');
+    expect(resArr.key).toBe('opt_bs');
+
+    // 逗号分隔字符串形式
+    const resStr = resolveGroupKey({ id: 'r2', col_proj: 'opt_ga,opt_bs' }, projectCol);
+    expect(resStr.label).toBe('广安');
+    expect(resStr.key).toBe('opt_ga');
+
+    // 空值
+    const resEmpty = resolveGroupKey({ id: 'r3', col_proj: [] }, projectCol);
+    expect(resEmpty.label).toBe('未指定');
+    expect(resEmpty.key).toBe('__empty__');
+  });
+
+  test('areCellValuesEqual 准确识别单元格值是否实质改变', () => {
+    // 基础全等
+    expect(areCellValuesEqual('广安', '广安')).toBe(true);
+    expect(areCellValuesEqual(100, 100)).toBe(true);
+    expect(areCellValuesEqual(true, true)).toBe(true);
+
+    // 空值等价性（双击未编辑时空串与 null/undefined）
+    expect(areCellValuesEqual(null, undefined)).toBe(true);
+    expect(areCellValuesEqual(null, '')).toBe(true);
+    expect(areCellValuesEqual(undefined, '')).toBe(true);
+    expect(areCellValuesEqual('', '')).toBe(true);
+    expect(areCellValuesEqual('有值', '')).toBe(false);
+    expect(areCellValuesEqual(null, '有值')).toBe(false);
+
+    // 数组等价性（multiSelect）
+    expect(areCellValuesEqual(['opt_1', 'opt_2'], ['opt_1', 'opt_2'])).toBe(true);
+    expect(areCellValuesEqual(['opt_1'], ['opt_2'])).toBe(false);
+    expect(areCellValuesEqual(['opt_1'], ['opt_1', 'opt_2'])).toBe(false);
+    expect(areCellValuesEqual([], null)).toBe(false);
+
+    // 数字与数字字符串兼容
+    expect(areCellValuesEqual(42, '42')).toBe(true);
+    expect(areCellValuesEqual('100', 100)).toBe(true);
+    expect(areCellValuesEqual(42, '43')).toBe(false);
   });
 });

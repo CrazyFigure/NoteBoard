@@ -23,6 +23,7 @@ import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './Bita
 import { usePointerReorder } from './usePointerReorder';
 import { Tooltip } from '../../components/Tooltip';
 import {
+  areCellValuesEqual,
   coerceCellValue,
   compareRowsBySortRules,
   createId,
@@ -200,9 +201,13 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
 
   // ── 视图管理（切换/新建/重命名/复制/删除） ──
 
+  // 切换视图：仅更新本地激活视图状态，不污染文档脏状态，避免纯查看导致未保存提示
   const handleSelectView = (viewId: string) => {
-    commitChange((prev) => ({ ...prev, activeViewId: viewId }));
-    markDocumentHistoryModeBoundary(docKey);
+    setData((prev) => {
+      const nextDoc = { ...prev, activeViewId: viewId };
+      dataRef.current = nextDoc;
+      return nextDoc;
+    });
   };
 
   const handleCreateView = (type: BitableViewType) => {
@@ -211,8 +216,10 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
     const newViewId = createId('view');
     commitChange((prev) => {
       createdName = type === 'grid' ? `表格视图 ${prev.views.length + 1}` : `看板视图 ${prev.views.length + 1}`;
-      // 看板视图必须绑定分组列，缺省取第一个单选列，保证新建后立刻能看到泳道
-      const groupByColumnId = type === 'kanban' ? prev.columns.find((c) => c.type === 'select')?.id : undefined;
+      // 看板视图必须绑定分组列，缺省优先取第一个单选或多选列，保证新建后立刻能看到泳道
+      const groupByColumnId = type === 'kanban'
+        ? prev.columns.find((c) => c.type === 'select' || c.type === 'multiSelect')?.id
+        : undefined;
       return {
         ...prev,
         views: [...prev.views, { id: newViewId, name: createdName, type, groupByColumnId }],
@@ -284,12 +291,21 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
 
   // ── 行记录与子行管理 ──
 
+  // 单个单元格值更新：带严格的新旧值实质比对，值未变时不更新时间戳也不污染脏状态
   const handleUpdateRow = useCallback(
     (rowId: string, colId: string, val: unknown) => {
-      commitChange((prev) => ({
-        ...prev,
-        rows: prev.rows.map((r) => (r.id === rowId ? { ...r, [colId]: val, _updatedAt: Date.now() } : r)),
-      }));
+      commitChange((prev) => {
+        const targetRow = prev.rows.find((r) => r.id === rowId);
+        if (!targetRow) return prev;
+        // 若新旧值实质相等（例如双击查看或失焦未改动），直接返回 prev，commitChange 将自动跳过
+        if (areCellValuesEqual(targetRow[colId], val)) {
+          return prev;
+        }
+        return {
+          ...prev,
+          rows: prev.rows.map((r) => (r.id === rowId ? { ...r, [colId]: val, _updatedAt: Date.now() } : r)),
+        };
+      });
     },
     [commitChange],
   );
@@ -380,23 +396,32 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
     [commitChange],
   );
 
+  // 在看板指定分组下新增卡片：多选字段写入数组，单选字段写入单值
   const handleAddRowWithStatus = useCallback(
     (statusColId: string, optionId: string | null) => {
-      commitChange((prev) => ({
-        ...prev,
-        rows: [...prev.rows, createRow(prev.columns, { [statusColId]: optionId })],
-      }));
+      commitChange((prev) => {
+        const col = prev.columns.find((c) => c.id === statusColId);
+        const cellValue = col?.type === 'multiSelect'
+          ? (optionId ? [optionId] : [])
+          : optionId;
+        return {
+          ...prev,
+          rows: [...prev.rows, createRow(prev.columns, { [statusColId]: cellValue })],
+        };
+      });
       showToast('已在该分组下新增卡片');
     },
     [commitChange],
   );
 
-  /** 看板新增分组：为分组列追加一个标签选项，即新增一条泳道 */
+  /** 看板新增分组：为分组列（单选或多选）追加一个标签选项，即新增一条泳道 */
   const handleAddGroupOption = useCallback(() => {
-    const groupColId = activeView.groupByColumnId || data.columns.find((c) => c.type === 'select')?.id;
+    const groupColId =
+      activeView.groupByColumnId ||
+      data.columns.find((c) => c.type === 'select' || c.type === 'multiSelect')?.id;
     const groupCol = data.columns.find((c) => c.id === groupColId);
-    if (!groupCol || groupCol.type !== 'select') {
-      showToast('请先将分组依据切换为单选字段');
+    if (!groupCol || (groupCol.type !== 'select' && groupCol.type !== 'multiSelect')) {
+      showToast('请先将分组依据切换为单选或多选字段');
       return;
     }
     const options = groupCol.options || [];

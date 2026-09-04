@@ -96,14 +96,17 @@ export function BitableKanbanView({
   // 删除分组需二次确认，避免误删整组卡片
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
-  // 查找作为分组依据的列（若未指定或不存在，优先选择第一个 select 列，否则选择第一个列）
+  // 查找作为分组依据的列（若未指定或不存在，优先选择第一个 select/multiSelect 列，否则退回第一列）
   const groupColumn =
     (groupByColumnId ? columns.find((c) => c.id === groupByColumnId) : null) ||
     columns.find((c) => c.type === 'select') ||
+    columns.find((c) => c.type === 'multiSelect') ||
     columns[0];
 
-  const isSelectGroup = groupColumn?.type === 'select';
-  const options: SelectOption[] = isSelectGroup ? groupColumn?.options || [] : [];
+  const isMultiSelect = groupColumn?.type === 'multiSelect';
+  // 单选或多选均属于标签选项分组
+  const isOptionGroup = groupColumn?.type === 'select' || isMultiSelect;
+  const options: SelectOption[] = isOptionGroup ? groupColumn?.options || [] : [];
   // 卡片主标题：优先单行文本，其次多行文本，都没有时退回第一列
   const titleCol =
     columns.find((c) => c.type === 'text') ||
@@ -113,16 +116,44 @@ export function BitableKanbanView({
   // 按分组列对行进行归类
   const laneMap = new Map<string | null, BitableRow[]>();
 
-  if (isSelectGroup) {
-    // 1. 单选标签分组
+  if (isOptionGroup) {
+    // 1. 标签分组（单选 / 多选）：每个选项作为一个独立泳道
     options.forEach((opt) => laneMap.set(opt.id, []));
     laneMap.set(null, []); // 未分类
+
     rows.forEach((row) => {
-      const rawVal = groupColumn ? (row[groupColumn.id] as string | undefined) : null;
-      const key = rawVal && options.some((o) => o.id === rawVal) ? rawVal : null;
-      const list = laneMap.get(key) || [];
-      list.push(row);
-      laneMap.set(key, list);
+      const rawVal = groupColumn ? row[groupColumn.id] : null;
+
+      if (isMultiSelect) {
+        // 多选字段：解析为 ID 列表（支持数组、逗号分隔字符串或单个 ID）
+        let selectedIds: string[] = [];
+        if (Array.isArray(rawVal)) {
+          selectedIds = rawVal.map(String);
+        } else if (typeof rawVal === 'string' && rawVal.trim() !== '') {
+          selectedIds = rawVal.includes(',') ? rawVal.split(',').map((s) => s.trim()) : [rawVal.trim()];
+        }
+
+        const validIds = selectedIds.filter((id) => options.some((o) => o.id === id));
+        if (validIds.length === 0) {
+          // 未选任何有效标签归入未分类
+          const list = laneMap.get(null) || [];
+          list.push(row);
+          laneMap.set(null, list);
+        } else {
+          // 所包含的每个标签泳道均展示此卡片
+          validIds.forEach((id) => {
+            const list = laneMap.get(id) || [];
+            list.push(row);
+            laneMap.set(id, list);
+          });
+        }
+      } else {
+        // 单选字段：匹配选项 ID
+        const key = typeof rawVal === 'string' && options.some((o) => o.id === rawVal) ? rawVal : null;
+        const list = laneMap.get(key) || [];
+        list.push(row);
+        laneMap.set(key, list);
+      }
     });
   } else {
     // 2. 普通字段（如文本、数字等）按离散唯一值动态分组
@@ -144,8 +175,8 @@ export function BitableKanbanView({
     });
   }
 
-  // 泳道列表定义
-  const lanes = isSelectGroup
+  // 泳道列表定义：选项分组使用 OptionBadge 渲染标签中文名与颜色，杜绝显示 opt_*
+  const lanes = isOptionGroup
     ? options.map((opt) => ({
         id: opt.id,
         label: opt.label,
@@ -182,9 +213,9 @@ export function BitableKanbanView({
 
   /**
    * 拖拽泳道换序 = 调整分组列标签选项的顺序
-   * 仅在以单选中列为分组依据时可用：按普通字段分组时分组由行数据动态派生，没有可持久化的顺序。
+   * 在以单选或多选列为分组依据时可用：按普通字段分组时分组由行数据动态派生，没有可持久化的顺序。
    */
-  const laneDragEnabled = isSelectGroup && Boolean(onManageColumnOption);
+  const laneDragEnabled = isOptionGroup && Boolean(onManageColumnOption);
 
   const {
     drag: laneDrag,
@@ -344,7 +375,7 @@ export function BitableKanbanView({
                   </button>
                 </Tooltip>
 
-                {isSelectGroup && onManageColumnOption && (
+                {isOptionGroup && onManageColumnOption && (
                   <Tooltip content="编辑或删除该分组" side="top" sideOffset={4}>
                     <button
                       type="button"
@@ -484,7 +515,7 @@ export function BitableKanbanView({
               </div>
             )}
 
-            {isSelectGroup && onManageColumnOption && groupMenu && groupMenu.optionId === lane.id && (
+            {isOptionGroup && onManageColumnOption && groupMenu && groupMenu.optionId === lane.id && (
               <FloatingPanel
                 anchor={groupMenu.anchor}
                 trigger={groupMenu.trigger}
@@ -555,7 +586,7 @@ export function BitableKanbanView({
             >
               {lane.rows.map((row) => (
                 <div
-                  key={row.id}
+                  key={`${lane.id}_${row.id}`}
                   className="nb-bitable-kanban-card"
                   onClick={() => onOpenRecord && onOpenRecord(row.id)}
                   style={{
@@ -664,6 +695,24 @@ export function BitableKanbanView({
                           return optionItem ? <OptionBadge key={c.id} option={optionItem} /> : null;
                         }
 
+                        // 多选标签：解析为选项 ID 列表并渲染对应的马卡龙徽章
+                        if (c.type === 'multiSelect') {
+                          const ids = Array.isArray(val)
+                            ? val.map(String)
+                            : typeof val === 'string' && val.trim() !== ''
+                              ? (val.includes(',') ? val.split(',').map((s) => s.trim()) : [val.trim()])
+                              : [];
+                          const selectedOptions = (c.options || []).filter((o) => ids.includes(o.id));
+                          if (selectedOptions.length === 0) return null;
+                          return (
+                            <div key={c.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
+                              {selectedOptions.map((opt) => (
+                                <OptionBadge key={opt.id} option={opt} />
+                              ))}
+                            </div>
+                          );
+                        }
+
                         // 日期 / 时间 / 日期时间：图标按类型区分，文本按列格式渲染
                         if (isDateTimeFieldType(c.type)) {
                           return (
@@ -761,8 +810,8 @@ export function BitableKanbanView({
           );
         })}
 
-        {/* 新增分组泳道：仅在以单选中列为分组依据时可用 */}
-        {isSelectGroup && onAddGroupOption && (
+        {/* 新增分组泳道：在以单选或多选列为分组依据时可用 */}
+        {isOptionGroup && onAddGroupOption && (
           <div
             style={{
               width: 200,
