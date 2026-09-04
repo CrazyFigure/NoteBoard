@@ -2228,14 +2228,13 @@ button:not(:disabled) {
   transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
 }
 
-/* 触发器本身带内联背景色（表单形态为白底、单元格形态为透明），
-   故 hover/active 必须加 !important 才能盖过内联样式生效。 */
-.nb-bitable-date-trigger:hover {
+/* 仅在表单形态下的日期触发器显示输入框悬停边框与按下收缩效果，避免在表格单元格中 hover 时多出一个内层边框 */
+.nb-bitable-date-trigger.is-form:hover {
   background: var(--toolbar-hover, #f1f5f9) !important;
   border-color: var(--editor-border-focus, #cbd5e1) !important;
 }
 
-.nb-bitable-date-trigger:active {
+.nb-bitable-date-trigger.is-form:active {
   background: var(--toolbar-active, #e2e8f0) !important;
   transform: scale(0.985);
 }

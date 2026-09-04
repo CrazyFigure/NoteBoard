@@ -514,7 +514,8 @@ export function DateTimeFieldEditor({
         aria-label={displayText || (isForm ? '点击选择' : '双击选择')}
         onClick={isForm ? togglePanel : undefined}
         onDoubleClick={togglePanel}
-        className="nb-bitable-date-trigger"
+        // 表格单元格形态下保持无边框，仅表单形态带输入框边框与圆角
+        className={`nb-bitable-date-trigger ${isForm ? 'is-form' : 'is-cell'}`}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -523,8 +524,8 @@ export function DateTimeFieldEditor({
           height: isForm ? 34 : '100%',
           boxSizing: 'border-box',
           padding: isForm ? '6px 8px' : '2px 6px',
-          border: isForm ? '1px solid var(--editor-border, #cbd5e1)' : '1px solid transparent',
-          borderRadius: isForm ? 6 : 4,
+          border: isForm ? '1px solid var(--editor-border, #cbd5e1)' : 'none',
+          borderRadius: isForm ? 6 : 0,
           background: isForm ? 'var(--editor-bg, #ffffff)' : 'transparent',
           color: displayText ? 'var(--editor-text, #1e293b)' : 'var(--editor-text-muted, #94a3b8)',
           fontSize: 12,
