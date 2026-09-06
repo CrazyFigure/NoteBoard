@@ -56,7 +56,8 @@ import {
   useDocumentHistory,
 } from '../history/documentHistory';
 import { insertLocalImageWithDialog, pickAndSaveLocalImage } from '../editor-md/imagePaste';
-import { getActiveTipTapEditor, getActiveSourceView } from '../editor-md/TipTapEditor';
+// 🔴 S03：从 editor-md 边界内实例表获取内核实例（不再依赖编辑器组件文件的 getter 导出）
+import { getMdTipTapEditor as getActiveTipTapEditor, getMdSourceView as getActiveSourceView } from '../editor-md/editorInstances';
 import { emit } from '../../core/emitter';
 import type { EditorView } from '@codemirror/view';
 

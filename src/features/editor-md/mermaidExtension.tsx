@@ -15,7 +15,19 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
 import { observe } from './viewportActivation';
-import { schedule } from './viewportWorkScheduler';
+import { scheduleTask } from './viewportWorkScheduler';
+
+/** 🔴 S14：任务身份 = editor 实例（文档）+ 节点位置——不同节点互不覆盖 */
+const editorTaskIds = new WeakMap<object, number>();
+let nextEditorTaskId = 0;
+function editorTaskId(editor: object): number {
+  let id = editorTaskIds.get(editor);
+  if (id === undefined) {
+    id = (nextEditorTaskId += 1);
+    editorTaskIds.set(editor, id);
+  }
+  return id;
+}
 import { Tooltip } from '../../components/Tooltip';
 
 // ── 全局串行渲染队列 ──
@@ -118,7 +130,7 @@ import { buildExportFileName, type ChartImageSource } from '../export/chartExpor
 
 // ── React NodeView ──
 
-function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
+function MermaidComponent({ node, updateAttributes, selected, editor, getPos }: NodeViewProps) {
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -173,18 +185,20 @@ function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
   // 只在视口内时渲染
   useEffect(() => {
     if (!inViewport || !code) return;
-    schedule(() => doRender(code));
-  }, [inViewport, code, doRender]);
+    const identity = `mermaid:${editorTaskId(editor)}:${getPos()}`;
+    scheduleTask(identity, () => doRender(code));
+  }, [inViewport, code, doRender, editor, getPos]);
 
   // 主题切换时重渲染
   useEffect(() => {
     if (!inViewport || !code) return;
+    const identity = `mermaid:${editorTaskId(editor)}:${getPos()}`;
     const observer = new MutationObserver(() => {
-      schedule(() => doRender(code));
+      scheduleTask(identity, () => doRender(code));
     });
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     return () => observer.disconnect();
-  }, [inViewport, code, doRender]);
+  }, [inViewport, code, doRender, editor, getPos]);
 
   // 导出来源：渲染出 SVG 后复制/导出才可用
   const exportSource: ChartImageSource | null = svg ? { kind: 'svg', svg } : null;

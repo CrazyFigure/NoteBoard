@@ -15,8 +15,14 @@ import type {
   WriteResult,
   WindowIntent,
   CreateWindowResponse,
-  ConfirmHandoffResult,
+  OpenRequestItemDto,
+  OpenRequestSource,
+  OpenOutcome,
+  WindowBootDto,
   TransferredDocument,
+  BeginTransferResponse,
+  TransferStatusDto,
+  PreparedDocument,
   Eol,
   Encoding,
   UpdateCheckResult,
@@ -27,30 +33,117 @@ import type {
   FavoritesData,
 } from './types';
 
-// ── 窗口 ──
+// ── 窗口（S04 打开队列 + 迁移协议） ──
 
-export function windowReady(label: string): Promise<WindowIntent> {
-  return invoke<WindowIntent>('window_ready', { label });
+/** 监听就绪握手：返回 consumer 代际与启动模式；不显示窗口、不消费请求 */
+export function windowListenersReady(label: string): Promise<WindowBootDto> {
+  return invoke<WindowBootDto>('window_listeners_ready', { label });
+}
+
+/** 壳就绪：只负责基础 DOM/主题已应用后的 show/focus */
+export function windowShellReady(label: string): Promise<void> {
+  return invoke<void>('window_shell_ready', { label });
+}
+
+/** 非破坏读取本窗口未确认请求（批量上限默认 32；旧 consumer 返回 null） */
+export function listOpenRequests(
+  label: string,
+  consumerId: string,
+  limit?: number,
+): Promise<OpenRequestItemDto[] | null> {
+  return invoke<OpenRequestItemDto[] | null>('list_open_requests', {
+    label,
+    consumerId,
+    limit: limit ?? null,
+  });
+}
+
+/** 幂等确认打开请求：业务处理有明确结果才调用 */
+export function ackOpenRequest(
+  label: string,
+  consumerId: string,
+  requestId: string,
+  outcome: OpenOutcome,
+): Promise<boolean> {
+  return invoke<boolean>('ack_open_request', { label, consumerId, requestId, outcome });
+}
+
+/** 前端入队打开请求（拖拽 / 文件对话框来源） */
+export function enqueueOpenRequests(
+  label: string,
+  paths: string[],
+  source: OpenRequestSource,
+  cwd?: string | null,
+): Promise<[string, number]> {
+  return invoke<[string, number]>('enqueue_open_requests', {
+    label,
+    paths,
+    cwd: cwd ?? null,
+    source,
+  });
 }
 
 export function createWindow(intent: WindowIntent): Promise<CreateWindowResponse> {
   return invoke<CreateWindowResponse>('create_window', { intent });
 }
 
-export function openInNewWindow(docs: TransferredDocument[]): Promise<CreateWindowResponse> {
-  return invoke<CreateWindowResponse>('open_in_new_window', { docs });
+// ── 文档迁移（transferId 协议） ──
+
+/** 发起迁移：源 flush 权威内容后携带完整载荷调用 */
+export function beginDocumentTransfer(
+  sourceLabel: string,
+  doc: TransferredDocument,
+  expectedRevision: number,
+): Promise<BeginTransferResponse> {
+  return invoke<BeginTransferResponse>('begin_document_transfer', {
+    sourceLabel,
+    doc,
+    expectedRevision,
+  });
 }
 
-export function confirmHandoff(label: string): Promise<ConfirmHandoffResult> {
-  return invoke<ConfirmHandoffResult>('confirm_handoff', { label });
+/** 目标窗口一次性拉取迁移载荷 */
+export function takeTransferPayload(
+  label: string,
+  transferId: string,
+): Promise<TransferredDocument | null> {
+  return invoke<TransferredDocument | null>('take_transfer_payload', { label, transferId });
+}
+
+/** 目标回报 prepared：后端原子切换所有权并标 committed，通知双方 */
+/**
+ * 目标回报 prepared：后端原子校验并切换所有权，committed 后本窗口解锁。
+ * @param actualRevision 目标从载荷读取的修订版本——与源捕获的 expected_revision
+ *        对账（🔴 N01：不一致说明载荷在接纳途中被替换，后端按中止处理）
+ */
+export function prepareTransferComplete(
+  label: string,
+  transferId: string,
+  actualRevision?: number,
+): Promise<TransferStatusDto> {
+  return invoke<TransferStatusDto>('prepare_transfer_complete', {
+    label,
+    transferId,
+    actualRevision: actualRevision ?? null,
+  });
+}
+
+/** 中止迁移（committed 后拒绝） */
+export function abortTransfer(
+  label: string,
+  transferId: string,
+  reason: string,
+): Promise<TransferStatusDto> {
+  return invoke<TransferStatusDto>('abort_transfer', { label, transferId, reason });
+}
+
+/** 查询迁移状态（源窗口等待确认用） */
+export function queryTransfer(transferId: string): Promise<TransferStatusDto | null> {
+  return invoke<TransferStatusDto | null>('query_transfer', { transferId });
 }
 
 export function focusWindow(label: string): Promise<void> {
   return invoke<void>('focus_window', { label });
-}
-
-export function notifyWindowActive(label: string): Promise<void> {
-  return invoke<void>('notify_window_active', { label });
 }
 
 export function closeWindow(label: string): Promise<void> {
@@ -79,8 +172,10 @@ export function setDocumentDirty(key: string, isDirty: boolean): Promise<void> {
   return invoke<void>('set_document_dirty', { key, isDirty });
 }
 
-export function findDocumentOwner(key: string): Promise<{ ownerLabel: string | null }> {
-  return invoke<{ ownerLabel: string | null }>('find_document_owner', { key });
+// 🔴 wire 类型修正：Rust find_document_owner 返回 Option<String>，
+//    JSON 序列化结果就是 string | null 本身，不是 { ownerLabel } 包装对象。
+export function findDocumentOwner(key: string): Promise<string | null> {
+  return invoke<string | null>('find_document_owner', { key });
 }
 
 // ── 文件 I/O ──
@@ -91,6 +186,14 @@ export function readDocument(path: string): Promise<DocumentPayload> {
 
 export function probeDocument(path: string): Promise<ProbeResult> {
   return invoke<ProbeResult>('probe_document', { path });
+}
+
+/**
+ * S07 统一文件准备：读盘前归属查询（本窗口在途/已开、其他窗口已开直接返回）、
+ * 在途去重、blocking worker 读取与判别。
+ */
+export function prepareDocument(label: string, path: string): Promise<PreparedDocument> {
+  return invoke<PreparedDocument>('prepare_document', { label, path });
 }
 
 export function writeDocument(
@@ -149,16 +252,6 @@ export function openWithDefaultApp(path: string): Promise<void> {
   return invoke<void>('open_with_default_app', { path });
 }
 
-// ── 监听 ──
-
-export function watchDir(path: string): Promise<void> {
-  return invoke<void>('watch_dir', { path });
-}
-
-export function unwatchDir(path: string): Promise<void> {
-  return invoke<void>('unwatch_dir', { path });
-}
-
 // ── 设置与系统 ──
 
 export function loadSettings(): Promise<Settings> {
@@ -196,13 +289,18 @@ export function deleteStagedFile(path: string): Promise<void> {
   return invoke<void>('delete_staged_file', { path });
 }
 
-export function listSystemFonts(): Promise<FontFamily[]> {
-  return invoke<FontFamily[]>('list_system_fonts');
+export function listSystemFonts(forceRefresh?: boolean): Promise<FontFamily[]> {
+  return invoke<FontFamily[]>('list_system_fonts', { forceRefresh: forceRefresh ?? null });
 }
 
-/** 查询并逐文件校验应用字体包。 */
+/** 查询字体包状态；验证未完成时返回 verifying（SHA 在后台 worker 执行） */
 export function getFontPackStatus(): Promise<FontPackStatus> {
   return invoke<FontPackStatus>('get_font_pack_status');
+}
+
+/** 显式修复/刷新：使后端缓存失效并强制重验 */
+export function refreshFontPackStatus(): Promise<FontPackStatus> {
+  return invoke<FontPackStatus>('refresh_font_pack_status');
 }
 
 /** 从固定 GitHub Release 下载、校验并原子安装应用字体包。 */
@@ -288,5 +386,17 @@ export function downloadAndInstallUpdate(params: {
 // 使用系统默认浏览器打开外部超链接
 export function openExternalUrl(url: string): Promise<boolean> {
   return invoke<boolean>('open_external_url', { url });
+}
+
+// ── 性能诊断（未启用时 Rust 侧为 no-op） ──
+
+/** 批量上报 web 端 spans（时间原点为 performance.now，与 Rust 时钟分轴保存） */
+export function recordWebSpans(label: string, spans: unknown[]): Promise<void> {
+  return invoke<void>('record_web_spans', { label, spans });
+}
+
+/** 把当前进程已收集的全部 spans 批量写入临时目录，返回文件路径 */
+export function dumpPerfSpans(reason: string): Promise<string | null> {
+  return invoke<string | null>('dump_perf_spans', { reason });
 }
 

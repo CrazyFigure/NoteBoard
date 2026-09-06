@@ -3,8 +3,23 @@
 // 详见 docs/05-ADR/ADR-010-状态管理与跨窗口同步.md §2
 
 import { create } from 'zustand';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { DocumentKind } from '../core/ipc/types';
 import { normalizePath } from '../features/explorer/pathUtils';
+// 🔴 R04：关闭标签时立即注销 Rust 文档归属（fire-and-forget；幂等），
+//    否则下一次打开同文件被 prepare 判为 already-open 而无法重建标签。
+//    静态 import：不引入组件依赖，仅命令封装。
+import * as ipc from '../core/ipc/commands';
+// 🔴 R13：标签最终关闭时释放文档会话资源（revision/写队列/恢复状态）
+// 🔴 N04：disposeDocumentSession 推进会话代际（作废旧会话在途任务）；
+//    removeDocumentIfSessionMatches 携带关闭后代际做条件删除（同路径已重开时不误删）
+import {
+  disposeDocumentSession,
+  removeDocumentIfSessionMatches,
+  getSessionGeneration,
+  drainDocumentWrites,
+} from '../features/session/documentSession';
+import { markClosed } from '../features/session/editorSuspension';
 
 export interface Tab {
   /** 唯一 ID（用文件路径规范化 key） */
@@ -27,6 +42,11 @@ export interface Tab {
   externalStatus: 'clean' | 'modified' | 'deleted' | 'renamed' | null;
   /** 文件已断开（被删除） */
   isDetached: boolean;
+  // ── S10 会话恢复轻量描述符 ──
+  /** 未加载正文的恢复标签：激活时才真正打开（读盘/注册/编辑器加载） */
+  lazySource?: string | null;
+  /** 恢复标签携带的暂存副本路径（关闭保护与恢复链使用） */
+  lazyStagedPath?: string | null;
 }
 
 interface WindowStore {
@@ -71,6 +91,61 @@ interface WindowStore {
   clearPendingClose: () => void;
   /** 标记关闭完成后真正关 tab 并清理 documentStore */
   confirmCloseBatch: (keys: string[]) => void;
+  // ── S10 会话恢复轻量描述符 ──
+  /** 批量加入恢复标签（不激活、不动 activeKey；Home 保持首屏） */
+  addRestoredTabs: (tabs: Tab[]) => void;
+  /** 清除标签的懒加载标记（正文加载完成后调用；dirty 等状态保持现值） */
+  clearLazy: (key: string) => void;
+  // ── 迁移保护（S04 transferId 协议）──
+  /** 正在迁移到新窗口的文档 key 集合：期间阻止该文档新编辑与关闭竞争 */
+  transferringKeys: string[];
+  /** 进入迁移保护（UI 显示"正在移动到新窗口"并阻断编辑输入） */
+  enterTransfer: (key: string) => void;
+  /** 解除迁移保护（committed/aborted 后） */
+  exitTransfer: (key: string) => void;
+  /** 查询文档是否处于迁移保护中 */
+  isTransferring: (key: string) => boolean;
+}
+
+/**
+ * 🔴 R04/R13/N04/N05：标签从前端移除后的统一清理（每个标签恰好一次）——
+ *   1. markClosed 清恢复状态；2. disposeDocumentSession 释放会话并推进代际
+ *   （旧会话在途任务全部作废）；3. 条件删除文档记录（同路径已重开的新会话不受影响）；
+ *   4. 按真实窗口身份注销 Rust 归属。
+ * 同步完成 1-3（store 一致性立即生效）；写队列排空与注销异步（fire-and-forget，幂等）。
+ */
+function disposeTabLifecycle(key: string): void {
+  // 🔴 N05 关闭协调第一步（同步）：阻止会话继续提交
+  markClosed(key);
+  disposeDocumentSession(key);
+  // 🔴 B11：同步删除且携带关闭时的代际——若此刻同路径新会话已建立（代际推进）则跳过
+  removeDocumentIfSessionMatches(key, getSessionGeneration(key));
+  // 🔴 N05 第二/三步（异步，不阻塞 UI）：排空在途写 → 注销归属
+  void disposeTabLifecycleAsync(key);
+}
+
+/**
+ * 🔴 N05 统一异步关闭协调（可等待）：停止接纳 → 排空该文档在途写队列 →
+ * 按真实窗口身份注销 Rust 归属。窗口整体关闭（performWindowClose）等需要
+ * 确保清理完成的调用方 await 本函数；幂等（重复调用安全）。
+ */
+export async function disposeTabLifecycleAsync(key: string): Promise<void> {
+  // 排空每文档在途写（晚到的旧写入不覆盖、不丢失；已作废任务立即跳过）
+  await drainDocumentWrites(key).catch(() => {});
+  // 按真实窗口身份注销（获取失败跳过——不伪造身份；reconcile 兜底）
+  const label = getCurrentWindowLabelSafe();
+  if (label) {
+    await ipc.unregisterDocument(label, key).catch(() => {});
+  }
+}
+
+/** 读取当前窗口 label（非 Tauri 环境安全降级为 null，不伪造身份） */
+function getCurrentWindowLabelSafe(): string | null {
+  try {
+    return getCurrentWindow().label;
+  } catch {
+    return null;
+  }
 }
 
 export const useWindowStore = create<WindowStore>((set, get) => ({
@@ -111,10 +186,8 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
       }
       return { tabs: newTabs, activeKey: newActive };
     });
-    // 异步清理 documentStore 对应文档
-    import('./documentStore').then(({ useDocumentStore }) => {
-      useDocumentStore.getState().remove(key);
-    }).catch(() => {});
+    // 🔴 R04/R13/N04：统一清理（注销归属 + 释放会话 + 条件删除文档；幂等、恰一次）
+    disposeTabLifecycle(key);
   },
 
   // 关闭除目标标签页外的所有其他标签页
@@ -125,10 +198,8 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
       tabs: state.tabs.filter((t) => t.key === key),
       activeKey: key,
     }));
-    import('./documentStore').then(({ useDocumentStore }) => {
-      const dStore = useDocumentStore.getState();
-      removedKeys.forEach((k) => dStore.remove(k));
-    }).catch(() => {});
+    // 🔴 N05：每个标签恰一次清理（此前四次重复遍历导致注销×4）
+    removedKeys.forEach((k) => disposeTabLifecycle(k));
   },
 
   // 关闭目标标签页左侧的所有标签页
@@ -145,10 +216,7 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
       }
       return { tabs: newTabs, activeKey: newActive };
     });
-    import('./documentStore').then(({ useDocumentStore }) => {
-      const dStore = useDocumentStore.getState();
-      removedKeys.forEach((k) => dStore.remove(k));
-    }).catch(() => {});
+    removedKeys.forEach((k) => disposeTabLifecycle(k));
   },
 
   // 关闭目标标签页右侧的所有标签页
@@ -165,10 +233,7 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
       }
       return { tabs: newTabs, activeKey: newActive };
     });
-    import('./documentStore').then(({ useDocumentStore }) => {
-      const dStore = useDocumentStore.getState();
-      removedKeys.forEach((k) => dStore.remove(k));
-    }).catch(() => {});
+    removedKeys.forEach((k) => disposeTabLifecycle(k));
   },
 
   // 关闭全部标签页
@@ -176,10 +241,7 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
     const { tabs } = get();
     const removedKeys = tabs.map((t) => t.key);
     set({ tabs: [], activeKey: null });
-    import('./documentStore').then(({ useDocumentStore }) => {
-      const dStore = useDocumentStore.getState();
-      removedKeys.forEach((k) => dStore.remove(k));
-    }).catch(() => {});
+    removedKeys.forEach((k) => disposeTabLifecycle(k));
   },
 
   // ── 安全关闭拦截操作（若含未保存修改则弹窗确认） ──
@@ -188,6 +250,8 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
     const { tabs, closeTab } = get();
     const target = tabs.find((t) => t.key === key);
     if (!target) return;
+    // 🔴 迁移保护中的文档不能关闭（迁移未提交前不能销毁源内容）
+    if (get().isTransferring(key)) return;
     if (target.isDirty) {
       set({ pendingCloseKeys: [key], isWindowClosing: false });
     } else {
@@ -351,9 +415,48 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
       }
       return { tabs: newTabs, activeKey: newActive, pendingCloseKeys: [], isWindowClosing: false };
     });
-    import('./documentStore').then(({ useDocumentStore }) => {
-      const dStore = useDocumentStore.getState();
-      keys.forEach((k) => dStore.remove(k));
-    }).catch(() => {});
+    // 🔴 R04/R13/N04：批量关闭同样注销归属与释放会话（每个标签恰一次）
+    keys.forEach((k) => disposeTabLifecycle(k));
   },
+
+  addRestoredTabs: (tabs) => {
+    set((state) => {
+      // 追加不存在的标签；不改变 activeKey（恢复期间用户可能已交互）
+      const existingKeys = new Set(state.tabs.map((t) => t.key));
+      const additions = tabs.filter((t) => !existingKeys.has(t.key));
+      if (additions.length === 0) return state;
+      return { tabs: [...state.tabs, ...additions] };
+    });
+  },
+
+  clearLazy: (key) => {
+    set((state) => {
+      const target = state.tabs.find((t) => t.key === key);
+      if (!target || (!target.lazySource && !target.lazyStagedPath)) return state;
+      return {
+        tabs: state.tabs.map((t) => (
+          t.key === key ? { ...t, lazySource: undefined, lazyStagedPath: undefined } : t
+        )),
+      };
+    });
+  },
+
+  // ── 迁移保护（S04）──
+  transferringKeys: [],
+
+  enterTransfer: (key) => {
+    set((state) => ({
+      transferringKeys: state.transferringKeys.includes(key)
+        ? state.transferringKeys
+        : [...state.transferringKeys, key],
+    }));
+  },
+
+  exitTransfer: (key) => {
+    set((state) => ({
+      transferringKeys: state.transferringKeys.filter((k) => k !== key),
+    }));
+  },
+
+  isTransferring: (key) => get().transferringKeys.includes(key),
 }));

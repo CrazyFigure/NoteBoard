@@ -16,11 +16,6 @@ const TIPTAP_MARKDOWN_SPECIAL_CHARACTERS = new Set(['`', '*', '_', '[', ']', '~'
 // Unicode 标点与符号类别用于发现“可能是转义前缀”的反斜杠，不按具体字符逐项维护。
 const UNICODE_PUNCTUATION_OR_SYMBOL = /[\p{P}\p{S}]/u;
 
-interface MarkdownManagerWithEscaper {
-  escapeMarkdownSyntax?: (text: string) => string;
-  parse?: (markdown: string) => ReturnType<Editor['getJSON']>;
-}
-
 /**
  * 转义普通文本中的 Markdown 标记，同时避免把 Windows 路径等安全反斜杠无条件翻倍。
  * 反斜杠仅在行尾或 CommonMark 可转义标点前需要自我转义；字母、数字、中文前可原样保留。
@@ -212,11 +207,13 @@ function applyMarkdownCleanupCandidates(
  * 在不改变解析后文档的前提下删除冗余转义。
  * 先批量尝试以覆盖绝大多数普通文本；存在真实 Markdown 歧义时再二分缩小范围，
  * 仅保留形成强调、删除线、行内代码、链接等语法所必需的转义。
+ * 🔴 J2：参考文档参数化（referenceDoc 为捕获的不可变快照，不再依赖活的 editor.state.doc）。
  */
 function removeRedundantMarkdownEscapes(
   markdown: string,
-  editor: Editor,
-  manager: MarkdownManagerWithEscaper | undefined,
+  referenceDoc: { eq(other: unknown): boolean },
+  nodeFromJSON: (json: unknown) => unknown,
+  manager: MarkdownManagerLike | null | undefined,
 ): string {
   if (typeof manager?.parse !== 'function') return markdown;
 
@@ -225,7 +222,7 @@ function removeRedundantMarkdownEscapes(
 
   const preservesDocument = (candidateMarkdown: string): boolean => {
     try {
-      return editor.schema.nodeFromJSON(manager.parse!(candidateMarkdown)).eq(editor.state.doc);
+      return referenceDoc.eq(nodeFromJSON(manager.parse!(candidateMarkdown)));
     } catch {
       // 解析器无法验证时必须保留安全输出，不能为了源码美观冒险改变文档结构。
       return false;
@@ -306,6 +303,56 @@ export function normalizeSerializedMarkdown(markdown: string): string {
 
 // ── 序列化器 ──
 
+/** @tiptap/markdown 注入的 MarkdownManager（serialize/parse/escapeMarkdownSyntax） */
+export interface MarkdownManagerLike {
+  /** 对指定 JSON 模型序列化为 Markdown（J2 纯适配器的核心入口） */
+  serialize?: (json: ReturnType<Editor['getJSON']>) => string;
+  parse?: (markdown: string) => ReturnType<Editor['getJSON']>;
+  escapeMarkdownSyntax?: (text: string) => string;
+}
+
+/** 从 Editor 实例提取共享的 MarkdownManager（无扩展装配时为 null） */
+export function getMarkdownManager(editor: Editor): MarkdownManagerLike | null {
+  const manager = (
+    editor.storage as unknown as {
+      markdown?: { manager?: MarkdownManagerLike };
+    }
+  ).markdown?.manager;
+  return manager ?? null;
+}
+
+/**
+ * 🔴 J2 纯适配器：对指定不可变 ProseMirror 文档快照序列化为 Markdown 文本。
+ * 不依赖活的 Editor 实例——schema/manager 按兼容配置共享（捕获时的引用），
+ * 序列化读取传入的 doc 快照，绝不改读"此刻的 editor.state.doc"。
+ * 与 serializeMarkdown(editor) 的输出逐字等价（roundtrip 等价测试保证）。
+ */
+export function serializeMarkdownFromDoc(
+  manager: MarkdownManagerLike,
+  schema: { nodeFromJSON(json: unknown): { eq(other: unknown): boolean } },
+  doc: { toJSON(): ReturnType<Editor['getJSON']>; eq(other: unknown): boolean },
+): string {
+  if (typeof manager.serialize !== 'function') {
+    throw new Error('[NoteBoard] MarkdownManager.serialize 不可用，无法按快照序列化');
+  }
+  const originalEscaper = manager.escapeMarkdownSyntax;
+  if (typeof originalEscaper === 'function') {
+    // TipTap 暂未开放文本转义策略配置；在同步序列化期间临时替换其内部转义器，
+    // 只影响普通文本节点，不会误改代码块、行内代码、链接地址或图片路径。
+    // 🔴 同步独占，finally 恢复，不跨 await（J 节要求）。
+    manager.escapeMarkdownSyntax = escapeMarkdownText;
+  }
+  try {
+    const raw = manager.serialize(doc.toJSON());
+    const normalized = normalizeSerializedMarkdown(raw);
+    return removeRedundantMarkdownEscapes(normalized, doc, schema.nodeFromJSON.bind(schema), manager);
+  } finally {
+    if (manager && typeof originalEscaper === 'function') {
+      manager.escapeMarkdownSyntax = originalEscaper;
+    }
+  }
+}
+
 /**
  * 从 TipTap 编辑器序列化为 Markdown 文本
  *
@@ -322,11 +369,7 @@ export function normalizeSerializedMarkdown(markdown: string): string {
 export function serializeMarkdown(editor: Editor): string {
   const getMarkdown = (editor as unknown as { getMarkdown?: () => string }).getMarkdown;
   if (typeof getMarkdown === 'function') {
-    const manager = (
-      editor.storage as unknown as {
-        markdown?: { manager?: MarkdownManagerWithEscaper };
-      }
-    ).markdown?.manager;
+    const manager = getMarkdownManager(editor);
     const originalEscaper = manager?.escapeMarkdownSyntax;
     if (manager && typeof originalEscaper === 'function') {
       // TipTap 暂未开放文本转义策略配置；在同步序列化期间临时替换其内部转义器，
@@ -335,7 +378,12 @@ export function serializeMarkdown(editor: Editor): string {
     }
     try {
       const normalized = normalizeSerializedMarkdown(getMarkdown.call(editor));
-      return removeRedundantMarkdownEscapes(normalized, editor, manager);
+      return removeRedundantMarkdownEscapes(
+        normalized,
+        editor.state.doc,
+        (json) => editor.schema.nodeFromJSON(json),
+        manager,
+      );
     } finally {
       if (manager && typeof originalEscaper === 'function') {
         manager.escapeMarkdownSyntax = originalEscaper;

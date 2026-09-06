@@ -8,12 +8,24 @@ import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from '@tip
 import { Maximize2, Edit2, X, AlertCircle } from 'lucide-react';
 import { renderPlantUmlToSvg } from './plantumlEncoder';
 import { observe } from '../editor-md/viewportActivation';
-import { schedule } from '../editor-md/viewportWorkScheduler';
+import { scheduleTask } from '../editor-md/viewportWorkScheduler';
+
+/** 🔴 S14：任务身份 = editor 实例（文档）+ 节点位置——不同节点互不覆盖 */
+const editorTaskIds = new WeakMap<object, number>();
+let nextEditorTaskId = 0;
+function editorTaskId(editor: object): number {
+  let id = editorTaskIds.get(editor);
+  if (id === undefined) {
+    id = (nextEditorTaskId += 1);
+    editorTaskIds.set(editor, id);
+  }
+  return id;
+}
 import { ChartExportMenu } from '../export/ChartExportMenu';
 import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
 import { Tooltip } from '../../components/Tooltip';
 
-function PlantUmlComponent({ node, updateAttributes, selected }: NodeViewProps) {
+function PlantUmlComponent({ node, updateAttributes, selected, editor, getPos }: NodeViewProps) {
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -81,7 +93,8 @@ function PlantUmlComponent({ node, updateAttributes, selected }: NodeViewProps) 
   // 视口可见且有代码时调度渲染
   useEffect(() => {
     if (!inViewport || !code) return;
-    schedule(() => doRender(code));
+    const identity = `plantuml:${editorTaskId(editor)}:${getPos()}`;
+    scheduleTask(identity, () => doRender(code));
   }, [inViewport, code, doRender]);
 
   // 导出来源：渲染出 SVG 后复制/导出才可用

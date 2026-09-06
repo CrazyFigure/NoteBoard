@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { FileQuestion, ExternalLink, FolderOpen, Copy, Check } from 'lucide-react';
 import * as ipc from '../core/ipc/commands';
 import { extFromPath } from '../core/docKind';
+import { useDocumentStore } from '../stores/documentStore';
 
 interface UnsupportedViewProps {
   filePath: string;
@@ -21,8 +22,10 @@ function formatFileSize(bytes?: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-export function UnsupportedView({ filePath, fileName, fileSize }: UnsupportedViewProps) {
+export function UnsupportedView({ filePath, fileName }: Omit<UnsupportedViewProps, 'fileSize'>) {
   const [copied, setCopied] = useState(false);
+  // 🔴 S14：size 由本组件按 key 订阅（壳不再订阅整个 documents Map）
+  const fileSize = useDocumentStore((s) => s.documents.get(filePath)?.size);
   const name = fileName || filePath.split(/[\\/]/).pop() || filePath;
   const ext = extFromPath(filePath).toUpperCase() || '未知类型';
 

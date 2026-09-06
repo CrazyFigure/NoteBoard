@@ -9,15 +9,17 @@ import { useExplorerStore } from '../../src/features/explorer/explorerStore';
 import { openDocument } from '../../src/features/editor-code/orchestration/openDocument';
 import * as ipc from '../../src/core/ipc/commands';
 
-// Mock ipc 接口
+// Mock ipc 接口（S07：openDocument 走统一文件准备 prepareDocument）
 vi.mock('../../src/core/ipc/commands', () => ({
+  prepareDocument: vi.fn(),
   probeDocument: vi.fn(),
   readDocument: vi.fn(),
   registerDocument: vi.fn(),
   readDir: vi.fn(),
-  pushRecent: vi.fn(),
+  pushRecent: vi.fn().mockResolvedValue(undefined),
   revealInExplorer: vi.fn(),
   openWithDefaultApp: vi.fn(),
+  focusWindow: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock @tauri-apps/api/window
@@ -60,25 +62,21 @@ describe('文件拖拽（Drag & Drop）测试', () => {
 
   it('拖入支持的 Markdown 文件时在新 Tab 中打开并展开左侧目录', async () => {
     const mdPath = 'C:\\notes\\project\\readme.md';
-    vi.mocked(ipc.probeDocument).mockResolvedValue({
-      exists: true,
-      isDir: false,
-      isText: true,
-      kind: 'markdown',
-      size: 1024,
-    });
-    vi.mocked(ipc.readDocument).mockResolvedValue({
-      key: mdPath,
-      displayName: 'readme.md',
-      dirPath: 'C:\\notes\\project',
-      kind: 'markdown',
-      language: 'markdown',
-      content: '# Hello NoteBoard',
-      encoding: 'utf8',
-      eol: 'crlf',
-      size: 1024,
-      mtime: Date.now(),
-      readonly: false,
+    vi.mocked(ipc.prepareDocument).mockResolvedValue({
+      type: 'text',
+      payload: {
+        key: mdPath,
+        displayName: 'readme.md',
+        dirPath: 'C:\\notes\\project',
+        kind: 'markdown',
+        language: 'markdown',
+        content: '# Hello NoteBoard',
+        encoding: 'utf8',
+        eol: 'crlf',
+        size: 1024,
+        mtime: Date.now(),
+        readonly: false,
+      },
     });
     vi.mocked(ipc.registerDocument).mockResolvedValue({
       type: 'ok',
@@ -97,6 +95,8 @@ describe('文件拖拽（Drag & Drop）测试', () => {
     ]);
 
     await openDocument(mdPath);
+    // S07：目录展开为延后任务（fire-and-forget），排空微任务后再断言
+    for (let i = 0; i < 10; i++) await Promise.resolve();
 
     // 验证 Tab 是否正确开启并激活
     const tabs = useWindowStore.getState().tabs;
@@ -113,11 +113,12 @@ describe('文件拖拽（Drag & Drop）测试', () => {
 
   it('拖入不受支持的二进制文件时创建 unsupported Tab 并定位左侧目录', async () => {
     const binPath = 'C:\\downloads\\archive.zip';
-    vi.mocked(ipc.probeDocument).mockResolvedValue({
-      exists: true,
-      isDir: false,
-      isText: false,
-      kind: 'unsupported',
+    vi.mocked(ipc.prepareDocument).mockResolvedValue({
+      type: 'unsupported',
+      key: binPath,
+      displayName: 'archive.zip',
+      dirPath: 'C:\\downloads',
+      language: 'plaintext',
       size: 20480,
     });
     vi.mocked(ipc.readDir).mockResolvedValue([
@@ -134,6 +135,7 @@ describe('文件拖拽（Drag & Drop）测试', () => {
     ]);
 
     await openDocument(binPath);
+    for (let i = 0; i < 10; i++) await Promise.resolve();
 
     // 验证 Tab 是否创建为 unsupported
     const tabs = useWindowStore.getState().tabs;
@@ -150,12 +152,9 @@ describe('文件拖拽（Drag & Drop）测试', () => {
 
   it('拖入文件夹时直接设置为资源管理器根目录并展开左侧栏', async () => {
     const dirPath = 'C:\\workspace\\my-project';
-    vi.mocked(ipc.probeDocument).mockResolvedValue({
-      exists: true,
-      isDir: true,
-      isText: false,
-      kind: 'unsupported',
-      size: 0,
+    vi.mocked(ipc.prepareDocument).mockResolvedValue({
+      type: 'directory',
+      path: dirPath,
     });
     vi.mocked(ipc.readDir).mockResolvedValue([
       {
@@ -171,6 +170,8 @@ describe('文件拖拽（Drag & Drop）测试', () => {
     ]);
 
     await openDocument(dirPath);
+    // 目录加载为延后任务
+    for (let i = 0; i < 10; i++) await Promise.resolve();
 
     // 不创建文件 Tab
     expect(useWindowStore.getState().tabs.length).toBe(0);

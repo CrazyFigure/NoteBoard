@@ -2,7 +2,7 @@
 // 幕布式双模切换 (大纲编辑模式 ⇄ 思维导图展示模式) + XMind 导入导出 + 文件级统一撤销/重做
 // 详见 docs/09-开发路线图.md
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ListTree,
   Network,
@@ -36,12 +36,25 @@ import {
   redoDocumentHistory,
   markDocumentHistoryModeBoundary,
 } from '../history/documentHistory';
+// 🔴 S12：回收接入——能力注册表（flush/canSuspend/视图捕获）与挂载恢复
+import {
+  registerEditorCapabilities,
+  getDocumentRevision,
+  bumpDocumentRevision,
+} from '../../core/editor/editorRegistry';
+import { submitCapturedContent } from '../session/documentSession';
+import { takeViewState } from '../session/editorSuspension';
+import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
+import type { EditorCapabilities } from '../../core/editor/editorTypes';
 
 interface MindmapEditorProps {
   docKey: string;
 }
 
 type ViewMode = 'outliner' | 'mindmap';
+
+/** TipTap 无关的实例代际序号：同 docKey 重挂载递增（注册表删除保护） */
+let nextMindmapInstanceId = 0;
 
 export function MindmapEditor({ docKey }: MindmapEditorProps) {
   const doc = useDocumentStore((s) => s.documents.get(docKey));
@@ -54,6 +67,13 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
   const [rootNode, setRootNode] = useState<MindNode>(() => {
     return parseMindmapDocument(doc?.content ?? '');
   });
+  // 🔴 S12：最新状态引用（capabilities flush/captureViewState 同步读取，不依赖渲染闭包）
+  const rootNodeRef = useRef<MindNode>(rootNode);
+  rootNodeRef.current = rootNode;
+  const viewModeRef = useRef<ViewMode>(viewMode);
+  viewModeRef.current = viewMode;
+  const zoomRef = useRef<number>(zoom);
+  zoomRef.current = zoom;
 
   // 注册统一文档历史快照应用器
   useEffect(() => {
@@ -70,7 +90,47 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
       },
     });
 
+    // 🔴 S12：重挂载（回收后）恢复查看模式与缩放（一次性消费）
+    const restored = takeViewState(docKey) as
+      | { kind: 'mindmap'; viewMode: ViewMode; zoom: number }
+      | null;
+    if (restored?.kind === 'mindmap') {
+      setViewMode(restored.viewMode);
+      setZoom(restored.zoom);
+    }
+
     return unregister;
+  }, [docKey]);
+
+  // 🔴 S12：注册能力对象（回收调度/保存/暂存统一走 core 注册表）
+  useEffect(() => {
+    const instanceId = `mindmap-${(nextMindmapInstanceId += 1)}`;
+    const capabilities: EditorCapabilities = {
+      docKey,
+      instanceId,
+      getRevision: () => getDocumentRevision(docKey),
+      flush: async () => {
+        // 内容权威已在 store（handleRootChange 同步 setContent）；序列化 rootNode 兜底对齐
+        const content = serializeMindmapDocument(rootNodeRef.current);
+        submitCapturedContent(docKey, { instanceId, revision: getDocumentRevision(docKey), content });
+        return { docKey, instanceId, revision: getDocumentRevision(docKey), content };
+      },
+      focus: () => {
+        // 思维导图无独立键盘焦点入口，焦点由画布/大纲自身接管
+      },
+      getSelectedText: () => '',
+      // 🔴 S12：每次交互同步提交 store（内容不依赖实例存活）——可回收；
+      //    统一历史在 documentHistory（按 docKey，重挂载不清）
+      canSuspend: () => true,
+      captureViewState: () => ({
+        kind: 'mindmap' as const,
+        viewMode: viewModeRef.current,
+        zoom: zoomRef.current,
+      }),
+    };
+    // 🔴 N10.2：思维导图实例就绪终点（能力注册完成；requestId 与打开请求对齐）
+    perfMarkEditorInstanceReady(docKey, instanceId);
+    return registerEditorCapabilities(capabilities);
   }, [docKey]);
 
   // 当外部文档切换或重新加载时同步状态
@@ -85,6 +145,8 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
   const handleRootChange = useCallback(
     (newRoot: MindNode) => {
       setRootNode(newRoot);
+      // 🔴 S12：真实修改推进内容版本（会话屏障校验用）
+      bumpDocumentRevision(docKey);
       const serialized = serializeMindmapDocument(newRoot);
       setContent(docKey, serialized);
       setDirty(docKey, true);
