@@ -8,6 +8,7 @@ import {
   onFontPackChanged,
   onFontPackDownloadProgress,
 } from '../core/ipc/events';
+import { useSettingsStore } from './settingsStore';
 import type { DownloadProgress, FontPackStatus } from '../core/ipc/types';
 
 export type FontPackAction = 'download' | 'import' | 'remove' | '';
@@ -29,6 +30,11 @@ interface FontPackStore {
 
 // React StrictMode 可能在首次挂载阶段重复调用初始化；共享 Promise 保证监听器与 SHA 校验只建立一次。
 let initializationPromise: Promise<void> | null = null;
+
+// 🔴 R11：包代际 epoch——remove/import/download 触发递增；
+//    异步激活（activateFontPack）完成时若 epoch 已变（如随后的 remove），
+//    旧 ready 结果不得覆盖新状态（invalid/missing）
+let packEpoch = 0;
 
 export const useFontPackStore = create<FontPackStore>((set, get) => ({
   status: null,
@@ -64,11 +70,24 @@ export const useFontPackStore = create<FontPackStore>((set, get) => ({
   },
 
   _applyStatus: async (status) => {
+    // 🔴 S06：verifying 表示后台校验中——不激活、不设错误，等待校验完成的广播
+    if (status.state === 'verifying') {
+      set({ status });
+      return status;
+    }
+    // 🔴 R11：本状态到达时递增 epoch；remove/import 的状态变化自然使旧激活失效
+    packEpoch += 1;
+    const applyEpoch = packEpoch;
     try {
-      await activateFontPack(status);
+      // 传入当前排版设置：activateFontPack 只主动加载配置引用的族（按需 face）
+      const typography = useSettingsStore.getState().settings.typography;
+      await activateFontPack(status, typography);
+      // 激活期间又有新状态（remove/import/download 的广播到达）→ 本结果丢弃
+      if (packEpoch !== applyEpoch) return status;
       set({ status, error: null });
       return status;
     } catch (error) {
+      if (packEpoch !== applyEpoch) return status;
       // 字体二进制通过哈希但 WebView 无法解析时按无效包处理，设置页保留修复入口。
       const invalidStatus: FontPackStatus = { ...status, state: 'invalid', faces: [] };
       set({ status: invalidStatus, error: '字体文件无法由当前 WebView 加载，请修复或重新下载字体包。' });
@@ -78,7 +97,8 @@ export const useFontPackStore = create<FontPackStore>((set, get) => ({
 
   refresh: async () => {
     try {
-      const status = await ipc.getFontPackStatus();
+      // S06：显式修复入口走强制重验命令（generation 递增，旧任务结果作废）
+      const status = await ipc.refreshFontPackStatus();
       return await get()._applyStatus(status);
     } catch (error) {
       if (!get().error) set({ error: translateFontPackError(error) });

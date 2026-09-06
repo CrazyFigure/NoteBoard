@@ -12,6 +12,9 @@ build/
 src-tauri/target/
 src-tauri/gen/schemas/
 # 注意：src-tauri/icons/ 需要提交（由 logo.ico 生成）
+# 性能对照最小宿主的构建产物
+tools/perf-host-min/target/
+tools/perf-host-min/gen/
 
 # ---------- 测试与覆盖率 ----------
 coverage/

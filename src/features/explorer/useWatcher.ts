@@ -6,6 +6,8 @@ import { useEffect, useRef } from 'react';
 import * as ipc from '../../core/ipc/commands';
 import { onExplorerRefresh, onExplorerRescan } from '../../core/ipc/events';
 import { useExplorerStore } from './explorerStore';
+// 🔴 S14：真实目录监听走 plugin-fs 中心 watcher（引用计数，多视图共用）
+import { watchDirectory } from './directoryWatcher';
 
 /**
  * 文件监听 hook
@@ -17,20 +19,15 @@ export function useWatcher() {
   const rescan = useExplorerStore((s) => s.rescan);
   const prevRootRef = useRef<string | null>(null);
 
-  // 监听 root 变化 → 切换 watch
+  // 监听 root 变化 → 切换 watch（中心 watcher 引用计数；卸载时 release）
   useEffect(() => {
-    if (prevRootRef.current && prevRootRef.current !== root) {
-      // 取消监听旧 root
-      ipc.unwatchDir(prevRootRef.current).catch(() => {});
-    }
-
-    if (root) {
-      ipc.watchDir(root).catch((e) => {
-        console.error('监听目录失败:', root, e);
-      });
-    }
-
+    if (!root) return;
+    const release = watchDirectory(root);
     prevRootRef.current = root;
+    return () => {
+      release();
+      prevRootRef.current = null;
+    };
   }, [root]);
 
   // 监听刷新事件
@@ -63,12 +60,4 @@ export function useWatcher() {
     };
   }, [updateChildren, rescan]);
 
-  // 组件卸载时取消监听
-  useEffect(() => {
-    return () => {
-      if (root) {
-        ipc.unwatchDir(root).catch(() => {});
-      }
-    };
-  }, [root]);
 }

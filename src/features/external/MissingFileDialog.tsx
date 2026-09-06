@@ -23,7 +23,7 @@ export function MissingFileDialog() {
   const handleSaveAs = async () => {
     setSaving(true);
     try {
-      const latest = syncDocumentContent(activeKey);
+      const latest = await syncDocumentContent(activeKey);
       const saved = await saveAs(activeKey, latest?.content ?? document.content ?? '');
       if (!saved) return;
       showToast('已将内存中的文件内容另存到新位置', 'success');

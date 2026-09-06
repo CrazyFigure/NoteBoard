@@ -9,14 +9,15 @@ import type { DownloadProgress, ExternalChangePayload, FontPackStatus, Settings 
 // ── 事件名常量 ──
 
 export const EVENTS = {
-  OPEN_FILES: 'nb://open-files',
+  OPEN_REQUESTS_AVAILABLE: 'nb://open-requests-available',
+  TRANSFER_COMMITTED: 'nb://transfer-committed',
+  TRANSFER_ABORTED: 'nb://transfer-aborted',
   FOCUS_TAB: 'nb://focus-tab',
   EXTERNAL_CHANGE: 'nb://external-change',
   EXPLORER_REFRESH: 'nb://explorer-refresh',
   EXPLORER_RESCAN: 'nb://explorer-rescan',
   SETTINGS_CHANGED: 'nb://settings-changed',
   BEFORE_QUIT: 'nb://before-quit',
-  HANDOFF_COMPLETE: 'nb://handoff-complete',
   CLOSE_REQUESTED: 'nb://close-requested',
   FONT_PACK_DOWNLOAD_PROGRESS: 'noteboard-font-pack-download-progress',
   FONT_PACK_CHANGED: 'noteboard-font-pack-changed',
@@ -24,8 +25,23 @@ export const EVENTS = {
 
 // ── 监听封装 ──
 
-export function onOpenFiles(cb: (p: { paths: string[] }) => void): Promise<UnlistenFn> {
-  return listen<{ paths: string[] }>(EVENTS.OPEN_FILES, (e) => cb(e.payload));
+/** 队列唤醒事件：只携带队列版本，不含路径；消费方拉取队列 */
+export function onOpenRequestsAvailable(cb: (p: { queueVersion: number }) => void): Promise<UnlistenFn> {
+  return listen<{ queueVersion: number }>(EVENTS.OPEN_REQUESTS_AVAILABLE, (e) => cb(e.payload));
+}
+
+/** 迁移提交：目标解锁可编辑；源清理本地实例和标签 */
+export function onTransferCommitted(
+  cb: (p: { transferId: string; key: string }) => void,
+): Promise<UnlistenFn> {
+  return listen<{ transferId: string; key: string }>(EVENTS.TRANSFER_COMMITTED, (e) => cb(e.payload));
+}
+
+/** 迁移中止：源解锁本地编辑，目标删除临时 session */
+export function onTransferAborted(
+  cb: (p: { transferId: string; reason: string }) => void,
+): Promise<UnlistenFn> {
+  return listen<{ transferId: string; reason: string }>(EVENTS.TRANSFER_ABORTED, (e) => cb(e.payload));
 }
 
 export function onFocusTab(cb: (p: { key: string }) => void): Promise<UnlistenFn> {
@@ -50,12 +66,6 @@ export function onSettingsChanged(cb: (s: Settings) => void): Promise<UnlistenFn
 
 export function onBeforeQuit(cb: () => void): Promise<UnlistenFn> {
   return listen<Record<string, never>>(EVENTS.BEFORE_QUIT, () => cb());
-}
-
-export function onHandoffComplete(
-  cb: (p: { targetLabel: string; keys: string[] }) => void,
-): Promise<UnlistenFn> {
-  return listen<{ targetLabel: string; keys: string[] }>(EVENTS.HANDOFF_COMPLETE, (e) => cb(e.payload));
 }
 
 export function onCloseRequested(cb: (label: string) => void): Promise<UnlistenFn> {

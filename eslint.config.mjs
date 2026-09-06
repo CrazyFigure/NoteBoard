@@ -1,6 +1,9 @@
 import eslint from '@eslint/js';
 import tseslint from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
+// 🔴 修复既有配置缺陷：TS 文件在 WebView（浏览器）运行时使用 window/document 等
+//    全局；此前未声明 browser globals 导致全量 no-undef 误报。
+import globals from 'globals';
 
 // ESLint 9 使用 Flat Config；这里集中定义项目源码、测试和 Node 脚本的检查边界。
 const nodeGlobals = {
@@ -16,7 +19,7 @@ const nodeGlobals = {
 export default [
   {
     // 构建产物、依赖和 Rust 工程不属于前端 JavaScript 静态检查范围。
-    ignores: ['dist/**', 'node_modules/**', 'src-tauri/**', 'coverage/**'],
+    ignores: ['dist/**', 'node_modules/**', 'src-tauri/**', 'coverage/**', 'test-results/**', 'tools/**'],
   },
   {
     // JavaScript 配置和脚本使用 ESLint 核心推荐规则，并声明 Node 运行时全局变量。
@@ -35,6 +38,11 @@ export default [
       parserOptions: {
         ecmaVersion: 'latest',
         sourceType: 'module',
+      },
+      // 前端源码运行于 WebView2（浏览器全局）与 Node 脚本环境（vitest 配置等）
+      globals: {
+        ...globals.browser,
+        ...globals.node,
       },
     },
     plugins: {

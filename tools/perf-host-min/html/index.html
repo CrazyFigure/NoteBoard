@@ -1,0 +1,33 @@
+<!doctype html>
+<!-- NoteBoard 性能对照：最小宿主页（无任何外部资源，仅内联脚本） -->
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>NoteBoard Perf Min</title>
+    <script>
+      // web 轴起点：HTML 解析最早可观测点（performance.now 原点 = WebView 导航开始）
+      window.__htmlTs = performance.now();
+    </script>
+  </head>
+  <body style="margin: 0; display: flex; align-items: center; justify-content: center; height: 100vh; font-family: system-ui">
+    <div style="color: #333; font-size: 14px">最小宿主对照页（性能诊断，关闭即退出）</div>
+    <script>
+      // 使用 Tauri 注入的内部 invoke，避免引入任何前端依赖
+      const invoke = window.__TAURI_INTERNALS__.invoke;
+      const htmlTs = window.__htmlTs;
+      invoke('show_and_report', { stage: 'js-ready', tWeb: htmlTs })
+        .then(() => {
+          // 双 rAF：确保 show() 后首帧已提交，作为可见代理点
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              invoke('show_and_report', {
+                stage: 'first-frame',
+                tWeb: performance.now(),
+              });
+            });
+          });
+        })
+        .catch((e) => console.error('perf host report failed', e));
+    </script>
+  </body>
+</html>

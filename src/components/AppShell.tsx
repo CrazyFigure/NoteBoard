@@ -14,7 +14,6 @@ import { ToastContainer } from './Toast';
 import { RailToggle } from './rail/RailToggle';
 import { FileDropOverlay } from './FileDropOverlay';
 import { useWindowStore } from '../stores/windowStore';
-import { useDocumentStore } from '../stores/documentStore';
 import {
   useLayoutStore,
   EXPLORER_MIN,
@@ -22,32 +21,26 @@ import {
   OUTLINE_MIN,
   OUTLINE_MAX,
 } from '../stores/layoutStore';
-import { CodeEditor } from '../features/editor-code/CodeEditor';
-import { TipTapEditor } from '../features/editor-md/TipTapEditor';
-import { BoardEditor } from '../features/board/BoardEditor';
-import { ImageViewer } from '../features/image-viewer/ImageViewer';
-import { MindmapEditor } from '../features/mindmap/MindmapEditor';
-import { DrawioEditor } from '../features/drawio/DrawioEditor';
-import { BitableEditor } from '../features/bitable/BitableEditor';
-import { DiagramSplitEditor } from '../features/diagram-preview/DiagramSplitEditor';
-import { InfographicSplitEditor } from '../features/infographic/InfographicSplitEditor';
+// 🔴 S05：全部编辑器按类型懒加载（EditorHost + editorLoaders），壳不再静态导入任何编辑器
+import { EditorHost } from '../features/editor-host/EditorHost';
+// 🔴 S10：会话恢复的轻量标签按需加载（激活时才读盘）
+import { loadRestoredTab } from '../features/session/closedWindowSession';
+// 🔴 S11：编辑器回收调度（活动文档 + 最近 1 个已验证可回收实例；其余后台标签不渲染）
+import {
+  suspendEditorInstance,
+  markClosed,
+  getKeepAliveKey,
+} from '../features/session/editorSuspension';
 import { OutlinePanel } from '../features/outline/OutlinePanel';
 import { UnsavedGuardDialog } from '../features/editor-code/UnsavedGuardDialog';
 import { Explorer } from '../features/explorer/Explorer';
 import { SearchReplaceBar } from '../features/search/SearchReplaceBar';
 import { EditorToolbar } from '../features/toolbar/EditorToolbar';
 import { useSearchStore } from '../stores/searchStore';
-import { getSelectedText } from '../features/search/searchController';
-import { getEditorView } from '../features/editor-code/CodeEditor';
-import { getActiveTipTapEditor, getActiveSourceView } from '../features/editor-md/TipTapEditor';
+// 🔴 S03：快捷键与工具栏统一走 core 能力注册表，不再从编辑器组件导入实例 getter
+import { getEditorCapabilities } from '../core/editor/editorRegistry';
 import { registerShortcut } from '../core/shortcuts';
-import {
-  handleExpandJson,
-  handleMinifyJson,
-  handleValidateJson,
-} from '../features/editor-code/jsonOps';
-import type { LanguageId } from '../core/ipc/types';
-import { saveDocument } from '../features/editor-code/orchestration/saveDocument';
+import { saveDocument, takeLastSaveIdentityMove } from '../features/editor-code/orchestration/saveDocument';
 import { performWindowClose } from '../features/window/windowManager';
 import {
   openFileDialog,
@@ -103,10 +96,20 @@ function ResizeHandle() {
 
 // ── AppShell ──
 
-export function AppShell({ children }: { children?: React.ReactNode }) {
+export function AppShell(_props: { children?: React.ReactNode }) {
   const tabs = useWindowStore((s) => s.tabs);
   const activeKey = useWindowStore((s) => s.activeKey);
-  const documents = useDocumentStore((s) => s.documents);
+  // 🔴 迁移保护中的文档：阻断编辑输入（pointerEvents），避免迁移期间新修改无法同步到目标
+  const transferringKeys = useWindowStore((s) => s.transferringKeys);
+  // 🔴 S11：当前挂载编辑器的标签集合（活动 + 保活 + 打开未回收；驱动收敛重渲染）
+  const [mountedEditorKeys, setMountedEditorKeys] = useState<Set<string>>(() => new Set());
+  // 渲染集合的 ref 镜像（收敛异步流程读取最新集合，不依赖过期闭包）
+  const mountedEditorKeysRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    mountedEditorKeysRef.current = mountedEditorKeys;
+  }, [mountedEditorKeys]);
+  // 上一个活动标签（回收调度用；ref 跨渲染保存）
+  const prevActiveKeyRef = useRef<string | null>(null);
 
   const {
     explorerVisible,
@@ -137,15 +140,25 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
 
   // 保存并关闭
   const handleSaveAndClose = async (keys: string[]) => {
-    // 逐个保存待关闭的脏文档
+    // 🔴 N03：另存为会迁移文档身份——逐个保存后用实际新 key 检查脏态与关闭，
+    //    不能继续按原 key 断言（原 key 的标签/文档已随迁移移除）
+    const closeKeys: string[] = [];
     for (const key of keys) {
       const ok = await saveDocument(key);
       if (!ok) {
         // 用户在另存为对话框中取消了保存，中断关闭流程
         return;
       }
+      const move = takeLastSaveIdentityMove();
+      const effectiveKey = move?.from === key ? move.to : key;
+      // 🔴 R12：保存期间又产生新编辑（flush-and-compare 后仍脏）→ 不静默关闭
+      if (hasUnsavedWork(effectiveKey)) {
+        showToast('保存期间有新的修改，请再次保存后关闭', 'warning');
+        return;
+      }
+      closeKeys.push(effectiveKey);
     }
-    const targetKeys = [...useWindowStore.getState().pendingCloseKeys];
+    const targetKeys = closeKeys;
     const willCloseWindow = useWindowStore.getState().isWindowClosing;
     if (willCloseWindow) {
       // 窗口级关闭必须在技术性移除标签前记录，否则会把仍打开的标签误判成已独立关闭。
@@ -215,16 +228,97 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
   // 仅活动画板可以接管应用外壳；切到其他格式时立即恢复常规布局
   const isBoardPresentationMode = boardPresentationMode && activeTab?.kind === 'board';
 
-  // 在应用空闲时预热 Diagrams.net，消除新建/打开 .drawio 时的网络冷启动耗时
+  // 🔴 S05：已移除 AppShell 的全局 Drawio 空闲预热（E 节 8：取消无意图的全编辑器空闲
+  //    预热；.drawio 首次打开时由编辑器自身按需加载，远程资源耗时单独统计）
+
+  // 🔴 S11：标签集合变化——新打开的非懒标签进入渲染集合；关闭的标签清恢复状态
   useEffect(() => {
-    const link = document.createElement('link');
-    link.rel = 'prefetch';
-    link.href = 'https://embed.diagrams.net/?embed=1&ui=min&spin=1&proto=json&libraries=1';
-    document.head.appendChild(link);
-    return () => {
-      if (document.head.contains(link)) document.head.removeChild(link);
-    };
-  }, []);
+    setMountedEditorKeys((current) => {
+      const currentKeys = new Set(current);
+      const liveKeys = new Set(tabs.map((t) => t.key));
+      let changed = false;
+      // 新增（懒标签由加载完成后进入集合；此处只加非懒）
+      for (const tab of tabs) {
+        if (!currentKeys.has(tab.key) && !tab.lazySource) {
+          currentKeys.add(tab.key);
+          changed = true;
+        }
+      }
+      // 移除
+      for (const key of [...currentKeys]) {
+        if (!liveKeys.has(key)) {
+          currentKeys.delete(key);
+          markClosed(key);
+          changed = true;
+        }
+      }
+      return changed ? currentKeys : current;
+    });
+  }, [tabs]);
+
+  // 🔴 S11：活动标签切走 → 旧实例回收（canSuspend → flush → 视图状态捕获 → 收敛渲染集合）
+  useEffect(() => {
+    const previous = prevActiveKeyRef.current;
+    prevActiveKeyRef.current = activeKey;
+    if (!previous || previous === activeKey || !activeKey) {
+      if (activeKey) {
+        // 激活标签确保在渲染集合（懒标签加载完成或用户切回）
+        setMountedEditorKeys((current) => {
+          if (current.has(activeKey)) return current;
+          const next = new Set(current);
+          next.add(activeKey);
+          return next;
+        });
+      }
+      return;
+    }
+    // 新活动标签进入集合（先渲染，旧标签暂保活等待回收完成）
+    setMountedEditorKeys((current) => {
+      const next = new Set(current);
+      next.add(activeKey);
+      return next;
+    });
+    void (async () => {
+      // 🔴 R05：收敛逐项授权——对每个非活动/非保活的挂载标签单独执行回收流程，
+      //    只有 suspendEditorInstance 明确返回 true（canSuspend + flush + 版本校验通过）
+      //    的才移出渲染集合；不可回收类型（canSuspend=false）保留挂载（pinned），
+      //    不能被其它项的成功驱逐带走。
+      const ok = await suspendEditorInstance(previous);
+      if (!ok) return;
+      const candidates = [...mountedEditorKeysRef.current].filter(
+        (key) => key !== useWindowStore.getState().activeKey && key !== getKeepAliveKey() && key !== previous,
+      );
+      const removable = new Set<string>();
+      for (const key of candidates) {
+        const itemOk = await suspendEditorInstance(key);
+        if (itemOk) removable.add(key);
+      }
+      // 🔴 N08：提交时重新读取最新 activeKey/keep（多个 await 期间用户可能已切换/进 Home）
+      setMountedEditorKeys((current) => {
+        const activeNow = useWindowStore.getState().activeKey;
+        const keepNow = getKeepAliveKey();
+        const next = new Set<string>();
+        for (const key of current) {
+          // 保留：活动 + 最近保活 + 未通过回收授权的（不可回收 pinned）
+          if (key === activeNow || key === keepNow || !removable.has(key)) {
+            next.add(key);
+          }
+        }
+        return next;
+      });
+    })();
+  }, [activeKey]);
+
+  // 🔴 S10：激活会话恢复的轻量标签时按需加载正文（读盘/注册/编辑器加载）
+  useEffect(() => {
+    if (!activeKey) return;
+    const tab = useWindowStore.getState().getTab(activeKey);
+    if (tab?.lazySource) {
+      void loadRestoredTab(activeKey).catch((e) => {
+        console.error('恢复标签加载失败:', e);
+      });
+    }
+  }, [activeKey]);
 
   // Ctrl+S 快捷键注册
   useEffect(() => {
@@ -246,20 +340,9 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
       action: () => {
         const currentTab = useWindowStore.getState().activeTab();
         if (!currentTab) return;
-        let target = null;
-        if (currentTab.kind === 'markdown') {
-          if (currentTab.viewMode === 'source') {
-            const view = getActiveSourceView(currentTab.key);
-            if (view) target = { type: 'codemirror' as const, view };
-          } else {
-            const editor = getActiveTipTapEditor(currentTab.key);
-            if (editor) target = { type: 'tiptap' as const, editor };
-          }
-        } else if (currentTab.kind === 'code') {
-          const view = getEditorView();
-          if (view) target = { type: 'codemirror' as const, view };
-        }
-        const selected = target ? getSelectedText(target) : '';
+        // 选中文本经能力注册表按当前模式获取（code / markdown visual / markdown source）
+        const capabilities = getEditorCapabilities(currentTab.key);
+        const selected = capabilities?.getSelectedText() ?? '';
         const searchStore = useSearchStore.getState();
         searchStore.openSearch(selected.trim() ? selected : undefined, 'search');
       },
@@ -273,20 +356,8 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
       action: () => {
         const currentTab = useWindowStore.getState().activeTab();
         if (!currentTab) return;
-        let target = null;
-        if (currentTab.kind === 'markdown') {
-          if (currentTab.viewMode === 'source') {
-            const view = getActiveSourceView(currentTab.key);
-            if (view) target = { type: 'codemirror' as const, view };
-          } else {
-            const editor = getActiveTipTapEditor(currentTab.key);
-            if (editor) target = { type: 'tiptap' as const, editor };
-          }
-        } else if (currentTab.kind === 'code') {
-          const view = getEditorView();
-          if (view) target = { type: 'codemirror' as const, view };
-        }
-        const selected = target ? getSelectedText(target) : '';
+        const capabilities = getEditorCapabilities(currentTab.key);
+        const selected = capabilities?.getSelectedText() ?? '';
         const searchStore = useSearchStore.getState();
         searchStore.openSearch(selected.trim() ? selected : undefined, 'replace');
       },
@@ -313,14 +384,8 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
     const handleExpandAction = () => {
       const currentTab = useWindowStore.getState().activeTab();
       if (!currentTab) return;
-      if (currentTab.kind === 'code') {
-        const view = getEditorView();
-        const doc = currentTab.key ? useDocumentStore.getState().documents.get(currentTab.key) : undefined;
-        if (view) handleExpandJson(view, doc?.language as LanguageId);
-      } else if (currentTab.kind === 'markdown' && currentTab.viewMode === 'source') {
-        const view = getActiveSourceView(currentTab.key);
-        if (view) handleExpandJson(view, 'markdown');
-      }
+      // code 与 markdown 源码模式均通过能力注册表分发；能力内部按当前模式判断可用性
+      getEditorCapabilities(currentTab.key)?.codeOps?.expandJson();
     };
 
     const unregExpandShiftAltF = registerShortcut({
@@ -341,13 +406,7 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
     const handleMinifyAction = () => {
       const currentTab = useWindowStore.getState().activeTab();
       if (!currentTab) return;
-      if (currentTab.kind === 'code') {
-        const view = getEditorView();
-        if (view) handleMinifyJson(view);
-      } else if (currentTab.kind === 'markdown' && currentTab.viewMode === 'source') {
-        const view = getActiveSourceView(currentTab.key);
-        if (view) handleMinifyJson(view);
-      }
+      getEditorCapabilities(currentTab.key)?.codeOps?.minifyJson();
     };
 
     const unregMinifyShiftAltM = registerShortcut({
@@ -368,13 +427,7 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
     const handleValidateAction = () => {
       const currentTab = useWindowStore.getState().activeTab();
       if (!currentTab) return;
-      if (currentTab.kind === 'code') {
-        const view = getEditorView();
-        if (view) handleValidateJson(view);
-      } else if (currentTab.kind === 'markdown' && currentTab.viewMode === 'source') {
-        const view = getActiveSourceView(currentTab.key);
-        if (view) handleValidateJson(view);
-      }
+      getEditorCapabilities(currentTab.key)?.codeOps?.validateJson();
     };
 
     const unregValidateShiftAltV = registerShortcut({
@@ -537,6 +590,9 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                   />
                 )}
 
+                {/* 🔴 N08：Home 与编辑器容器并存——显示 Home（无活动标签）不销毁 */}
+                {/* 已打开文档的会话/实例；不可回收类型（Markdown/Board 等）的实例保持挂载。 */}
+                {/* display:none 不卸载 React 组件，编辑器内核与撤销历史完整保留。 */}
                 {tabs.length === 0 || !activeTab ? (
                   <WelcomeScreen
                     onOpenFile={openFileDialog}
@@ -557,11 +613,22 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                     onNewSql={newSql}
                     onNewXml={newXml}
                   />
-                ) : (
-                  <div style={{ flex: 1, position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
+                ) : null}
+                {tabs.length > 0 ? (
+                  <div
+                    style={{
+                      flex: 1,
+                      position: 'relative',
+                      width: '100%',
+                      height: '100%',
+                      overflow: 'hidden',
+                      // 🔴 N08：Home 可见时隐藏编辑器容器（视觉隐藏而非卸载）
+                      display: !activeTab ? 'none' : 'block',
+                    }}
+                  >
                     {tabs.map((tab) => {
                       const isTabActive = tab.key === activeKey;
-                      const tabDoc = documents.get(tab.key);
+                      const isTransferring = transferringKeys.includes(tab.key);
 
                       return (
                         <div
@@ -572,6 +639,9 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                             width: '100%',
                             height: '100%',
                             overflow: 'hidden',
+                            ...(isTransferring
+                              ? { pointerEvents: 'none' as const, opacity: 0.55 }
+                              : {}),
                             ...(isTabActive
                               ? { position: 'relative' }
                               : {
@@ -589,63 +659,42 @@ export function AppShell({ children }: { children?: React.ReactNode }) {
                             <UnsupportedView
                               filePath={tab.path ?? tab.key}
                               fileName={tab.displayName}
-                              fileSize={tabDoc?.size}
                             />
-                          ) : tab.kind === 'mindmap' ? (
-                            <MindmapEditor docKey={tab.key} />
-                          ) : tab.kind === 'drawio' ? (
-                            <DrawioEditor docKey={tab.key} />
-                          ) : tab.kind === 'bitable' ? (
-                            <BitableEditor docKey={tab.key} />
-                          ) : tab.kind === 'code' ? (
-                            tab.language === 'infographic' ? (
-                              <InfographicSplitEditor docKey={tab.key} />
-                            ) : tab.language === 'mermaid' || tab.language === 'plantuml' ? (
-                              <DiagramSplitEditor docKey={tab.key} />
-                            ) : (
-                              <CodeEditor docKey={tab.key} />
-                            )
-                          ) : tab.kind === 'markdown' ? (
-                            <TipTapEditor
-                              docKey={tab.key}
+                          ) : tab.lazySource ? (
+                            // 🔴 S10：恢复标签正文加载中（点击标签触发；不挂载空编辑器）
+                            <div
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 8,
+                                height: '100%',
+                                background: 'var(--editor-bg)',
+                                color: 'var(--editor-text-muted, #64748b)',
+                                fontFamily: 'var(--ui-font-family, sans-serif)',
+                                fontSize: 13,
+                              }}
+                            >
+                              <span>正在加载「{tab.displayName}」…</span>
+                            </div>
+                          ) : isTabActive || mountedEditorKeys.has(tab.key) ? (
+                            // 🔴 S05：统一懒加载宿主（按 kind+language 选择入口；
+                            //    Suspense fallback/错误重试由 EditorHost 提供）
+                            <EditorHost
+                              tab={tab}
                               onEditorReady={isTabActive ? setActiveEditor : undefined}
-                            />
-                          ) : tab.kind === 'board' ? (
-                            <BoardEditor docKey={tab.key} />
-                          ) : tab.kind === 'image' ? (
-                            <ImageViewer
-                              filePath={tab.path ?? tab.key}
-                              fileName={tab.displayName}
-                              fileSize={tabDoc?.size}
+                              unsupportedView={null}
                             />
                           ) : (
-                            children ?? (
-                              <div
-                                style={{
-                                  padding: 24,
-                                  overflow: 'auto',
-                                  height: '100%',
-                                }}
-                              >
-                                <div style={{ maxWidth: 'var(--content-max-width)', margin: '0 auto' }}>
-                                  <div
-                                    style={{
-                                      fontSize: 'var(--content-font-size)',
-                                      lineHeight: 'var(--content-line-height)',
-                                      color: 'var(--editor-text)',
-                                    }}
-                                  >
-                                    {tab.displayName}
-                                  </div>
-                                </div>
-                              </div>
-                            )
+                            // 🔴 S11：后台标签已回收（内容/历史在 session 中；切回时恢复实例）
+                            <div style={{ height: '100%', background: 'var(--editor-bg)' }} />
                           )}
                         </div>
                       );
                     })}
                   </div>
-                )}
+                ) : null}
 
                 {/* 右折叠把手（仅 Markdown） */}
                 {!isBoardPresentationMode && tabs.length > 0 && (
