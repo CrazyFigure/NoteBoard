@@ -214,16 +214,33 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     setEditorState(ready);
   }, []);
 
-  // 注册当前活跃 editor 实例与能力对象（保存/搜索/工具栏统一入口）
+  // 注册当前 Markdown 会话的能力对象（保存/搜索/工具栏统一入口）
+  // 🔴 R3-02：注册独立于 visual TipTap 实例——source 首开（editor=null）也注册。
+  //    能力内部按当前模式动态分派（source 用 CM 视图，visual 用 TipTap），
+  //    与 createMarkdownEditorCapabilities 的模式分派一致；instanceId 每次挂载递增。
+  useEffect(() => {
+    const instanceId = `md-${(nextTipTapInstanceId += 1)}`;
+    const disposeCapabilities = registerEditorCapabilities(
+      createMarkdownEditorCapabilities(docKey, instanceId),
+    );
+    // 🔴 N10.2：Markdown 实例就绪终点（会话能力注册完成；source/visual 均适用）
+    perfMarkEditorInstanceReady(docKey, instanceId);
+    return () => {
+      disposeCapabilities();
+    };
+    // viewMode 变化不重建能力（内部动态分派）；visual editor 就绪触发 instanceId 更新
+  }, [docKey]);
+
+  // 🔴 R3-02：visual 实例就绪时换代能力（能力创建捕获 instanceId/代际——旧实例
+  //    的迟到 flush 由新 instanceId 拒绝）；editor 升级为独立注册-注销循环
   useEffect(() => {
     if (editor) {
       registerMdTipTapEditor(docKey, editor);
-      // 🔴 能力注册带代际：旧实例 disposer 无权删除新实例的注册
       const instanceId = `md-${(nextTipTapInstanceId += 1)}`;
       const disposeCapabilities = registerEditorCapabilities(
         createMarkdownEditorCapabilities(docKey, instanceId),
       );
-      // 🔴 N10.2：Markdown 实例就绪终点（visual 内核+能力注册完成；requestId 与打开请求对齐）
+      // 🔴 N10.2：visual 内核就绪（更精确的可交互终点——实例+能力注册完成）
       perfMarkEditorInstanceReady(docKey, instanceId);
       onEditorReady?.(editor);
       return () => {
@@ -465,7 +482,12 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     setLargeVerdict(verdict);
     // 先确定初始模式，文件历史的首节点必须采用当前权威内核实际展示的内容
     const tab = useWindowStore.getState().getTab(docKey);
-    const initialMode = tab?.viewMode ?? (verdict.isLarge ? 'source' : settings.editor.defaultViewMode);
+    const requestedMode = tab?.viewMode ?? (verdict.isLarge ? 'source' : settings.editor.defaultViewMode);
+    // 🔴 R4-03/D02：resolvedMode 单次决策——"用户意图（标签/设置）+ 大文档限制"
+    //    合并后只应用一次，分支间不得互相覆盖。大文档强制 source（visual 内核
+    //    不挂载）；resolvedMode 决定后续全部初始化（内核/历史/基线），不再被
+    //    tab 恢复的 initialMode 二次改写。
+    const resolvedMode: 'visual' | 'source' = verdict.isLarge ? 'source' : requestedMode;
     const historyInitialContent = content;
 
     if (verdict.isLarge) {
@@ -478,10 +500,10 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     } else {
       setShowLargeBanner(false);
       // source 初始模式：TipTap 内核惰性挂载（S08 判定：源码首屏不创建隐藏实例）
-      setHasVisualKernel(initialMode === 'visual');
+      setHasVisualKernel(resolvedMode === 'visual');
       // 初始为可视化模式时：内容将在内核 ready 后以序列化结果对齐历史首节点
       //（初始 visual 下 historyInitialContent 由填充 effect 的序列化结果同步）
-      if (initialMode === 'visual') {
+      if (resolvedMode === 'visual') {
         pendingVisualContentRef.current = content;
       } else {
         // 初始 source：基线对齐（脏文档无基线时以原始内容为基线）
@@ -495,11 +517,12 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       }
     }
 
-    // 设置 viewMode（从 tab 恢复）
-    viewModeRef.current = initialMode;
-    setViewMode(initialMode);
-    initializeDocumentHistory(docKey, historyInitialContent, initialMode);
-    if (initialMode === 'source') {
+    // 🔴 R4-03：resolvedMode 统一应用（大文档分支已按同一值设置，这里幂等；
+    //    历史与 source 内核按 resolvedMode 初始化——不再被 initialMode 覆盖）
+    viewModeRef.current = resolvedMode;
+    setViewMode(resolvedMode);
+    initializeDocumentHistory(docKey, historyInitialContent, resolvedMode);
+    if (resolvedMode === 'source') {
       // 延迟确保源码容器完成挂载；历史本身已独立于编辑器模式初始化
       setTimeout(() => {
         initSourceEditor(historyInitialContent);

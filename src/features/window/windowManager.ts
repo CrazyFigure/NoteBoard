@@ -221,9 +221,12 @@ async function adoptTransferredDocument(transferId: string): Promise<void> {
       adoptKeyByTransfer.delete(transferId);
       showToast('接收迁移文档失败，已保留在原窗口', 'error');
     } else {
-      // 状态不明：解锁保护但保留标签与内容（可能已 committed，等事件/用户确认）
-      tabStore.exitTransfer(doc.key);
-      showToast('迁移状态暂时未知，文档已保留（如未出现在原窗口请重试）', 'warning');
+      // 🔴 R3-08/C13：状态不明（prepare 与 query 均失败）——**保留写保护**
+      //    （不 exitTransfer：双方均不能因"未知"恢复写入——源侧的 unknown 分支
+      //    同样保持保护，见 moveToNewWindow/scheduleTransferReconcle；权威终态
+      //    事件（committed/aborted 迟到）或后续对账到达时再解锁/清理），
+      //    标签与内容保留（可能已 committed，等事件/用户确认）
+      showToast('迁移状态暂时未知，文档暂时锁定；状态确认后将自动完成或还原', 'warning');
     }
   }
 }

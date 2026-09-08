@@ -51,26 +51,8 @@ const LANGUAGE_DEFS: Record<string, LanguageFn> = {
   plaintext,
 };
 
-// 语言别名映射
-const LANGUAGE_ALIASES: Record<string, string> = {
-  js: 'javascript',
-  ts: 'typescript',
-  tsx: 'typescript',
-  jsx: 'javascript',
-  py: 'python',
-  sh: 'bash',
-  shell: 'bash',
-  yml: 'yaml',
-  html: 'xml',
-  rs: 'rust',
-  golang: 'go',
-  cs: 'csharp',
-  'c++': 'cpp',
-  'c#': 'csharp',
-  text: 'plaintext',
-  txt: 'plaintext',
-  plain: 'plaintext',
-};
+// 名称映射与实际语法注册分离，避免规范化语言名触发运行时初始化。
+import { LANGUAGE_ALIASES } from './codeLanguages';
 
 /** 创建配置好的 lowlight 实例 */
 export function createConfiguredLowlight() {
@@ -108,15 +90,5 @@ export function getLowlight() {
 /** 导出供 CodeBlockView 使用的实例 */
 export const lowlight = getLowlight();
 
-/** 规范化语言名（别名 → 标准名） */
-export function normalizeLanguage(lang: string | null): string {
-  if (!lang || lang.trim() === '') return 'plaintext';
-  const normalized = lang.toLowerCase().trim();
-  return LANGUAGE_ALIASES[normalized] ?? normalized;
-}
-
-/** highlightAuto 的字符上限 */
-export const HIGHLIGHT_AUTO_LIMIT = 5000;
-
-/** 单个代码块高亮的字符上限（超过则跳过） */
-export const SINGLE_BLOCK_LIMIT = 20000;
+// 保留既有导出接口；仅实际高亮消费者才需要加载本模块。
+export { normalizeLanguage, HIGHLIGHT_AUTO_LIMIT, SINGLE_BLOCK_LIMIT } from './codeLanguages';

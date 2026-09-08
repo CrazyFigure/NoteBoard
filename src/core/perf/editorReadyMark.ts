@@ -8,8 +8,11 @@
 
 import { perfMark } from './perfMarks';
 
-/** docKey → 打开该文档的 requestId（编辑器就绪时一次性消费） */
+/** 🔴 R3-11：docKey → 匿名会话标识（短路径仍是完整路径——不满足隐私要求；
+ *    改为匿名递增序号，诊断不记录任何路径内容） */
 const pendingRequestByDocKey = new Map<string, string>();
+const anonymousSessionIds = new Map<string, number>();
+let nextAnonymousSessionId = 0;
 
 /** drain 处理打开请求时登记关联（编辑器挂载完成的标记据此携带 requestId） */
 export function markEditorOpenRequest(docKey: string, requestId: string): void {
@@ -20,12 +23,19 @@ export function markEditorOpenRequest(docKey: string, requestId: string): void {
  * 🔴 N10.2：编辑器实例就绪终点标记（各类型编辑器在实例+能力注册完成时调用）。
  * 若该文档由打开请求队列建立，requestId 随标记输出（一次性消费——重挂载
  * 回收恢复不带 requestId，属正常路径）。
+ * 🔴 R3-11 隐私：诊断只携带**匿名会话序号**（每 docKey 稳定分配）与 requestId，
+ *    不记录路径尾部（短路径的尾部即完整路径）。
  */
 export function perfMarkEditorInstanceReady(docKey: string, instanceId: string): void {
   const requestId = pendingRequestByDocKey.get(docKey);
   if (requestId !== undefined) pendingRequestByDocKey.delete(docKey);
+  let session = anonymousSessionIds.get(docKey);
+  if (session === undefined) {
+    session = ++nextAnonymousSessionId;
+    anonymousSessionIds.set(docKey, session);
+  }
   perfMark('editor_instance_ready', {
-    docKey: `${docKey.slice(-40)}`,
+    session,
     instanceId,
     ...(requestId !== undefined ? { requestId } : {}),
   });

@@ -53,41 +53,59 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
   // 🔴 S12：能力对象（canSuspend/flush 回包判断）需要的同步镜像
   const isLoadedRef = useRef(false);
   const loadErrorRef = useRef<string | null>(null);
-  /** 🔴 S12：flush 的导出请求在途句柄（同 iframe 串行——drawio 回包无原生请求 ID） */
+  /**
+   * 🔴 S12/R3-06：向 iframe 发起 xml 导出请求并等待回包（串行 + 3 秒超时）。
+   * 🔴 R3-06 请求标识匹配：在途请求持有 requestId；回包只被当前在途请求消费——
+   *    超时后的迟到回包（请求已结束）不再写正文（C11）；超时返回 null（C10：
+   *    没有最新内容证明即失败，调用方不回退旧镜像当成功）。
+   */
   const pendingExportRef = useRef<{
+    requestId: string;
     resolve: (xml: string | null) => void;
     timer: ReturnType<typeof setTimeout>;
   } | null>(null);
+  /** 导出请求序号（单调递增；每个请求持有唯一 ID） */
+  const nextExportRequestIdRef = useRef(0);
   const docKeyRef = useRef(docKey);
   docKeyRef.current = docKey;
   /** 🔴 N10.2：当前实例代际的镜像（init 事件处的就绪标记读取，不依赖渲染闭包） */
   const drawioInstanceIdRef = useRef<string>('drawio-0');
 
   /**
-   * 🔴 S12：向 iframe 发起 xml 导出请求并等待回包（串行 + 3 秒超时）。
+   * 🔴 S12/R3-06：向 iframe 发起 xml 导出请求并等待回包（串行 + 3 秒超时）。
    * 收到对应 format==='xml' 的 export 回包即确认引擎当前权威 XML——
    * flush 据此确认"恢复能力"（挂载重新 load 该 XML 即完整恢复）；
-   * 超时/引擎未就绪返回 null（调用方不回收/保留镜像）。
+   * 超时/未就绪返回 null（🔴 C10：不回退旧镜像——没有最新内容证明即失败，
+   * 调用方保守不回收）。🔴 C11：超时后请求即作废——迟到回包与新请求不匹配
+   * 时丢弃（回包处理器按 requestId 匹配当前在途请求）。
    */
   const requestExportXml = (): Promise<string | null> => {
     const win = iframeRef.current?.contentWindow ?? null;
     if (!isLoadedRef.current || !win) return Promise.resolve(null);
-    // 串行：已在途的导出请求不重复发起（回包无请求 ID，无法区分）
+    // 单实例保持一个权威捕获在途；请求标识由官方 export 回包的 message 原样带回。
     if (pendingExportRef.current) return Promise.resolve(null);
+    const requestId = `${drawioInstanceIdRef.current}:${++nextExportRequestIdRef.current}`;
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
-        pendingExportRef.current = null;
+        // 🔴 C11：超时即作废请求（pending 清空）——之后到达的回包将无人消费
+        if (pendingExportRef.current?.requestId === requestId) {
+          pendingExportRef.current = null;
+        }
         resolve(null);
       }, 3000);
       pendingExportRef.current = {
+        requestId,
         timer,
         resolve: (xml) => {
           clearTimeout(timer);
-          pendingExportRef.current = null;
+          if (pendingExportRef.current?.requestId === requestId) {
+            pendingExportRef.current = null;
+          }
           resolve(xml);
         },
       };
-      win.postMessage(JSON.stringify({ action: 'export', format: 'xml' }), '*');
+      // 官方 XML 导出在 msg.message 回传该对象，在 msg.xml 回传正文；不能假定响应按序到达。
+      win.postMessage(JSON.stringify({ action: 'export', format: 'xml', requestId }), '*');
     });
   };
 
@@ -107,13 +125,12 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
           if (current == null) return null;
           return { docKey: key, instanceId, revision: getDocumentRevision(key), content: current };
         }
-        // 🔴 S12：导出回包确认（计划 I 节：收到对应导出请求的有效回包并确认恢复
-        //    能力才允许回收；超时/未就绪返回 null 保留镜像、不回收）
+        // 🔴 R3-06/C10：导出回包确认（计划 I 节：收到对应导出请求的有效回包并确认
+        //    恢复能力才允许回收）——超时/未就绪返回 **null**（失败：没有最新内容
+        //    证明不回退旧镜像当成功，调用方保守不回收/保留实例）
         const xml = await requestExportXml();
         if (xml === null) {
-          return current != null && current.trim()
-            ? { docKey: key, instanceId, revision: getDocumentRevision(key), content: current }
-            : null;
+          return null;
         }
         submitCapturedContent(key, { instanceId, revision: getDocumentRevision(key), content: xml });
         return { docKey: key, instanceId, revision: getDocumentRevision(key), content: xml };
@@ -186,7 +203,10 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
           loadErrorRef.current = null;
           // 🔴 N10.2：Drawio 实例就绪终点（引擎 init + 能力注册完成；requestId 与打开请求对齐）
           perfMarkEditorInstanceReady(docKey, drawioInstanceIdRef.current);
-          const xml = doc?.content?.trim() ? doc.content : DEFAULT_DRAWIO_XML;
+          // 🔴 R3-06：init 的初始 XML 经 ref 读取（doc.content 变化不重启消息订阅——
+          //    每次内容更新 cleanup 会终结正在等待的导出请求）
+          const currentContent = useDocumentStore.getState().getDocument(docKey)?.content;
+          const xml = currentContent?.trim() ? currentContent : DEFAULT_DRAWIO_XML;
           iframeRef.current?.contentWindow?.postMessage(
             JSON.stringify({
               action: 'load',
@@ -214,11 +234,15 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
 
         // 4. 导出事件
         if (msg.event === 'export') {
-          if (msg.format === 'xml' && msg.data) {
-            // 🔴 S12：flush 的 xml 导出回包（串行匹配——同 iframe 至多一个在途请求）
+          if (msg.format === 'xml') {
+            // 请求关联以官方回传 message 为准，缺失/乱序/重复回包不会污染后续请求。
+            const request = typeof msg.message === 'string' ? JSON.parse(msg.message) : msg.message;
             const pending = pendingExportRef.current;
-            if (pending) pending.resolve(msg.data);
-            setContent(docKey, msg.data);
+            if (!pending || request?.action !== 'export' || request?.format !== 'xml'
+              || request?.requestId !== pending.requestId) return;
+            // 当前官方实现只回 xml；兼容旧服务的 data，但两种字段都必须经过同一请求身份校验。
+            const xml = typeof msg.xml === 'string' ? msg.xml : typeof msg.data === 'string' ? msg.data : null;
+            pending.resolve(msg.error ? null : xml);
           } else if (msg.data && msg.format !== 'xml') {
             const format = msg.format === 'svg' ? 'svg' : 'png';
             let blob: Blob;
@@ -268,7 +292,9 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
         pending.resolve(null);
       }
     };
-  }, [docKey, doc?.content, doc?.displayName, setContent, setDirty, setTabDirty, isLoaded]);
+    // 🔴 R3-06：订阅稳定——doc.content/isLoaded 变化不重建消息监听
+    //    （此前每次 autosave 都会 cleanup 终结在途导出请求；内容读取改经 getState）
+  }, [docKey, doc?.displayName, setContent, setDirty, setTabDirty]);
 
   // 触发导出请求 (SVG 或 PNG)
   const handleRequestExport = (format: 'png' | 'svg') => {

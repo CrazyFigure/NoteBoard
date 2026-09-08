@@ -25,9 +25,11 @@ describe('🔴 N10.2 编辑器实例就绪标记（requestId 贯穿）', () => {
     const attrs = new Map(ready!.attrs ?? []);
     expect(attrs.get('requestId')).toBe('req-42');
     expect(attrs.get('instanceId')).toBe('cm-1');
-    // 🔴 隐私约束：不记录完整路径——只保留尾部 40 字符
-    expect(attrs.get('docKey')).toBe(docKey.slice(-40));
-    expect(attrs.get('docKey')).not.toContain('C:/users/very/long');
+    // 🔴 R3-11 隐私约束：诊断不记录任何路径内容——只携带匿名会话序号
+    const sessionAttr = String(attrs.get('session'));
+    expect(Number.isFinite(Number(sessionAttr))).toBe(true);
+    const allKeys = [...(ready!.attrs ?? [])].map(([k]) => k);
+    expect(allKeys.some((k) => k === 'docKey' || k === 'path')).toBe(false);
 
     // 二次标记（同 docKey 重挂载/回收恢复）不再携带 requestId（一次性消费）
     // 注：takePendingSpans 是快照不清游标——取最新一条断言
@@ -37,6 +39,8 @@ describe('🔴 N10.2 编辑器实例就绪标记（requestId 贯穿）', () => {
     const attrs2 = new Map(ready2!.attrs ?? []);
     expect(attrs2.has('requestId')).toBe(false);
     expect(attrs2.get('instanceId')).toBe('cm-2');
+    // 同一会话的匿名标识稳定（两次标记同 session）
+    expect(String(attrs2.get('session'))).toBe(sessionAttr);
   });
 
   it('非队列来源（恢复/回收重挂载/新建）：就绪标记无 requestId 也正常输出', () => {

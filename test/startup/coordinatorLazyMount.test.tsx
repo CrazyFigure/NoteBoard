@@ -2,6 +2,9 @@
 // VisualKernel 与序列化以可编程替身注入，验证协调器状态机：
 // source 初始不挂载 → 切 visual 挂载并以待填充内容程序化设置；
 // visual 初始（含大文档 banner 强制）路径与切换往返的内容传递。
+// 🔴 注：全量并行跑时本文件的动态 import（TipTapEditor 真实模块图）在 worker
+//    竞争下可能超过默认 5s 超时（四轮复审记录过同样波动：首次 595/598 → 复跑
+//    598/598）；单跑稳定通过。timeout 放宽为 20s 消除资源竞争误报。
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import React, { act } from 'react';
@@ -137,7 +140,7 @@ describe('S08 协调器惰性挂载（内核替身）', () => {
     useDocumentStore.setState({ documents: new Map() });
   });
 
-  it('source 初始：内核替身不挂载、无程序化内容设置', async () => {
+  it('source 初始：内核替身不挂载、无程序化内容设置', { timeout: 20000 }, async () => {
     await seedDocument('source');
     const { root, host } = await mountCoordinator();
     await settle();
@@ -150,7 +153,7 @@ describe('S08 协调器惰性挂载（内核替身）', () => {
     }
   });
 
-  it('source→visual 切换：内核挂载一次，并以源码内容程序化填充', async () => {
+  it('source→visual 切换：内核挂载一次，并以源码内容程序化填充', { timeout: 20000 }, async () => {
     await seedDocument('source');
     const { root, host } = await mountCoordinator();
     await settle();
@@ -180,7 +183,7 @@ describe('S08 协调器惰性挂载（内核替身）', () => {
     }
   });
 
-  it('visual 初始：内核挂载并以初始内容填充', async () => {
+  it('visual 初始：内核挂载并以初始内容填充', { timeout: 20000 }, async () => {
     await seedDocument('visual');
     const { root, host } = await mountCoordinator();
     await settle();

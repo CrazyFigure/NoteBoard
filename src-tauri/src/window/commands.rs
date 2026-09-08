@@ -233,9 +233,23 @@ pub fn prepare_transfer_inner(
             if record.target_label != label {
                 return Err("只有迁移目标窗口可以确认 prepared".into());
             }
+            // 🔴 R3-08：终态先处理且不可逆——已 Committed 的幂等返回必须先于
+            //    revision 对账（不同 revision 的迟到重复确认不得把已提交事务
+            //    改回 Aborted——owner 已切给目标，回退将造成所有权与状态不一致）
+            match record.state {
+                TransferState::Committed => {
+                    // 幂等：重复回报仍返回（源, key）；调用方重复通知双方是无害的
+                    return Ok((record.source_label.clone(), record.key.clone()));
+                }
+                TransferState::Aborted => {
+                    return Err("迁移已中止".into());
+                }
+                TransferState::Preparing | TransferState::TargetPrepared => {}
+            }
             // 🔴 N01 revision 对账：目标读取的载荷版本必须与源捕获的期望版本一致。
             //    不一致说明载荷在接纳途中被替换（旧轮 peek / 篡改）——
             //    不能把过期内容提交成权威，按中止处理并清空载荷。
+            //    （仅在未提交状态下执行——见上方终态先处理）
             if let Some(actual) = actual_revision {
                 if actual != record.expected_revision {
                     let expected = record.expected_revision;
@@ -244,16 +258,6 @@ pub fn prepare_transfer_inner(
                     return Err(format!(
                         "迁移载荷修订版本不一致（期望 {expected}，目标读取 {actual}），迁移已中止"
                     ));
-                }
-            }
-            match record.state {
-                TransferState::Preparing | TransferState::TargetPrepared => {}
-                TransferState::Committed => {
-                    // 幂等：重复回报仍返回（源, key）；调用方重复通知双方是无害的
-                    return Ok((record.source_label.clone(), record.key.clone()));
-                }
-                TransferState::Aborted => {
-                    return Err("迁移已中止".into());
                 }
             }
             (
@@ -531,6 +535,35 @@ mod tests {
         assert!(record.payload.is_none());
 
         // 所有权已切换到目标窗口
+        assert_eq!(
+            crate::registry::documents::DocumentRegistry::find_owner(
+                &s.documents,
+                r"C:\t\a.md"
+            )
+            .as_deref(),
+            Some("nb-2")
+        );
+    }
+
+    /// 🔴 R3-08：已 Committed 的迁移收到不同 revision 的迟到重复确认——
+    ///    必须幂等返回成功（终态不可逆），不得被 revision 对账改回 Aborted
+    #[test]
+    fn prepare_committed_is_irreversible_despite_late_wrong_revision() {
+        let (mut s, transfer_id) = make_state_with_transfer();
+        // 先正常提交
+        assert!(prepare_transfer_inner(&mut s, "nb-2", &transfer_id, Some(3)).is_ok());
+        assert_eq!(
+            s.transfers.get(&transfer_id).unwrap().state,
+            TransferState::Committed
+        );
+        // 迟到的重复确认携带错误 revision——不得回退终态
+        let result = prepare_transfer_inner(&mut s, "nb-2", &transfer_id, Some(99));
+        assert!(result.is_ok(), "已提交的迁移对迟到错误 revision 的确认必须幂等成功");
+        assert_eq!(
+            s.transfers.get(&transfer_id).unwrap().state,
+            TransferState::Committed
+        );
+        // 所有权保持目标窗口
         assert_eq!(
             crate::registry::documents::DocumentRegistry::find_owner(
                 &s.documents,

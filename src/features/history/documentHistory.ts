@@ -292,25 +292,41 @@ export function isApplyingDocumentHistory(docKey: string): boolean {
 // undo/redo/读取当前内容/模式同步/迁移导出等入口必须先物化暂存快照，
 // 否则导航会跳过未物化的当前组。
 
-/** 编辑器侧注册的物化钩子（多实例并存；卸载时注销） */
-const materializeHooks = new Set<(docKey: string) => void>();
+/**
+ * 🔴 R3-01：钩子按注册身份管理（不是函数值）——两个实例注册同一物化函数也
+ * 各占一个条目；disposer 只释放自己的注册，一个实例卸载不影响其它实例的屏障。
+ */
+interface MaterializeHookEntry {
+  id: number;
+  hook: (docKey: string) => void;
+}
 
-/** 注册物化钩子（编辑器挂载时调用；钩子内部幂等——无暂存为 no-op） */
+/** 钩子注册表（按注册身份条目存储） */
+const materializeHooks: MaterializeHookEntry[] = [];
+let nextHookId = 0;
+
+/**
+ * 注册物化钩子（编辑器挂载时调用；钩子内部幂等——无暂存为 no-op）。
+ * 🔴 R3-01：同一函数多次注册产生多个独立条目（重复注册同一函数各自持有 disposer）。
+ */
 export function registerHistoryMaterializeHook(hook: (docKey: string) => void): () => void {
-  materializeHooks.add(hook);
+  const entry: MaterializeHookEntry = { id: ++nextHookId, hook };
+  materializeHooks.push(entry);
   return () => {
-    materializeHooks.delete(hook);
+    // 🔴 R3-01：只删除自己的注册（按条目身份，不按函数值）
+    const index = materializeHooks.indexOf(entry);
+    if (index >= 0) materializeHooks.splice(index, 1);
   };
 }
 
-/** 物化指定文档的暂存快照（无钩子/异常不阻断导航） */
+/**
+ * 物化指定文档的暂存快照。
+ * 🔴 R3-01：钩子抛出（物化失败——序列化异常等）时**中止导航**（异常向上传播），
+ * 不静默继续——导航不能跳过或丢弃未物化的当前组。
+ */
 function materializePending(docKey: string): void {
-  for (const hook of materializeHooks) {
-    try {
-      hook(docKey);
-    } catch (error) {
-      console.error('[NoteBoard] 物化暂存快照失败（历史导航继续）:', error);
-    }
+  for (const entry of materializeHooks) {
+    entry.hook(docKey);
   }
 }
 

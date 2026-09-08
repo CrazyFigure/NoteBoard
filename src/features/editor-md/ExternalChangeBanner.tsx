@@ -3,6 +3,8 @@
 // 详见 docs/09-开发路线图.md 13.1-13.3
 
 import { useDocumentStore } from '../../stores/documentStore';
+// 🔴 R3-10：重新加载/覆盖走真实处理链（读盘应用/受保护保存）——不再只清状态
+import { reloadFromDisk, overwriteFromEditor } from '../external/externalChangeActions';
 
 interface ExternalChangeBannerProps {
   docKey: string;
@@ -10,20 +12,19 @@ interface ExternalChangeBannerProps {
 
 export function ExternalChangeBanner({ docKey }: ExternalChangeBannerProps) {
   const doc = useDocumentStore((s) => s.getDocument(docKey));
-  const setExternalStatus = useDocumentStore((s) => s.setExternalStatus);
 
   if (!doc || !doc.externalStatus || doc.externalStatus === 'clean') {
     return null;
   }
 
+  // 🔴 R3-10：覆盖 = 受保护保存当前权威内容（失败保持冲突状态，可重试）
   const handleOverwrite = () => {
-    // 用当前内容覆盖磁盘文件
-    setExternalStatus(docKey, 'clean');
+    void overwriteFromEditor(docKey);
   };
 
-  const handleReload = async () => {
-    // 从磁盘重新加载
-    setExternalStatus(docKey, 'clean');
+  // 🔴 R3-10：重新加载 = 确认并应用磁盘内容（正文/基线/历史/内核对齐；失败保持冲突）
+  const handleReload = () => {
+    void reloadFromDisk(docKey);
   };
 
   if (doc.externalStatus === 'modified') {

@@ -31,12 +31,13 @@ import {
 import { handleTransformCase } from '../toolbar/textOps';
 import { getMdTipTapEditor, getMdSourceView } from './editorInstances';
 import { useWindowStore } from '../../stores/windowStore';
+import { useDocumentStore } from '../../stores/documentStore';
 import { getDocumentRevision } from '../../core/editor/editorRegistry';
 import { getSessionGeneration } from '../../features/session/documentSession';
 // 🔴 R03：flush 镜像写入经统一提交屏障
 // 🔴 J2：visual 模式先物化暂存快照（输入热路径只暂存不可变引用，flush 时序列化）
 import { submitCapturedContent } from '../session/documentSession';
-import { flushPendingVisualSnapshot, flushPendingSourceSnapshot } from './visualSnapshot';
+import { flushPendingVisualSnapshot, flushPendingSourceSnapshot, hasPendingSnapshot } from './visualSnapshot';
 
 /** 读取文档当前视图模式（无 tab 信息时默认 visual） */
 function currentMode(docKey: string): 'visual' | 'source' {
@@ -173,6 +174,26 @@ export function createMarkdownEditorCapabilities(
       const editor = getMdTipTapEditor(docKey);
       // 可视化内核未挂载（source 初始模式）时无实例状态需要保护
       return editor ? !editor.view.composing : true;
+    },
+    // 🔴 R4-01/D03：热切换保活判定——是否存在未物化/未同步的权威输入：
+    //    J2 暂存（source/visual pending）或镜像与文档记录不一致（未确认脏内容）。
+    //    无未确认输入的保留实例不执行全文 flush（往返切换零序列化成本）。
+    hasUnconfirmedInput: () => {
+      if (hasPendingSnapshot(docKey)) return true;
+      const doc = useDocumentStore.getState().getDocument(docKey);
+      if (!doc) return false;
+      // 镜像缺失（未知正文）视为未确认——必须走完整屏障
+      if (doc.content === null) return true;
+      if (currentMode(docKey) === 'source') {
+        const view = getMdSourceView(docKey);
+        if (!view) return false;
+        return view.state.doc.toString() !== doc.content;
+      }
+      const editor = getMdTipTapEditor(docKey);
+      if (!editor) return false;
+      // visual 内核正文以镜像为准（每键经 flushDocument 提交已确认）；暂存 pending
+      // 已在上面的 hasPendingSnapshot 覆盖，无暂存即已同步
+      return false;
     },
     search,
     codeOps,

@@ -97,6 +97,13 @@ export interface EditorCapabilities {
   /** 是否可安全回收渲染实例（S11 起逐类型验证接入；未验证类型必须返回 false） */
   canSuspend(): boolean;
   /**
+   * 🔴 R4-01：该实例是否存在未确认的权威输入（J2 暂存未物化 / 内核正文与
+   * 镜像不同步）。回收调度用它区分"需要全文 flush 的驱逐准备"与"可直接保留/
+   * 跳过的热实例"——未驱逐者不再为回收准备付出全文序列化成本。
+   * 未提供时保守视为 true（调用方走完整 flush 屏障）。
+   */
+  hasUnconfirmedInput?(): boolean;
+  /**
    * 捕获视图状态（S11 回收流程；同步读取内核状态，不含正文）。
    * 返回类型见 editorTypes 底部的判别联合；不可恢复的类型返回 undefined。
    */

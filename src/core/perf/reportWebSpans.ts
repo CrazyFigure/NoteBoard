@@ -23,17 +23,31 @@ async function isPerfEnabled(): Promise<boolean> {
   return perfEnabledCache;
 }
 
-/** 把尚未上报的 spans 发给 Rust 侧统一落盘；无挂起数据或诊断关闭时为 no-op */
-export async function reportWebSpans(reason: string): Promise<void> {
+/** 把尚未上报的 spans 发给 Rust 侧统一落盘；无挂起数据或诊断关闭时为 no-op。
+ * 🔴 R3-11：上报单运行者——并发调用排队串行执行（每次运行重新快照待发批次），
+ *    避免"两个并发 report 发送同一批、再各自把游标加 count"跳过期间的新事件。 */
+let reportChain: Promise<void> = Promise.resolve();
+
+export function reportWebSpans(reason: string): Promise<void> {
+  reportChain = reportChain.then(() => runReport(reason)).catch(() => {
+    // 诊断上报失败完全静默，绝不影响业务
+  });
+  return reportChain;
+}
+
+async function runReport(reason: string): Promise<void> {
   const pending = takePendingSpans();
   if (pending.spans.length === 0) return;
   if (!(await isPerfEnabled())) return;
   try {
     const label = getCurrentWindow().label;
-    await ipc.recordWebSpans(label, pending.spans);
-    // 🔴 N10：游标按实际发送的批次数量推进——本函数 await 期间新增的事件
-    //    不在本批快照内，不得被跳过（下一批继续上报）
-    markReported(pending.spans.length);
+    // 重新快照（排队等待期间可能新增）——按实际发送数量确认游标
+    const current = takePendingSpans();
+    const batch = current.spans.length > 0 ? current.spans : pending.spans;
+    const count = current.spans.length > 0 ? current.spans.length : pending.spans.length;
+    await ipc.recordWebSpans(label, batch);
+    // 🔴 N10：游标按实际发送批次数量推进——发送期间新增的事件不在批内，不跳过
+    markReported(count);
     await ipc.dumpPerfSpans(reason);
   } catch {
     // 诊断上报失败完全静默，绝不影响业务；未确认的批次留在游标之后待下次上报

@@ -16,7 +16,8 @@ import {
   __pastedCells,
 } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
-import { parseClipboardMatrix } from '../bitable/bitableUtils';
+// 共用原样的纯 TSV/CSV 解析，不让 Markdown 首开依赖多维表格通用模块。
+import { parseClipboardMatrix } from '../../core/clipboardMatrix';
 
 export const tableClipboardPluginKey = new PluginKey('tableClipboard');
 

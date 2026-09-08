@@ -101,10 +101,12 @@ while (stack.length > 0) {
   }
   const content = fs.readFileSync(filePath, 'utf8');
   const [imports] = parse(content);
-  // 相对导入规范到 dist 根的 POSIX 风格路径（相对导入者所在目录解析）
+  // 相对导入规范到 dist 根的 POSIX 风格路径（相对导入者所在目录解析）。
+  // 🔴 R3-11：识别全部本地相对边（'./' 与 '../'——子目录 chunk 的父级引用
+  //    此前被漏掉，父级相对导入夹具因此放行）
   const importerDir = path.posix.dirname(file);
   const staticImports = imports
-    .filter((item) => item.d === -1 && item.n?.startsWith('./'))
+    .filter((item) => item.d === -1 && (item.n?.startsWith('./') || item.n?.startsWith('../')))
     .map((item) => path.posix.normalize(path.posix.join(importerDir, item.n)));
   visited.set(file, { bytes: fs.statSync(filePath).size, staticImports });
   for (const dep of staticImports) {
@@ -138,15 +140,30 @@ for (const file of closureFiles) {
 const moduleSourcesPath = path.join(distDir, '.module-sources.json');
 let moduleSources = null;
 if (fs.existsSync(moduleSourcesPath)) {
-  moduleSources = JSON.parse(fs.readFileSync(moduleSourcesPath, 'utf8'));
+  try {
+    moduleSources = JSON.parse(fs.readFileSync(moduleSourcesPath, 'utf8'));
+    if (!moduleSources || typeof moduleSources !== 'object' || Array.isArray(moduleSources)) {
+      resolveErrors.push('dist/.module-sources.json 格式错误（期望 chunk→{packages} 对象）');
+      moduleSources = null;
+    }
+  } catch (e) {
+    resolveErrors.push(`dist/.module-sources.json 解析失败: ${e.message}`);
+    moduleSources = null;
+  }
 } else {
   resolveErrors.push('缺少构建模块清单 dist/.module-sources.json（旧构建流程产物；请用当前 vite 配置重新 pnpm build）');
 }
 if (moduleSources) {
   for (const file of closureFiles) {
-    const packages = moduleSources[file]?.packages ?? [];
+    // 🔴 R3-11：静态闭包中的每个 chunk 都必须有来源条目——缺失即无法判定来源，
+    //    失败关闭（不能把"未知来源"当作"无禁止依赖"放行）
+    const entry = moduleSources[file];
+    if (!entry || !Array.isArray(entry.packages)) {
+      resolveErrors.push(`模块来源清单缺少闭包 chunk 条目: ${file}（无法判定包来源——请用当前 vite 配置重新构建）`);
+      continue;
+    }
     for (const { name, label } of FORBIDDEN_PACKAGES) {
-      if (packages.includes(name)) {
+      if (entry.packages.includes(name)) {
         violations.push({ file, label, bytes: visited.get(file).bytes, via: `module-source:${name}` });
         break;
       }
