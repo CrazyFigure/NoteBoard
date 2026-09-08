@@ -6,11 +6,12 @@
 //      在同步作用域内加锁/解锁，不再用 50ms 时间窗忽略真实输入。
 //   3. 超链接弹窗、右键菜单、气泡菜单等 visual 专属 UI 全部内聚在本组件。
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEditorActive } from '../../core/editor/EditorActivityContext';
 import { EditorContent, useEditor } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
 import { undoDepth as prosemirrorUndoDepth } from '@tiptap/pm/history';
-import { on, off } from '../../core/emitter';
+import { on, off, emit } from '../../core/emitter';
 import { registerShortcut } from '../../core/shortcuts';
 import { buildExtensions } from './extensions';
 import { getMarkdownManager } from './serialize';
@@ -47,6 +48,22 @@ interface VisualKernelProps {
   diskTimerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>;
 }
 
+// 🔴 P0-2（用户真机 4GB 内存泄漏根因）：链接点击回调必须在**模块级工厂**创建。
+// 组件内创建的闭包与组件的其他闭包（handleOpenLinkModal 等）共享 V8 Context 作用域——
+// 该 Context 持有被闭包捕获的 editor 变量槽；而 LinkClickHandler 的 options 处于
+// schema→NodeType 链上（prosemirror 模块级 ResolveCache 经最近 resolve 的文档节点强持有
+// NodeType）——组件闭包会令每个已销毁的 editor 从模块级根可达而永不回收：每次切换/
+// 回收重建泄漏一个完整 editor+schema+扩展对象圈（真机频繁切换累积至 GB 级）。
+// 工厂闭包只捕获参数作用域（docKey 字符串），与组件 Context 无关——经隔离浏览器
+// WeakRef 存活实验证实：组件闭包 60/60 泄漏，工厂闭包 0/60。
+// 点击链路：LinkClickHandler → emit('open-link-modal') → 组件内 on('open-link-modal')
+// 监听（按 docKey 过滤）→ handleOpenLinkModal（组件内，可安全捕获 editor）。
+function makeLinkModalOpener(docKey: string): () => void {
+  return () => {
+    emit('open-link-modal', { key: docKey });
+  };
+}
+
 export function VisualKernel({
   docKey,
   visible,
@@ -56,6 +73,12 @@ export function VisualKernel({
   storeTimerRef,
   diskTimerRef,
 }: VisualKernelProps) {
+  const active = useEditorActive();
+  // 扩展只随文档身份构建一次；输入、焦点、菜单和标签激活都不重新分配整套扩展。
+  // 链接回调继续由模块级工厂创建，不能重新引入持有 editor 的组件闭包。
+  const extensions = useMemo(() => buildExtensions(docKey, {
+    onOpenLinkModal: makeLinkModalOpener(docKey),
+  }), [docKey]);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
   // 超链接插入与编辑弹窗状态
   const [linkModalState, setLinkModalState] = useState<{
@@ -66,16 +89,13 @@ export function VisualKernel({
     from: number;
     to: number;
   } | null>(null);
-  // LinkClickHandler 扩展在单击超链接时通过该引用唤起弹窗（需绕过扩展闭包）
-  const openLinkModalRef = useRef<() => void>(() => {});
 
   // 初始化 TipTap 编辑器
   const editor = useEditor({
-    extensions: buildExtensions(docKey, {
-      onOpenLinkModal: () => {
-        openLinkModalRef.current();
-      },
-    }),
+    // 🔴 P0-2：onOpenLinkModal 必须用模块级工厂（makeLinkModalOpener 详见其注释）——
+    //    禁止在此传入组件内创建的闭包（含箭头函数包裹 ref），否则每次回收重建
+    //    泄漏一个完整 editor 圈（真机内存持续增长根因）
+    extensions,
     content: '',
     onUpdate: ({ editor, transaction }) => {
       // 🔴 程序事务识别：仅忽略初始化/程序化设置内容的事务（同步作用域锁）；
@@ -230,7 +250,8 @@ export function VisualKernel({
       to,
     });
   }, [editor]);
-  openLinkModalRef.current = handleOpenLinkModal;
+  // 🔴 P0-2：openLinkModalRef 桥接已移除——LinkClickHandler 现经 emit('open-link-modal')
+  //    触发下方监听（组件内闭包不再传入 extension options，防 editor 圈泄漏）
 
   // 监听来自顶部操作栏或外部的唤起超链接弹窗请求
   useEffect(() => {
@@ -345,10 +366,10 @@ export function VisualKernel({
         });
       }}
     >
-      {editor && <EditorBubbleMenu editor={editor} onOpenLinkModal={handleOpenLinkModal} />}
-      {editor && <TableToolbar editor={editor} />}
-      {editor && <BlockDragHandle editor={editor} />}
-      {contextMenu && editor && (
+      {active && visible && editor && <EditorBubbleMenu editor={editor} onOpenLinkModal={handleOpenLinkModal} />}
+      {active && visible && editor && <TableToolbar editor={editor} />}
+      {active && visible && editor && <BlockDragHandle editor={editor} />}
+      {active && visible && contextMenu && editor && (
         <EditorContextMenu
           editor={editor}
           position={{ x: contextMenu.x, y: contextMenu.y }}
@@ -357,7 +378,7 @@ export function VisualKernel({
           onOpenLinkModal={handleOpenLinkModal}
         />
       )}
-      {linkModalState && (
+      {active && visible && linkModalState && (
         <LinkModal
           isOpen={linkModalState.isOpen}
           initialText={linkModalState.initialText}

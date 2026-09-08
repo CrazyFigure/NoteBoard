@@ -36,25 +36,38 @@ import { noteSelfWrite } from '../explorer/directoryWatcher';
 //   2. documents Map 中 key 从无到有（同路径新会话建立——含测试的 remove+upsert 路径）
 //   3. migrateDocumentSession（另存为：旧 key 作废、新 key 换代）
 // instanceId 只表示同一会话内的编辑器挂载代际，不能兼任会话身份。
+//
+// 🔴 R3-03 步骤 4：可清理设计——全局单调 token + 活动会话表。清理会话时从
+// 活动表移除（后续 get 返回 0），但**全局 token 已发出且永不回退**——清理后
+// 旧 token 与"无会话（0）"比较即失效，不误碰新会话；活动表不随访问路径增长。
 
-/** docKey → 会话代际（单调递增；0 表示从未建立） */
-const sessionGenerations = new Map<string, number>();
+/** 全局单调会话 token（永不回退；活动会话表 key 化后的判定基准） */
+let nextSessionToken = 0;
 
-/** 读取会话代际（无记录为 0） */
+/** 活动会话表：docKey → 当前代际（清理后移除；重建时分配新 token） */
+const activeSessionGenerations = new Map<string, number>();
+
+/** 读取会话代际（无活动会话为 0——与任何已发放 token 不等，旧任务自然作废） */
 export function getSessionGeneration(docKey: string): number {
-  return sessionGenerations.get(docKey) ?? 0;
+  return activeSessionGenerations.get(docKey) ?? 0;
 }
 
 /** 推进会话代际（作废全部持有旧代际的在途任务）；返回新代际 */
 function advanceSessionGeneration(docKey: string): number {
-  const next = (sessionGenerations.get(docKey) ?? 0) + 1;
-  sessionGenerations.set(docKey, next);
+  const next = ++nextSessionToken;
+  activeSessionGenerations.set(docKey, next);
   return next;
+}
+
+/** 🔴 R3-03：会话资源清理——活动表条目移除（get 回 0；后续 in-flight 任务因
+ *    token ≠ 0 全部作废；重建时 documents 订阅分配新 token，不与旧 token 撞） */
+function releaseSessionGeneration(docKey: string): void {
+  activeSessionGenerations.delete(docKey);
 }
 
 /** 会话代际是否仍是当前代（任务执行时的统一校验） */
 function isSessionCurrent(docKey: string, generation: number): boolean {
-  return sessionGenerations.get(docKey) === generation;
+  return activeSessionGenerations.get(docKey) === generation;
 }
 
 // 🔴 N04：documents 中 key 从无到有 = 同路径新会话建立 → 作废旧任务。
@@ -62,7 +75,20 @@ function isSessionCurrent(docKey: string, generation: number): boolean {
 useDocumentStore.subscribe((state, prev) => {
   if (state.documents === prev.documents) return;
   for (const key of state.documents.keys()) {
-    if (!prev.documents.has(key)) advanceSessionGeneration(key);
+    // 🔴 R3-03/C08：documents 中 key 从无到有 = 同路径新会话建立——无条件分配
+    //    新 token（即使活动表仍有旧条目：关闭时可能因 closing/写队列未释放）。
+    //    旧 token 与新 token 不等 → 旧关闭/写任务自动失效，不越权新会话。
+    if (!prev.documents.has(key)) {
+      advanceSessionGeneration(key);
+    }
+  }
+  // 🔴 R3-03：documents 中 key 消失且无活动代际消费者时清理活动表
+  //    （activeSessionGenerations 的条目由 dispose/migrate 显式释放；
+  //    这里兜底移除既不在 documents 也不在写队列/closing 的孤立条目）
+  for (const key of [...activeSessionGenerations.keys()]) {
+    if (!state.documents.has(key) && !writeQueues.has(key) && !closingGenerations.has(key)) {
+      releaseSessionGeneration(key);
+    }
   }
 });
 
@@ -111,6 +137,23 @@ export function disposeDocumentSession(docKey: string): void {
   mirroredRevisions.delete(docKey);
   savedRevisions.delete(docKey);
   advanceSessionGeneration(docKey);
+  // 🔴 R3-03：孤立会话表清理——关闭后既无 documents 记录也无在途写/closing 时
+  //    从活动表移除（get 回 0）；documents 订阅的兜底清理同样覆盖此路径
+  releaseIfOrphaned(docKey);
+}
+
+// 🔴 R4-05/D04：孤立条目清理（documents 订阅兜底与显式释放共用）——
+//    既不在 documents、也不在写队列、也无 closing 条目时从活动表移除。
+//    closing 条目由 disposeTabLifecycleAsync 的 finally 释放后调用
+//    releaseIfOrphaned 完成回落（closing 存在期间不清理——drain 事务进行中）。
+function releaseIfOrphaned(docKey: string): void {
+  if (
+    !useDocumentStore.getState().documents.has(docKey)
+    && !writeQueues.has(docKey)
+    && !closingGenerations.has(docKey)
+  ) {
+    releaseSessionGeneration(docKey);
+  }
 }
 
 // ── 统一内容提交屏障（R03） ──
@@ -171,7 +214,75 @@ export async function flushDocument(
   return captured;
 }
 
-// ── 每文档串行写队列 ──
+// ── 🔴 R3-05：关闭状态（closing）——停止接纳写任务 ──
+//
+// 统一异步关闭事务的第一步（在任何 await 之前同步完成）：进入 closing 后，
+// 该会话的写队列不再接纳新任务（旧任务仍可完成排空——在途 I/O 不中断）。
+// 🔴 R4-05/D04/D05：closing 绑定**具体会话代际**（不是路径永久墓碑）——
+//   1. beginClosing 总是记录**当前**代际（重开后的新会话第二次关闭时，关闭
+//      代际随新会话推进——旧值不残留，第二次关闭同样阻止该会话的迟到写入）。
+//   2. 关闭事务完成（drain + 条件注销后）**释放 closing 条目**（不再永久保留）；
+//      旧会话任务的作废由"活动表已清除（get 回 0）≠ 旧任务捕获的 token"实现
+//      （isSessionCurrent 校验），无需靠 closing 墓碑兜底。
+//   3. 同代重复调用幂等（值相同写入无操作）；释放后（条目不存在）再次进入
+//      照常记录。
+
+/** docKey → 关闭中的会话代际（条目存在即 closing；值 = 进入 closing 时的代际） */
+const closingGenerations = new Map<string, number>();
+
+/**
+ * 进入关闭状态（停止接纳写任务）。
+ * 🔴 R4-05：总是记录当前代际——同代重复调用幂等（同值无操作）；
+ *    会话换代后的新关闭事务以新代际覆盖（第二次关闭保护，D05）。
+ */
+export function beginClosing(docKey: string): void {
+  const current = getSessionGeneration(docKey);
+  // 同代幂等：已是当前代际则不变（不重置任何进行中的关闭事务）；换代则更新
+  if (closingGenerations.get(docKey) !== current) {
+    closingGenerations.set(docKey, current);
+  }
+}
+
+/**
+ * 退出关闭状态（关闭事务完成——drain + 条件注销后释放条目）。
+ * 🔴 R4-05：释放后旧会话任务靠活动表 token 校验作废（不再保留 closing 墓碑，
+ *    30 个路径关闭后 closing 表回落，D04）；只清除**同代**条目（换代后的
+ *    新关闭事务不被旧事务的 finally 误清）。
+ */
+export function endClosing(docKey: string): void {
+  // 无条件移除（调用方保证本事务持有该代际；换代场景由 beginClosing 覆盖
+  // 已使旧条目失效——新条目记录新代际，此处的移除若发生在换代后则移除的
+  // 是新事务条目，因此调用方必须在 finally 中先比对代际）
+  closingGenerations.delete(docKey);
+}
+
+/** 该会话是否处于关闭中（closing 期间——drain 尚未完成）。
+ * 判定：条目存在且当前代际 = 关闭代际（代际已推进说明是重开的新会话——
+ * 恢复接纳；条目已释放说明关闭事务完成——新任务靠 token 校验兜底）。
+ */
+export function isClosing(docKey: string): boolean {
+  const closedAt = closingGenerations.get(docKey);
+  if (closedAt === undefined) return false;
+  // 条目记录的是进入 closing 时的代际：当前代际相同 → 本会话 closing 中；
+  // 代际已推进（同路径重开建立新会话）→ 新会话不受旧 closing 约束
+  return getSessionGeneration(docKey) === closedAt;
+}
+
+/** 🔴 R4-05：读取 closing 条目的代际（无条目 undefined；关闭事务释放判断用） */
+export function getClosingGeneration(docKey: string): number | undefined {
+  return closingGenerations.get(docKey);
+}
+
+/**
+ * 🔴 R4-05/D04：closing 条目释放后的活动表回落——disposeTabLifecycleAsync
+ * 在 finally 释放 closing 后调用（closing 存在期间活动表条目被保留以支撑
+ * drain 事务的代际校验；事务完成后若已孤立则彻底清理，不长期泄漏）。
+ */
+export function releaseSessionAfterClosing(docKey: string): void {
+  releaseIfOrphaned(docKey);
+}
+
+/** 每文档串行写队列 ──
 
 /** docKey → 上一次写任务（settled），新任务串接其后 */
 const writeQueues = new Map<string, Promise<unknown>>();
@@ -187,6 +298,11 @@ export function enqueueDocumentWrite<T>(
   docKey: string,
   writer: () => Promise<T>,
 ): Promise<T> {
+  // 🔴 R3-05：closing 状态停止接纳——窗口整体关闭/标签关闭期间的新写任务被拒绝
+  //    （旧任务正常排空；任务内部代际校验保证旧会话任务不越权）
+  if (isClosing(docKey)) {
+    return Promise.reject(new Error(`文档正在关闭，拒绝新的写任务: ${docKey}`));
+  }
   const previous = writeQueues.get(docKey) ?? Promise.resolve();
   const current = previous.then(writer);
   // 队列链只接 settled 状态：单个失败不断链，也不吞掉调用方错误
@@ -317,6 +433,9 @@ export async function writeDocumentWithBarrier(
   docKey: string,
   content: string,
 ): Promise<boolean> {
+  // 🔴 R3-05/C09：closing 状态的旧会话拒绝写盘（返回 false——调用方得到明确失败，
+  //    不以异常炸保存链；排空中的在途任务仍正常完成）
+  if (isClosing(docKey)) return false;
   const store = useDocumentStore.getState();
   const doc = store.getDocument(docKey);
   if (!doc) return false;
@@ -351,4 +470,9 @@ export async function writeDocumentWithBarrier(
     await onDocumentSaved(docKey, content);
     return true;
   });
+}
+
+/** 仅供测试：读取会话/队列/关闭内部状态 */
+export function __debugSessionState(): { active: Map<string, number>; queues: Map<string, unknown>; closing: Map<string, number> } {
+  return { active: new Map(activeSessionGenerations), queues: new Map(writeQueues), closing: new Map(closingGenerations) };
 }

@@ -25,12 +25,8 @@ import {
 import { EditorHost } from '../features/editor-host/EditorHost';
 // 🔴 S10：会话恢复的轻量标签按需加载（激活时才读盘）
 import { loadRestoredTab } from '../features/session/closedWindowSession';
-// 🔴 S11：编辑器回收调度（活动文档 + 最近 1 个已验证可回收实例；其余后台标签不渲染）
-import {
-  suspendEditorInstance,
-  markClosed,
-  getKeepAliveKey,
-} from '../features/session/editorSuspension';
+// 用户已确认：已打开内核保留至关闭，切换不进入回收调度。
+import { EditorActivityContext } from '../core/editor/EditorActivityContext';
 import { OutlinePanel } from '../features/outline/OutlinePanel';
 import { UnsavedGuardDialog } from '../features/editor-code/UnsavedGuardDialog';
 import { Explorer } from '../features/explorer/Explorer';
@@ -101,16 +97,6 @@ export function AppShell(_props: { children?: React.ReactNode }) {
   const activeKey = useWindowStore((s) => s.activeKey);
   // 🔴 迁移保护中的文档：阻断编辑输入（pointerEvents），避免迁移期间新修改无法同步到目标
   const transferringKeys = useWindowStore((s) => s.transferringKeys);
-  // 🔴 S11：当前挂载编辑器的标签集合（活动 + 保活 + 打开未回收；驱动收敛重渲染）
-  const [mountedEditorKeys, setMountedEditorKeys] = useState<Set<string>>(() => new Set());
-  // 渲染集合的 ref 镜像（收敛异步流程读取最新集合，不依赖过期闭包）
-  const mountedEditorKeysRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    mountedEditorKeysRef.current = mountedEditorKeys;
-  }, [mountedEditorKeys]);
-  // 上一个活动标签（回收调度用；ref 跨渲染保存）
-  const prevActiveKeyRef = useRef<string | null>(null);
-
   const {
     explorerVisible,
     explorerWidth,
@@ -231,84 +217,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
   // 🔴 S05：已移除 AppShell 的全局 Drawio 空闲预热（E 节 8：取消无意图的全编辑器空闲
   //    预热；.drawio 首次打开时由编辑器自身按需加载，远程资源耗时单独统计）
 
-  // 🔴 S11：标签集合变化——新打开的非懒标签进入渲染集合；关闭的标签清恢复状态
-  useEffect(() => {
-    setMountedEditorKeys((current) => {
-      const currentKeys = new Set(current);
-      const liveKeys = new Set(tabs.map((t) => t.key));
-      let changed = false;
-      // 新增（懒标签由加载完成后进入集合；此处只加非懒）
-      for (const tab of tabs) {
-        if (!currentKeys.has(tab.key) && !tab.lazySource) {
-          currentKeys.add(tab.key);
-          changed = true;
-        }
-      }
-      // 移除
-      for (const key of [...currentKeys]) {
-        if (!liveKeys.has(key)) {
-          currentKeys.delete(key);
-          markClosed(key);
-          changed = true;
-        }
-      }
-      return changed ? currentKeys : current;
-    });
-  }, [tabs]);
-
-  // 🔴 S11：活动标签切走 → 旧实例回收（canSuspend → flush → 视图状态捕获 → 收敛渲染集合）
-  useEffect(() => {
-    const previous = prevActiveKeyRef.current;
-    prevActiveKeyRef.current = activeKey;
-    if (!previous || previous === activeKey || !activeKey) {
-      if (activeKey) {
-        // 激活标签确保在渲染集合（懒标签加载完成或用户切回）
-        setMountedEditorKeys((current) => {
-          if (current.has(activeKey)) return current;
-          const next = new Set(current);
-          next.add(activeKey);
-          return next;
-        });
-      }
-      return;
-    }
-    // 新活动标签进入集合（先渲染，旧标签暂保活等待回收完成）
-    setMountedEditorKeys((current) => {
-      const next = new Set(current);
-      next.add(activeKey);
-      return next;
-    });
-    void (async () => {
-      // 🔴 R05：收敛逐项授权——对每个非活动/非保活的挂载标签单独执行回收流程，
-      //    只有 suspendEditorInstance 明确返回 true（canSuspend + flush + 版本校验通过）
-      //    的才移出渲染集合；不可回收类型（canSuspend=false）保留挂载（pinned），
-      //    不能被其它项的成功驱逐带走。
-      const ok = await suspendEditorInstance(previous);
-      if (!ok) return;
-      const candidates = [...mountedEditorKeysRef.current].filter(
-        (key) => key !== useWindowStore.getState().activeKey && key !== getKeepAliveKey() && key !== previous,
-      );
-      const removable = new Set<string>();
-      for (const key of candidates) {
-        const itemOk = await suspendEditorInstance(key);
-        if (itemOk) removable.add(key);
-      }
-      // 🔴 N08：提交时重新读取最新 activeKey/keep（多个 await 期间用户可能已切换/进 Home）
-      setMountedEditorKeys((current) => {
-        const activeNow = useWindowStore.getState().activeKey;
-        const keepNow = getKeepAliveKey();
-        const next = new Set<string>();
-        for (const key of current) {
-          // 保留：活动 + 最近保活 + 未通过回收授权的（不可回收 pinned）
-          if (key === activeNow || key === keepNow || !removable.has(key)) {
-            next.add(key);
-          }
-        }
-        return next;
-      });
-    })();
-  }, [activeKey]);
-
+  // 已加载正文的标签直接保持挂载；恢复描述符仍在首次激活后才加载正文与内核。
   // 🔴 S10：激活会话恢复的轻量标签时按需加载正文（读盘/注册/编辑器加载）
   useEffect(() => {
     if (!activeKey) return;
@@ -678,17 +587,15 @@ export function AppShell(_props: { children?: React.ReactNode }) {
                             >
                               <span>正在加载「{tab.displayName}」…</span>
                             </div>
-                          ) : isTabActive || mountedEditorKeys.has(tab.key) ? (
-                            // 🔴 S05：统一懒加载宿主（按 kind+language 选择入口；
-                            //    Suspense fallback/错误重试由 EditorHost 提供）
-                            <EditorHost
-                              tab={tab}
-                              onEditorReady={isTabActive ? setActiveEditor : undefined}
-                              unsupportedView={null}
-                            />
                           ) : (
-                            // 🔴 S11：后台标签已回收（内容/历史在 session 中；切回时恢复实例）
-                            <div style={{ height: '100%', background: 'var(--editor-bg)' }} />
+                            // 用户确认的保活策略：稳定宿主随标签关闭才卸载，后台只暂停展示性工作。
+                            <EditorActivityContext.Provider value={isTabActive}>
+                              <EditorHost
+                                tab={tab}
+                                onEditorReady={isTabActive ? setActiveEditor : undefined}
+                                unsupportedView={null}
+                              />
+                            </EditorActivityContext.Provider>
                           )}
                         </div>
                       );

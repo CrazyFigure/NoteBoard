@@ -1,19 +1,24 @@
 // NoteBoard 编辑器宿主（S05 懒加载边界，docs/启动性能与低内存根治计划.md §E）
 //
 // 🔴 职责与不变量：
-//   1. 按 kind + language 选择懒加载入口，Suspense + ErrorBoundary 包裹；
+//   1. 按 kind + language 选择资源入口，经稳定订阅驱动 loading/ready/error；
 //      fallback 有目标文件名、稳定背景/尺寸；标题栏与关闭保护不受加载影响。
-//   2. lazy 定义稳定位于模块作用域；每次 render 不新建导致状态重置。
-//   3. 失败恢复同时考虑 loader Promise 与 React.lazy 已缓存的 rejection：
-//      以 retryGeneration 重建失败资源包装及错误边界（key 强制重挂载），成功项复用。
+//   2. ready 时直接渲染缓存组件；重渲染与成功资源复用不进入模块加载占位。
+//   3. 失败恢复替换失败请求，但保留类型级订阅；retryGeneration 只重置渲染错误边界。
 //   4. 引擎对某些模块求值失败也会缓存：重试仍失败时保留文档并提示安全重启/修复，
 //      不强制刷新窗口丢稿。
 //   5. 不切换文档状态表示（documentStore 语义不变），不改变后台标签挂载策略（S11 处理）。
 
-import React, { Component, Suspense, useMemo, useState, type ErrorInfo, type ReactNode } from 'react';
+import React, { Component, useState, useCallback, useEffect, useRef, useSyncExternalStore, type ErrorInfo, type ReactNode } from 'react';
 import type { Editor } from '@tiptap/core';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
-import { createLazyEditor, resolveEditorKind } from './editorLoaders';
+import {
+  resolveEditorKind,
+  subscribeEditorResource,
+  getEditorResourceSnapshot,
+  retryEditorLoad,
+  noteEditorFallbackShown,
+} from './editorLoaders';
 
 interface EditorHostProps {
   tab: Tab;
@@ -114,6 +119,13 @@ class EditorErrorBoundary extends Component<EditorErrorBoundaryProps, EditorErro
 // ── 加载中 fallback（目标文件名 + 稳定背景尺寸） ──
 
 function EditorLoadingFallback({ displayName }: { displayName: string }): ReactNode {
+  // 只统计真正挂载的加载占位，避免 render 重试及 StrictMode 重演把一次展示计成多次。
+  const countedRef = useRef(false);
+  useEffect(() => {
+    if (countedRef.current) return;
+    countedRef.current = true;
+    noteEditorFallbackShown();
+  }, []);
   return (
     <div
       style={{
@@ -145,7 +157,80 @@ function EditorLoadingFallback({ displayName }: { displayName: string }): ReactN
   );
 }
 
+// ── 🔴 P0-1b：加载错误视图（资源 error 状态的可见错误 + 安全重试） ──
+
+function EditorLoadErrorView({
+  displayName,
+  error,
+  onRetry,
+  onClose,
+}: {
+  displayName: string;
+  error: unknown;
+  onRetry: () => void;
+  onClose: () => void;
+}): ReactNode {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+        width: '100%',
+        height: '100%',
+        padding: 24,
+        background: 'var(--editor-bg, #fff)',
+        color: 'var(--editor-text, #1e293b)',
+        fontFamily: 'var(--ui-font-family, sans-serif)',
+        userSelect: 'text',
+      }}
+    >
+      <div style={{ fontSize: 14, color: '#dc2626' }}>「{displayName}」的编辑器加载失败</div>
+      <div
+        style={{
+          fontSize: 12,
+          color: 'var(--editor-text-muted, #64748b)',
+          maxWidth: 480,
+          textAlign: 'center',
+          wordBreak: 'break-word',
+        }}
+      >
+        {error instanceof Error ? error.message : String(error ?? '未知错误')}
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          type="button"
+          className="nb-btn-primary"
+          style={{ padding: '6px 16px', fontSize: 13 }}
+          onClick={onRetry}
+        >
+          重试加载
+        </button>
+        <button
+          type="button"
+          style={{ padding: '6px 16px', fontSize: 13, cursor: 'pointer' }}
+          onClick={onClose}
+        >
+          关闭标签
+        </button>
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--editor-text-muted, #94a3b8)' }}>
+        文档内容未受影响；多次重试仍失败时建议保存后重启应用
+      </div>
+    </div>
+  );
+}
+
 // ── EditorHost ──
+
+/** unsupported 类型的空资源快照（引用稳定——useSyncExternalStore 不触发重渲染） */
+const unsupportedSnapshot = {
+  status: 'loading' as const,
+  component: null,
+  error: null,
+};
 
 export function EditorHost({
   tab,
@@ -156,13 +241,23 @@ export function EditorHost({
   const [retryGeneration, setRetryGeneration] = useState(0);
   const kind = resolveEditorKind(tab);
 
-  // lazy 包装：模块作用域工厂 + retryGeneration 重建（React.lazy 缓存 rejection 的恢复手段）
-  const LazyEditor = useMemo(() => {
-    if (kind === 'unsupported') return null;
-    return createLazyEditor(kind);
-  }, [kind, retryGeneration]);
+  // 🔴 P0-1b：资源状态经 useSyncExternalStore 订阅——ready 时直接同步渲染缓存
+  //    组件（零 Suspense、零 fallback 提交）；loading 渲染加载占位（不进入
+  //    React.lazy 的 pending→微任务→retry 链——该链在 ready 后的首次渲染仍必
+  //    提交一次 fallback，慢环境下被放大为"一直显示正在加载编辑器"）；
+  //    error 渲染错误界面（重试经 retryEditorLoad 重建条目，状态变化自动重渲染）。
+  const subscribe = useCallback(
+    (listener: () => void) =>
+      kind === 'unsupported' ? () => {} : subscribeEditorResource(kind, listener),
+    [kind],
+  );
+  const getSnapshot = useCallback(
+    () => (kind === 'unsupported' ? unsupportedSnapshot : getEditorResourceSnapshot(kind)),
+    [kind],
+  );
+  const resource = useSyncExternalStore(subscribe, getSnapshot);
 
-  if (kind === 'unsupported' || !LazyEditor) {
+  if (kind === 'unsupported') {
     return unsupportedView;
   }
 
@@ -183,19 +278,47 @@ export function EditorHost({
     }
   })();
 
+  // 🔴 加载错误：可见错误界面 + 安全重试（不自动刷新、不销毁未保存内容）
+  if (resource.status === 'error') {
+    return (
+      <EditorLoadErrorView
+        displayName={tab.displayName}
+        error={resource.error}
+        onRetry={() => {
+          // 🔴 R4-02：仅失败条目重建（成功资源不受影响）；重建后经订阅自动
+          //    回到 loading→ready；retryGeneration 递增重置错误边界状态
+          retryEditorLoad(kind);
+          setRetryGeneration((g) => g + 1);
+        }}
+        onClose={() => {
+          useWindowStore.getState().requestCloseTab(tab.key);
+        }}
+      />
+    );
+  }
+
+  // 🔴 资源未就绪：加载占位（不进入 Suspense——避免 lazy 的必经 fallback 提交）
+  if (resource.status === 'loading' || !resource.component) {
+    return <EditorLoadingFallback displayName={tab.displayName} />;
+  }
+
+  const LoadedEditor = resource.component;
   return (
     <EditorErrorBoundary
-      key={retryGeneration}
+      key={`${tab.key}:${retryGeneration}`}
       displayName={tab.displayName}
-      onRetry={() => setRetryGeneration((g) => g + 1)}
+      onRetry={() => {
+        // 🔴 R4-02：渲染期错误的重试——重置错误边界（generation 递增）；
+        //    失败资源同时重建（retryEditorLoad 仅 error 条目生效）
+        retryEditorLoad(kind);
+        setRetryGeneration((g) => g + 1);
+      }}
       onClose={() => {
         // 关闭标签（关闭保护由 requestCloseTab 统一处理）
         useWindowStore.getState().requestCloseTab(tab.key);
       }}
     >
-      <Suspense fallback={<EditorLoadingFallback displayName={tab.displayName} />}>
-        <LazyEditor {...editorProps} />
-      </Suspense>
+      <LoadedEditor {...editorProps} />
     </EditorErrorBoundary>
   );
 }

@@ -1,17 +1,24 @@
 // NoteBoard 编辑器懒加载边界测试（S05）
 // 覆盖：kind+language 入口映射（E 节：infographic/mermaid/plantuml 属于 kind=code）、
-//       loader 表不在模块顶层执行 import、lazy 包装按 retryGeneration 重建
+//       loader 表不在模块顶层执行 import、🔴 R4-02 成功资源复用/失败重试可重建
+//
+// 🔴 R4-02 断言形态修正说明：旧断言"每次 createLazyEditor 生成新实例"是
+// 实现形态断言（复审四轮指出其不能作为产品验收标准——新实例使重挂载的宿主
+// 重新进入 Suspense 加载边界，已复现为 D08）。改为行为断言：成功资源跨调用
+// 复用同一包装（重挂载不重新 suspend）；失败资源经 retryEditorLoad 重建。
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   resolveEditorKind,
   prefetchEditor,
   createLazyEditor,
+  retryEditorLoad,
+  getEditorResourceStatus,
+  resetEditorResourcesForTest,
   type EditorLoaderKind,
 } from '@/features/editor-host/editorLoaders';
 
 // Mock 各编辑器模块（验证工厂调用时才 import）
-
 
 // 用 spy 拦截动态 import：动态 import 表达式无法直接 mock，改为验证公开函数行为
 vi.mock('@codemirror/view', () => ({}));
@@ -40,20 +47,48 @@ describe('编辑器入口映射（resolveEditorKind）', () => {
   });
 });
 
-describe('懒加载工厂行为', () => {
-  it('createLazyEditor 返回组件对象（React.lazy 包装），且每次调用生成新实例', () => {
-    // editorLoaders 顶层只定义工厂函数表；React.lazy 包装由 createLazyEditor 按需创建。
-    // 静态保证（模块顶层零 import）：源码评审 + 预算门禁的首屏闭包断言覆盖。
-    const first = createLazyEditor('code');
-    const second = createLazyEditor('code');
-    expect(typeof first).toBe('object');
-    expect(first).not.toBe(second);
+describe('🔴 R4-02 编辑器资源注册表（成功复用/失败重试）', () => {
+  beforeEach(() => {
+    resetEditorResourcesForTest();
   });
 
-  it('createLazyEditor 每次调用生成新实例（rejection 恢复的前提）', () => {
-    const a = createLazyEditor('code' as EditorLoaderKind);
-    const b = createLazyEditor('code' as EditorLoaderKind);
-    expect(a).not.toBe(b);
+  it('成功资源：同一入口的 lazy 包装跨调用复用（重挂载不再重新进入加载边界）', { timeout: 20000 }, async () => {
+    const first = createLazyEditor('board');
+    const second = createLazyEditor('board');
+    // 🔴 D08 行为契约：entry 存活期间包装引用稳定——宿主重挂载不产生新 lazy
+    expect(first).toBe(second);
+    // 首次获取即发起加载；完成进入 ready（真实模块图首载可能较慢——放宽超时）
+    await vi.waitFor(() => {
+      expect(getEditorResourceStatus('board').status).toBe('ready');
+    }, { timeout: 10000 });
+    // ready 后复用不变
+    expect(createLazyEditor('board')).toBe(first);
+    // 不同入口互不共享
+    expect(createLazyEditor('mindmap' as EditorLoaderKind)).not.toBe(first);
+  });
+
+  it('失败资源：成功资源 retry 不重建（仅失败项可重建，成功复用不受影响）', { timeout: 20000 }, async () => {
+    const a = createLazyEditor('board');
+    await vi.waitFor(() => {
+      expect(getEditorResourceStatus('board').status).toBe('ready');
+    }, { timeout: 10000 });
+    // 成功资源 retry 不重建（返回 false）
+    expect(retryEditorLoad('board')).toBe(false);
+    expect(createLazyEditor('board')).toBe(a);
+    // 未加载入口状态为 idle；retry 无条目时返回 false 不抛异常
+    expect(getEditorResourceStatus('mindmap').status).toBe('idle');
+    expect(retryEditorLoad('mindmap')).toBe(false);
+  });
+
+  it('prefetchEditor 复用同一资源条目（预取完成后渲染直接命中 ready）', { timeout: 20000 }, async () => {
+    prefetchEditor('board');
+    const status = getEditorResourceStatus('board');
+    expect(['loading', 'ready']).toContain(status.status);
+    await vi.waitFor(() => {
+      expect(getEditorResourceStatus('board').status).toBe('ready');
+    }, { timeout: 10000 });
+    // 预取与渲染取到的是同一包装
+    expect(createLazyEditor('board')).toBe(createLazyEditor('board'));
   });
 
   it('prefetchEditor 对未知入口不抛异常', () => {

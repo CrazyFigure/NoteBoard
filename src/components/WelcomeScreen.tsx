@@ -2,7 +2,11 @@
 // 无 tab 时的欢迎页：主放核心 4 格式 (md, txt, 画板, 脑图) + 更多格式展开/二级弹窗
 // 详见 docs/07-UI布局与交互规范.md §11
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+// 🔴 P0-1b：欢迎页空闲预取常用编辑器资源——用户看到"新建 Markdown"卡片即为预取
+//    意图信号；空闲时机发起（不占首帧），点击新建/打开文件时资源已 ready，
+//    渲染同步命中 fulfilled lazy（零 fallback、远低于 1s 目标）。
+import { prefetchEditor } from '../features/editor-host/editorLoaders';
 import {
   FolderOpen,
   FilePlus,
@@ -66,6 +70,27 @@ export function WelcomeScreen({
   onNewXml,
 }: WelcomeScreenProps) {
   const [showMoreFormats, setShowMoreFormats] = useState(false);
+
+  // 🔴 P0-1b：首帧提交后空闲预取最常用入口（markdown 为主，code 次之）——
+  //    requestIdleCallback 空闲发起（jsdom/旧环境回退 setTimeout），不与首屏
+  //    渲染争资源；资源注册表与实际渲染共享（R4-02），完成后再打开直接命中。
+  //    欢迎页离开后取消尚未开始的预取，避免文件关联打开其他格式时额外加载两个内核。
+  useEffect(() => {
+    let disposed = false;
+    const preload = () => {
+      // 取消调度与回调触发交错时，卸载标记仍能阻止无关模块装载。
+      if (disposed) return;
+      prefetchEditor('markdown');
+      prefetchEditor('code');
+    };
+    if (typeof requestIdleCallback === 'function') {
+      const idleId = requestIdleCallback(preload, { timeout: 2000 });
+      return () => { disposed = true; cancelIdleCallback(idleId); };
+    }
+    // 不支持空闲调度的环境保持原等待时间，但卸载时同样取消。
+    const timer = setTimeout(preload, 300);
+    return () => { disposed = true; clearTimeout(timer); };
+  }, []);
 
   // 常用新建操作列表（5 大核心卡片，排入 3 列网格）
   const primaryCreateActions = [
