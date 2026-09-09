@@ -41,6 +41,7 @@ import {
   Layout,
   Workflow,
   GitMerge,
+  GitCompare,
   Archive,
   Table2,
   ChartColumn,
@@ -68,6 +69,7 @@ import {
   newSql,
   newXml,
   newText,
+  newTextDiff,
   openFileDialog,
   openFolderDialog,
   openStagingArea,
@@ -87,6 +89,11 @@ function getTabIcon(tab: Tab) {
   }
   if (tab.isDetached) {
     return <Unlink {...iconProps} color="var(--error-500)" />;
+  }
+
+  // 文本对比工具 tab：双栏对比语义图标（与「+」菜单/欢迎卡片一致）
+  if (tab.toolKind === 'textdiff') {
+    return <GitCompare {...iconProps} color="#10b981" />;
   }
 
   // 统一调用优雅文件格式图标体系
@@ -403,24 +410,29 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
             <span>关闭全部</span>
           </button>
 
-          <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />
+          {/* 工具型视图（文本对比）无文档模型，不支持迁移到独立窗口 */}
+          {!tab.toolKind && (
+            <>
+              <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />
 
-          {/* 在独立新窗口中打开 */}
-          <button
-            type="button"
-            style={getMenuItemStyle(false)}
-            onClick={() => {
-              setMenuPos(null);
-              moveToNewWindow(tab.key);
-            }}
-            onMouseEnter={handleMenuItemMouseEnter}
-            onMouseLeave={handleMenuItemMouseLeave}
-            onMouseDown={handleMenuItemMouseDown}
-            onMouseUp={handleMenuItemMouseUp}
-          >
-            <ExternalLink size={13} />
-            <span>在独立新窗口中打开</span>
-          </button>
+              {/* 在独立新窗口中打开 */}
+              <button
+                type="button"
+                style={getMenuItemStyle(false)}
+                onClick={() => {
+                  setMenuPos(null);
+                  moveToNewWindow(tab.key);
+                }}
+                onMouseEnter={handleMenuItemMouseEnter}
+                onMouseLeave={handleMenuItemMouseLeave}
+                onMouseDown={handleMenuItemMouseDown}
+                onMouseUp={handleMenuItemMouseUp}
+              >
+                <ExternalLink size={13} />
+                <span>在独立新窗口中打开</span>
+              </button>
+            </>
+          )}
 
           {tab.path && (
             <>
@@ -966,6 +978,24 @@ export function TabBar() {
           >
             <Network size={13} color="#f97316" />
             <span>新建思维导图 (.mindmap)</span>
+          </button>
+
+          {/* 文本对比（纯前端工具视图，不落盘） */}
+          <button
+            type="button"
+            style={getMenuItemStyle(false)}
+            onClick={() => {
+              setNewMenuPos(null);
+              setShowMoreSubMenu(false);
+              newTextDiff();
+            }}
+            onMouseEnter={handleMenuItemMouseEnter}
+            onMouseLeave={handleMenuItemMouseLeave}
+            onMouseDown={handleMenuItemMouseDown}
+            onMouseUp={handleMenuItemMouseUp}
+          >
+            <GitCompare size={13} color="#10b981" />
+            <span>文本对比</span>
           </button>
 
           <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />

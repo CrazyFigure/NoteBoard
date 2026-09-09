@@ -17,6 +17,7 @@ import {
   Layout,
   Workflow,
   GitMerge,
+  GitCompare,
   Braces,
   FileCode,
   Database,
@@ -38,6 +39,7 @@ interface WelcomeScreenProps {
   onNewMarkdown?: () => void;
   onNewText?: () => void;
   onNewMindmap?: () => void;
+  onTextDiff?: () => void;
   onNewBoard?: () => void;
   onNewDrawio?: () => void;
   onNewBitable?: () => void;
@@ -58,6 +60,7 @@ export function WelcomeScreen({
   onNewMarkdown,
   onNewText,
   onNewMindmap,
+  onTextDiff,
   onNewBoard,
   onNewDrawio,
   onNewBitable,
@@ -133,6 +136,14 @@ export function WelcomeScreen({
       shortcut: '',
       color: '#f97316',
       onClick: onNewMindmap,
+    },
+    {
+      icon: GitCompare,
+      label: '文本对比',
+      desc: '左右对照实时比对差异',
+      shortcut: '',
+      color: '#10b981',
+      onClick: onTextDiff,
     },
   ];
 

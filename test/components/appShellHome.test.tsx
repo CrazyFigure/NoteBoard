@@ -44,6 +44,7 @@ vi.mock('@/features/welcome/welcomeActions', () => ({
   newMarkdown: vi.fn(), newMindmap: vi.fn(), newDrawio: vi.fn(), newBitable: vi.fn(),
   newBoard: vi.fn(), newMermaid: vi.fn(), newPlantUml: vi.fn(), newInfographic: vi.fn(),
   newJson: vi.fn(), newYaml: vi.fn(), newSql: vi.fn(), newXml: vi.fn(), newText: vi.fn(),
+  newTextDiff: vi.fn(),
 }));
 vi.mock('@/features/editor-code/orchestration/saveDocument', () => ({
   saveDocument: vi.fn(), takeLastSaveIdentityMove: vi.fn(() => null),
