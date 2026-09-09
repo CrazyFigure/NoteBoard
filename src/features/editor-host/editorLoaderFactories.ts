@@ -39,4 +39,8 @@ export const loaderFactories: Record<EditorLoaderKind, () => Promise<{ default: 
     import('../infographic/InfographicSplitEditor').then(
       (m) => ({ default: m.InfographicSplitEditor as unknown as LazyEditorComponent }),
     ),
+  textdiff: () =>
+    import('../textdiff/TextDiffView').then(
+      (m) => ({ default: m.TextDiffView as unknown as LazyEditorComponent }),
+    ),
 };

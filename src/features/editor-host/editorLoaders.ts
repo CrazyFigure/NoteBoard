@@ -31,10 +31,13 @@ export type EditorLoaderKind =
   | 'bitable'
   | 'image'
   | 'diagram'
-  | 'infographic';
+  | 'infographic'
+  | 'textdiff';
 
 /** 按 kind + language 解析编辑器入口；unsupported 由轻量常驻视图处理（不懒加载） */
-export function resolveEditorKind(tab: Pick<Tab, 'kind' | 'language'>): EditorLoaderKind | 'unsupported' {
+export function resolveEditorKind(tab: Pick<Tab, 'kind' | 'language' | 'toolKind'>): EditorLoaderKind | 'unsupported' {
+  // 工具型视图优先分派（不落盘、无文档模型；kind/language 仅为兼容 Tab 结构的占位）
+  if (tab.toolKind === 'textdiff') return 'textdiff';
   if (tab.kind === 'code') {
     // 信息图 / Mermaid / PlantUML 是独立图表编辑入口（kind=code + 专属 language）
     if (tab.language === 'infographic') return 'infographic';

@@ -217,6 +217,27 @@ export function newMindmap(): void {
   createUntitledDocument('mindmap');
 }
 
+// 文本对比为纯前端工具视图：不落盘（无 documentStore 记录）、不参与保存/暂存/会话恢复，
+// 内容状态由组件内部管理，tab 关闭即释放。
+/** 新建文本对比工具视图（左右编辑区实时比对差异） */
+export function newTextDiff(): void {
+  const key = nextUntitledKey('textdiff');
+  const tab: Tab = {
+    key,
+    displayName: '文本对比',
+    path: null,
+    kind: 'code',
+    language: 'plaintext',
+    isDirty: false,
+    isPreview: false,
+    viewMode: null,
+    externalStatus: null,
+    isDetached: false,
+    toolKind: 'textdiff',
+  };
+  useWindowStore.getState().openTab(tab);
+}
+
 /** 新建 Draw.io 绘图文档 */
 export function newDrawio(): void {
   createUntitledDocument('drawio');

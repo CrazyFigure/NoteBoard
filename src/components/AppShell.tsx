@@ -44,6 +44,7 @@ import {
   openStagingArea,
   newMarkdown,
   newMindmap,
+  newTextDiff,
   newDrawio,
   newBitable,
   newBoard,
@@ -512,6 +513,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
                     onNewText={newText}
                     onNewBoard={newBoard}
                     onNewMindmap={newMindmap}
+                    onTextDiff={newTextDiff}
                     onNewDrawio={newDrawio}
                     onNewBitable={newBitable}
                     onNewMermaid={newMermaid}
