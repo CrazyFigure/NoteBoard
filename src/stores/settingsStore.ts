@@ -142,11 +142,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     if (get().initialized) return;
 
     try {
-      // 设置读取与字体包逐文件校验并行；两者都完成后再挂载编辑器，避免先按 fallback 测量后跳字形。
-      const [loaded] = await Promise.all([
-        ipc.loadSettings(),
-        useFontPackStore.getState().init(),
-      ]);
+      // 🔴 R11：设置读取与字体服务完全解耦——不再 Promise.all 等待字体 init；
+      // 字体服务由 App 独立启动（fire-and-forget），verifying/激活不阻塞设置与渲染。
+      const loaded = await ipc.loadSettings();
+      // 字体服务独立启动（失败不影响设置加载）
+      void useFontPackStore.getState().init().catch((e) => {
+        console.error('字体服务初始化失败:', e);
+      });
       const resolved = resolveAndApply(loaded);
       set({ settings: loaded, resolvedTheme: resolved, initialized: true });
 

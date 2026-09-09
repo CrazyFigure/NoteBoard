@@ -2,6 +2,10 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <!-- 🔴 性能诊断引导标记：head 解析最早可观测点，覆盖 main.tsx 静态依赖求值前的盲区 -->
+    <script>
+      window.__nbHtmlTs = performance.now();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- 禁用 Referer 携带，避免网络图床防盗链（如好壁纸、微信、知乎等）拦截返回 403 -->
     <meta name="referrer" content="no-referrer" />

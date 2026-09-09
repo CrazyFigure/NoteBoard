@@ -3,6 +3,9 @@
 // 功能：平移拖拽、无级缩放（自适应/1:1/自定义）、旋转/翻转、棋盘网格背景切换、元数据展示及快捷操作
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+// 🔴 S11：回收视图状态存取与能力注册
+import { takeViewState } from '../session/editorSuspension';
+import { registerEditorCapabilities } from '../../core/editor/editorRegistry';
 import {
   ZoomIn,
   ZoomOut,
@@ -24,6 +27,7 @@ import { showToast } from '../../stores/toastStore';
 import { Tooltip } from '../../components/Tooltip';
 
 interface ImageViewerProps {
+  docKey: string;
   filePath: string;
   fileName?: string;
   fileSize?: number;
@@ -53,7 +57,7 @@ function getAspectRatio(w: number, h: number): string {
   return `${rw}:${rh}`;
 }
 
-export function ImageViewer({ filePath, fileName, fileSize }: ImageViewerProps) {
+export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewerProps) {
   const name = fileName || filePath.split(/[\\/]/).pop() || filePath;
   const ext = extFromPath(filePath).toUpperCase() || 'IMAGE';
 
@@ -80,6 +84,50 @@ export function ImageViewer({ filePath, fileName, fileSize }: ImageViewerProps) 
   const [rotation, setRotation] = useState<number>(0);
   const [flipH, setFlipH] = useState(false);
   const [bgMode, setBgMode] = useState<BgMode>('grid');
+
+  // 🔴 S11：查看器变换状态的 ref 镜像（回收捕获读取最新值，避开闭包过期）
+  const viewStateRef = useRef({ scale: 1, translate: { x: 0, y: 0 }, rotation: 0, flipH: false, bgMode: 'grid' as BgMode });
+  useEffect(() => {
+    viewStateRef.current = { scale, translate, rotation, flipH, bgMode };
+  }, [scale, translate, rotation, flipH, bgMode]);
+
+  // 🔴 S11：注册图片查看能力（只读 flush + 视图状态捕获；重挂载恢复查看状态）
+  useEffect(() => {
+    const restore = takeViewState(docKey) as {
+      kind: 'image';
+      scale: number;
+      translate: { x: number; y: number };
+      rotation: number;
+      flipH: boolean;
+      bgMode: BgMode;
+    } | null;
+    if (restore?.kind === 'image') {
+      setScale(restore.scale);
+      setTranslate(restore.translate);
+      setRotation(restore.rotation);
+      setFlipH(restore.flipH);
+      setBgMode(restore.bgMode);
+    }
+    const instanceId = `img-${docKey}`;
+    const dispose = registerEditorCapabilities({
+      docKey,
+      instanceId,
+      getRevision: () => 0,
+      flush: async () => ({ docKey, instanceId, revision: 0, content: null, readonly: true }),
+      focus: () => {},
+      getSelectedText: () => '',
+      canSuspend: () => true,
+      captureViewState: () => ({
+        kind: 'image' as const,
+        scale: viewStateRef.current.scale,
+        translate: viewStateRef.current.translate,
+        rotation: viewStateRef.current.rotation,
+        flipH: viewStateRef.current.flipH,
+        bgMode: viewStateRef.current.bgMode,
+      }),
+    });
+    return dispose;
+  }, [docKey]);
 
   // 拖拽相关
   const [isDragging, setIsDragging] = useState(false);

@@ -6,7 +6,8 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { NodeViewWrapper, NodeViewContent, ReactNodeViewRenderer, type NodeViewProps } from '@tiptap/react';
 import CodeBlock from '@tiptap/extension-code-block';
 import { Copy, Check, ChevronDown, Search, X } from 'lucide-react';
-import { normalizeLanguage } from './lowlight';
+// 语言标签是纯元数据，不让普通 Markdown 首开加载全部高亮语法。
+import { normalizeLanguage } from './codeLanguages';
 import { Tooltip } from '../../components/Tooltip';
 
 /** 语言配置结构定义 */

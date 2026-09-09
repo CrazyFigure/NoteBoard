@@ -1,13 +1,13 @@
 // NoteBoard 文档内容同步
-// 在保存与暂存前，从各编辑器实例抓取权威内容并刷新 DocumentStore 镜像。
+// 在保存与暂存前，通过 core 能力注册表从当前编辑器实例抓取权威内容并刷新 DocumentStore 镜像。
+// 🔴 S03 起本模块不再 import 任何编辑器组件（切断保存/暂存链对编辑器的反向依赖）；
+//    各编辑器在挂载时向 core/editor/editorRegistry 注册 flush 能力。
 
 import { useDocumentStore, type Document } from '../../../stores/documentStore';
-import { useWindowStore } from '../../../stores/windowStore';
-import { getEditorView } from '../CodeEditor';
-import { getActiveSourceView, getActiveTipTapEditor } from '../../editor-md/TipTapEditor';
-import { serializeMarkdown } from '../../editor-md/serialize';
-import { getActiveBoardScene } from '../../board/BoardEditor';
-import { serializeScene } from '../../board/sceneIo';
+import { getEditorCapabilities } from '../../../core/editor/editorRegistry';
+// 🔴 R03：flush 结果经统一提交屏障（旧实例/旧 revision 快照不得覆盖新内容）
+// 🔴 N04：提交携带会话代际（同路径关闭重开后，旧会话迟到快照丢弃）
+import { submitCapturedContent, getSessionGeneration } from '../../../features/session/documentSession';
 
 /** Draw.io 新建文档首次暂存/保存时使用的有效空白图模板。 */
 export const DEFAULT_DRAWIO_XML = `<mxfile host="NoteBoard" modified="${new Date().toISOString()}" agent="NoteBoard" version="0.1.3" etag="noteboard">
@@ -33,45 +33,29 @@ function updateContentIfChanged(docKey: string, content: string): void {
 }
 
 /**
- * 同步指定文档的最新内容。
- * Markdown 与画板按文档 key 查询实例；CodeMirror 只有当前活动实例，因此必须校验 activeKey，
- * 防止批量关闭时把活动代码文档的内容错误写入其他标签。
+ * 同步指定文档的最新内容（统一异步 flush 屏障）。
+ * 已挂载实例：await 其 flush 能力捕获权威快照并刷新镜像；
+ * 未挂载/flush 失败：保留 store 中最近镜像（旧语义）。
+ * 调用方（save、saveAs、暂存、关闭、会话快照、迁移）必须 await 本函数。
  */
-export function syncDocumentContent(docKey: string): Document | undefined {
+export async function syncDocumentContent(docKey: string): Promise<Document | undefined> {
   const store = useDocumentStore.getState();
   const doc = store.getDocument(docKey);
   if (!doc) return undefined;
 
-  if (doc.kind === 'markdown') {
-    const currentMode = useWindowStore.getState().getTab(docKey)?.viewMode ?? 'visual';
-    if (currentMode === 'source') {
-      const sourceView = getActiveSourceView(docKey);
-      if (sourceView) updateContentIfChanged(docKey, sourceView.state.doc.toString());
-    } else {
-      const tipTap = getActiveTipTapEditor(docKey);
-      if (tipTap) {
-        try {
-          updateContentIfChanged(docKey, serializeMarkdown(tipTap));
-        } catch {
-          // 序列化异常时保留编辑器最近一次写入 store 的镜像，避免用空内容覆盖。
-        }
-      }
-    }
-  }
-
-  if (doc.kind === 'code' && useWindowStore.getState().activeKey === docKey) {
-    const view = getEditorView();
-    if (view) updateContentIfChanged(docKey, view.state.doc.toString());
-  }
-
-  if (doc.kind === 'board') {
-    const scene = getActiveBoardScene(docKey);
-    if (scene) {
-      try {
-        updateContentIfChanged(docKey, serializeScene(scene));
-      } catch {
-        // 画板序列化失败时保留最近镜像，后续暂存/保存仍会返回明确的写入结果。
-      }
+  const capabilities = getEditorCapabilities(docKey);
+  if (capabilities) {
+    // 🔴 N04：捕获调用时的会话代际——flush 是异步屏障，等待期间同路径
+    //    会话可能已换代（关闭→重开）；旧会话的迟到快照不得覆盖新会话内容
+    const generation = getSessionGeneration(docKey);
+    const captured = await capabilities.flush('save');
+    if (
+      captured &&
+      captured.content !== null &&
+      getSessionGeneration(docKey) === generation
+    ) {
+      // 🔴 R03：快照经统一提交屏障写入镜像（旧实例/旧 revision 丢弃）；只读/非文本不写
+      submitCapturedContent(docKey, captured, generation);
     }
   }
 

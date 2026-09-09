@@ -20,7 +20,6 @@ import Highlight from '@tiptap/extension-highlight';
 import { Markdown } from '@tiptap/markdown';
 
 import { CodeBlockView } from '../codeBlockView';
-import { lowlight } from '../lowlight';
 import { searchReplaceExtension } from '../searchReplace';
 import { MathInline, MathBlock } from '../katexExtensions';
 import { MermaidBlock } from '../mermaidExtension';
@@ -237,10 +236,9 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
     TableCell,
     TableHeader,
 
-    // 代码块（自定义 NodeView，带语言选择和复制按钮）
-    CodeBlockView.configure({
-      lowlight,
-    } as Record<string, unknown>),
+    // 普通 CodeBlock + 自定义 NodeView 不消费 lowlight 选项；语言选择、复制及 Markdown 序列化保持原样。
+    // 高亮库仍由真正使用它的视图加载，不能为无效选项在首开注册全部语法。
+    CodeBlockView,
 
     // 查找/替换
     searchReplaceExtension(),

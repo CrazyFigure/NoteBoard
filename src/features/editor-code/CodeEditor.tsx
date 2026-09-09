@@ -34,7 +34,17 @@ import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { normalizeEol } from '../editor-md/serialize';
-import * as ipc from '../../core/ipc/commands';
+import {
+  bumpDocumentRevision,
+  registerEditorCapabilities,
+} from '../../core/editor/editorRegistry';
+// 🔴 S09：自动保存统一走每文档写队列
+import { queuedAutoSave } from '../session/documentSession';
+import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
+// 🔴 S11：回收前的视图状态在重挂载时恢复（选区/滚动/折叠）
+import { takeViewState } from '../session/editorSuspension';
+import { foldEffect } from '@codemirror/language';
+import { createCodeEditorCapabilities } from './editorCapabilities';
 import {
   initializeDocumentHistory,
   recordDocumentChange,
@@ -43,15 +53,10 @@ import {
   undoDocumentHistory,
 } from '../history/documentHistory';
 
-// ── 编辑器实例管理 ──
+// ── 实例代际 ──
 
-/** 当前窗口的 CM6 实例（每窗口只有一个编辑器实例） */
-let editorView: EditorView | null = null;
-
-/** 导出编辑器实例（供状态栏等外部模块使用） */
-export function getEditorView(): EditorView | null {
-  return editorView;
-}
+/** CodeMirror 实例代际序号：同一 docKey 重挂载时递增，用于注册表删除保护 */
+let nextEditorInstanceId = 0;
 
 // ── React 组件 ──
 
@@ -149,6 +154,10 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
     const updateListener = EditorView.updateListener.of((update) => {
       if (!update.docChanged) return;
 
+      // 🔴 内容版本递增：真实修改（含撤销/重做引起的变化）都推进 revision，
+      //    供注册表 flush 快照与后续迁移校验使用
+      bumpDocumentRevision(docKey);
+
       const newContent = update.state.doc.toString();
       const key = docKey;
       const targetDoc = useDocumentStore.getState().getDocument(key);
@@ -177,22 +186,12 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
       }, 500);
 
       // 若处于 auto 自动保存策略，800ms 防抖写入磁盘
+      // 🔴 S09：统一走每文档写队列（策略/外部状态/基线检查 + flush-and-compare 脏态 + 带证明暂存清理）
       if (targetDoc?.savePolicy === 'auto') {
         if (autoSaveTimer) clearTimeout(autoSaveTimer);
         autoSaveTimer = setTimeout(async () => {
-          const cur = useDocumentStore.getState().getDocument(key);
-          if (cur?.savePolicy !== 'auto') return;
-          if (cur.externalStatus === 'modified' || cur.externalStatus === 'deleted') return;
-          if (normalizeEol(newContent) === normalizeEol(cur.baselineContent)) return;
           try {
-            const result = await ipc.writeDocument(key, newContent, cur.encoding, cur.eol);
-            if (result.ok) {
-              // 以本次实际写入的快照更新保存基线；若写盘期间又有输入，仍保持脏态
-              useDocumentStore.getState().updateBaseline(key, newContent, result.mtime, result.size);
-              const stillDirty = useDocumentStore.getState().getDocument(key)?.isDirty ?? false;
-              useWindowStore.getState().setTabDirty(key, stillDirty);
-              await ipc.setDocumentDirty(key, stillDirty);
-            }
+            await queuedAutoSave(key, newContent);
           } catch (e) {
             console.error('代码/文本文件自动保存失败:', e);
           }
@@ -318,8 +317,45 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
       parent: container,
     });
 
-    editorView = view;
+    // 🔴 注册能力到 core 注册表（保存/搜索/工具栏统一入口）；
+    // instanceId 保证旧实例的 disposer 无权删除新实例的注册
+    const instanceId = `cm-${(nextEditorInstanceId += 1)}`;
+    const disposeCapabilities = registerEditorCapabilities(
+      createCodeEditorCapabilities(docKey, instanceId, view, lang as LanguageId),
+    );
     viewRef.current = view;
+
+    // 🔴 N10.2：编辑器实例与能力注册完成的里程碑（requestId 与打开请求对齐；
+    //    诊断不记完整路径——只保留尾部 40 字符）
+    //    （代理标记：真正 interactive = 该标记 + 首笔输入可进历史，后者由同步事务锁保证）
+    perfMarkEditorInstanceReady(docKey, instanceId);
+
+    // 🔴 S11：恢复回收前保存的视图状态（选区/滚动/折叠；一次性消费）
+    const restoredState = takeViewState(docKey) as {
+      kind: 'code';
+      selection: { anchor: number; head: number } | null;
+      scrollTop: number;
+      foldedRanges: Array<{ from: number; to: number }>;
+    } | null;
+    if (restoredState?.kind === 'code') {
+      if (restoredState.foldedRanges.length > 0) {
+        view.dispatch({
+          effects: restoredState.foldedRanges.map((range) => foldEffect.of(range)),
+        });
+      }
+      if (restoredState.selection) {
+        const max = view.state.doc.length;
+        view.dispatch({
+          selection: {
+            anchor: Math.max(0, Math.min(restoredState.selection.anchor, max)),
+            head: Math.max(0, Math.min(restoredState.selection.head, max)),
+          },
+        });
+      }
+      if (restoredState.scrollTop > 0 && view.scrollDOM) {
+        view.scrollDOM.scrollTop = restoredState.scrollTop;
+      }
+    }
 
     // 将统一历史节点应用到当前代码编辑器；程序化替换明确不进入原生历史
     const unregisterHistoryAdapter = registerDocumentHistoryAdapter(docKey, {
@@ -376,6 +412,12 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
 
     container.addEventListener('wheel', handleWheel, { passive: false });
 
+    // 🔴 S06：字体包从 fallback 切换到真实字形后统一度量刷新（CodeMirror 自绘光标依赖测量缓存）
+    const handleFontsSettled = () => {
+      view.requestMeasure();
+    };
+    window.addEventListener('noteboard-fonts-settled', handleFontsSettled);
+
     return () => {
       // 卸载前同步刷新权威内容，避免快速切换标签时 500ms 防抖尚未落入 store 而丢字
       const latestContent = view.state.doc.toString();
@@ -384,8 +426,10 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
       if (autoSaveTimer) clearTimeout(autoSaveTimer);
       unregisterHistoryAdapter();
       container.removeEventListener('wheel', handleWheel);
+      window.removeEventListener('noteboard-fonts-settled', handleFontsSettled);
       view.destroy();
-      editorView = null;
+      // 注销能力注册（内部有代际保护，旧清理不会误删新实例）
+      disposeCapabilities();
       viewRef.current = null;
     };
   }, [docKey, setContent, setTabDirty]);

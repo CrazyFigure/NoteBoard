@@ -1,0 +1,26 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "NoteBoardPerfHostMin",
+  "version": "0.2.7",
+  "identifier": "com.crazyfigure.noteboard.perfhostmin",
+  "build": {
+    "frontendDist": "./html"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "min-main",
+        "title": "NoteBoard 最小宿主对照（性能诊断）",
+        "width": 800,
+        "height": 600,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false
+  }
+}

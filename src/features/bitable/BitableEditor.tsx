@@ -45,8 +45,17 @@ import {
   recordDocumentChange,
   undoDocumentHistory,
   redoDocumentHistory,
-  markDocumentHistoryModeBoundary,
 } from '../history/documentHistory';
+// 🔴 S12：回收接入——能力注册表（flush/canSuspend/视图捕获）与挂载恢复
+import {
+  registerEditorCapabilities,
+  getDocumentRevision,
+  bumpDocumentRevision,
+} from '../../core/editor/editorRegistry';
+import { submitCapturedContent } from '../session/documentSession';
+import { takeViewState } from '../session/editorSuspension';
+import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
+import type { EditorCapabilities } from '../../core/editor/editorTypes';
 import {
   Table as TableIcon,
   Kanban,
@@ -63,6 +72,9 @@ import {
 interface BitableEditorProps {
   docKey: string;
 }
+
+/** 🔴 S12：实例代际序号（同 docKey 重挂载递增；注册表删除保护） */
+let nextBitableInstanceId = 0;
 
 export function BitableEditor({ docKey }: BitableEditorProps) {
   const doc = useDocumentStore((s) => s.documents.get(docKey));
@@ -167,6 +179,8 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
 
       dataRef.current = nextDoc;
       setData(nextDoc);
+      // 🔴 S12：真实修改推进内容版本（会话屏障校验用）
+      bumpDocumentRevision(docKey);
 
       const serialized = serializeBitableDocument(nextDoc);
       setContent(docKey, serialized);
@@ -189,6 +203,75 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
     },
     [docKey, setContent, setDirty, setTabDirty],
   );
+
+  // ── 🔴 S12：回收接入——能力注册表 + 挂载恢复 ──
+
+  // 编辑器根容器（canSuspend 检查进行中的单元格编辑：焦点仍在本编辑器内时不回收）
+  const editorRootRef = useRef<HTMLDivElement>(null);
+  const searchQueryRef = useRef(searchQuery);
+  searchQueryRef.current = searchQuery;
+  const recordPanelRowIdRef = useRef(recordPanelRowId);
+  recordPanelRowIdRef.current = recordPanelRowId;
+  const activeViewIdRef = useRef(data.activeViewId);
+  activeViewIdRef.current = data.activeViewId;
+
+  // 注册能力对象（回收调度/保存/暂存统一走 core 注册表）
+  useEffect(() => {
+    const instanceId = `bitable-${(nextBitableInstanceId += 1)}`;
+    const capabilities: EditorCapabilities = {
+      docKey,
+      instanceId,
+      getRevision: () => getDocumentRevision(docKey),
+      flush: async () => {
+        // 数据权威已在 store（commitChange 同步 setContent）；序列化兜底对齐
+        const content = serializeBitableDocument(dataRef.current);
+        submitCapturedContent(docKey, { instanceId, revision: getDocumentRevision(docKey), content });
+        return { docKey, instanceId, revision: getDocumentRevision(docKey), content };
+      },
+      focus: () => {
+        // 多维表格无全局键盘焦点入口，焦点由表格自身接管
+      },
+      getSelectedText: () => '',
+      // 🔴 S12：数据每次提交同步进 store（不依赖实例存活）——可回收；
+      //    焦点仍在本编辑器内（进行中的单元格编辑/输入）时不回收
+      canSuspend: () => {
+        const active = document.activeElement;
+        if (!active || active === document.body) return true;
+        return editorRootRef.current ? !editorRootRef.current.contains(active) : true;
+      },
+      captureViewState: () => ({
+        kind: 'bitable' as const,
+        // 会话级查看状态（数据/视图配置已在 store 文档内）：搜索词、详情面板、滚动
+        searchQuery: searchQueryRef.current,
+        recordPanelRowId: recordPanelRowIdRef.current,
+        activeViewId: activeViewIdRef.current,
+        scrollTop: (activeViewIdRef.current ? viewTabRefs.current.get(activeViewIdRef.current)?.scrollTop : 0) ?? 0,
+      }),
+    };
+    // 🔴 N10.2：多维表格实例就绪终点（能力注册完成；requestId 与打开请求对齐）
+    perfMarkEditorInstanceReady(docKey, instanceId);
+    return registerEditorCapabilities(capabilities);
+  }, [docKey]);
+
+  // 重挂载（回收后）恢复查看状态（一次性消费）
+  useEffect(() => {
+    const restored = takeViewState(docKey) as
+      | { kind: 'bitable'; searchQuery: string; recordPanelRowId: string | null; activeViewId?: string; scrollTop: number }
+      | null;
+    if (!restored || restored.kind !== 'bitable') return;
+    if (restored.searchQuery) setSearchQuery(restored.searchQuery);
+    if (restored.recordPanelRowId) setRecordPanelRowId(restored.recordPanelRowId);
+    if (restored.scrollTop > 0) {
+      // 滚动容器在视图渲染完成后恢复
+      const targetViewId = restored.activeViewId ?? dataRef.current.activeViewId;
+      if (targetViewId) {
+        setTimeout(() => {
+          const el = viewTabRefs.current.get(targetViewId);
+          if (el) el.scrollTop = restored.scrollTop;
+        }, 0);
+      }
+    }
+  }, [docKey]);
 
   // 获取当前激活的视图配置
   const activeView: BitableViewConfig = useMemo(() => {
@@ -906,6 +989,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
 
   return (
     <div
+      ref={editorRootRef}
       style={{
         width: '100%',
         height: '100%',

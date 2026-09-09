@@ -29,13 +29,14 @@ pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let paths = cli_args::parse_paths_from_args();
 
     if !paths.is_empty() {
-        // 冷启动带参数 → 暂存意图
-        intent::put_intent(
+        // 🔴 S04：冷启动带参数 → 打开请求入队（前端 listeners-ready 握手后拉取），
+        //    不再用一次性 intent，未订阅窗口不会丢请求
+        intent::enqueue_open_requests(
             &state,
-            "nb-main".to_string(),
-            WindowIntent::OpenFiles {
-                paths: paths.iter().map(|p| p.to_string_lossy().to_string()).collect(),
-            },
+            "nb-main",
+            paths.iter().map(|p| p.to_string_lossy().to_string()).collect(),
+            std::env::current_dir().ok().map(|d| d.to_string_lossy().to_string()),
+            crate::dto::OpenRequestSource::Cli,
         );
     } else {
         intent::put_intent(

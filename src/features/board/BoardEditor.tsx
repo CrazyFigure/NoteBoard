@@ -15,7 +15,18 @@ import { useLayoutStore } from '../../stores/layoutStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { showToast } from '../../stores/toastStore';
-import * as ipc from '../../core/ipc/commands';
+import {
+  bumpDocumentRevision,
+  getDocumentRevision,
+  registerEditorCapabilities,
+} from '../../core/editor/editorRegistry';
+// 🔴 S09：自动保存统一走每文档写队列（基线/脏态/暂存清理语义一致）
+// 🔴 R03：flush 镜像写入经统一提交屏障
+import { queuedAutoSave, submitCapturedContent } from '../session/documentSession';
+// 🔴 S12：回收恢复——挂载时恢复捕获的视口（滚动/缩放）
+import { takeViewState } from '../session/editorSuspension';
+import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
+import type { EditorCapabilities } from '../../core/editor/editorTypes';
 import {
   getDocumentHistoryAvailability,
   initializeDocumentHistory,
@@ -31,14 +42,11 @@ interface BoardEditorProps {
   docKey: string;
 }
 
-/** 活动画板场景全局获取注册表（供快捷保存与另存为立即取值） */
+/** 画板场景获取表（组件私有；保存/暂存链路走 core 能力注册表） */
 const activeBoardScenes = new Map<string, () => ExcalidrawScene | null>();
 
-/** 获取指定文档当前处于内存中的最新画板场景对象 */
-export function getActiveBoardScene(docKey: string): ExcalidrawScene | null {
-  const getter = activeBoardScenes.get(docKey);
-  return getter ? getter() : null;
-}
+/** 画板实例代际序号：同一 docKey 重挂载时递增，用于注册表删除保护 */
+let nextBoardInstanceId = 0;
 
 /** Excalidraw 组件（延迟加载） */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -277,6 +285,19 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
       }
     }
 
+    // 🔴 S12：重挂载（回收后）恢复捕获的视口（滚动/缩放不进 store 内容——签名剔除；
+    //    只捕获 viewport 形态，合并进 initialData 由 Excalidraw 恢复）
+    const restoredViewport = takeViewState(docKey) as
+      | { kind: 'board'; viewport: { scrollX: number; scrollY: number; zoom: number } | null }
+      | null;
+    if (restoredViewport?.kind === 'board' && restoredViewport.viewport) {
+      const { scrollX, scrollY, zoom } = restoredViewport.viewport;
+      parsed = {
+        ...parsed,
+        appState: { ...parsed.appState, scrollX, scrollY, zoom },
+      };
+    }
+
     sceneRef.current = parsed;
     lastCommittedSignatureRef.current = getBoardHistorySignature(parsed);
     initializeDocumentHistory(docKey, serializeScene(parsed), 'board');
@@ -329,6 +350,8 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
       }
 
       lastCommittedSignatureRef.current = currentSig;
+      // 🔴 内容版本递增：真正可撤销的画板内容变化推进 revision（选择/缩放不递增）
+      bumpDocumentRevision(key);
       const content = serializeScene(newScene);
       const isHistoryNavigation = historyApplyTargetSignatureRef.current === currentSig;
       historyApplyTargetSignatureRef.current = null;
@@ -372,20 +395,11 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
         setZoomLevel(zoom);
       }, 300);
 
-      // 800ms 防抖自动写入磁盘（仅在 auto 策略时执行）
+      // 800ms 防抖自动写入磁盘（auto 策略；🔴 S09：统一走每文档写队列与基线/脏态屏障）
       if (diskTimerRef.current) clearTimeout(diskTimerRef.current);
       diskTimerRef.current = setTimeout(async () => {
-        const doc = useDocumentStore.getState().getDocument(key);
-        if (doc?.savePolicy !== 'auto') return;
         try {
-          const result = await ipc.writeDocument(key, content, doc.encoding, doc.eol);
-          if (result.ok) {
-            // 使用实际写入的画板快照更新基线，保存期间的新操作仍应保持未保存状态
-            useDocumentStore.getState().updateBaseline(key, content, result.mtime, result.size);
-            const stillDirty = useDocumentStore.getState().getDocument(key)?.isDirty ?? false;
-            useWindowStore.getState().setTabDirty(key, stillDirty);
-            await ipc.setDocumentDirty(key, stillDirty);
-          }
+          await queuedAutoSave(key, content);
         } catch (e) {
           console.error('画板自动保存失败:', e);
         }
@@ -536,10 +550,56 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
     }
   }, []);
 
-  // 注册全局场景获取器，供 saveDocument 快捷保存时获取最新内存数据
+  // 注册场景获取器与能力对象（保存/暂存统一走 core 注册表）
   useEffect(() => {
     activeBoardScenes.set(docKey, () => sceneRef.current);
+    // 🔴 能力注册带代际：旧实例 disposer 无权删除新实例的注册
+    const instanceId = `board-${(nextBoardInstanceId += 1)}`;
+    const capabilities: EditorCapabilities = {
+      docKey,
+      instanceId,
+      getRevision: () => getDocumentRevision(docKey),
+      flush: async () => {
+        // 画板内容为可序列化场景 JSON；序列化失败保留镜像（旧语义）
+        try {
+          const scene = sceneRef.current;
+          if (!scene) return null;
+          const content = serializeScene(scene);
+          submitCapturedContent(docKey, { instanceId, revision: getDocumentRevision(docKey), content });
+          return { docKey, instanceId, revision: getDocumentRevision(docKey), content };
+        } catch {
+          return null;
+        }
+      },
+      focus: () => {
+        // 画板无独立键盘焦点入口，焦点由画布自身接管
+      },
+      getSelectedText: () => '',
+      // 🔴 S12：场景内容经 flush 序列化进 store（签名外的拖动中间态由 sceneRef 兜底），
+      //    统一历史在 documentHistory（按 docKey，重挂载不清）——可回收。
+      //    指针手势（拖动/框选/缩放）进行中不回收（场景处于中间帧）。
+      canSuspend: () => !pointerGestureActiveRef.current,
+      captureViewState: () => {
+        // 视口（滚动/缩放）不进 store 内容（签名剔除）——回收前单独捕获
+        const appState = sceneRef.current?.appState;
+        const zoom = typeof appState?.zoom === 'number'
+          ? appState.zoom
+          : (appState?.zoom as { value?: number } | undefined)?.value ?? 1;
+        return {
+          kind: 'board' as const,
+          viewport: {
+            scrollX: appState?.scrollX ?? 0,
+            scrollY: appState?.scrollY ?? 0,
+            zoom,
+          },
+        };
+      },
+    };
+    const disposeCapabilities = registerEditorCapabilities(capabilities);
+    // 🔴 N10.2：画板实例就绪终点（能力注册完成；requestId 与打开请求对齐）
+    perfMarkEditorInstanceReady(docKey, instanceId);
     return () => {
+      disposeCapabilities();
       activeBoardScenes.delete(docKey);
     };
   }, [docKey]);

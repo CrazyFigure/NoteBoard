@@ -99,7 +99,8 @@ impl WindowRecord {
     }
 }
 
-fn now_ms() -> i64 {
+/// 当前 Unix 毫秒时间戳（窗口活跃度记录用）
+pub fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -162,10 +163,12 @@ pub fn last_active_window(state: &State<'_, Mutex<AppState>>) -> Option<String> 
     s.last_active_window().cloned()
 }
 
-/// 注销窗口
-pub fn unregister_window(state: &State<'_, Mutex<AppState>>, label: &str) {
+/// 注销窗口并把其未处理打开请求转交其它存活窗口（无窗口时转入待分配队列）。
+/// 返回需要唤醒的（目标窗口, 队列版本），由持有 AppHandle 的调用方发送事件。
+pub fn unregister_window(state: &State<'_, Mutex<AppState>>, label: &str) -> Option<(String, u64)> {
     let mut s = state.lock().unwrap();
-    s.unregister_window(label);
+    let pending = s.unregister_window(label);
+    crate::window::intent::reassign_pending_requests_inner(&mut s, label, pending)
 }
 
 /// 窗口事件处理
@@ -200,12 +203,16 @@ pub fn on_window_event(window: &Window, event: &WindowEvent) {
             let state = app.state::<Mutex<AppState>>();
             touch_window(&state, &label);
         }
-        // 窗口被销毁时统一注销窗口记录与状态
+        // 窗口被销毁时统一注销窗口记录与状态；未处理打开请求转交其它存活窗口
         WindowEvent::Destroyed => {
             let label = window.label().to_string();
-            let app = window.app_handle();
+            let app = window.app_handle().clone();
             let state = app.state::<Mutex<AppState>>();
-            unregister_window(&state, &label);
+            let reassign = unregister_window(&state, &label);
+            // 🔴 锁外唤醒转交目标：该窗口需要重新消费队列
+            if let Some((target_label, queue_version)) = reassign {
+                crate::window::intent::notify_open_requests(&app, &target_label, queue_version);
+            }
         }
         _ => {}
     }
