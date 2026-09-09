@@ -23,6 +23,7 @@ import { TaskList, TaskItem } from '@tiptap/extension-list';
 import { Markdown } from '@tiptap/markdown';
 import { undoDepth } from '@tiptap/pm/history';
 import {
+  getMarkdownManager,
   serializeMarkdown,
   parseMarkdown,
   hasMarkdownContentChanged,
@@ -76,6 +77,59 @@ describe('serialize 真实往返集成（真实 TipTap Editor）', () => {
     expect(() => parseMarkdown(editor, '   \n  ')).not.toThrow();
     const out = serializeMarkdown(editor);
     expect(out).toBe('');
+    editor.destroy();
+  });
+
+  it('解析器返回重复同类型 mark 时应局部修复，不能把整篇文档降级为纯文本', () => {
+    const editor = createEditor();
+    const manager = getMarkdownManager(editor)!;
+    const originalParse = manager.parse;
+
+    // 模拟 @tiptap/markdown 在长文档相邻粗体边界上产生的 bold,bold 非法集合。
+    manager.parse = (() => ({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            {
+              type: 'text',
+              text: '相邻粗体边界',
+              marks: [{ type: 'bold' }, { type: 'bold' }],
+            },
+          ],
+        },
+      ],
+    })) as unknown as NonNullable<typeof manager.parse>;
+
+    parseMarkdown(editor, '**相邻粗体边界**');
+    const textNode = editor.getJSON().content?.[0]?.content?.[0];
+    expect(editor.getText()).toBe('相邻粗体边界');
+    expect(textNode?.marks).toEqual([{ type: 'bold' }]);
+
+    manager.parse = originalParse;
+    editor.destroy();
+  });
+
+  it('大量歧义转义的序列化语义校验最多整篇解析一次', () => {
+    const editor = createEditor();
+    const manager = getMarkdownManager(editor)!;
+    const originalParse = manager.parse!;
+    let parseCalls = 0;
+
+    // 这些字面星号清理后会形成强调语法，批量校验失败时必须整体保守返回，
+    // 不能再按候选逐个递归解析全文。
+    setVisualPlainText(editor, Array.from({ length: 500 }, () => 'a*b*c').join(' '));
+    manager.parse = (markdown) => {
+      parseCalls += 1;
+      return originalParse.call(manager, markdown);
+    };
+
+    const serialized = serializeMarkdown(editor);
+    expect(parseCalls).toBe(1);
+    expect(serialized).toContain('a\\*b\\*c');
+
+    manager.parse = originalParse;
     editor.destroy();
   });
 

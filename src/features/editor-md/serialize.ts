@@ -205,8 +205,8 @@ function applyMarkdownCleanupCandidates(
 
 /**
  * 在不改变解析后文档的前提下删除冗余转义。
- * 先批量尝试以覆盖绝大多数普通文本；存在真实 Markdown 歧义时再二分缩小范围，
- * 仅保留形成强调、删除线、行内代码、链接等语法所必需的转义。
+ * 只做一次批量语义校验：全部候选都安全时一并清理，存在 Markdown 歧义时
+ * 保守保留全部候选，确保耗时不会随候选数量退化为反复整篇解析。
  * 🔴 J2：参考文档参数化（referenceDoc 为捕获的不可变快照，不再依赖活的 editor.state.doc）。
  */
 function removeRedundantMarkdownEscapes(
@@ -231,28 +231,12 @@ function removeRedundantMarkdownEscapes(
 
   const fullyCleaned = applyMarkdownCleanupCandidates(markdown, candidates);
   if (preservesDocument(fullyCleaned)) return fullyCleaned;
-  if (candidates.length === 1) return markdown;
 
-  let output = markdown;
-  const cleanRange = (start: number, end: number): void => {
-    const range = candidates.slice(start, end);
-    const cleaned = applyMarkdownCleanupCandidates(output, range);
-    if (preservesDocument(cleaned)) {
-      output = cleaned;
-      return;
-    }
-    if (end - start <= 1) return;
-
-    // 先处理右半段，右侧缩短不会影响左半段仍在使用的原始字符偏移。
-    const middle = start + Math.floor((end - start) / 2);
-    cleanRange(middle, end);
-    cleanRange(start, middle);
-  };
-
-  const middle = Math.floor(candidates.length / 2);
-  cleanRange(middle, candidates.length);
-  cleanRange(0, middle);
-  return output;
+  // 批量清理会改变文档结构时保守保留全部候选转义。旧实现继续二分到单个候选，
+  // 最坏会触发“候选数 × 整篇 Markdown 解析”：数百个字面星号即可阻塞主线程数分钟。
+  // 一次批量语义校验把本流程稳定限制在线性扫描 + 单次解析内；宁可源码中多保留
+  // 少量无害反斜杠，也不能以交互冻结换取纯展示层面的源码美化。
+  return markdown;
 }
 
 /**
@@ -427,6 +411,40 @@ function replaceEditorContent(
     .run();
 }
 
+interface ParsedMarkdownMark {
+  type?: string;
+  attrs?: Record<string, unknown>;
+}
+
+interface ParsedMarkdownNode {
+  marks?: ParsedMarkdownMark[];
+  content?: ParsedMarkdownNode[];
+}
+
+/**
+ * 修复 Markdown 解析器在相邻/嵌套强调边界上偶发生成的同类型重复 mark。
+ * ProseMirror 不允许一个文本节点同时拥有两个同类型 mark；保留解析栈中最后一个
+ * （更靠内层）的 mark，并递归处理整棵 JSON，避免一次局部异常把整篇文档降级成纯文本。
+ */
+function deduplicateParsedMarkdownMarks(root: ParsedMarkdownNode): void {
+  if (root.marks && root.marks.length > 1) {
+    const seenTypes = new Set<string>();
+    const repairedReversed: ParsedMarkdownMark[] = [];
+
+    // 从内层向外层检查，同类型 mark 只保留最后出现的一个；不同类型的原顺序保持不变。
+    for (let index = root.marks.length - 1; index >= 0; index -= 1) {
+      const mark = root.marks[index];
+      const type = mark.type;
+      if (type && seenTypes.has(type)) continue;
+      if (type) seenTypes.add(type);
+      repairedReversed.push(mark);
+    }
+    root.marks = repairedReversed.reverse();
+  }
+
+  root.content?.forEach(deduplicateParsedMarkdownMarks);
+}
+
 export function parseMarkdown(
   editor: Editor,
   markdown: string,
@@ -440,6 +458,21 @@ export function parseMarkdown(
     return;
   }
   try {
+    const manager = getMarkdownManager(editor);
+    const parsed = manager?.parse?.(markdown);
+    if (parsed) {
+      // @tiptap/markdown 的 marked 适配器在长文档的相邻粗体边界上可能返回
+      // bold,bold 等非法 mark 集合；进入 schema 前统一修复并显式校验。
+      deduplicateParsedMarkdownMarks(parsed as ParsedMarkdownNode);
+      editor.schema.nodeFromJSON(parsed);
+      replaceEditorContent(
+        editor,
+        editor.chain().setContent(parsed, { contentType: 'json' }),
+      );
+      return;
+    }
+
+    // 未装配 MarkdownManager 时保留原兼容路径，配置错误仍由外层容错明确记录。
     replaceEditorContent(
       editor,
       editor.chain().setContent(markdown, {
