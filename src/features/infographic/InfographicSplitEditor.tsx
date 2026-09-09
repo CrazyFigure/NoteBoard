@@ -21,6 +21,10 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { useDocumentStore } from '../../stores/documentStore';
+// 🔴 S12：回收能力注册与视图状态恢复
+import { takeViewState } from '../session/editorSuspension';
+import { registerEditorCapabilities } from '../../core/editor/editorRegistry';
+import { createSplitEditorCapabilities } from '../diagram-preview/splitEditorCapabilities';
 import { useWindowStore } from '../../stores/windowStore';
 import { parseInfographicCode } from './infographicParser';
 import { InfographicRenderer } from './infographicRenderer';
@@ -62,6 +66,36 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
 
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const editorViewRef = useRef<EditorView | null>(null);
+
+  // 🔴 S12：布局/预览状态 ref 镜像（回收捕获读取最新值）+ 能力注册 + 重挂载恢复
+  const extraStateRef = useRef({ layoutMode: 'split' as LayoutMode, zoom: 1, pan: { x: 0, y: 0 } });
+  useEffect(() => {
+    extraStateRef.current = { layoutMode, zoom, pan };
+  }, [layoutMode, zoom, pan]);
+
+  useEffect(() => {
+    const restored = takeViewState(docKey) as {
+      kind: 'split-diagram';
+      layoutMode: LayoutMode;
+      zoom: number;
+      pan: { x: number; y: number };
+    } | null;
+    if (restored?.kind === 'split-diagram') {
+      setLayoutMode(restored.layoutMode);
+      setZoom(restored.zoom);
+      setPan(restored.pan);
+    }
+    const instanceId = `ig-${docKey}`;
+    const dispose = registerEditorCapabilities(
+      createSplitEditorCapabilities({
+        docKey,
+        instanceId,
+        getEditorView: () => editorViewRef.current,
+        captureExtra: () => extraStateRef.current,
+      }),
+    );
+    return dispose;
+  }, [docKey]);
   const languageCompartmentRef = useRef<Compartment>(new Compartment());
 
   // 预览画布根节点：信息图是纯 DOM 渲染，复制/导出时抓取这里的实时快照。

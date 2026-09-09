@@ -16,6 +16,7 @@ pub mod bootstrap;
 pub mod updater;
 pub mod staging;
 pub mod favorites;
+pub mod perf;
 
 use state::AppState;
 use std::sync::Mutex;
@@ -34,17 +35,27 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .manage(Mutex::new(AppState::default()))
         .setup(|app| {
-            bootstrap::setup(app)?;
+            // 🔴 诊断 span：setup 钩子的真实执行区间（不含 WebView 创建提前量）
+            perf::mark("setup_start");
+            let result = bootstrap::setup(app);
+            perf::mark("setup_end");
+            result?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            // window
-            window::commands::window_ready,
+            // window（S04 打开队列 + 迁移协议）
+            window::commands::window_listeners_ready,
+            window::commands::window_shell_ready,
+            window::commands::list_open_requests,
+            window::commands::ack_open_request,
+            window::commands::enqueue_open_requests,
             window::commands::create_window,
-            window::commands::open_in_new_window,
-            window::commands::confirm_handoff,
+            window::commands::begin_document_transfer,
+            window::commands::take_transfer_payload,
+            window::commands::prepare_transfer_complete,
+            window::commands::abort_transfer,
+            window::commands::query_transfer,
             window::commands::focus_window,
-            window::commands::notify_window_active,
             window::commands::close_window,
             // registry
             registry::commands::register_document,
@@ -55,6 +66,8 @@ pub fn run() {
             // fsio
             fsio::commands::read_document,
             fsio::commands::probe_document,
+            // 🔴 S07：统一文件准备（读盘前归属查询 + 在途去重 + blocking 读取）
+            fsio::prepare::prepare_document,
             fsio::commands::write_document,
             fsio::commands::save_binary_file,
             fsio::commands::read_dir,
@@ -65,9 +78,6 @@ pub fn run() {
             fsio::commands::path_exists,
             fsio::commands::reveal_in_explorer,
             fsio::commands::open_with_default_app,
-            // watcher
-            fsio::commands::watch_dir,
-            fsio::commands::unwatch_dir,
             // settings
             settings::commands::load_settings,
             settings::commands::save_settings,
@@ -93,6 +103,7 @@ pub fn run() {
             sysfont::commands::list_system_fonts,
             // 应用内字体资源包
             font_pack::get_font_pack_status,
+            font_pack::refresh_font_pack_status,
             font_pack::download_font_pack,
             font_pack::import_font_pack,
             font_pack::remove_font_pack,
@@ -100,6 +111,10 @@ pub fn run() {
             updater::commands::check_for_updates,
             updater::commands::download_and_install_update,
             updater::commands::open_external_url,
+            // 性能诊断（未启用时为 no-op）
+            perf::commands::record_web_spans,
+            perf::commands::dump_perf_spans,
+            perf::commands::is_perf_spans_enabled,
         ])
         .on_window_event(|window, event| {
             window::manager::on_window_event(window, event)

@@ -1,0 +1,21 @@
+[package]
+name = "noteboard-perf-host-min"
+version = "0.2.7"
+description = "NoteBoard 性能对照：最小 Tauri 宿主（仅空窗口，无插件无业务依赖）"
+license = "GPL-3.0-only"
+edition = "2021"
+
+# 🔴 对照原则：tauri 版本与主应用（src-tauri）一致，不引入任何插件，
+#    release profile 与主应用相同（均使用 cargo 默认 release），保证宿主下限可比。
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2.11", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lib]
+name = "noteboard_perf_host_min_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]

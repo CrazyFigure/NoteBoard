@@ -15,17 +15,9 @@ import { Tooltip } from '../../components/Tooltip';
 import { useSearchStore } from '../../stores/searchStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
-import { getEditorView } from '../editor-code/CodeEditor';
-import { getActiveTipTapEditor, getActiveSourceView } from '../editor-md/TipTapEditor';
-import {
-  executeSearch,
-  executeFindNext,
-  executeFindPrev,
-  executeReplace,
-  executeReplaceAll,
-  focusActiveEditor,
-  type EditorTarget,
-} from './searchController';
+// 🔴 S03：搜索栏统一通过 core 能力注册表分发，不再从编辑器组件导入实例 getter
+import { getEditorCapabilities } from '../../core/editor/editorRegistry';
+import type { SearchCapabilities } from '../../core/editor/editorTypes';
 
 export function SearchReplaceBar() {
   const {
@@ -54,22 +46,11 @@ export function SearchReplaceBar() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
 
-  // 解析当前活动的编辑器目标（TipTap 可视化 / CM6 源码 / CM6 代码与纯文本）
-  const getTarget = useCallback((): EditorTarget => {
+  // 当前活动文档的搜索能力（code / markdown visual / markdown source 由注册表分派）
+  const getSearch = useCallback((): SearchCapabilities | null => {
     if (!activeTab || !activeKey) return null;
-    if (activeTab.kind === 'markdown') {
-      if (activeTab.viewMode === 'source') {
-        const view = getActiveSourceView(activeKey);
-        return view ? { type: 'codemirror', view } : null;
-      } else {
-        const editor = getActiveTipTapEditor(activeKey);
-        return editor ? { type: 'tiptap', editor } : null;
-      }
-    } else if (activeTab.kind === 'code') {
-      const view = getEditorView();
-      return view ? { type: 'codemirror', view } : null;
-    }
-    return null;
+    if (activeTab.kind !== 'code' && activeTab.kind !== 'markdown') return null;
+    return getEditorCapabilities(activeKey)?.search ?? null;
   }, [activeTab, activeKey]);
 
   // 搜索选项参数
@@ -87,10 +68,12 @@ export function SearchReplaceBar() {
   // 触发实时搜索并更新匹配统计
   const runSearch = useCallback(() => {
     if (!isOpen) return;
-    const target = getTarget();
-    const stats = executeSearch(target, searchOptions);
+    const search = getSearch();
+    const stats = search
+      ? search.search(searchOptions)
+      : { matchIndex: 0, matchCount: 0 };
     setMatchStats(stats.matchIndex, stats.matchCount);
-  }, [isOpen, getTarget, searchOptions, setMatchStats]);
+  }, [isOpen, getSearch, searchOptions, setMatchStats]);
 
   // 当搜索词、选项或当前文档切换时，实时重跑搜索
   useEffect(() => {
@@ -118,11 +101,11 @@ export function SearchReplaceBar() {
 
   // 处理关闭与焦点回归
   const handleClose = useCallback(() => {
-    const target = getTarget();
+    const search = getSearch();
     closeSearch();
     // 清除搜索高亮状态
-    if (target) {
-      executeSearch(target, {
+    if (search) {
+      search.search({
         searchText: '',
         replaceText: '',
         caseSensitive: false,
@@ -130,22 +113,26 @@ export function SearchReplaceBar() {
         isRegex: false,
       });
     }
-    focusActiveEditor(target);
-  }, [getTarget, closeSearch]);
+    if (search && activeKey) {
+      getEditorCapabilities(activeKey)?.focus();
+    }
+  }, [getSearch, closeSearch, activeKey]);
 
   // 查找下一处
   const handleFindNext = useCallback(() => {
-    const target = getTarget();
-    const stats = executeFindNext(target, searchOptions);
+    const search = getSearch();
+    if (!search) return;
+    const stats = search.findNext(searchOptions);
     setMatchStats(stats.matchIndex, stats.matchCount);
-  }, [getTarget, searchOptions, setMatchStats]);
+  }, [getSearch, searchOptions, setMatchStats]);
 
   // 查找上一处
   const handleFindPrev = useCallback(() => {
-    const target = getTarget();
-    const stats = executeFindPrev(target, searchOptions);
+    const search = getSearch();
+    if (!search) return;
+    const stats = search.findPrev(searchOptions);
     setMatchStats(stats.matchIndex, stats.matchCount);
-  }, [getTarget, searchOptions, setMatchStats]);
+  }, [getSearch, searchOptions, setMatchStats]);
 
   // 替换单处
   const handleReplace = useCallback(() => {
@@ -154,13 +141,13 @@ export function SearchReplaceBar() {
       showToast('请输入要搜索的内容', 'warning');
       return;
     }
-    const target = getTarget();
+    const search = getSearch();
     // 校验当前视图是否支持替换
-    if (!target) {
+    if (!search) {
       showToast('当前视图不支持替换操作', 'warning');
       return;
     }
-    const result = executeReplace(target, searchOptions);
+    const result = search.replace(searchOptions);
     setMatchStats(result.matchIndex, result.matchCount);
     // 根据替换执行结果弹出状态提示
     if (result.error) {
@@ -170,7 +157,7 @@ export function SearchReplaceBar() {
     } else {
       showToast('未找到可替换的内容', 'warning');
     }
-  }, [getTarget, searchOptions, searchText, setMatchStats]);
+  }, [getSearch, searchOptions, searchText, setMatchStats]);
 
   // 替换全部
   const handleReplaceAll = useCallback(() => {
@@ -179,13 +166,13 @@ export function SearchReplaceBar() {
       showToast('请输入要搜索的内容', 'warning');
       return;
     }
-    const target = getTarget();
+    const search = getSearch();
     // 校验当前视图是否支持替换
-    if (!target) {
+    if (!search) {
       showToast('当前视图不支持替换操作', 'warning');
       return;
     }
-    const result = executeReplaceAll(target, searchOptions);
+    const result = search.replaceAll(searchOptions);
     setMatchStats(result.matchIndex, result.matchCount);
     // 根据全部替换执行结果弹出状态提示
     if (result.error) {
@@ -195,7 +182,7 @@ export function SearchReplaceBar() {
     } else {
       showToast('未找到匹配项，未执行替换', 'warning');
     }
-  }, [getTarget, searchOptions, searchText, setMatchStats]);
+  }, [getSearch, searchOptions, searchText, setMatchStats]);
 
   if (!isOpen) return null;
 

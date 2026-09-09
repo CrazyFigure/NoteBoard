@@ -15,7 +15,20 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
 import { observe } from './viewportActivation';
-import { schedule } from './viewportWorkScheduler';
+import { scheduleTask, cancelTask } from './viewportWorkScheduler';
+import { useEditorActive } from '../../core/editor/EditorActivityContext';
+
+/** 🔴 S14：任务身份 = editor 实例（文档）+ 节点位置——不同节点互不覆盖 */
+const editorTaskIds = new WeakMap<object, number>();
+let nextEditorTaskId = 0;
+function editorTaskId(editor: object): number {
+  let id = editorTaskIds.get(editor);
+  if (id === undefined) {
+    id = (nextEditorTaskId += 1);
+    editorTaskIds.set(editor, id);
+  }
+  return id;
+}
 import { Tooltip } from '../../components/Tooltip';
 
 // ── 全局串行渲染队列 ──
@@ -118,7 +131,10 @@ import { buildExportFileName, type ChartImageSource } from '../export/chartExpor
 
 // ── React NodeView ──
 
-function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
+function MermaidComponent({ node, updateAttributes, selected, editor, getPos }: NodeViewProps) {
+  const active = useEditorActive();
+  // 保留已渲染图形；重新激活且正文/主题未变时不重复运行 Mermaid。
+  const renderedSignatureRef = useRef<string | null>(null);
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -139,15 +155,19 @@ function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
       return;
     }
 
+    const theme = getCurrentMermaidTheme();
+    const signature = `${theme}:${currentCode}`;
+    if (renderedSignatureRef.current === signature) return;
     const token = ++renderTokenRef.current;
     setLoading(true);
     setError(null);
 
     try {
-      const result = await enqueueRender(currentCode, getCurrentMermaidTheme());
+      const result = await enqueueRender(currentCode, theme);
       // 陈旧守卫：检查内容是否已变
       if (token !== renderTokenRef.current) return;
       setSvg(result);
+      renderedSignatureRef.current = signature;
     } catch (e) {
       if (token !== renderTokenRef.current) return;
       setError(e instanceof Error ? e.message : String(e));
@@ -172,19 +192,23 @@ function MermaidComponent({ node, updateAttributes, selected }: NodeViewProps) {
 
   // 只在视口内时渲染
   useEffect(() => {
-    if (!inViewport || !code) return;
-    schedule(() => doRender(code));
-  }, [inViewport, code, doRender]);
+    if (!active || !inViewport || !code) return;
+    const identity = `mermaid:${editorTaskId(editor)}:${getPos()}`;
+    scheduleTask(identity, () => doRender(code));
+    // 切走时取消尚未执行的展示任务；正文/保存链不受影响。
+    return () => cancelTask(identity);
+  }, [active, inViewport, code, doRender, editor, getPos]);
 
   // 主题切换时重渲染
   useEffect(() => {
-    if (!inViewport || !code) return;
+    if (!active || !inViewport || !code) return;
+    const identity = `mermaid:${editorTaskId(editor)}:${getPos()}`;
     const observer = new MutationObserver(() => {
-      schedule(() => doRender(code));
+      scheduleTask(identity, () => doRender(code));
     });
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-    return () => observer.disconnect();
-  }, [inViewport, code, doRender]);
+    return () => { observer.disconnect(); cancelTask(identity); };
+  }, [active, inViewport, code, doRender, editor, getPos]);
 
   // 导出来源：渲染出 SVG 后复制/导出才可用
   const exportSource: ChartImageSource | null = svg ? { kind: 'svg', svg } : null;

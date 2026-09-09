@@ -1,10 +1,20 @@
 //! NoteBoard 应用内字体资源包：固定来源下载、完整性校验、原子安装与状态查询。
+//!
+//! 🔴 S06 字体服务改造（docs/启动性能与低内存根治计划.md §F）：
+//!   1. 完整性验证（逐文件 SHA-256，约 35 MiB）移入受控 spawn_blocking，
+//!      不再阻塞调用线程；每进程同版本最多一个并发验证任务。
+//!   2. 验证结果按进程缓存；同进程复用前核对版本与文件身份（size+mtime），
+//!      观测到变化即重验；跨进程启动不复用"已验证"结论。
+//!   3. 安装/导入/删除/显式修复使 generation 递增，旧任务的迟到结果不得发布。
+//!   4. get_font_pack_status 在验证未完成时返回 verifying + 空 faces，
+//!      验证完成后经 noteboard-font-pack-changed 广播最终状态。
 
 use std::{
     fs,
     io::{ErrorKind, Read, Write},
     path::{Path, PathBuf},
-    time::{Duration, Instant},
+    sync::{Mutex, OnceLock},
+    time::{Duration, Instant, SystemTime},
 };
 
 use serde::Serialize;
@@ -227,6 +237,158 @@ fn build_status(root: &Path) -> FontPackStatus {
     }
 }
 
+// ── S06 验证状态机（进程级共享；F 节） ──
+
+/// 缓存的一次验证结果：记录验证时的文件身份，同进程复用前核对
+struct CachedPackStatus {
+    generation: u64,
+    status: FontPackStatus,
+    /// 验证时的文件身份（name → (size, mtime)）
+    file_identity: Vec<(String, u64, Option<SystemTime>)>,
+}
+
+struct PackVerification {
+    generation: u64,
+    /// 已缓存的验证结果（missing 状态不缓存——目录不存在即缺失，无需验证）
+    cached: Option<CachedPackStatus>,
+    /// 是否有验证任务正在运行（每进程同版本最多一个）
+    verifying: bool,
+    /// 🔴 R11：验证进行中又有 refresh 请求（generation 已递增）——任务结束时接续最新验证，
+    ///    前端不会停在 verifying
+    pending_rerun: bool,
+}
+
+static PACK_VERIFICATION: OnceLock<Mutex<PackVerification>> = OnceLock::new();
+
+fn pack_verification() -> &'static Mutex<PackVerification> {
+    PACK_VERIFICATION.get_or_init(|| {
+        Mutex::new(PackVerification {
+            generation: 0,
+            cached: None,
+            verifying: false,
+            pending_rerun: false,
+        })
+    })
+}
+
+/// 构造指定状态的轻量快照（不触发验证；missing/verifying 等初始态 faces 为空）
+fn status_snapshot(state: &str) -> FontPackStatus {
+    FontPackStatus {
+        id: FONT_PACK_ID.to_string(),
+        version: FONT_PACK_VERSION.to_string(),
+        state: state.to_string(),
+        installed_size_bytes: FONT_PACK_INSTALLED_BYTES,
+        download_size_bytes: FONT_PACK_DOWNLOAD_ESTIMATE_BYTES,
+        download_url: FONT_PACK_DOWNLOAD_URL.to_string(),
+        faces: Vec::new(),
+    }
+}
+
+/// 采集当前包目录的文件身份（size + mtime），用于缓存复用前的变更检测
+fn collect_file_identity(version_dir: &Path) -> Vec<(String, u64, Option<SystemTime>)> {
+    FONT_FILES
+        .iter()
+        .map(|spec| {
+            let path = version_dir.join("fonts").join(spec.name);
+            match fs::metadata(&path) {
+                Ok(meta) => (
+                    spec.name.to_string(),
+                    meta.len(),
+                    meta.modified().ok(),
+                ),
+                Err(_) => (spec.name.to_string(), 0, None),
+            }
+        })
+        .collect()
+}
+
+/// 缓存是否仍有效：generation 匹配且文件身份未变
+fn cache_is_valid(cache: &CachedPackStatus, root: &Path, generation: u64) -> bool {
+    if cache.generation != generation {
+        return false;
+    }
+    // 包被移除：身份集合第一个元素应为空文件 → 直接失效
+    let current = collect_file_identity(&pack_version_dir(root));
+    if current.len() != cache.file_identity.len() {
+        return false;
+    }
+    current == cache.file_identity
+}
+
+/// 在后台验证并缓存结果；完成后向所有窗口广播。
+/// 每进程同版本最多一个并发验证任务；旧 generation 的迟到结果不发布。
+fn spawn_verification(app_handle: AppHandle, root: PathBuf) {
+    {
+        let mut guard = pack_verification().lock().unwrap();
+        if guard.verifying {
+            // 🔴 R11：已有任务在跑（refresh 场景：generation 已递增，旧任务结果将作废）——
+            //    登记 pending_rerun 由旧任务结束时接续，前端不会停在 verifying
+            guard.pending_rerun = true;
+            return;
+        }
+        guard.verifying = true;
+    }
+    let generation = {
+        let guard = pack_verification().lock().unwrap();
+        guard.generation
+    };
+    let handle = app_handle.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let version_dir = pack_version_dir(&root);
+        let file_identity = if version_dir.exists() {
+            collect_file_identity(&version_dir)
+        } else {
+            Vec::new()
+        };
+        // 🔴 全量 SHA-256（约 35 MiB）在 blocking worker 上执行，不占用 UI 线程
+        let status = build_status(&root);
+        let (publish, rerun) = {
+            let mut guard = pack_verification().lock().unwrap();
+            guard.verifying = false;
+            // generation 已变（安装/删除/刷新）：本结果作废，不发布不缓存
+            if guard.generation != generation {
+                let rerun = guard.pending_rerun;
+                guard.pending_rerun = false;
+                (false, rerun)
+            } else {
+                guard.cached = Some(CachedPackStatus {
+                    generation,
+                    status: status.clone(),
+                    file_identity,
+                });
+                (true, guard.pending_rerun)
+            }
+        };
+        if publish {
+            emit_changed(&handle, &status);
+        }
+        // 🔴 R11：验证期间又有 refresh 请求（generation 已递增）→ 接续最新验证
+        if rerun {
+            spawn_verification(handle, root);
+        }
+    });
+}
+
+/// 使缓存失效并递增 generation（安装/导入/删除/显式修复时调用）
+fn invalidate_cache() {
+    let mut guard = pack_verification().lock().unwrap();
+    guard.generation += 1;
+    guard.cached = None;
+}
+
+/// 安装/删除路径完成后直接写入新缓存（这些路径已在 blocking 上下文完成全量验证）
+fn store_cache(status: FontPackStatus, root: &Path) {
+    let file_identity = collect_file_identity(&pack_version_dir(root));
+    let mut guard = pack_verification().lock().unwrap();
+    guard.generation += 1;
+    guard.cached = Some(CachedPackStatus {
+        generation: guard.generation,
+        status,
+        file_identity,
+    });
+    guard.verifying = false;
+}
+
 fn emit_changed(app_handle: &AppHandle, status: &FontPackStatus) {
     // 多窗口各自拥有独立 FontFaceSet，状态变化必须广播，不能只更新发起命令的窗口。
     let _ = app_handle.emit(FONT_PACK_CHANGED_EVENT, status);
@@ -402,19 +564,56 @@ fn install_archive_atomically(archive_path: &Path, root: &Path) -> Result<FontPa
     Ok(build_status(root))
 }
 
-/// 查询字体包状态时总是重新校验，供首次启动与设置页修复入口共同使用。
+/// 查询字体包状态（S06：异步命令）。
+/// 缺失 → 立即返回 missing；验证缓存有效 → 立即返回；
+/// 否则返回 verifying 并启动后台验证（完成经 noteboard-font-pack-changed 广播），
+/// 不在调用线程执行任何 SHA/IO，不阻塞窗口显示与编辑器挂载。
 #[tauri::command]
-pub fn get_font_pack_status() -> Result<FontPackStatus, String> {
-    Ok(build_status(&font_packs_root_dir()))
+pub async fn get_font_pack_status(app_handle: AppHandle) -> Result<FontPackStatus, String> {
+    let root = font_packs_root_dir();
+    if !pack_version_dir(&root).exists() {
+        return Ok(status_snapshot("missing"));
+    }
+    // 缓存命中：核对文件身份（同进程复用前防替换）
+    {
+        let guard = pack_verification().lock().unwrap();
+        if let Some(cache) = guard.cached.as_ref() {
+            if cache_is_valid(cache, &root, guard.generation) {
+                return Ok(cache.status.clone());
+            }
+        }
+    }
+    // 无有效缓存：返回 verifying，后台完成全量验证后广播
+    spawn_verification(app_handle, root);
+    Ok(status_snapshot("verifying"))
+}
+
+/// 显式修复/刷新入口：使缓存失效并强制重验（设置页使用）
+#[tauri::command]
+pub async fn refresh_font_pack_status(app_handle: AppHandle) -> Result<FontPackStatus, String> {
+    invalidate_cache();
+    let root = font_packs_root_dir();
+    if !pack_version_dir(&root).exists() {
+        return Ok(status_snapshot("missing"));
+    }
+    spawn_verification(app_handle, root);
+    Ok(status_snapshot("verifying"))
 }
 
 /// 从固定 GitHub Release 下载并启用字体包；系统代理失败或返回 403 时回退直连。
 #[tauri::command]
 pub async fn download_font_pack(app_handle: AppHandle) -> Result<FontPackStatus, String> {
     let root = font_packs_root_dir();
-    let current = build_status(&root);
-    if current.state == "ready" {
-        return Ok(current);
+    // S06：不在调用线程做全量 SHA——缓存判定 ready 才短路；否则直接走下载安装
+    {
+        let guard = pack_verification().lock().unwrap();
+        if let Some(cache) = guard.cached.as_ref() {
+            if cache_is_valid(cache, &root, guard.generation)
+                && cache.status.state == "ready"
+            {
+                return Ok(cache.status.clone());
+            }
+        }
     }
     fs::create_dir_all(&root).map_err(|error| font_pack_error("write", error.to_string()))?;
     // 每次操作使用独立临时文件，多窗口同时请求不会互删下载中的数据。
@@ -448,6 +647,8 @@ pub async fn download_font_pack(app_handle: AppHandle) -> Result<FontPackStatus,
     .map_err(|error| font_pack_error("install", error.to_string()))?;
     let _ = fs::remove_file(&archive_path);
     let status = install_result?;
+    // S06：安装路径已在 blocking 上下文完成全量验证，直接写入新缓存（generation 递增）
+    store_cache(status.clone(), &root);
     emit_changed(&app_handle, &status);
     Ok(status)
 }
@@ -466,11 +667,14 @@ pub async fn import_font_pack(
     }
     let root = font_packs_root_dir();
     let install_path = source.clone();
+    let install_root = root.clone();
     let status = tauri::async_runtime::spawn_blocking(move || {
-        install_archive_atomically(&install_path, &root)
+        install_archive_atomically(&install_path, &install_root)
     })
     .await
     .map_err(|error| font_pack_error("install", error.to_string()))??;
+    // S06：安装路径已完成全量验证，写入新缓存
+    store_cache(status.clone(), &root);
     emit_changed(&app_handle, &status);
     Ok(status)
 }
@@ -501,7 +705,9 @@ pub fn remove_font_pack(app_handle: AppHandle) -> Result<FontPackStatus, String>
             }
         }
     }
-    let status = build_status(&root);
+    // S06：删除使缓存失效（generation 递增），目录已不存在无需再验证
+    invalidate_cache();
+    let status = status_snapshot("missing");
     emit_changed(&app_handle, &status);
     Ok(status)
 }

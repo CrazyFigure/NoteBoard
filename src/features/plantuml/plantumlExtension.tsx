@@ -8,12 +8,28 @@ import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from '@tip
 import { Maximize2, Edit2, X, AlertCircle } from 'lucide-react';
 import { renderPlantUmlToSvg } from './plantumlEncoder';
 import { observe } from '../editor-md/viewportActivation';
-import { schedule } from '../editor-md/viewportWorkScheduler';
+import { scheduleTask, cancelTask } from '../editor-md/viewportWorkScheduler';
+import { useEditorActive } from '../../core/editor/EditorActivityContext';
+
+/** 🔴 S14：任务身份 = editor 实例（文档）+ 节点位置——不同节点互不覆盖 */
+const editorTaskIds = new WeakMap<object, number>();
+let nextEditorTaskId = 0;
+function editorTaskId(editor: object): number {
+  let id = editorTaskIds.get(editor);
+  if (id === undefined) {
+    id = (nextEditorTaskId += 1);
+    editorTaskIds.set(editor, id);
+  }
+  return id;
+}
 import { ChartExportMenu } from '../export/ChartExportMenu';
 import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
 import { Tooltip } from '../../components/Tooltip';
 
-function PlantUmlComponent({ node, updateAttributes, selected }: NodeViewProps) {
+function PlantUmlComponent({ node, updateAttributes, selected, editor, getPos }: NodeViewProps) {
+  const active = useEditorActive();
+  // 重新激活未变化的图形使用已有结果，不再次请求图表服务。
+  const renderedCodeRef = useRef<string | null>(null);
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -35,6 +51,7 @@ function PlantUmlComponent({ node, updateAttributes, selected }: NodeViewProps) 
       return;
     }
 
+    if (renderedCodeRef.current === currentCode) return;
     const token = ++renderTokenRef.current;
     setLoading(true);
     setError(null);
@@ -48,6 +65,7 @@ function PlantUmlComponent({ node, updateAttributes, selected }: NodeViewProps) 
         setSvg(null);
       } else {
         setSvg(result.svg);
+        if (!result.error) renderedCodeRef.current = currentCode;
         if (result.error) {
           setError(result.error);
         }
@@ -80,9 +98,12 @@ function PlantUmlComponent({ node, updateAttributes, selected }: NodeViewProps) 
 
   // 视口可见且有代码时调度渲染
   useEffect(() => {
-    if (!inViewport || !code) return;
-    schedule(() => doRender(code));
-  }, [inViewport, code, doRender]);
+    if (!active || !inViewport || !code) return;
+    const identity = `plantuml:${editorTaskId(editor)}:${getPos()}`;
+    scheduleTask(identity, () => doRender(code));
+    // 后台只取消非必要的预览任务，继续保留内核与正文。
+    return () => cancelTask(identity);
+  }, [active, inViewport, code, doRender, editor, getPos]);
 
   // 导出来源：渲染出 SVG 后复制/导出才可用
   const exportSource: ChartImageSource | null = svg ? { kind: 'svg', svg } : null;

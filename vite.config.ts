@@ -173,6 +173,42 @@ _deepMergeLocales(${defaultExportName}, _extraLocales);
   };
 }
 
+// 🔴 N10.1：构建模块来源清单插件——每个 chunk 输出其包含的包来源
+// （node_modules → 真实包名，含 pnpm .pnpm 布局解析；src → 项目内路径前缀）。
+// 预算门禁按来源追踪禁止库：chunk 改名/合并仍能检出（不依赖文件名黑名单）。
+function moduleSourceManifestPlugin(): import('vite').Plugin {
+  return {
+    name: 'noteboard-module-source-manifest',
+    generateBundle(_options: unknown, bundle: Record<string, unknown>) {
+      // 从模块 id 提取真实包名：取路径中最后一个 node_modules/<pkg> 段
+      // （pnpm 的 .pnpm/<pkg>@<v>/node_modules/<pkg>/ 布局下最后一段才是真实包名）
+      const packageNameOf = (id: string): string => {
+        const matches = [...id.matchAll(/node_modules[\\/]((?:@[^\\/]+[\\/])?[^\\/]+)/g)];
+        if (matches.length === 0) {
+          // 项目内模块：以 src 下的路径前缀（保留两级目录即可定位来源特性）
+          const normalized = id.replace(/\\/g, '/');
+          const srcIdx = normalized.indexOf('/src/');
+          if (srcIdx >= 0) return normalized.slice(srcIdx + 1, srcIdx + 1 + 60);
+          return normalized.split('/').slice(-2).join('/');
+        }
+        return matches[matches.length - 1][1];
+      };
+      const report: Record<string, { packages: string[] }> = {};
+      for (const [fileName, chunkUnknown] of Object.entries(bundle)) {
+        const chunk = chunkUnknown as { type?: string; moduleIds?: string[] };
+        if (chunk.type !== 'chunk') continue;
+        const packages = [...new Set((chunk.moduleIds ?? []).map(packageNameOf))].sort();
+        report[fileName] = { packages };
+      }
+      this.emitFile({
+        type: 'asset',
+        fileName: '.module-sources.json',
+        source: JSON.stringify(report, null, 1),
+      });
+    },
+  };
+}
+
 // Vite 配置
 // 注意：base 必须是 './'，Tauri 用 file:// 加载
 // 标准 Tauri 开发命令会注入系统分配的空闲端口；直接运行 Vite 时才使用 1421 作为起始端口。
@@ -185,7 +221,7 @@ const devPort = hasAllocatedDevPort ? configuredDevPort : 1421;
 // Vite 与 Tauri 必须使用同一端口；动态端口已预选完成时禁止 Vite 静默切换，避免 WebView 串线。
 export default defineConfig({
   base: './',
-  plugins: [react(), tailwindcss(), excalidrawLocalesPlugin()],
+  plugins: [react(), tailwindcss(), excalidrawLocalesPlugin(), moduleSourceManifestPlugin()],
   define: {
     'process.env.IS_PREACT': JSON.stringify('false'),
     'process.env': {},
@@ -202,13 +238,32 @@ export default defineConfig({
   },
   build: {
     target: 'chrome105', // WebView2 基线
+    // 🔴 N10.1：输出构建模块清单（dist/.vite/manifest.json）——预算门禁按模块
+    //    来源追踪禁止库（不依赖 chunk 文件名；改名/合并仍能检出）
+    manifest: true,
     rollupOptions: {
       output: {
-        manualChunks: {
-          katex: ['katex'],
-          mermaid: ['mermaid'],
-          excalidraw: ['@excalidraw/excalidraw'],
-          highlight: ['lowlight', 'highlight.js'],
+        // 🔴 S05：函数式 manualChunks，切断「入口为拿 React 归宿而静态 import 重 chunk」的回边。
+        //   之前的对象形式把 react/react-dom 卷进 excalidraw chunk（因为该包体积最大），
+        //   导致入口静态闭包含整个 1.1 MiB 画板库。
+        //   规则：
+        //   1. react 全家桶 → vendor-react（入口必需的公共依赖，单独小 chunk）
+        //   2. mermaid/excalidraw/katex → 独立库 chunk（只含库自身代码，应用代码经动态 import 进入）
+        //   3. 其余 node_modules 不归组（避免所有重库变成共有前置依赖）
+        manualChunks(id) {
+          // 🔴 Vite 的动态 import 预载辅助（__vite__preloadHelper）默认会被放进
+          //    首个创建的 chunk——此处即 mermaid 重 chunk，导致入口为拿这一个函数
+          //    静态 import 3 MiB 的图表运行时。显式归入入口必需的 vendor-react。
+          if (id.includes('vite/preload-helper') || id.includes('\0vite/preload-helper')) {
+            return 'vendor-react';
+          }
+          if (id.includes('node_modules')) {
+            if (id.includes('mermaid')) return 'mermaid';
+            if (id.includes('@excalidraw') || id.includes('excalidraw')) return 'excalidraw';
+            if (id.includes('katex')) return 'katex';
+            if (/[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return 'vendor-react';
+          }
+          return undefined;
         },
       },
     },

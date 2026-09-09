@@ -30,14 +30,8 @@ import {
   redoDocumentHistory,
   useDocumentHistory,
 } from '../history/documentHistory';
-import {
-  handleExpandJson,
-  handleMinifyJson,
-  handleValidateJson,
-  handleFormatXml,
-} from '../editor-code/jsonOps';
-import { handleTransformCase } from './textOps';
-import { getEditorView } from '../editor-code/CodeEditor';
+// 🔴 S03：工具栏通过 core 能力注册表分发，不再从编辑器组件导入实例 getter
+import { getEditorCapabilities } from '../../core/editor/editorRegistry';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useSearchStore } from '../../stores/searchStore';
 import type { LanguageId } from '../../core/ipc/types';
@@ -61,50 +55,35 @@ export function CodeToolbar({ docKey, language }: CodeToolbarProps) {
   const editorSettings = settings.editor;
   const { openSearch } = useSearchStore();
 
-  // ── 获取 CodeMirror 实例 ──
-  const getView = () => getEditorView();
+  // ── 代码操作能力（按 docKey 从注册表查询，避免多标签串线） ──
+  const getCodeOps = () => getEditorCapabilities(docKey)?.codeOps;
 
   // ── JSON 操作分发 ──
   const onExpandJson = (scope: 'all' | 'selection', tabSize?: number) => {
     setJsonDropdownOpen(false);
-    const view = getView();
-    if (view) {
-      handleExpandJson(view, { scope, tabSize, lang });
-    }
+    getCodeOps()?.expandJson({ scope, tabSize });
   };
 
   const onMinifyJson = (scope: 'all' | 'selection') => {
     setJsonDropdownOpen(false);
-    const view = getView();
-    if (view) {
-      handleMinifyJson(view, { scope, lang });
-    }
+    getCodeOps()?.minifyJson(scope);
   };
 
   const onValidateJson = (scope: 'all' | 'selection') => {
     setJsonDropdownOpen(false);
-    const view = getView();
-    if (view) {
-      handleValidateJson(view, { scope, lang });
-    }
+    getCodeOps()?.validateJson(scope);
   };
 
   // ── 文本转换分发 ──
   const onTransformCase = (mode: 'upper' | 'lower' | 'title') => {
     setTextDropdownOpen(false);
-    const view = getView();
-    if (view) {
-      handleTransformCase(view, mode);
-    }
+    getCodeOps()?.transformCase(mode);
   };
 
   // ── XML 格式化 ──
   const onFormatXml = (scope: 'all' | 'selection') => {
     setTextDropdownOpen(false);
-    const view = getView();
-    if (view) {
-      handleFormatXml(view, { scope });
-    }
+    getCodeOps()?.formatXml(scope);
   };
 
   return (

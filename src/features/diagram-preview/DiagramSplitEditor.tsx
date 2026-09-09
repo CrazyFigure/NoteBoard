@@ -18,6 +18,10 @@ import {
   FileCode,
 } from 'lucide-react';
 import { useDocumentStore } from '../../stores/documentStore';
+// 🔴 S12：回收能力注册与视图状态恢复
+import { takeViewState } from '../session/editorSuspension';
+import { registerEditorCapabilities } from '../../core/editor/editorRegistry';
+import { createSplitEditorCapabilities } from './splitEditorCapabilities';
 import { useWindowStore } from '../../stores/windowStore';
 import { renderPlantUmlToSvg } from '../plantuml/plantumlEncoder';
 import { extFromPath } from '../../core/docKind';
@@ -67,6 +71,37 @@ export function DiagramSplitEditor({ docKey }: DiagramSplitEditorProps) {
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const editorViewRef = useRef<EditorView | null>(null);
   const renderTokenRef = useRef(0);
+
+  // 🔴 S12：布局/预览状态 ref 镜像（回收捕获读取最新值）+ 能力注册 + 重挂载恢复
+  const extraStateRef = useRef({ layoutMode: 'split' as LayoutMode, zoom: 1, pan: { x: 0, y: 0 } });
+  useEffect(() => {
+    extraStateRef.current = { layoutMode, zoom, pan };
+  }, [layoutMode, zoom, pan]);
+
+  useEffect(() => {
+    // 重挂载恢复回收前保存的视图状态（布局模式/预览变换；一次性消费）
+    const restored = takeViewState(docKey) as {
+      kind: 'split-diagram';
+      layoutMode: LayoutMode;
+      zoom: number;
+      pan: { x: number; y: number };
+    } | null;
+    if (restored?.kind === 'split-diagram') {
+      setLayoutMode(restored.layoutMode);
+      setZoom(restored.zoom);
+      setPan(restored.pan);
+    }
+    const instanceId = `diag-${docKey}`;
+    const dispose = registerEditorCapabilities(
+      createSplitEditorCapabilities({
+        docKey,
+        instanceId,
+        getEditorView: () => editorViewRef.current,
+        captureExtra: () => extraStateRef.current,
+      }),
+    );
+    return dispose;
+  }, [docKey]);
 
   // 判断图表类型（Mermaid 或 PlantUML，优先依据 language 和 displayName）
   const diagramType = useMemo<'mermaid' | 'plantuml'>(() => {

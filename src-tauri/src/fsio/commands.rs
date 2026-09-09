@@ -252,12 +252,6 @@ pub fn open_with_default_app(path: String) -> Result<(), String> {
     Ok(())
 }
 
-/// 监听目录
-#[tauri::command]
-pub fn watch_dir(_path: String, _recursive: bool, _delay_ms: u64) -> Result<(), String> {
-    // tauri-plugin-fs 的 watch 由前端直接调用
-    Ok(())
-}
 
 /// 取消监听
 #[tauri::command]

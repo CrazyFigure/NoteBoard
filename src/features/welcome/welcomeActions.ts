@@ -8,6 +8,10 @@ import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
 import { useExplorerStore } from '../explorer/explorerStore';
 import { openDocument } from '../editor-code/orchestration/openDocument';
+// 🔴 P0-1：新建文档与打开文件同样预取编辑器资源（openDocument 打开路径有预取——
+//    新建路径此前缺失：首次新建要完整加载模块（显示 fallback 数秒）；
+//    预取与渲染共享资源注册表（R4-02），完成后再打开直接命中 fulfilled 状态）
+import { prefetchEditor, resolveEditorKind } from '../editor-host/editorLoaders';
 import type { DocumentKind, LanguageId } from '../../core/ipc/types';
 import { showToast } from '../../stores/toastStore';
 import { createDefaultBitableDocument, serializeBitableDocument } from '../bitable/bitableConverter';
@@ -196,6 +200,10 @@ function createUntitledDocument(
     externalStatus: null,
     isDetached: false,
   };
+  // 🔴 P0-1：建标签前预取对应编辑器入口（与 openDocument 的打开路径一致）——
+  //    首次新建不再等待完整模块加载（缩短 fallback 期；资源与渲染共享）
+  const loaderKind = resolveEditorKind(tab);
+  if (loaderKind !== 'unsupported') prefetchEditor(loaderKind);
   useWindowStore.getState().openTab(tab);
 }
 

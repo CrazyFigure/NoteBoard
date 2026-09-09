@@ -12,6 +12,9 @@ export const PACKAGED_FONT_FAMILIES = [
 
 // 当前 WebView 已注册的 FontFace 必须可追踪，删除或修复资源包时才能彻底撤销旧引用。
 let activeFontFaces: FontFace[] = [];
+// 与 activeFontFaces 平行的描述符（family/weight/style）——过滤依据原始数据，
+// 不依赖 FontFace 实例属性在不同运行时的可移植性
+let activeFaceDescriptors: Array<{ family: string; weight: string; style: string }> = [];
 let activeApplicationFontFamilies: string[] = [];
 const applicationFontListeners = new Set<(families: readonly string[]) => void>();
 
@@ -25,6 +28,7 @@ const clearActiveFontFaces = () => {
     activeFontFaces.forEach((fontFace) => document.fonts.delete(fontFace));
   }
   activeFontFaces = [];
+  activeFaceDescriptors = [];
   publishApplicationFontFamilies([]);
 };
 
@@ -40,10 +44,17 @@ export const subscribeApplicationFontFamilies = (
 };
 
 /**
- * 把后端校验通过的本地文件注册到当前 WebView；不会调用 Windows 字体安装接口。
- * 先完成全部 FontFace.load 再对外发布族名，避免下拉框与实际渲染能力短暂不一致。
+ * S06：把后端校验通过的本地文件注册到当前 WebView；不会调用 Windows 字体安装接口。
+ * 🔴 不再对全部 FontFace 主动 load（旧实现一次性加载约 35 MiB 字体二进制）：
+ *   - 注册（document.fonts.add）后 CSS 使用时才触发网络/磁盘加载；
+ *   - 配置实际引用的族经 ensureFaces 主动 load，保证首屏排版尽快稳定；
+ *   - 其余 face 保持"已登记未加载"，下拉框可见但不占解码内存。
+ * 不会调用 Windows 字体安装接口。
  */
-export const activateFontPack = async (status: FontPackStatus): Promise<FontPackStatus> => {
+export const activateFontPack = async (
+  status: FontPackStatus,
+  typography?: TypographySettings | null,
+): Promise<FontPackStatus> => {
   clearActiveFontFaces();
   if (status.state !== 'ready' || !status.faces.length || typeof document === 'undefined') {
     return status;
@@ -62,20 +73,87 @@ export const activateFontPack = async (status: FontPackStatus): Promise<FontPack
     );
   });
 
-  try {
-    // FontFaceSet 先登记再主动加载，完成后的同一帧即可供编辑器测量和绘制。
-    pendingFaces.forEach((fontFace) => document.fonts.add(fontFace));
-    await Promise.all(pendingFaces.map((fontFace) => fontFace.load()));
-    activeFontFaces = pendingFaces;
-    publishApplicationFontFamilies(
-      Array.from(new Set(status.faces.map((face) => face.family))),
-    );
-    return status;
-  } catch (error) {
-    pendingFaces.forEach((fontFace) => document.fonts.delete(fontFace));
-    publishApplicationFontFamilies([]);
-    throw error;
+  // FontFaceSet 登记全部 face（未加载状态）；族名立即发布供下拉框与设置页使用
+  pendingFaces.forEach((fontFace) => document.fonts.add(fontFace));
+  activeFontFaces = pendingFaces;
+  activeFaceDescriptors = status.faces.map((face) => ({
+    family: face.family,
+    weight: face.weight,
+    style: face.style,
+  }));
+  publishApplicationFontFamilies(
+    Array.from(new Set(status.faces.map((face) => face.family))),
+  );
+
+  // 按当前排版需求主动加载引用族（区分"已登记"与"已可渲染"）
+  await ensureFaces(typography ?? null);
+  // 🔴 字体从 fallback 切换到真实字形后，CodeMirror 等自绘光标/测量缓存的组件需要重测；
+  //    等待字体就绪后广播统一度量刷新事件（F 节 5）。
+  if (typeof document !== 'undefined' && document.fonts) {
+    void document.fonts.ready.then(() => {
+      window.dispatchEvent(new CustomEvent('noteboard-fonts-settled'));
+    });
   }
+  return status;
+};
+
+/**
+ * 按排版需求主动加载当前配置引用的字体 face（其余由 CSS 使用时触发）。
+ * typography 为空时跳过（无设置场景不加载任何包字体）。
+ */
+export const ensureFaces = async (
+  typography: TypographySettings | null | undefined,
+): Promise<void> => {
+  if (!typography || activeFontFaces.length === 0) return;
+  const referenced = collectReferencedPackFamilies(typography);
+  if (referenced.size === 0) return;
+  // 🔴 R11：按具体 face 加载——只主动加载引用族的 400 normal（正文默认）；
+  //    粗体/斜体等由 CSS 实际使用时触发（display:swap）。
+  //    过滤依据平行描述符数组（原始数据），不依赖 FontFace 实例属性。
+  const needed: FontFace[] = [];
+  activeFaceDescriptors.forEach((descriptor, index) => {
+    if (
+      referenced.has(descriptor.family.toLowerCase())
+      && String(descriptor.weight) === '400'
+      && descriptor.style === 'normal'
+    ) {
+      const face = activeFontFaces[index];
+      if (face) needed.push(face);
+    }
+  });
+  // 主动 load 需要的 face；单个失败不阻塞其它（CSS 仍会按需重试）
+  await Promise.allSettled(needed.map((fontFace) => fontFace.load()));
+};
+
+/** 收集排版配置中引用的包字体族（小写） */
+const collectReferencedPackFamilies = (typography: TypographySettings): Set<string> => {
+  const configured = [
+    typography.contentFontFamily,
+    typography.contentFontFamilyZh,
+    typography.monoFontFamily,
+    typography.monoFontFamilyZh,
+    typography.explorerFontFamily,
+    typography.explorerFontFamilyZh,
+    typography.uiFontFamily,
+    typography.uiFontFamilyZh,
+  ].filter((fontFamily): fontFamily is string => Boolean(fontFamily));
+  const referenced = new Set<string>();
+  for (const family of configured) {
+    if (isPackagedFontFamily(family)) {
+      referenced.add(normalizeFontFamily(family));
+    }
+  }
+  return referenced;
+};
+
+/**
+ * 配置是否引用字体包字体（纯前端判断，无需枚举系统字体）。
+ * 🔴 S06 提示顺序（F 节）：先判断配置 → 再查包状态 → 按需才枚举系统字体；
+ * 纯系统字体配置不得触发系统字体枚举。
+ */
+export const settingsReferencePackagedFonts = (settings: Settings): boolean => {
+  const referenced = collectReferencedPackFamilies(settings.typography);
+  return referenced.size > 0;
 };
 
 const packagedFontLookup = new Set(

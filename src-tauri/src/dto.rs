@@ -163,10 +163,124 @@ pub enum WindowIntent {
 pub struct TransferredDocument {
     pub key: String,
     pub content: Option<String>,
+    #[serde(default)]
     pub board_scene: Option<serde_json::Value>,
     pub is_dirty: bool,
     pub view_mode: Option<ViewMode>,
     pub view_state: serde_json::Value,
+    // ── S04 迁移协议扩充字段（旧字段保留兼容读入；缺省策略集中在 adopt 侧实现） ──
+    /// 文档类型（code/markdown/board/...；缺省按 key 扩展名推断）
+    #[serde(default)]
+    pub kind: Option<DocumentKind>,
+    /// 语言 ID（缺省按 key 推断）
+    #[serde(default)]
+    pub language: Option<String>,
+    /// 编码与 EOL（缺省 utf8/lf）
+    #[serde(default)]
+    pub encoding: Option<String>,
+    #[serde(default)]
+    pub eol: Option<String>,
+    /// 只读标记（缺省 false）
+    #[serde(default)]
+    pub readonly: bool,
+    /// 磁盘元信息（缺省 0）
+    #[serde(default)]
+    pub mtime: i64,
+    #[serde(default)]
+    pub size: u64,
+    /// 保存基线内容（脏文档必须携带，用于脏态判定）
+    #[serde(default)]
+    pub baseline: Option<String>,
+    /// 迁移时内容版本（源实例 flush 时捕获）
+    #[serde(default)]
+    pub revision: u64,
+    /// 可序列化统一历史（按类型 JSON 表示）
+    #[serde(default)]
+    pub history: Option<serde_json::Value>,
+}
+
+// ── 打开请求队列（C 节协议） ──
+
+/// 打开请求来源
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum OpenRequestSource {
+    Cli,
+    SecondInstance,
+    Drop,
+    Dialog,
+    Restore,
+}
+
+/// 单个文件的打开请求；同批路径按输入顺序分配 sequence
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenRequestDto {
+    pub request_id: String,
+    pub batch_id: String,
+    pub sequence: u64,
+    pub source: OpenRequestSource,
+    pub path: String,
+    pub cwd: Option<String>,
+}
+
+/// list_open_requests 返回的条目（非破坏读取，携带读取时队列版本）
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenRequestItemDto {
+    pub request: OpenRequestDto,
+    pub queue_version: u64,
+}
+
+/// 打开请求处理结果
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum OpenOutcome {
+    Opened,
+    Focused,
+    Cancelled,
+    Failed,
+}
+
+/// 窗口启动握手结果
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowBootDto {
+    pub protocol_version: u32,
+    pub consumer_id: String,
+    /// empty | explicit-open | handoff
+    pub startup_mode: String,
+    pub transfer_id: Option<String>,
+    pub queue_version: u64,
+}
+
+// ── 文档迁移（transferId 协议） ──
+
+/// 迁移状态机：preparing → target-prepared → committed / aborted
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum TransferState {
+    Preparing,
+    TargetPrepared,
+    Committed,
+    Aborted,
+}
+
+/// 迁移发起响应
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct BeginTransferResponse {
+    pub transfer_id: String,
+    pub target_label: String,
+}
+
+/// 迁移状态查询结果
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferStatusDto {
+    pub transfer_id: String,
+    pub state: TransferState,
+    pub key: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -318,6 +432,50 @@ pub struct ProbeResult {
 pub struct PathExistsResult {
     pub exists: bool,
     pub is_dir: bool,
+}
+
+// ── S07 文件准备判别结果（G 节统一服务） ──
+
+/// 统一文件准备的判别结果：
+/// already-open 在读盘前返回（本窗口在途或已开、其他窗口已开）；
+/// text 携带已读入的完整 payload；其余分支不读正文。
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(tag = "type", rename_all = "kebab-case")]
+pub enum PreparedDocument {
+    #[serde(rename_all = "camelCase")]
+    Directory { path: String },
+    #[serde(rename_all = "camelCase")]
+    Image {
+        key: String,
+        display_name: String,
+        dir_path: String,
+        language: String,
+        size: u64,
+        mtime: i64,
+    },
+    #[serde(rename_all = "camelCase")]
+    Text { payload: DocumentPayload },
+    #[serde(rename_all = "camelCase")]
+    Unsupported {
+        key: String,
+        display_name: String,
+        dir_path: String,
+        language: String,
+        size: u64,
+    },
+    #[serde(rename_all = "camelCase")]
+    AlreadyOpen {
+        key: String,
+        owner_label: String,
+        /// 归属为本窗口（含在途准备）：前端直接激活标签，不重复读盘
+        owner_is_self: bool,
+    },
+    #[serde(rename_all = "camelCase")]
+    Failed {
+        message: String,
+        /// 文件不存在（前端据此走缺失文件流程）
+        missing: bool,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]

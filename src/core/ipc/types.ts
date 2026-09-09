@@ -73,6 +73,11 @@ export type WindowIntent =
   | { type: 'open-files'; paths: string[] }
   | { type: 'adopt-documents'; docs: TransferredDocument[] };
 
+/**
+ * 迁移文档（S04 扩充字段；旧字段保留兼容读入）。
+ * kind/language/encoding/eol/readonly/mtime/size/baseline/revision/history 为新增，
+ * 缺省时由 adopt 侧按集中策略补齐（按 key 推断类型、utf8/lf、基线取 content）。
+ */
 export interface TransferredDocument {
   key: string;
   content: string | null;
@@ -80,7 +85,97 @@ export interface TransferredDocument {
   isDirty: boolean;
   viewMode: ViewMode | null;
   viewState: ViewStateDto;
+  kind?: DocumentKind | null;
+  language?: string | null;
+  encoding?: string | null;
+  eol?: string | null;
+  readonly?: boolean;
+  mtime?: number;
+  size?: number;
+  baseline?: string | null;
+  revision?: number;
+  history?: unknown;
+  /** R06：编辑器侧 captureViewState 的判别联合快照（选区/滚动/折叠/查看变换） */
+  viewStateSnapshot?: unknown;
 }
+
+// ── 打开请求队列（S04 C 节协议） ──
+
+/** 打开请求来源 */
+export type OpenRequestSource = 'cli' | 'second-instance' | 'drop' | 'dialog' | 'restore';
+
+/** 单个文件的打开请求 */
+export interface OpenRequestDto {
+  requestId: string;
+  batchId: string;
+  sequence: number;
+  source: OpenRequestSource;
+  path: string;
+  cwd: string | null;
+}
+
+/** list_open_requests 返回条目（携带读取时队列版本） */
+export interface OpenRequestItemDto {
+  request: OpenRequestDto;
+  queueVersion: number;
+}
+
+/** 打开请求处理结果（业务处理有明确结果才 ack） */
+export type OpenOutcome = 'opened' | 'focused' | 'cancelled' | 'failed';
+
+/** 监听就绪握手结果 */
+export interface WindowBootDto {
+  protocolVersion: number;
+  consumerId: string;
+  /** empty | explicit-open | handoff */
+  startupMode: 'empty' | 'explicit-open' | 'handoff';
+  transferId: string | null;
+  queueVersion: number;
+}
+
+// ── 文档迁移（transferId 协议） ──
+
+/** 迁移状态机 */
+export type TransferState = 'preparing' | 'target-prepared' | 'committed' | 'aborted';
+
+/** 迁移发起响应 */
+export interface BeginTransferResponse {
+  transferId: string;
+  targetLabel: string;
+}
+
+/** 迁移状态查询结果 */
+export interface TransferStatusDto {
+  transferId: string;
+  state: TransferState;
+  key: string | null;
+}
+
+// ── S07 统一文件准备判别结果（G 节） ──
+
+/** already-open 在读盘前返回；text 携带已读入的完整 payload；其余分支不读正文 */
+export type PreparedDocument =
+  | { type: 'directory'; path: string }
+  | {
+      type: 'image';
+      key: string;
+      displayName: string;
+      dirPath: string;
+      language: string;
+      size: number;
+      mtime: number;
+    }
+  | { type: 'text'; payload: DocumentPayload }
+  | {
+      type: 'unsupported';
+      key: string;
+      displayName: string;
+      dirPath: string;
+      language: string;
+      size: number;
+    }
+  | { type: 'already-open'; key: string; ownerLabel: string; ownerIsSelf: boolean }
+  | { type: 'failed'; message: string; missing: boolean };
 
 export interface ViewStateDto {
   selection: { anchor: number; head: number } | null;
@@ -103,7 +198,8 @@ export interface FontFamily {
   hasCjk: boolean;
 }
 
-export type FontPackState = 'missing' | 'ready' | 'invalid';
+/** S06 新增 verifying：后台校验中（faces 为空，未验证完成不得当 ready 使用） */
+export type FontPackState = 'missing' | 'verifying' | 'ready' | 'invalid';
 
 /** 后端已校验的单个字体字形；path 仅指向 NoteBoard 应用数据目录。 */
 export interface FontPackFace {

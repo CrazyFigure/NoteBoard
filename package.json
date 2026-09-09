@@ -1,6 +1,6 @@
 {
   "name": "noteboard",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "Windows 桌面笔记 + 画板软件",
   "type": "module",
   "license": "GPL-3.0-only",
@@ -16,7 +16,7 @@
     "test:unit": "vitest run",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "test:contract": "vitest run test/contract",
-    "gate:budget": "node scripts/check-budget.mjs",
+    "gate:budget": "node scripts/check-budget.mjs --check",
     "verify:ico": "node scripts/verify-ico.mjs"
   },
   "dependencies": {
@@ -105,6 +105,7 @@
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "@vitejs/plugin-react": "^4.0.0",
+    "es-module-lexer": "^2.3.2",
     "eslint": "^9.0.0",
     "jsdom": "^30.0.1",
     "tailwindcss": "^4.0.0",
