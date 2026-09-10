@@ -2,6 +2,9 @@
 // 捕获子组件渲染期间的未处理异常，避免整屏无声白屏
 
 import React, { Component, type ErrorInfo, type ReactNode } from 'react';
+import { getEditorCapabilities } from '../core/editor/editorRegistry';
+import { saveViewState } from '../features/session/editorSuspension';
+import { useWindowStore } from '../stores/windowStore';
 
 interface Props {
   children: ReactNode;
@@ -10,6 +13,23 @@ interface Props {
 interface State {
   hasError: boolean;
   error: Error | null;
+}
+
+/**
+ * 在错误界面替换应用子树前兜底捕获活动编辑器的视图状态。
+ * 正文由 store/暂存链保护；这里只保存选区、滚动或画布视口，失败不得影响错误展示。
+ */
+export function captureActiveViewStateForRecovery(): void {
+  try {
+    const activeKey = useWindowStore.getState().activeKey;
+    if (!activeKey) return;
+    const viewState = getEditorCapabilities(activeKey)?.captureViewState?.();
+    if (viewState !== undefined && viewState !== null) {
+      saveViewState(activeKey, viewState);
+    }
+  } catch (error) {
+    console.error('捕获异常恢复位置失败:', error);
+  }
 }
 
 export class ErrorBoundary extends Component<Props, State> {
@@ -23,6 +43,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    captureActiveViewStateForRecovery();
     console.error('ErrorBoundary 捕获到未处理的 React 渲染错误:', error, errorInfo);
   }
 

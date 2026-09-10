@@ -2,7 +2,7 @@
 // 支持选中文本浮层菜单（粗体/斜体/多色高亮/代码/链接/清除格式等）与精美表格操作工具条
 // 详见 docs/09-开发路线图.md 8.8, 8.9
 
-import { useState, useEffect, useRef, type ReactNode } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from 'react';
 import { type Editor } from '@tiptap/core';
 import { BubbleMenu } from '@tiptap/react/menus';
 import {
@@ -274,40 +274,48 @@ export function EditorBubbleMenu({
 }) {
   const [showColorPicker, setShowColorPicker] = useState(false);
 
-  if (!editor) return null;
-
-  const scrollParent = findScrollParent(editor.view.dom);
+  // TipTap 3.30 的 BubbleMenu 会在 shouldShow/options 引用变化时派发更新事务。
+  // 选区变化期间若每次渲染都创建新对象，会形成 React → TipTap 事务 → React 的
+  // 无限更新闭环（React #185）；按 editor 身份稳定所有配置引用。
+  const scrollParent = useMemo(() => findScrollParent(editor.view.dom), [editor]);
+  const shouldShow = useCallback(({
+    editor: currentEditor,
+    state,
+  }: {
+    editor: Editor;
+    state: { selection: { empty: boolean } };
+  }) => {
+    const { selection } = state;
+    if (selection.empty) return false;
+    // 不在代码块中显示浮层菜单
+    if (currentEditor.isActive('codeBlock')) return false;
+    // 跨单元格多选时不弹出行内文本气泡菜单，交由表格工具栏处理
+    if (isCellSelection(selection)) return false;
+    return true;
+  }, []);
+  const bubbleMenuOptions = useMemo(() => ({
+    strategy: 'fixed' as const,
+    placement: 'top' as const,
+    offset: 8,
+    flip: {
+      // 以编辑器滚动容器为边界约束，顶部空间不足时翻转到文本下方。
+      boundary: scrollParent,
+      padding: 8,
+    },
+    shift: {
+      // 左右与上下边缘预留安全间距，防止浮层超出编辑器视口。
+      boundary: scrollParent,
+      padding: 8,
+    },
+    // 监听编辑器真实滚动容器，滚动时即时更新定位与翻转。
+    scrollTarget: scrollParent,
+  }), [scrollParent]);
 
   return (
     <BubbleMenu
       editor={editor}
-      shouldShow={({ editor, state }: { editor: Editor; state: { selection: { empty: boolean } } }) => {
-        const { selection } = state;
-        const { empty } = selection;
-        if (empty) return false;
-        // 不在代码块中显示浮层菜单
-        if (editor.isActive('codeBlock')) return false;
-        // 跨单元格多选时不弹出行内文本气泡菜单，交由表格工具栏处理
-        if (isCellSelection(selection)) return false;
-        return true;
-      }}
-      options={{
-        strategy: 'fixed',
-        placement: 'top',
-        offset: 8,
-        flip: {
-          // 以编辑器滚动容器为边界约束，顶部空间不足以容纳菜单时自动翻转到文本下方，避免被顶部操作栏遮挡
-          boundary: scrollParent,
-          padding: 8,
-        },
-        shift: {
-          // 左右与上下边缘预留 8px 安全间距，防止浮层超出编辑器视口
-          boundary: scrollParent,
-          padding: 8,
-        },
-        // 监听编辑容器真实滚动事件，滚动时即时更新定位与翻转
-        scrollTarget: scrollParent,
-      }}
+      shouldShow={shouldShow}
+      options={bubbleMenuOptions}
     >
       <div
         style={{

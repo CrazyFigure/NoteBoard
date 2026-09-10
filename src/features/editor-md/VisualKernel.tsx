@@ -31,6 +31,7 @@ import { useWindowStore } from '../../stores/windowStore';
 import { bumpDocumentRevision, getDocumentRevision } from '../../core/editor/editorRegistry';
 import { autoSaveDocument } from './markdownAutoSave';
 import { registerHistoryMaterializeHook } from '../history/documentHistory';
+import { saveViewState } from '../session/editorSuspension';
 
 interface VisualKernelProps {
   docKey: string;
@@ -212,6 +213,38 @@ export function VisualKernel({
       onReady(null);
     };
   }, [editor, onReady]);
+
+  // 浏览恢复检查点：滚动或选区变化时同步保存轻量视图状态，不序列化正文。
+  // 全局错误边界导致编辑器树被卸载时，可在重挂载后恢复到用户刚才阅读的位置；
+  // 初始化解析期间禁止覆盖已有恢复点，避免错误恢复时被首行默认选区抢先改写。
+  useEffect(() => {
+    if (!editor || !active || !visible) return;
+    // 编辑器创建与 React 视图挂载存在短暂时间差，视图尚未就绪时等待后续挂载，不能读取空 DOM。
+    const editorView = editor.view;
+    if (!editorView?.dom) return;
+    const scrollContainer = editorView.dom.parentElement as HTMLElement | null;
+    if (!scrollContainer) return;
+
+    const saveRecoveryCheckpoint = () => {
+      if (isInitializingRef.current || editor.isDestroyed) return;
+      saveViewState(docKey, {
+        kind: 'markdown' as const,
+        selection: {
+          anchor: editor.state.selection.anchor,
+          head: editor.state.selection.head,
+        },
+        scrollTop: scrollContainer.scrollTop,
+        mode: 'visual' as const,
+      });
+    };
+
+    editor.on('selectionUpdate', saveRecoveryCheckpoint);
+    scrollContainer.addEventListener('scroll', saveRecoveryCheckpoint, { passive: true });
+    return () => {
+      editor.off('selectionUpdate', saveRecoveryCheckpoint);
+      scrollContainer.removeEventListener('scroll', saveRecoveryCheckpoint);
+    };
+  }, [active, docKey, editor, isInitializingRef, visible]);
 
   // 打开超链接插入与编辑模态弹窗
   const handleOpenLinkModal = useCallback(() => {

@@ -19,7 +19,7 @@ const suspendedViewStates = new Map<string, unknown>();
 /** 最近 1 个验证可回收的轻量实例（保活） */
 let keepAliveKey: string | null = null;
 
-/** 视图状态保存（卸载前调用；编辑器侧同步捕获） */
+/** 视图状态保存（回收/异常恢复检查点调用；编辑器侧同步捕获，不包含正文） */
 export function saveViewState(docKey: string, state: unknown): void {
   suspendedViewStates.set(docKey, state);
 }
