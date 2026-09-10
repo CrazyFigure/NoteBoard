@@ -2,7 +2,12 @@
 // 1. 复制多选单元格时，按多维表格 / Excel 标准输出 TSV（同行不同列以 \t 分隔在同一行，不同行以单个 \n 换行，去除多余空行）
 // 2. 粘贴时解析剪贴板二维数据矩阵并自动填入多选单元格或按尺寸扩展填充
 
-import { Extension, type Editor } from '@tiptap/core';
+import {
+  Extension,
+  getTextBetween,
+  getTextSerializersFromSchema,
+  type Editor,
+} from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Slice, Fragment, type Schema, type Node as ProseMirrorNode } from '@tiptap/pm/model';
 import {
@@ -24,13 +29,37 @@ export const tableClipboardPluginKey = new PluginKey('tableClipboard');
 /**
  * 提取单元格节点的纯文本内容，将内部多余换行与制表符规整化
  */
+function serializeNodePlainText(node: ProseMirrorNode, blockSeparator: string): string {
+  return getTextBetween(
+    node,
+    { from: 0, to: node.content.size },
+    {
+      blockSeparator,
+      textSerializers: getTextSerializersFromSchema(node.type.schema),
+    },
+  );
+}
+
+/** 提取单元格内容并调用各节点的 renderText，确保公式等原子节点不会在 TSV 中丢失。 */
 function extractCellPlainText(cellNode: ProseMirrorNode): string {
-  const parts: string[] = [];
-  cellNode.forEach((child) => {
-    parts.push(child.textContent || '');
-  });
+  const text = serializeNodePlainText(cellNode, ' ');
   // 单元格内多个段落以空格连接，去除制表符与回车换行，避免破坏 TSV 结构
-  return parts.join(' ').replace(/\t/g, ' ').replace(/[\r\n]+/g, ' ').trim();
+  return text.replace(/\t/g, ' ').replace(/[\r\n]+/g, ' ').trim();
+}
+
+/** 按 TipTap 默认规则序列化当前选区，同时保留扩展节点注册的 renderText。 */
+function serializeCurrentSelection(view: EditorView): string {
+  const { doc, selection, schema } = view.state;
+  const textSerializers = getTextSerializersFromSchema(schema);
+  const sortedRanges = [...selection.ranges].sort((a, b) => a.$from.pos - b.$from.pos);
+
+  return sortedRanges
+    .map(({ $from, $to }) => getTextBetween(
+      doc,
+      { from: $from.pos, to: $to.pos },
+      { blockSeparator: '\n\n', textSerializers },
+    ))
+    .join('\n\n');
 }
 
 /**
@@ -124,7 +153,7 @@ export function serializeTableSliceToTSV(slice: Slice): string | null {
  * 自定义剪贴板文本序列化器
  * 当复制内容包含表格节点或单元格选区时，以多维表格 / TSV 格式序列化；其余文本保持默认逻辑
  */
-export function customClipboardTextSerializer(slice: Slice, _view?: EditorView): string {
+export function customClipboardTextSerializer(slice: Slice, view?: EditorView): string {
   const tableTSV = serializeTableSliceToTSV(slice);
   if (tableTSV !== null) {
     return tableTSV;
@@ -148,13 +177,16 @@ export function customClipboardTextSerializer(slice: Slice, _view?: EditorView):
           return;
         }
       }
-      blocks.push(node.textContent);
+      blocks.push(serializeNodePlainText(node, '\n\n'));
     });
     return blocks.join('\n\n');
   }
 
-  // 普通选区回退至 ProseMirror 默认行为
-  return slice.content.textBetween(0, slice.content.size, '\n\n');
+  // 普通选区复用 TipTap 默认的节点文本序列化协议；mathInline/mathBlock 等原子节点
+  // 通过 renderText 输出 Markdown 源码。无 view 的纯工具调用保留旧版安全回退。
+  return view
+    ? serializeCurrentSelection(view)
+    : slice.content.textBetween(0, slice.content.size, '\n\n');
 }
 
 /**
