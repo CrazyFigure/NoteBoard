@@ -147,10 +147,12 @@ export function createMarkdownEditorCapabilities(
         if (!view) return undefined;
         const sel = view.state.selection.main;
         return {
-          kind: 'code' as const,
+          // Markdown 源码模式仍由 TipTapEditor 协调器恢复，必须使用 markdown 判别类型；
+          // 伪装成 code 会被 restoreMarkdownViewState 拒绝并回到文档开头。
+          kind: 'markdown' as const,
           selection: { anchor: sel.anchor, head: sel.head },
           scrollTop: view.scrollDOM?.scrollTop ?? 0,
-          foldedRanges: [],
+          mode: 'source' as const,
         };
       }
       const editor = getMdTipTapEditor(docKey);

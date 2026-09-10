@@ -120,6 +120,17 @@ describe('🔴 R3-02 Markdown source 首开能力注册（宿主级）', () => {
     expect(view).toBeDefined();
     registerMdSourceView(KEY, view as never);
 
+    // 源码模式仍由 Markdown 协调器恢复，视图状态必须带 markdown/source 判别，
+    // 否则异常恢复会把它误当独立代码编辑器并丢弃滚动位置。
+    view!.state.selection.main = { anchor: 4, head: 9 };
+    view!.scrollDOM.scrollTop = 321;
+    expect(capabilities!.captureViewState?.()).toEqual({
+      kind: 'markdown',
+      selection: { anchor: 4, head: 9 },
+      scrollTop: 321,
+      mode: 'source',
+    });
+
     // 🔴 flush 物化 pending：暂存输入 → flush 返回物化内容
     stagePendingSourceSnapshot(KEY, { text: Text.of(['typed-in-source']), revision: 1, isNewGroup: true });
     const captured = await capabilities!.flush('save');
