@@ -15,8 +15,8 @@ import { FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating
 import { Calendar, Check, ChevronLeft, ChevronRight, Clock, X } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 
-/** 星期表头，周日起始（与 Date.getDay() 一致） */
-const WEEK_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
+/** 星期表头，周一为一周之始（与国内日历习惯一致） */
+const WEEK_LABELS = ['一', '二', '三', '四', '五', '六', '日'];
 
 /** 时间列单行高度，用于滚动定位到当前选中项 */
 const TIME_ITEM_HEIGHT = 28;
@@ -44,7 +44,8 @@ interface DayCell {
  */
 function buildMonthMatrix(year: number, month: number): DayCell[] {
   const firstDay = new Date(year, month, 1);
-  const startOffset = firstDay.getDay();
+  // getDay() 以周日为 0，这里换算成「周一为 0」的偏移，使每行第一列固定是周一
+  const startOffset = (firstDay.getDay() + 6) % 7;
   const cells: DayCell[] = [];
 
   for (let i = 0; i < 42; i += 1) {

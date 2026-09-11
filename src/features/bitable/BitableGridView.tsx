@@ -2,7 +2,7 @@
 // 支持表头指针拖拽换列、各字段格式专有排序、树形子任务展开收起、选区高亮与剪切/复制/粘贴/删除
 // 剪贴板通过隐藏代理输入框接收原生 copy/cut/paste 事件，规避 navigator.clipboard 的读权限弹窗
 
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import {
   DATE_FORMAT_OPTIONS,
   TIME_FORMAT_OPTIONS,
@@ -20,6 +20,7 @@ import { SelectOptionsPanel, OptionBadge } from './BitableOptions';
 import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
 import { usePointerReorder } from './usePointerReorder';
 import { getFieldTypeMeta, FieldSelectButton } from './BitableFieldMeta';
+import { SortRulesPanel } from './BitableSortPanel';
 import { Tooltip } from '../../components/Tooltip';
 import {
   calculateAutoFillValues,
@@ -27,7 +28,6 @@ import {
   createId,
   createRow,
   formatCellValue,
-  getSortDirectionLabels,
   groupFlatTreeRows,
   isSlotNoop,
   parseClipboardMatrix,
@@ -69,6 +69,8 @@ import {
   Scissors,
   Clipboard,
   Copy,
+  Pin,
+  PinOff,
 } from 'lucide-react';
 
 export interface CellRange {
@@ -95,6 +97,10 @@ interface GridViewProps {
   onUpdateGroupByColumnId?: (colId: string) => void;
   /** 多字段排序规则变化回调 */
   onUpdateSortRules?: (sortRules: SortRule[]) => void;
+  /** 左侧固定（冻结）的列数：固定一个前缀，横向滚动时始终可见 */
+  frozenColumnCount?: number;
+  /** 冻结列数变化回调 */
+  onUpdateFrozenColumnCount?: (count: number) => void;
   /** 区域粘贴：以 (rowId, colId) 为左上角写入二维文本矩阵，行数不足时由上层自动补建 */
   onPasteCells?: (rowId: string, colId: string, matrix: string[][]) => void;
   /** 批量更新单元格数据（单次事务合并撤销记录） */
@@ -205,128 +211,6 @@ type GridItem =
   | { type: 'group'; key: string; label: string; count: number; color?: SelectOptionColor }
   | { type: 'row'; treeNode: FlatTreeRow };
 
-interface SortRulesPanelProps {
-  columns: BitableColumn[];
-  sortRules: SortRule[];
-  onChange: (rules: SortRule[]) => void;
-  onClose: () => void;
-}
-
-function SortRulesPanel({ columns, sortRules, onChange, onClose }: SortRulesPanelProps) {
-  const [localRules, setLocalRules] = useState<SortRule[]>(sortRules);
-
-  const updateRule = (index: number, patch: Partial<SortRule>) => {
-    setLocalRules((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
-  };
-
-  const removeRule = (index: number) => {
-    setLocalRules((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const addRule = () => {
-    const unusedCol = columns.find((c) => !localRules.some((r) => r.columnId === c.id));
-    if (!unusedCol) {
-      showToast('所有字段都已加入排序');
-      return;
-    }
-    setLocalRules((prev) => [...prev, { columnId: unusedCol.id, direction: 'asc' }]);
-  };
-
-  const apply = () => {
-    onChange(localRules);
-    onClose();
-  };
-
-  const clearAll = () => {
-    onChange([]);
-    onClose();
-  };
-
-  return (
-    <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 10, width: 380 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--editor-text, #1e293b)' }}>排序</span>
-        {sortRules.length > 0 && (
-          <button type="button" onClick={clearAll} className="nb-bitable-btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }}>
-            清除全部
-          </button>
-        )}
-      </div>
-
-      {localRules.length === 0 && (
-        <div style={{ fontSize: 12, color: 'var(--editor-text-muted, #94a3b8)', padding: '6px 0' }}>未设置排序字段</div>
-      )}
-
-      {localRules.map((rule, index) => {
-        const col = columns.find((c) => c.id === rule.columnId);
-        if (!col) return null;
-        const labels = getSortDirectionLabels(col.type);
-        const usedColIds = localRules.map((r) => r.columnId);
-        return (
-          <div key={`${rule.columnId}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 11, color: 'var(--editor-text-muted, #94a3b8)', width: 18, flexShrink: 0 }}>{index + 1}</span>
-            <FieldSelectButton
-              columns={columns}
-              value={rule.columnId}
-              onChange={(colId) => colId && updateRule(index, { columnId: colId })}
-              disabledColIds={usedColIds.filter((id) => id !== rule.columnId)}
-              width={140}
-            />
-            <button
-              type="button"
-              className="nb-bitable-btn-secondary"
-              onClick={() => updateRule(index, { direction: rule.direction === 'asc' ? 'desc' : 'asc' })}
-              style={{
-                flex: 1,
-                padding: '3px 6px',
-                fontSize: 11,
-              }}
-            >
-              {rule.direction === 'asc' ? labels.asc : labels.desc}
-            </button>
-            <Tooltip content="移除该排序字段" side="top" sideOffset={4}>
-              <button
-                type="button"
-                className="nb-bitable-btn-ghost"
-                onClick={() => removeRule(index)}
-                aria-label="移除该排序字段"
-                style={{ padding: 4 }}
-              >
-                <X size={13} />
-              </button>
-            </Tooltip>
-          </div>
-        );
-      })}
-
-      {localRules.length < columns.length && (
-        <button
-          type="button"
-          className="nb-bitable-btn-secondary"
-          onClick={addRule}
-          style={{
-            borderStyle: 'dashed',
-            padding: '5px 10px',
-            color: 'var(--editor-text-muted, #64748b)',
-          }}
-        >
-          <Plus size={13} />
-          <span>添加排序字段</span>
-        </button>
-      )}
-
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
-        <button type="button" onClick={onClose} className="nb-bitable-btn-secondary" style={{ padding: '4px 10px' }}>
-          取消
-        </button>
-        <button type="button" onClick={apply} className="nb-bitable-btn-primary" style={{ padding: '4px 12px' }}>
-          应用
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export function BitableGridView({
   columns,
   rows,
@@ -334,6 +218,8 @@ export function BitableGridView({
   groupByColumnId,
   onUpdateGroupByColumnId,
   onUpdateSortRules,
+  frozenColumnCount = 0,
+  onUpdateFrozenColumnCount,
   onPasteCells,
   onBatchUpdateCells,
   onManageColumnOption,
@@ -428,6 +314,54 @@ export function BitableGridView({
 
   // 拖拽调整列宽状态
   const resizingColRef = useRef<{ colId: string; startX: number; startW: number } | null>(null);
+
+  // ── 固定列（冻结左侧若干列）──
+  // 冻结列采用「前缀固定」语义：前 N 列被固定在左侧，横向滚动时保持可见。
+  const frozenCount = Math.max(0, Math.min(frozenColumnCount, columns.length));
+  // 冻结列配置浮层
+  const [freezePanelOpen, setFreezePanelOpen] = useState(false);
+  const [freezeAnchor, setFreezeAnchor] = useState<AnchorRect | null>(null);
+  const [freezeTrigger, setFreezeTrigger] = useState<HTMLElement | null>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
+  /**
+   * 各列左边缘相对滚动容器的偏移量
+   * 用实测表头宽度而非声明宽度：表格在容器较宽时会被拉伸，声明宽度与实际渲染宽度不一致，
+   * 直接拿声明宽度算 offset 会让 sticky 列互相错位。
+   */
+  const [colOffsets, setColOffsets] = useState<number[]>([]);
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      const offsets: number[] = [];
+      let acc = 50; // 序号列固定宽度
+      columns.forEach((col, idx) => {
+        offsets[idx] = acc;
+        const el = headerCellRefs.current.get(col.id);
+        acc += el ? el.offsetWidth : col.width || 160;
+      });
+      setColOffsets((prev) =>
+        prev.length === offsets.length && prev.every((v, i) => v === offsets[i]) ? prev : offsets,
+      );
+    };
+    measure();
+    // jsdom 无 ResizeObserver（单测环境），判空跳过，仅保留窗口 resize 兜底
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(measure);
+      if (tableRef.current) observer.observe(tableRef.current);
+    }
+    window.addEventListener('resize', measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [columns]);
+
+  /** 切换某列的固定状态：固定到该列（含其左侧所有列）/ 从该列起取消固定 */
+  const toggleFreezeColumn = (colIdx: number) => {
+    if (!onUpdateFrozenColumnCount) return;
+    onUpdateFrozenColumnCount(colIdx < frozenCount ? colIdx : colIdx + 1);
+  };
 
   /**
    * 关闭列头菜单，并连带收起由它派生的「日期与时间」二级菜单
@@ -1837,6 +1771,103 @@ export function BitableGridView({
             )}
           </div>
 
+          {/* 固定列：把左侧若干列钉在视口，横向滚动时不跟随移动 */}
+          {onUpdateFrozenColumnCount && (
+            <>
+              <div style={{ width: 1, height: 16, background: 'var(--editor-border, #e2e8f0)' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Tooltip content="固定左侧列，横向滚动时始终可见" side="bottom" sideOffset={4}>
+                  <button
+                    type="button"
+                    className="nb-bitable-btn-secondary"
+                    onClick={(e) => {
+                      if (freezePanelOpen) {
+                        setFreezePanelOpen(false);
+                        return;
+                      }
+                      const rect = getAnchorRect(e.currentTarget);
+                      if (!rect) return;
+                      setFreezeAnchor(rect);
+                      setFreezeTrigger(e.currentTarget as HTMLElement);
+                      setFreezePanelOpen(true);
+                    }}
+                    style={{
+                      gap: 4,
+                      padding: '3px 8px',
+                      background: frozenCount > 0 ? 'rgba(59, 130, 246, 0.08)' : undefined,
+                      color: frozenCount > 0 ? 'var(--editor-accent, #3b82f6)' : undefined,
+                      borderColor: frozenCount > 0 ? 'var(--editor-accent, #3b82f6)' : undefined,
+                    }}
+                  >
+                    <Pin size={13} />
+                    <span>固定列{frozenCount > 0 ? ` ${frozenCount}` : ''}</span>
+                  </button>
+                </Tooltip>
+                {frozenCount > 0 && (
+                  <button
+                    type="button"
+                    className="nb-bitable-btn-ghost"
+                    onClick={() => onUpdateFrozenColumnCount?.(0)}
+                    style={{
+                      gap: 4,
+                      padding: '2px 6px',
+                      fontSize: 11,
+                    }}
+                  >
+                    <X size={11} />
+                    <span>清除固定</span>
+                  </button>
+                )}
+
+                {freezePanelOpen && freezeAnchor && freezeTrigger && (
+                  <FloatingPanel
+                    anchor={freezeAnchor}
+                    trigger={freezeTrigger}
+                    width={250}
+                    gap={2}
+                    onClose={() => setFreezePanelOpen(false)}
+                  >
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: 'var(--editor-text-muted, #94a3b8)',
+                        padding: '2px 6px 6px',
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      固定的列会钉在表格左侧，横向滚动时始终可见。
+                    </div>
+                    {columns.map((col, idx) => {
+                      const pinned = idx < frozenCount;
+                      const meta = getFieldTypeMeta(col.type);
+                      return (
+                        <button
+                          key={col.id}
+                          type="button"
+                          className="nb-bitable-menu-item"
+                          onClick={() => toggleFreezeColumn(idx)}
+                          style={{ justifyContent: 'space-between' }}
+                        >
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+                            {meta.icon}
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {col.name}
+                            </span>
+                          </span>
+                          {pinned ? (
+                            <Pin size={13} color="var(--editor-accent, #3b82f6)" />
+                          ) : (
+                            <PinOff size={13} color="var(--editor-text-muted, #94a3b8)" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </FloatingPanel>
+                )}
+              </div>
+            </>
+          )}
+
           {sortPanelOpen && sortPanelAnchor && sortPanelTrigger && onUpdateSortRules && (
             <FloatingPanel
               anchor={sortPanelAnchor}
@@ -1874,6 +1905,7 @@ export function BitableGridView({
         }}
       >
         <table
+          ref={tableRef}
           style={{
             borderCollapse: 'separate',
             borderSpacing: 0,
@@ -1919,6 +1951,20 @@ export function BitableGridView({
               const sortRuleForCol = sortRules.find((r) => r.columnId === col.id);
               const sortPriority = sortRuleForCol ? sortRules.findIndex((r) => r.columnId === col.id) + 1 : null;
               const isOptionField = col.type === 'select' || col.type === 'multiSelect';
+              const isFrozen = colIdx < frozenCount;
+              const isLastFrozen = isFrozen && colIdx === frozenCount - 1;
+              // 冻结列必须用不透明底色：表头背景一旦半透明，横向滚动时下层单元格会直接透出来
+              const headerBg = isFrozen
+                ? colDrag?.fromIdx === colIdx
+                  ? '#dbeafe'
+                  : isColSelected
+                    ? '#e7effd'
+                    : 'var(--editor-surface, #f8fafc)'
+                : colDrag?.fromIdx === colIdx
+                  ? 'rgba(59, 130, 246, 0.16)'
+                  : isColSelected
+                    ? 'rgba(59, 130, 246, 0.12)'
+                    : 'var(--editor-surface, #f8fafc)';
 
               // 落点指示线：槽位落在自身左侧时画左边缘线，落到末位时画最后一列右边缘线
               const indicatorSide = getColIndicator(colIdx);
@@ -1966,15 +2012,14 @@ export function BitableGridView({
                     minWidth: 90,
                     position: 'sticky',
                     top: 0,
-                    zIndex: 5,
-                    background:
-                      colDrag?.fromIdx === colIdx
-                        ? 'rgba(59, 130, 246, 0.16)'
-                        : isColSelected
-                          ? 'rgba(59, 130, 246, 0.12)'
-                          : 'var(--editor-surface, #f8fafc)',
+                    // 冻结列同时吸附左边缘；层叠序高于普通表头，避免被滚动中的列盖住
+                    left: isFrozen ? colOffsets[colIdx] : undefined,
+                    zIndex: isFrozen ? 6 : 5,
+                    background: headerBg,
                     borderBottom: '1px solid var(--editor-border, #e2e8f0)',
-                    borderRight: '1px solid var(--editor-border, #e2e8f0)',
+                    borderRight: isLastFrozen
+                      ? '1px solid var(--editor-border, #cbd5e1)'
+                      : '1px solid var(--editor-border, #e2e8f0)',
                     boxShadow: dropIndicator,
                     padding: '4px 8px',
                     textAlign: 'left',
@@ -1989,6 +2034,9 @@ export function BitableGridView({
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, overflow: 'hidden' }}>
                       {meta.icon}
+                      {isFrozen && (
+                        <Pin size={11} color="var(--editor-text-muted, #94a3b8)" style={{ flexShrink: 0 }} />
+                      )}
                       {editingColNameId === col.id ? (
                         <input
                           type="text"
@@ -2921,6 +2969,8 @@ export function BitableGridView({
                   const isFillRight = isInFillPreview && cIdx === fillPreview.toCol;
 
                   const isFirstCol = colIdx === 0;
+                  const isFrozen = colIdx < frozenCount;
+                  const isLastFrozen = isFrozen && colIdx === frozenCount - 1;
                   const isExpandedLongText =
                     col.type === 'longText' && resolveLongTextConfig(col).displayMode === 'full';
 
@@ -2952,6 +3002,20 @@ export function BitableGridView({
                     cellBg = 'rgba(59, 130, 246, 0.05)';
                   }
 
+                  // 冻结列脱离文档流吸附在左侧，底色必须完全不透明，
+                  // 否则横向滚动时被它盖住的单元格会透出来，出现「文字重影」
+                  const solidCellBg = isFrozen
+                    ? isInFillPreview
+                      ? '#dbe9fd'
+                      : isCellSelected
+                        ? '#e7effd'
+                        : isColSelected
+                          ? '#f2f6fe'
+                          : isRowSelected
+                            ? '#eef4fe'
+                            : 'var(--editor-surface, #ffffff)'
+                    : cellBg;
+
                   return (
                     <td
                       key={col.id}
@@ -2962,13 +3026,20 @@ export function BitableGridView({
                       onContextMenu={(e) => handleCellContextMenu(e, row.id, col.id)}
                       style={{
                         borderBottom: '1px solid var(--editor-border, #f1f5f9)',
-                        borderRight: '1px solid var(--editor-border, #f1f5f9)',
+                        borderRight: isLastFrozen
+                          ? '1px solid var(--editor-border, #cbd5e1)'
+                          : '1px solid var(--editor-border, #f1f5f9)',
                         padding: 0,
                         height: 38,
                         verticalAlign: isExpandedLongText ? 'top' : 'middle',
-                        position: 'relative',
+                        // 冻结列改为 sticky 并吸附到左侧累计偏移处；
+                        // 层级只取 1（高于随滚动平移的普通单元格即可），
+                        // 保证序号列选中时弹出的行操作条（序号列层级更高）能浮在冻结列之上
+                        position: isFrozen ? 'sticky' : 'relative',
+                        left: isFrozen ? colOffsets[colIdx] : undefined,
+                        zIndex: isFrozen ? 1 : undefined,
                         overflow: 'visible',
-                        background: cellBg,
+                        background: solidCellBg,
                         boxShadow: shadows.length > 0 ? shadows.join(', ') : undefined,
                       }}
                     >

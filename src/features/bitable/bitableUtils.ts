@@ -10,6 +10,7 @@ import {
   type DateFormatId,
   type DateTimeConfig,
   type DateTimeFieldType,
+  type GanttZoom,
   type LongTextConfig,
   type SelectOption,
   type SelectOptionColor,
@@ -966,4 +967,173 @@ export function tileMatrix<T>(
   }
 
   return result;
+}
+
+// ────────────────────────────── 甘特图时间轴工具 ──────────────────────────────
+// 统一以「天序号」（自 1970-01-01 UTC 起的天数）作为时间轴坐标，
+// 全程走 UTC 计算，规避本地时区偏移与夏令时造成的 ±1 天错位。
+
+const MS_PER_DAY = 24 * 3600 * 1000;
+
+/** 从单元格存储值中提取日期部分 YYYY-MM-DD（date / dateTime 通用，非法返回 null） */
+export function extractDatePart(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  const datePart = text.split(/[\sT]+/)[0];
+  return /^\d{4}-\d{2}-\d{2}$/.test(datePart) ? datePart : null;
+}
+
+/** 日期串 → 天序号，非法返回 null */
+export function dateToDayIndex(dateStr: string): number | null {
+  const matched = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!matched) return null;
+  return Math.floor(Date.UTC(Number(matched[1]), Number(matched[2]) - 1, Number(matched[3])) / MS_PER_DAY);
+}
+
+/** 天序号 → YYYY-MM-DD */
+export function dayIndexToDate(dayIndex: number): string {
+  const date = new Date(dayIndex * MS_PER_DAY);
+  return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())}`;
+}
+
+/** 天序号是否为周末（周六 / 周日） */
+export function isWeekendDay(dayIndex: number): boolean {
+  const dow = new Date(dayIndex * MS_PER_DAY).getUTCDay();
+  return dow === 0 || dow === 6;
+}
+
+/** 今天的天序号（按本地日期取，避免 UTC 偏移把当天的甘特线画到前一天） */
+export function todayDayIndex(): number {
+  const now = new Date();
+  return Math.floor(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / MS_PER_DAY);
+}
+
+/**
+ * 把天序号写回日期类字段的存储值
+ * date 只存日期，dateTime 补 00:00:00，与字段类型约定保持一致。
+ */
+export function buildDateFieldValue(dateStr: string, type: DateTimeFieldType): string {
+  return type === 'dateTime' ? `${dateStr} 00:00:00` : dateStr;
+}
+
+/** 甘特图时间轴：包含的天序号序列 + 「天序号 → 轴索引」映射 */
+export interface GanttDayAxis {
+  days: number[];
+  indexOf: Map<number, number>;
+}
+
+/** 构建时间轴（仅工作日模式下剔除周末；区间内全为周末时退化为完整区间，避免时间轴为空） */
+export function buildGanttDayAxis(startDay: number, endDay: number, workdaysOnly: boolean): GanttDayAxis {
+  const days: number[] = [];
+  for (let d = startDay; d <= endDay; d += 1) {
+    if (workdaysOnly && isWeekendDay(d)) continue;
+    days.push(d);
+  }
+  if (days.length === 0) {
+    for (let d = startDay; d <= endDay; d += 1) days.push(d);
+  }
+  return { days, indexOf: new Map(days.map((d, i) => [d, i])) };
+}
+
+/** 取起始天在轴上的索引：落在轴上直接用；落在周末等非轴日时向前取最近的入轴日 */
+export function ganttAxisIndexStart(axis: GanttDayAxis, day: number): number {
+  const direct = axis.indexOf.get(day);
+  if (direct !== undefined) return direct;
+  for (let d = day - 1; d >= axis.days[0]; d -= 1) {
+    const idx = axis.indexOf.get(d);
+    if (idx !== undefined) return idx;
+  }
+  return 0;
+}
+
+/** 取结束天在轴上的索引：落在非轴日时向后取最近的入轴日，保证条形至少覆盖一天 */
+export function ganttAxisIndexEnd(axis: GanttDayAxis, day: number): number {
+  const direct = axis.indexOf.get(day);
+  if (direct !== undefined) return direct;
+  const lastDay = axis.days[axis.days.length - 1];
+  for (let d = day + 1; d <= lastDay; d += 1) {
+    const idx = axis.indexOf.get(d);
+    if (idx !== undefined) return idx;
+  }
+  return axis.days.length - 1;
+}
+
+/** 统计闭区间内的工作日天数，用于「仅计算工作日」下的条形时长文案 */
+export function countWorkdays(startDay: number, endDay: number): number {
+  let count = 0;
+  for (let d = startDay; d <= endDay; d += 1) {
+    if (!isWeekendDay(d)) count += 1;
+  }
+  return count;
+}
+
+/** 时间轴表头分组单元 */
+export interface GanttTimeBand {
+  key: string;
+  label: string;
+  span: number;
+}
+
+/** 时间轴刻度对应的每日像素宽度 */
+export const GANTT_DAY_WIDTH: Record<GanttZoom, number> = {
+  week: 22,
+  month: 40,
+  quarter: 14,
+  year: 5,
+};
+
+/**
+ * 计算某天所属「周」的起始天（周一为一周之始）
+ * 周视图的表头分组与落点提示都依赖它，收敛在一处避免各处重复推导。
+ */
+function weekStartDay(day: number): number {
+  const dow = new Date(day * MS_PER_DAY).getUTCDay();
+  return day - ((dow + 6) % 7);
+}
+
+/** 取某天的分组键与展示文案 */
+function resolveBandKey(
+  day: number,
+  zoom: GanttZoom,
+  bandKind: 'primary' | 'secondary',
+): { key: string; label: string } {
+  const date = new Date(day * MS_PER_DAY);
+  const y = date.getUTCFullYear();
+  const m = date.getUTCMonth() + 1;
+  const d = date.getUTCDate();
+
+  if (bandKind === 'primary') {
+    if (zoom === 'quarter') {
+      const q = Math.floor((m - 1) / 3) + 1;
+      return { key: `${y}-Q${q}`, label: `${y}年 Q${q}` };
+    }
+    if (zoom === 'year') return { key: `${y}`, label: `${y}年` };
+    return { key: `${y}-${m}`, label: `${y}年${m}月` };
+  }
+
+  // secondary：周 → 周起始日；月视图细化到日；季 / 年视图落到月
+  if (zoom === 'week') {
+    const ws = weekStartDay(day);
+    const wd = new Date(ws * MS_PER_DAY);
+    return { key: `w${ws}`, label: `${wd.getUTCMonth() + 1}/${wd.getUTCDate()}` };
+  }
+  if (zoom === 'month') return { key: `d${day}`, label: `${d}` };
+  return { key: `${y}-${m}`, label: `${m}月` };
+}
+
+/** 把时间轴按刻度切成双层表头分组（同键相邻日合并为一个 span） */
+export function buildGanttTimeBands(
+  days: number[],
+  zoom: GanttZoom,
+  bandKind: 'primary' | 'secondary',
+): GanttTimeBand[] {
+  const bands: GanttTimeBand[] = [];
+  days.forEach((day) => {
+    const { key, label } = resolveBandKey(day, zoom, bandKind);
+    const last = bands[bands.length - 1];
+    if (last && last.key === key) last.span += 1;
+    else bands.push({ key, label, span: 1 });
+  });
+  return bands;
 }

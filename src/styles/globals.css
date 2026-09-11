@@ -2407,6 +2407,111 @@ button:not(:disabled) {
   background: var(--editor-accent-active, #1d4ed8) !important;
 }
 
+/* ── 多维表格甘特图视图 ──
+   左侧固定列与序号列是 sticky 元素，背景必须完全不透明（含 hover / 选中态），
+   否则横向滚动时被它遮住的单元格会透出来，出现文字重影。 */
+
+.nb-bitable-gantt-row {
+  background: var(--editor-surface, #ffffff);
+  transition: background var(--transition-fast);
+}
+
+.nb-bitable-gantt-row:hover {
+  background: #f8fafc;
+}
+
+.nb-bitable-gantt-left-cell,
+.nb-bitable-gantt-num-cell {
+  background: var(--editor-surface, #ffffff);
+  transition: background var(--transition-fast);
+}
+
+.nb-bitable-gantt-th-left,
+.nb-bitable-gantt-corner {
+  background: var(--editor-surface, #f8fafc);
+}
+
+/* 分组标题行：整行可点，hover 给出可折叠的暗示 */
+.nb-bitable-gantt-group-cell {
+  background: var(--editor-surface, #f8fafc);
+  transition: background var(--transition-fast);
+}
+
+.nb-bitable-gantt-group-cell:hover {
+  background: #eef2f7;
+}
+
+.nb-bitable-gantt-row:hover .nb-bitable-gantt-left-cell,
+.nb-bitable-gantt-row:hover .nb-bitable-gantt-num-cell {
+  background: #f8fafc;
+}
+
+/* 时间轴刻度切换（周 / 月 / 季 / 年） */
+.nb-bitable-gantt-zoom {
+  background: transparent;
+  color: var(--editor-text-muted, #64748b);
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-bitable-gantt-zoom:hover:not(.is-active) {
+  background: var(--toolbar-hover, #f1f5f9);
+  color: var(--editor-text, #1e293b);
+}
+
+.nb-bitable-gantt-zoom:active {
+  transform: scale(0.95);
+}
+
+.nb-bitable-gantt-zoom.is-active {
+  background: var(--editor-accent, #3b82f6);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.nb-bitable-gantt-zoom.is-active:hover {
+  filter: brightness(1.06);
+}
+
+/* 甘特条形：hover 提亮并抬起，两端把手在悬浮时才显现 */
+.nb-bitable-gantt-bar {
+  transition: filter var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.nb-bitable-gantt-bar:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.22) !important;
+}
+
+.nb-bitable-gantt-bar:active {
+  filter: brightness(0.96);
+}
+
+.nb-bitable-gantt-bar-handle {
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.nb-bitable-gantt-bar:hover .nb-bitable-gantt-bar-handle {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.38);
+}
+
+/* 空行悬浮时的快速排期入口 */
+.nb-bitable-gantt-add {
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-bitable-gantt-add:hover {
+  background: var(--toolbar-hover, #f1f5f9) !important;
+  border-color: var(--editor-accent, #3b82f6) !important;
+  color: var(--editor-accent, #3b82f6) !important;
+  transform: scale(1.08);
+}
+
+.nb-bitable-gantt-add:active {
+  transform: scale(0.94);
+}
+
 /* ── 多维表格数字输入：禁用原生上下微调箭头与滚轮调整 ──
    number 输入框聚焦后滚轮会直接改值，与表格滚动严重冲突；
    微调箭头在紧凑单元格里也极易误触，故统一屏蔽，只允许键盘直接输入。 */
