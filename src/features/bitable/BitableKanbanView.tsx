@@ -12,17 +12,21 @@ import { OptionBadge } from './BitableOptions';
 import { BITABLE_PALETTE } from './bitableConverter';
 import { BitableMarkdown } from './BitableMarkdown';
 import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
+import { SortRulesPanel } from './BitableSortPanel';
 import { Tooltip } from '../../components/Tooltip';
 import {
+  collectDescendantRowIds,
   formatDateTimeValue,
+  isSlotNoop,
   previewLongText,
   resolveDateTimeConfig,
   resolveLongTextConfig,
   slotToFinalPosition,
+  slotToSpliceIndex,
 } from './bitableUtils';
 import { usePointerReorder } from './usePointerReorder';
 import { FieldSelectButton } from './BitableFieldMeta';
-import type { ColumnOptionAction, SelectOptionColor } from './bitableTypes';
+import type { ColumnOptionAction, SelectOptionColor, SortRule } from './bitableTypes';
 import {
   Plus,
   Calendar,
@@ -33,8 +37,12 @@ import {
   MoreHorizontal,
   Pencil,
   X,
+  ArrowUpDown,
 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
+
+/** 未分类泳道的内部标识：仅用于卡片槽位归属，不参与数据写入 */
+const UNCLASSIFIED_LANE_ID = '__unclassified__';
 
 // 让 lucide svg 与文字 baseline 一致、且不挤压
 const MENU_ICON_STYLE: React.CSSProperties = {
@@ -62,6 +70,11 @@ interface KanbanViewProps {
   rows: BitableRow[];
   groupByColumnId?: string;
   onUpdateGroupByColumnId?: (colId: string) => void;
+  /** 多字段排序规则：卡片在每个分组内按规则排列 */
+  sortRules?: SortRule[];
+  onUpdateSortRules?: (sortRules: SortRule[]) => void;
+  /** 组内拖拽换序：把 draggedRowId 插到 beforeRowId 之前 */
+  onMoveRow?: (draggedRowId: string, beforeRowId: string | null, parentId?: string) => void;
   onAddRowWithStatus: (columnId: string, optionId: string | null) => void;
   /** 新增分组泳道：为分组列追加一个标签选项 */
   onAddGroupOption?: () => void;
@@ -77,6 +90,9 @@ export function BitableKanbanView({
   rows,
   groupByColumnId,
   onUpdateGroupByColumnId,
+  sortRules = [],
+  onUpdateSortRules,
+  onMoveRow,
   onAddRowWithStatus,
   onAddGroupOption,
   onManageColumnOption,
@@ -95,6 +111,14 @@ export function BitableKanbanView({
   );
   // 删除分组需二次确认，避免误删整组卡片
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+
+  // 多字段排序面板（分组内排序）
+  const [sortPanelOpen, setSortPanelOpen] = useState(false);
+  const [sortPanelAnchor, setSortPanelAnchor] = useState<AnchorRect | null>(null);
+  const [sortPanelTrigger, setSortPanelTrigger] = useState<HTMLElement | null>(null);
+
+  // 卡片 DOM 节点表：键为「泳道 + 行」复合键（多选分组时同一张卡片会出现在多个泳道）
+  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   // 查找作为分组依据的列（若未指定或不存在，优先选择第一个 select/multiSelect 列，否则退回第一列）
   const groupColumn =
@@ -237,6 +261,108 @@ export function BitableKanbanView({
     },
   });
 
+  // ── 卡片组内拖拽换序 ──
+  // 把全部泳道的卡片摊平成一个序列，再用 laneStart / laneEnd 把落点夹在本组内，
+  // 这样只需一个拖拽实例即可实现「每个分组各自可排序」，且天然禁止跨组拖动。
+  const cardSlots = useMemo(() => {
+    const out: Array<{
+      key: string;
+      rowId: string;
+      parentId?: string;
+      laneId: string;
+      laneStart: number;
+      laneEnd: number;
+    }> = [];
+    const pushLane = (laneId: string, laneRows: BitableRow[]) => {
+      const start = out.length;
+      laneRows.forEach((row) => {
+        out.push({ key: `${laneId}__${row.id}`, rowId: row.id, parentId: row.parentId, laneId, laneStart: start, laneEnd: 0 });
+      });
+      const end = out.length;
+      for (let i = start; i < end; i += 1) out[i].laneEnd = end;
+    };
+    lanes.forEach((lane) => pushLane(lane.id, lane.rows));
+    if (unclassifiedRows.length > 0) pushLane(UNCLASSIFIED_LANE_ID, unclassifiedRows);
+    return out;
+  }, [lanes, unclassifiedRows]);
+
+  /** 卡片槽位索引：渲染时按「泳道 + 行」复合键取用，避免多选分组时命中另一泳道的同 id 卡片 */
+  const cardSlotIndex = useMemo(
+    () => new Map(cardSlots.map((slot, idx) => [slot.key, idx])),
+    [cardSlots],
+  );
+
+  // 视图存在排序规则时卡片顺序由规则决定，手动拖拽会被立刻覆盖，故禁用
+  const cardDragEnabled = Boolean(onMoveRow) && sortRules.length === 0;
+
+  const {
+    drag: cardDrag,
+    startDrag: startCardDrag,
+    grabOffset: cardGrabOffset,
+    consumeDraggedFlag: consumeCardDraggedFlag,
+  } = usePointerReorder<(typeof cardSlots)[number]>({
+    items: cardSlots,
+    getElement: (slot) => cardRefs.current.get(slot.key),
+    axis: 'y',
+    disabled: !cardDragEnabled,
+    clampSlot: (insertAt, fromIdx) => {
+      const slot = cardSlots[fromIdx];
+      if (!slot) return insertAt;
+      return Math.max(slot.laneStart, Math.min(insertAt, slot.laneEnd));
+    },
+    isSlotValid: (insertAt, fromIdx) => {
+      const dragged = cardSlots[fromIdx];
+      if (!dragged) return false;
+      const rest = cardSlots.filter((_, i) => i !== fromIdx);
+      const before = rest[slotToSpliceIndex(insertAt, fromIdx)];
+      if (!before) return true;
+      // 不允许把父卡片拖到自己的子树之后
+      return !collectDescendantRowIds(rows, dragged.rowId).has(before.rowId);
+    },
+    onReorder: (fromIdx, toIdx) => {
+      const dragged = cardSlots[fromIdx];
+      if (!dragged || !onMoveRow) return;
+      const rest = cardSlots.filter((_, i) => i !== fromIdx);
+      const before = rest[toIdx] ?? null;
+      // 组内换序保持卡片自身层级不变，否则拖一次就会把子行提升到顶层
+      onMoveRow(dragged.rowId, before ? before.rowId : null, dragged.parentId);
+    },
+  });
+
+  /** 卡片落点指示线：顶边 / 底边；本组末张卡片落在其下方 */
+  const getCardIndicator = useCallback(
+    (idx: number): 'top' | 'bottom' | null => {
+      if (!cardDrag || !cardDrag.valid) return null;
+      const { fromIdx, insertAt } = cardDrag;
+      if (isSlotNoop(insertAt, fromIdx)) return null;
+      if (insertAt === idx) return 'top';
+      const slot = cardSlots[fromIdx];
+      if (!slot) return null;
+      if (insertAt === slot.laneEnd && idx === slot.laneEnd - 1) return 'bottom';
+      return null;
+    },
+    [cardDrag, cardSlots],
+  );
+
+  /** 落点为组内第几张（从 1 起），用于拖拽幽灵文案 */
+  const cardDropPosition = useMemo(() => {
+    if (!cardDrag) return 0;
+    const dragged = cardSlots[cardDrag.fromIdx];
+    if (!dragged) return 0;
+    const rest = cardSlots.filter((_, i) => i !== cardDrag.fromIdx);
+    const before = rest[slotToSpliceIndex(cardDrag.insertAt, cardDrag.fromIdx)];
+    const laneRest = rest.filter((slot) => slot.laneId === dragged.laneId);
+    if (!before) return laneRest.length + 1;
+    const idx = laneRest.findIndex((slot) => slot.rowId === before.rowId);
+    return idx < 0 ? laneRest.length + 1 : idx + 1;
+  }, [cardDrag, cardSlots]);
+
+  /** 拖拽幽灵用的卡片标题 */
+  const resolveCardTitleById = (rowId: string) => {
+    const row = rows.find((r) => r.id === rowId);
+    return row ? resolveCardTitle(titleCol, row) : '未命名卡片';
+  };
+
   return (
     <div
       style={{
@@ -256,7 +382,9 @@ export function BitableKanbanView({
           background: 'var(--editor-surface, #ffffff)',
           display: 'flex',
           alignItems: 'center',
+          flexWrap: 'wrap',
           gap: 10,
+          rowGap: 6,
           fontSize: 12,
         }}
       >
@@ -271,7 +399,73 @@ export function BitableKanbanView({
           onChange={(colId) => onUpdateGroupByColumnId && onUpdateGroupByColumnId(colId || '')}
           width={180}
         />
+
+        {/* 分组内排序：卡片在每个分组内按规则排列 */}
+        {onUpdateSortRules && (
+          <>
+            <div style={{ width: 1, height: 16, background: 'var(--editor-border, #e2e8f0)' }} />
+            <Tooltip
+              content={
+                sortRules.length > 0
+                  ? `已启用 ${sortRules.length} 条排序规则 · 组内拖拽换序暂停`
+                  : '按字段排序，每个分组内的卡片各自生效'
+              }
+              side="bottom"
+              sideOffset={4}
+            >
+              <button
+                type="button"
+                className="nb-bitable-btn-secondary"
+                onClick={(e) => {
+                  const rect = getAnchorRect(e.currentTarget);
+                  if (!rect) return;
+                  setSortPanelAnchor(rect);
+                  setSortPanelTrigger(e.currentTarget);
+                  setSortPanelOpen(true);
+                }}
+                style={{
+                  gap: 4,
+                  padding: '3px 8px',
+                  background: sortRules.length > 0 ? 'rgba(59, 130, 246, 0.08)' : undefined,
+                  color: sortRules.length > 0 ? 'var(--editor-accent, #3b82f6)' : undefined,
+                  borderColor: sortRules.length > 0 ? 'var(--editor-accent, #3b82f6)' : undefined,
+                }}
+              >
+                <ArrowUpDown size={13} />
+                <span>排序{sortRules.length > 0 ? ` ${sortRules.length}` : ''}</span>
+              </button>
+            </Tooltip>
+            {sortRules.length > 0 && (
+              <button
+                type="button"
+                className="nb-bitable-btn-ghost"
+                onClick={() => onUpdateSortRules([])}
+                style={{ gap: 4, padding: '2px 6px', fontSize: 11 }}
+              >
+                <X size={11} />
+                <span>清除排序</span>
+              </button>
+            )}
+          </>
+        )}
       </div>
+
+      {sortPanelOpen && sortPanelAnchor && sortPanelTrigger && onUpdateSortRules && (
+        <FloatingPanel
+          anchor={sortPanelAnchor}
+          trigger={sortPanelTrigger}
+          width={380}
+          align="left"
+          onClose={() => setSortPanelOpen(false)}
+        >
+          <SortRulesPanel
+            columns={columns}
+            sortRules={sortRules}
+            onChange={onUpdateSortRules}
+            onClose={() => setSortPanelOpen(false)}
+          />
+        </FloatingPanel>
+      )}
 
       {/* 看板泳道列表 */}
       <div
@@ -584,11 +778,27 @@ export function BitableKanbanView({
                 gap: 10,
               }}
             >
-              {lane.rows.map((row) => (
+              {lane.rows.map((row) => {
+                const slotKey = `${lane.id}__${row.id}`;
+                const slotIdx = cardSlotIndex.get(slotKey) ?? -1;
+                const indicator = slotIdx >= 0 ? getCardIndicator(slotIdx) : null;
+                const isDragging = cardDrag !== null && cardDrag.fromIdx === slotIdx;
+                return (
                 <div
-                  key={`${lane.id}_${row.id}`}
+                  key={slotKey}
+                  ref={(el) => {
+                    if (el) cardRefs.current.set(slotKey, el);
+                    else cardRefs.current.delete(slotKey);
+                  }}
                   className="nb-bitable-kanban-card"
-                  onClick={() => onOpenRecord && onOpenRecord(row.id)}
+                  onMouseDown={(e) => {
+                    if (slotIdx >= 0) startCardDrag(e, slotIdx);
+                  }}
+                  onClick={() => {
+                    // 拖拽结束紧跟的 click 不应再打开详情
+                    if (consumeCardDraggedFlag()) return;
+                    if (onOpenRecord) onOpenRecord(row.id);
+                  }}
                   style={{
                     padding: '12px 14px',
                     borderRadius: 8,
@@ -598,10 +808,33 @@ export function BitableKanbanView({
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 8,
-                    cursor: 'pointer',
+                    cursor: cardDrag ? 'grabbing' : cardDragEnabled ? 'grab' : 'pointer',
                     position: 'relative',
+                    // 落点指示线依赖溢出绘制，被拖卡片压暗以明确「哪张在搬运」
+                    overflow: 'visible',
+                    opacity: isDragging ? 0.45 : 1,
+                    zIndex: indicator ? 3 : undefined,
+                    userSelect: cardDrag ? 'none' : undefined,
                   }}
                 >
+                  {/* 组内落点指示线 */}
+                  {indicator && (
+                    <div
+                      aria-hidden
+                      style={{
+                        position: 'absolute',
+                        left: 0,
+                        right: 0,
+                        height: 3,
+                        borderRadius: 2,
+                        background: 'var(--editor-accent, #3b82f6)',
+                        boxShadow: '0 0 8px rgba(59, 130, 246, 0.5)',
+                        top: indicator === 'top' ? -2 : undefined,
+                        bottom: indicator === 'bottom' ? -2 : undefined,
+                        pointerEvents: 'none',
+                      }}
+                    />
+                  )}
                   {/* 卡片头部与删除按钮 */}
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--editor-text, #1e293b)', lineHeight: 1.4, flex: 1 }}>
@@ -611,6 +844,7 @@ export function BitableKanbanView({
                       <button
                         type="button"
                         aria-label="删除卡片"
+                        data-no-drag
                         className="nb-bitable-btn-ghost"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -789,7 +1023,8 @@ export function BitableKanbanView({
 
 
                 </div>
-              ))}
+                );
+              })}
 
               {lane.rows.length === 0 && (
                 <div
@@ -888,11 +1123,26 @@ export function BitableKanbanView({
                 gap: 10,
               }}
             >
-              {unclassifiedRows.map((row) => (
+              {unclassifiedRows.map((row) => {
+                const slotKey = `${UNCLASSIFIED_LANE_ID}__${row.id}`;
+                const slotIdx = cardSlotIndex.get(slotKey) ?? -1;
+                const indicator = slotIdx >= 0 ? getCardIndicator(slotIdx) : null;
+                const isDragging = cardDrag !== null && cardDrag.fromIdx === slotIdx;
+                return (
                 <div
-                  key={row.id}
+                  key={slotKey}
+                  ref={(el) => {
+                    if (el) cardRefs.current.set(slotKey, el);
+                    else cardRefs.current.delete(slotKey);
+                  }}
                   className="nb-bitable-kanban-card"
-                  onClick={() => onOpenRecord && onOpenRecord(row.id)}
+                  onMouseDown={(e) => {
+                    if (slotIdx >= 0) startCardDrag(e, slotIdx);
+                  }}
+                  onClick={() => {
+                    if (consumeCardDraggedFlag()) return;
+                    if (onOpenRecord) onOpenRecord(row.id);
+                  }}
                   style={{
                     padding: '12px 14px',
                     borderRadius: 8,
@@ -902,14 +1152,37 @@ export function BitableKanbanView({
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 8,
-                    cursor: 'pointer',
+                    cursor: cardDrag ? 'grabbing' : cardDragEnabled ? 'grab' : 'pointer',
+                    position: 'relative',
+                    overflow: 'visible',
+                    opacity: isDragging ? 0.45 : 1,
+                    zIndex: indicator ? 3 : undefined,
+                    userSelect: cardDrag ? 'none' : undefined,
                   }}
                 >
+                  {indicator && (
+                    <div
+                      aria-hidden
+                      style={{
+                        position: 'absolute',
+                        left: 0,
+                        right: 0,
+                        height: 3,
+                        borderRadius: 2,
+                        background: 'var(--editor-accent, #3b82f6)',
+                        boxShadow: '0 0 8px rgba(59, 130, 246, 0.5)',
+                        top: indicator === 'top' ? -2 : undefined,
+                        bottom: indicator === 'bottom' ? -2 : undefined,
+                        pointerEvents: 'none',
+                      }}
+                    />
+                  )}
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--editor-text, #1e293b)' }}>
                     {resolveCardTitle(titleCol, row)}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -920,6 +1193,14 @@ export function BitableKanbanView({
         <DragGhost x={laneDrag.x - laneGrabOffset.x} y={laneDrag.y - laneGrabOffset.y + 4}>
           {lanes[laneDrag.fromIdx]?.label ?? ''}
           {` · 移动到第 ${slotToFinalPosition(laneDrag.insertAt, laneDrag.fromIdx)} 个分组`}
+        </DragGhost>
+      )}
+
+      {/* 卡片拖拽时的跟随幽灵：提示落在本组内第几张 */}
+      {cardDrag && (
+        <DragGhost x={cardDrag.x - cardGrabOffset.x} y={cardDrag.y - cardGrabOffset.y + 4}>
+          {resolveCardTitleById(cardSlots[cardDrag.fromIdx]?.rowId ?? '')}
+          {cardDrag.valid ? ` · 移动到组内第 ${cardDropPosition} 张` : ' · 此处不可放置'}
         </DragGhost>
       )}
     </div>
