@@ -4,11 +4,6 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ArrowRight,
-  ArrowLeft,
-  ArrowLeftRight,
-  ArrowDown,
-  Palette,
   Check,
   ChevronDown,
 } from 'lucide-react';
@@ -16,12 +11,137 @@ import type { MindmapLayout } from './mindmapTypes';
 import { MINDMAP_LAYOUTS, MINDMAP_THEMES } from './mindmapTheme';
 import { Tooltip } from '../../components/Tooltip';
 
-const LAYOUT_ICONS: Record<MindmapLayout, React.ReactNode> = {
-  right: <ArrowRight size={13} />,
-  left: <ArrowLeft size={13} />,
-  balanced: <ArrowLeftRight size={13} />,
-  tree: <ArrowDown size={13} />,
-};
+/**
+ * 思维导图布局结构示意图组件（图形化展示思维导图发散方向与层级骨架）
+ * 包含：向右逻辑图、向左逻辑图、双向平衡图、向下组织图
+ */
+function MindmapLayoutDiagram({
+  layout,
+  size = 18,
+}: {
+  layout: MindmapLayout;
+  size?: number;
+}) {
+  const height = Math.round(size * 0.8);
+
+  switch (layout) {
+    case 'right':
+      // 向右逻辑图示意：左侧根节点，向右弧形发散 3 个分支
+      return (
+        <svg
+          width={size}
+          height={height}
+          viewBox="0 0 20 16"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          style={{ display: 'block', flexShrink: 0 }}
+        >
+          {/* 根节点 */}
+          <rect x="2" y="5" width="4.5" height="6" rx="1.5" fill="currentColor" />
+          {/* 分支连线 */}
+          <path
+            d="M 6.5 8 C 8.5 8, 9.5 3.5, 12 3.5 M 6.5 8 L 12 8 M 6.5 8 C 8.5 8, 9.5 12.5, 12 12.5"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            strokeLinecap="round"
+          />
+          {/* 子节点 */}
+          <rect x="12" y="2" width="6" height="3" rx="1" fill="currentColor" opacity={0.75} />
+          <rect x="12" y="6.5" width="6" height="3" rx="1" fill="currentColor" opacity={0.75} />
+          <rect x="12" y="11" width="6" height="3" rx="1" fill="currentColor" opacity={0.75} />
+        </svg>
+      );
+
+    case 'left':
+      // 向左逻辑图示意：右侧根节点，向左弧形发散 3 个分支
+      return (
+        <svg
+          width={size}
+          height={height}
+          viewBox="0 0 20 16"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          style={{ display: 'block', flexShrink: 0 }}
+        >
+          {/* 根节点 */}
+          <rect x="13.5" y="5" width="4.5" height="6" rx="1.5" fill="currentColor" />
+          {/* 分支连线 */}
+          <path
+            d="M 13.5 8 C 11.5 8, 10.5 3.5, 8 3.5 M 13.5 8 L 8 8 M 13.5 8 C 11.5 8, 10.5 12.5, 8 12.5"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            strokeLinecap="round"
+          />
+          {/* 子节点 */}
+          <rect x="2" y="2" width="6" height="3" rx="1" fill="currentColor" opacity={0.75} />
+          <rect x="2" y="6.5" width="6" height="3" rx="1" fill="currentColor" opacity={0.75} />
+          <rect x="2" y="11" width="6" height="3" rx="1" fill="currentColor" opacity={0.75} />
+        </svg>
+      );
+
+    case 'balanced':
+      // 双向平衡图示意：中心根节点，左右各发散 2 个分支
+      return (
+        <svg
+          width={size}
+          height={height}
+          viewBox="0 0 20 16"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          style={{ display: 'block', flexShrink: 0 }}
+        >
+          {/* 中心根节点 */}
+          <rect x="7.5" y="5" width="5" height="6" rx="1.5" fill="currentColor" />
+          {/* 左侧分支 */}
+          <path
+            d="M 7.5 8 C 6.5 8, 6 4, 5 4 M 7.5 8 C 6.5 8, 6 12, 5 12"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            strokeLinecap="round"
+          />
+          <rect x="1" y="2.5" width="4" height="3" rx="1" fill="currentColor" opacity={0.75} />
+          <rect x="1" y="10.5" width="4" height="3" rx="1" fill="currentColor" opacity={0.75} />
+          {/* 右侧分支 */}
+          <path
+            d="M 12.5 8 C 13.5 8, 14 4, 15 4 M 12.5 8 C 13.5 8, 14 12, 15 12"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            strokeLinecap="round"
+          />
+          <rect x="15" y="2.5" width="4" height="3" rx="1" fill="currentColor" opacity={0.75} />
+          <rect x="15" y="10.5" width="4" height="3" rx="1" fill="currentColor" opacity={0.75} />
+        </svg>
+      );
+
+    case 'tree':
+      // 向下组织架构图示意：顶部根节点，向下折线层级发散 3 个分支
+      return (
+        <svg
+          width={size}
+          height={height}
+          viewBox="0 0 20 16"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          style={{ display: 'block', flexShrink: 0 }}
+        >
+          {/* 顶部根节点 */}
+          <rect x="7" y="1.5" width="6" height="4.5" rx="1.5" fill="currentColor" />
+          {/* 组织架构层级连线 */}
+          <path
+            d="M 10 6 L 10 9 M 3.75 9 L 16.25 9 M 3.75 9 L 3.75 11.5 M 10 9 L 10 11.5 M 16.25 9 L 16.25 11.5"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          {/* 底部子节点 */}
+          <rect x="1.5" y="11.5" width="4.5" height="3" rx="1" fill="currentColor" opacity={0.75} />
+          <rect x="7.75" y="11.5" width="4.5" height="3" rx="1" fill="currentColor" opacity={0.75} />
+          <rect x="14" y="11.5" width="4.5" height="3" rx="1" fill="currentColor" opacity={0.75} />
+        </svg>
+      );
+  }
+}
 
 interface MindmapStyleControlsProps {
   layout: MindmapLayout;
@@ -67,7 +187,7 @@ function Dropdown({
             position: 'absolute',
             top: 'calc(100% + 6px)',
             right: 0,
-            minWidth: 190,
+            minWidth: 160,
             padding: 4,
             background: 'var(--editor-surface, #ffffff)',
             border: '1px solid var(--editor-border, #e2e8f0)',
@@ -83,37 +203,75 @@ function Dropdown({
   );
 }
 
-/** 下拉项通用样式 */
-function itemStyle(active: boolean): React.CSSProperties {
+/** 下拉菜单项组件（具备即时 Hover / Active 反馈） */
+function DropdownItem({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <button
+      type="button"
+      role="menuitemradio"
+      aria-checked={active}
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        width: '100%',
+        padding: '6px 8px',
+        borderRadius: 6,
+        border: 'none',
+        background: active
+          ? 'var(--toolbar-active, rgba(59, 130, 246, 0.12))'
+          : hovered
+          ? 'var(--toolbar-hover, rgba(0, 0, 0, 0.05))'
+          : 'transparent',
+        color: active ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text, #1e293b)',
+        cursor: 'pointer',
+        fontSize: 12,
+        textAlign: 'left',
+        fontWeight: active ? 600 : 400,
+        transition: 'background-color 0.12s ease',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** 顶部操作栏触发器样式（精简宽度，支持 Hover 反馈） */
+function getTriggerStyle(active: boolean, hovered: boolean): React.CSSProperties {
   return {
     display: 'flex',
     alignItems: 'center',
-    gap: 8,
-    width: '100%',
-    padding: '6px 8px',
-    borderRadius: 6,
-    border: 'none',
-    background: active ? 'var(--toolbar-active, rgba(59, 130, 246, 0.12))' : 'transparent',
-    color: active ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text, #1e293b)',
-    cursor: 'pointer',
+    gap: 4,
+    padding: '4px 6px',
+    borderRadius: 5,
+    border: `1px solid ${
+      active || hovered ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-border, #e2e8f0)'
+    }`,
+    background: active
+      ? 'var(--toolbar-active, rgba(59, 130, 246, 0.12))'
+      : hovered
+      ? 'var(--toolbar-hover, rgba(59, 130, 246, 0.06))'
+      : 'var(--editor-bg, #ffffff)',
+    color: active || hovered ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text, #1e293b)',
     fontSize: 12,
-    textAlign: 'left',
-    fontWeight: active ? 600 : 400,
+    whiteSpace: 'nowrap',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
   };
 }
-
-const triggerStyle = (active: boolean): React.CSSProperties => ({
-  display: 'flex',
-  alignItems: 'center',
-  gap: 5,
-  padding: '4px 8px',
-  borderRadius: 5,
-  border: '1px solid var(--editor-border, #e2e8f0)',
-  background: 'var(--editor-bg, #ffffff)',
-  color: active ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text, #1e293b)',
-  fontSize: 12,
-  whiteSpace: 'nowrap',
-});
 
 export function MindmapStyleControls({
   layout,
@@ -123,102 +281,105 @@ export function MindmapStyleControls({
 }: MindmapStyleControlsProps) {
   const [layoutOpen, setLayoutOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
+  const [layoutHovered, setLayoutHovered] = useState(false);
+  const [themeHovered, setThemeHovered] = useState(false);
 
   const activeLayout = MINDMAP_LAYOUTS.find((l) => l.id === layout) ?? MINDMAP_LAYOUTS[0];
   const activeTheme = MINDMAP_THEMES.find((t) => t.id === themeId) ?? MINDMAP_THEMES[0];
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginRight: 4 }}>
-      {/* 布局切换 */}
+      {/* 布局切换：采用结构示意图替代纯文字，大幅精简操作栏宽度 */}
       <Dropdown
         open={layoutOpen}
         onOpenChange={setLayoutOpen}
         trigger={
-          <Tooltip content="切换思维导图布局" side="bottom" sideOffset={4}>
-            <span style={triggerStyle(layoutOpen)}>
-              {LAYOUT_ICONS[activeLayout.id]}
-              <span>{activeLayout.name}</span>
-              <ChevronDown size={12} style={{ opacity: 0.6 }} />
+          <Tooltip content={`布局：${activeLayout.name}`} side="bottom" sideOffset={4}>
+            <span
+              onMouseEnter={() => setLayoutHovered(true)}
+              onMouseLeave={() => setLayoutHovered(false)}
+              style={getTriggerStyle(layoutOpen, layoutHovered)}
+            >
+              <MindmapLayoutDiagram layout={activeLayout.id} size={18} />
+              <ChevronDown size={11} style={{ opacity: 0.6 }} />
             </span>
           </Tooltip>
         }
       >
         {MINDMAP_LAYOUTS.map((item) => (
-          <button
+          <DropdownItem
             key={item.id}
-            type="button"
-            role="menuitemradio"
-            aria-checked={item.id === layout}
+            active={item.id === layout}
             onClick={() => {
               onLayoutChange(item.id);
               setLayoutOpen(false);
             }}
-            style={itemStyle(item.id === layout)}
           >
-            {LAYOUT_ICONS[item.id]}
+            <MindmapLayoutDiagram layout={item.id} size={18} />
             <span style={{ flex: 1 }}>{item.name}</span>
             {item.id === layout && <Check size={12} />}
-          </button>
+          </DropdownItem>
         ))}
       </Dropdown>
 
-      {/* 配色主题切换 */}
+      {/* 配色主题切换：顶部选中的选项精简为 3 个色块，减少宽度预留操作栏空间 */}
       <Dropdown
         open={themeOpen}
         onOpenChange={setThemeOpen}
         trigger={
-          <Tooltip content="切换导图配色主题" side="bottom" sideOffset={4}>
-            <span style={triggerStyle(themeOpen)}>
-              <Palette size={13} />
-              <span>{activeTheme.name}</span>
-              <span style={{ display: 'flex', gap: 2 }}>
-                {activeTheme.branchColors.slice(0, 4).map((color, idx) => (
+          <Tooltip content={`配色：${activeTheme.name}`} side="bottom" sideOffset={4}>
+            <span
+              onMouseEnter={() => setThemeHovered(true)}
+              onMouseLeave={() => setThemeHovered(false)}
+              style={getTriggerStyle(themeOpen, themeHovered)}
+            >
+              <span style={{ display: 'flex', gap: 2.5, alignItems: 'center' }}>
+                {activeTheme.branchColors.slice(0, 3).map((color, idx) => (
                   <span
                     key={idx}
                     style={{
-                      width: 9,
-                      height: 9,
-                      borderRadius: '50%',
+                      width: 8,
+                      height: 11,
+                      borderRadius: 2,
                       background: color,
                       display: 'inline-block',
+                      boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.08)',
                     }}
                   />
                 ))}
               </span>
-              <ChevronDown size={12} style={{ opacity: 0.6 }} />
+              <ChevronDown size={11} style={{ opacity: 0.6 }} />
             </span>
           </Tooltip>
         }
       >
         {MINDMAP_THEMES.map((item) => (
-          <button
+          <DropdownItem
             key={item.id}
-            type="button"
-            role="menuitemradio"
-            aria-checked={item.id === themeId}
+            active={item.id === themeId}
             onClick={() => {
               onThemeChange(item.id);
               setThemeOpen(false);
             }}
-            style={itemStyle(item.id === themeId)}
           >
-            <span style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-              {item.branchColors.map((color, idx) => (
+            <span style={{ display: 'flex', gap: 2.5, flexShrink: 0 }}>
+              {item.branchColors.slice(0, 5).map((color, idx) => (
                 <span
                   key={idx}
                   style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: '50%',
+                    width: 8,
+                    height: 11,
+                    borderRadius: 2,
                     background: color,
                     display: 'inline-block',
+                    boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.08)',
                   }}
                 />
               ))}
             </span>
             <span style={{ flex: 1 }}>{item.name}</span>
             {item.id === themeId && <Check size={12} />}
-          </button>
+          </DropdownItem>
         ))}
       </Dropdown>
     </div>

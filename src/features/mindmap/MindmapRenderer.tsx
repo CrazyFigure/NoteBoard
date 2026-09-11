@@ -1344,7 +1344,6 @@ export function MindmapRenderer({
           flexWrap: 'wrap',
         }}
       >
-        <span>选中节点后</span>
         <kbd style={HINT_KBD_STYLE}>Tab</kbd>
         <span>添加子节点</span>
         <span style={{ opacity: 0.5 }}>·</span>
