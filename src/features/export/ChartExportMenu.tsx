@@ -55,9 +55,11 @@ const STYLE_TEXT = `
   cursor: pointer;
   font-size: 12px;
   white-space: nowrap;
-  transition: background 120ms ease, border-color 120ms ease, color 120ms ease, opacity 120ms ease;
+  user-select: none;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease, opacity 120ms ease, transform 120ms ease, filter 120ms ease;
 }
 .nb-chart-export-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.nb-chart-export-btn:active:not(:disabled) { transform: scale(0.96); }
 .nb-chart-export-btn[data-variant='ghost'] {
   padding: 3px 6px;
   border: none;
@@ -69,6 +71,9 @@ const STYLE_TEXT = `
   background: var(--toolbar-hover, rgba(59,130,246,0.12));
   color: var(--editor-text, #1e293b);
 }
+.nb-chart-export-btn[data-variant='ghost']:active:not(:disabled) {
+  background: var(--toolbar-active, rgba(59,130,246,0.20));
+}
 .nb-chart-export-btn[data-variant='outline'] {
   padding: 4px 8px;
   border: 1px solid var(--editor-border, #e2e8f0);
@@ -79,6 +84,10 @@ const STYLE_TEXT = `
   background: var(--toolbar-hover, rgba(59,130,246,0.12));
   border-color: var(--editor-border-focus, #93c5fd);
 }
+.nb-chart-export-btn[data-variant='outline']:active:not(:disabled) {
+  background: var(--toolbar-active, rgba(59,130,246,0.18));
+  border-color: var(--editor-accent, #3b82f6);
+}
 .nb-chart-export-btn[data-variant='primary'] {
   padding: 4px 10px;
   border: 1px solid transparent;
@@ -86,7 +95,8 @@ const STYLE_TEXT = `
   color: #ffffff;
   font-weight: 500;
 }
-.nb-chart-export-btn[data-variant='primary']:hover:not(:disabled) { opacity: 0.88; }
+.nb-chart-export-btn[data-variant='primary']:hover:not(:disabled) { filter: brightness(1.08); }
+.nb-chart-export-btn[data-variant='primary']:active:not(:disabled) { filter: brightness(0.92); }
 .nb-chart-export-caret { flex-shrink: 0; opacity: 0.7; }
 
 .nb-chart-export-menu {

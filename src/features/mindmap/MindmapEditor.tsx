@@ -339,47 +339,25 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
               boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)',
             }}
           >
+            {/* 思维导图展示模式 */}
             <Tooltip content="思维导图展示模式" side="bottom" sideOffset={4}>
               <button
                 type="button"
+                className="nb-editor-pill-btn"
+                data-active={viewMode === 'mindmap'}
                 onClick={() => handleSwitchViewMode('mindmap')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  padding: '4px 10px',
-                  borderRadius: 4,
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  fontWeight: viewMode === 'mindmap' ? 600 : 400,
-                  background: viewMode === 'mindmap' ? 'var(--toolbar-active, rgba(59, 130, 246, 0.12))' : 'transparent',
-                  color: viewMode === 'mindmap' ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-muted, #64748b)',
-                  transition: 'all 0.15s ease',
-                }}
               >
                 <Network size={14} />
                 <span>思维导图</span>
               </button>
             </Tooltip>
+            {/* 幕布式大纲编辑模式 */}
             <Tooltip content="幕布式大纲编辑模式" side="bottom" sideOffset={4}>
               <button
                 type="button"
+                className="nb-editor-pill-btn"
+                data-active={viewMode === 'outliner'}
                 onClick={() => handleSwitchViewMode('outliner')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  padding: '4px 10px',
-                  borderRadius: 4,
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  fontWeight: viewMode === 'outliner' ? 600 : 400,
-                  background: viewMode === 'outliner' ? 'var(--toolbar-active, rgba(59, 130, 246, 0.12))' : 'transparent',
-                  color: viewMode === 'outliner' ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-muted, #64748b)',
-                  transition: 'all 0.15s ease',
-                }}
               >
                 <ListTree size={14} />
                 <span>大纲模式</span>
@@ -395,14 +373,9 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
               <Tooltip content="缩小画布" side="bottom" sideOffset={4}>
                 <button
                   type="button"
+                  className="nb-editor-icon-btn"
                   onClick={() => setZoom((z) => Math.max(0.2, z - 0.15))}
-                  style={{
-                    background: 'transparent',
-                    border: '1px solid var(--editor-border)',
-                    borderRadius: 4,
-                    padding: '3px 6px',
-                    cursor: 'pointer',
-                  }}
+                  aria-label="缩小画布"
                 >
                   <ZoomOut size={13} />
                 </button>
@@ -413,14 +386,9 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
               <Tooltip content="放大画布" side="bottom" sideOffset={4}>
                 <button
                   type="button"
+                  className="nb-editor-icon-btn"
                   onClick={() => setZoom((z) => Math.min(3, z + 0.15))}
-                  style={{
-                    background: 'transparent',
-                    border: '1px solid var(--editor-border)',
-                    borderRadius: 4,
-                    padding: '3px 6px',
-                    cursor: 'pointer',
-                  }}
+                  aria-label="放大画布"
                 >
                   <ZoomIn size={13} />
                 </button>
@@ -428,14 +396,9 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
               <Tooltip content="复位 100%" side="bottom" sideOffset={4}>
                 <button
                   type="button"
+                  className="nb-editor-icon-btn"
                   onClick={() => setZoom(1)}
-                  style={{
-                    background: 'transparent',
-                    border: '1px solid var(--editor-border)',
-                    borderRadius: 4,
-                    padding: '3px 6px',
-                    cursor: 'pointer',
-                  }}
+                  aria-label="复位 100%"
                 >
                   <RotateCcw size={13} />
                 </button>
@@ -455,20 +418,7 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
 
           {/* 导入 XMind 隐藏 input */}
           <Tooltip content="导入 .xmind 文件" side="bottom" sideOffset={4}>
-            <label
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '4px 8px',
-                borderRadius: 5,
-                border: '1px solid var(--editor-border, #e2e8f0)',
-                background: 'var(--editor-bg, #ffffff)',
-                color: 'var(--editor-text, #1e293b)',
-                cursor: 'pointer',
-                fontSize: 12,
-              }}
-            >
+            <label className="nb-editor-toolbar-btn">
               <Upload size={13} />
               <span>导入 XMind</span>
               <input
@@ -484,19 +434,8 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
           <Tooltip content="导出为 Markdown 大纲文本" side="bottom" sideOffset={4}>
             <button
               type="button"
+              className="nb-editor-toolbar-btn"
               onClick={handleExportMarkdown}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '4px 8px',
-                borderRadius: 5,
-                border: '1px solid var(--editor-border, #e2e8f0)',
-                background: 'var(--editor-bg, #ffffff)',
-                color: 'var(--editor-text, #1e293b)',
-                cursor: 'pointer',
-                fontSize: 12,
-              }}
             >
               <FileText size={13} />
               <span>导出 Markdown</span>
@@ -507,20 +446,8 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
           <Tooltip content="导出为 .xmind 文件" side="bottom" sideOffset={4}>
             <button
               type="button"
+              className="nb-editor-primary-btn"
               onClick={handleExportXmind}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '4px 10px',
-                borderRadius: 5,
-                border: 'none',
-                background: 'var(--editor-accent, #3b82f6)',
-                color: '#ffffff',
-                cursor: 'pointer',
-                fontSize: 12,
-                fontWeight: 500,
-              }}
             >
               <Download size={13} />
               <span>导出 XMind</span>
