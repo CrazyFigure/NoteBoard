@@ -2,7 +2,7 @@
 // 三栏布局：资源管理器 | 编辑区 | 大纲
 // 详见 docs/07-UI布局与交互规范.md §1
 
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import type { PanelSize } from 'react-resizable-panels';
 import type { Editor } from '@tiptap/core';
@@ -110,9 +110,49 @@ export function AppShell(_props: { children?: React.ReactNode }) {
   } = useLayoutStore();
 
   const [activeEditor, setActiveEditor] = useState<Editor | null>(null);
+  // 所有保活 Markdown 内核使用稳定回调登记实例。切换标签时直接按 activeKey 取实例，
+  // 避免旧标签 effect 的迟到 null 覆盖新标签 editor，导致大纲绑定错误或反复重挂监听。
+  const markdownEditorsRef = useRef(new Map<string, Editor>());
+  const markdownEditorReadyHandlersRef = useRef(new Map<string, (editor: Editor | null) => void>());
+
+  /** 为每个 Markdown 标签返回身份稳定的内核就绪回调，并维护活动大纲的唯一 editor。 */
+  const getMarkdownEditorReadyHandler = useCallback((docKey: string) => {
+    const existing = markdownEditorReadyHandlersRef.current.get(docKey);
+    if (existing) return existing;
+
+    const handler = (editor: Editor | null) => {
+      if (editor) {
+        markdownEditorsRef.current.set(docKey, editor);
+      } else {
+        markdownEditorsRef.current.delete(docKey);
+      }
+      if (useWindowStore.getState().activeKey === docKey) {
+        setActiveEditor((current) => current === editor ? current : editor);
+      }
+    };
+    markdownEditorReadyHandlersRef.current.set(docKey, handler);
+    return handler;
+  }, []);
 
   const explorerWidthRef = useRef<number>(explorerWidth);
   const outlineWidthRef = useRef<number>(outlineWidth);
+
+  // 标签激活变化只切换大纲的数据源，不修改或重建任何 Markdown 编辑器内核。
+  useEffect(() => {
+    const nextEditor = activeKey ? markdownEditorsRef.current.get(activeKey) ?? null : null;
+    setActiveEditor((current) => current === nextEditor ? current : nextEditor);
+  }, [activeKey]);
+
+  // 标签真正关闭后释放回调与实例引用，保活期间则维持身份稳定。
+  useEffect(() => {
+    const openKeys = new Set(tabs.map((tab) => tab.key));
+    for (const key of markdownEditorReadyHandlersRef.current.keys()) {
+      if (!openKeys.has(key)) {
+        markdownEditorReadyHandlersRef.current.delete(key);
+        markdownEditorsRef.current.delete(key);
+      }
+    }
+  }, [tabs]);
 
   // 统一关闭拦截状态与操作
   const pendingCloseKeys = useWindowStore((s) => s.pendingCloseKeys);
@@ -366,7 +406,8 @@ export function AppShell(_props: { children?: React.ReactNode }) {
       unregValidateShiftAltV();
       unregValidateCtrlAltV();
     };
-  }, [activeKey]);
+  // 所有 action 都在触发时读取 store 中的活动标签，无需随文件切换反复注销和注册。
+  }, []);
 
   // 组件卸载时将 ref 中的宽度写回 store（持久化）
   useEffect(() => {
@@ -594,7 +635,9 @@ export function AppShell(_props: { children?: React.ReactNode }) {
                             <EditorActivityContext.Provider value={isTabActive}>
                               <EditorHost
                                 tab={tab}
-                                onEditorReady={isTabActive ? setActiveEditor : undefined}
+                                onEditorReady={tab.kind === 'markdown'
+                                  ? getMarkdownEditorReadyHandler(tab.key)
+                                  : undefined}
                                 unsupportedView={null}
                               />
                             </EditorActivityContext.Provider>

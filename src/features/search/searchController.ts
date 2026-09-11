@@ -2,6 +2,7 @@
 // 屏蔽底层差异，统一对接 CodeMirror 6 与 TipTap（Markdown）编辑器
 
 import type { Editor } from '@tiptap/core';
+import { TextSelection } from '@tiptap/pm/state';
 import { EditorView } from '@codemirror/view';
 import {
   SearchQuery,
@@ -14,6 +15,7 @@ import {
   closeSearchPanel,
   searchPanelOpen,
 } from '@codemirror/search';
+import { EDITOR_SEARCH_NAVIGATION_META } from '../../core/editor/searchNavigation';
 
 export interface SearchOptions {
   searchText: string;
@@ -64,6 +66,22 @@ function buildRegexPattern(text: string, wholeWord: boolean, isRegex: boolean): 
   if (!text) return '';
   const pattern = isRegex ? text : escapeRegExp(text);
   return wholeWord ? `\\b(?:${pattern})\\b` : pattern;
+}
+
+/**
+ * 在 TipTap 正文内选择并滚动到搜索结果。
+ * 选区与 scrollIntoView 必须合并进同一事务，确保滚动目标始终是编辑区；事务同时
+ * 携带搜索来源标记，右侧大纲据此忽略联动，不把 Ctrl+F 误表现为目录跳转。
+ */
+function navigateTipTapSearchResult(editor: Editor, from: number, to = from): void {
+  const maxPosition = editor.state.doc.content.size;
+  const safeFrom = Math.max(1, Math.min(from, maxPosition));
+  const safeTo = Math.max(1, Math.min(to, maxPosition));
+  const transaction = editor.state.tr
+    .setSelection(TextSelection.create(editor.state.doc, safeFrom, safeTo))
+    .setMeta(EDITOR_SEARCH_NAVIGATION_META, true)
+    .scrollIntoView();
+  editor.view.dispatch(transaction);
 }
 
 /** 执行搜索更新，返回当前匹配索引与总数 */
@@ -162,7 +180,7 @@ export function executeSearch(
       // 派发事务，强制 ProseMirror 插件执行 apply 以清除旧的高亮装饰
       editor.view.dispatch(editor.state.tr);
       if (!editor.state.selection.empty) {
-        editor.commands.setTextSelection(editor.state.selection.from);
+        navigateTipTapSearchResult(editor, editor.state.selection.from);
       }
       return { matchIndex: 0, matchCount: 0 };
     }
@@ -182,11 +200,10 @@ export function executeSearch(
       // 滚动至当前匹配项
       if (count > 0 && storage?.results?.[storage.resultIndex]) {
         const item = storage.results[storage.resultIndex];
-        editor.commands.setTextSelection({ from: item.from, to: item.to });
-        editor.commands.scrollIntoView();
+        navigateTipTapSearchResult(editor, item.from, item.to);
       } else if (count === 0 && !editor.state.selection.empty) {
         // 无匹配项时折叠选区，避免保留旧选区背景
-        editor.commands.setTextSelection(editor.state.selection.from);
+        navigateTipTapSearchResult(editor, editor.state.selection.from);
       }
 
       return { matchIndex: index, matchCount: count };
@@ -221,8 +238,7 @@ export function executeFindNext(
       storage.resultIndex = nextIndex;
       const targetItem = results[nextIndex];
       if (targetItem) {
-        editor.commands.setTextSelection({ from: targetItem.from, to: targetItem.to });
-        editor.commands.scrollIntoView();
+        navigateTipTapSearchResult(editor, targetItem.from, targetItem.to);
       }
       return { matchIndex: nextIndex + 1, matchCount: results.length };
     }
@@ -254,8 +270,7 @@ export function executeFindPrev(
       storage.resultIndex = prevIndex;
       const targetItem = results[prevIndex];
       if (targetItem) {
-        editor.commands.setTextSelection({ from: targetItem.from, to: targetItem.to });
-        editor.commands.scrollIntoView();
+        navigateTipTapSearchResult(editor, targetItem.from, targetItem.to);
       }
       return { matchIndex: prevIndex + 1, matchCount: results.length };
     }
