@@ -2403,7 +2403,7 @@ dependencies = [
 
 [[package]]
 name = "noteboard"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "chardetng",
  "chrono",
