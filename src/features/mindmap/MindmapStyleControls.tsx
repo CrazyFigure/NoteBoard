@@ -213,64 +213,18 @@ function DropdownItem({
   onClick: () => void;
   children: React.ReactNode;
 }) {
-  const [hovered, setHovered] = useState(false);
-
   return (
     <button
       type="button"
       role="menuitemradio"
       aria-checked={active}
+      className="nb-mindmap-style-item"
+      data-active={active}
       onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        width: '100%',
-        padding: '6px 8px',
-        borderRadius: 6,
-        border: 'none',
-        background: active
-          ? 'var(--toolbar-active, rgba(59, 130, 246, 0.12))'
-          : hovered
-          ? 'var(--toolbar-hover, rgba(0, 0, 0, 0.05))'
-          : 'transparent',
-        color: active ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text, #1e293b)',
-        cursor: 'pointer',
-        fontSize: 12,
-        textAlign: 'left',
-        fontWeight: active ? 600 : 400,
-        transition: 'background-color 0.12s ease',
-      }}
     >
       {children}
     </button>
   );
-}
-
-/** 顶部操作栏触发器样式（精简宽度，支持 Hover 反馈） */
-function getTriggerStyle(active: boolean, hovered: boolean): React.CSSProperties {
-  return {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 4,
-    padding: '4px 6px',
-    borderRadius: 5,
-    border: `1px solid ${
-      active || hovered ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-border, #e2e8f0)'
-    }`,
-    background: active
-      ? 'var(--toolbar-active, rgba(59, 130, 246, 0.12))'
-      : hovered
-      ? 'var(--toolbar-hover, rgba(59, 130, 246, 0.06))'
-      : 'var(--editor-bg, #ffffff)',
-    color: active || hovered ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text, #1e293b)',
-    fontSize: 12,
-    whiteSpace: 'nowrap',
-    cursor: 'pointer',
-    transition: 'all 0.15s ease',
-  };
 }
 
 export function MindmapStyleControls({
@@ -281,8 +235,6 @@ export function MindmapStyleControls({
 }: MindmapStyleControlsProps) {
   const [layoutOpen, setLayoutOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
-  const [layoutHovered, setLayoutHovered] = useState(false);
-  const [themeHovered, setThemeHovered] = useState(false);
 
   const activeLayout = MINDMAP_LAYOUTS.find((l) => l.id === layout) ?? MINDMAP_LAYOUTS[0];
   const activeTheme = MINDMAP_THEMES.find((t) => t.id === themeId) ?? MINDMAP_THEMES[0];
@@ -296,9 +248,8 @@ export function MindmapStyleControls({
         trigger={
           <Tooltip content={`布局：${activeLayout.name}`} side="bottom" sideOffset={4}>
             <span
-              onMouseEnter={() => setLayoutHovered(true)}
-              onMouseLeave={() => setLayoutHovered(false)}
-              style={getTriggerStyle(layoutOpen, layoutHovered)}
+              className="nb-mindmap-style-trigger"
+              data-active={layoutOpen}
             >
               <MindmapLayoutDiagram layout={activeLayout.id} size={18} />
               <ChevronDown size={11} style={{ opacity: 0.6 }} />
@@ -329,9 +280,8 @@ export function MindmapStyleControls({
         trigger={
           <Tooltip content={`配色：${activeTheme.name}`} side="bottom" sideOffset={4}>
             <span
-              onMouseEnter={() => setThemeHovered(true)}
-              onMouseLeave={() => setThemeHovered(false)}
-              style={getTriggerStyle(themeOpen, themeHovered)}
+              className="nb-mindmap-style-trigger"
+              data-active={themeOpen}
             >
               <span style={{ display: 'flex', gap: 2.5, alignItems: 'center' }}>
                 {activeTheme.branchColors.slice(0, 3).map((color, idx) => (

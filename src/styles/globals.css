@@ -1827,6 +1827,281 @@ button:not(:disabled) {
   display: flex !important;
 }
 
+/* ── 思维导图与图表编辑器交互按钮状态反馈规范 ── */
+
+/* 思维导图节点快捷浮动工具栏小按钮 */
+.nb-mindmap-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 4px;
+  color: var(--editor-text-secondary, #64748b);
+  transition: background var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
+}
+
+.nb-mindmap-toolbar-btn:hover {
+  background: var(--toolbar-hover, rgba(59, 130, 246, 0.08));
+  color: var(--editor-accent, #3b82f6);
+}
+
+.nb-mindmap-toolbar-btn:active {
+  background: var(--toolbar-active, rgba(59, 130, 246, 0.16));
+  transform: scale(0.92);
+}
+
+/* 节点工具栏高亮激活态（如已配置备注、已有图片或添加按钮） */
+.nb-mindmap-toolbar-btn.is-active-accent {
+  color: var(--editor-accent, #3b82f6);
+}
+
+.nb-mindmap-toolbar-btn.is-active-accent:hover {
+  background: var(--toolbar-hover, rgba(59, 130, 246, 0.12));
+}
+
+/* 节点工具栏删除按钮危险色反馈 */
+.nb-mindmap-toolbar-btn.is-danger {
+  color: #ef4444;
+}
+
+.nb-mindmap-toolbar-btn.is-danger:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}
+
+.nb-mindmap-toolbar-btn.is-danger:active {
+  background: rgba(239, 68, 68, 0.22);
+  transform: scale(0.92);
+}
+
+/* 节点折叠/展开徽标交互反馈 */
+.nb-mindmap-fold-btn {
+  transition: transform var(--transition-fast, 120ms ease), filter var(--transition-fast, 120ms ease), box-shadow var(--transition-fast, 120ms ease);
+}
+
+.nb-mindmap-fold-btn:hover {
+  filter: brightness(1.12);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+}
+
+.nb-mindmap-fold-btn:active {
+  transform: translateY(-50%) scale(0.90) !important;
+  filter: brightness(0.95);
+}
+
+/* 节点悬停添加按钮交互反馈 */
+.nb-node-add-btn:hover {
+  filter: brightness(1.1);
+  transform: translateY(-50%) scale(1.12) !important;
+}
+
+.nb-node-add-btn:active {
+  transform: translateY(-50%) scale(0.92) !important;
+  filter: brightness(0.9);
+}
+
+/* 胶囊分段单选按钮（思维导图双模切换、图表双栏分屏/源码/预览切换） */
+.nb-editor-pill-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 400;
+  background: transparent;
+  color: var(--editor-text-muted, #64748b);
+  transition: background var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
+}
+
+.nb-editor-pill-btn:hover:not([data-active='true']) {
+  background: var(--toolbar-hover, rgba(0, 0, 0, 0.05));
+  color: var(--editor-text, #1e293b);
+}
+
+.nb-editor-pill-btn:active {
+  transform: scale(0.96);
+}
+
+.nb-editor-pill-btn[data-active='true'] {
+  background: var(--toolbar-active, rgba(59, 130, 246, 0.12));
+  color: var(--editor-accent, #3b82f6);
+  font-weight: 600;
+}
+
+/* 工具栏小图标边框按钮（放大、缩小、复位等） */
+.nb-editor-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--editor-border, #e2e8f0);
+  border-radius: 4px;
+  padding: 3px 6px;
+  cursor: pointer;
+  color: var(--editor-text, #1e293b);
+  transition: background var(--transition-fast, 120ms ease), border-color var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
+}
+
+.nb-editor-icon-btn:hover {
+  background: var(--toolbar-hover, rgba(59, 130, 246, 0.08));
+  border-color: var(--editor-border-focus, #93c5fd);
+  color: var(--editor-accent, #3b82f6);
+}
+
+.nb-editor-icon-btn:active {
+  background: var(--toolbar-active, rgba(59, 130, 246, 0.18));
+  transform: scale(0.94);
+}
+
+/* 工具栏次级边框文本按钮（导入 XMind、导出 Markdown 等） */
+.nb-editor-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--editor-border, #e2e8f0);
+  background: var(--editor-bg, #ffffff);
+  color: var(--editor-text, #1e293b);
+  cursor: pointer;
+  font-size: 12px;
+  user-select: none;
+  transition: background var(--transition-fast, 120ms ease), border-color var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
+}
+
+.nb-editor-toolbar-btn:hover {
+  background: var(--toolbar-hover, rgba(59, 130, 246, 0.08));
+  border-color: var(--editor-border-focus, #93c5fd);
+}
+
+.nb-editor-toolbar-btn:active {
+  background: var(--toolbar-active, rgba(59, 130, 246, 0.16));
+  transform: scale(0.96);
+}
+
+/* 工具栏主要强调按钮（导出 XMind 等） */
+.nb-editor-primary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: var(--editor-accent, #3b82f6);
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  user-select: none;
+  transition: filter var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
+}
+
+.nb-editor-primary-btn:hover {
+  filter: brightness(1.08);
+}
+
+.nb-editor-primary-btn:active {
+  filter: brightness(0.92);
+  transform: scale(0.96);
+}
+
+/* 图表块内操作栏按钮（编辑、全屏等） */
+.nb-diagram-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: 4px;
+  color: var(--editor-text-muted, #64748b);
+  font-size: 11px;
+  transition: background var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
+}
+
+.nb-diagram-action-btn:hover {
+  background: var(--toolbar-hover, rgba(59, 130, 246, 0.12));
+  color: var(--editor-text, #1e293b);
+}
+
+.nb-diagram-action-btn:active {
+  background: var(--toolbar-active, rgba(59, 130, 246, 0.20));
+  transform: scale(0.95);
+}
+
+/* 思维导图样式控制触发器与下拉项交互反馈 */
+.nb-mindmap-style-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--editor-border, #e2e8f0);
+  background: var(--editor-bg, #ffffff);
+  color: var(--editor-text, #1e293b);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast, 120ms ease), border-color var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
+}
+
+.nb-mindmap-style-trigger:hover {
+  background: var(--toolbar-hover, rgba(59, 130, 246, 0.08));
+  border-color: var(--editor-border-focus, #93c5fd);
+  color: var(--editor-accent, #3b82f6);
+}
+
+.nb-mindmap-style-trigger:active,
+.nb-mindmap-style-trigger[data-active='true']:active {
+  background: var(--toolbar-active, rgba(59, 130, 246, 0.18));
+  transform: scale(0.96);
+}
+
+.nb-mindmap-style-trigger[data-active='true'] {
+  background: var(--toolbar-active, rgba(59, 130, 246, 0.12));
+  border-color: var(--editor-accent, #3b82f6);
+  color: var(--editor-accent, #3b82f6);
+}
+
+.nb-mindmap-style-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--editor-text, #1e293b);
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+  transition: background-color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
+}
+
+.nb-mindmap-style-item:hover {
+  background: var(--toolbar-hover, rgba(59, 130, 246, 0.08));
+}
+
+.nb-mindmap-style-item:active {
+  background: var(--toolbar-active, rgba(59, 130, 246, 0.16));
+  transform: scale(0.98);
+}
+
+.nb-mindmap-style-item[data-active='true'] {
+  background: var(--toolbar-active, rgba(59, 130, 246, 0.12));
+  color: var(--editor-accent, #3b82f6);
+  font-weight: 600;
+}
+
 /* ── 多维表格 (Bitable) 按钮与交互元素状态反馈 ── */
 
 /* 通用按钮过渡与基础交互 */

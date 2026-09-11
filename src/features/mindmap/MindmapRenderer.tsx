@@ -1119,12 +1119,14 @@ export function MindmapRenderer({
                   zIndex: 20,
                 }}
               >
+                {/* 设置图标 */}
                 <Tooltip content="设置图标" side="top" sideOffset={4}>
                   <button
                     type="button"
+                    className="nb-mindmap-toolbar-btn"
                     onClick={(e) => {
                       e.stopPropagation();
-                      const rect = e.currentTarget.getBoundingClientRect();
+                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                       setIconPickerState({
                         nodeId: n.node.id,
                         currentIcon: n.node.icon,
@@ -1133,111 +1135,69 @@ export function MindmapRenderer({
                       });
                     }}
                     aria-label="设置图标"
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      color: 'var(--editor-text-secondary, #64748b)',
-                      padding: 3,
-                      borderRadius: 3,
-                      display: 'flex',
-                      alignItems: 'center',
-                    }}
                   >
                     <Smile size={12} />
                   </button>
                 </Tooltip>
 
+                {/* 添加/编辑备注 */}
                 <Tooltip content="添加/编辑备注" side="top" sideOffset={4}>
                   <button
                     type="button"
+                    className={`nb-mindmap-toolbar-btn${hasNote ? ' is-active-accent' : ''}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       setEditingNoteNodeId(n.node.id);
                       setEditNoteText(n.node.note || '');
                     }}
                     aria-label="添加/编辑备注"
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      color: hasNote ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-secondary, #64748b)',
-                      padding: 3,
-                      borderRadius: 3,
-                      display: 'flex',
-                      alignItems: 'center',
-                    }}
                   >
                     <FileText size={12} />
                   </button>
                 </Tooltip>
 
+                {/* 上传/替换图片 */}
                 <Tooltip content="上传/替换图片" side="top" sideOffset={4}>
                   <button
                     type="button"
+                    className={`nb-mindmap-toolbar-btn${hasImage ? ' is-active-accent' : ''}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       uploadTargetNodeIdRef.current = n.node.id;
                       fileInputRef.current?.click();
                     }}
                     aria-label="上传/替换图片"
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      color: hasImage ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-secondary, #64748b)',
-                      padding: 3,
-                      borderRadius: 3,
-                      display: 'flex',
-                      alignItems: 'center',
-                    }}
                   >
                     <ImageIcon size={12} />
                   </button>
                 </Tooltip>
 
+                {/* 添加子分支 */}
                 <Tooltip content="添加子分支" side="top" sideOffset={4}>
                   <button
                     type="button"
+                    className="nb-mindmap-toolbar-btn is-active-accent"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleAddChild(n.node.id);
                     }}
                     aria-label="添加子分支"
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      color: 'var(--editor-accent, #3b82f6)',
-                      padding: 3,
-                      borderRadius: 3,
-                      display: 'flex',
-                      alignItems: 'center',
-                    }}
                   >
                     <Plus size={12} />
                   </button>
                 </Tooltip>
 
+                {/* 删除节点（根节点不可删除） */}
                 {!isRoot && (
                   <Tooltip content="删除节点" side="top" sideOffset={4}>
                     <button
                       type="button"
+                      className="nb-mindmap-toolbar-btn is-danger"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleDeleteNode(n.node.id);
                       }}
                       aria-label="删除节点"
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        cursor: 'pointer',
-                        color: '#ef4444',
-                        padding: 3,
-                        borderRadius: 3,
-                        display: 'flex',
-                        alignItems: 'center',
-                      }}
                     >
                       <Trash2 size={12} />
                     </button>
@@ -1250,6 +1210,7 @@ export function MindmapRenderer({
                 <Tooltip content={isExpanded ? '收起子分支' : '展开子分支'} side="right" sideOffset={4}>
                   <button
                     type="button"
+                    className="nb-mindmap-fold-btn"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleToggleExpand(n.node.id);
@@ -1404,13 +1365,10 @@ export function MindmapRenderer({
               <span style={{ fontSize: 13, fontWeight: 600 }}>编辑节点备注</span>
               <button
                 type="button"
+                className="nb-diagram-action-btn"
                 onClick={() => handleFinishNoteEdit()}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: 'var(--editor-text-muted, #94a3b8)',
-                }}
+                aria-label="关闭对话框"
+                style={{ padding: 4 }}
               >
                 <X size={14} />
               </button>
@@ -1451,35 +1409,20 @@ export function MindmapRenderer({
             >
               <button
                 type="button"
+                className="nb-editor-toolbar-btn"
                 onClick={() => {
                   setEditingNoteNodeId(null);
                   setEditNoteText('');
                 }}
-                style={{
-                  padding: '5px 12px',
-                  borderRadius: 5,
-                  border: '1px solid var(--editor-border, #cbd5e1)',
-                  background: 'transparent',
-                  color: 'var(--editor-text-secondary, #64748b)',
-                  cursor: 'pointer',
-                  fontSize: 12,
-                }}
+                style={{ padding: '4px 12px' }}
               >
                 取消
               </button>
               <button
                 type="button"
+                className="nb-editor-primary-btn"
                 onClick={() => handleFinishNoteEdit()}
-                style={{
-                  padding: '5px 14px',
-                  borderRadius: 5,
-                  border: 'none',
-                  background: 'var(--editor-accent, #3b82f6)',
-                  color: '#ffffff',
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  fontWeight: 500,
-                }}
+                style={{ padding: '4px 14px' }}
               >
                 保存备注
               </button>

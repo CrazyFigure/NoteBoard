@@ -337,70 +337,43 @@ export function DiagramSplitEditor({ docKey }: DiagramSplitEditorProps) {
               border: '1px solid var(--editor-border, #e2e8f0)',
             }}
           >
+            {/* 双栏分屏 */}
             <Tooltip content="双栏分屏" side="bottom" sideOffset={4}>
               <button
                 type="button"
+                className="nb-editor-pill-btn"
+                data-active={layoutMode === 'split'}
                 onClick={() => setLayoutMode('split')}
                 aria-label="双栏分屏"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '3px 8px',
-                  borderRadius: 4,
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 11,
-                  fontWeight: layoutMode === 'split' ? 600 : 400,
-                  background: layoutMode === 'split' ? 'var(--toolbar-active, rgba(59, 130, 246, 0.12))' : 'transparent',
-                  color: layoutMode === 'split' ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-muted, #64748b)',
-                }}
+                style={{ padding: '3px 8px', fontSize: 11 }}
               >
                 <Columns size={13} />
                 <span>分屏</span>
               </button>
             </Tooltip>
+            {/* 仅源码 */}
             <Tooltip content="仅源码" side="bottom" sideOffset={4}>
               <button
                 type="button"
+                className="nb-editor-pill-btn"
+                data-active={layoutMode === 'code'}
                 onClick={() => setLayoutMode('code')}
                 aria-label="仅源码"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '3px 8px',
-                  borderRadius: 4,
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 11,
-                  fontWeight: layoutMode === 'code' ? 600 : 400,
-                  background: layoutMode === 'code' ? 'var(--toolbar-active, rgba(59, 130, 246, 0.12))' : 'transparent',
-                  color: layoutMode === 'code' ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-muted, #64748b)',
-                }}
+                style={{ padding: '3px 8px', fontSize: 11 }}
               >
                 <Code2 size={13} />
                 <span>源码</span>
               </button>
             </Tooltip>
+            {/* 仅预览 */}
             <Tooltip content="仅预览" side="bottom" sideOffset={4}>
               <button
                 type="button"
+                className="nb-editor-pill-btn"
+                data-active={layoutMode === 'preview'}
                 onClick={() => setLayoutMode('preview')}
                 aria-label="仅预览"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '3px 8px',
-                  borderRadius: 4,
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 11,
-                  fontWeight: layoutMode === 'preview' ? 600 : 400,
-                  background: layoutMode === 'preview' ? 'var(--toolbar-active, rgba(59, 130, 246, 0.12))' : 'transparent',
-                  color: layoutMode === 'preview' ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-muted, #64748b)',
-                }}
+                style={{ padding: '3px 8px', fontSize: 11 }}
               >
                 <Eye size={13} />
                 <span>预览</span>
@@ -416,15 +389,10 @@ export function DiagramSplitEditor({ docKey }: DiagramSplitEditorProps) {
               <Tooltip content="缩小" side="bottom" sideOffset={4}>
                 <button
                   type="button"
+                  className="nb-editor-icon-btn"
                   onClick={() => setZoom((z) => Math.max(0.2, z - 0.15))}
                   aria-label="缩小"
-                  style={{
-                    background: 'transparent',
-                    border: '1px solid var(--editor-border)',
-                    borderRadius: 4,
-                    padding: '2px 6px',
-                    cursor: 'pointer',
-                  }}
+                  style={{ padding: '2px 6px' }}
                 >
                   <ZoomOut size={13} />
                 </button>
@@ -433,15 +401,10 @@ export function DiagramSplitEditor({ docKey }: DiagramSplitEditorProps) {
               <Tooltip content="放大" side="bottom" sideOffset={4}>
                 <button
                   type="button"
+                  className="nb-editor-icon-btn"
                   onClick={() => setZoom((z) => Math.min(4, z + 0.15))}
                   aria-label="放大"
-                  style={{
-                    background: 'transparent',
-                    border: '1px solid var(--editor-border)',
-                    borderRadius: 4,
-                    padding: '2px 6px',
-                    cursor: 'pointer',
-                  }}
+                  style={{ padding: '2px 6px' }}
                 >
                   <ZoomIn size={13} />
                 </button>
@@ -449,20 +412,13 @@ export function DiagramSplitEditor({ docKey }: DiagramSplitEditorProps) {
               <Tooltip content="复位视图" side="bottom" sideOffset={4}>
                 <button
                   type="button"
+                  className="nb-editor-icon-btn"
                   onClick={() => {
                     setZoom(1);
                     setPan({ x: 0, y: 0 });
                   }}
                   aria-label="复位视图"
-                  style={{
-                    background: 'transparent',
-                    border: '1px solid var(--editor-border)',
-                    borderRadius: 4,
-                    padding: '2px 6px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}
+                  style={{ padding: '2px 6px' }}
                 >
                   <RotateCcw size={13} />
                 </button>

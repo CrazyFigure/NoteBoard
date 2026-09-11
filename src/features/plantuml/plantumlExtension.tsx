@@ -242,26 +242,16 @@ function PlantUmlComponent({ node, updateAttributes, selected, editor, getPos }:
             {loading && <span>渲染中</span>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {/* 编辑图表源码 */}
             <Tooltip content="编辑图表源码" side="top" sideOffset={4}>
               <button
                 type="button"
+                className="nb-diagram-action-btn"
                 onClick={() => {
                   setEditValue(code);
                   setEditing(true);
                 }}
                 aria-label="编辑图表源码"
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: '3px 6px',
-                  borderRadius: 4,
-                  color: 'var(--editor-text-muted, #64748b)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  fontSize: 11,
-                }}
               >
                 <Edit2 size={12} />
                 <span>编辑</span>
@@ -283,20 +273,9 @@ function PlantUmlComponent({ node, updateAttributes, selected, editor, getPos }:
               <Tooltip content="全屏放大查看" side="top" sideOffset={4}>
                 <button
                   type="button"
+                  className="nb-diagram-action-btn"
                   onClick={() => setFullscreen(true)}
                   aria-label="全屏放大查看"
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: '3px 6px',
-                    borderRadius: 4,
-                    color: 'var(--editor-text-muted, #64748b)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    fontSize: 11,
-                  }}
                 >
                   <Maximize2 size={12} />
                 </button>
@@ -406,42 +385,29 @@ function PlantUmlComponent({ node, updateAttributes, selected, editor, getPos }:
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <button
                   type="button"
+                  className="nb-editor-icon-btn"
                   onClick={() => setZoom((z) => Math.max(0.2, z - 0.2))}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: 4,
-                    border: '1px solid var(--editor-border, #e2e8f0)',
-                    background: 'var(--editor-bg, #f8fafc)',
-                    cursor: 'pointer',
-                  }}
+                  style={{ minWidth: 28, height: 28 }}
+                  aria-label="缩小"
                 >
                   -
                 </button>
                 <span style={{ fontSize: 12, minWidth: 44, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
                 <button
                   type="button"
+                  className="nb-editor-icon-btn"
                   onClick={() => setZoom((z) => Math.min(3, z + 0.2))}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: 4,
-                    border: '1px solid var(--editor-border, #e2e8f0)',
-                    background: 'var(--editor-bg, #f8fafc)',
-                    cursor: 'pointer',
-                  }}
+                  style={{ minWidth: 28, height: 28 }}
+                  aria-label="放大"
                 >
                   +
                 </button>
                 <button
                   type="button"
+                  className="nb-editor-toolbar-btn"
                   onClick={() => setZoom(1)}
-                  style={{
-                    padding: '4px 8px',
-                    borderRadius: 4,
-                    border: '1px solid var(--editor-border, #e2e8f0)',
-                    background: 'var(--editor-bg, #f8fafc)',
-                    cursor: 'pointer',
-                    fontSize: 12,
-                  }}
+                  style={{ padding: '3px 8px', fontSize: 12 }}
+                  aria-label="重置"
                 >
                   重置
                 </button>
@@ -460,14 +426,10 @@ function PlantUmlComponent({ node, updateAttributes, selected, editor, getPos }:
               />
               <button
                 type="button"
+                className="nb-diagram-action-btn"
                 onClick={() => setFullscreen(false)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: 4,
-                  color: 'var(--editor-text-muted, #64748b)',
-                }}
+                aria-label="关闭预览"
+                style={{ padding: 4 }}
               >
                 <X size={20} />
               </button>
