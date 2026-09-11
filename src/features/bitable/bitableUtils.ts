@@ -6,6 +6,7 @@ import {
   DEFAULT_LONG_TEXT_CONFIG,
   isDateTimeFieldType,
   type BitableColumn,
+  type BitableFieldType,
   type BitableRow,
   type DateFormatId,
   type DateTimeConfig,
@@ -1011,9 +1012,9 @@ export function todayDayIndex(): number {
 
 /**
  * 把天序号写回日期类字段的存储值
- * date 只存日期，dateTime 补 00:00:00，与字段类型约定保持一致。
+ * 兼容所有字段类型输入，date 只存日期，dateTime 补 00:00:00，与字段类型约定保持一致。
  */
-export function buildDateFieldValue(dateStr: string, type: DateTimeFieldType): string {
+export function buildDateFieldValue(dateStr: string, type?: BitableFieldType): string {
   return type === 'dateTime' ? `${dateStr} 00:00:00` : dateStr;
 }
 
