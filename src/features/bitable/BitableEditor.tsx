@@ -1554,6 +1554,9 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             rows={filteredAndSortedRows}
             groupByColumnId={activeView.groupByColumnId}
             onUpdateGroupByColumnId={handleUpdateGroupByColumnId}
+            sortRules={activeView.sortRules || []}
+            onUpdateSortRules={handleUpdateSortRules}
+            onMoveRow={handleMoveRow}
             onAddRowWithStatus={handleAddRowWithStatus}
             onAddGroupOption={handleAddGroupOption}
             onManageColumnOption={handleManageColumnOption}
@@ -1584,6 +1587,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             onAddColumn={handleAddColumn}
             onDeleteColumn={handleDeleteColumn}
             onClearColumn={handleClearColumn}
+            onMoveRow={handleMoveRow}
             onOpenRecord={setRecordPanelRowId}
             onCreateDateFields={handleCreateDateFields}
           />

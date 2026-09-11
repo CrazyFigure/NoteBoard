@@ -15,10 +15,11 @@ import {
 } from './bitableTypes';
 import { BitableCellEditor } from './BitableCellEditor';
 import { FieldSelectButton, getFieldTypeMeta } from './BitableFieldMeta';
-import { FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
+import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
 import { OptionBadge } from './BitableOptions';
 import { SortRulesPanel } from './BitableSortPanel';
 import { BITABLE_PALETTE, getOptionColor } from './bitableConverter';
+import { usePointerReorder } from './usePointerReorder';
 import { Tooltip } from '../../components/Tooltip';
 import { showToast } from '../../stores/toastStore';
 import {
@@ -27,6 +28,7 @@ import {
   buildGanttDayAxis,
   buildGanttTimeBands,
   calculateAutoFillValues,
+  collectDescendantRowIds,
   countWorkdays,
   createRow,
   dateToDayIndex,
@@ -36,8 +38,10 @@ import {
   ganttAxisIndexEnd,
   ganttAxisIndexStart,
   groupFlatTreeRows,
+  isSlotNoop,
   isWeekendDay,
   parseClipboardMatrix,
+  slotToSpliceIndex,
   tileMatrix,
   todayDayIndex,
 } from './bitableUtils';
@@ -126,6 +130,8 @@ export interface GanttViewProps {
   onAddColumn: (direction: 'left' | 'right', referenceColId?: string) => void;
   onDeleteColumn: (colId: string) => void;
   onClearColumn?: (colId: string) => void;
+  /** 拖拽 `#` 换行序：把 draggedRowId 连同子树插到 beforeRowId 之前 */
+  onMoveRow?: (draggedRowId: string, beforeRowId: string | null, parentId?: string) => void;
   onOpenRecord?: (rowId: string) => void;
   /** 当前视图没有任何日期字段时，一键补齐「开始日期 / 结束日期」字段并完成配置 */
   onCreateDateFields?: () => void;
@@ -160,6 +166,14 @@ type GanttSelection =
   | { type: 'none' }
   | { type: 'range'; startRowId: string; startColId: string; endRowId: string; endColId: string }
   | { type: 'row'; startRowId: string; endRowId: string };
+
+/** 可拖拽的行槽位：groupStart / groupEnd 为该行所属分组在可见序列中的区间 [groupStart, groupEnd) */
+interface GanttRowSlot {
+  rowId: string;
+  parentId?: string;
+  groupStart: number;
+  groupEnd: number;
+}
 
 /** 自动填充拖拽预览 */
 interface FillPreview {
@@ -216,10 +230,13 @@ export function BitableGanttView({
   onAddColumn,
   onDeleteColumn,
   onClearColumn,
+  onMoveRow,
   onOpenRecord,
   onCreateDateFields,
 }: GanttViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  // 行 DOM 节点表：用于测量行位置，支撑「拖拽 # 换行序」的落点计算
+  const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
 
   // 工具条浮层（甘特图配置 / 字段）
   const [panel, setPanel] = useState<{
@@ -413,6 +430,119 @@ export function BitableGanttView({
 
     return null;
   }, [selection, rowIdxMap, colIdxMap, visibleRows, leftColumns]);
+
+  // ── 拖拽 # 换行序（与表格视图同一套「插入槽位」语义） ──
+
+  /** 可见数据行槽位序列：分组标题行不占位，组内区间用于把落点夹在本组内 */
+  const rowSlots = useMemo<GanttRowSlot[]>(() => {
+    const raw: Array<{ rowId: string; parentId?: string; groupKey: string | null }> = [];
+    let currentKey: string | null = null;
+    items.forEach((item) => {
+      if (item.type === 'group') {
+        currentKey = item.key;
+        return;
+      }
+      raw.push({ rowId: item.node.row.id, parentId: item.node.row.parentId, groupKey: currentKey });
+    });
+
+    const ranges = new Map<string | null, { start: number; end: number }>();
+    raw.forEach((slot, idx) => {
+      const range = ranges.get(slot.groupKey);
+      if (!range) ranges.set(slot.groupKey, { start: idx, end: idx + 1 });
+      else range.end = idx + 1;
+    });
+
+    return raw.map((slot) => {
+      const range = ranges.get(slot.groupKey)!;
+      return { rowId: slot.rowId, parentId: slot.parentId, groupStart: range.start, groupEnd: range.end };
+    });
+  }, [items]);
+
+  /**
+   * 把槽位换算为落点描述；返回 null 表示非法落点（不画指示线、不提交）
+   * 1) 落点参照行必须跳过被拖行自己的后代（否则「拖到紧邻自己子树之后」会被算成有效移动）；
+   * 2) 新父级不能是被拖行自身或其后代，否则父行会被塞进自己的子树形成环。
+   */
+  const resolveRowDropTarget = useCallback(
+    (fromIdx: number, toIdx: number) => {
+      const dragged = rowSlots[fromIdx];
+      if (!dragged) return null;
+      const descendants = collectDescendantRowIds(rows, dragged.rowId);
+      const rest = rowSlots.filter((_, i) => i !== fromIdx);
+
+      let cursor = toIdx;
+      while (cursor < rest.length && descendants.has(rest[cursor].rowId)) cursor += 1;
+      const before = rest[cursor] ?? null;
+
+      const restWithoutSubtree = rest.filter((slot) => !descendants.has(slot.rowId));
+      const insertIdx = before
+        ? restWithoutSubtree.findIndex((slot) => slot.rowId === before.rowId)
+        : restWithoutSubtree.length;
+
+      if (insertIdx === fromIdx) return null;
+
+      const parentId = before
+        ? before.parentId
+        : restWithoutSubtree[restWithoutSubtree.length - 1]?.parentId;
+      if (parentId && (parentId === dragged.rowId || descendants.has(parentId))) return null;
+
+      return { beforeRowId: before ? before.rowId : null, parentId, insertIdx };
+    },
+    [rowSlots, rows],
+  );
+
+  // 视图存在排序规则时行序由排序决定，手动拖拽会被立刻覆盖，故禁用并按提示说明
+  const rowDragEnabled = Boolean(onMoveRow) && sortRules.length === 0;
+
+  const {
+    drag: rowDrag,
+    startDrag: startRowDrag,
+    grabOffset: rowGrabOffset,
+    consumeDraggedFlag: consumeRowDraggedFlag,
+  } = usePointerReorder<GanttRowSlot>({
+    items: rowSlots,
+    getElement: (slot) => rowRefs.current.get(slot.rowId),
+    axis: 'y',
+    disabled: !rowDragEnabled,
+    clampSlot: (insertAt, fromIdx) => {
+      const slot = rowSlots[fromIdx];
+      if (!slot) return insertAt;
+      return Math.max(slot.groupStart, Math.min(insertAt, slot.groupEnd));
+    },
+    isSlotValid: (insertAt, fromIdx) =>
+      resolveRowDropTarget(fromIdx, slotToSpliceIndex(insertAt, fromIdx)) !== null,
+    onReorder: (fromIdx, toIdx) => {
+      const draggedId = rowSlots[fromIdx]?.rowId;
+      const target = resolveRowDropTarget(fromIdx, toIdx);
+      if (!draggedId || !target || !onMoveRow) return;
+      onMoveRow(draggedId, target.beforeRowId, target.parentId);
+    },
+  });
+
+  /** 行落点指示线：命名为顶边 / 底边，分组下末行落在「本行之下」 */
+  const getRowIndicator = useCallback(
+    (idx: number): 'top' | 'bottom' | null => {
+      if (!rowDrag || !rowDrag.valid) return null;
+      const { fromIdx, insertAt } = rowDrag;
+      if (isSlotNoop(insertAt, fromIdx)) return null;
+      if (insertAt === idx) return 'top';
+      const slot = rowSlots[fromIdx];
+      if (!slot) return null;
+      if (insertAt === slot.groupEnd && idx === slot.groupEnd - 1) return 'bottom';
+      if (insertAt === rowSlots.length && idx === rowSlots.length - 1) return 'bottom';
+      return null;
+    },
+    [rowDrag, rowSlots],
+  );
+
+  /** 落点最终序号（从 1 起）：分组视图下折算为组内序号，与「在这一组里挪到第几位」一致 */
+  const rowDropPosition = useMemo(() => {
+    if (!rowDrag) return 0;
+    const target = resolveRowDropTarget(rowDrag.fromIdx, slotToSpliceIndex(rowDrag.insertAt, rowDrag.fromIdx));
+    if (!target) return 0;
+    const offset = rowSlots[rowDrag.fromIdx]?.groupStart ?? 0;
+    return target.insertIdx - offset + 1;
+  }, [rowDrag, rowSlots, resolveRowDropTarget]);
 
   // ── 折叠 / 展开 ──
   const toggleCollapse = (rowId: string) => {
@@ -1102,6 +1232,12 @@ export function BitableGanttView({
       }
     }
     return palette;
+  };
+
+  /** 拖拽幽灵用的行标题（找不到时兜底为未命名记录） */
+  const resolveRowTitleById = (rowId: string) => {
+    const row = rows.find((r) => r.id === rowId);
+    return row ? resolveBarTitle(row) : '未命名记录';
   };
 
   const resolveBarTitle = (row: BitableRow) => {
@@ -1846,6 +1982,16 @@ export function BitableGanttView({
               const rowHovered = hoverRowId === row.id;
               const drag = barDrag?.rowId === row.id ? barDrag : null;
 
+              // 行拖拽落点指示线：画在单元格上而非 tr 上（tr 的 box-shadow 渲染不可靠）
+              const rowIndicator = rowIdx >= 0 ? getRowIndicator(rowIdx) : null;
+              const rowDropShadow =
+                rowIndicator === 'top'
+                  ? 'inset 0 2px 0 #3b82f6'
+                  : rowIndicator === 'bottom'
+                    ? 'inset 0 -2px 0 #3b82f6'
+                    : undefined;
+              const isRowDragging = rowDrag !== null && rowDrag.fromIdx === rowIdx;
+
               // 拖拽预览：按位移换算轴向偏移，实时反馈改期结果
               let barLeft = bar ? bar.aStart * dayWidth : 0;
               let barWidth = bar ? (bar.aEnd - bar.aStart + 1) * dayWidth - 6 : 0;
@@ -1872,16 +2018,30 @@ export function BitableGanttView({
               return (
                 <tr
                   key={row.id}
+                  ref={(el) => {
+                    if (el) rowRefs.current.set(row.id, el);
+                    else rowRefs.current.delete(row.id);
+                  }}
                   className="nb-bitable-gantt-row"
-                  style={{ background: rowTint }}
+                  style={{
+                    background: rowTint,
+                    // 被拖起的行整体压暗，明确「哪一行正在被搬运」
+                    opacity: isRowDragging ? 0.45 : 1,
+                  }}
                   onMouseEnter={() => setHoverRowId(row.id)}
                   onMouseLeave={() => setHoverRowId((prev) => (prev === row.id ? null : prev))}
                 >
-                  {/* 序号列：单击选中整行并浮出行操作条，双击展开记录详情 */}
+                  {/* 序号列：拖拽换行序、单击选中整行并浮出行操作条、双击展开记录详情 */}
                   <td
                     className="nb-bitable-gantt-num-cell"
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      if (rowIdx >= 0) startRowDrag(e, rowIdx);
+                    }}
                     onClick={(e) => {
                       e.stopPropagation();
+                      // 拖拽结束紧跟的 click 不应再改变选区
+                      if (consumeRowDraggedFlag()) return;
                       if (e.shiftKey && selection.type === 'row') {
                         setSelection({ type: 'row', startRowId: selection.startRowId, endRowId: row.id });
                       } else {
@@ -1909,7 +2069,9 @@ export function BitableGanttView({
                       padding: 0,
                       userSelect: 'none',
                       background: rowTint || undefined,
-                      cursor: 'pointer',
+                      cursor: rowDrag ? 'grabbing' : rowDragEnabled ? 'grab' : 'pointer',
+                      // 指示线必须画在 sticky 单元格自身，否则会被它的背景色盖掉
+                      boxShadow: rowDropShadow,
                     }}
                   >
                     <div
@@ -1922,7 +2084,24 @@ export function BitableGanttView({
                         height: ROW_HEIGHT,
                       }}
                     >
-                      <span>{node.rowNumber}</span>
+                      <Tooltip
+                        content={
+                          sortRules.length > 0
+                            ? '存在排序规则时行序由排序决定，无法手动拖动'
+                            : !onMoveRow
+                              ? '单击选中整行 · 双击展开详情'
+                              : groupByColumnId
+                                ? '拖拽可在分组内换行 · 单击选中整行 · 双击展开详情'
+                                : '拖拽行头可换序 · 单击选中整行 · 双击展开详情'
+                        }
+                        disabled={Boolean(rowDrag)}
+                        side="right"
+                        sideOffset={4}
+                      >
+                        <span style={{ cursor: 'inherit', display: 'inline-block', width: '100%' }}>
+                          {node.rowNumber}
+                        </span>
+                      </Tooltip>
 
                       {/* 行快捷操作条：与表格视图保持同一套动作与图标 */}
                       <div
@@ -2071,6 +2250,7 @@ export function BitableGanttView({
                     const isFillRight = isInFillPreview && colIdx === fillPreview.toCol;
 
                     const shadows: string[] = [];
+                    if (rowDropShadow) shadows.push(rowDropShadow);
                     if (isCellSelected) {
                       if (isTopEdge) shadows.push('inset 0 2px 0 0 var(--editor-accent, #3b82f6)');
                       if (isBottomEdge) shadows.push('inset 0 -2px 0 0 var(--editor-accent, #3b82f6)');
@@ -2212,6 +2392,7 @@ export function BitableGanttView({
                       height: ROW_HEIGHT,
                       borderBottom: '1px solid var(--editor-border, #f1f5f9)',
                       position: 'relative',
+                      boxShadow: rowDropShadow,
                     }}
                   >
                     <div
@@ -2435,6 +2616,16 @@ export function BitableGanttView({
           </tfoot>
         </table>
       </div>
+
+      {/* 行拖拽时的跟随幽灵：提示落在本组/本表的第几行 */}
+      {rowDrag && (
+        <DragGhost x={rowDrag.x - rowGrabOffset.x} y={rowDrag.y - rowGrabOffset.y + 4}>
+          {resolveRowTitleById(rowSlots[rowDrag.fromIdx]?.rowId ?? '')}
+          {rowDrag.valid
+            ? ` · 移动到${groupByColumnId ? '组内' : ''}第 ${rowDropPosition} 行`
+            : ' · 此处不可放置'}
+        </DragGhost>
+      )}
 
       {/* 隐藏剪贴板代理：持有焦点以接收原生 copy / cut / paste 与 Del 清空 */}
       <textarea
