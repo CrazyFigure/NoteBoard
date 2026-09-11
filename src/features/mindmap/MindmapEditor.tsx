@@ -13,14 +13,19 @@ import {
   RotateCcw,
   FileText,
 } from 'lucide-react';
-import type { MindNode } from './mindmapTypes';
+import type { MindNode, MindmapLayout } from './mindmapTypes';
 import {
   parseMindmapDocument,
+  parseMindmapDocumentMeta,
   serializeMindmapDocument,
   exportToXmindZip,
   importFromXmindZip,
   mindNodeToMarkdown,
+  DEFAULT_MINDMAP_LAYOUT,
+  DEFAULT_MINDMAP_THEME,
 } from './mindmapConverter';
+import { getMindmapTheme } from './mindmapTheme';
+import { MindmapStyleControls } from './MindmapStyleControls';
 import { OutlinerEditor } from './OutlinerEditor';
 import { MindmapRenderer } from './MindmapRenderer';
 import { Tooltip } from '../../components/Tooltip';
@@ -67,6 +72,14 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
   const [rootNode, setRootNode] = useState<MindNode>(() => {
     return parseMindmapDocument(doc?.content ?? '');
   });
+  // 文档级外观：布局 + 配色主题（持久化在文档 JSON 元信息中）
+  const [layout, setLayout] = useState<MindmapLayout>(
+    () => parseMindmapDocumentMeta(doc?.content ?? '').layout ?? DEFAULT_MINDMAP_LAYOUT,
+  );
+  const [themeId, setThemeId] = useState<string>(
+    () => parseMindmapDocumentMeta(doc?.content ?? '').theme ?? DEFAULT_MINDMAP_THEME,
+  );
+  const theme = getMindmapTheme(themeId);
   // 🔴 S12：最新状态引用（capabilities flush/captureViewState 同步读取，不依赖渲染闭包）
   const rootNodeRef = useRef<MindNode>(rootNode);
   rootNodeRef.current = rootNode;
@@ -74,6 +87,10 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
   viewModeRef.current = viewMode;
   const zoomRef = useRef<number>(zoom);
   zoomRef.current = zoom;
+  const layoutRef = useRef<MindmapLayout>(layout);
+  layoutRef.current = layout;
+  const themeIdRef = useRef<string>(themeId);
+  themeIdRef.current = themeId;
 
   // 注册统一文档历史快照应用器
   useEffect(() => {
@@ -84,6 +101,10 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
       applyEntry: (entry) => {
         const parsed = parseMindmapDocument(entry.content);
         setRootNode(parsed);
+        // 布局与配色随内容一起回滚，避免外观状态与文档不一致
+        const meta = parseMindmapDocumentMeta(entry.content);
+        setLayout(meta.layout);
+        setThemeId(meta.theme);
         setContent(docKey, entry.content);
         setDirty(docKey, true);
         setTabDirty(docKey, true);
@@ -111,7 +132,10 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
       getRevision: () => getDocumentRevision(docKey),
       flush: async () => {
         // 内容权威已在 store（handleRootChange 同步 setContent）；序列化 rootNode 兜底对齐
-        const content = serializeMindmapDocument(rootNodeRef.current);
+        const content = serializeMindmapDocument(rootNodeRef.current, {
+          layout: layoutRef.current,
+          theme: themeIdRef.current,
+        });
         submitCapturedContent(docKey, { instanceId, revision: getDocumentRevision(docKey), content });
         return { docKey, instanceId, revision: getDocumentRevision(docKey), content };
       },
@@ -133,21 +157,26 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
     return registerEditorCapabilities(capabilities);
   }, [docKey]);
 
-  // 当外部文档切换或重新加载时同步状态
+  // 当外部文档切换或重新加载时同步状态（含布局与配色元信息）
   useEffect(() => {
     if (doc?.content != null) {
       const parsed = parseMindmapDocument(doc.content);
       setRootNode(parsed);
+      const meta = parseMindmapDocumentMeta(doc.content);
+      setLayout(meta.layout);
+      setThemeId(meta.theme);
     }
   }, [docKey]);
 
-  // 节点树更新时同步到 DocumentStore、脏标记并记录文件级历史
-  const handleRootChange = useCallback(
-    (newRoot: MindNode) => {
-      setRootNode(newRoot);
+  // 统一的文档落盘：序列化节点树 + 外观元信息，同步 store / 脏标记 / 历史
+  const persistDocument = useCallback(
+    (newRoot: MindNode, nextLayout: MindmapLayout, nextTheme: string) => {
       // 🔴 S12：真实修改推进内容版本（会话屏障校验用）
       bumpDocumentRevision(docKey);
-      const serialized = serializeMindmapDocument(newRoot);
+      const serialized = serializeMindmapDocument(newRoot, {
+        layout: nextLayout,
+        theme: nextTheme,
+      });
       setContent(docKey, serialized);
       setDirty(docKey, true);
       setTabDirty(docKey, true);
@@ -157,6 +186,27 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
       });
     },
     [docKey, setContent, setDirty, setTabDirty],
+  );
+
+  // 节点树更新时同步到 DocumentStore、脏标记并记录文件级历史
+  const handleRootChange = useCallback(
+    (newRoot: MindNode) => {
+      setRootNode(newRoot);
+      persistDocument(newRoot, layoutRef.current, themeIdRef.current);
+    },
+    [persistDocument],
+  );
+
+  // 切换布局 / 配色主题并即时持久化
+  const handleStyleChange = useCallback(
+    (next: { layout?: MindmapLayout; theme?: string }) => {
+      const nextLayout = next.layout ?? layoutRef.current;
+      const nextTheme = next.theme ?? themeIdRef.current;
+      setLayout(nextLayout);
+      setThemeId(nextTheme);
+      persistDocument(rootNodeRef.current, nextLayout, nextTheme);
+    },
+    [persistDocument],
   );
 
   // 切换查看模式（不记录新历史节点）
@@ -393,6 +443,16 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
             </div>
           )}
 
+          {/* 布局与配色主题切换（仅导图模式） */}
+          {viewMode === 'mindmap' && (
+            <MindmapStyleControls
+              layout={layout}
+              themeId={themeId}
+              onLayoutChange={(nextLayout) => handleStyleChange({ layout: nextLayout })}
+              onThemeChange={(nextTheme) => handleStyleChange({ theme: nextTheme })}
+            />
+          )}
+
           {/* 导入 XMind 隐藏 input */}
           <Tooltip content="导入 .xmind 文件" side="bottom" sideOffset={4}>
             <label
@@ -477,6 +537,8 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
             onChange={handleRootChange}
             zoom={zoom}
             onZoomChange={setZoom}
+            layout={layout}
+            theme={theme}
           />
         ) : (
           <OutlinerEditor
