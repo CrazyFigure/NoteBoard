@@ -81,13 +81,21 @@ export function createDefaultBitableDocument(title = '项目与任务管理多�
       longText: { displayMode: 'firstLine', markdown: true },
     },
     {
+      id: 'col_startDate',
+      key: 'startDate',
+      name: '开始日期',
+      type: 'date',
+      width: 140,
+      // 显式写一份格式配置：模板生成的文档不经过解析期补全，
+      // 只留内存默认值会让落盘数据与界面表现对不上
+      dateTime: { ...DEFAULT_DATE_TIME_CONFIG },
+    },
+    {
       id: 'col_dueDate',
       key: 'dueDate',
       name: '截止日期',
       type: 'date',
       width: 140,
-      // 显式写一份格式配置：模板生成的文档不经过解析期补全，
-      // 只留内存默认值会让落盘数据与界面表现对不上
       dateTime: { ...DEFAULT_DATE_TIME_CONFIG },
     },
     {
@@ -113,6 +121,7 @@ export function createDefaultBitableDocument(title = '项目与任务管理多�
       col_status: 'opt_done',
       col_priority: 'p_p0',
       col_assignee: '产品体验组',
+      col_startDate: '2026-08-24',
       col_dueDate: '2026-08-28',
       col_progress: 100,
       col_rating: 5,
@@ -125,6 +134,7 @@ export function createDefaultBitableDocument(title = '项目与任务管理多�
       col_status: 'opt_done',
       col_priority: 'p_p0',
       col_assignee: 'UI 设计师',
+      col_startDate: '2026-08-25',
       col_dueDate: '2026-08-28',
       col_progress: 100,
       col_rating: 5,
@@ -135,7 +145,8 @@ export function createDefaultBitableDocument(title = '项目与任务管理多�
       col_status: 'opt_doing',
       col_priority: 'p_p0',
       col_assignee: '前端研发',
-      col_dueDate: '2026-08-29',
+      col_startDate: '2026-08-26',
+      col_dueDate: '2026-09-02',
       col_progress: 75,
       col_rating: 5,
       col_notes:
@@ -147,7 +158,8 @@ export function createDefaultBitableDocument(title = '项目与任务管理多�
       col_status: 'opt_doing',
       col_priority: 'p_p1',
       col_assignee: '核心架构',
-      col_dueDate: '2026-08-30',
+      col_startDate: '2026-08-28',
+      col_dueDate: '2026-09-08',
       col_progress: 40,
       col_rating: 4,
     },
@@ -157,7 +169,8 @@ export function createDefaultBitableDocument(title = '项目与任务管理多�
       col_status: 'opt_todo',
       col_priority: 'p_p1',
       col_assignee: 'QA 质量组',
-      col_dueDate: '2026-08-31',
+      col_startDate: '2026-09-07',
+      col_dueDate: '2026-09-11',
       col_progress: 0,
       col_rating: 4,
     },
@@ -180,6 +193,21 @@ export function createDefaultBitableDocument(title = '项目与任务管理多�
       name: '按优先级看板',
       type: 'kanban',
       groupByColumnId: 'col_priority',
+    },
+    {
+      id: 'view_gantt',
+      name: '任务甘特图',
+      type: 'gantt',
+      gantt: {
+        startColumnId: 'col_startDate',
+        endColumnId: 'col_dueDate',
+        titleColumnId: 'col_name',
+        colorMode: 'custom',
+        color: 'blue',
+        workdaysOnly: false,
+        zoom: 'month',
+        leftColumnIds: ['col_name'],
+      },
     },
   ];
 

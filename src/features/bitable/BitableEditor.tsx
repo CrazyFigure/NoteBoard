@@ -2,14 +2,16 @@
 // 深度还原多维表格多视图管理（多看板/多表格）+ 拖拽换列 + 树形子任务 + 各字段专有排序 + 撤销重做
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import type {
-  BitableDocument,
-  BitableColumn,
-  BitableRow,
-  BitableViewConfig,
-  BitableViewType,
-  ColumnOptionAction,
-  SortRule,
+import {
+  DEFAULT_DATE_TIME_CONFIG,
+  type BitableDocument,
+  type BitableColumn,
+  type BitableRow,
+  type BitableViewConfig,
+  type BitableViewType,
+  type ColumnOptionAction,
+  type GanttViewConfig,
+  type SortRule,
 } from './bitableTypes';
 import {
   parseBitableDocument,
@@ -18,6 +20,7 @@ import {
 } from './bitableConverter';
 import { BitableGridView } from './BitableGridView';
 import { BitableKanbanView } from './BitableKanbanView';
+import { BitableGanttView, createGanttConfig } from './BitableGanttView';
 import { BitableRecordPanel } from './BitableRecordPanel';
 import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
 import { usePointerReorder } from './usePointerReorder';
@@ -59,6 +62,7 @@ import type { EditorCapabilities } from '../../core/editor/editorTypes';
 import {
   Table as TableIcon,
   Kanban,
+  ChartGantt,
   Search,
   Plus,
   X,
@@ -295,17 +299,21 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
 
   const handleCreateView = (type: BitableViewType) => {
     setAddViewMenu(null);
-    let createdName = type === 'grid' ? '表格视图' : '看板视图';
+    const baseName = type === 'grid' ? '表格视图' : type === 'kanban' ? '看板视图' : '甘特图';
+    let createdName = baseName;
     const newViewId = createId('view');
     commitChange((prev) => {
-      createdName = type === 'grid' ? `表格视图 ${prev.views.length + 1}` : `看板视图 ${prev.views.length + 1}`;
+      createdName = `${baseName} ${prev.views.length + 1}`;
       // 看板视图必须绑定分组列，缺省优先取第一个单选或多选列，保证新建后立刻能看到泳道
       const groupByColumnId = type === 'kanban'
         ? prev.columns.find((c) => c.type === 'select' || c.type === 'multiSelect')?.id
         : undefined;
+      const newView: BitableViewConfig = { id: newViewId, name: createdName, type, groupByColumnId };
+      // 甘特图开箱即用：自动挑选开始/结束日期字段与标题字段，避免新建后是一张空时间轴
+      if (type === 'gantt') newView.gantt = createGanttConfig(prev.columns);
       return {
         ...prev,
-        views: [...prev.views, { id: newViewId, name: createdName, type, groupByColumnId }],
+        views: [...prev.views, newView],
         activeViewId: newViewId,
       };
     });
@@ -359,6 +367,83 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
       views: prev.views.map((v) => (v.id === activeView.id ? { ...v, groupByColumnId: newColId } : v)),
     }));
   };
+
+  /** 更新当前视图的通用配置（如表格视图的冻结列数） */
+  const handleUpdateViewConfig = useCallback(
+    (partial: Partial<BitableViewConfig>) => {
+      commitChange((prev) => ({
+        ...prev,
+        views: prev.views.map((v) => (v.id === activeView.id ? { ...v, ...partial } : v)),
+      }));
+    },
+    [activeView.id, commitChange],
+  );
+
+  const handleUpdateFrozenColumnCount = useCallback(
+    (count: number) => {
+      handleUpdateViewConfig({ frozenColumnCount: count });
+    },
+    [handleUpdateViewConfig],
+  );
+
+  /** 更新当前甘特图视图的专属配置（开始/结束日期、标题、颜色、工作日、左侧固定列、刻度） */
+  const handleUpdateGanttConfig = useCallback(
+    (partial: Partial<GanttViewConfig>) => {
+      commitChange((prev) => ({
+        ...prev,
+        views: prev.views.map((v) =>
+          v.id === activeView.id ? { ...v, gantt: { ...v.gantt, ...partial } } : v,
+        ),
+      }));
+    },
+    [activeView.id, commitChange],
+  );
+
+  /**
+   * 甘特图空态兜底：一次提交内新建「开始日期 / 结束日期」两个日期字段，
+   * 并把当前视图指向它们，避免用户先去表格视图建字段再切回来。
+   */
+  const handleCreateDateFields = useCallback(() => {
+    const startId = createId('col');
+    const endId = createId('col');
+    commitChange((prev) => {
+      const titleCol =
+        prev.columns.find((c) => c.type === 'text') ||
+        prev.columns.find((c) => c.type === 'longText') ||
+        prev.columns[0];
+      const makeDateColumn = (id: string, name: string): BitableColumn => ({
+        id,
+        key: createId('field'),
+        name,
+        type: 'date',
+        width: 140,
+        dateTime: { ...DEFAULT_DATE_TIME_CONFIG },
+      });
+      return {
+        ...prev,
+        columns: [...prev.columns, makeDateColumn(startId, '开始日期'), makeDateColumn(endId, '结束日期')],
+        views: prev.views.map((v) =>
+          v.id === activeView.id
+            ? {
+                ...v,
+                gantt: {
+                  ...v.gantt,
+                  startColumnId: startId,
+                  endColumnId: endId,
+                  titleColumnId: v.gantt?.titleColumnId || titleCol?.id,
+                  leftColumnIds: v.gantt?.leftColumnIds?.length
+                    ? v.gantt.leftColumnIds
+                    : titleCol
+                      ? [titleCol.id]
+                      : [],
+                },
+              }
+            : v,
+        ),
+      };
+    });
+    showToast('已创建开始 / 结束日期字段');
+  }, [activeView.id, commitChange]);
 
   // ── 多字段联合排序 ──
 
@@ -706,14 +791,16 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
 
   const handleAddColumn = useCallback(
     (direction: 'left' | 'right', referenceColId?: string) => {
+      // ID 在提交外生成：甘特图视图新建列后需要立刻把该列挂进左侧固定列，
+      // 若 ID 只在 updater 内产生，调用方拿不到新列无法完成这一步。
+      const newCol: BitableColumn = {
+        id: createId('col'),
+        key: createId('field'),
+        name: '新字段',
+        type: 'text',
+        width: 160,
+      };
       commitChange((prev) => {
-        const newCol: BitableColumn = {
-          id: createId('col'),
-          key: createId('field'),
-          name: '新字段',
-          type: 'text',
-          width: 160,
-        };
         const nextCols = [...prev.columns];
         if (referenceColId) {
           const idx = nextCols.findIndex((c) => c.id === referenceColId);
@@ -723,7 +810,15 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
         } else {
           nextCols.push(newCol);
         }
-        return { ...prev, columns: nextCols };
+        // 甘特图没有「全列」概念，新列必须进左侧固定列，否则插入后看不见
+        const nextViews = prev.activeViewId
+          ? prev.views.map((v) =>
+              v.id === prev.activeViewId && v.type === 'gantt'
+                ? { ...v, gantt: { ...v.gantt, leftColumnIds: [...(v.gantt?.leftColumnIds || []), newCol.id] } }
+                : v,
+            )
+          : prev.views;
+        return { ...prev, columns: nextCols, views: nextViews };
       });
     },
     [commitChange],
@@ -1060,7 +1155,13 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                     handleSelectView(v.id);
                   }}
                 >
-                  {v.type === 'grid' ? <TableIcon size={13} /> : <Kanban size={13} />}
+                  {v.type === 'grid' ? (
+                    <TableIcon size={13} />
+                  ) : v.type === 'kanban' ? (
+                    <Kanban size={13} />
+                  ) : (
+                    <ChartGantt size={13} />
+                  )}
 
                   {isEditingThis ? (
                     <input
@@ -1218,6 +1319,14 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                 >
                   <Kanban size={13} color="#8b5cf6" />
                   <span>新建看板视图</span>
+                </button>
+                <button
+                  type="button"
+                  className="nb-bitable-menu-item"
+                  onClick={() => handleCreateView('gantt')}
+                >
+                  <ChartGantt size={13} color="#0ea5e9" />
+                  <span>新建甘特图视图</span>
                 </button>
               </FloatingPanel>
             )}
@@ -1417,6 +1526,8 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             groupByColumnId={activeView.groupByColumnId}
             onUpdateGroupByColumnId={handleUpdateGroupByColumnId}
             onUpdateSortRules={handleUpdateSortRules}
+            frozenColumnCount={activeView.frozenColumnCount || 0}
+            onUpdateFrozenColumnCount={handleUpdateFrozenColumnCount}
             onPasteCells={handlePasteCells}
             onBatchUpdateCells={handleBatchUpdateCells}
             onManageColumnOption={handleManageColumnOption}
@@ -1437,7 +1548,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             onReorderColumns={handleReorderColumns}
             onMoveRow={handleMoveRow}
           />
-        ) : (
+        ) : activeView.type === 'kanban' ? (
           <BitableKanbanView
             columns={data.columns}
             rows={filteredAndSortedRows}
@@ -1448,6 +1559,33 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             onManageColumnOption={handleManageColumnOption}
             onOpenRecord={setRecordPanelRowId}
             onDeleteRow={handleDeleteRow}
+          />
+        ) : (
+          <BitableGanttView
+            columns={data.columns}
+            rows={filteredAndSortedRows}
+            config={activeView.gantt || {}}
+            onUpdateConfig={handleUpdateGanttConfig}
+            sortRules={activeView.sortRules || []}
+            groupByColumnId={activeView.groupByColumnId}
+            onUpdateGroupByColumnId={handleUpdateGroupByColumnId}
+            onUpdateSortRules={handleUpdateSortRules}
+            onPasteCells={handlePasteCells}
+            onBatchUpdateCells={handleBatchUpdateCells}
+            onUpdateRow={handleUpdateRow}
+            onManageColumnOption={handleManageColumnOption}
+            onAddRow={handleAddRow}
+            onAddSubRow={handleAddSubRow}
+            onOutdentRow={handleOutdentRow}
+            onIndentRow={handleIndentRow}
+            onInsertRowAbove={handleInsertRowAbove}
+            onInsertRowBelow={handleInsertRowBelow}
+            onDeleteRow={handleDeleteRow}
+            onAddColumn={handleAddColumn}
+            onDeleteColumn={handleDeleteColumn}
+            onClearColumn={handleClearColumn}
+            onOpenRecord={setRecordPanelRowId}
+            onCreateDateFields={handleCreateDateFields}
           />
         )}
 

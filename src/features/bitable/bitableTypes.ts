@@ -156,7 +156,36 @@ export interface BitableRow {
 }
 
 /** 视图类型 */
-export type BitableViewType = 'grid' | 'kanban';
+export type BitableViewType = 'grid' | 'kanban' | 'gantt';
+
+/** 甘特图时间刻度：周 / 月 / 季 / 年 */
+export type GanttZoom = 'week' | 'month' | 'quarter' | 'year';
+
+/** 甘特图条形取色方式 */
+export type GanttColorMode = 'auto' | 'custom';
+
+/**
+ * 甘特图视图配置
+ * 与表格视图一样随文档一起持久化在视图配置里，保证换设备打开后表现一致。
+ */
+export interface GanttViewConfig {
+  /** 开始日期字段（date / dateTime） */
+  startColumnId?: string;
+  /** 结束日期字段（date / dateTime），缺省时按开始日期当天处理 */
+  endColumnId?: string;
+  /** 条形上展示的标题字段 */
+  titleColumnId?: string;
+  /** 颜色显示：auto 取字段标签颜色自动着色；custom 使用下方自定义色 */
+  colorMode?: GanttColorMode;
+  /** 自定义颜色，colorMode === 'custom' 时生效 */
+  color?: SelectOptionColor;
+  /** 仅计算工作日：时间轴跳过周末，条形长度按工作日折算 */
+  workdaysOnly?: boolean;
+  /** 左侧列表面板展示并固定的字段（顺序即列顺序） */
+  leftColumnIds?: string[];
+  /** 时间刻度，默认 month */
+  zoom?: GanttZoom;
+}
 
 /** 过滤规则操作符 */
 export type FilterOperator =
@@ -194,6 +223,10 @@ export interface BitableViewConfig {
   sortRules?: SortRule[];
   groupByColumnId?: string; // 看板视图使用的分组单选列 ID
   hiddenColumnIds?: string[];
+  /** 表格视图：左侧固定的列数（前缀固定，0 或未设置表示不固定） */
+  frozenColumnCount?: number;
+  /** 甘特图专属配置 */
+  gantt?: GanttViewConfig;
 }
 
 /**
