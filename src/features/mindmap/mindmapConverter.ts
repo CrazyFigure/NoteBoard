@@ -3,7 +3,26 @@
 // 支持动态 import('jszip') 导入/导出 .xmind 压缩包
 // 详见 docs/09-开发路线图.md
 
-import type { MindNode, MindmapDocumentData, XMindContentJson, XMindTopic, XMindSheet } from './mindmapTypes';
+import type {
+  MindNode,
+  MindmapDocumentData,
+  MindmapLayout,
+  XMindContentJson,
+  XMindTopic,
+  XMindSheet,
+} from './mindmapTypes';
+
+/** 合法布局枚举（用于反序列化时的防御性校验） */
+const VALID_LAYOUTS: MindmapLayout[] = ['right', 'left', 'balanced', 'tree'];
+
+export const DEFAULT_MINDMAP_LAYOUT: MindmapLayout = 'right';
+export const DEFAULT_MINDMAP_THEME = 'classic';
+
+/** 文档级外观元信息（布局 + 配色主题） */
+export interface MindmapDocumentMeta {
+  layout: MindmapLayout;
+  theme: string;
+}
 
 let nextNodeId = 1;
 export function generateNodeId(): string {
@@ -98,14 +117,47 @@ function normalizeNode(node: Partial<MindNode>): MindNode {
 
 /**
  * 序列化思维导图为 JSON 文本
+ * @param meta 文档级外观元信息（布局与配色主题），缺省时回退到默认外观
  */
-export function serializeMindmapDocument(root: MindNode): string {
+export function serializeMindmapDocument(
+  root: MindNode,
+  meta?: { layout?: MindmapLayout; theme?: string },
+): string {
   const doc: MindmapDocumentData = {
     version: 1,
     root,
-    layout: 'right',
+    layout: meta?.layout ?? DEFAULT_MINDMAP_LAYOUT,
+    theme: meta?.theme ?? DEFAULT_MINDMAP_THEME,
   };
   return JSON.stringify(doc, null, 2);
+}
+
+/**
+ * 仅读取文档级外观元信息（布局与配色主题），不构建节点树
+ * 非 JSON 文档（如 Markdown 大纲）统一返回默认外观
+ */
+export function parseMindmapDocumentMeta(content: string): MindmapDocumentMeta {
+  const meta: MindmapDocumentMeta = {
+    layout: DEFAULT_MINDMAP_LAYOUT,
+    theme: DEFAULT_MINDMAP_THEME,
+  };
+  const trimmed = (content || '').trim();
+  if (!trimmed.startsWith('{')) return meta;
+
+  try {
+    const parsed = JSON.parse(trimmed) as Partial<MindmapDocumentData>;
+    if (parsed && typeof parsed === 'object') {
+      if (typeof parsed.layout === 'string' && VALID_LAYOUTS.includes(parsed.layout as MindmapLayout)) {
+        meta.layout = parsed.layout as MindmapLayout;
+      }
+      if (typeof parsed.theme === 'string' && parsed.theme.trim()) {
+        meta.theme = parsed.theme;
+      }
+    }
+  } catch {
+    // 非法 JSON 时回退默认外观
+  }
+  return meta;
 }
 
 /**

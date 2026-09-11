@@ -16,11 +16,17 @@ export interface MindNode {
   children: MindNode[];
 }
 
+/** 思维导图布局：向右逻辑图 / 向左逻辑图 / 双向平衡图 / 向下组织图 */
+export type MindmapLayout = 'right' | 'left' | 'balanced' | 'tree';
+
+/** 连线样式：平滑贝塞尔曲线 / 直线 */
+export type MindmapEdgeStyle = 'curve' | 'straight';
+
 export interface MindmapDocumentData {
   version: number;
   root: MindNode;
   theme?: string;
-  layout?: 'right' | 'balanced';
+  layout?: MindmapLayout;
 }
 
 /** XMind content.json 数据结构 */
