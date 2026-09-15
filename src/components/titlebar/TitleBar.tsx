@@ -2,33 +2,22 @@
 // 自绘标题栏：应用图标 + tab 栏 + 拖拽区 + 窗口控制 + 设置入口
 // 详见 docs/07-UI布局与交互规范.md §2
 
-import { useEffect } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Settings as SettingsIcon, RefreshCw } from 'lucide-react';
 import { TabBar } from './TabBar';
 import { WindowControls } from './WindowControls';
 import { ThemeMenu } from './ThemeMenu';
 import { Tooltip } from '../Tooltip';
+import { emit } from '../../core/emitter';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { useUpdateStore } from '../../stores/updateStore';
 
 export function TitleBar() {
   const toggleSettingsModal = useLayoutStore((s) => s.toggleSettingsModal);
+  // 当前是否有打开的标题栏/标签页菜单
+  const hasActiveMenu = useLayoutStore((s) => s.activeMenuCount > 0);
 
   const { hasUpdate, checking: checkingUpdate, checkForUpdates } = useUpdateStore();
-
-  // 双击拖拽区 → toggleMaximize
-  useEffect(() => {
-    const handleDoubleClick = () => {
-      getCurrentWindow().toggleMaximize();
-    };
-
-    const dragRegion = document.querySelector('[data-tauri-drag-region]');
-    if (dragRegion) {
-      dragRegion.addEventListener('dblclick', handleDoubleClick);
-      return () => dragRegion.removeEventListener('dblclick', handleDoubleClick);
-    }
-  }, []);
 
   const titleBarStyle: React.CSSProperties = {
     height: 36,
@@ -47,7 +36,6 @@ export function TitleBar() {
       {/* 应用图标 16px，点击可打开设置中心 */}
       <Tooltip content="NoteBoard (点击打开设置)" side="bottom" sideOffset={6}>
         <div
-          data-tauri-drag-region
           style={{
             width: 36,
             height: 36,
@@ -90,13 +78,23 @@ export function TitleBar() {
       {/* Tab 栏 */}
       <TabBar />
 
-      {/* 拖拽空白区 */}
+      {/* 拖拽空白区：当有菜单打开时临时解除 drag-region，点击直接关闭菜单且避免触发原生窗口拖动；无菜单时保留原生拖拽，双击最大化 */}
       <div
-        data-tauri-drag-region
+        {...(!hasActiveMenu ? { 'data-tauri-drag-region': '' } : {})}
         style={{
           flex: 1,
           height: '100%',
           minWidth: 0,
+        }}
+        onMouseDown={(e) => {
+          // 若当前有菜单打开，阻止默认拖动行为并通知关闭所有标题栏浮层菜单
+          if (hasActiveMenu) {
+            e.preventDefault();
+            emit('close-titlebar-menus', undefined);
+          }
+        }}
+        onDoubleClick={() => {
+          getCurrentWindow().toggleMaximize();
         }}
       />
 
