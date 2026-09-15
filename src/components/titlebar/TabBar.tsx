@@ -48,6 +48,8 @@ import {
   Star,
 } from 'lucide-react';
 import { Tooltip } from '../Tooltip';
+import { on, off } from '../../core/emitter';
+import { useLayoutStore } from '../../stores/layoutStore';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useExplorerStore } from '../../features/explorer/explorerStore';
@@ -127,15 +129,32 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
   const favoritesData = useFavoritesStore((s) => s.data);
   const isFavorited = Boolean(tab.path && findFavoriteByPath(favoritesData.roots, tab.path));
 
+  // 右键菜单打开时的外部点击关闭监听与全局活跃菜单状态同步
   useEffect(() => {
     if (!menuPos) return;
+    // 增加全局活跃菜单计数，使标题栏拖拽空白区知晓当前有菜单浮层处于激活状态
+    useLayoutStore.getState().incrementActiveMenu();
+
+    // 点击菜单外部时自动关闭右键菜单
     const handleDown = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuPos(null);
       }
     };
+    // 收到标题栏通知时主动关闭菜单
+    const handleCloseEvent = () => {
+      setMenuPos(null);
+    };
+
     document.addEventListener('mousedown', handleDown);
-    return () => document.removeEventListener('mousedown', handleDown);
+    on('close-titlebar-menus', handleCloseEvent);
+
+    return () => {
+      // 菜单关闭后减少全局活跃菜单计数
+      useLayoutStore.getState().decrementActiveMenu();
+      document.removeEventListener('mousedown', handleDown);
+      off('close-titlebar-menus', handleCloseEvent);
+    };
   }, [menuPos]);
 
   // 单个 Tab 的外观样式（采用现代圆角卡片设计，短标题自动紧凑缩短，长标题受限截断）
@@ -613,8 +632,12 @@ export function TabBar() {
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
 
+  // 新建菜单与保存菜单打开时的外部点击关闭监听与全局活跃菜单状态同步
   useEffect(() => {
     if (!newMenuPos && !saveMenuPos) return;
+    // 增加全局活跃菜单计数，通知标题栏拖拽空白区临时解除 drag-region
+    useLayoutStore.getState().incrementActiveMenu();
+
     const handleDown = (e: MouseEvent) => {
       const target = e.target as Node;
       // 点击菜单及加号按钮外部时关闭新建菜单
@@ -625,6 +648,7 @@ export function TabBar() {
         !newBtnRef.current?.contains(target)
       ) {
         setNewMenuPos(null);
+        setShowMoreSubMenu(false);
       }
       // 点击菜单及保存按钮外部时关闭保存菜单
       if (
@@ -636,8 +660,23 @@ export function TabBar() {
         setSaveMenuPos(null);
       }
     };
+
+    // 收到标题栏通知时主动关闭新建与保存菜单
+    const handleCloseEvent = () => {
+      setNewMenuPos(null);
+      setSaveMenuPos(null);
+      setShowMoreSubMenu(false);
+    };
+
     document.addEventListener('mousedown', handleDown);
-    return () => document.removeEventListener('mousedown', handleDown);
+    on('close-titlebar-menus', handleCloseEvent);
+
+    return () => {
+      // 菜单关闭后减少全局活跃菜单计数
+      useLayoutStore.getState().decrementActiveMenu();
+      document.removeEventListener('mousedown', handleDown);
+      off('close-titlebar-menus', handleCloseEvent);
+    };
   }, [newMenuPos, saveMenuPos]);
 
   const handleDragEnd = (e: DragEndEvent) => {

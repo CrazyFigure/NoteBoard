@@ -21,6 +21,8 @@ export type AppEvents = {
   'toggle-md-view-mode': { key?: string; mode?: 'visual' | 'source' };
   // 请求唤起超链接插入/编辑弹窗
   'open-link-modal': { key?: string };
+  // 请求关闭标题栏所有弹出菜单（新建菜单、保存菜单、主题菜单及标签页右键菜单）
+  'close-titlebar-menus': void;
   // mitt 要求的索引签名
   [key: string]: unknown;
 };

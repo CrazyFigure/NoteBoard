@@ -28,8 +28,14 @@ interface LayoutStore {
   boardPresentationMode: boolean;
   /** 是否正在向窗口内拖拽文件 */
   isDraggingFile: boolean;
+  /** 当前处于打开状态的标题栏/Tab 菜单数量（>0 表示有菜单浮层激活） */
+  activeMenuCount: number;
 
   // ── 操作 ──
+  /** 增加当前活跃菜单计数 */
+  incrementActiveMenu: () => void;
+  /** 减少当前活跃菜单计数（底限为 0） */
+  decrementActiveMenu: () => void;
   toggleExplorer: () => void;
   toggleOutline: () => void;
   toggleSettingsModal: () => void;
@@ -76,7 +82,12 @@ export const useLayoutStore = create<LayoutStore>((set, get) => ({
   editorToolbarVisible: true,
   boardPresentationMode: false,
   isDraggingFile: false,
+  activeMenuCount: 0,
 
+  // 增加活跃菜单计数
+  incrementActiveMenu: () => set((s) => ({ activeMenuCount: s.activeMenuCount + 1 })),
+  // 减少活跃菜单计数（底限为 0）
+  decrementActiveMenu: () => set((s) => ({ activeMenuCount: Math.max(0, s.activeMenuCount - 1) })),
   toggleExplorer: () => set((s) => ({ explorerVisible: !s.explorerVisible })),
   toggleOutline: () => set((s) => ({ outlineVisible: !s.outlineVisible })),
   toggleSettingsModal: () => set((s) => ({ settingsModalVisible: !s.settingsModalVisible })),

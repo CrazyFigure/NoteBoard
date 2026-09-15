@@ -4,6 +4,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { Palette, Check, Sparkles } from 'lucide-react';
 import { Tooltip } from '../Tooltip';
+import { on, off } from '../../core/emitter';
+import { useLayoutStore } from '../../stores/layoutStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import type { ThemeMode } from '../../core/ipc/types';
 
@@ -55,9 +57,11 @@ export function ThemeMenu() {
   const { settings, setThemeMode } = useSettingsStore();
   const currentMode = settings.appearance.themeMode;
 
-  // 点击外部或按 Esc 键自动关闭浮层
+  // 点击外部、收到全局标题栏关闭事件或按 Esc 键自动关闭浮层
   useEffect(() => {
     if (!isOpen) return;
+    // 增加全局活跃菜单计数，通知标题栏拖拽空白区临时解除 drag-region
+    useLayoutStore.getState().incrementActiveMenu();
 
     const handlePointerDown = (e: MouseEvent) => {
       if (
@@ -76,12 +80,21 @@ export function ThemeMenu() {
       }
     };
 
+    // 收到标题栏通知时主动关闭主题菜单
+    const handleCloseEvent = () => {
+      setIsOpen(false);
+    };
+
     window.addEventListener('mousedown', handlePointerDown);
     window.addEventListener('keydown', handleKeyDown);
+    on('close-titlebar-menus', handleCloseEvent);
 
     return () => {
+      // 菜单关闭后减少全局活跃菜单计数
+      useLayoutStore.getState().decrementActiveMenu();
       window.removeEventListener('mousedown', handlePointerDown);
       window.removeEventListener('keydown', handleKeyDown);
+      off('close-titlebar-menus', handleCloseEvent);
     };
   }, [isOpen]);
 

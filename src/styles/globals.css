@@ -36,9 +36,10 @@ body {
   outline-offset: 2px;
 }
 
-/* data-tauri-drag-region */
+/* data-tauri-drag-region 拖拽区域样式：由 Tauri 自带机制处理窗口拖拽，此处仅配置防止文本误选中，避免 app-region: drag 吞噬 DOM 鼠标事件 */
 *[data-tauri-drag-region] {
-  app-region: drag;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* 滚动条 */
