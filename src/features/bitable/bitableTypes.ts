@@ -105,7 +105,11 @@ export const DEFAULT_LONG_TEXT_CONFIG: LongTextConfig = {
   markdown: false,
 };
 
-/** 彩色标签选项颜色 */
+/**
+ * 彩色标签选项颜色。
+ * 取值必须与 BITABLE_PALETTE（bitableConverter.ts）的 id 完全一致：
+ * 色板里没有的颜色 lookup 不到，会静默回落到蓝色，标签看着像「改了色但没生效」。
+ */
 export type SelectOptionColor =
   | 'blue'
   | 'green'
@@ -114,8 +118,7 @@ export type SelectOptionColor =
   | 'red'
   | 'cyan'
   | 'pink'
-  | 'gray'
-  | 'orange';
+  | 'gray';
 
 /** 单选/多选标签选项 */
 export interface SelectOption {
