@@ -1603,7 +1603,7 @@ export function BitableGanttView({
                 {BITABLE_PALETTE.map((item) => (
                   <Tooltip key={item.id} content={item.label} side="bottom" sideOffset={4}>
                     <div
-                      className="nb-bitable-color-dot"
+                      className="nb-bitable-color-swatch"
                       onClick={() => onUpdateConfig({ color: item.id as SelectOptionColor })}
                       style={{
                         width: 18,

@@ -8,8 +8,7 @@ import {
   type BitableRow,
   type SelectOption,
 } from './bitableTypes';
-import { OptionBadge } from './BitableOptions';
-import { BITABLE_PALETTE } from './bitableConverter';
+import { OptionBadge, ColorPickerRow } from './BitableOptions';
 import { BitableMarkdown } from './BitableMarkdown';
 import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
 import { SortRulesPanel } from './BitableSortPanel';
@@ -656,32 +655,14 @@ export function BitableKanbanView({
                   </Tooltip>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  {BITABLE_PALETTE.map((pal) => (
-                    <Tooltip key={pal.id} content={pal.label} side="bottom" sideOffset={4}>
-                      <div
-                        className="nb-bitable-color-dot"
-                        onClick={() =>
-                          setEditingGroup((prev) =>
-                            prev ? { ...prev, color: pal.id as SelectOptionColor } : prev,
-                          )
-                        }
-                        style={{
-                          width: 14,
-                          height: 14,
-                          borderRadius: '50%',
-                          background: pal.text,
-                          cursor: 'pointer',
-                          boxSizing: 'border-box',
-                          border:
-                            editingGroup.color === pal.id
-                              ? '2px solid var(--editor-text, #0f172a)'
-                              : '1px solid rgba(15,23,42,0.12)',
-                        }}
-                      />
-                    </Tooltip>
-                  ))}
-                </div>
+                {/* 与选项编辑面板共用同一套预览式色块，保证「点哪个色块就得到哪个标签颜色」 */}
+                <ColorPickerRow
+                  value={editingGroup.color}
+                  onChange={(color) =>
+                    setEditingGroup((prev) => (prev ? { ...prev, color } : prev))
+                  }
+                  size={16}
+                />
 
                 <button
                   type="button"

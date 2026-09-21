@@ -12,21 +12,44 @@ import {
   type BitableViewConfig,
 } from './bitableTypes';
 
-/** 标准多维表格颜色清单 */
+/**
+ * 标准多维表格颜色清单。
+ * 三色语义：bg = 标签底色、text = 标签文字（也是甘特条形的填充色）、border = 标签描边。
+ *
+ * 配色原则（改前务必按 CIELab 校验，别只用眼睛）：
+ * 1. 白底附近的 sRGB 色域极窄 —— L*96 一带，品红域能取到的最大彩度只有 5.7。
+ *    所以「都保持 50 级浅底」和「红粉一眼分明」物理上不可兼得（同亮度实测 ΔE 仅 3.1，并排不可辨，
+ *    ΔE <3 不可辨 / 5~10 看得出 / >10 一眼分明）。要分离只能拉开亮度。
+ * 2. 亮度关系要符合语义直觉：警示红比浪漫粉重（红 L*85.8 / 粉 L*96.5），
+ *    反之会让用户觉得「粉色怎么比红色还深」。红粉现在填充 ΔE 19.4、描边 ΔE 25.6。
+ * 3. 每个色面各自形成 200/300/700 的层次，文字对比度取到 AA（4.5:1）以上。
+ *    警示红的文字因此用 800 级 —— 600 级放在 200 级底色上只有 3.34:1。
+ */
 export const BITABLE_PALETTE: Array<{ id: string; label: string; bg: string; text: string; border: string }> = [
   { id: 'blue', label: '沉稳蓝', bg: '#eff6ff', text: '#2563eb', border: '#bfdbfe' },
   { id: 'green', label: '清新绿', bg: '#f0fdf4', text: '#16a34a', border: '#bbf7d0' },
   { id: 'purple', label: '优雅紫', bg: '#faf5ff', text: '#9333ea', border: '#e9d5ff' },
   { id: 'amber', label: '活力橙', bg: '#fffbeb', text: '#d97706', border: '#fde68a' },
-  { id: 'red', label: '警示红', bg: '#fef2f2', text: '#dc2626', border: '#fecaca' },
+  { id: 'red', label: '警示红', bg: '#fecaca', text: '#991b1b', border: '#fca5a5' },
   { id: 'cyan', label: '湖水青', bg: '#ecfeff', text: '#0891b2', border: '#a5f3fc' },
-  { id: 'pink', label: '浪漫粉', bg: '#fdf2f8', text: '#db2777', border: '#fbcfe8' },
+  { id: 'pink', label: '浪漫粉', bg: '#fdf2f8', text: '#be185d', border: '#ffc6e9' },
   { id: 'gray', label: '中性灰', bg: '#f8fafc', text: '#475569', border: '#cbd5e1' },
 ];
 
+/**
+ * 历史颜色 id 别名。
+ * 'orange' 是早期版本遗留的取值（后来色板统一收敛为 'amber' 且标签就叫「活力橙」）。
+ * 老文档 / 外部导入的数据里可能还带着它，直接查表会落空并静默回落成蓝色，
+ * 因此先做一次别名归一再查表，避免旧数据「颜色悄悄变成蓝色」。
+ */
+const LEGACY_COLOR_ALIAS: Record<string, string> = {
+  orange: 'amber',
+};
+
 /** 获取标签颜色配置 */
 export function getOptionColor(colorName?: string) {
-  const found = BITABLE_PALETTE.find((c) => c.id === colorName);
+  const normalized = colorName ? LEGACY_COLOR_ALIAS[colorName] || colorName : undefined;
+  const found = BITABLE_PALETTE.find((c) => c.id === normalized);
   return found || BITABLE_PALETTE[0];
 }
 

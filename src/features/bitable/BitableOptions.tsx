@@ -62,33 +62,51 @@ export function OptionBadge({
   );
 }
 
-/** 颜色挑选球行 */
-function ColorPickerRow({
+/**
+ * 颜色挑选行：每个色块就是「标签实际长相」的微缩预览
+ * —— 打底 = pal.bg、描边 = pal.border，与表格里 OptionBadge 的取值完全同源。
+ *
+ * 早期实现只把色块填成 pal.text（饱和色），而表格里的标签胶囊是 pal.bg 打底 + pal.text 文字，
+ * 两者明度差着一整个色阶，导致在选项编辑里点色块时根本对不上「我那排标签到底是什么颜色」。
+ * 现在色块底色即标签底色，所见即所得：表格里是什么颜色，编辑里就是什么颜色。
+ * 不再叠中心实心圆：多出的一层会把底色压暗、又和标签长相不一致。
+ */
+export function ColorPickerRow({
   value,
   onChange,
+  size = 20,
 }: {
   value: SelectOptionColor;
   onChange: (color: SelectOptionColor) => void;
+  /** 色块边长，默认 20；看板分组编辑区偏窄时传更小的值 */
+  size?: number;
 }) {
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '3px 0' }}>
-      {BITABLE_PALETTE.map((pal) => (
-        <Tooltip key={pal.id} content={pal.label} side="top" sideOffset={4}>
-          <div
-            className="nb-bitable-color-dot"
-            onClick={() => onChange(pal.id as SelectOptionColor)}
-            style={{
-              width: 18,
-              height: 18,
-              borderRadius: '50%',
-              background: pal.text,
-              cursor: 'pointer',
-              boxSizing: 'border-box',
-              border: value === pal.id ? '2px solid var(--editor-text, #0f172a)' : '1px solid rgba(15,23,42,0.15)',
-            }}
-          />
-        </Tooltip>
-      ))}
+      {BITABLE_PALETTE.map((pal) => {
+        const isSelected = value === pal.id;
+        return (
+          <Tooltip key={pal.id} content={pal.label} side="top" sideOffset={4}>
+            <div
+              className="nb-bitable-color-swatch"
+              onClick={() => onChange(pal.id as SelectOptionColor)}
+              style={{
+                width: size,
+                height: size,
+                borderRadius: Math.max(4, Math.round(size * 0.3)),
+                background: pal.bg,
+                cursor: 'pointer',
+                boxSizing: 'border-box',
+                // 色板底色全是 50 级浅色，必须靠各自的 200 级描边才分得清相邻色块
+                border: `1px solid ${pal.border}`,
+                // 选中态用外描边而不是改边框色：改边框会把「标签本色预览」本身弄丢
+                outline: isSelected ? '2px solid var(--editor-accent, #3b82f6)' : 'none',
+                outlineOffset: 1,
+              }}
+            />
+          </Tooltip>
+        );
+      })}
     </div>
   );
 }

@@ -211,6 +211,24 @@ type GridItem =
   | { type: 'group'; key: string; label: string; count: number; color?: SelectOptionColor }
   | { type: 'row'; treeNode: FlatTreeRow };
 
+// 表头 / 行头的选中与拖拽高亮色（半透明蓝色叠加层，透明度即高亮强度）
+const HEADER_SELECTED_TINT = 'rgba(59, 130, 246, 0.12)';
+const HEADER_DRAG_TINT = 'rgba(59, 130, 246, 0.16)';
+const ROW_HEADER_SELECTED_TINT = 'rgba(59, 130, 246, 0.14)';
+
+/**
+ * 把半透明高亮色转换成「完全不透光」的背景值。
+ *
+ * 表头是纵向 sticky（top:0）、行头是横向 sticky（left:0），二者都压在滚动中的单元格之上。
+ * 只要底色带透明通道，被盖住的行数据就会直接透出来（表现为「选中列头后，列头里透出行内的标签与文本」）。
+ * 这里把半透明色作为最上层渐变、下面再垫一层不透明的 --editor-surface：
+ * 既保留随主题自适应的高亮强度（浅色 / 暖色 / 深色三套主题通用），又保证绝不透光。
+ * 注意不能再退回硬编码纯色（如 #e7effd），那样只有浅色主题对得上。
+ */
+function opaqueTint(tint: string, base = 'var(--editor-surface, #f8fafc)'): string {
+  return `linear-gradient(${tint}, ${tint}), ${base}`;
+}
+
 export function BitableGridView({
   columns,
   rows,
@@ -1953,17 +1971,13 @@ export function BitableGridView({
               const isOptionField = col.type === 'select' || col.type === 'multiSelect';
               const isFrozen = colIdx < frozenCount;
               const isLastFrozen = isFrozen && colIdx === frozenCount - 1;
-              // 冻结列必须用不透明底色：表头背景一旦半透明，横向滚动时下层单元格会直接透出来
-              const headerBg = isFrozen
-                ? colDrag?.fromIdx === colIdx
-                  ? '#dbeafe'
+              // 表头底色必须完全不透明：表头纵向吸附，半透明底色会让滚过的行数据直接透出来。
+              // 冻结列与非冻结列统一用 opaqueTint，顺带修掉原先冻结列硬编码浅色值在暖色/深色主题下失配的问题
+              const headerBg =
+                colDrag?.fromIdx === colIdx
+                  ? opaqueTint(HEADER_DRAG_TINT)
                   : isColSelected
-                    ? '#e7effd'
-                    : 'var(--editor-surface, #f8fafc)'
-                : colDrag?.fromIdx === colIdx
-                  ? 'rgba(59, 130, 246, 0.16)'
-                  : isColSelected
-                    ? 'rgba(59, 130, 246, 0.12)'
+                    ? opaqueTint(HEADER_SELECTED_TINT)
                     : 'var(--editor-surface, #f8fafc)';
 
               // 落点指示线：槽位落在自身左侧时画左边缘线，落到末位时画最后一列右边缘线
@@ -2770,7 +2784,10 @@ export function BitableGridView({
                     position: 'sticky',
                     left: 0,
                     zIndex: 2,
-                    background: isRowSelected ? 'rgba(59, 130, 246, 0.14)' : 'var(--editor-surface, #f8fafc)',
+                    // 行头横向吸附在左侧，同样必须用不透明底色，否则横向滚动时右侧单元格内容会透出来
+                    background: isRowSelected
+                      ? opaqueTint(ROW_HEADER_SELECTED_TINT)
+                      : 'var(--editor-surface, #f8fafc)',
                     borderBottom: '1px solid var(--editor-border, #f1f5f9)',
                     borderRight: '1px solid var(--editor-border, #e2e8f0)',
                     fontSize: 12,
