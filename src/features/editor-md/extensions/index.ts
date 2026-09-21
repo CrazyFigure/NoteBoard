@@ -30,6 +30,7 @@ import { slashSuggestion } from '../slashCommand';
 
 import { handleLinkClick } from '../linkHandler';
 import { TableClipboard } from '../tableClipboard';
+import { ListEmptyItemBackspaceFix } from '../listItemBackspace';
 import { useWindowStore } from '../../../stores/windowStore';
 
 import Suggestion from '@tiptap/suggestion';
@@ -195,6 +196,9 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // 撤销/重做由文件级时间线统一接管，原生历史仅用于判断输入分组边界
     UnifiedDocumentHistoryKeys.configure({ docKey }),
+    // 空列表项退格只删除该节点本身，避免内置 listKeymap 触发 liftListItem
+    // 把后面的同级列表项收编为子列表、导致层级整体错乱
+    ListEmptyItemBackspaceFix,
     LinkClickHandler.configure({
       onOpenLinkModal: options?.onOpenLinkModal,
     }),
