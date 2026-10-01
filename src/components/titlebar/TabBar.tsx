@@ -27,7 +27,6 @@ import {
   Database,
   Braces,
   FileCode,
-  CodeXml,
   PencilRuler,
   AlertTriangle,
   Unlink,
@@ -67,9 +66,7 @@ import {
   newPlantUml,
   newInfographic,
   newJson,
-  newYaml,
   newSql,
-  newXml,
   newText,
   newTextDiff,
   openFileDialog,
@@ -1193,42 +1190,6 @@ export function TabBar() {
                 >
                   <Database size={13} color="#3b82f6" />
                   <span>SQL 数据库脚本 (.sql)</span>
-                </button>
-
-                {/* 新建 YAML 配置文件 */}
-                <button
-                  type="button"
-                  style={getMenuItemStyle(false)}
-                  onClick={() => {
-                    setNewMenuPos(null);
-                    setShowMoreSubMenu(false);
-                    newYaml();
-                  }}
-                  onMouseEnter={handleMenuItemMouseEnter}
-                  onMouseLeave={handleMenuItemMouseLeave}
-                  onMouseDown={handleMenuItemMouseDown}
-                  onMouseUp={handleMenuItemMouseUp}
-                >
-                  <FileCode size={13} color="#06b6d4" />
-                  <span>YAML 配置文件 (.yaml)</span>
-                </button>
-
-                {/* 新建 XML 标记文档 */}
-                <button
-                  type="button"
-                  style={getMenuItemStyle(false)}
-                  onClick={() => {
-                    setNewMenuPos(null);
-                    setShowMoreSubMenu(false);
-                    newXml();
-                  }}
-                  onMouseEnter={handleMenuItemMouseEnter}
-                  onMouseLeave={handleMenuItemMouseLeave}
-                  onMouseDown={handleMenuItemMouseDown}
-                  onMouseUp={handleMenuItemMouseUp}
-                >
-                  <CodeXml size={13} color="#ec4899" />
-                  <span>XML 标记文档 (.xml)</span>
                 </button>
               </div>
             )}

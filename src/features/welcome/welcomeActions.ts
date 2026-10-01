@@ -98,9 +98,7 @@ function createUntitledDocument(
     | 'plantuml'
     | 'infographic'
     | 'json'
-    | 'yaml'
-    | 'sql'
-    | 'xml',
+    | 'sql',
 ): void {
   const key = nextUntitledKey(type);
   let kind: DocumentKind = 'code';
@@ -151,21 +149,11 @@ function createUntitledDocument(
     language = 'json';
     displayName = '未命名.json';
     initialContent = `{\n  "name": "NoteBoard",\n  "version": "0.1.3"\n}`;
-  } else if (type === 'yaml') {
-    kind = 'code';
-    language = 'yaml';
-    displayName = '未命名.yaml';
-    initialContent = `name: NoteBoard\nversion: 0.1.3\nenabled: true`;
   } else if (type === 'sql') {
     kind = 'code';
     language = 'sql';
     displayName = '未命名.sql';
     initialContent = `-- NoteBoard SQL 查询\nSELECT * FROM notes WHERE is_active = 1;`;
-  } else if (type === 'xml') {
-    kind = 'code';
-    language = 'xml';
-    displayName = '未命名.xml';
-    initialContent = `<?xml version="1.0" encoding="UTF-8"?>\n<root>\n  <item name="NoteBoard" />\n</root>`;
   } else {
     // 纯文本 (TXT) 使用代码编辑器与纯文本语法模式
     kind = 'code';
@@ -268,19 +256,9 @@ export function newJson(): void {
   createUntitledDocument('json');
 }
 
-/** 新建 YAML 配置文件 */
-export function newYaml(): void {
-  createUntitledDocument('yaml');
-}
-
 /** 新建 SQL 数据库脚本 */
 export function newSql(): void {
   createUntitledDocument('sql');
-}
-
-/** 新建 XML 标记文档 */
-export function newXml(): void {
-  createUntitledDocument('xml');
 }
 
 /** 新建纯文本 (TXT) 文档 */

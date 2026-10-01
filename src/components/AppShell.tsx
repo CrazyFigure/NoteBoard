@@ -52,9 +52,7 @@ import {
   newPlantUml,
   newInfographic,
   newJson,
-  newYaml,
   newSql,
-  newXml,
   newText,
 } from '../features/welcome/welcomeActions';
 import { useFavoritesStore } from '../features/favorites/favoritesStore';
@@ -561,9 +559,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
                     onNewPlantUml={newPlantUml}
                     onNewInfographic={newInfographic}
                     onNewJson={newJson}
-                    onNewYaml={newYaml}
                     onNewSql={newSql}
-                    onNewXml={newXml}
                   />
                 ) : null}
                 {tabs.length > 0 ? (

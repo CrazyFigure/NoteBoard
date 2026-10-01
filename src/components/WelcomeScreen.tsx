@@ -19,9 +19,7 @@ import {
   GitMerge,
   GitCompare,
   Braces,
-  FileCode,
   Database,
-  CodeXml,
   ChartColumn,
   ChevronDown,
   ChevronUp,
@@ -47,9 +45,7 @@ interface WelcomeScreenProps {
   onNewPlantUml?: () => void;
   onNewInfographic?: () => void;
   onNewJson?: () => void;
-  onNewYaml?: () => void;
   onNewSql?: () => void;
-  onNewXml?: () => void;
 }
 
 export function WelcomeScreen({
@@ -68,9 +64,7 @@ export function WelcomeScreen({
   onNewPlantUml,
   onNewInfographic,
   onNewJson,
-  onNewYaml,
   onNewSql,
-  onNewXml,
 }: WelcomeScreenProps) {
   const [showMoreFormats, setShowMoreFormats] = useState(false);
 
@@ -212,7 +206,7 @@ export function WelcomeScreen({
     },
   ];
 
-  // 更多格式列表（8 项：Draw.io, 信息图, Mermaid, PlantUML, JSON, SQL, YAML, XML）
+  // 更多格式列表（6 项：Draw.io, 信息图, Mermaid, PlantUML, JSON, SQL）
   const moreFormats = [
     {
       icon: Layout,
@@ -255,20 +249,6 @@ export function WelcomeScreen({
       desc: 'SQL 数据库查询与 DDL 语句',
       color: '#3b82f6',
       onClick: onNewSql,
-    },
-    {
-      icon: FileCode,
-      label: 'YAML 配置文件 (.yaml)',
-      desc: 'YAML 服务配置与清单管理',
-      color: '#06b6d4',
-      onClick: onNewYaml,
-    },
-    {
-      icon: CodeXml,
-      label: 'XML 标记文档 (.xml)',
-      desc: 'XML 结构化标记与配置',
-      color: '#ec4899',
-      onClick: onNewXml,
     },
   ];
 

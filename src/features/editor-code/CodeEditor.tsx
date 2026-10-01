@@ -2,7 +2,7 @@
 // 裸 CM6（new EditorView / EditorState.create），挂载到 DOM
 // 详见 docs/09-开发路线图.md 4.1
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   EditorView,
   keymap,
@@ -45,6 +45,7 @@ import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
 import { takeViewState } from '../session/editorSuspension';
 import { foldEffect } from '@codemirror/language';
 import { createCodeEditorCapabilities } from './editorCapabilities';
+import { CodeEditorContextMenu } from './CodeEditorContextMenu';
 import {
   initializeDocumentHistory,
   recordDocumentChange,
@@ -72,6 +73,9 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
   const setTabDirty = useWindowStore((s) => s.setTabDirty);
   const editorSettings = useSettingsStore((s) => s.settings.editor);
   const typography = useSettingsStore((s) => s.settings.typography);
+  // 右键菜单弹出坐标（null 表示关闭）
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const closeMenu = useCallback(() => setMenuPos(null), []);
 
   // 监听编辑器设置变化并热重配（空格、换行符、行号、软换行等）
   useEffect(() => {
@@ -453,6 +457,13 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
           viewRef.current.focus();
         }
       }}
+      onContextMenu={(e) => {
+        // 编辑区右键弹出自定义菜单（全局已禁用原生菜单）
+        if (!viewRef.current) return;
+        e.preventDefault();
+        viewRef.current.focus();
+        setMenuPos({ x: e.clientX, y: e.clientY });
+      }}
     >
       {/* 代码/纯文本编辑器内部容器（宽度受 --mono-max-width 约束） */}
       <div
@@ -463,6 +474,15 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
           height: '100%',
         }}
       />
+      {/* 右键菜单：复制 / 粘贴；key 保证每次右键重新快照选区 */}
+      {menuPos && viewRef.current && (
+        <CodeEditorContextMenu
+          key={`${menuPos.x},${menuPos.y}`}
+          view={viewRef.current}
+          position={menuPos}
+          onClose={closeMenu}
+        />
+      )}
     </div>
   );
 }
