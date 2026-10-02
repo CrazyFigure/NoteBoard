@@ -109,3 +109,117 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
           # 规范产物文件命名
           assetNamePattern: NoteBoard_[version]_[platform]_[arch][setup][ext]
+
+  # 安卓 APK（arm64）：Release 由 Windows 任务创建，完成后上传 APK 附件到同一 Release
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    needs: build-windows
+
+    env:
+      NDK_VERSION: 27.0.12077973
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # Android Gradle 插件要求 JDK 17
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: |
+          sdkmanager --install "ndk;${NDK_VERSION}"
+          echo "NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: android-aarch64
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      # 安卓工程不入库：每次由 Tauri 生成，再注入原生桥接、权限、Intent 与签名配置
+      - name: Generate Android project
+        run: |
+          pnpm tauri android init --ci
+          # 用项目 Logo 生成安卓启动图标（仅影响 CI 工作区，不改动仓库中的桌面图标）
+          pnpm tauri icon logo.png
+          node scripts/patch-android.mjs
+
+      # 配置了签名 Secrets 时使用正式签名；否则 release 退化为 debug 签名（仍可安装，但升级需卸载重装）
+      - name: Configure signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "${ANDROID_KEYSTORE_BASE64}" ]; then
+            echo "::warning title=安卓签名::未配置 ANDROID_KEYSTORE_BASE64，APK 使用 debug 签名"
+            exit 0
+          fi
+          cd src-tauri/gen/android
+          echo "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > keystore.jks
+          {
+            echo "storeFile=keystore.jks"
+            echo "storePassword=${ANDROID_KEYSTORE_PASSWORD}"
+            echo "keyAlias=${ANDROID_KEY_ALIAS}"
+            echo "keyPassword=${ANDROID_KEY_PASSWORD:-${ANDROID_KEYSTORE_PASSWORD}}"
+          } > keystore.properties
+
+      - name: Build APK
+        run: pnpm tauri android build --apk --target aarch64
+
+      - name: Collect APK
+        id: apk
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          SOURCE=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' | grep -i release | head -n 1)
+          if [ -z "${SOURCE}" ]; then
+            echo "未找到 APK 产物" >&2
+            find src-tauri/gen/android/app/build/outputs -type f >&2 || true
+            exit 1
+          fi
+          TARGET="NoteBoard_${VERSION}_android_arm64.apk"
+          cp "${SOURCE}" "${TARGET}"
+          echo "path=${TARGET}" >> "$GITHUB_OUTPUT"
+
+      # 手动触发时也能从 Actions 页面下载
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+
+      # 标签发布：上传到 Windows 任务创建的同一 Release
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${GITHUB_REF_NAME}" "${{ steps.apk.outputs.path }}" --clobber

@@ -11,6 +11,12 @@ build/
 # ---------- Tauri / Rust ----------
 src-tauri/target/
 src-tauri/gen/schemas/
+# 安卓工程由 CI 执行 `tauri android init` 生成后经 scripts/patch-android.mjs 定制，不入库
+src-tauri/gen/android/
+# 安卓签名文件（CI 从 Secrets 解码生成）
+*.jks
+*.keystore
+keystore.properties
 # 注意：src-tauri/icons/ 需要提交（由 logo.ico 生成）
 # 性能对照最小宿主的构建产物
 tools/perf-host-min/target/
