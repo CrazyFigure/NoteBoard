@@ -23,7 +23,15 @@ import {
   parseMarkdown,
   getBaseline,
   hasMarkdownContentChanged,
+  normalizeEol,
 } from './serialize';
+import { MarkdownNormalizeDialog } from './MarkdownNormalizeDialog';
+import {
+  rememberNormalizationChoice,
+  resolveNormalizationPolicy,
+  type NormalizationChoice,
+} from './markdownNormalization';
+import { useToastStore } from '../../stores/toastStore';
 import { judgeLargeDoc } from './largeDoc';
 import { nbEditorTheme } from '../editor-code/theme';
 import { nbSyntaxHighlighting } from '../editor-code/highlightStyle';
@@ -532,12 +540,129 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     }
   }, [docKey, settings.editor.defaultViewMode, initSourceEditor]);
 
+  // ── Markdown 规范化确认（进入可视化前"解析→序列化"与原文不同时由用户决定）──
+  const [normalizePrompt, setNormalizePrompt] = useState<{ original: string; normalized: string } | null>(null);
+
+  /**
+   * 解析待进入可视化的源码并判定结果：
+   * same（序列化与原文一致，可直接进入）/ normalize（策略为总是规范化）/
+   * keepSource（策略为保持源码）/ ask（需要询问）/ failed（解析降级，必须留在源码模式）。
+   * skipParse 为 true 表示编辑器文档已与源码一致（避免整篇 setContent 破坏撤销栈）。
+   */
+  const resolveVisualEntry = useCallback((
+    targetEditor: Editor,
+    content: string,
+    skipParse: boolean,
+  ): { kind: 'same' | 'normalize' | 'keepSource' | 'ask' | 'failed'; serialized: string } => {
+    if (!skipParse) {
+      // 🔴 程序化内容设置：同步作用域初始化锁（显示即输入——无 50ms 忽略窗口）
+      isInitializingRef.current = true;
+      let parsedOk: boolean;
+      try {
+        parsedOk = parseMarkdown(targetEditor, content);
+      } finally {
+        // 同步作用域结束即解锁：真实输入立即生效
+        isInitializingRef.current = false;
+      }
+      if (!parsedOk) return { kind: 'failed', serialized: content };
+    }
+    const serialized = serializeMarkdown(targetEditor);
+    if (normalizeEol(serialized) === normalizeEol(content)) return { kind: 'same', serialized };
+    const policy = resolveNormalizationPolicy(docKey, useSettingsStore.getState().settings.editor.markdownNormalization);
+    if (policy === 'always') return { kind: 'normalize', serialized };
+    if (policy === 'never') return { kind: 'keepSource', serialized };
+    return { kind: 'ask', serialized };
+  }, [docKey]);
+
+  /** 正式进入可视化模式；normalized 为 true 时把规范化文本写入文档并如实标脏 */
+  const commitVisualMode = useCallback((targetEditor: Editor, serialized: string, normalized: boolean) => {
+    // Markdown 等价格式的表示只更新当前历史节点，不得伪造成新的编辑步骤
+    synchronizeCurrentDocumentHistoryContent(docKey, serialized, 'visual');
+    const baseline = getBaseline(docKey);
+    if (!normalized || baseline.isClean(serialized)) {
+      // 内容未变（不变式 I-14）：保持非脏态
+      if (baseline.isClean(serialized)) {
+        useDocumentStore.getState().setDirty(docKey, false);
+        useWindowStore.getState().setTabDirty(docKey, false);
+      }
+    } else {
+      // 用户同意规范化：内容确实改变，标记为已修改，由用户/自动保存策略决定何时写盘
+      useDocumentStore.getState().setContent(docKey, serialized);
+      useWindowStore.getState().setTabDirty(docKey, true);
+    }
+    markDocumentHistoryModeBoundary(docKey);
+    viewModeRef.current = 'visual';
+    setViewMode('visual');
+    useWindowStore.getState().setTabViewMode(docKey, 'visual');
+    emit('view-mode-changed', { key: docKey, mode: 'visual' });
+    visualUndoDepthRef.current = prosemirrorUndoDepth(targetEditor.state);
+    setTimeout(() => {
+      targetEditor.commands.focus();
+    }, 20);
+  }, [docKey]);
+
+  /** 留在（或回到）源码模式，源码视图展示原文 */
+  const stayInSourceMode = useCallback((content: string) => {
+    initSourceEditor(content);
+    if (viewModeRef.current !== 'source') {
+      markDocumentHistoryModeBoundary(docKey);
+    }
+    viewModeRef.current = 'source';
+    setViewMode('source');
+    useWindowStore.getState().setTabViewMode(docKey, 'source');
+    emit('view-mode-changed', { key: docKey, mode: 'source' });
+  }, [docKey, initSourceEditor]);
+
+  /** 按判定结果应用：进入可视化、保持源码或弹出询问 */
+  const applyVisualEntry = useCallback((
+    targetEditor: Editor,
+    content: string,
+    outcome: ReturnType<typeof resolveVisualEntry>,
+  ) => {
+    switch (outcome.kind) {
+      case 'same':
+        commitVisualMode(targetEditor, outcome.serialized, false);
+        return;
+      case 'normalize':
+        commitVisualMode(targetEditor, outcome.serialized, true);
+        return;
+      case 'keepSource':
+        stayInSourceMode(content);
+        useToastStore.getState().showToast('此文档的部分写法会被可视化模式规范化，已按设置保持源码模式', 'info');
+        return;
+      case 'ask':
+        stayInSourceMode(content);
+        setNormalizePrompt({ original: content, normalized: outcome.serialized });
+        return;
+      case 'failed':
+        stayInSourceMode(content);
+        useToastStore.getState().showToast('Markdown 解析失败，已保持源码模式以免内容受损', 'warning');
+        return;
+    }
+  }, [commitVisualMode, stayInSourceMode]);
+
+  /** 规范化确认框的用户选择 */
+  const handleNormalizeChoice = useCallback((choice: NormalizationChoice, remember: boolean) => {
+    const prompt = normalizePrompt;
+    setNormalizePrompt(null);
+    if (remember) rememberNormalizationChoice(docKey, choice);
+    if (!prompt || choice !== 'normalize') {
+      sourceViewRef.current?.focus();
+      return;
+    }
+    const targetEditor = tipTapEditorRef.current;
+    if (!targetEditor) return;
+    // 询问期间源码不可编辑（模态框遮挡）；编辑器文档仍为原文解析结果，可直接提交
+    commitVisualMode(targetEditor, prompt.normalized, true);
+  }, [normalizePrompt, docKey, commitVisualMode]);
+
   // ── S08 visual 内核内容填充（初始化或首次从 source 切入 visual 时执行一次）──
   useEffect(() => {
     if (!editor) return;
     if (initializedDocKeyRef.current !== docKey) return;
-    if (viewModeRef.current !== 'visual') return;
     if (visualSyncedRef.current) return;
+    // 初始即为 visual，或用户请求切入 visual（惰性挂载内核后在此完成判定）
+    if (viewModeRef.current !== 'visual' && pendingVisualContentRef.current === null) return;
 
     const currentDoc = useDocumentStore.getState().getDocument(docKey);
     if (!currentDoc) return;
@@ -547,33 +672,34 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     const content = pendingVisualContentRef.current ?? currentDoc.content ?? '';
     pendingVisualContentRef.current = null;
 
-    // 🔴 程序化内容设置：同步作用域初始化锁（显示即输入——无 50ms 忽略窗口）
-    isInitializingRef.current = true;
-    try {
-      const baseline = getBaseline(docKey);
-      parseMarkdown(editor, content);
-
-      // 与初始解析序列化结果严格对齐，消除格式化差异导致的假脏态；
-      // visual 表示下历史首节点采用序列化结果
-      const initialSerialized = serializeMarkdown(editor);
-      synchronizeCurrentDocumentHistoryContent(docKey, initialSerialized, 'visual');
-      if (!currentDoc.isDirty) {
-        baseline.setBaseline(initialSerialized);
-        useDocumentStore.getState().setContent(docKey, initialSerialized);
-        useDocumentStore.getState().setBaselineContent(docKey, initialSerialized);
-        useDocumentStore.getState().setDirty(docKey, false);
-        useWindowStore.getState().setTabDirty(docKey, false);
-      } else if (!baseline.getBaseline()) {
-        baseline.setBaseline(content);
-      }
-    } finally {
-      // 同步作用域结束即解锁：真实输入立即生效
-      isInitializingRef.current = false;
+    // 基线保持磁盘原文（不再静默对齐到序列化结果）：脏文档无基线时以当前内容兜底
+    const baseline = getBaseline(docKey);
+    if (!currentDoc.isDirty) {
+      baseline.setBaseline(content);
+      useDocumentStore.getState().setBaselineContent(docKey, content);
+    } else if (!baseline.getBaseline()) {
+      baseline.setBaseline(content);
     }
-    visualUndoDepthRef.current = prosemirrorUndoDepth(editor.state);
+
+    applyVisualEntry(editor, content, resolveVisualEntry(editor, content, false));
     // 🔴 S12：visual 内核重挂载（回收后）——恢复捕获的选区/滚动视图状态
     restoreMarkdownViewState();
-  }, [editor, docKey, restoreMarkdownViewState]);
+  }, [editor, docKey, restoreMarkdownViewState, applyVisualEntry, resolveVisualEntry]);
+
+  /** 请求进入可视化模式（切换按钮、快捷键、大文档"仍要可视化"共用） */
+  const requestVisualMode = useCallback((md: string) => {
+    if (!editor) {
+      // 🔴 S08：内核尚未创建（source 初始模式）——惰性挂载 VisualKernel，
+      //    规范化判定与内容填充由「visual 填充 effect」在内核 ready 后执行
+      pendingVisualContentRef.current = md;
+      visualSyncedRef.current = false;
+      setHasVisualKernel(true);
+      return;
+    }
+    // 编辑器文档已与源码一致时跳过整篇解析，保留撤销栈
+    const skipParse = !hasMarkdownContentChanged(editor, md);
+    applyVisualEntry(editor, md, resolveVisualEntry(editor, md, skipParse));
+  }, [editor, applyVisualEntry, resolveVisualEntry]);
 
   // 切换可视化 / 源码模式（可指定目标模式 targetMode，只影响当前活动文档）
   const toggleViewMode = useCallback((targetMode?: 'visual' | 'source') => {
@@ -605,54 +731,10 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       // 模式同步不产生历史节点；文件级时间线已经逐步记录了源码阶段的真实编辑
       if (storeTimerRef.current) clearTimeout(storeTimerRef.current);
       useDocumentStore.getState().setContent(docKey, md);
-
-      if (!editor) {
-        // 🔴 S08：内核尚未创建（source 初始模式）——惰性挂载 VisualKernel，
-        //    内容填充由「visual 填充 effect」在内核 ready 后执行
-        pendingVisualContentRef.current = md;
-        setHasVisualKernel(true);
-        markDocumentHistoryModeBoundary(docKey);
-        viewModeRef.current = 'visual';
-        setViewMode('visual');
-        useWindowStore.getState().setTabViewMode(docKey, 'visual');
-        emit('view-mode-changed', { key: docKey, mode: 'visual' });
-        return;
-      }
-
-      const hasCrossModeChanges = hasMarkdownContentChanged(editor, md);
-      if (hasCrossModeChanges) {
-        // 🔴 同步作用域初始化锁：程序化同步不产生用户输入语义
-        isInitializingRef.current = true;
-        try {
-          // 只同步目标视图，明确不加入 TipTap 局部历史
-          parseMarkdown(editor, md);
-        } finally {
-          isInitializingRef.current = false;
-        }
-      }
-
-      // 不变式 I-14 检查：切回 visual 后内容是否与基线一致
-      const baseline = getBaseline(docKey);
-      const serialized = serializeMarkdown(editor);
-      // Markdown 等价格式的规范化只更新当前节点表示，不得伪造成新的编辑步骤
-      synchronizeCurrentDocumentHistoryContent(docKey, serialized, 'visual');
-      if (baseline.isClean(serialized)) {
-        // 内容未变，保持非脏态
-        useDocumentStore.getState().setDirty(docKey, false);
-        useWindowStore.getState().setTabDirty(docKey, false);
-      } else {
-        useDocumentStore.getState().setContent(docKey, serialized);
-      }
-      markDocumentHistoryModeBoundary(docKey);
-      viewModeRef.current = 'visual';
-      setViewMode('visual');
-      useWindowStore.getState().setTabViewMode(docKey, 'visual');
-      emit('view-mode-changed', { key: docKey, mode: 'visual' });
-      setTimeout(() => {
-        editor.commands.focus();
-      }, 20);
+      // 规范化判定：与原文一致直接进入；否则按策略规范化 / 保持源码 / 询问（不再静默改写）
+      requestVisualMode(md);
     }
-  }, [editor, viewMode, docKey, initSourceEditor]);
+  }, [editor, viewMode, docKey, initSourceEditor, requestVisualMode]);
 
   // 监听来自状态栏或外部的模式切换请求
   useEffect(() => {
@@ -756,22 +838,8 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
               const content = getCurrentDocumentHistoryContent(docKey)
                 ?? useDocumentStore.getState().getDocument(docKey)?.content
                 ?? '';
-              // 用户显式确认大文件仍用可视化：内核惰性挂载时记录待填充内容
-              if (!editor) {
-                pendingVisualContentRef.current = content;
-                setHasVisualKernel(true);
-              } else {
-                isInitializingRef.current = true;
-                try {
-                  parseMarkdown(editor, content);
-                } finally {
-                  isInitializingRef.current = false;
-                }
-              }
-              markDocumentHistoryModeBoundary(docKey);
-              viewModeRef.current = 'visual';
-              setViewMode('visual');
-              useWindowStore.getState().setTabViewMode(docKey, 'visual');
+              // 用户显式确认大文件仍用可视化：与普通切换走同一判定（含规范化确认与基线/历史同步）
+              requestVisualMode(content);
             }}
           >
             仍要使用可视化编辑
@@ -847,6 +915,16 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
 
       {/* 底部左侧模式切换器：可视化 / 源码模式，具备热区靠近唤出与 Hover、Active 状态反馈，仅对当前文档生效 */}
       <MarkdownModeToggle viewMode={viewMode} onToggle={toggleViewMode} />
+
+      {/* 格式规范化确认：仅在用户请求进入可视化且会改变源码写法时出现 */}
+      {normalizePrompt && (
+        <MarkdownNormalizeDialog
+          displayName={useWindowStore.getState().getTab(docKey)?.displayName ?? docKey}
+          original={normalizePrompt.original}
+          normalized={normalizePrompt.normalized}
+          onChoose={handleNormalizeChoice}
+        />
+      )}
     </div>
   );
 }

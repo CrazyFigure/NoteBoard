@@ -5,11 +5,9 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+// 应用数据目录统一由 app_dirs 提供（桌面兼容 APPDATA 下的 NoteBoard 目录，移动端为应用私有目录）
 pub(crate) fn app_data_dir() -> PathBuf {
-    let base = std::env::var("APPDATA")
-        .or_else(|_| std::env::var("HOME"))
-        .unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(base).join("NoteBoard")
+    crate::app_dirs::app_data_dir()
 }
 
 fn settings_path() -> PathBuf {
@@ -179,6 +177,9 @@ pub struct EditorSettings {
     // 显示换行符号（默认 false）
     #[serde(default)]
     pub show_line_endings: bool,
+    // Markdown 进入可视化模式时的格式规范化策略：ask（每次询问）/ always（总是规范化）/ never（保持源码模式）
+    #[serde(default = "default_markdown_normalization")]
+    pub markdown_normalization: String,
 }
 
 impl Default for EditorSettings {
@@ -196,6 +197,7 @@ impl Default for EditorSettings {
             enable_block_handle: true,
             show_whitespace: false,
             show_line_endings: false,
+            markdown_normalization: default_markdown_normalization(),
         }
     }
 }
@@ -280,6 +282,7 @@ fn default_content_width() -> String { "wide".to_string() }
 // 默认代码与纯文本内容宽度：full (100%)
 fn default_mono_content_width() -> String { "full".to_string() }
 fn default_view_mode() -> String { "visual".to_string() }
+fn default_markdown_normalization() -> String { "ask".to_string() }
 fn default_true() -> bool { true }
 fn default_tab_size() -> u32 { 2 }
 fn default_image_dir() -> String { "img".to_string() }

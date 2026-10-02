@@ -15,6 +15,8 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { showToast } from '../../stores/toastStore';
 import { FontPackSettingsCard } from './FontPackSettingsCard';
 import { Tooltip } from '../Tooltip';
+import type { MarkdownNormalizationPolicy } from '../../core/ipc/types';
+import { IS_MOBILE_UI } from '../../core/platform';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -91,6 +93,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   return (
     <div
+      className="nb-settings-overlay"
       style={{
         position: 'fixed',
         top: 0,
@@ -106,6 +109,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       }}
     >
       <div
+        className="nb-settings-panel"
         style={{
           width: 880,
           maxWidth: '92vw',
@@ -180,10 +184,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </Tooltip>
         </div>
 
-        {/* 主体两栏内容 */}
-        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {/* 主体两栏内容（移动端改为顶部横向导航 + 下方内容） */}
+        <div className="nb-settings-body" style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
           {/* 左侧导航栏 */}
           <div
+            className="nb-settings-nav"
             style={{
               width: 165,
               borderRight: '1px solid var(--editor-border)',
@@ -219,12 +224,15 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               label="文件与保存"
               onClick={() => setActiveTab('file')}
             />
-            <NavBtn
-              active={activeTab === 'shortcuts'}
-              icon={<Keyboard size={15} />}
-              label="快捷键"
-              onClick={() => setActiveTab('shortcuts')}
-            />
+            {/* 移动端没有物理键盘快捷键，隐藏该分组 */}
+            {!IS_MOBILE_UI && (
+              <NavBtn
+                active={activeTab === 'shortcuts'}
+                icon={<Keyboard size={15} />}
+                label="快捷键"
+                onClick={() => setActiveTab('shortcuts')}
+              />
+            )}
             <NavBtn
               active={activeTab === 'about'}
               icon={<Info size={15} />}
@@ -234,7 +242,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </div>
 
           {/* 右侧设置面板 */}
-          <div ref={contentRef} style={{ flex: 1, padding: '24px 30px', overflowY: 'auto' }}>
+          <div ref={contentRef} className="nb-settings-content" style={{ flex: 1, padding: '24px 30px', overflowY: 'auto' }}>
             {/* 1. 外观主题 */}
             {activeTab === 'appearance' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -978,6 +986,23 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <option value="source">源码模式</option>
                     </select>
                   </div>
+
+                  {/* 进入可视化模式时，若源码写法会被统一格式调整，按此策略处理（默认每次询问） */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                    <div>
+                      <div>Markdown 格式规范化</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>可视化模式会以统一写法保存源码（如列表符号统一为 -）</div>
+                    </div>
+                    <select
+                      value={settings.editor.markdownNormalization ?? 'ask'}
+                      onChange={(e) => setEditor({ markdownNormalization: e.target.value as MarkdownNormalizationPolicy })}
+                      style={{ ...inputStyle, width: 110 }}
+                    >
+                      <option value="ask">每次询问</option>
+                      <option value="always">总是规范化</option>
+                      <option value="never">保持源码模式</option>
+                    </select>
+                  </div>
                 </div>
 
                 {/* ── 3.3 Markdown 渲染增强 ── */}
@@ -1144,9 +1169,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     />
                   </Tooltip>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button type="button" className="nb-btn-secondary" onClick={handleChooseStagingDirectory}>选择位置</button>
+                    {/* 移动端系统目录选择器返回 content:// 地址且没有资源管理器，仅保留恢复默认 */}
+                    {!IS_MOBILE_UI && (
+                      <button type="button" className="nb-btn-secondary" onClick={handleChooseStagingDirectory}>选择位置</button>
+                    )}
                     <button type="button" className="nb-btn-secondary" onClick={handleResetStagingDirectory}>恢复默认</button>
-                    <button type="button" className="nb-btn-secondary" onClick={handleOpenStagingDirectory}>在资源管理器中打开</button>
+                    {!IS_MOBILE_UI && (
+                      <button type="button" className="nb-btn-secondary" onClick={handleOpenStagingDirectory}>在资源管理器中打开</button>
+                    )}
                   </div>
                 </div>
 

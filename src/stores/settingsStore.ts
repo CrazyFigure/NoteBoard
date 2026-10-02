@@ -65,6 +65,7 @@ const DEFAULT_SETTINGS: Settings = {
     enableBlockHandle: true,
     showWhitespace: false,
     showLineEndings: false,
+    markdownNormalization: 'ask',
   },
   file: {
     autoSaveMarkdown: false,
