@@ -8,6 +8,7 @@ import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from '@tip
 import { Maximize2, Edit2, X, AlertCircle } from 'lucide-react';
 import { renderPlantUmlToSvg } from './plantumlEncoder';
 import { observe } from '../editor-md/viewportActivation';
+import { diagramFenceMarkdown } from '../editor-md/markdownFence';
 import { scheduleTask, cancelTask } from '../editor-md/viewportWorkScheduler';
 import { useEditorActive } from '../../core/editor/EditorActivityContext';
 
@@ -470,6 +471,8 @@ function PlantUmlComponent({ node, updateAttributes, selected, editor, getPos }:
 /** PlantUML 块级节点 */
 export const PlantUmlBlock = Node.create({
   name: 'plantumlBlock',
+  // Markdown 序列化为 ```plantuml 围栏；打开时不自动转换为远程渲染预览，保持普通代码块
+  ...diagramFenceMarkdown('plantumlBlock', 'plantuml'),
   group: 'block',
   atom: true,
   selectable: true,

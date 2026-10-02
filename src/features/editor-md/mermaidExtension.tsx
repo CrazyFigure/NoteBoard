@@ -15,6 +15,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
 import { observe } from './viewportActivation';
+import { diagramFenceMarkdown } from './markdownFence';
 import { scheduleTask, cancelTask } from './viewportWorkScheduler';
 import { useEditorActive } from '../../core/editor/EditorActivityContext';
 
@@ -577,6 +578,8 @@ function MermaidComponent({ node, updateAttributes, selected, editor, getPos }: 
 /** Mermaid 块节点 */
 export const MermaidBlock = Node.create({
   name: 'mermaidBlock',
+  // Markdown 往返：序列化为 ```mermaid 围栏，打开时同语言围栏还原为预览块（缺失时内容会在保存时丢失）
+  ...diagramFenceMarkdown('mermaidBlock', 'mermaid'),
   group: 'block',
   atom: true,
   selectable: true,

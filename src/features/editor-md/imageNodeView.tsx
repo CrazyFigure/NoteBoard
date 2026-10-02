@@ -24,7 +24,7 @@ import * as ipc from '../../core/ipc/commands';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { useExplorerStore } from '../explorer/explorerStore';
-import { resolveRelativeDocPath } from './linkHandler';
+import { isAbsoluteLocalPath, resolveRelativeDocPath } from './linkHandler';
 import { openDocument } from '../editor-code/orchestration/openDocument';
 import { Tooltip } from '../../components/Tooltip';
 
@@ -285,7 +285,7 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
       } catch {
         setResolvedDisplaySrc(rawSrc);
       }
-    } else if (/^[a-zA-Z]:[\\/]/.test(rawSrc)) {
+    } else if (isAbsoluteLocalPath(rawSrc)) {
       setResolvedAbsPath(rawSrc);
       try {
         setResolvedDisplaySrc(convertFileSrc(rawSrc));
@@ -640,6 +640,64 @@ const actionBtnStyle: React.CSSProperties = {
   transition: 'background var(--transition-fast)',
 };
 
+// ── 图片 Markdown 序列化 ──
+
+const DEFAULT_IMAGE_WIDTH = '100%';
+const DEFAULT_IMAGE_ALIGN = 'center';
+
+/** 解析 <img width> 属性：纯数字按像素处理，百分比/像素原样保留，其余回退默认宽度。 */
+export function normalizeImageWidth(value: string | null | undefined): string {
+  const trimmed = (value ?? '').trim();
+  if (/^\d+(?:\.\d+)?%$/.test(trimmed) || /^\d+(?:\.\d+)?px$/.test(trimmed)) return trimmed;
+  if (/^\d+(?:\.\d+)?$/.test(trimmed)) return `${trimmed}px`;
+  return DEFAULT_IMAGE_WIDTH;
+}
+
+/** 解析 <img align> 属性：仅接受左/中/右三种对齐。 */
+export function normalizeImageAlign(value: string | null | undefined): string {
+  const lowered = (value ?? '').trim().toLowerCase();
+  return lowered === 'left' || lowered === 'right' || lowered === 'center' ? lowered : DEFAULT_IMAGE_ALIGN;
+}
+
+/** HTML 属性值转义 */
+function escapeHtmlAttribute(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+/** Markdown 图片地址：含空白、括号或尖括号时用 <...> 包裹，避免链接目标被截断。 */
+function formatImageDestination(src: string): string {
+  if (!/[\s()<>]/.test(src)) return src;
+  return `<${src.replace(/[<>]/g, (character) => encodeURIComponent(character))}>`;
+}
+
+/**
+ * 图片序列化：默认尺寸与对齐输出标准 `![alt](src "title")`；
+ * 用户调整过尺寸或对齐时输出 `<img>`，保证重新打开后排版可恢复（GitHub 等渲染器同样识别 width / align）。
+ */
+export function renderImageMarkdown(attrs: Record<string, unknown>): string {
+  const src = String(attrs.src ?? '');
+  const alt = String(attrs.alt ?? '');
+  const title = String(attrs.title ?? '');
+  const width = String(attrs.width ?? DEFAULT_IMAGE_WIDTH) || DEFAULT_IMAGE_WIDTH;
+  const align = String(attrs.align ?? DEFAULT_IMAGE_ALIGN) || DEFAULT_IMAGE_ALIGN;
+
+  if (width !== DEFAULT_IMAGE_WIDTH || align !== DEFAULT_IMAGE_ALIGN) {
+    const parts = [`src="${escapeHtmlAttribute(src)}"`];
+    if (alt) parts.push(`alt="${escapeHtmlAttribute(alt)}"`);
+    if (title) parts.push(`title="${escapeHtmlAttribute(title)}"`);
+    if (width !== DEFAULT_IMAGE_WIDTH) parts.push(`width="${escapeHtmlAttribute(width)}"`);
+    if (align !== DEFAULT_IMAGE_ALIGN) parts.push(`align="${escapeHtmlAttribute(align)}"`);
+    return `<img ${parts.join(' ')}>`;
+  }
+
+  // alt 中的方括号需转义（反斜杠保持原样，避免 Windows 路径类文本被翻倍）；title 中的双引号需转义
+  const safeAlt = alt.replace(/([[\]])/g, '\\$1');
+  const destination = formatImageDestination(src);
+  return title
+    ? `![${safeAlt}](${destination} "${title.replace(/(["\\])/g, '\\$1')}")`
+    : `![${safeAlt}](${destination})`;
+}
+
 /** TipTap 增强版 Image 扩展定义 */
 export const EnhancedImageBlock = Node.create({
   name: 'image',
@@ -680,8 +738,9 @@ export const EnhancedImageBlock = Node.create({
             src: el.getAttribute('data-raw-src') || el.getAttribute('src'),
             alt: el.getAttribute('alt'),
             title: el.getAttribute('title'),
-            width: el.getAttribute('data-width') || '100%',
-            align: el.getAttribute('data-align') || 'center',
+            // 兼容序列化输出的标准 width / align 属性（Markdown 中以 <img> 保存尺寸与对齐）
+            width: el.getAttribute('data-width') || normalizeImageWidth(el.getAttribute('width')),
+            align: el.getAttribute('data-align') || normalizeImageAlign(el.getAttribute('align')),
           };
         },
       },
@@ -703,12 +762,7 @@ export const EnhancedImageBlock = Node.create({
     });
   },
 
-  renderMarkdown: (node) => {
-    const src = node.attrs?.src ?? '';
-    const alt = node.attrs?.alt ?? '';
-    const title = node.attrs?.title ?? '';
-    return title ? `![${alt}](${src} "${title}")` : `![${alt}](${src})`;
-  },
+  renderMarkdown: (node) => renderImageMarkdown(node.attrs ?? {}),
 
   addNodeView() {
     return ReactNodeViewRenderer(ImageComponent);

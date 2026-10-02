@@ -18,6 +18,7 @@ import { InfographicRenderer } from '../infographic/infographicRenderer';
 import { InfographicTemplateIcon } from '../infographic/infographicTemplateIcon';
 import { INFOGRAPHIC_TEMPLATES } from '../infographic/infographicTemplates';
 import { observe } from './viewportActivation';
+import { diagramFenceMarkdown } from './markdownFence';
 import { ChartExportMenu } from '../export/ChartExportMenu';
 import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
 import { Tooltip } from '../../components/Tooltip';
@@ -600,6 +601,8 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
 /** Infographic 块节点定义 */
 export const InfographicBlock = Node.create({
   name: 'infographicBlock',
+  // Markdown 往返：序列化为 ```infographic 围栏，打开时同语言围栏还原为预览块
+  ...diagramFenceMarkdown('infographicBlock', 'infographic'),
   group: 'block',
   atom: true,
   selectable: true,

@@ -16,16 +16,17 @@ import { Table } from '@tiptap/extension-table';
 import { TableRow } from '@tiptap/extension-table';
 import { TableCell } from '@tiptap/extension-table';
 import { TableHeader } from '@tiptap/extension-table';
-import Highlight from '@tiptap/extension-highlight';
 import { Markdown } from '@tiptap/markdown';
 
 import { CodeBlockView } from '../codeBlockView';
+import { SafeMarkdownHighlight, SafeMarkdownUnderline } from '../markdownInlineMarks';
 import { searchReplaceExtension } from '../searchReplace';
 import { MathInline, MathBlock } from '../katexExtensions';
 import { MermaidBlock } from '../mermaidExtension';
 import { PlantUmlBlock } from '../../plantuml/plantumlExtension';
 import { InfographicBlock } from '../infographicExtension';
 import { GitHubAlert } from '../alertExtension';
+import { FootnoteDefinitionBlock, FootnoteReference, FrontMatterBlock, RawHtmlBlock, RawHtmlInline } from '../markdownPreserveExtensions';
 import { slashSuggestion } from '../slashCommand';
 
 import { handleLinkClick } from '../linkHandler';
@@ -148,6 +149,44 @@ const UnifiedDocumentHistoryKeys = Extension.create<{ docKey: string }>({
 
 import { EnhancedImageBlock } from '../imageNodeView';
 
+/**
+ * 文档级属性：记录源文件末尾的换行（Markdown 解析会丢弃它）。
+ * 序列化时据此还原，避免"仅切换模式就让文件末尾换行消失"产生假差异。
+ */
+const MarkdownDocumentAttributes = Extension.create({
+  name: 'markdownDocumentAttributes',
+  addGlobalAttributes() {
+    return [
+      {
+        types: ['doc'],
+        attributes: {
+          trailingNewline: {
+            default: '',
+            rendered: false,
+          },
+        },
+      },
+    ];
+  },
+});
+
+/**
+ * 表格：官方序列化结果首尾自带换行，与块间分隔叠加后会多出空行（原文 `p\n\n| a |` 变成 `p\n\n\n| a |`）。
+ * 顶层表格去掉首部空行（块间距离由文档级分隔控制）；列表等容器内依赖首部换行与前一段落隔开，保持原样。
+ * 尾部空白行在任何位置都去掉。
+ */
+const MarkdownTable = Table.extend({
+  renderMarkdown(node, helpers, context) {
+    const parentRender = (this as unknown as {
+      parent?: (node: unknown, helpers: unknown, context: unknown) => string;
+    }).parent;
+    const rendered = parentRender?.(node, helpers, context) ?? '';
+    const withoutTrailing = rendered.replace(/(?:\n[ \t]*)+$/, '');
+    const isTopLevel = !context?.parentType || context.parentType === 'doc';
+    return isTopLevel ? withoutTrailing.replace(/^(?:[ \t]*\n)+/, '') : withoutTrailing;
+  },
+});
+
 export interface BuildExtensionsOptions {
   onOpenLinkModal?: () => void;
 }
@@ -171,6 +210,8 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
       // 改由允许 Markdown 标记嵌套的 Code 扩展注册，避免同名扩展和 schema 冲突
       code: false,
       codeBlock: false, // 用自定义的 CodeBlockView
+      // 改由 SafeMarkdownUnderline 注册：官方 `++` tokenizer 会误伤 `C++` 等普通文本
+      underline: false,
       // 缩短连续输入的合并窗口，并保留更多编辑步骤；保存操作不会重建该历史栈
       undoRedo: {
         depth: 200,
@@ -194,6 +235,9 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
     // 行内代码需允许与粗体/斜体共存，才能无损承载合法 Markdown 的嵌套结构
     MarkdownCompatibleCode,
 
+    // 文档末尾换行等源文件级信息
+    MarkdownDocumentAttributes,
+
     // 撤销/重做由文件级时间线统一接管，原生历史仅用于判断输入分组边界
     UnifiedDocumentHistoryKeys.configure({ docKey }),
     // 空列表项退格只删除该节点本身，避免内置 listKeymap 触发 liftListItem
@@ -205,8 +249,10 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // 本地图片增强扩展（支持 Base64、本地相对路径 Asset 解析、大图预览与排版调节）
     EnhancedImageBlock,
-    // 文本高亮扩展（支持多色配置）
-    Highlight.configure({
+    // 下划线（安全的 `++` Markdown tokenizer）
+    SafeMarkdownUnderline,
+    // 文本高亮扩展（支持多色配置；安全的 `==` Markdown tokenizer，避免误伤 `a == b`）
+    SafeMarkdownHighlight.configure({
       multicolor: true,
     }),
 
@@ -230,7 +276,7 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // 表格及表格剪贴板增强（支持标准 TSV 复制与二维矩阵粘贴）
     TableClipboard,
-    Table.configure({
+    MarkdownTable.configure({
       resizable: true,
       HTMLAttributes: {
         class: 'nb-table',
@@ -262,6 +308,13 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // GitHub Alerts
     GitHubAlert,
+
+    // 原样保留语法：front matter、脚注、块级 HTML（可视化中只读展示，保证往返不丢失）
+    FrontMatterBlock,
+    FootnoteDefinitionBlock,
+    FootnoteReference,
+    RawHtmlBlock,
+    RawHtmlInline,
 
     // 斜杠命令
     Extension.create({

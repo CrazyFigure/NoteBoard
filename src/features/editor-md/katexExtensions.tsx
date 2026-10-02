@@ -17,34 +17,12 @@ import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from '@tip
 import 'katex/dist/katex.min.css';
 import { observe } from './viewportActivation';
 import { cancelTask, scheduleTask } from './viewportWorkScheduler';
+import { findInlineMathStart, matchInlineMath } from './mathSyntax';
 
 // ── Markdown 公式语法 ──
 
 /** 数学 tokenizer 附加在 marked token 上的 LaTeX 原文。 */
 type MathMarkdownToken = MarkdownToken & { latex?: string };
-
-/** 判断指定美元符号是否被奇数个反斜杠转义。 */
-function isEscapedDollar(source: string, index: number): boolean {
-  let backslashCount = 0;
-  for (let cursor = index - 1; cursor >= 0 && source[cursor] === '\\'; cursor -= 1) {
-    backslashCount += 1;
-  }
-  return backslashCount % 2 === 1;
-}
-
-/**
- * 查找下一个合法的行内公式起点。
- * 单美元符号后不能是空白或另一个美元符号，避免与块公式和普通金额文本争抢。
- */
-function findInlineMathStart(source: string): number {
-  for (let index = 0; index < source.length; index += 1) {
-    if (source[index] !== '$' || isEscapedDollar(source, index)) continue;
-    const next = source[index + 1];
-    if (!next || next === '$' || source[index - 1] === '$' || /\s/.test(next)) continue;
-    return index;
-  }
-  return -1;
-}
 
 /** 行内 `$...$` tokenizer：不跨行，并跳过转义或不满足边界约束的美元符号。 */
 const inlineMathTokenizer: MarkdownTokenizer = {
@@ -52,26 +30,13 @@ const inlineMathTokenizer: MarkdownTokenizer = {
   level: 'inline',
   start: findInlineMathStart,
   tokenize(source) {
-    if (findInlineMathStart(source) !== 0) return undefined;
-
-    for (let index = 1; index < source.length; index += 1) {
-      const character = source[index];
-      if (character === '\n' || character === '\r') return undefined;
-      // 不跨越行内代码边界寻找闭合符，否则金额后的代码 `$HOME` 会被拼成一条伪公式。
-      if (character === '`' && source[index - 1] !== '\\') return undefined;
-      if (character !== '$' || isEscapedDollar(source, index)) continue;
-      // 双美元符号属于块公式；闭合符前不能是空白，后接数字时按金额文本处理。
-      if (source[index - 1] === '$' || source[index + 1] === '$' || /\s/.test(source[index - 1])) continue;
-      if (/\d/.test(source[index + 1] ?? '')) continue;
-
-      const latex = source.slice(1, index);
-      return {
-        type: 'mathInline',
-        raw: source.slice(0, index + 1),
-        latex,
-      };
-    }
-    return undefined;
+    const match = matchInlineMath(source);
+    if (!match) return undefined;
+    return {
+      type: 'mathInline',
+      raw: match.raw,
+      latex: match.latex,
+    };
   },
 };
 
