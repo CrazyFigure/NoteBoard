@@ -6,9 +6,20 @@ import { useDocumentStore } from '../../stores/documentStore';
 import { useExplorerStore } from '../explorer/explorerStore';
 import { showToast } from '../../stores/toastStore';
 import { openDocument } from '../editor-code/orchestration/openDocument';
+import { USES_WINDOWS_PATHS } from '../../core/platform';
+
+/** 是否为本地绝对路径（Windows 盘符路径或 POSIX 根路径） */
+export function isAbsoluteLocalPath(path: string): boolean {
+  return USES_WINDOWS_PATHS ? /^[a-zA-Z]:[\\/]/.test(path) : path.startsWith('/');
+}
 
 /** 规范化相对路径并基于基准目录计算绝对路径 */
 export function resolveRelativeDocPath(baseDir: string, relativePath: string): string {
+  // Android 等 POSIX 平台：正斜杠分隔，绝对路径以 / 开头
+  if (!USES_WINDOWS_PATHS) {
+    return resolvePosixRelativePath(baseDir, relativePath);
+  }
+
   // 去除可能的 file:/// 协议头与 URL 编码
   let cleanRel = decodeURIComponent(relativePath.replace(/^file:[\\/]+/, '')).replace(/\//g, '\\');
 
@@ -39,6 +50,29 @@ export function resolveRelativeDocPath(baseDir: string, relativePath: string): s
   const drive = parts[0];
   const rest = parts.slice(1).join('\\');
   return rest ? `${drive}\\${rest}` : drive;
+}
+
+/** POSIX 路径的相对解析：`/` 开头视为绝对路径，`..` 不越过根目录 */
+function resolvePosixRelativePath(baseDir: string, relativePath: string): string {
+  let decoded = relativePath;
+  try {
+    decoded = decodeURIComponent(relativePath);
+  } catch {
+    // 非法百分号编码时按原文处理
+  }
+  // file:///storage/... → /storage/...
+  const cleanRel = decoded.replace(/^file:\/*/, '/').replace(/\\/g, '/');
+  const isAbsolute = cleanRel.startsWith('/');
+  const parts = isAbsolute ? [] : baseDir.split('/').filter(Boolean);
+  for (const part of cleanRel.split('/').filter(Boolean)) {
+    if (part === '.') continue;
+    if (part === '..') {
+      parts.pop();
+    } else {
+      parts.push(part);
+    }
+  }
+  return '/' + parts.join('/');
 }
 
 // 记录上一次点击时间与链接，用于短时防抖（防止连击触发多次打开）
@@ -88,7 +122,7 @@ export async function handleLinkClick(rawHref: string, currentDocKey: string): P
   const currentDoc = docStore.getDocument(currentDocKey);
   const baseDir = currentDoc?.dirPath || useExplorerStore.getState().root;
 
-  if (!baseDir && !/^[a-zA-Z]:[\\/]/.test(href)) {
+  if (!baseDir && !isAbsoluteLocalPath(href)) {
     showToast('当前文档尚未保存到磁盘，无法解析相对路径链接', 'warning');
     return true;
   }

@@ -21,6 +21,7 @@ import { useWindowStore, type Tab } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { kindFromPath, languageFromPath } from '../../core/docKind';
+import { dirnameOf } from '../explorer/pathUtils';
 import { stashPendingDocuments } from '../staging/stagingManager';
 import { showToast } from '../../stores/toastStore';
 import { hasUnsavedWork } from '../staging/stagingPolicy';
@@ -128,7 +129,7 @@ async function adoptTransferredDocument(transferId: string): Promise<void> {
   if (!doc) return; // 已被拉取 / 已中止
 
   const name = doc.key.split(/[\\/]/).pop() ?? doc.key;
-  const dirPath = doc.key.substring(0, doc.key.lastIndexOf('\\')) || doc.key;
+  const dirPath = dirnameOf(doc.key) || doc.key;
   // 缺省策略集中在此：类型/语言按 key 推断，编码缺省 utf8/lf，基线缺省取内容
   const kind = (doc.kind ?? kindFromPath(doc.key)) as Tab['kind'];
   // 迁移载荷的 language 为 string（由源窗口的 LanguageId 序列化而来），此处收窄回 LanguageId

@@ -5,7 +5,7 @@
 import { create } from 'zustand';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { DocumentKind } from '../core/ipc/types';
-import { normalizePath } from '../features/explorer/pathUtils';
+import { normalizePath, pathKey, PATH_SEP } from '../features/explorer/pathUtils';
 // 🔴 R4-05/D05：disposeTabLifecycleAsync 独立入口需终结 documents 记录
 //    （documentStore 不依赖 windowStore——单向依赖无循环）
 import { useDocumentStore } from './documentStore';
@@ -416,14 +416,15 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
 
   // 批量更新被重命名目录下所有 Tab 的路径与 key
   renameTabsDirectory: (oldDir, newDir) => {
-    const normOld = normalizePath(oldDir).toLowerCase();
+    // 路径比较键按平台区分大小写（Windows 不敏感 / Android 敏感），分隔符随平台
+    const normOld = pathKey(oldDir);
     const normNew = normalizePath(newDir);
     set((state) => {
       let changed = false;
       const newTabs = state.tabs.map((t) => {
         if (!t.path) return t;
         const normPath = normalizePath(t.path);
-        if (normPath.toLowerCase().startsWith(normOld + '\\')) {
+        if (pathKey(normPath).startsWith(normOld + PATH_SEP)) {
           changed = true;
           const rel = normPath.substring(normOld.length);
           const newPath = normNew + rel;
@@ -436,7 +437,7 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
         return t;
       });
       let newActiveKey = state.activeKey;
-      if (state.activeKey && normalizePath(state.activeKey).toLowerCase().startsWith(normOld + '\\')) {
+      if (state.activeKey && pathKey(state.activeKey).startsWith(normOld + PATH_SEP)) {
         const rel = normalizePath(state.activeKey).substring(normOld.length);
         newActiveKey = normNew + rel;
       }

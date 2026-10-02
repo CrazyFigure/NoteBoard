@@ -155,7 +155,8 @@ pub fn open_staging_directory() -> Result<String, String> {
         .arg(&directory)
         .spawn()
         .map_err(|error| format!("无法打开暂存目录：{}", error))?;
-    #[cfg(not(windows))]
+    // 移动端不调用外部文件管理器：只返回目录路径，由前端在应用内文件列表中打开
+    #[cfg(all(not(windows), desktop))]
     std::process::Command::new("xdg-open")
         .arg(&directory)
         .spawn()

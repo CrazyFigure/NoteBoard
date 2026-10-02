@@ -194,7 +194,7 @@ fn enumerate_system_fonts_gdi() -> Vec<String> {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), desktop))]
 fn enumerate_system_fonts() -> Vec<String> {
     if let Ok(output) = std::process::Command::new("fc-list")
         .args([":", "family"])
@@ -219,7 +219,18 @@ fn enumerate_system_fonts() -> Vec<String> {
     fallback_font_kit_enumeration()
 }
 
+/// 移动端：不枚举系统字体（Android 无 fc-list/font-kit 后端），只提供 WebView 可识别的通用字体族，
+/// 中文显示由系统 Noto Sans CJK 兜底；更多字体可通过应用内字体资源包获得。
+#[cfg(mobile)]
+fn enumerate_system_fonts() -> Vec<String> {
+    ["sans-serif", "serif", "monospace", "Noto Sans CJK SC", "Noto Serif CJK SC", "Roboto"]
+        .iter()
+        .map(|name| name.to_string())
+        .collect()
+}
+
 /// font-kit 兜底枚举
+#[cfg(desktop)]
 fn fallback_font_kit_enumeration() -> Vec<String> {
     let mut list = Vec::new();
     let source = font_kit::source::SystemSource::new();

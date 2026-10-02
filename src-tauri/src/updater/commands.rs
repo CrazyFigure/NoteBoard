@@ -90,7 +90,25 @@ fn is_newer_version(latest: &str, current: &str) -> bool {
     latest_parts > current_parts
 }
 
+/// 对 Release 附件资产进行打分（Android：仅匹配 APK，优先 arm64）
+#[cfg(target_os = "android")]
+fn installer_asset_score(asset_name: &str) -> i32 {
+    let normalized = asset_name.to_ascii_lowercase();
+    if !normalized.ends_with(".apk") {
+        return -1;
+    }
+    let mut score = 10;
+    if normalized.contains("arm64") || normalized.contains("aarch64") {
+        score += 5;
+    }
+    if normalized.contains("universal") {
+        score += 2;
+    }
+    score
+}
+
 /// 对 Release 附件资产进行打分，优先匹配 Windows 可执行安装包
+#[cfg(not(target_os = "android"))]
 fn installer_asset_score(asset_name: &str) -> i32 {
     let normalized = asset_name.to_ascii_lowercase();
     if !(normalized.ends_with(".exe") || normalized.ends_with(".msi")) {
@@ -417,6 +435,26 @@ pub async fn download_and_install_update(
     asset_name: String,
     installer_size: Option<u64>,
 ) -> Result<String, String> {
+    // 移动端不能静默安装：交给系统浏览器下载 APK，由系统安装器完成升级
+    #[cfg(mobile)]
+    {
+        let _ = (&asset_name, installer_size);
+        let normalized = download_url.trim();
+        let lowered = normalized.to_ascii_lowercase();
+        if !(lowered.starts_with("https://") && lowered.ends_with(".apk"))
+            || normalized.chars().any(|character| character.is_control())
+        {
+            return Err("无效的更新安装包下载地址".to_string());
+        }
+        use tauri_plugin_opener::OpenerExt;
+        app_handle
+            .opener()
+            .open_url(normalized, None::<&str>)
+            .map_err(|error| format!("无法打开浏览器下载：{}", error))?;
+        return Ok("browser".to_string());
+    }
+
+    #[allow(unreachable_code)]
     let normalized_url = download_url.trim();
     if !is_valid_update_download_url(normalized_url) {
         return Err("无效的更新安装包下载地址".to_string());
@@ -482,7 +520,8 @@ pub async fn download_and_install_update(
 
 /// 在系统默认浏览器中打开外部链接
 #[tauri::command]
-pub fn open_external_url(url: String) -> Result<bool, String> {
+pub fn open_external_url(app: AppHandle, url: String) -> Result<bool, String> {
+    let _ = &app;
     let normalized = url.trim();
     if !(normalized.starts_with("https://") || normalized.starts_with("http://")) {
         return Err("仅支持打开 http/https 协议的外部链接".to_string());
@@ -524,7 +563,16 @@ pub fn open_external_url(url: String) -> Result<bool, String> {
             .map_err(|e| e.to_string())?;
     }
 
-    #[cfg(all(unix, not(target_os = "macos")))]
+    // 移动端：通过 opener 插件交给系统（Android 为 ACTION_VIEW Intent）
+    #[cfg(mobile)]
+    {
+        use tauri_plugin_opener::OpenerExt;
+        app.opener()
+            .open_url(normalized, None::<&str>)
+            .map_err(|e| e.to_string())?;
+    }
+
+    #[cfg(all(unix, not(target_os = "macos"), desktop))]
     {
         Command::new("xdg-open")
             .arg(normalized)

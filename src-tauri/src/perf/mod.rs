@@ -232,7 +232,8 @@ pub fn flush_to_disk(reason: &str) -> Option<std::path::PathBuf> {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis())
         .unwrap_or(0);
-    let dir = std::env::temp_dir().join("noteboard-perf");
+    // 移动端系统临时目录不可写，统一走应用缓存目录
+    let dir = crate::app_dirs::cache_dir().join("noteboard-perf");
     let _ = std::fs::create_dir_all(&dir);
     let path = dir.join(format!("spans-{}-{}.json", pid, ts));
     let payload = serde_json::json!({

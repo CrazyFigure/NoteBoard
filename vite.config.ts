@@ -219,10 +219,14 @@ const hasAllocatedDevPort = Number.isInteger(configuredDevPort)
 const devPort = hasAllocatedDevPort ? configuredDevPort : 1421;
 
 // Vite 与 Tauri 必须使用同一端口；动态端口已预选完成时禁止 Vite 静默切换，避免 WebView 串线。
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   base: './',
   plugins: [react(), tailwindcss(), excalidrawLocalesPlugin(), moduleSourceManifestPlugin()],
   define: {
+    // 构建目标平台（Tauri CLI 运行 beforeDev/BuildCommand 时注入 TAURI_ENV_PLATFORM），供前端同步判定桌面/移动端
+    __NB_TARGET_PLATFORM__: JSON.stringify(process.env.TAURI_ENV_PLATFORM ?? ''),
+    // 仅开发服务器允许 ?mock=1 浏览器预览（模拟 Tauri IPC）；生产构建中该分支被常量折叠移除
+    __NB_DEV_MOCK__: JSON.stringify(command === 'serve'),
     'process.env.IS_PREACT': JSON.stringify('false'),
     'process.env': {},
   },
@@ -271,4 +275,4 @@ export default defineConfig({
   worker: {
     format: 'es', // sectionWorker 需要
   },
-});
+}));

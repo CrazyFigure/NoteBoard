@@ -4,6 +4,7 @@
 import * as ipc from '../../core/ipc/commands';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
+import { sameKey } from '../explorer/pathUtils';
 
 const inFlightKeys = new Set<string>();
 const lastCheckedAt = new Map<string, number>();
@@ -14,8 +15,8 @@ const CHECK_THROTTLE_MS = 800;
 export function markOpenDocumentDeleted(docKey: string): void {
   const tabStore = useWindowStore.getState();
   const documentStore = useDocumentStore.getState();
-  // Windows 路径大小写不敏感，左侧文件树与文档注册表的规范化形式可能略有差异。
-  const actualKey = tabStore.tabs.find((tab) => tab.key.toLocaleLowerCase() === docKey.toLocaleLowerCase())?.key;
+  // Windows 路径大小写不敏感，左侧文件树与文档注册表的规范化形式可能略有差异（Android 等平台大小写敏感）。
+  const actualKey = tabStore.tabs.find((tab) => sameKey(tab.key, docKey))?.key;
   if (!actualKey || !documentStore.getDocument(actualKey)) return;
   tabStore.setTabDetached(actualKey, true);
   tabStore.setTabExternalStatus(actualKey, 'deleted');

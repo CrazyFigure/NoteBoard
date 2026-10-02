@@ -223,6 +223,13 @@ pub fn path_exists(path: String) -> Result<PathExistsResult, String> {
 /// 在资源管理器中显示
 #[tauri::command]
 pub fn reveal_in_explorer(path: String) -> Result<(), String> {
+    // 移动端没有可定位文件的系统文件管理器入口（前端已隐藏该操作）
+    #[cfg(mobile)]
+    {
+        let _ = path;
+        return Err("移动端不支持在文件管理器中显示".to_string());
+    }
+    #[allow(unreachable_code)]
     // 用 std::process::Command 调用 explorer
     std::process::Command::new("explorer")
         .arg(format!("/select,{}", path))
@@ -242,13 +249,20 @@ pub fn open_with_default_app(path: String) -> Result<(), String> {
             .spawn()
             .map_err(|e| format!("无法打开文件: {}", e))?;
     }
-    #[cfg(not(windows))]
+    #[cfg(all(not(windows), desktop))]
     {
         std::process::Command::new("xdg-open")
             .arg(&path)
             .spawn()
             .map_err(|e| format!("无法打开文件: {}", e))?;
     }
+    // 移动端以系统分享代替"用默认程序打开"（前端改走 share_file）
+    #[cfg(mobile)]
+    {
+        let _ = path;
+        return Err("移动端请使用分享打开文件".to_string());
+    }
+    #[allow(unreachable_code)]
     Ok(())
 }
 

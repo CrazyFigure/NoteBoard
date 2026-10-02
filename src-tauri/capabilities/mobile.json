@@ -1,0 +1,38 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile",
+  "description": "移动端（Android）单窗口权限：去掉多窗口、拖拽、最大化、窗口状态记忆与文件监听",
+  "platforms": [
+    "android",
+    "iOS"
+  ],
+  "windows": [
+    "nb-main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:default",
+    "core:window:allow-close",
+    "core:window:allow-set-title",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:webview:default",
+    "core:event:default",
+    "core:app:default",
+    "dialog:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "fs:default",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
+    "fs:allow-read-dir",
+    "fs:allow-exists",
+    "fs:allow-mkdir",
+    "fs:allow-remove",
+    "fs:allow-rename",
+    "fs:allow-copy-file",
+    "opener:default",
+    "opener:allow-open-url",
+    "os:default"
+  ]
+}

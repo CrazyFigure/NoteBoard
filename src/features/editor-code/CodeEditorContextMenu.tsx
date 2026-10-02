@@ -97,6 +97,7 @@ export function CodeEditorContextMenu({ view, position, onClose }: CodeEditorCon
     <div
       ref={menuRef}
       role="menu"
+      className="nb-context-menu"
       style={{
         position: 'fixed',
         top: pos.y,

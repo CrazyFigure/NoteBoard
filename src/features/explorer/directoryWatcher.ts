@@ -10,6 +10,7 @@
 import { watchImmediate, type UnwatchFn, type WatchEvent } from '@tauri-apps/plugin-fs';
 import * as ipc from '../../core/ipc/commands';
 import { useExplorerStore } from './explorerStore';
+import { pathKey } from './pathUtils';
 // 🔴 N09：外部正文核对链——watcher 事件给受影响的已打开文档安排有界核对，
 //    确认外部修改后更新冲突状态（阻止旧 autosave 覆盖外部修改）
 import { useDocumentStore } from '../../stores/documentStore';
@@ -68,9 +69,9 @@ let docRecheckTimer: ReturnType<typeof setTimeout> | null = null;
 /** 自身写静默窗口内命中的文档路径（延迟到窗口结束后核对，不吞外部紧随修改） */
 const deferredDocRechecks = new Set<string>();
 
-/** 🔴 R3-10：规范化路径身份（与 Rust key 归一一致——大小写不敏感） */
+/** 🔴 R3-10：规范化路径身份（与 Rust key 归一一致——Windows 大小写不敏感，POSIX 平台大小写敏感） */
 function normalizeDocKey(path: string): string {
-  return path.replace(/\//g, '\\').toLowerCase();
+  return pathKey(path);
 }
 
 /** 按规范化身份查找已打开文档的 key（事件路径大小写/斜杠差异可命中） */

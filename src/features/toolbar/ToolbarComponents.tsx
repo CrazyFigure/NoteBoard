@@ -5,6 +5,7 @@
 import React, { useState, useEffect, useRef, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight, Check } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
+import { isTouchInteraction } from '../../core/inputModality';
 
 // ── 基础工具栏按钮 ──
 
@@ -205,6 +206,7 @@ export function ToolbarDropdown({
 
       {isOpen && (
         <div
+          className="nb-toolbar-dropdown-panel"
           onMouseDown={(e) => e.stopPropagation()}
           style={{
             position: 'absolute',
@@ -294,9 +296,9 @@ export function ToolbarDropdownItem({
     setFlipLeft(spaceRight < 170);
   };
 
-  // 鼠标悬停进入
+  // 鼠标悬停进入（触屏补发的兼容鼠标事件忽略，子菜单改由点击切换，避免"展开即收起"）
   const handleMouseEnter = () => {
-    if (disabled) return;
+    if (disabled || isTouchInteraction()) return;
     if (closeTimeoutRef.current) {
       clearTimeout(closeTimeoutRef.current);
       closeTimeoutRef.current = null;
@@ -311,6 +313,7 @@ export function ToolbarDropdownItem({
   // 鼠标悬停离开（120ms 防抖缓冲，防止划向子菜单时瞬间关闭）
   const handleMouseLeave = () => {
     setHovered(false);
+    if (isTouchInteraction()) return;
     if (hasSubmenu) {
       closeTimeoutRef.current = setTimeout(() => {
         setSubmenuOpen(false);
@@ -382,6 +385,7 @@ export function ToolbarDropdownItem({
       {/* 二级 / 三级悬浮子菜单 */}
       {hasSubmenu && submenuOpen && (
         <div
+          className="nb-toolbar-submenu"
           onMouseEnter={() => {
             if (closeTimeoutRef.current) {
               clearTimeout(closeTimeoutRef.current);

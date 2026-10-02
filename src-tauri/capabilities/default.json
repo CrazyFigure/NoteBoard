@@ -1,6 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
+  "description": "桌面端（Windows / macOS / Linux）窗口与插件权限",
+  "platforms": ["windows", "macOS", "linux"],
   "windows": ["nb-main", "nb-*"],
   "permissions": [
     "core:default",

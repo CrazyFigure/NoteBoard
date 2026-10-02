@@ -6,8 +6,11 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import './styles/globals.css';
 import './styles/scrollbar.css';
+import './styles/mobile.css';
 import { applyCachedTheme, applyCachedTypography } from './core/theme/applyTheme';
 import { perfMark } from './core/perf/perfMarks';
+import { IS_MOBILE_UI } from './core/platform';
+import { installInputModalityTracking } from './core/inputModality';
 
 // 🔴 性能诊断：js_entry 是模块体首行执行的代理标记（静态依赖已求值完毕）；
 // head 中 __nbHtmlTs 记录了 HTML 解析的更早点，两者差值可估算入口依赖求值开销。
@@ -23,11 +26,39 @@ if (!applyCachedTheme()) {
 // 🔴 防首屏闪烁：同步注入排版变量
 applyCachedTypography();
 
-createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+// 记录指针类型，供 hover 菜单区分触屏补发的兼容鼠标事件
+installInputModalityTracking();
+
+// 移动端：标记平台供样式切换，并禁止双击/双指缩放整页（编辑器内容缩放由各编辑器自行处理）
+if (IS_MOBILE_UI) {
+  document.documentElement.dataset.platform = 'mobile';
+  const viewport = document.querySelector('meta[name="viewport"]');
+  viewport?.setAttribute(
+    'content',
+    'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content',
+  );
+}
+
+/** 挂载 React 根组件 */
+function renderApp(): void {
+  createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
+}
+
+declare const __NB_DEV_MOCK__: boolean | undefined;
+
+// 开发服务器 + ?mock=1：先安装 Tauri IPC 模拟再渲染（浏览器预览界面）；生产构建中整段被常量折叠移除
+if (typeof __NB_DEV_MOCK__ !== 'undefined' && __NB_DEV_MOCK__ && new URLSearchParams(window.location.search).get('mock') === '1') {
+  void import('./dev/tauriMock').then((module) => {
+    module.installTauriMock();
+    renderApp();
+  });
+} else {
+  renderApp();
+}
 
 // 🔴 性能诊断：React 首帧提交的 rAF 代理标记（不等于 shell 可见，仅用于阶段归因）
 requestAnimationFrame(() => {
