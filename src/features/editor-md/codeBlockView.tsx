@@ -8,6 +8,7 @@ import CodeBlock from '@tiptap/extension-code-block';
 import { Copy, Check, ChevronDown, Search, X } from 'lucide-react';
 // 语言标签是纯元数据，不让普通 Markdown 首开加载全部高亮语法。
 import { normalizeLanguage } from './codeLanguages';
+import { PREVIEW_FENCE_LANGUAGES, fenceLanguageOf, isBlockCodeToken, renderFencedCode } from './markdownFence';
 import { Tooltip } from '../../components/Tooltip';
 
 /** 语言配置结构定义 */
@@ -409,5 +410,23 @@ export const CodeBlockView = CodeBlock.extend({
 
   addNodeView() {
     return ReactNodeViewRenderer(CodeBlockComponent);
+  },
+
+  // 解析：Mermaid / Infographic 围栏交给对应预览块节点（返回空数组即让出 token），其余照常生成代码块
+  parseMarkdown: (token, helpers) => {
+    if (!isBlockCodeToken(token)) return [];
+    if (PREVIEW_FENCE_LANGUAGES[fenceLanguageOf(token)]) return [];
+    return helpers.createNode(
+      'codeBlock',
+      { language: token.lang || null },
+      token.text ? [helpers.createTextNode(token.text)] : [],
+    );
+  },
+
+  // 序列化：围栏长度随内容中最长反引号串自适应，避免内容含 ``` 时围栏被提前闭合
+  renderMarkdown: (node, helpers) => {
+    const language = (node.attrs?.language as string | null) || '';
+    const code = node.content ? helpers.renderChildren(node.content) : '';
+    return renderFencedCode(language, code);
   },
 });

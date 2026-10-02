@@ -6,6 +6,8 @@
 // 不变式 I-14: 打开 → 切 visual → 切 source → tab 不出现脏圆点
 
 import type { Editor } from '@tiptap/core';
+import { textWouldFormInlineMath } from './mathSyntax';
+import { beginRawSegmentSession, endRawSegmentSession, restoreRawSegments } from './rawMarkdownSegments';
 
 // CommonMark 允许反斜杠转义的 ASCII 标点；这些字符前的双反斜杠不能擅自折叠，
 // 否则原本可见的反斜杠会在下一次解析时被当成转义符吞掉。
@@ -16,6 +18,108 @@ const TIPTAP_MARKDOWN_SPECIAL_CHARACTERS = new Set(['`', '*', '_', '[', ']', '~'
 // Unicode 标点与符号类别用于发现“可能是转义前缀”的反斜杠，不按具体字符逐项维护。
 const UNICODE_PUNCTUATION_OR_SYMBOL = /[\p{P}\p{S}]/u;
 
+// `&` 之后若紧跟实体名/数字实体（如 `gt;`、`#39;`），该 `&` 必须保持编码
+const ENTITY_LIKE_SUFFIX = /^(?:[a-zA-Z][a-zA-Z0-9]{1,31}|#\d{1,7}|#[xX][0-9a-fA-F]{1,6});/;
+
+// ── 结构性必要转义 ──
+// 全局转义集合刻意保持最小（避免往返中转义累积）；但少数字面量字符在特定位置不转义就会改变文档结构：
+// 行首的 `#`、`-`、`+`、`1.`，表格单元格内的 `|`，以及会构成行内公式的 `$`。
+// 序列化前在 JSON 中于这些字符前插入哨兵（私有区字符，用户文本中不会出现），
+// 转义器把哨兵替换为"必要转义标记"，冗余转义清理不会把该标记当作候选，最后才还原为反斜杠。
+// 这样必要转义既不会被清理掉，也不会让"全有或全无"的批量清理因它们失败而整体保留冗余转义。
+const STRUCTURAL_ESCAPE_SENTINEL = '';
+const STRUCTURAL_ESCAPE_MARK = '';
+
+// 行首会被识别为块结构的字面量：ATX 标题、无序列表、有序列表、分隔线/Setext 下划线
+const LINE_START_HEADING = /^([ \t]{0,3})(#{1,6})(?=[ \t]|$)/;
+const LINE_START_BULLET = /^([ \t]{0,3})([-+])(?=[ \t]|$)/;
+const LINE_START_ORDERED = /^([ \t]{0,3}\d{1,9})([.)])(?=[ \t]|$)/;
+const LINE_START_RULE = /^([ \t]{0,3})([-=])(?=[-= \t]*$)/;
+
+interface SerializableJsonNode {
+  type?: string;
+  text?: string;
+  content?: SerializableJsonNode[];
+  [key: string]: unknown;
+}
+
+/** 在单行行首的块结构字面量前插入哨兵。 */
+function markLineStart(line: string): string {
+  for (const pattern of [LINE_START_HEADING, LINE_START_ORDERED, LINE_START_BULLET, LINE_START_RULE]) {
+    const match = pattern.exec(line);
+    if (match) {
+      const prefixLength = match[1].length;
+      return line.slice(0, prefixLength) + STRUCTURAL_ESCAPE_SENTINEL + line.slice(prefixLength);
+    }
+  }
+  return line;
+}
+
+/** 文本节点按需插入哨兵：atLineStart 表示该节点起始处位于 Markdown 行首。 */
+function markTextNode(
+  text: string,
+  atLineStart: boolean,
+  inTableCell: boolean,
+  wouldFormInlineMath: (value: string) => boolean,
+): string {
+  let output = text
+    .split('\n')
+    .map((line, index) => (index > 0 || atLineStart ? markLineStart(line) : line))
+    .join('\n');
+  if (inTableCell) output = output.replace(/\|/g, `${STRUCTURAL_ESCAPE_SENTINEL}|`);
+  if (output.includes('$') && wouldFormInlineMath(text)) {
+    output = output.replace(/\$/g, `${STRUCTURAL_ESCAPE_SENTINEL}$`);
+  }
+  return output;
+}
+
+/**
+ * 深拷贝文档 JSON，并为结构性必要转义插入哨兵。
+ * 只处理段落（列表项、引用、表格中的文字最终都落在段落里），标题等节点的正文前已有块前缀，无需处理。
+ */
+function markStructuralEscapes(
+  node: SerializableJsonNode,
+  wouldFormInlineMath: (value: string) => boolean,
+  inTableCell = false,
+): SerializableJsonNode {
+  const isCell = inTableCell || node.type === 'tableCell' || node.type === 'tableHeader';
+  if (!node.content) return { ...node };
+
+  if (node.type !== 'paragraph') {
+    return {
+      ...node,
+      content: node.content.map((child) => markStructuralEscapes(child, wouldFormInlineMath, isCell)),
+    };
+  }
+
+  // 段落：首个文本节点与硬换行后的文本节点位于行首（表格单元格内不存在块级行首语义）
+  let atLineStart = !isCell;
+  const content = node.content.map((child) => {
+    if (child.type === 'hardBreak') {
+      atLineStart = !isCell;
+      return { ...child };
+    }
+    if (child.type === 'text' && typeof child.text === 'string') {
+      const hasMarks = Array.isArray(child.marks) && child.marks.length > 0;
+      // 带行内代码标记的文本按原样输出，不能插入哨兵
+      const isCode = hasMarks && (child.marks as Array<{ type?: string }>).some((mark) => mark.type === 'code');
+      const marked = isCode ? child.text : markTextNode(child.text, atLineStart && !hasMarks, isCell, wouldFormInlineMath);
+      atLineStart = false;
+      return { ...child, text: marked };
+    }
+    atLineStart = false;
+    return { ...child };
+  });
+  return { ...node, content };
+}
+
+/** 把结构性必要转义标记还原为反斜杠（冗余转义清理完成后调用）。 */
+function finalizeStructuralEscapes(markdown: string): string {
+  return markdown.includes(STRUCTURAL_ESCAPE_MARK)
+    ? markdown.split(STRUCTURAL_ESCAPE_MARK).join('\\')
+    : markdown;
+}
+
 /**
  * 转义普通文本中的 Markdown 标记，同时避免把 Windows 路径等安全反斜杠无条件翻倍。
  * 反斜杠仅在行尾或 CommonMark 可转义标点前需要自我转义；字母、数字、中文前可原样保留。
@@ -24,6 +128,11 @@ function escapeMarkdownText(text: string): string {
   let output = '';
   for (let index = 0; index < text.length; index += 1) {
     const character = text[index];
+    if (character === STRUCTURAL_ESCAPE_SENTINEL) {
+      // 结构性必要转义：先输出专用标记，待冗余转义清理结束后再还原为反斜杠
+      output += STRUCTURAL_ESCAPE_MARK;
+      continue;
+    }
     if (character === '\\') {
       const nextCharacter = text[index + 1];
       const mustEscapeBackslash =
@@ -211,9 +320,11 @@ function applyMarkdownCleanupCandidates(
  */
 function removeRedundantMarkdownEscapes(
   markdown: string,
-  referenceDoc: { eq(other: unknown): boolean },
+  referenceDoc: { eq(other: unknown): boolean; attrs?: Record<string, unknown> },
   nodeFromJSON: (json: unknown) => unknown,
   manager: MarkdownManagerLike | null | undefined,
+  // 把候选文本还原为最终输出形态（必要转义标记、原样片段占位符）后再做语义校验
+  restoreForParse: (markdown: string) => string = finalizeStructuralEscapes,
 ): string {
   if (typeof manager?.parse !== 'function') return markdown;
 
@@ -222,7 +333,11 @@ function removeRedundantMarkdownEscapes(
 
   const preservesDocument = (candidateMarkdown: string): boolean => {
     try {
-      return referenceDoc.eq(nodeFromJSON(manager.parse!(candidateMarkdown)));
+      // 语义校验时把必要转义标记还原为真实反斜杠，保证解析结果与最终输出一致
+      const parsed = manager.parse!(restoreForParse(candidateMarkdown));
+      // 末尾换行等文档级属性不来自正文解析，比较前沿用参考文档的属性
+      if (referenceDoc.attrs) parsed.attrs = { ...referenceDoc.attrs };
+      return referenceDoc.eq(nodeFromJSON(parsed));
     } catch {
       // 解析器无法验证时必须保留安全输出，不能为了源码美观冒险改变文档结构。
       return false;
@@ -270,22 +385,79 @@ export function normalizeSerializedMarkdown(markdown: string): string {
       }
 
       return mapOutsideInlineCode(rawLine, (segment, linePrefix) => {
-        // 必须先还原 amp，确保 `&amp;&gt;` 能在同一轮恢复为 `&>`
-        const ampRestored = segment.replace(/&amp;/g, '&');
-        const greaterThanRestored = ampRestored.replace(/&gt;/g, (entity, offset: number) => {
-          const prefix = linePrefix + ampRestored.slice(0, offset);
+        // amp 与 gt 必须在同一轮扫描中还原：`&amp;&gt;` 恢复为 `&>`；
+        // 分两轮会把字面量 `&gt;`（编码为 `&amp;gt;`）先还原成 `&gt;` 再误解码为 `>`
+        let restored = '';
+        let cursor = 0;
+        for (const match of segment.matchAll(/&(amp|gt);/g)) {
+          const offset = match.index ?? 0;
+          restored += segment.slice(cursor, offset);
+          cursor = offset + match[0].length;
+          if (match[1] === 'amp') {
+            // 字面量 `&gt;`、`&copy;`、`&#39;` 等实体形态文本必须保留 `&amp;`，否则再次解析会被当成实体解码
+            restored += ENTITY_LIKE_SUFFIX.test(segment.slice(cursor)) ? match[0] : '&';
+            continue;
+          }
+          const prefix = linePrefix + restored;
           // 行首或列表/引用容器开头的 `>` 会改变 Markdown 块结构，必须继续保留实体
           const isBlockQuoteMarker = /^(?: {0,3}(?:(?:>|[-+*]|\d+[.)])(?:[ \t]+|$)))* {0,3}$/.test(prefix);
-          return isBlockQuoteMarker ? entity : '>';
-        });
-
-        return greaterThanRestored;
+          restored += isBlockQuoteMarker ? match[0] : '>';
+        }
+        return restored + segment.slice(cursor);
       });
     })
     .join('\n');
 }
 
 // ── 序列化器 ──
+
+/** 按文档属性还原源文件末尾换行（未装配该属性或正文为空时原样返回）。 */
+function appendTrailingNewline(markdown: string, attrs: Record<string, unknown> | undefined): string {
+  const trailing = typeof attrs?.trailingNewline === 'string' ? attrs.trailingNewline : '';
+  if (!trailing || markdown === '') return markdown;
+  return markdown.replace(/\n*$/, '') + trailing;
+}
+
+/** 记录源文本末尾的换行（CRLF 按 LF 计数，保存时由文档 EOL 设置统一转换）。 */
+function trailingNewlineOf(markdown: string): string {
+  const match = /(?:\r?\n)+$/.exec(markdown);
+  return match ? '\n'.repeat(match[0].split('\n').length - 1) : '';
+}
+
+/**
+ * 统一的序列化后处理流水线（两个序列化入口共用）：
+ * 1. 在原样片段会话中生成原始 Markdown（front matter / HTML / 脚注先以占位符输出）；
+ * 2. 实体还原 → 冗余转义清理（语义校验前还原必要转义与原样片段，保证校验对象与最终输出一致）；
+ * 3. 还原必要转义与原样片段，最后补回源文件末尾换行。
+ */
+function runSerializationPipeline(
+  produceRaw: () => string,
+  referenceDoc: { eq(other: unknown): boolean; attrs?: Record<string, unknown> },
+  nodeFromJSON: (json: unknown) => unknown,
+  manager: MarkdownManagerLike | null | undefined,
+): string {
+  beginRawSegmentSession();
+  let raw: string;
+  let segments: string[];
+  try {
+    raw = produceRaw();
+  } finally {
+    segments = endRawSegmentSession();
+  }
+  const restore = (markdown: string): string =>
+    restoreRawSegments(finalizeStructuralEscapes(markdown), segments);
+  const normalized = normalizeSerializedMarkdown(raw);
+  const cleaned = removeRedundantMarkdownEscapes(normalized, referenceDoc, nodeFromJSON, manager, restore);
+  return appendTrailingNewline(restore(cleaned), referenceDoc.attrs);
+}
+
+/** 序列化前的 JSON 预处理：插入结构性必要转义哨兵（不修改编辑器中的真实文档）。 */
+function prepareJsonForSerialization(json: ReturnType<Editor['getJSON']>): ReturnType<Editor['getJSON']> {
+  return markStructuralEscapes(
+    json as SerializableJsonNode,
+    textWouldFormInlineMath,
+  ) as ReturnType<Editor['getJSON']>;
+}
 
 /** @tiptap/markdown 注入的 MarkdownManager（serialize/parse/escapeMarkdownSyntax） */
 export interface MarkdownManagerLike {
@@ -314,7 +486,7 @@ export function getMarkdownManager(editor: Editor): MarkdownManagerLike | null {
 export function serializeMarkdownFromDoc(
   manager: MarkdownManagerLike,
   schema: { nodeFromJSON(json: unknown): { eq(other: unknown): boolean } },
-  doc: { toJSON(): ReturnType<Editor['getJSON']>; eq(other: unknown): boolean },
+  doc: { toJSON(): ReturnType<Editor['getJSON']>; eq(other: unknown): boolean; attrs?: Record<string, unknown> },
 ): string {
   if (typeof manager.serialize !== 'function') {
     throw new Error('[NoteBoard] MarkdownManager.serialize 不可用，无法按快照序列化');
@@ -327,9 +499,12 @@ export function serializeMarkdownFromDoc(
     manager.escapeMarkdownSyntax = escapeMarkdownText;
   }
   try {
-    const raw = manager.serialize(doc.toJSON());
-    const normalized = normalizeSerializedMarkdown(raw);
-    return removeRedundantMarkdownEscapes(normalized, doc, schema.nodeFromJSON.bind(schema), manager);
+    return runSerializationPipeline(
+      () => manager.serialize!(prepareJsonForSerialization(doc.toJSON())),
+      doc,
+      schema.nodeFromJSON.bind(schema),
+      manager,
+    );
   } finally {
     if (manager && typeof originalEscaper === 'function') {
       manager.escapeMarkdownSyntax = originalEscaper;
@@ -361,9 +536,11 @@ export function serializeMarkdown(editor: Editor): string {
       manager.escapeMarkdownSyntax = escapeMarkdownText;
     }
     try {
-      const normalized = normalizeSerializedMarkdown(getMarkdown.call(editor));
-      return removeRedundantMarkdownEscapes(
-        normalized,
+      // 有 MarkdownManager 时直接序列化插入了必要转义哨兵的 JSON；否则回退到注入的 getMarkdown
+      return runSerializationPipeline(
+        () => (typeof manager?.serialize === 'function'
+          ? manager.serialize(prepareJsonForSerialization(editor.getJSON()))
+          : getMarkdown.call(editor)),
         editor.state.doc,
         (json) => editor.schema.nodeFromJSON(json),
         manager,
@@ -448,14 +625,14 @@ function deduplicateParsedMarkdownMarks(root: ParsedMarkdownNode): void {
 export function parseMarkdown(
   editor: Editor,
   markdown: string,
-): void {
+): boolean {
   if (markdown.trim() === '') {
     // 空内容同样必须显式控制历史，否则初次打开空文件后可能出现伪撤销步骤
     replaceEditorContent(
       editor,
       editor.chain().clearContent(false),
     );
-    return;
+    return true;
   }
   try {
     const manager = getMarkdownManager(editor);
@@ -465,11 +642,17 @@ export function parseMarkdown(
       // bold,bold 等非法 mark 集合；进入 schema 前统一修复并显式校验。
       deduplicateParsedMarkdownMarks(parsed as ParsedMarkdownNode);
       editor.schema.nodeFromJSON(parsed);
-      replaceEditorContent(
-        editor,
-        editor.chain().setContent(parsed, { contentType: 'json' }),
-      );
-      return;
+      const chain = editor.chain().setContent(parsed, { contentType: 'json' });
+      // setContent 只替换文档内容、不改 doc 节点属性：末尾换行需单独写入文档属性（同一事务、不入历史）
+      if (editor.schema.topNodeType.spec.attrs?.trailingNewline) {
+        const trailing = trailingNewlineOf(markdown);
+        chain.command(({ tr }) => {
+          if (tr.doc.attrs.trailingNewline !== trailing) tr.setDocAttribute('trailingNewline', trailing);
+          return true;
+        });
+      }
+      replaceEditorContent(editor, chain);
+      return true;
     }
 
     // 未装配 MarkdownManager 时保留原兼容路径，配置错误仍由外层容错明确记录。
@@ -483,6 +666,7 @@ export function parseMarkdown(
         },
       }),
     );
+    return true;
   } catch (err) {
     console.error('[NoteBoard] Markdown 解析出现容错，执行安全降级加载:', err);
     try {
@@ -507,6 +691,8 @@ export function parseMarkdown(
         editor.chain().clearContent(false),
       );
     }
+    // 返回 false 告知调用方发生了降级：调用方应回到源码模式，避免把降级后的纯文本当作文档序列化
+    return false;
   }
 }
 
