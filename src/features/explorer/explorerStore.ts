@@ -5,7 +5,7 @@
 
 import { create } from 'zustand';
 import type { FileTreeNode } from '../../core/ipc/types';
-import { sameKey, isSubPath, normalizePath, getPathChain } from './pathUtils';
+import { sameKey, isSubPath, normalizePath, getPathChain, pathKey } from './pathUtils';
 
 interface ExplorerStore {
   /** 当前根路径（null = 未打开任何目录） */
@@ -54,12 +54,12 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
   children: new Map(),
   loading: false,
 
-  isExpanded: (path) => get().expanded.has(normalizePath(path).toLowerCase()),
+  isExpanded: (path) => get().expanded.has(pathKey(path)),
 
-  getChildren: (path) => get().children.get(normalizePath(path).toLowerCase()),
+  getChildren: (path) => get().children.get(pathKey(path)),
 
   toggleExpand: (path, children) => {
-    const key = normalizePath(path).toLowerCase();
+    const key = pathKey(path);
     set((state) => {
       const newExpanded = new Map(state.expanded);
       if (newExpanded.has(key)) {
@@ -72,7 +72,7 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
   },
 
   expand: (path, children) => {
-    const key = normalizePath(path).toLowerCase();
+    const key = pathKey(path);
     set((state) => {
       const newExpanded = new Map(state.expanded);
       newExpanded.set(key, children);
@@ -83,7 +83,7 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
   },
 
   collapse: (path) => {
-    const key = normalizePath(path).toLowerCase();
+    const key = pathKey(path);
     set((state) => {
       const newExpanded = new Map(state.expanded);
       newExpanded.delete(key);
@@ -92,7 +92,7 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
   },
 
   setRoot: (root, rootChildren) => {
-    const key = normalizePath(root).toLowerCase();
+    const key = pathKey(root);
     set(() => {
       const newExpanded = new Map<string, FileTreeNode[]>();
       const newChildren = new Map<string, FileTreeNode[]>();
@@ -114,7 +114,7 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
     })),
 
   updateChildren: (path, children) => {
-    const key = normalizePath(path).toLowerCase();
+    const key = pathKey(path);
     set((state) => {
       const newChildren = new Map(state.children);
       newChildren.set(key, children);
@@ -128,7 +128,7 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
     set(() => {
       // 全量重扫：清空所有缓存，只重新加载根
       const newChildren = new Map<string, FileTreeNode[]>();
-      newChildren.set(normalizePath(root).toLowerCase(), rootChildren);
+      newChildren.set(pathKey(root), rootChildren);
       // 保留 expanded 但清空 children，按需重新加载
       return { children: newChildren };
     });

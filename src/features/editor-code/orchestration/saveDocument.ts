@@ -15,7 +15,7 @@ import { DEFAULT_DRAWIO_XML } from './syncDocumentContent';
 import { onDocumentSaved } from '../../staging/stagingManager';
 import { showToast } from '../../../stores/toastStore';
 import { noteSelfWrite } from '../../explorer/directoryWatcher';
-import { normalizePath } from '../../explorer/pathUtils';
+import { dirnameOf, pathKey } from '../../explorer/pathUtils';
 // 🔴 R01/N02：保存未加载的恢复标签前先按需加载正文；正文出口统一前置屏障
 import { ensureWritableContent } from '../../session/closedWindowSession';
 // 🔴 R3-02：无能力实例时保存前的 pending 物化（J2 未物化输入是正文权威）
@@ -31,6 +31,24 @@ import {
   enqueueDocumentWrite,
 } from '../../session/documentSession';
 
+// ── 另存为目标路径选择器 ──
+
+/** 另存为目标路径选择器：返回绝对路径，取消返回 null */
+export type SaveAsPathPicker = (options: {
+  /** 建议文件名（含扩展名） */
+  defaultName: string;
+  /** 建议扩展名（不含点） */
+  defaultExtension: string;
+}) => Promise<string | null>;
+
+/** 未注册时使用系统保存对话框（桌面端）；移动端注册应用内命名对话框 */
+let saveAsPathPicker: SaveAsPathPicker | null = null;
+
+/** 注册/清除另存为路径选择器 */
+export function setSaveAsPathPicker(picker: SaveAsPathPicker | null): void {
+  saveAsPathPicker = picker;
+}
+
 // ── 保存单个文档 ──
 
 /** 🔴 N03：最近一次保存的身份迁移结果（另存为：原 key → 新 key）；
@@ -44,9 +62,9 @@ export function takeLastSaveIdentityMove(): { from: string; to: string } | null 
   return move;
 }
 
-/** 规范化路径身份比较（Windows 大小写不敏感） */
+/** 规范化路径身份比较（Windows 大小写不敏感，Android 等 POSIX 平台大小写敏感） */
 function samePathIdentity(a: string, b: string): boolean {
-  return normalizePath(a).toLowerCase() === normalizePath(b).toLowerCase();
+  return pathKey(a) === pathKey(b);
 }
 
 export async function saveDocument(docKey: string): Promise<boolean> {
@@ -236,10 +254,13 @@ export async function saveAs(originalKey: string, _content: string): Promise<boo
   const defaultPath = doc?.displayName || `未命名.${defaultExtension}`;
 
   try {
-    const selectedPath = await save({
-      defaultPath,
-      filters,
-    });
+    // 移动端由应用内命名对话框决定目标路径（系统保存对话框返回 content:// 无法按路径写盘）
+    const selectedPath = saveAsPathPicker
+      ? await saveAsPathPicker({ defaultName: defaultPath, defaultExtension })
+      : await save({
+          defaultPath,
+          filters,
+        });
 
     if (!selectedPath) return false;
 
@@ -340,7 +361,8 @@ export async function saveAs(originalKey: string, _content: string): Promise<boo
       if (finalContent === null || finalContent === saveContent) finalContent = saveContent;
 
       const displayName = selectedPath.split(/[\\/]/).pop() ?? selectedPath;
-      const dirPath = selectedPath.substring(0, selectedPath.lastIndexOf('\\')) || selectedPath;
+      // 按平台分隔符取父目录（Windows 反斜杠 / Android 正斜杠）
+      const dirPath = dirnameOf(selectedPath) || selectedPath;
 
       if (originalKey !== selectedPath) {
         // 🔴 S09：文档身份迁移——会话版本/写队列随新 key 接管；旧 key 在途任务先排空，

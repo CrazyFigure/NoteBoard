@@ -57,6 +57,7 @@ export function MarkdownModeToggle({ viewMode, onToggle }: MarkdownModeTogglePro
       {/* 左下角不可见感应热区 200×120px，便于鼠标移向左下角时平滑唤出 */}
       <div
         ref={hotZoneRef}
+        className="nb-md-mode-toggle"
         style={{
           position: 'absolute',
           bottom: 0,
@@ -70,6 +71,7 @@ export function MarkdownModeToggle({ viewMode, onToggle }: MarkdownModeTogglePro
 
       {/* 悬浮胶囊组件本体 */}
       <div
+        className="nb-md-mode-toggle"
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         style={{

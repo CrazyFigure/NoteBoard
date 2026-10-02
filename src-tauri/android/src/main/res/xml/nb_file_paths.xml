@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- NoteBoard 分享文件可访问的目录：应用私有数据/缓存，以及获得所有文件访问权限后的外部存储 -->
+<paths>
+    <files-path name="files" path="." />
+    <cache-path name="cache" path="." />
+    <external-path name="external" path="." />
+    <root-path name="root" path="." />
+</paths>

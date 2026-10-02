@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { lazy, Suspense } from 'react';
 import { AppShell } from './components/AppShell';
+import { IS_MOBILE_UI } from './core/platform';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { TooltipProvider } from './components/Tooltip';
 import { useSettingsStore } from './stores/settingsStore';
@@ -54,6 +55,10 @@ const FavoritesManagerModal = lazy(() =>
 );
 const AddFavoriteModal = lazy(() =>
   import('./features/favorites/AddFavoriteModal').then((m) => ({ default: m.AddFavoriteModal })),
+);
+// 移动端界面独立分包：桌面构建入口不加载移动端外壳
+const MobileShell = lazy(() =>
+  import('./mobile/MobileShell').then((m) => ({ default: m.MobileShell })),
 );
 
 /** 一旦 open 变 true 则永久返回 true（弹窗装载后保持挂载，保留关闭动画） */
@@ -376,7 +381,14 @@ export default function App() {
     <ErrorBoundary>
       <TooltipProvider delayDuration={100} skipDelayDuration={300}>
         <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', position: 'relative' }}>
-          <AppShell />
+          {/* 移动端（Android 或桌面强制移动布局调试）使用栈式导航外壳，其余复用同一启动流程与文档模型 */}
+          {IS_MOBILE_UI ? (
+            <Suspense fallback={null}>
+              <MobileShell />
+            </Suspense>
+          ) : (
+            <AppShell />
+          )}
           {/* 🔴 S05：全局弹窗按需装载；首开前不进入首屏闭包 */}
           {settingsEverOpened && (
             <Suspense fallback={null}>

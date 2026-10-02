@@ -2,6 +2,7 @@
 // 模块装配入口
 // 分层见 docs/04-技术架构设计.md §1.1
 
+pub mod app_dirs;
 pub mod dto;
 pub mod state;
 pub mod path;
@@ -17,22 +18,41 @@ pub mod updater;
 pub mod staging;
 pub mod favorites;
 pub mod perf;
+pub mod mobile_bridge;
 
 use state::AppState;
 use std::sync::Mutex;
 
-/// 应用入口
+/// 应用入口（桌面端由 main.rs 调用；移动端由 mobile_entry_point 宏生成的原生入口调用）
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        // 🔴 single-instance 必须第一个注册
-        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            bootstrap::single_instance::handle_second_instance(app, argv);
-        }))
+    // 移动端没有 main()：性能诊断原点在此初始化（桌面端已在 main 第一行初始化，避免覆盖进程起点）
+    #[cfg(mobile)]
+    perf::init();
+
+    let builder = tauri::Builder::default();
+
+    // 🔴 single-instance 必须第一个注册（仅桌面端；Android 由系统保证单 Activity）
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+        bootstrap::single_instance::handle_second_instance(app, argv);
+    }));
+
+    let builder = builder
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_os::init())
-        .plugin(tauri_plugin_window_state::Builder::new().build())
+        .plugin(tauri_plugin_os::init());
+
+    // 窗口尺寸/位置记忆仅桌面端有意义
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_window_state::Builder::new().build());
+
+    // Android 原生桥接（所有文件访问权限、外部文件收件、系统分享）
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(mobile_bridge::plugin());
+
+    builder
         .manage(Mutex::new(AppState::default()))
         .setup(|app| {
             // 🔴 诊断 span：setup 钩子的真实执行区间（不含 WebView 创建提前量）
@@ -115,6 +135,14 @@ pub fn run() {
             perf::commands::record_web_spans,
             perf::commands::dump_perf_spans,
             perf::commands::is_perf_spans_enabled,
+            // 平台信息与移动端原生桥接
+            mobile_bridge::commands::get_platform_info,
+            mobile_bridge::commands::ensure_default_workspace,
+            mobile_bridge::commands::request_all_files_access,
+            mobile_bridge::commands::take_incoming_files,
+            mobile_bridge::commands::share_file,
+            mobile_bridge::commands::move_app_to_background,
+            mobile_bridge::commands::set_system_bar_style,
         ])
         .on_window_event(|window, event| {
             window::manager::on_window_event(window, event)

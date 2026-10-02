@@ -10,7 +10,7 @@ import {
   clearAllDocumentHistories,
   clearDocumentHistory,
 } from '../features/history/documentHistory';
-import { normalizePath } from '../features/explorer/pathUtils';
+import { normalizePath, pathKey, PATH_SEP } from '../features/explorer/pathUtils';
 
 export interface Document {
   /** 规范化路径 key */
@@ -245,18 +245,19 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
 
   // 批量更新指定目录下所有已打开文档的路径
   renameDirectory: (oldDir, newDir) => {
-    const normOld = normalizePath(oldDir).toLowerCase();
+    // 路径比较键按平台区分大小写（Windows 不敏感 / Android 敏感），分隔符随平台
+    const normOld = pathKey(oldDir);
     const normNew = normalizePath(newDir);
     set((state) => {
       let changed = false;
       const newMap = new Map<string, Document>();
       state.documents.forEach((doc, key) => {
         const normKey = normalizePath(key);
-        if (normKey.toLowerCase().startsWith(normOld + '\\') || normKey.toLowerCase() === normOld) {
+        if (pathKey(normKey).startsWith(normOld + PATH_SEP) || pathKey(normKey) === normOld) {
           changed = true;
           const rel = normKey.substring(normOld.length);
           const updatedKey = normNew + rel;
-          const lastSlash = updatedKey.lastIndexOf('\\');
+          const lastSlash = updatedKey.lastIndexOf(PATH_SEP);
           const updatedDirPath = lastSlash > 0 ? updatedKey.substring(0, lastSlash) : normNew;
           newMap.set(updatedKey, {
             ...doc,

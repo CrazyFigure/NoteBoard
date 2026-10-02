@@ -6,11 +6,9 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+// 应用数据目录统一由 app_dirs 提供（桌面兼容 APPDATA 下的 NoteBoard 目录，移动端为应用私有目录）
 fn app_data_dir() -> PathBuf {
-    let base = std::env::var("APPDATA")
-        .or_else(|_| std::env::var("HOME"))
-        .unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(base).join("NoteBoard")
+    crate::app_dirs::app_data_dir()
 }
 
 fn favorites_path() -> PathBuf {

@@ -7,6 +7,7 @@ import * as ipc from '../../core/ipc/commands';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useExplorerStore } from '../explorer/explorerStore';
+import { joinPath } from '../explorer/pathUtils';
 import { showToast } from '../../stores/toastStore';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readFile } from '@tauri-apps/plugin-fs';
@@ -62,8 +63,9 @@ export async function handlePastedImageFile(
 
   // 1. 若文档已保存（拥有物理目录），直接写入本地磁盘图片目录
   if (docDirPath) {
-    const targetDir = `${docDirPath}\\${imageDirName}`;
-    const targetPath = `${targetDir}\\${fileName}`;
+    // 按平台分隔符拼接（Windows 反斜杠 / Android 正斜杠）
+    const targetDir = joinPath(docDirPath, imageDirName);
+    const targetPath = joinPath(targetDir, fileName);
 
     try {
       // 读取图片二进制字节流
@@ -141,7 +143,7 @@ export async function pickAndSaveLocalImage(
       const safeBaseName = sanitizeFileName(sourceFileName.replace(/\.[^.]+$/, '')) || 'image';
       const newFileName = `${Date.now()}_${safeBaseName}.${ext}`;
 
-      const targetPath = `${docDirPath}\\${imageDirName}\\${newFileName}`;
+      const targetPath = joinPath(joinPath(docDirPath, imageDirName), newFileName);
 
       try {
         // 读取本地文件二进制字节并写入目标位置

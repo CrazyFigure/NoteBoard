@@ -146,6 +146,7 @@ export function EditorContextMenu({
       {/* ── 主右键菜单容器 ── */}
       <div
         ref={menuRef}
+        className="nb-context-menu"
         style={{
           position: 'fixed',
           top: Math.max(adjustedY, 40),
@@ -725,6 +726,7 @@ export function EditorContextMenu({
       {activeSubmenu && (
         <div
           ref={submenuRef}
+          className="nb-context-menu"
           style={{
             position: 'fixed',
             top: Math.min(submenuPos.top, window.innerHeight - 300),

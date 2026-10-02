@@ -31,6 +31,7 @@ import type {
   SessionSnapshot,
   FontPackStatus,
   FavoritesData,
+  PlatformInfo,
 } from './types';
 
 // ── 窗口（S04 打开队列 + 迁移协议） ──
@@ -400,3 +401,40 @@ export function dumpPerfSpans(reason: string): Promise<string | null> {
   return invoke<string | null>('dump_perf_spans', { reason });
 }
 
+
+// ── 平台信息与移动端原生桥接 ──
+
+/** 获取平台信息（只读） */
+export function getPlatformInfo(): Promise<PlatformInfo> {
+  return invoke<PlatformInfo>('get_platform_info');
+}
+
+/** 确保默认工作区存在（首次创建写入欢迎笔记），返回路径 */
+export function ensureDefaultWorkspace(): Promise<string> {
+  return invoke<string>('ensure_default_workspace');
+}
+
+/** 申请外部存储完整访问权限（Android 跳转系统设置页） */
+export function requestAllFilesAccess(): Promise<void> {
+  return invoke<void>('request_all_files_access');
+}
+
+/** 取出外部传入（打开方式 / 分享到本应用）的文件路径 */
+export function takeIncomingFiles(): Promise<string[]> {
+  return invoke<string[]>('take_incoming_files');
+}
+
+/** 调用系统分享面板分享文件（移动端） */
+export function shareFile(path: string): Promise<void> {
+  return invoke<void>('share_file', { path });
+}
+
+/** 将应用退到后台（Android 首页返回键） */
+export function moveAppToBackground(): Promise<void> {
+  return invoke<void>('move_app_to_background');
+}
+
+/** 设置系统栏背景色与图标深浅（Android，跟随应用主题） */
+export function setSystemBarStyle(color: string, dark: boolean): Promise<void> {
+  return invoke<void>('set_system_bar_style', { color, dark });
+}

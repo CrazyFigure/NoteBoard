@@ -27,6 +27,7 @@ import { queuedAutoSave, submitCapturedContent } from '../session/documentSessio
 import { takeViewState } from '../session/editorSuspension';
 import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
 import type { EditorCapabilities } from '../../core/editor/editorTypes';
+import { IS_MOBILE_UI } from '../../core/platform';
 import {
   getDocumentHistoryAvailability,
   initializeDocumentHistory,
@@ -199,7 +200,8 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
         // 队列尚未执行时用户可能已经再次切换，过期请求可直接跳过
         if (desiredPresentationModeRef.current !== enabled) return;
         try {
-          await getCurrentWindow().setFullscreen(enabled);
+          // 移动端应用本身即全屏，演示模式只隐藏外壳 chrome（窗口全屏为桌面专属 API）
+          if (!IS_MOBILE_UI) await getCurrentWindow().setFullscreen(enabled);
         } catch (error) {
           console.error(enabled ? '进入画板全屏演示失败:' : '退出画板全屏演示失败:', error);
           // 仅回滚仍是最新意图的失败请求，避免破坏后续切换结果
@@ -239,7 +241,7 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
         .catch(() => undefined)
         .then(async () => {
           try {
-            await getCurrentWindow().setFullscreen(false);
+            if (!IS_MOBILE_UI) await getCurrentWindow().setFullscreen(false);
           } catch (error) {
             console.error('卸载画板时退出全屏失败:', error);
           }

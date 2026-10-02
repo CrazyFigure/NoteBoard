@@ -14,6 +14,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Windows 会限制后台进程直接抢占焦点，因此在常规 Tauri 聚焦失败时，短暂调整窗口层级，
 /// 确保用户从资源管理器打开文件后能立即看到 NoteBoard，同时不会让窗口永久保持置顶。
 pub fn bring_to_front(window: &tauri::WebviewWindow) {
+    // 最小化/还原仅桌面端存在（移动端单窗口常驻前台）
+    #[cfg(desktop)]
     let _ = window.unminimize();
     let _ = window.show();
 
@@ -109,6 +111,7 @@ pub fn now_ms() -> i64 {
 
 /// 创建新窗口
 /// 🔴 必须切线程：在同步上下文中调 build() 会死锁
+#[cfg(desktop)]
 pub fn create_window(app: &tauri::AppHandle, label: String) -> Result<(), String> {
     let handle = app.clone();
     let l = label.clone();
@@ -131,6 +134,12 @@ pub fn create_window(app: &tauri::AppHandle, label: String) -> Result<(), String
     });
 
     Ok(())
+}
+
+/// 移动端只有一个常驻窗口（Activity），不支持多窗口；前端在移动端隐藏新窗口/拆分标签入口
+#[cfg(mobile)]
+pub fn create_window(_app: &tauri::AppHandle, _label: String) -> Result<(), String> {
+    Err("移动端不支持多窗口".to_string())
 }
 
 /// 注册窗口到 AppState

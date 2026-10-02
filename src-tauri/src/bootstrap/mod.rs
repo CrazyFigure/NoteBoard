@@ -1,3 +1,5 @@
+// 单实例插件仅桌面端存在（Android 由系统保证单 Activity）
+#[cfg(desktop)]
 pub mod single_instance;
 pub mod cli_args;
 
@@ -9,6 +11,17 @@ use tauri::Manager;
 
 /// setup 钩子
 pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    // 移动端：应用数据与缓存目录必须来自系统分配的应用私有目录（必须先于任何设置/会话读写）
+    #[cfg(mobile)]
+    {
+        if let Ok(data_dir) = app.path().app_data_dir() {
+            crate::app_dirs::set_data_root(data_dir);
+        }
+        if let Ok(cache_dir) = app.path().app_cache_dir() {
+            crate::app_dirs::set_cache_root(cache_dir);
+        }
+    }
+
     #[cfg(debug_assertions)]
     if let Some(window) = app.get_webview_window("nb-main") {
         // 开发版可与安装版并行运行，标题必须明确区分，避免调试时误操作正式实例。

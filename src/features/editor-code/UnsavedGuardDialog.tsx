@@ -84,8 +84,10 @@ export function UnsavedGuardDialog({
     border: '1px solid var(--editor-border)',
     borderRadius: 'var(--radius-lg)',
     padding: 24,
-    minWidth: 460,
-    maxWidth: 560,
+    // 桌面保持 460px 起始宽度；窄屏（手机）按视口收缩，避免横向溢出
+    minWidth: 'min(460px, calc(100vw - 32px))',
+    maxWidth: 'min(560px, calc(100vw - 32px))',
+    boxSizing: 'border-box',
     boxShadow: 'var(--shadow-lg)',
     color: 'var(--editor-text)',
     fontFamily: 'var(--content-font-family)',
@@ -118,7 +120,7 @@ export function UnsavedGuardDialog({
           </ul>
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8, marginTop: 20 }}>
           {/* 取消操作：取消关闭拦截并停留在当前页面 */}
           <button
             type="button"

@@ -190,6 +190,7 @@ export function SearchReplaceBar() {
     <div
       role="search"
       aria-label="查找与替换"
+      className="nb-search-bar"
       style={{
         position: 'absolute',
         top: 12,
