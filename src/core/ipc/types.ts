@@ -294,7 +294,12 @@ export interface EditorSettings {
   showWhitespace: boolean;
   // 显示换行符号（↵）
   showLineEndings: boolean;
+  // Markdown 进入可视化模式时的格式规范化策略（缺省视为 ask）
+  markdownNormalization?: MarkdownNormalizationPolicy;
 }
+
+/** Markdown 规范化策略：每次询问 / 总是规范化 / 保持源码模式 */
+export type MarkdownNormalizationPolicy = 'ask' | 'always' | 'never';
 
 export interface FileSettings {
   // 自动保存设置：Markdown / 画板 / 其他文本（默认均关闭，即手动保存）
@@ -457,3 +462,18 @@ export interface FavoritesData {
 }
 
 
+
+// ── 平台信息与移动端桥接 ──
+
+/** 平台信息（get_platform_info） */
+export interface PlatformInfo {
+  /** windows / macos / linux / android / ios */
+  platform: string;
+  isMobile: boolean;
+  /** 默认笔记工作区路径（移动端应用私有目录；桌面端仅调试强制移动布局时使用） */
+  defaultWorkspace: string;
+  /** 外部存储根目录（Android，例如 /storage/emulated/0） */
+  externalRoot: string;
+  /** 是否已获得外部存储完整访问权限（Android） */
+  allFilesAccess: boolean;
+}

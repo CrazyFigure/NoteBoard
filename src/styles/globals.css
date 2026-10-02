@@ -1151,6 +1151,59 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   line-height: var(--mono-line-height, 1.5);
   tab-size: 2;
 }
+/* 原样保留块（front matter / 块级 HTML）：只读源码样式，右上角标注类型，选中时描边强调 */
+.ProseMirror pre.nb-md-raw-block {
+  position: relative;
+  color: var(--editor-text-secondary, var(--code-block-text));
+  white-space: pre-wrap;
+  word-break: break-word;
+  opacity: 0.85;
+  transition: opacity var(--transition-fast), border-color var(--transition-fast);
+}
+.ProseMirror pre.nb-md-raw-block::after {
+  content: attr(data-label);
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  font-family: var(--ui-font-family, inherit);
+  font-size: 11px;
+  color: var(--editor-text-muted);
+  pointer-events: none;
+}
+.ProseMirror pre.nb-md-raw-block:hover {
+  opacity: 1;
+}
+.ProseMirror pre.nb-md-raw-block.ProseMirror-selectednode {
+  border-color: var(--editor-accent);
+  opacity: 1;
+}
+/* 脚注：引用为上标，定义为弱化的小号原文 */
+.ProseMirror .nb-md-footnote-ref {
+  color: var(--editor-accent);
+  font-size: 0.75em;
+  cursor: default;
+}
+.ProseMirror .nb-md-footnote-definition {
+  font-size: 0.875em;
+  color: var(--editor-text-secondary, inherit);
+  white-space: pre-wrap;
+  margin: 4px 0;
+}
+/* 行内原始 HTML 标签：弱化的等宽小字，提示该处为源码标签 */
+.ProseMirror code.nb-md-raw-inline {
+  font-size: 0.8em;
+  color: var(--editor-text-muted);
+  background: transparent;
+  border: 1px dashed var(--editor-border);
+}
+.ProseMirror code.nb-md-raw-inline.ProseMirror-selectednode {
+  border-color: var(--editor-accent);
+}
+.ProseMirror .nb-md-footnote-definition.ProseMirror-selectednode,
+.ProseMirror .nb-md-footnote-ref.ProseMirror-selectednode {
+  outline: 1px solid var(--editor-accent);
+  border-radius: var(--radius-sm);
+}
 .ProseMirror pre code {
   background: transparent !important;
   color: var(--code-block-text);
@@ -1769,6 +1822,110 @@ button:not(:disabled) {
   color: var(--editor-text-muted);
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* 通用模态框：遮罩 + 居中卡片（移动端在 [data-platform=mobile] 下改为底部面板） */
+.nb-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.nb-modal-dialog {
+  background: var(--editor-surface);
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-lg);
+  padding: 20px 22px;
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+  color: var(--editor-text);
+}
+
+/* Markdown 规范化确认框 */
+.nb-md-normalize-summary {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--editor-text-secondary);
+  background: var(--editor-bg);
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+}
+.nb-md-normalize-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--accent-strong);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+.nb-md-normalize-toggle:hover {
+  background: var(--editor-hover, rgba(127, 127, 127, 0.1));
+}
+.nb-md-normalize-toggle:active {
+  transform: scale(0.97);
+}
+.nb-md-normalize-diff {
+  margin-top: 8px;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-md);
+  padding: 6px 8px;
+}
+.nb-md-normalize-hunk + .nb-md-normalize-hunk {
+  margin-top: 8px;
+}
+.nb-md-normalize-hunk-line {
+  font-size: 11px;
+  color: var(--editor-text-muted);
+  margin-bottom: 2px;
+}
+.nb-md-normalize-hunk pre {
+  margin: 0;
+  padding: 2px 6px;
+  font-family: var(--mono-font-family);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-radius: var(--radius-sm);
+}
+.nb-md-normalize-before {
+  background: color-mix(in srgb, var(--error-500, #ef4444) 12%, transparent);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--error-500, #ef4444) 50%, transparent);
+}
+.nb-md-normalize-after {
+  margin-top: 2px !important;
+  background: color-mix(in srgb, var(--success-500, #22c55e) 14%, transparent);
+}
+.nb-md-normalize-remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--editor-text-secondary);
+  cursor: pointer;
+}
+.nb-md-normalize-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
 }
 
 /* prefers-reduced-motion */
