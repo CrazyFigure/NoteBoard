@@ -15,6 +15,7 @@ import {
 import { Tooltip } from './Tooltip';
 import type { UpdateCheckResult, UpdateDownloadProgress } from '../core/ipc/types';
 import * as ipc from '../core/ipc/commands';
+import { IS_NATIVE_MOBILE } from '../core/platform';
 
 interface UpdateModalProps {
   isOpen: boolean;
@@ -350,7 +351,8 @@ export function UpdateModal({
                 <span style={{ fontSize: 12, fontWeight: 600 }}>更新日志</span>
                 <div
                   style={{
-                    maxHeight: 180,
+                    // 更新日志区域加高，一屏可见更多条目；矮屏时按视口高度收缩，避免弹窗溢出
+                    maxHeight: 'min(260px, 36vh)',
                     overflowY: 'auto',
                     padding: '10px 12px',
                     background: 'var(--editor-surface)',
@@ -519,7 +521,8 @@ export function UpdateModal({
               }}
             >
               <Download size={14} />
-              <span>{downloading ? '正在下载' : '下载并安装'}</span>
+              {/* 移动端交给浏览器下载 APK，由系统安装器完成升级 */}
+              <span>{IS_NATIVE_MOBILE ? '前往下载' : downloading ? '正在下载' : '下载并安装'}</span>
             </button>
           )}
         </div>
