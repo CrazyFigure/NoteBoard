@@ -88,6 +88,34 @@ pnpm tauri dev
 pnpm tauri build
 ```
 
+### 安卓版（arm64 APK）
+
+安卓工程（`src-tauri/gen/android`）不入库，由 GitHub Actions 在发布时执行 `tauri android init` 生成，再经 `scripts/patch-android.mjs` 注入原生桥接（`src-tauri/android`）、存储权限、“用其他应用打开/分享到 NoteBoard”与签名配置。推送 `v*` 标签后，APK 会与 Windows 安装包上传到同一个 Release；手动触发工作流时可在 Actions 产物中下载。
+
+正式签名需在仓库 **Settings → Secrets and variables → Actions** 中配置（未配置时使用 debug 签名，可安装但升级需卸载重装）：
+
+| Secret | 说明 |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | keystore 文件的 Base64 内容 |
+| `ANDROID_KEYSTORE_PASSWORD` | keystore 密码 |
+| `ANDROID_KEY_ALIAS` | 密钥别名 |
+| `ANDROID_KEY_PASSWORD` | 密钥密码（留空时与 keystore 密码相同） |
+
+```bash
+# 生成 keystore（请妥善保管，丢失后无法以相同签名升级）
+keytool -genkeypair -v -keystore noteboard.jks -keyalg RSA -keysize 2048 -validity 36500 -alias noteboard
+# 转为 Base64 后粘贴到 ANDROID_KEYSTORE_BASE64
+base64 -w 0 noteboard.jks        # Linux / Git Bash
+# PowerShell: [Convert]::ToBase64String([IO.File]::ReadAllBytes("noteboard.jks"))
+```
+
+在浏览器中预览移动端界面（无需安卓环境，IPC 为内存模拟）：
+
+```bash
+TAURI_ENV_PLATFORM=android pnpm vite --port 1437
+# 打开 http://127.0.0.1:1437/?mock=1 ，用浏览器开发者工具切换到手机尺寸
+```
+
 ## 开源协议
 
 NoteBoard 遵循 **GPL-3.0-only** 开源许可协议。
