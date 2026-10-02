@@ -2,17 +2,17 @@
 // 三栏布局：资源管理器 | 编辑区 | 大纲
 // 详见 docs/07-UI布局与交互规范.md §1
 
-import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef } from 'react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import type { PanelSize } from 'react-resizable-panels';
-import type { Editor } from '@tiptap/core';
 import { TitleBar } from './titlebar/TitleBar';
 import { StatusBar } from './statusbar/StatusBar';
 import { WelcomeScreen } from './WelcomeScreen';
-import { UnsupportedView } from './UnsupportedView';
 import { ToastContainer } from './Toast';
 import { RailToggle } from './rail/RailToggle';
 import { FileDropOverlay } from './FileDropOverlay';
+import { EditorStack } from './shell/EditorStack';
+import { useCloseGuardHandlers, useMarkdownEditorRegistry, useRestoredTabLoader } from './shell/shellHooks';
 import { useWindowStore } from '../stores/windowStore';
 import {
   useLayoutStore,
@@ -21,12 +21,7 @@ import {
   OUTLINE_MIN,
   OUTLINE_MAX,
 } from '../stores/layoutStore';
-// 🔴 S05：全部编辑器按类型懒加载（EditorHost + editorLoaders），壳不再静态导入任何编辑器
-import { EditorHost } from '../features/editor-host/EditorHost';
-// 🔴 S10：会话恢复的轻量标签按需加载（激活时才读盘）
-import { loadRestoredTab } from '../features/session/closedWindowSession';
-// 用户已确认：已打开内核保留至关闭，切换不进入回收调度。
-import { EditorActivityContext } from '../core/editor/EditorActivityContext';
+// 🔴 S05：全部编辑器按类型懒加载（EditorStack → EditorHost + editorLoaders），壳不再静态导入任何编辑器
 import { OutlinePanel } from '../features/outline/OutlinePanel';
 import { UnsavedGuardDialog } from '../features/editor-code/UnsavedGuardDialog';
 import { Explorer } from '../features/explorer/Explorer';
@@ -36,8 +31,7 @@ import { useSearchStore } from '../stores/searchStore';
 // 🔴 S03：快捷键与工具栏统一走 core 能力注册表，不再从编辑器组件导入实例 getter
 import { getEditorCapabilities } from '../core/editor/editorRegistry';
 import { registerShortcut } from '../core/shortcuts';
-import { saveDocument, takeLastSaveIdentityMove } from '../features/editor-code/orchestration/saveDocument';
-import { performWindowClose } from '../features/window/windowManager';
+import { saveDocument } from '../features/editor-code/orchestration/saveDocument';
 import {
   openFileDialog,
   openFolderDialog,
@@ -56,13 +50,6 @@ import {
   newText,
 } from '../features/welcome/welcomeActions';
 import { useFavoritesStore } from '../features/favorites/favoritesStore';
-import { getCurrentWindow } from '@tauri-apps/api/window';
-import { discardStagedDocuments, stashPendingDocuments } from '../features/staging/stagingManager';
-import { showToast } from '../stores/toastStore';
-import { hasUnsavedWork } from '../features/staging/stagingPolicy';
-import {
-  saveCurrentWindowSnapshot,
-} from '../features/session/closedWindowSession';
 import { MissingFileDialog } from '../features/external/MissingFileDialog';
 import { checkActiveDocumentStillExists } from '../features/external/missingFileGuard';
 
@@ -107,145 +94,20 @@ export function AppShell(_props: { children?: React.ReactNode }) {
     toggleOutline,
   } = useLayoutStore();
 
-  const [activeEditor, setActiveEditor] = useState<Editor | null>(null);
-  // 所有保活 Markdown 内核使用稳定回调登记实例。切换标签时直接按 activeKey 取实例，
-  // 避免旧标签 effect 的迟到 null 覆盖新标签 editor，导致大纲绑定错误或反复重挂监听。
-  const markdownEditorsRef = useRef(new Map<string, Editor>());
-  const markdownEditorReadyHandlersRef = useRef(new Map<string, (editor: Editor | null) => void>());
-
-  /** 为每个 Markdown 标签返回身份稳定的内核就绪回调，并维护活动大纲的唯一 editor。 */
-  const getMarkdownEditorReadyHandler = useCallback((docKey: string) => {
-    const existing = markdownEditorReadyHandlersRef.current.get(docKey);
-    if (existing) return existing;
-
-    const handler = (editor: Editor | null) => {
-      if (editor) {
-        markdownEditorsRef.current.set(docKey, editor);
-      } else {
-        markdownEditorsRef.current.delete(docKey);
-      }
-      if (useWindowStore.getState().activeKey === docKey) {
-        setActiveEditor((current) => current === editor ? current : editor);
-      }
-    };
-    markdownEditorReadyHandlersRef.current.set(docKey, handler);
-    return handler;
-  }, []);
+  // Markdown 内核登记（大纲数据源）：桌面/移动外壳共用
+  const { activeEditor, getMarkdownEditorReadyHandler } = useMarkdownEditorRegistry(tabs, activeKey);
 
   const explorerWidthRef = useRef<number>(explorerWidth);
   const outlineWidthRef = useRef<number>(outlineWidth);
 
-  // 标签激活变化只切换大纲的数据源，不修改或重建任何 Markdown 编辑器内核。
-  useEffect(() => {
-    const nextEditor = activeKey ? markdownEditorsRef.current.get(activeKey) ?? null : null;
-    setActiveEditor((current) => current === nextEditor ? current : nextEditor);
-  }, [activeKey]);
-
-  // 标签真正关闭后释放回调与实例引用，保活期间则维持身份稳定。
-  useEffect(() => {
-    const openKeys = new Set(tabs.map((tab) => tab.key));
-    for (const key of markdownEditorReadyHandlersRef.current.keys()) {
-      if (!openKeys.has(key)) {
-        markdownEditorReadyHandlersRef.current.delete(key);
-        markdownEditorsRef.current.delete(key);
-      }
-    }
-  }, [tabs]);
-
-  // 统一关闭拦截状态与操作
-  const pendingCloseKeys = useWindowStore((s) => s.pendingCloseKeys);
-  const confirmCloseBatch = useWindowStore((s) => s.confirmCloseBatch);
-  const clearPendingClose = useWindowStore((s) => s.clearPendingClose);
-
-  // 待关闭列表中处于脏态的标签页列表
-  const dirtyPendingTabs = useMemo(() => {
-    if (pendingCloseKeys.length === 0) return [];
-    return tabs.filter((tab) => pendingCloseKeys.includes(tab.key) && hasUnsavedWork(tab.key));
-  }, [pendingCloseKeys, tabs]);
-
-  // 保存并关闭
-  const handleSaveAndClose = async (keys: string[]) => {
-    // 🔴 N03：另存为会迁移文档身份——逐个保存后用实际新 key 检查脏态与关闭，
-    //    不能继续按原 key 断言（原 key 的标签/文档已随迁移移除）
-    const closeKeys: string[] = [];
-    for (const key of keys) {
-      const ok = await saveDocument(key);
-      if (!ok) {
-        // 用户在另存为对话框中取消了保存，中断关闭流程
-        return;
-      }
-      const move = takeLastSaveIdentityMove();
-      const effectiveKey = move?.from === key ? move.to : key;
-      // 🔴 R12：保存期间又产生新编辑（flush-and-compare 后仍脏）→ 不静默关闭
-      if (hasUnsavedWork(effectiveKey)) {
-        showToast('保存期间有新的修改，请再次保存后关闭', 'warning');
-        return;
-      }
-      closeKeys.push(effectiveKey);
-    }
-    const targetKeys = closeKeys;
-    const willCloseWindow = useWindowStore.getState().isWindowClosing;
-    if (willCloseWindow) {
-      // 窗口级关闭必须在技术性移除标签前记录，否则会把仍打开的标签误判成已独立关闭。
-      try {
-        await saveCurrentWindowSnapshot();
-      } catch (error) {
-        console.error('保存最近文件快照失败:', error);
-        showToast('最近文件记录失败，但文件已经保存', 'warning');
-      }
-      await performWindowClose(getCurrentWindow().label, true);
-    } else {
-      confirmCloseBatch(targetKeys);
-    }
-  };
-
-  // 丢弃修改并关闭
-  const handleDiscardAndClose = async (keys: string[]) => {
-    const targetKeys = [...useWindowStore.getState().pendingCloseKeys];
-    const willCloseWindow = useWindowStore.getState().isWindowClosing;
-    // “不保存”保持彻底丢弃语义，清理由自动关闭保护产生的副本。
-    await discardStagedDocuments(keys);
-    if (willCloseWindow) {
-      try {
-        // 明确丢弃的标签不进入最近文件，其余仍打开标签继续记录。
-        await saveCurrentWindowSnapshot(keys);
-      } catch (error) {
-        console.error('保存最近文件快照失败:', error);
-        showToast('最近文件记录失败，但仍会按“不保存”关闭', 'warning');
-      }
-      await performWindowClose(getCurrentWindow().label, true);
-    } else {
-      confirmCloseBatch(targetKeys);
-    }
-  };
-
-  // 暂存：确认所有目标文档已写入用户设置的位置后才真正移除标签/关闭窗口。
-  const handleStashAndClose = async (keys: string[]) => {
-    try {
-      await stashPendingDocuments({ keys, retain: true });
-    } catch (error) {
-      showToast(`暂存失败，窗口尚未关闭：${error instanceof Error ? error.message : String(error)}`, 'error', 5000);
-      return;
-    }
-    const targetKeys = [...useWindowStore.getState().pendingCloseKeys];
-    const willCloseWindow = useWindowStore.getState().isWindowClosing;
-    if (willCloseWindow) {
-      try {
-        await saveCurrentWindowSnapshot();
-      } catch (error) {
-        console.error('保存最近文件快照失败:', error);
-        showToast('最近文件记录失败，但暂存文件已经保留', 'warning');
-      }
-      await performWindowClose(getCurrentWindow().label, true);
-    } else {
-      confirmCloseBatch(targetKeys);
-    }
-  };
-
-  // 取消关闭
-  const handleCancelClose = () => {
-    clearPendingClose();
-  };
+  // 统一关闭拦截状态与操作（桌面/移动外壳共用）
+  const {
+    dirtyPendingTabs,
+    handleSaveAndClose,
+    handleDiscardAndClose,
+    handleStashAndClose,
+    handleCancelClose,
+  } = useCloseGuardHandlers(tabs);
 
   // 右把手仅 Markdown 显示（不变式 I-17）
   const activeTab = tabs.find((t) => t.key === activeKey);
@@ -256,17 +118,8 @@ export function AppShell(_props: { children?: React.ReactNode }) {
   // 🔴 S05：已移除 AppShell 的全局 Drawio 空闲预热（E 节 8：取消无意图的全编辑器空闲
   //    预热；.drawio 首次打开时由编辑器自身按需加载，远程资源耗时单独统计）
 
-  // 已加载正文的标签直接保持挂载；恢复描述符仍在首次激活后才加载正文与内核。
-  // 🔴 S10：激活会话恢复的轻量标签时按需加载正文（读盘/注册/编辑器加载）
-  useEffect(() => {
-    if (!activeKey) return;
-    const tab = useWindowStore.getState().getTab(activeKey);
-    if (tab?.lazySource) {
-      void loadRestoredTab(activeKey).catch((e) => {
-        console.error('恢复标签加载失败:', e);
-      });
-    }
-  }, [activeKey]);
+  // 🔴 S10：激活会话恢复的轻量标签时按需加载正文
+  useRestoredTabLoader(activeKey);
 
   // Ctrl+S 快捷键注册
   useEffect(() => {
@@ -562,87 +415,13 @@ export function AppShell(_props: { children?: React.ReactNode }) {
                     onNewSql={newSql}
                   />
                 ) : null}
-                {tabs.length > 0 ? (
-                  <div
-                    style={{
-                      flex: 1,
-                      position: 'relative',
-                      width: '100%',
-                      height: '100%',
-                      overflow: 'hidden',
-                      // 🔴 N08：Home 可见时隐藏编辑器容器（视觉隐藏而非卸载）
-                      display: !activeTab ? 'none' : 'block',
-                    }}
-                  >
-                    {tabs.map((tab) => {
-                      const isTabActive = tab.key === activeKey;
-                      const isTransferring = transferringKeys.includes(tab.key);
-
-                      return (
-                        <div
-                          key={tab.key}
-                          style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            width: '100%',
-                            height: '100%',
-                            overflow: 'hidden',
-                            ...(isTransferring
-                              ? { pointerEvents: 'none' as const, opacity: 0.55 }
-                              : {}),
-                            ...(isTabActive
-                              ? { position: 'relative' }
-                              : {
-                                  position: 'absolute',
-                                  top: -99999,
-                                  left: -99999,
-                                  opacity: 0,
-                                  pointerEvents: 'none',
-                                  visibility: 'hidden',
-                                  zIndex: -1,
-                                }),
-                          }}
-                        >
-                          {tab.kind === 'unsupported' ? (
-                            <UnsupportedView
-                              filePath={tab.path ?? tab.key}
-                              fileName={tab.displayName}
-                            />
-                          ) : tab.lazySource ? (
-                            // 🔴 S10：恢复标签正文加载中（点击标签触发；不挂载空编辑器）
-                            <div
-                              style={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: 8,
-                                height: '100%',
-                                background: 'var(--editor-bg)',
-                                color: 'var(--editor-text-muted, #64748b)',
-                                fontFamily: 'var(--ui-font-family, sans-serif)',
-                                fontSize: 13,
-                              }}
-                            >
-                              <span>正在加载「{tab.displayName}」…</span>
-                            </div>
-                          ) : (
-                            // 用户确认的保活策略：稳定宿主随标签关闭才卸载，后台只暂停展示性工作。
-                            <EditorActivityContext.Provider value={isTabActive}>
-                              <EditorHost
-                                tab={tab}
-                                onEditorReady={tab.kind === 'markdown'
-                                  ? getMarkdownEditorReadyHandler(tab.key)
-                                  : undefined}
-                                unsupportedView={null}
-                              />
-                            </EditorActivityContext.Provider>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : null}
+                <EditorStack
+                  tabs={tabs}
+                  activeKey={activeKey}
+                  transferringKeys={transferringKeys}
+                  hasActiveTab={!!activeTab}
+                  getMarkdownEditorReadyHandler={getMarkdownEditorReadyHandler}
+                />
 
                 {/* 右折叠把手（仅 Markdown） */}
                 {!isBoardPresentationMode && tabs.length > 0 && (
