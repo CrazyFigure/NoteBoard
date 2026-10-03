@@ -6,7 +6,9 @@
 // > [!NOTE] / > [!TIP] / > [!IMPORTANT] / > [!WARNING] / > [!CAUTION]
 
 import { Node, mergeAttributes, type JSONContent } from '@tiptap/core';
+import { useEffect, useRef, useState } from 'react';
 import { ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react';
+import { Check, ChevronDown } from 'lucide-react';
 
 export type AlertKind = 'note' | 'tip' | 'important' | 'warning' | 'caution';
 
@@ -15,13 +17,80 @@ const ALERT_HEAD_PATTERN = /^ {0,3}> ?\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][
 const ALERT_START_PATTERN = /(?:^|\n) {0,3}> ?\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*(?:\n|$)/i;
 const ALERT_KINDS_SET = new Set<string>(['note', 'tip', 'important', 'warning', 'caution']);
 
-const ALERT_META: Record<AlertKind, { icon: string; label: string }> = {
-  note: { icon: 'ℹ️', label: 'Note' },
-  tip: { icon: '💡', label: 'Tip' },
-  important: { icon: '❗', label: 'Important' },
-  warning: { icon: '⚠️', label: 'Warning' },
-  caution: { icon: '🔴', label: 'Caution' },
+const ALERT_META: Record<AlertKind, { icon: string; label: string; desc: string }> = {
+  note: { icon: 'ℹ️', label: 'Note', desc: '补充说明' },
+  tip: { icon: '💡', label: 'Tip', desc: '技巧建议' },
+  important: { icon: '❗', label: 'Important', desc: '重要提示' },
+  warning: { icon: '⚠️', label: 'Warning', desc: '注意警告' },
+  caution: { icon: '🔴', label: 'Caution', desc: '高危警告' },
 };
+
+/** 提示块类型切换：右上角轻量胶囊 + 下拉菜单（替代原生下拉框，与编辑器菜单风格统一） */
+function AlertKindPicker({ kind, onChange }: { kind: AlertKind; onChange: (kind: AlertKind) => void }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // 点按外部或按 Esc 关闭菜单
+  useEffect(() => {
+    if (!open) return;
+    const handlePointer = (event: PointerEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as globalThis.Node)) setOpen(false);
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', handlePointer, true);
+    document.addEventListener('keydown', handleKey, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointer, true);
+      document.removeEventListener('keydown', handleKey, true);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="nb-alert-picker">
+      <button
+        type="button"
+        className={`nb-alert-picker-trigger${open ? ' is-open' : ''}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label="切换提示块类型"
+        // 阻止按下时编辑器失焦或移动选区
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className={`nb-alert-picker-dot is-${kind}`} />
+        <span>{ALERT_META[kind].label}</span>
+        <ChevronDown size={13} className="nb-alert-picker-chevron" />
+      </button>
+      {open && (
+        <div className="nb-alert-picker-menu" role="listbox">
+          {ALERT_KINDS.map((item) => (
+            <button
+              key={item}
+              type="button"
+              role="option"
+              aria-selected={item === kind}
+              className={`nb-alert-picker-item${item === kind ? ' is-active' : ''}`}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                onChange(item);
+                setOpen(false);
+              }}
+            >
+              <span className="nb-alert-picker-icon">{ALERT_META[item].icon}</span>
+              <span className="nb-alert-picker-text">
+                <span className="nb-alert-picker-label">{ALERT_META[item].label}</span>
+                <span className="nb-alert-picker-desc">{ALERT_META[item].desc}</span>
+              </span>
+              {item === kind && <Check size={14} className="nb-alert-picker-check" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function AlertComponent({ node, updateAttributes, selected }: NodeViewProps) {
   const kind = (node.attrs.kind as AlertKind) || 'note';
@@ -56,25 +125,7 @@ function AlertComponent({ node, updateAttributes, selected }: NodeViewProps) {
       >
         <span>{meta.icon}</span>
         <span>{meta.label}</span>
-        <select
-          value={kind}
-          onChange={(e) => updateAttributes({ kind: e.target.value })}
-          style={{
-            marginLeft: 'auto',
-            fontSize: 11,
-            padding: '2px 4px',
-            border: '1px solid var(--editor-border)',
-            borderRadius: 3,
-            background: 'transparent',
-            color: 'var(--editor-text)',
-          }}
-        >
-          {Object.entries(ALERT_META).map(([k, v]) => (
-            <option key={k} value={k}>
-              {v.label}
-            </option>
-          ))}
-        </select>
+        <AlertKindPicker kind={kind} onChange={(next) => updateAttributes({ kind: next })} />
       </div>
       {/* 正文挂载点：缺少 NodeViewContent 时 ProseMirror 会把正文渲染到提示框外部 */}
       <NodeViewContent className="nb-alert-content" style={{ flex: 1, fontSize: 'var(--content-font-size)' }} />

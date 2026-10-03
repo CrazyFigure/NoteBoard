@@ -15,6 +15,11 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* 禁止横向越界滚动触发浏览器前进/后退手势（与首页左右滑动分页冲突） */
+html[data-platform='mobile'] {
+  overscroll-behavior: none;
+}
+
 [data-platform='mobile'] body {
   overscroll-behavior: none;
   /* 避免长按文字触发系统选择菜单，编辑区域内由 contenteditable 自行允许选择 */
@@ -263,10 +268,59 @@
   transition: background var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
+/* 选中态的底色由滑动指示条承担，这里只改文字颜色 */
 .nb-m-segment.is-active {
-  background: var(--editor-bg);
   color: var(--editor-text);
+}
+
+.nb-m-segmented {
+  position: relative;
+}
+
+.nb-m-segment {
+  position: relative;
+  z-index: 1;
+}
+
+.nb-m-segment-indicator {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  border-radius: calc(var(--radius-lg) - 2px);
+  background: var(--editor-bg);
   box-shadow: var(--shadow-sm);
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+/* 首页左右滑动分页 */
+.nb-m-pager {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  /* 纵向滚动交给浏览器，横向拖动由分页手势接管 */
+  touch-action: pan-y;
+}
+
+.nb-m-pager-track {
+  display: flex;
+  height: 100%;
+  will-change: transform;
+}
+
+.nb-m-pager-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* 面包屑自身可横向滚动 */
+.nb-m-breadcrumb {
+  touch-action: pan-x;
 }
 
 .nb-m-segment:active:not(.is-active) {
@@ -991,4 +1045,88 @@
   max-width: calc(100vw - 16px);
   max-height: 70dvh;
   overflow-y: auto;
+}
+
+/* 关闭确认按钮：窄屏改为两行两列（取消 / 不保存，暂存 / 保存），按钮等宽、文字居中 */
+@media (max-width: 520px) {
+  .nb-guard-actions {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px !important;
+  }
+  .nb-guard-actions > button {
+    justify-content: center;
+    min-height: 44px;
+    font-size: 14px !important;
+  }
+}
+
+/* ── 多维表格：窄屏 / 横屏工具栏 ── */
+
+/* 顶部工具栏改为两行：第一行视图 Tab（可横向滚动），第二行搜索 + 新建记录 */
+[data-platform='mobile'] .nb-bitable-toolbar {
+  height: auto !important;
+  min-height: 0 !important;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px !important;
+}
+
+[data-platform='mobile'] .nb-bitable-views {
+  flex: 1 1 100% !important;
+  min-width: 0;
+  scrollbar-width: none;
+}
+
+[data-platform='mobile'] .nb-bitable-views::-webkit-scrollbar {
+  display: none;
+}
+
+[data-platform='mobile'] .nb-bitable-actions {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+[data-platform='mobile'] .nb-bitable-search {
+  flex: 1;
+  width: auto !important;
+  min-width: 0;
+  min-height: 34px;
+}
+
+[data-platform='mobile'] .nb-bitable-search input {
+  font-size: 14px !important;
+}
+
+/* 导出 CSV 使用频率低，移动端隐藏以让出空间 */
+[data-platform='mobile'] .nb-bitable-export {
+  display: none !important;
+}
+
+/* 按钮与标签文字不折行（避免"分组依据""排序"被挤成竖排） */
+[data-platform='mobile'] .nb-bitable-btn-secondary,
+[data-platform='mobile'] .nb-bitable-btn-primary,
+[data-platform='mobile'] .nb-bitable-btn-ghost,
+[data-platform='mobile'] .nb-bitable-tab {
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-height: 34px;
+}
+
+/* 分组 / 排序 / 固定列工具条：单行、可横向滚动 */
+[data-platform='mobile'] .nb-bitable-subbar {
+  flex-wrap: nowrap !important;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 6px 8px !important;
+}
+
+[data-platform='mobile'] .nb-bitable-subbar::-webkit-scrollbar {
+  display: none;
+}
+
+[data-platform='mobile'] .nb-bitable-subbar > *,
+[data-platform='mobile'] .nb-bitable-subbar span {
+  flex-shrink: 0;
+  white-space: nowrap;
 }

@@ -1094,8 +1094,9 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
         overflow: 'hidden',
       }}
     >
-      {/* 顶部多视图 Tab 栏 + 搜索 + 导出 + 添加行 */}
+      {/* 顶部多视图 Tab 栏 + 搜索 + 导出 + 添加行（移动端由样式改为两行：视图 Tab / 搜索与新建） */}
       <div
+        className="nb-bitable-toolbar"
         style={{
           height: 42,
           minHeight: 42,
@@ -1110,7 +1111,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
         }}
       >
         {/* 左侧：多视图 Tab 标签列表 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, overflowX: 'auto', flex: 1 }}>
+        <div className="nb-bitable-views" style={{ display: 'flex', alignItems: 'center', gap: 4, overflowX: 'auto', flex: 1 }}>
           {data.views.map((v, viewIdx) => {
             const isActive = v.id === activeView.id;
             const isEditingThis = editingViewId === v.id;
@@ -1334,9 +1335,10 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
         </div>
 
         {/* 右侧：全局搜索 + 导出 + 添加行 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="nb-bitable-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {/* 实时搜索框 */}
           <div
+            className="nb-bitable-search"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -1375,11 +1377,11 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             )}
           </div>
 
-          {/* 导出按钮 */}
+          {/* 导出按钮（移动端隐藏：使用频率低，且挤占窄屏工具栏空间） */}
           <Tooltip content="导出为 CSV 表格" side="bottom" sideOffset={4}>
             <button
               type="button"
-              className="nb-bitable-btn-secondary"
+              className="nb-bitable-btn-secondary nb-bitable-export"
               onClick={handleExportCsv}
             >
               <FileSpreadsheet size={13} />
