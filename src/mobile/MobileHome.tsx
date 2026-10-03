@@ -2,7 +2,7 @@
 // 顶栏（品牌 + 设置）→ 分段（文件 / 收藏 / 已打开）→ 列表；右下角悬浮"新建"按钮。
 // 文件：在"我的笔记"（应用私有工作区）与"手机存储"之间切换，面包屑逐级返回，长按条目弹出操作面板。
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Archive,
   Braces,
@@ -79,6 +79,7 @@ import {
   validateFileName,
 } from './mobileFiles';
 import { useMobileStore, type HomeSection } from './mobileStore';
+import { SwipePager } from './SwipePager';
 
 // ── 新建类型 ──
 
@@ -189,7 +190,7 @@ function Breadcrumb() {
   }, [currentFolder, locationRoot, location]);
 
   return (
-    <nav className="nb-m-breadcrumb" aria-label="当前位置">
+    <nav className="nb-m-breadcrumb" aria-label="当前位置" data-no-swipe="">
       {segments.map((segment, index) => (
         <span key={segment.path} className="nb-m-crumb-wrap">
           {index > 0 && <ChevronRight size={14} className="nb-m-crumb-sep" />}
@@ -236,7 +237,7 @@ function FilesSection({ onEntryMenu }: { onEntryMenu: (node: FileTreeNode) => vo
 
   return (
     <>
-      <div className="nb-m-location">
+      <div className="nb-m-location" data-no-swipe="">
         <button
           type="button"
           className={`nb-m-chip${location === 'workspace' ? ' is-active' : ''}`}
@@ -459,6 +460,16 @@ export function MobileHome() {
   const addFavorite = useFavoritesStore((s) => s.addFavorite);
   const removeFavorite = useFavoritesStore((s) => s.removeFavorite);
 
+  // 分段指示条位置：直接写 transform，拖动过程中不触发 React 重渲染
+  const indicatorRef = useRef<HTMLSpanElement>(null);
+  const sectionIndex = Math.max(0, SECTIONS.findIndex((section) => section.key === homeSection));
+  const moveIndicator = useCallback((position: number) => {
+    const indicator = indicatorRef.current;
+    if (!indicator) return;
+    const clamped = Math.max(0, Math.min(SECTIONS.length - 1, position));
+    indicator.style.transform = `translate3d(${clamped * 100}%, 0, 0)`;
+  }, []);
+
   const [createOpen, setCreateOpen] = useState(false);
   const [menuNode, setMenuNode] = useState<FileTreeNode | null>(null);
   const [renameNode, setRenameNode] = useState<FileTreeNode | null>(null);
@@ -510,6 +521,13 @@ export function MobileHome() {
       />
 
       <div className="nb-m-segmented" role="tablist">
+        {/* 滑动指示条：跟随翻页拖动进度连续移动 */}
+        <span
+          ref={indicatorRef}
+          className="nb-m-segment-indicator"
+          style={{ width: `calc((100% - 6px) / ${SECTIONS.length})` }}
+          aria-hidden
+        />
         {SECTIONS.map((section) => (
           <button
             key={section.key}
@@ -526,9 +544,18 @@ export function MobileHome() {
       </div>
 
       <div className="nb-m-page-body">
-        {homeSection === 'files' && <FilesSection onEntryMenu={setMenuNode} />}
-        {homeSection === 'favorites' && <FavoritesSection />}
-        {homeSection === 'open' && <OpenSection />}
+        <SwipePager
+          index={sectionIndex}
+          count={SECTIONS.length}
+          onIndexChange={(next) => setHomeSection(SECTIONS[next].key)}
+          onProgress={moveIndicator}
+        >
+          {[
+            <FilesSection key="files" onEntryMenu={setMenuNode} />,
+            <FavoritesSection key="favorites" />,
+            <OpenSection key="open" />,
+          ]}
+        </SwipePager>
       </div>
 
       {/* 新建悬浮按钮 */}
