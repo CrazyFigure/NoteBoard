@@ -318,9 +318,24 @@ html[data-platform='mobile'] {
   overflow: hidden;
 }
 
-/* 面包屑自身可横向滚动 */
-.nb-m-breadcrumb {
+/* 分页内的滚动列表是独立的滚动容器，不会继承外层 pan-y：
+   必须逐级声明，否则 WebView 会接管横向手势并发送 pointercancel，导致翻页失效 */
+.nb-m-pager *,
+.nb-m-pager *::before,
+.nb-m-pager *::after {
+  touch-action: pan-y;
+}
+
+/* 面包屑自身可横向滚动（不参与翻页手势） */
+.nb-m-pager .nb-m-breadcrumb,
+.nb-m-pager .nb-m-breadcrumb * {
   touch-action: pan-x;
+}
+
+/* 文档本身不允许横向滚动，避免横向手势被根滚动容器消费 */
+html[data-platform='mobile'],
+html[data-platform='mobile'] body {
+  overflow-x: hidden;
 }
 
 .nb-m-segment:active:not(.is-active) {
