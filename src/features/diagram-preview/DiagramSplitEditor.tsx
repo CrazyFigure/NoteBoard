@@ -305,6 +305,7 @@ export function DiagramSplitEditor({ docKey }: DiagramSplitEditorProps) {
     >
       {/* 顶部工具栏 */}
       <div
+        className="nb-editor-topbar"
         style={{
           height: 38,
           minHeight: 38,

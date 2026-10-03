@@ -133,6 +133,19 @@ export function MindmapRenderer({
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
+  // 触屏手势状态：当前按下的触点（pointerId → 屏幕坐标）与双指捏合会话
+  const touchPointsRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchRef = useRef<{
+    startDist: number;
+    startZoom: number;
+    // 捏合起点中心对应的导图世界坐标（缩放时保持该点在两指中心下方）
+    worldX: number;
+    worldY: number;
+  } | null>(null);
+  const [isPinching, setIsPinching] = useState(false);
+  // 最近一次触摸时间：用于忽略触屏点按后浏览器补发的兼容 mousedown，避免误入鼠标平移态
+  const lastTouchAtRef = useRef(0);
+
   // 节点拖拽状态 (Pointer Events 丝滑整树拖拽)
   const dragSessionRef = useRef<DragSession | null>(null);
   const [isDraggingNode, setIsDraggingNode] = useState(false);
@@ -424,6 +437,24 @@ export function MindmapRenderer({
 
   // 全局指针移动：处理拖拽中位移计算与最近有效落点判定，或画布平移
   const handlePointerMove = (e: React.PointerEvent) => {
+    // 0. 触屏双指捏合：按两指距离比例缩放，并让捏合中心跟随手指移动
+    if (e.pointerType === 'touch' && touchPointsRef.current.has(e.pointerId)) {
+      touchPointsRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const pinch = pinchRef.current;
+      const containerEl = containerRef.current;
+      if (pinch && containerEl && touchPointsRef.current.size >= 2) {
+        const [p1, p2] = Array.from(touchPointsRef.current.values());
+        const rect = containerEl.getBoundingClientRect();
+        const dist = Math.max(1, Math.hypot(p2.x - p1.x, p2.y - p1.y));
+        const midX = (p1.x + p2.x) / 2 - rect.left;
+        const midY = (p1.y + p2.y) / 2 - rect.top;
+        const nextZoom = Math.min(3, Math.max(0.2, pinch.startZoom * (dist / pinch.startDist)));
+        setPan({ x: midX - pinch.worldX * nextZoom, y: midY - pinch.worldY * nextZoom });
+        onZoomChange(nextZoom);
+        return;
+      }
+    }
+
     const session = dragSessionRef.current;
 
     // 1. 若当前非节点拖拽会话，走普通画布鼠标平移
@@ -585,9 +616,72 @@ export function MindmapRenderer({
     }
   };
 
+  // 触屏按下（捕获阶段，节点自身的 pointerdown 会阻止冒泡）：单指空白处平移，第二指落下进入捏合
+  const handleTouchPointerDownCapture = (e: React.PointerEvent) => {
+    if (e.pointerType !== 'touch') return;
+    lastTouchAtRef.current = Date.now();
+    touchPointsRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const points = Array.from(touchPointsRef.current.values());
+
+    if (points.length === 1) {
+      // 单指：仅在空白画布处开始平移，节点上的按下交给节点拖拽逻辑
+      const target = e.target as HTMLElement;
+      if (!target.closest('.nb-mindmap-node') && !target.closest('button, input, textarea')) {
+        setIsPanning(true);
+        panStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
+      }
+      return;
+    }
+
+    // 第二指落下：中止单指平移与节点拖拽，记录捏合起点
+    const containerEl = containerRef.current;
+    if (!containerEl) return;
+    const [p1, p2] = points;
+    const rect = containerEl.getBoundingClientRect();
+    const midX = (p1.x + p2.x) / 2 - rect.left;
+    const midY = (p1.y + p2.y) / 2 - rect.top;
+    pinchRef.current = {
+      startDist: Math.max(1, Math.hypot(p2.x - p1.x, p2.y - p1.y)),
+      startZoom: zoom,
+      worldX: (midX - pan.x) / zoom,
+      worldY: (midY - pan.y) / zoom,
+    };
+    setIsPinching(true);
+    setIsPanning(false);
+    if (dragSessionRef.current) {
+      dragSessionRef.current = null;
+      setIsDraggingNode(false);
+      setDraggedNodeId(null);
+      setDragPreview(null);
+      setDropTarget(null);
+      document.body.style.cursor = 'default';
+    }
+  };
+
+  // 触点抬起 / 被系统取消：移出触点表；捏合结束后若仍剩一指，则从该指位置无缝续接平移
+  const handleTouchPointerEnd = (e: React.PointerEvent) => {
+    if (e.pointerType !== 'touch' || !touchPointsRef.current.has(e.pointerId)) return;
+    lastTouchAtRef.current = Date.now();
+    touchPointsRef.current.delete(e.pointerId);
+    if (pinchRef.current && touchPointsRef.current.size < 2) {
+      pinchRef.current = null;
+      setIsPinching(false);
+      const rest = Array.from(touchPointsRef.current.values())[0];
+      if (rest) {
+        setIsPanning(true);
+        panStartRef.current = { x: rest.x - pan.x, y: rest.y - pan.y };
+      }
+    }
+  };
+
   // 画布鼠标按下平移
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0 || (e.target as HTMLElement).closest('.nb-mindmap-node')) return;
+    // 触屏点按后补发的兼容鼠标事件：只保留取消选中，不进入平移态（否则后续无 pointerup 复位）
+    if (Date.now() - lastTouchAtRef.current < 800) {
+      setSelectedNodeId(null);
+      return;
+    }
     setIsPanning(true);
     setSelectedNodeId(null);
     panStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
@@ -664,8 +758,25 @@ export function MindmapRenderer({
     <div
       ref={containerRef}
       onMouseDown={handleMouseDown}
+      onPointerDownCapture={handleTouchPointerDownCapture}
       onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
+      onPointerUp={(e) => {
+        handleTouchPointerEnd(e);
+        handlePointerUp(e);
+      }}
+      onPointerCancel={(e) => {
+        // 系统取消触点（如来电、手势被接管）：只复位状态，不提交拖拽落点
+        handleTouchPointerEnd(e);
+        setIsPanning(false);
+        if (dragSessionRef.current) {
+          dragSessionRef.current = null;
+          setIsDraggingNode(false);
+          setDraggedNodeId(null);
+          setDragPreview(null);
+          setDropTarget(null);
+          document.body.style.cursor = 'default';
+        }
+      }}
       onWheel={handleWheel}
       style={{
         width: '100%',
@@ -675,6 +786,8 @@ export function MindmapRenderer({
         cursor: isDraggingNode ? 'grabbing' : isPanning ? 'grabbing' : 'default',
         background: 'var(--editor-bg, #ffffff)',
         userSelect: 'none',
+        // 触屏手势（平移 / 双指缩放）全部由画布自行处理，禁止浏览器默认滚动与页面缩放
+        touchAction: 'none',
       }}
     >
       {/* 隐藏的图片文件选择 input */}
@@ -692,7 +805,7 @@ export function MindmapRenderer({
           position: 'absolute',
           transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
           transformOrigin: '0 0',
-          transition: isPanning || isDraggingNode ? 'none' : 'transform 0.05s ease-out',
+          transition: isPanning || isDraggingNode || isPinching ? 'none' : 'transform 0.05s ease-out',
         }}
       >
         {/* SVG 贝塞尔曲线连接线图层 */}

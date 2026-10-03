@@ -1076,6 +1076,32 @@ html[data-platform='mobile'] body {
   }
 }
 
+/* ── 编辑器顶部工具栏（思维导图 / Mermaid / PlantUML / 信息图 / Draw.io）：窄屏自动换行 ──
+ * 桌面版为固定高度单行，手机宽度放不下时左侧分组会被挤压，"思维导图"等按钮文字被折成竖排并裁切。
+ * 不用横向滚动：工具栏内有绝对定位的下拉菜单（布局 / 配色 / 模板），滚动容器会把它们裁掉。
+ */
+[data-platform='mobile'] .nb-editor-topbar {
+  height: auto !important;
+  min-height: 0 !important;
+  flex-wrap: wrap;
+  row-gap: 6px;
+  column-gap: 8px;
+  padding: 6px 10px !important;
+}
+
+[data-platform='mobile'] .nb-editor-topbar > div {
+  flex-wrap: wrap;
+  row-gap: 6px;
+  min-width: 0;
+}
+
+[data-platform='mobile'] .nb-editor-topbar button,
+[data-platform='mobile'] .nb-editor-topbar label,
+[data-platform='mobile'] .nb-editor-topbar span {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 /* ── 多维表格：窄屏 / 横屏工具栏 ── */
 
 /* 顶部工具栏改为两行：第一行视图 Tab（可横向滚动），第二行搜索 + 新建记录 */

@@ -323,6 +323,7 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
     >
       {/* 顶部操作条 */}
       <div
+        className="nb-editor-topbar"
         style={{
           height: 36,
           minHeight: 36,
