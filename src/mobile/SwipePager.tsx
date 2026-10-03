@@ -82,7 +82,12 @@ export function SwipePager({ index, count, onIndexChange, onProgress, children }
       const dx = event.clientX - gesture.startX;
       const dy = event.clientY - gesture.startY;
       if (!gesture.locked) {
-        if (Math.abs(dx) < LOCK_DISTANCE && Math.abs(dy) < LOCK_DISTANCE) return;
+        if (Math.abs(dx) < LOCK_DISTANCE && Math.abs(dy) < LOCK_DISTANCE) {
+          // 锁定方向前也记录最新位置，保证速度与取消时的回退坐标准确
+          gesture.lastX = event.clientX;
+          gesture.lastT = event.timeStamp;
+          return;
+        }
         gesture.locked = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y';
         if (gesture.locked === 'x') viewport.setPointerCapture?.(event.pointerId);
       }
@@ -115,11 +120,18 @@ export function SwipePager({ index, count, onIndexChange, onProgress, children }
       }, 0);
 
       const width = viewport.clientWidth || 1;
-      const dx = event.clientX - gesture.startX;
-      let next = index;
-      if (dx <= -width * SWITCH_RATIO || gesture.velocity <= -SWITCH_VELOCITY) next = index + 1;
-      if (dx >= width * SWITCH_RATIO || gesture.velocity >= SWITCH_VELOCITY) next = index - 1;
-      next = Math.max(0, Math.min(count - 1, next));
+      // pointercancel 事件在 Android WebView 上坐标通常为 0，必须改用最后一次有效移动位置，
+      // 否则任何手势都会被算成大幅左滑（这正是"只能向右翻页"的根因）
+      const endX = event.type === 'pointercancel' ? gesture.lastX : event.clientX;
+      const dx = endX - gesture.startX;
+      // 先看速度（快速轻扫），再看位移；两者只取其一，避免互相覆盖
+      let direction = 0;
+      if (Math.abs(gesture.velocity) >= SWITCH_VELOCITY) {
+        direction = gesture.velocity < 0 ? 1 : -1;
+      } else if (Math.abs(dx) >= width * SWITCH_RATIO) {
+        direction = dx < 0 ? 1 : -1;
+      }
+      const next = Math.max(0, Math.min(count - 1, index + direction));
       if (next !== index) {
         onIndexChange(next);
       } else {
