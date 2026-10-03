@@ -11,6 +11,7 @@ import { applyCachedTheme, applyCachedTypography } from './core/theme/applyTheme
 import { perfMark } from './core/perf/perfMarks';
 import { IS_MOBILE_UI } from './core/platform';
 import { installInputModalityTracking } from './core/inputModality';
+import { installMobileFocusGuard } from './mobile/focusGuard';
 
 // 🔴 性能诊断：js_entry 是模块体首行执行的代理标记（静态依赖已求值完毕）；
 // head 中 __nbHtmlTs 记录了 HTML 解析的更早点，两者差值可估算入口依赖求值开销。
@@ -32,6 +33,8 @@ installInputModalityTracking();
 // 移动端：标记平台供样式切换，并禁止双击/双指缩放整页（编辑器内容缩放由各编辑器自行处理）
 if (IS_MOBILE_UI) {
   document.documentElement.dataset.platform = 'mobile';
+  // 拦截非用户意图的程序化聚焦，避免打开文档 / 选中单元格时自动弹出软键盘
+  installMobileFocusGuard();
   const viewport = document.querySelector('meta[name="viewport"]');
   viewport?.setAttribute(
     'content',

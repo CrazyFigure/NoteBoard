@@ -6,6 +6,7 @@
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { IS_MOBILE_UI } from '../../core/platform';
 
 export interface AnchorRect {
   top: number;
@@ -127,6 +128,8 @@ export function FloatingPanel({
 }: FloatingPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [layout, setLayout] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
+  // 窄屏（手机）下面板宽度不超过视口，避免右侧被裁切
+  const effectiveWidth = Math.min(width, Math.max(160, window.innerWidth - VIEWPORT_PADDING * 2));
 
   // 注册到浮层栈，卸载时移除：栈顺序即打开顺序，是嵌套归属判断的依据
   useEffect(() => {
@@ -152,18 +155,18 @@ export function FloatingPanel({
     if (placement === 'side') {
       const rightSideLeft = anchor.right + 4;
       const left =
-        rightSideLeft + width <= vw - VIEWPORT_PADDING
+        rightSideLeft + effectiveWidth <= vw - VIEWPORT_PADDING
           ? rightSideLeft
           : // 右侧放不下再试左侧；左侧也放不下就贴着视口边缘，避免被裁掉
-            Math.max(VIEWPORT_PADDING, anchor.left - 4 - width);
+            Math.max(VIEWPORT_PADDING, anchor.left - 4 - effectiveWidth);
       // 顶边与锚点对齐（略微上移 4px 让首行与菜单项齐平），再夹进视口
       const top = clampTop(anchor.top - 4);
       setLayout({ top, left, maxHeight: Math.max(120, vh - top - VIEWPORT_PADDING) });
       return;
     }
 
-    const rawLeft = align === 'right' ? anchor.right - width : anchor.left;
-    const left = Math.max(VIEWPORT_PADDING, Math.min(rawLeft, vw - width - VIEWPORT_PADDING));
+    const rawLeft = align === 'right' ? anchor.right - effectiveWidth : anchor.left;
+    const left = Math.max(VIEWPORT_PADDING, Math.min(rawLeft, vw - effectiveWidth - VIEWPORT_PADDING));
 
     let top = anchor.bottom + 4;
     let maxHeight = vh - top - VIEWPORT_PADDING;
@@ -180,7 +183,7 @@ export function FloatingPanel({
     }
 
     setLayout({ top, left, maxHeight: Math.max(120, maxHeight) });
-  }, [anchor.top, anchor.bottom, anchor.left, anchor.right, width, align, placement]);
+  }, [anchor.top, anchor.bottom, anchor.left, anchor.right, effectiveWidth, align, placement]);
 
   // 外部点击、Esc、外部滚动与窗口尺寸变化时关闭浮层
   useEffect(() => {
@@ -221,15 +224,23 @@ export function FloatingPanel({
       onClose();
     };
 
+    // 移动端软键盘弹出/收起只改变视口高度，不应关闭浮层；宽度变化（横竖屏切换）才关闭
+    let lastViewportWidth = window.innerWidth;
+    const handleResize = (e: Event) => {
+      if (IS_MOBILE_UI && window.innerWidth === lastViewportWidth) return;
+      lastViewportWidth = window.innerWidth;
+      handleScroll(e);
+    };
+
     document.addEventListener('mousedown', handlePointerDown, true);
     document.addEventListener('keydown', handleKeyDown, true);
     window.addEventListener('scroll', handleScroll, true);
-    window.addEventListener('resize', handleScroll);
+    window.addEventListener('resize', handleResize);
     return () => {
       document.removeEventListener('mousedown', handlePointerDown, true);
       document.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('scroll', handleScroll, true);
-      window.removeEventListener('resize', handleScroll);
+      window.removeEventListener('resize', handleResize);
     };
   }, [onClose, trigger]);
 
@@ -247,7 +258,7 @@ export function FloatingPanel({
         position: 'fixed',
         top: layout?.top ?? anchor.bottom + 4,
         left: layout?.left ?? anchor.left,
-        width,
+        width: effectiveWidth,
         maxHeight: layout?.maxHeight,
         visibility: layout ? 'visible' : 'hidden',
         overflowY: 'auto',
