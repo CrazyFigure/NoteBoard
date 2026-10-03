@@ -373,8 +373,9 @@ export function BitableKanbanView({
         overflow: 'hidden',
       }}
     >
-      {/* 顶部看板控制条：分组维度选择器 */}
+      {/* 顶部看板控制条：分组维度选择器（移动端单行横向滚动） */}
       <div
+        className="nb-bitable-subbar"
         style={{
           padding: '8px 16px',
           borderBottom: '1px solid var(--editor-border, #e2e8f0)',

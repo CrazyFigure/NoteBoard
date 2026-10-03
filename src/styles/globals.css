@@ -1824,6 +1824,126 @@ button:not(:disabled) {
   cursor: not-allowed;
 }
 
+/* 下拉菜单通用淡入（工具栏下拉、提示块类型菜单等引用） */
+@keyframes nb-fade-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 提示块类型切换：右上角轻量胶囊 + 下拉菜单 */
+.nb-alert-picker {
+  position: relative;
+  margin-left: auto;
+  font-weight: 500;
+}
+.nb-alert-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px 0 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--editor-text) 6%, transparent);
+  color: var(--editor-text-secondary, var(--editor-text));
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+.nb-alert-picker-trigger:hover,
+.nb-alert-picker-trigger.is-open {
+  background: color-mix(in srgb, var(--editor-text) 10%, transparent);
+  border-color: var(--editor-border);
+}
+.nb-alert-picker-trigger:active {
+  transform: scale(0.96);
+}
+.nb-alert-picker-chevron {
+  opacity: 0.6;
+  transition: transform var(--transition-fast);
+}
+.nb-alert-picker-trigger.is-open .nb-alert-picker-chevron {
+  transform: rotate(180deg);
+}
+.nb-alert-picker-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.nb-alert-picker-dot.is-note { background: var(--alert-note-border, #3b82f6); }
+.nb-alert-picker-dot.is-tip { background: var(--alert-tip-border, #22c55e); }
+.nb-alert-picker-dot.is-important { background: var(--alert-important-border, #8b5cf6); }
+.nb-alert-picker-dot.is-warning { background: var(--alert-warning-border, #f59e0b); }
+.nb-alert-picker-dot.is-caution { background: var(--alert-caution-border, #ef4444); }
+.nb-alert-picker-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  min-width: 188px;
+  padding: 4px;
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-lg);
+  background: var(--editor-surface);
+  box-shadow: var(--shadow-lg);
+  animation: nb-fade-in 120ms ease-out;
+}
+.nb-alert-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--editor-text);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+.nb-alert-picker-item:hover {
+  background: var(--toolbar-hover, rgba(0, 0, 0, 0.05));
+}
+.nb-alert-picker-item:active {
+  background: var(--toolbar-active, rgba(0, 0, 0, 0.08));
+  transform: scale(0.985);
+}
+.nb-alert-picker-item.is-active {
+  background: color-mix(in srgb, var(--accent-strong) 9%, transparent);
+}
+.nb-alert-picker-icon {
+  width: 18px;
+  text-align: center;
+  font-size: 14px;
+}
+.nb-alert-picker-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.nb-alert-picker-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.nb-alert-picker-desc {
+  font-size: 11px;
+  color: var(--editor-text-muted);
+}
+.nb-alert-picker-check {
+  color: var(--accent-strong);
+  flex-shrink: 0;
+}
+[data-platform='mobile'] .nb-alert-picker-trigger {
+  height: 32px;
+  padding: 0 10px 0 12px;
+  font-size: 13px;
+}
+[data-platform='mobile'] .nb-alert-picker-item {
+  min-height: 48px;
+}
+
 /* 通用模态框：遮罩 + 居中卡片（移动端在 [data-platform=mobile] 下改为底部面板） */
 .nb-modal-overlay {
   position: fixed;

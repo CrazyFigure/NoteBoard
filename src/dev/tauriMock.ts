@@ -3,6 +3,7 @@
 // 提供内存文件系统与启动链路所需的最小命令集；未覆盖的命令返回 null 并打印提示。
 
 import { mockIPC, mockWindows } from '@tauri-apps/api/mocks';
+import { createDefaultBitableDocument, serializeBitableDocument } from '../features/bitable/bitableConverter';
 
 interface MockFile {
   content: string;
@@ -26,6 +27,7 @@ seed(`${WORKSPACE}/购物清单.txt`, '牛奶\n面包\n鸡蛋\n', 60 * 24 * 40);
 seed(`${WORKSPACE}/架构草图.excalidraw`, '', 60 * 5);
 seed(`${WORKSPACE}/项目笔记/需求.md`, '# 需求\n\n## 背景\n\n## 目标\n', 90);
 seed(`${WORKSPACE}/读书/摘录.md`, '# 摘录\n', 2000);
+seed(`${WORKSPACE}/任务看板.bitable`, serializeBitableDocument(createDefaultBitableDocument('任务看板')), 30);
 
 function parentOf(path: string): string {
   const index = path.lastIndexOf('/');
@@ -151,6 +153,7 @@ export function installTauriMock(): void {
         return WORKSPACE;
       case 'request_all_files_access':
       case 'move_app_to_background':
+      case 'set_system_bar_style':
       case 'share_file':
         return null;
       // ── 文件系统 ──

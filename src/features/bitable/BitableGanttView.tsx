@@ -1321,8 +1321,9 @@ export function BitableGanttView({
         overflow: 'hidden',
       }}
     >
-      {/* 工具条：甘特图配置 / 字段（左侧固定列） · 刻度切换 / 今天 */}
+      {/* 工具条：甘特图配置 / 字段（左侧固定列） · 刻度切换 / 今天（移动端单行横向滚动） */}
       <div
+        className="nb-bitable-subbar"
         style={{
           display: 'flex',
           alignItems: 'center',

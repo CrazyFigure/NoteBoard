@@ -120,7 +120,8 @@ export function UnsavedGuardDialog({
           </ul>
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8, marginTop: 20 }}>
+        {/* 窄屏（手机）下由样式改为两行两列均衡排列 */}
+        <div className="nb-guard-actions" style={{ display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8, marginTop: 20 }}>
           {/* 取消操作：取消关闭拦截并停留在当前页面 */}
           <button
             type="button"
