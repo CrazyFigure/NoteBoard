@@ -135,8 +135,8 @@ export function ActionSheet({ open, onClose, title, actions }: ActionSheetProps)
             disabled={action.disabled}
             onClick={() => {
               onClose();
-              // 下一帧执行：先完成关闭动画与覆盖层出栈
-              requestAnimationFrame(() => action.onSelect());
+              // 关闭后再执行：先让覆盖层出栈（setTimeout 不依赖渲染帧，后台/低帧率时同样可靠）
+              window.setTimeout(() => action.onSelect(), 0);
             }}
           >
             {action.icon && <span className="nb-m-action-icon">{action.icon}</span>}

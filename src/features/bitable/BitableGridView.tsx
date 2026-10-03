@@ -1707,9 +1707,10 @@ export function BitableGridView({
           zIndex: -1,
         }}
       />
-      {/* 表格视图工具栏：分组依据 + 多字段排序入口 */}
+      {/* 表格视图工具栏：分组依据 + 多字段排序入口（移动端不换行、可横向滚动） */}
       {onUpdateGroupByColumnId && (
         <div
+          className="nb-bitable-subbar"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -3101,7 +3102,9 @@ export function BitableGridView({
                           </div>
                         )}
 
+                        {/* 聚焦范围：在本单元格内点按/双击进入编辑时，移动端允许编辑框弹出键盘 */}
                         <div
+                          data-nb-focus-scope=""
                           style={{
                             flex: 1,
                             height: isExpandedLongText ? 'auto' : '100%',
