@@ -313,6 +313,7 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
     >
       {/* 顶部工具栏：模式切换 + 导入导出 + 缩放 */}
       <div
+        className="nb-editor-topbar"
         style={{
           height: 40,
           minHeight: 40,
