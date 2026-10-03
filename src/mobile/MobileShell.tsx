@@ -167,7 +167,13 @@ export function MobileShell() {
         state.setPage('home');
         return;
       }
-      if (state.homeSection === 'files' && (await navigateUp())) return;
+      // 首页非"文件"分段：返回（含系统左/右边缘返回手势）先回到上一个分段，与向右滑动的意图一致
+      if (state.homeSection !== 'files') {
+        const order = ['files', 'favorites', 'open'] as const;
+        state.setHomeSection(order[Math.max(0, order.indexOf(state.homeSection) - 1)]);
+        return;
+      }
+      if (await navigateUp()) return;
       const now = Date.now();
       if (now - lastBackAt < EXIT_CONFIRM_MS) {
         // 退到后台前保存，保持与系统默认返回行为一致（不销毁应用，编辑状态保留）
