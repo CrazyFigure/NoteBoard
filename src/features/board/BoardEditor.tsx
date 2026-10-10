@@ -807,7 +807,7 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
             }}
             style={{
               background: 'transparent',
-              border: '1px solid var(--editor-border)',
+              border: '1px solid var(--control-border)',
               borderRadius: 4,
               padding: '2px 8px',
               cursor: 'pointer',
@@ -822,7 +822,7 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.borderColor = 'var(--editor-border)';
+              e.currentTarget.style.borderColor = 'var(--control-border)';
               e.currentTarget.style.color = 'inherit';
               e.currentTarget.style.transform = 'scale(1)';
             }}

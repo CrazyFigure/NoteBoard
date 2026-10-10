@@ -590,7 +590,7 @@ export function FavoritesManagerModal() {
                       gap: 4,
                       padding: '5px 10px',
                       borderRadius: 'var(--radius-md, 6px)',
-                      border: '1px solid var(--editor-border)',
+                      border: '1px solid var(--control-border)',
                       background: 'var(--editor-surface)',
                       color: 'var(--editor-text)',
                       fontSize: 12,
@@ -604,7 +604,7 @@ export function FavoritesManagerModal() {
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.background = 'var(--editor-surface)';
-                      e.currentTarget.style.borderColor = 'var(--editor-border)';
+                      e.currentTarget.style.borderColor = 'var(--control-border)';
                     }}
                   >
                     <FilePlus size={13} style={{ color: 'var(--editor-accent)' }} />
@@ -623,7 +623,7 @@ export function FavoritesManagerModal() {
                       gap: 4,
                       padding: '5px 10px',
                       borderRadius: 'var(--radius-md, 6px)',
-                      border: '1px solid var(--editor-border)',
+                      border: '1px solid var(--control-border)',
                       background: 'var(--editor-surface)',
                       color: 'var(--editor-text)',
                       fontSize: 12,
@@ -637,7 +637,7 @@ export function FavoritesManagerModal() {
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.background = 'var(--editor-surface)';
-                      e.currentTarget.style.borderColor = 'var(--editor-border)';
+                      e.currentTarget.style.borderColor = 'var(--control-border)';
                     }}
                   >
                     <FolderPlus size={13} style={{ color: '#eab308' }} />
@@ -708,7 +708,7 @@ export function FavoritesManagerModal() {
                   style={{
                     padding: '4px 10px',
                     borderRadius: 4,
-                    border: '1px solid var(--editor-border)',
+                    border: '1px solid var(--control-border)',
                     background: 'transparent',
                     color: 'var(--editor-text-muted)',
                     fontSize: 12,
@@ -792,7 +792,7 @@ export function FavoritesManagerModal() {
                       gap: 4,
                       padding: '6px 14px',
                       borderRadius: 'var(--radius-md, 6px)',
-                      border: '1px dashed var(--editor-border)',
+                      border: '1px dashed var(--control-border)',
                       background: 'transparent',
                       color: 'var(--editor-accent)',
                       fontSize: 12,

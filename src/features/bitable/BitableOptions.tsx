@@ -264,11 +264,11 @@ export function SelectOptionsPanel({
                 padding: '4px 6px',
                 borderRadius: 4,
                 cursor: selectable ? 'pointer' : 'default',
-                background: isSelected ? 'var(--editor-bg, #f1f5f9)' : 'transparent',
+                background: isSelected ? 'var(--editor-selection, rgba(59,130,246,0.12))' : 'transparent',
                 transition: 'background 0.12s ease',
               }}
               onMouseEnter={(e) => {
-                if (!isSelected) e.currentTarget.style.background = 'var(--editor-bg, #f8fafc)';
+                if (!isSelected) e.currentTarget.style.background = 'var(--toolbar-hover, #f1f5f9)';
               }}
               onMouseLeave={(e) => {
                 if (!isSelected) e.currentTarget.style.background = 'transparent';

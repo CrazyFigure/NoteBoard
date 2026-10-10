@@ -227,7 +227,7 @@ export function UnsupportedView({ filePath, fileName }: Omit<UnsupportedViewProp
                 justifyContent: 'center',
                 gap: 6,
                 padding: '8px 12px',
-                border: '1px solid var(--editor-border)',
+                border: '1px solid var(--control-border)',
                 borderRadius: 6,
                 background: 'var(--editor-surface)',
                 color: 'var(--editor-text)',
@@ -244,7 +244,7 @@ export function UnsupportedView({ filePath, fileName }: Omit<UnsupportedViewProp
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = 'var(--editor-surface)';
-                e.currentTarget.style.borderColor = 'var(--editor-border)';
+                e.currentTarget.style.borderColor = 'var(--control-border)';
                 e.currentTarget.style.transform = 'translateY(0)';
                 e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
               }}
@@ -272,7 +272,7 @@ export function UnsupportedView({ filePath, fileName }: Omit<UnsupportedViewProp
                 justifyContent: 'center',
                 gap: 6,
                 padding: '8px 12px',
-                border: '1px solid var(--editor-border)',
+                border: '1px solid var(--control-border)',
                 borderRadius: 6,
                 background: 'var(--editor-surface)',
                 color: 'var(--editor-text)',
@@ -289,7 +289,7 @@ export function UnsupportedView({ filePath, fileName }: Omit<UnsupportedViewProp
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = 'var(--editor-surface)';
-                e.currentTarget.style.borderColor = 'var(--editor-border)';
+                e.currentTarget.style.borderColor = 'var(--control-border)';
                 e.currentTarget.style.transform = 'translateY(0)';
                 e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
               }}

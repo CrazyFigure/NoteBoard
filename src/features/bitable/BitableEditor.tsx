@@ -1134,7 +1134,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                     gap: 6,
                     padding: '4px 10px',
                     borderRadius: 6,
-                    border: isActive ? '1px solid var(--editor-border, #cbd5e1)' : '1px solid transparent',
+                    border: isActive ? '1px solid var(--control-border, #cbd5e1)' : '1px solid transparent',
                     background: isActive ? 'var(--editor-bg, #ffffff)' : 'transparent',
                     color: isActive ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-text-muted, #64748b)',
                     cursor: viewDrag ? 'grabbing' : 'grab',

@@ -410,7 +410,7 @@ export function AddFavoriteModal() {
                     padding: '0 8px',
                     height: 28,
                     borderRadius: 4,
-                    border: '1px solid var(--editor-border)',
+                    border: '1px solid var(--control-border)',
                     background: 'transparent',
                     color: 'var(--editor-text-muted)',
                     fontSize: 12,
@@ -506,7 +506,7 @@ export function AddFavoriteModal() {
                 style={{
                   padding: '6px 14px',
                   borderRadius: 'var(--radius-md, 6px)',
-                  border: '1px solid var(--editor-border, #cbd5e1)',
+                  border: '1px solid var(--control-border, #cbd5e1)',
                   background: 'transparent',
                   color: 'var(--editor-text-secondary, #475569)',
                   fontSize: 13,

@@ -2563,7 +2563,7 @@ export function BitableGanttView({
                               alignItems: 'center',
                               justifyContent: 'center',
                               borderRadius: 6,
-                              border: '1px dashed var(--editor-border, #cbd5e1)',
+                              border: '1px dashed var(--control-border, #cbd5e1)',
                               background: 'var(--editor-surface, #ffffff)',
                               color: 'var(--editor-text-muted, #64748b)',
                               cursor: 'pointer',

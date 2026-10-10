@@ -269,7 +269,7 @@ function MermaidComponent({ node, updateAttributes, selected, editor, getPos }: 
                   borderRadius: 4,
                   background: 'transparent',
                   color: 'var(--editor-text-muted, #64748b)',
-                  border: '1px solid var(--editor-border, #e2e8f0)',
+                  border: '1px solid var(--control-border, #e2e8f0)',
                   fontSize: 12,
                   cursor: 'pointer',
                 }}

@@ -522,7 +522,7 @@ export function HighlightColorPicker({
           width: '100%',
           padding: '4px 6px',
           borderRadius: 4,
-          border: '1px dashed var(--editor-border)',
+          border: '1px dashed var(--control-border)',
           background: 'transparent',
           color: 'var(--editor-text-secondary)',
           fontSize: 11,
@@ -541,7 +541,7 @@ export function HighlightColorPicker({
         onMouseLeave={(e) => {
           e.currentTarget.style.background = 'transparent';
           e.currentTarget.style.color = 'var(--editor-text-secondary)';
-          e.currentTarget.style.borderColor = 'var(--editor-border)';
+          e.currentTarget.style.borderColor = 'var(--control-border)';
         }}
       >
         清除文本高亮

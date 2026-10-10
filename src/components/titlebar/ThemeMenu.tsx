@@ -23,7 +23,7 @@ const THEME_OPTIONS: ThemeOption[] = [
     id: 'system',
     label: '跟随系统',
     desc: '自动跟随系统明暗设置',
-    previewBg: 'linear-gradient(135deg, #ffffff 50%, #0f172a 50%)',
+    previewBg: 'linear-gradient(135deg, #ffffff 50%, #111113 50%)',
     previewAccent: '#8b5cf6',
   },
   {
@@ -43,8 +43,8 @@ const THEME_OPTIONS: ThemeOption[] = [
   {
     id: 'mo-ye',
     label: '墨夜',
-    desc: '夜幕深邃 · 护眼暗色',
-    previewBg: '#0f172a',
+    desc: '墨色沉静 · 纯黑护眼',
+    previewBg: '#111113',
     previewAccent: '#60a5fa',
   },
 ];

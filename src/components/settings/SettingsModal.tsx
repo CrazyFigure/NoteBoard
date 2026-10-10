@@ -279,11 +279,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   {/* 墨夜 */}
                   <ThemeCard
                     title="墨夜"
-                    desc="夜幕深邃 · 护眼暗色"
-                    bg="#0f172a"
+                    desc="墨色沉静 · 纯黑护眼"
+                    bg="#111113"
                     accent="#60a5fa"
-                    codeBg="#1e293b"
-                    codeColor="#93c5fd"
+                    codeBg="#19191c"
+                    codeColor="#a5c8fc"
                     selected={currentThemeMode === 'mo-ye'}
                     onClick={() => setThemeMode('mo-ye')}
                   />
@@ -291,7 +291,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <ThemeCard
                     title="跟随系统"
                     desc={`当前生效: ${THEMES[resolvedTheme]?.displayName ?? resolvedTheme}`}
-                    bg="linear-gradient(135deg, #ffffff 50%, #0f172a 50%)"
+                    bg="linear-gradient(135deg, #ffffff 50%, #111113 50%)"
                     accent="#8b5cf6"
                     codeBg="#f1f5f9"
                     codeColor="#475569"
@@ -1319,7 +1319,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       fontSize: 13,
                       fontWeight: 500,
                       borderRadius: 8,
-                      border: '1px solid var(--editor-border)',
+                      border: '1px solid var(--control-border)',
                       background: 'var(--editor-surface)',
                       color: 'var(--accent-strong)',
                       cursor: checkingUpdate ? 'not-allowed' : 'pointer',
@@ -1337,7 +1337,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     onMouseLeave={(e) => {
                       if (!checkingUpdate) {
                         e.currentTarget.style.background = 'var(--editor-surface)';
-                        e.currentTarget.style.borderColor = 'var(--editor-border)';
+                        e.currentTarget.style.borderColor = 'var(--control-border)';
                         e.currentTarget.style.transform = 'translateY(0)';
                         e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
                       }
@@ -1373,7 +1373,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       fontSize: 13,
                       fontWeight: 500,
                       borderRadius: 8,
-                      border: '1px solid var(--editor-border)',
+                      border: '1px solid var(--control-border)',
                       background: 'var(--editor-surface)',
                       color: 'var(--editor-text)',
                       cursor: 'pointer',
@@ -1388,7 +1388,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.background = 'var(--editor-surface)';
-                      e.currentTarget.style.borderColor = 'var(--editor-border)';
+                      e.currentTarget.style.borderColor = 'var(--control-border)';
                       e.currentTarget.style.transform = 'translateY(0)';
                       e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
                     }}

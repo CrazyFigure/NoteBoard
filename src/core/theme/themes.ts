@@ -35,7 +35,7 @@ export const THEMES: Record<ThemeId, ThemeMeta> = {
     id: 'mo-ye',
     displayName: '墨夜',
     scheme: 'dark',
-    preview: ['#0f172a', '#60a5fa', '#60a5fa'],
+    preview: ['#111113', '#60a5fa', '#60a5fa'],
     excalidrawTheme: 'dark',
   },
 };
