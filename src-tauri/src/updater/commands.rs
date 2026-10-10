@@ -1,5 +1,5 @@
 //! NoteBoard 应用更新检查、安装包下载与系统外链唤起模块。
-//! 支持 Windows 系统代理读取、代理 403 / 故障自动降级直连重试，以及精确的 GitHub API 限流识别。
+//! 支持 Windows 系统代理与 Android 非 VPN 网络直连回退，以及准确的 GitHub API 限流识别。
 
 use std::{
     env, fs,
@@ -47,7 +47,18 @@ const UPDATE_DOWNLOAD_PROGRESS_THROTTLE: Duration = Duration::from_millis(100);
 
 // GitHub 仓库与 API 默认地址
 const GITHUB_REPO_URL: &str = "https://github.com/CrazyFigure/NoteBoard";
-const GITHUB_RELEASE_API_URL: &str = "https://api.github.com/repos/CrazyFigure/NoteBoard/releases/latest";
+const GITHUB_RELEASE_API_URL: &str =
+    "https://api.github.com/repos/CrazyFigure/NoteBoard/releases/latest";
+
+/// 统一 Rust HTTP 与 Android 原生直连的响应，保留限流头与正文供后续准确分类。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReleaseHttpResponse {
+    status: u16,
+    rate_limit_remaining: Option<String>,
+    rate_limit_reset: Option<String>,
+    body: String,
+}
 
 // 下载进度事件载荷
 #[derive(Debug, Clone, Serialize)]
@@ -340,51 +351,116 @@ fn spawn_update_installer(installer_path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// 请求 GitHub Release 元数据；支持系统代理与直连双模式
-async fn fetch_latest_release(use_system_proxy: bool) -> Result<reqwest::Response, String> {
+/// 请求 GitHub Release 元数据并保存状态、限流头与正文；桌面支持忽略系统 HTTP 代理。
+async fn fetch_latest_release(use_system_proxy: bool) -> Result<ReleaseHttpResponse, String> {
     let client = if use_system_proxy {
         build_update_http_client(UPDATE_HTTP_READ_TIMEOUT)?
     } else {
         build_direct_http_client(UPDATE_HTTP_READ_TIMEOUT)?
     };
 
-    client
+    let response = client
         .get(GITHUB_RELEASE_API_URL)
         .header(reqwest::header::USER_AGENT, "NoteBoard")
         .send()
         .await
-        .map_err(|err| format!("update_error:network:{err}"))
+        .map_err(|err| format!("update_error:network:{err}"))?;
+    let status = response.status().as_u16();
+    let header = |name: &str| {
+        response
+            .headers()
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string)
+    };
+    let rate_limit_remaining = header("x-ratelimit-remaining");
+    let rate_limit_reset = header("x-ratelimit-reset");
+    let body = response
+        .text()
+        .await
+        .map_err(|err| format!("update_error:network:{err}"))?;
+    Ok(ReleaseHttpResponse {
+        status,
+        rate_limit_remaining,
+        rate_limit_reset,
+        body,
+    })
 }
 
-/// 检查应用更新：优先系统代理，遇到 403 或网络异常自动回退直连重试
-#[tauri::command]
-pub async fn check_for_updates() -> Result<UpdateCheckResult, String> {
-    let current_version = env!("CARGO_PKG_VERSION").to_string();
-    let release_url = GITHUB_REPO_URL.to_string();
-
-    // 首次走系统代理；若代理不可达或返回 403，则自动回退直连重试
-    let mut response = match fetch_latest_release(true).await {
-        Ok(response) => response,
-        Err(_) => fetch_latest_release(false).await?,
-    };
-    if response.status() == reqwest::StatusCode::FORBIDDEN {
-        response = fetch_latest_release(false).await?;
+/// Android 通过原生 Network 绑定到非 VPN 网络；其余平台继续使用 no_proxy 直连。
+async fn fetch_direct_latest_release(app: &AppHandle) -> Result<ReleaseHttpResponse, String> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri::Manager;
+        let app = app.clone();
+        // 原生调用等待 Kotlin 网络线程返回，放入阻塞任务，避免占用异步运行时工作线程。
+        return tauri::async_runtime::spawn_blocking(move || {
+            let bridge = app
+                .try_state::<crate::mobile_bridge::NbMobile<tauri::Wry>>()
+                .ok_or_else(|| "update_error:network:原生网络桥接未初始化".to_string())?;
+            bridge
+                .0
+                .run_mobile_plugin::<ReleaseHttpResponse>("checkUpdateDirect", ())
+                .map_err(|error| format!("update_error:network:{error}"))
+        })
+        .await
+        .map_err(|error| format!("update_error:network:{error}"))?;
     }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        fetch_latest_release(false).await
+    }
+}
 
-    // 处理 403 限流或拒绝访问
-    if response.status() == reqwest::StatusCode::FORBIDDEN {
+/// 仅在网络故障、403 或 429 时直连一次；直连不可用时保留原限流响应，避免误报。
+async fn release_response_with_fallback(
+    primary: impl std::future::Future<Output = Result<ReleaseHttpResponse, String>>,
+    direct: impl std::future::Future<Output = Result<ReleaseHttpResponse, String>>,
+) -> Result<ReleaseHttpResponse, String> {
+    let response = primary.await;
+    match response {
+        Ok(response) if matches!(response.status, 403 | 429) => {
+            // 两个出口均异常时优先保留原响应中的配额信息，而不是覆盖成直连网络错误。
+            match direct.await {
+                Ok(direct_response)
+                    if (200..300).contains(&direct_response.status)
+                        || matches!(direct_response.status, 403 | 429) =>
+                {
+                    Ok(direct_response)
+                }
+                _ => Ok(response),
+            }
+        }
+        Err(_) => direct.await,
+        Ok(response) => Ok(response),
+    }
+}
+
+/// 解析统一响应，识别主限流、次级限流与普通拒绝访问，成功时读取 Release 元数据。
+fn parse_release_response(response: ReleaseHttpResponse) -> Result<GitHubReleaseResponse, String> {
+    if matches!(response.status, 403 | 429) {
+        let message = serde_json::from_str::<serde_json::Value>(&response.body)
+            .ok()
+            .and_then(|body| {
+                body.get("message")
+                    .and_then(|value| value.as_str())
+                    .map(str::to_string)
+            })
+            .unwrap_or_default()
+            .to_ascii_lowercase();
         let rate_limited = response
-            .headers()
-            .get("x-ratelimit-remaining")
-            .and_then(|value| value.to_str().ok())
+            .rate_limit_remaining
+            .as_deref()
             .and_then(|value| value.parse::<u32>().ok())
-            == Some(0);
+            == Some(0)
+            || response.status == 429
+            || message.contains("rate limit");
         if rate_limited {
             // 解析 GitHub 配额重置时间戳（Unix 秒）
             let reset_ts = response
-                .headers()
-                .get("x-ratelimit-reset")
-                .and_then(|value| value.to_str().ok())
+                .rate_limit_reset
+                .as_deref()
                 .filter(|value| value.parse::<i64>().is_ok())
                 .unwrap_or_default();
             return Err(if reset_ts.is_empty() {
@@ -396,12 +472,23 @@ pub async fn check_for_updates() -> Result<UpdateCheckResult, String> {
         return Err("update_error:forbidden".to_string());
     }
 
-    let release = response
-        .error_for_status()
-        .map_err(|err| format!("update_error:http_status:{err}"))?
-        .json::<GitHubReleaseResponse>()
-        .await
-        .map_err(|err| format!("update_error:parse:{err}"))?;
+    if !(200..300).contains(&response.status) {
+        return Err(format!("update_error:http_status:{}", response.status));
+    }
+    serde_json::from_str(&response.body).map_err(|err| format!("update_error:parse:{err}"))
+}
+
+/// 检查应用更新：先使用默认网络，网络故障或限流时按平台尝试真实直连，再挑选安装包。
+#[tauri::command]
+pub async fn check_for_updates(app: AppHandle) -> Result<UpdateCheckResult, String> {
+    let current_version = env!("CARGO_PKG_VERSION").to_string();
+    let release_url = GITHUB_REPO_URL.to_string();
+    let response = release_response_with_fallback(
+        fetch_latest_release(true),
+        fetch_direct_latest_release(&app),
+    )
+    .await?;
+    let release = parse_release_response(response)?;
 
     let latest_version = release.tag_name.trim_start_matches(['v', 'V']).to_string();
     let update_available = is_newer_version(&release.tag_name, &current_version);
@@ -581,4 +668,112 @@ pub fn open_external_url(app: AppHandle, url: String) -> Result<bool, String> {
     }
 
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+
+    /// 构造不同出口的 API 响应，测试只模拟返回值，不访问公网或真实 VPN。
+    fn response(status: u16, remaining: Option<&str>, body: &str) -> ReleaseHttpResponse {
+        ReleaseHttpResponse {
+            status,
+            rate_limit_remaining: remaining.map(str::to_string),
+            rate_limit_reset: Some("1800000000".to_string()),
+            body: body.to_string(),
+        }
+    }
+
+    // 模拟真实 Release 包含 Android 安装包，验证直连结果进入原来的版本及安装包处理流程。
+    const RELEASE_BODY: &str = r#"{"tag_name":"v0.4.6","html_url":"https://github.com/CrazyFigure/NoteBoard/releases/tag/v0.4.6","assets":[{"name":"NoteBoard_android_arm64.apk","browser_download_url":"https://example.com/update.apk","size":123}]}"#;
+
+    /// 默认出口被 403 / 429 限流时，必须等待并使用直连出口的成功结果。
+    #[test]
+    fn limited_default_network_uses_direct_result() {
+        for status in [403, 429] {
+            let direct_calls = Cell::new(0);
+            let result = tauri::async_runtime::block_on(release_response_with_fallback(
+                async { Ok(response(status, Some("0"), "{}")) },
+                async {
+                    direct_calls.set(direct_calls.get() + 1);
+                    Ok(response(200, Some("59"), RELEASE_BODY))
+                },
+            ))
+            .unwrap();
+            let release = parse_release_response(result).unwrap();
+            assert_eq!(direct_calls.get(), 1);
+            assert_eq!(release.tag_name, "v0.4.6");
+            assert_eq!(release.assets[0].size, Some(123));
+            assert!(is_newer_version(&release.tag_name, "0.4.5"));
+        }
+    }
+
+    /// 正常默认网络不需要直连；直连 Future 未被轮询，避免额外请求与无谓切换网络。
+    #[test]
+    fn successful_default_network_skips_direct_request() {
+        let called = Cell::new(false);
+        let result = tauri::async_runtime::block_on(release_response_with_fallback(
+            async { Ok(response(200, None, RELEASE_BODY)) },
+            async {
+                called.set(true);
+                Err("不应调用".to_string())
+            },
+        ))
+        .unwrap();
+        assert!(!called.get());
+        assert!(parse_release_response(result).is_ok());
+    }
+
+    /// VPN 连接故障同样应触发一次直连，不能先在同一出口重复重试。
+    #[test]
+    fn default_network_failure_tries_direct_once() {
+        let called = Cell::new(0);
+        let result = tauri::async_runtime::block_on(release_response_with_fallback(
+            async { Err("update_error:network:VPN 故障".to_string()) },
+            async {
+                called.set(called.get() + 1);
+                Ok(response(200, None, RELEASE_BODY))
+            },
+        ))
+        .unwrap();
+        assert_eq!(called.get(), 1);
+        assert!(parse_release_response(result).is_ok());
+    }
+
+    /// VPN 禁止绕行或普通网络不可达时，保留原来的限流与重置时间，而不是误报未知网络异常。
+    #[test]
+    fn unavailable_direct_network_preserves_rate_limit() {
+        let result = tauri::async_runtime::block_on(release_response_with_fallback(
+            async { Ok(response(403, Some("0"), "{}")) },
+            async { Err("update_error:network:VPN 禁止绕行".to_string()) },
+        ))
+        .unwrap();
+        assert_eq!(
+            parse_release_response(result).unwrap_err(),
+            "update_error:rate_limited:1800000000"
+        );
+    }
+
+    /// 次级限流可能没有配额耗尽响应头；429 与明确的 GitHub rate limit 消息均需准确识别。
+    #[test]
+    fn rate_limit_classification_covers_secondary_limits() {
+        for limited in [
+            response(429, None, "{}"),
+            response(
+                403,
+                None,
+                r#"{"message":"You have exceeded a secondary rate limit"}"#,
+            ),
+        ] {
+            assert_eq!(
+                parse_release_response(limited).unwrap_err(),
+                "update_error:rate_limited:1800000000"
+            );
+        }
+        assert_eq!(
+            parse_release_response(response(403, None, "{}")).unwrap_err(),
+            "update_error:forbidden"
+        );
+    }
 }

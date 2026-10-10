@@ -74,6 +74,15 @@ manifest = insertAfter(
   manifest,
   '<uses-permission android:name="android.permission.INTERNET" />',
   `
+    <!-- ${PATCH_MARKER}: 查询 Wi-Fi / 蜂窝物理网络，为更新检查提供非 VPN 直连回退 -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />`,
+  '更新直连网络权限',
+);
+
+manifest = insertAfter(
+  manifest,
+  '<uses-permission android:name="android.permission.INTERNET" />',
+  `
     <!-- ${PATCH_MARKER}: 外部存储访问（"手机存储"浏览外部文件夹；Android 11+ 需用户在系统设置中授予所有文件访问权限） -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
