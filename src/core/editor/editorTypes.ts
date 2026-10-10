@@ -60,6 +60,10 @@ export interface SearchCapabilities {
   search(options: TextSearchOptions): MatchStats;
   findNext(options: TextSearchOptions): MatchStats;
   findPrev(options: TextSearchOptions): MatchStats;
+  /** 跳转到第一个匹配项 */
+  findFirst(options: TextSearchOptions): MatchStats;
+  /** 跳转到最后一个匹配项 */
+  findLast(options: TextSearchOptions): MatchStats;
   replace(options: TextSearchOptions): ReplaceOutcome;
   replaceAll(options: TextSearchOptions): ReplaceOutcome;
 }

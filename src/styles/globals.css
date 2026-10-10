@@ -1265,19 +1265,26 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
 .ProseMirror .github-alert-warning { border-left-color: var(--alert-warning-border); background: var(--alert-warning-bg); }
 .ProseMirror .github-alert-caution { border-left-color: var(--alert-caution-border); background: var(--alert-caution-bg); }
 
-/* 搜索匹配高亮 */
+/* Markdown 可视化（及其他 ProseMirror 编辑器）文本选区：与 CodeMirror（TXT/代码/源码模式）
+   共用 --cm-selection-bg 主题 token，替代浏览器默认的系统深蓝选区，保证各编辑器选中效果一致。
+   排除 ProseMirror-hideselection：节点选择 / 表格单元格选择时 ProseMirror 需要隐藏原生选区 */
+.ProseMirror:not(.ProseMirror-hideselection) ::selection,
+.ProseMirror:not(.ProseMirror-hideselection)::selection {
+  background-color: var(--cm-selection-bg);
+}
+
+/* 搜索匹配高亮：与 CodeMirror（features/editor-code/theme.ts 的 .cm-searchMatch）保持一致，
+   全部候选为浅色主题底，当前项为选区底色 + 主题色描边（不再使用实心橙底 + 强制黑字） */
 .nb-search-result {
   background-color: var(--cm-search-match-bg, rgba(245, 158, 11, 0.28)) !important;
   border-radius: 2px;
-  box-shadow: 0 0 0 1px var(--cm-search-match-bg, rgba(245, 158, 11, 0.28));
   transition: background-color var(--transition-fast);
 }
 
 .nb-search-result-current {
-  background-color: var(--cm-search-active-bg, #f59e0b) !important;
-  color: #000000 !important;
+  background-color: var(--editor-selection, rgba(59, 130, 246, 0.38)) !important;
+  outline: 1.5px solid var(--accent-strong, #3b82f6);
   border-radius: 2px;
-  box-shadow: 0 0 0 1px var(--cm-search-active-bg, #f59e0b);
 }
 
 /* 隐藏 CodeMirror 原生搜索面板 */
