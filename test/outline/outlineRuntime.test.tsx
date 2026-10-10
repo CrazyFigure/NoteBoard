@@ -8,7 +8,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { afterEach, describe, expect, test } from 'vitest';
 import { useHeadings } from '@/features/outline/useHeadings';
 import { searchReplaceExtension } from '@/features/editor-md/searchReplace';
-import { executeSearch } from '@/features/search/searchController';
+import { executeFindNext } from '@/features/search/searchController';
 
 /** 等待大纲选区监听的 100ms 防抖完成。 */
 function waitForOutlineSelection(): Promise<void> {
@@ -88,7 +88,8 @@ describe('Markdown 大纲运行时稳定性', () => {
     const initialActiveId = probe.dataset.activeId;
 
     await act(async () => {
-      const stats = executeSearch(
+      // 搜索本身不移动选区，跳转由"下一个匹配项"显式触发
+      const stats = executeFindNext(
         { type: 'tiptap', editor },
         {
           searchText: '唯一搜索词',

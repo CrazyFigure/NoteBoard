@@ -7,6 +7,8 @@ import {
   Search,
   ChevronUp,
   ChevronDown,
+  ArrowUpToLine,
+  ArrowDownToLine,
   X,
   Replace,
   Grid2X2,
@@ -131,6 +133,22 @@ export function SearchReplaceBar() {
     const search = getSearch();
     if (!search) return;
     const stats = search.findPrev(searchOptions);
+    setMatchStats(stats.matchIndex, stats.matchCount);
+  }, [getSearch, searchOptions, setMatchStats]);
+
+  // 跳转到第一处
+  const handleFindFirst = useCallback(() => {
+    const search = getSearch();
+    if (!search) return;
+    const stats = search.findFirst(searchOptions);
+    setMatchStats(stats.matchIndex, stats.matchCount);
+  }, [getSearch, searchOptions, setMatchStats]);
+
+  // 跳转到最后一处
+  const handleFindLast = useCallback(() => {
+    const search = getSearch();
+    if (!search) return;
+    const stats = search.findLast(searchOptions);
     setMatchStats(stats.matchIndex, stats.matchCount);
   }, [getSearch, searchOptions, setMatchStats]);
 
@@ -277,98 +295,27 @@ export function SearchReplaceBar() {
                 whiteSpace: 'nowrap',
               }}
             >
-              {matchIndex}/{matchCount}
+              {/* 光标不在任何匹配项上时（仅输入/修改搜索词、未跳转）序号显示为 - */}
+              {matchCount > 0 && matchIndex === 0 ? '-' : matchIndex}/{matchCount}
             </span>
           )}
         </div>
 
-        {/* 上一个匹配项 */}
-        <Tooltip content="上一个匹配项" shortcut="Shift+Enter" side="bottom" sideOffset={4}>
-          <button
-            type="button"
-            onClick={handleFindPrev}
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 6,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--editor-text-secondary)',
-              cursor: 'pointer',
-              flexShrink: 0,
-              boxSizing: 'border-box',
-              transition: 'all var(--transition-fast)',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--toolbar-hover)';
-              e.currentTarget.style.color = 'var(--editor-text)';
-              e.currentTarget.style.transform = 'scale(1.08)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.color = 'var(--editor-text-secondary)';
-              e.currentTarget.style.transform = 'scale(1)';
-            }}
-            onMouseDown={(e) => {
-              e.currentTarget.style.background = 'var(--toolbar-active)';
-              e.currentTarget.style.transform = 'scale(0.92)';
-            }}
-            onMouseUp={(e) => {
-              e.currentTarget.style.background = 'var(--toolbar-hover)';
-              e.currentTarget.style.transform = 'scale(1.08)';
-            }}
-            aria-label="上一个匹配项"
-          >
+        {/* 匹配项导航按钮组：首个 / 上一个 / 下一个 / 末个（紧凑排列，节省横向空间） */}
+        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+          <NavIconButton label="第一个匹配项" onClick={handleFindFirst}>
+            <ArrowUpToLine size={14} />
+          </NavIconButton>
+          <NavIconButton label="上一个匹配项" shortcut="Shift+Enter" onClick={handleFindPrev}>
             <ChevronUp size={16} />
-          </button>
-        </Tooltip>
-
-        {/* 下一个匹配项 */}
-        <Tooltip content="下一个匹配项" shortcut="Enter" side="bottom" sideOffset={4}>
-          <button
-            type="button"
-            onClick={handleFindNext}
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 6,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--editor-text-secondary)',
-              cursor: 'pointer',
-              flexShrink: 0,
-              boxSizing: 'border-box',
-              transition: 'all var(--transition-fast)',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--toolbar-hover)';
-              e.currentTarget.style.color = 'var(--editor-text)';
-              e.currentTarget.style.transform = 'scale(1.08)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.color = 'var(--editor-text-secondary)';
-              e.currentTarget.style.transform = 'scale(1)';
-            }}
-            onMouseDown={(e) => {
-              e.currentTarget.style.background = 'var(--toolbar-active)';
-              e.currentTarget.style.transform = 'scale(0.92)';
-            }}
-            onMouseUp={(e) => {
-              e.currentTarget.style.background = 'var(--toolbar-hover)';
-              e.currentTarget.style.transform = 'scale(1.08)';
-            }}
-            aria-label="下一个匹配项"
-          >
+          </NavIconButton>
+          <NavIconButton label="下一个匹配项" shortcut="Enter" onClick={handleFindNext}>
             <ChevronDown size={16} />
-          </button>
-        </Tooltip>
+          </NavIconButton>
+          <NavIconButton label="最后一个匹配项" onClick={handleFindLast}>
+            <ArrowDownToLine size={14} />
+          </NavIconButton>
+        </div>
 
         {/* 关闭按钮 */}
         <Tooltip content="关闭" shortcut="Esc" side="bottom" sideOffset={4}>
@@ -637,5 +584,65 @@ export function SearchReplaceBar() {
         </label>
       </div>
     </div>
+  );
+}
+
+interface NavIconButtonProps {
+  /** Tooltip 文案与无障碍标签 */
+  label: string;
+  /** Tooltip 中展示的快捷键 */
+  shortcut?: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}
+
+/** 搜索栏匹配项导航用的紧凑图标按钮（26×28，带 Hover / Active 反馈） */
+function NavIconButton({ label, shortcut, onClick, children }: NavIconButtonProps) {
+  return (
+    <Tooltip content={label} shortcut={shortcut} side="bottom" sideOffset={4}>
+      <button
+        type="button"
+        onClick={onClick}
+        // 阻止 mousedown 默认行为，点击按钮时焦点保留在搜索输入框，便于继续按 Enter 导航
+        onMouseDown={(e) => {
+          e.preventDefault();
+          e.currentTarget.style.background = 'var(--toolbar-active)';
+          e.currentTarget.style.transform = 'scale(0.92)';
+        }}
+        onMouseUp={(e) => {
+          e.currentTarget.style.background = 'var(--toolbar-hover)';
+          e.currentTarget.style.transform = 'scale(1.08)';
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = 'var(--toolbar-hover)';
+          e.currentTarget.style.color = 'var(--editor-text)';
+          e.currentTarget.style.transform = 'scale(1.08)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'transparent';
+          e.currentTarget.style.color = 'var(--editor-text-secondary)';
+          e.currentTarget.style.transform = 'scale(1)';
+        }}
+        style={{
+          width: 26,
+          height: 28,
+          borderRadius: 6,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          border: 'none',
+          background: 'transparent',
+          color: 'var(--editor-text-secondary)',
+          cursor: 'pointer',
+          flexShrink: 0,
+          padding: 0,
+          boxSizing: 'border-box',
+          transition: 'all var(--transition-fast)',
+        }}
+        aria-label={label}
+      >
+        {children}
+      </button>
+    </Tooltip>
   );
 }

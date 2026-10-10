@@ -14,6 +14,8 @@ import {
   executeSearch,
   executeFindNext,
   executeFindPrev,
+  executeFindFirst,
+  executeFindLast,
   executeReplace,
   executeReplaceAll,
 } from '../search/searchController';
@@ -49,6 +51,8 @@ export function createCodeEditorCapabilities(
     search: (options: TextSearchOptions) => executeSearch({ type: 'codemirror', view }, options),
     findNext: (options: TextSearchOptions) => executeFindNext({ type: 'codemirror', view }, options),
     findPrev: (options: TextSearchOptions) => executeFindPrev({ type: 'codemirror', view }, options),
+    findFirst: (options: TextSearchOptions) => executeFindFirst({ type: 'codemirror', view }, options),
+    findLast: (options: TextSearchOptions) => executeFindLast({ type: 'codemirror', view }, options),
     replace: (options: TextSearchOptions) => executeReplace({ type: 'codemirror', view }, options),
     replaceAll: (options: TextSearchOptions) => executeReplaceAll({ type: 'codemirror', view }, options),
   };

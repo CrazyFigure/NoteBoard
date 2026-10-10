@@ -1,15 +1,24 @@
 // NoteBoard 搜索替换控制器单元测试
 // 验证反斜杠字面量检索、替换以及无匹配时的高亮与选区重置
+// 以及"搜索不自动跳转、基于光标导航、首/末跳转"的交互语义
 
 import { describe, test, expect } from 'vitest';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { search } from '@codemirror/search';
+import { Editor } from '@tiptap/core';
+import StarterKit from '@tiptap/starter-kit';
 import {
   executeSearch,
+  executeFindNext,
+  executeFindPrev,
+  executeFindFirst,
+  executeFindLast,
   executeReplace,
   executeReplaceAll,
+  type SearchOptions,
 } from '@/features/search/searchController';
+import { searchReplaceExtension } from '@/features/editor-md/searchReplace';
 
 // JSDOM 环境下补全 Range 测量接口以支持 CodeMirror 6
 if (typeof Range !== 'undefined') {
@@ -74,7 +83,8 @@ describe('searchController 搜索与替换控制器', () => {
     );
     // 双反斜杠字面量只有 1 处匹配，绝不匹配前面的单个反斜杠
     expect(doubleStats.matchCount).toBe(1);
-    expect(doubleStats.matchIndex).toBe(1);
+    // 搜索不自动跳转：光标不在匹配项上，当前序号为 0
+    expect(doubleStats.matchIndex).toBe(0);
 
     // 3. 搜索四反斜杠 "\\\\"
     const quadStats = executeSearch(
@@ -173,8 +183,8 @@ describe('searchController 搜索与替换控制器', () => {
     const doc = 'apple banana orange';
     const view = createCMView(doc);
 
-    // 1. 搜索 "apple"，命中 1 处并选中该范围
-    const stats1 = executeSearch(
+    // 1. 搜索并跳转到 "apple"，命中 1 处并选中该范围
+    const stats1 = executeFindNext(
       { type: 'codemirror', view },
       {
         searchText: 'apple',
@@ -203,5 +213,137 @@ describe('searchController 搜索与替换控制器', () => {
     expect(stats2.matchIndex).toBe(0);
     // 选区已被自动折叠为单光标，防止关联高亮残留
     expect(view.state.selection.main.empty).toBe(true);
+  });
+});
+
+/** 构造搜索选项 */
+function opts(searchText: string, replaceText = ''): SearchOptions {
+  return { searchText, replaceText, caseSensitive: false, wholeWord: false, isRegex: false };
+}
+
+describe('搜索导航语义（CodeMirror：TXT / 代码 / MD 源码）', () => {
+  // 文档中 "foo" 位于 0、8、16
+  const DOC = 'foo bar foo bar foo';
+
+  function createView(cursor: number): EditorView {
+    const state = EditorState.create({
+      doc: DOC,
+      selection: { anchor: cursor },
+      extensions: [search({ top: false })],
+    });
+    return new EditorView({ state });
+  }
+
+  test('输入搜索词只更新计数，不移动光标', () => {
+    const view = createView(10);
+    const stats = executeSearch({ type: 'codemirror', view }, opts('foo'));
+    expect(stats).toEqual({ matchIndex: 0, matchCount: 3 });
+    expect(view.state.selection.main.from).toBe(10);
+    expect(view.state.selection.main.empty).toBe(true);
+  });
+
+  test('编辑正文删掉当前匹配后重跑搜索，不会跳回第一个匹配', () => {
+    const view = createView(0);
+    const target = { type: 'codemirror' as const, view };
+    executeFindNext(target, opts('foo'));
+    executeFindNext(target, opts('foo'));
+    expect(view.state.selection.main.from).toBe(8);
+    // 模拟用户删除当前选中的 "foo"
+    view.dispatch({ changes: { from: 8, to: 11 }, selection: { anchor: 8 } });
+    const stats = executeSearch(target, opts('foo'));
+    expect(stats).toEqual({ matchIndex: 0, matchCount: 2 });
+    expect(view.state.selection.main.from).toBe(8);
+  });
+
+  test('下一个/上一个基于当前光标位置，并在两端回绕', () => {
+    const view = createView(10); // 位于第二个 foo 内部
+    const target = { type: 'codemirror' as const, view };
+    expect(executeFindNext(target, opts('foo')).matchIndex).toBe(3);
+    expect(view.state.selection.main.from).toBe(16);
+    // 末尾回绕到首个
+    expect(executeFindNext(target, opts('foo')).matchIndex).toBe(1);
+    // 开头回绕到末个
+    expect(executeFindPrev(target, opts('foo')).matchIndex).toBe(3);
+    expect(executeFindPrev(target, opts('foo')).matchIndex).toBe(2);
+
+    const view2 = createView(10);
+    expect(executeFindPrev({ type: 'codemirror', view: view2 }, opts('foo')).matchIndex).toBe(1);
+  });
+
+  test('跳转到第一个 / 最后一个匹配项', () => {
+    const view = createView(10);
+    const target = { type: 'codemirror' as const, view };
+    expect(executeFindLast(target, opts('foo'))).toEqual({ matchIndex: 3, matchCount: 3 });
+    expect(view.state.selection.main.from).toBe(16);
+    expect(executeFindFirst(target, opts('foo'))).toEqual({ matchIndex: 1, matchCount: 3 });
+    expect(view.state.selection.main.from).toBe(0);
+  });
+
+  test('替换：光标不在匹配上时替换光标之后的下一处', () => {
+    const view = createView(5);
+    const res = executeReplace({ type: 'codemirror', view }, opts('foo', 'X'));
+    expect(res.replacedCount).toBe(1);
+    expect(view.state.doc.toString()).toBe('foo bar X bar foo');
+  });
+});
+
+describe('搜索导航语义（TipTap：MD 可视化）', () => {
+  // 三个段落，"foo" 各出现一次
+  function createEditor(): Editor {
+    return new Editor({
+      extensions: [StarterKit, searchReplaceExtension()],
+      content: '<p>foo one</p><p>foo two</p><p>foo three</p>',
+    });
+  }
+
+  /** 选区文本 */
+  function selectedText(editor: Editor): string {
+    const { from, to } = editor.state.selection;
+    return editor.state.doc.textBetween(from, to);
+  }
+
+  /** 选区所在段落文本 */
+  function currentParagraph(editor: Editor): string {
+    return editor.state.selection.$from.parent.textContent;
+  }
+
+  test('输入搜索词只更新计数，不移动光标', () => {
+    const editor = createEditor();
+    editor.commands.setTextSelection(12); // 第二段内
+    const before = editor.state.selection.from;
+    const stats = executeSearch({ type: 'tiptap', editor }, opts('foo'));
+    expect(stats).toEqual({ matchIndex: 0, matchCount: 3 });
+    expect(editor.state.selection.from).toBe(before);
+    editor.destroy();
+  });
+
+  test('下一个/上一个基于光标，首/末跳转正确', () => {
+    const editor = createEditor();
+    const target = { type: 'tiptap' as const, editor };
+    editor.commands.setTextSelection(12); // 第二段 "foo two" 中的 "two" 附近
+    expect(executeFindNext(target, opts('foo')).matchIndex).toBe(3);
+    expect(currentParagraph(editor)).toBe('foo three');
+    expect(selectedText(editor)).toBe('foo');
+    expect(executeFindPrev(target, opts('foo')).matchIndex).toBe(2);
+    expect(currentParagraph(editor)).toBe('foo two');
+    expect(executeFindFirst(target, opts('foo')).matchIndex).toBe(1);
+    expect(currentParagraph(editor)).toBe('foo one');
+    expect(executeFindLast(target, opts('foo')).matchIndex).toBe(3);
+    // 选区恰在匹配上时重跑搜索，序号保持
+    expect(executeSearch(target, opts('foo')).matchIndex).toBe(3);
+    editor.destroy();
+  });
+
+  test('替换当前匹配后定位到下一处，替换为空串不删除段落', () => {
+    const editor = createEditor();
+    const target = { type: 'tiptap' as const, editor };
+    executeFindFirst(target, opts('foo'));
+    const res = executeReplace(target, opts('foo', ''));
+    expect(res.replacedCount).toBe(1);
+    expect(res.matchCount).toBe(2);
+    expect(editor.state.doc.childCount).toBe(3);
+    expect(editor.state.doc.child(0).textContent).toBe(' one');
+    expect(currentParagraph(editor)).toBe('foo two');
+    editor.destroy();
   });
 });

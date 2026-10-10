@@ -15,6 +15,8 @@ import {
   executeSearch,
   executeFindNext,
   executeFindPrev,
+  executeFindFirst,
+  executeFindLast,
   executeReplace,
   executeReplaceAll,
   focusActiveEditor,
@@ -71,6 +73,8 @@ export function createMarkdownEditorCapabilities(
     search: (options: TextSearchOptions) => executeSearch(currentTarget(docKey), options),
     findNext: (options: TextSearchOptions) => executeFindNext(currentTarget(docKey), options),
     findPrev: (options: TextSearchOptions) => executeFindPrev(currentTarget(docKey), options),
+    findFirst: (options: TextSearchOptions) => executeFindFirst(currentTarget(docKey), options),
+    findLast: (options: TextSearchOptions) => executeFindLast(currentTarget(docKey), options),
     replace: (options: TextSearchOptions) => executeReplace(currentTarget(docKey), options),
     replaceAll: (options: TextSearchOptions) => executeReplaceAll(currentTarget(docKey), options),
   };
