@@ -21,6 +21,7 @@ pub struct S3 {
     secret_key: String,
     prefix: String,
     path_style: bool,
+    user_agent: String,
 }
 
 impl S3 {
@@ -58,6 +59,8 @@ impl S3 {
             secret_key: cfg.secret_access_key.trim().to_string(),
             prefix: clean_dir(&cfg.prefix),
             path_style: cfg.path_style,
+            // User-Agent 不参与 SigV4 签名，可自由替换
+            user_agent: if cfg.user_agent.trim().is_empty() { default_user_agent() } else { cfg.user_agent.trim().to_string() },
         })
     }
 
@@ -119,7 +122,7 @@ impl S3 {
         let mut rb = self
             .client
             .request(method, url)
-            .header(header::USER_AGENT, default_user_agent())
+            .header(header::USER_AGENT, &self.user_agent)
             .header("x-amz-date", amz_date)
             .header("x-amz-content-sha256", payload_hash)
             .header(header::AUTHORIZATION, authorization);

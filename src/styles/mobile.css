@@ -361,10 +361,22 @@ html[data-platform='mobile'] body {
   align-items: center;
   gap: 8px;
   padding: 4px 8px 2px 12px;
+  /* 位置标签较多（我的笔记 / 手机存储 / 同步文件夹）时整行横向滚动，标签文字不折行 */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.nb-m-location::-webkit-scrollbar {
+  display: none;
 }
 
 .nb-m-location-refresh {
   margin-left: auto;
+  flex-shrink: 0;
+  /* 横向滚动时刷新按钮固定在右侧可见 */
+  position: sticky;
+  right: 0;
+  background: var(--editor-bg);
 }
 
 .nb-m-chip {
@@ -378,6 +390,8 @@ html[data-platform='mobile'] body {
   background: transparent;
   color: var(--editor-text-secondary, var(--editor-text));
   font-size: 13px;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
 }
 

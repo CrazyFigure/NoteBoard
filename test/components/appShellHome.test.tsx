@@ -40,7 +40,7 @@ vi.mock('@/features/toolbar/EditorToolbar', () => ({ EditorToolbar: () => null }
 vi.mock('@/features/external/MissingFileDialog', () => ({ MissingFileDialog: () => null }));
 // AppShell 依赖的编排模块（避免真实 Tauri 调用链）
 vi.mock('@/features/welcome/welcomeActions', () => ({
-  openFileDialog: vi.fn(), openFolderDialog: vi.fn(), openStagingArea: vi.fn(),
+  openFileDialog: vi.fn(), openFolderDialog: vi.fn(), openStagingArea: vi.fn(), openSyncFolder: vi.fn(),
   newMarkdown: vi.fn(), newMindmap: vi.fn(), newDrawio: vi.fn(), newBitable: vi.fn(),
   newBoard: vi.fn(), newMermaid: vi.fn(), newPlantUml: vi.fn(), newInfographic: vi.fn(),
   newJson: vi.fn(), newSql: vi.fn(), newText: vi.fn(),

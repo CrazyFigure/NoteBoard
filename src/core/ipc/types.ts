@@ -504,6 +504,8 @@ export interface S3Config {
   secretAccessKey: string;
   prefix: string;
   pathStyle: boolean;
+  /** 自定义 User-Agent，留空使用 NoteBoard/版本号 */
+  userAgent: string;
 }
 
 export interface GitRepoConfig {

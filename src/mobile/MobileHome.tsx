@@ -8,6 +8,7 @@ import {
   Braces,
   ChartColumn,
   ChevronRight,
+  FolderSync,
   Database,
   FilePlus,
   FileText,
@@ -77,6 +78,7 @@ import {
   renameEntry,
   shareEntry,
   switchLocation,
+  openSyncFolderOnMobile,
   validateFileName,
 } from './mobileFiles';
 import { useMobileStore, type HomeSection } from './mobileStore';
@@ -228,6 +230,7 @@ function FilesSection({ onEntryMenu }: { onEntryMenu: (node: FileTreeNode) => vo
   const tabs = useWindowStore((s) => s.tabs);
   const openKeys = useMemo(() => new Set(tabs.map((tab) => pathKey(tab.path ?? ''))), [tabs]);
   const syncTrash = useSyncStore((s) => syncTrashPath(s.config));
+  const syncRoot = useSyncStore((s) => s.config?.sync.rootDir?.trim() || null);
 
   // 切换到手机存储：未授权时先引导开启"所有文件访问权限"
   const chooseDevice = async () => {
@@ -264,6 +267,12 @@ function FilesSection({ onEntryMenu }: { onEntryMenu: (node: FileTreeNode) => vo
           >
             <HardDrive size={15} /> 手机存储
             {!platform.allFilesAccess && <ShieldAlert size={14} className="nb-m-chip-warn" />}
+          </button>
+        )}
+        {/* 设置了多端同步文件夹时提供直达入口 */}
+        {syncRoot && (
+          <button type="button" className="nb-m-chip" onClick={() => void openSyncFolderOnMobile()}>
+            <FolderSync size={15} /> 同步文件夹
           </button>
         )}
         <IconButton icon={<RefreshCw size={17} />} label="刷新" onClick={() => void refreshCurrentFolder()} className="nb-m-location-refresh" />
@@ -505,6 +514,7 @@ export function MobileHome() {
   }, []);
 
   const [createOpen, setCreateOpen] = useState(false);
+  const syncRoot = useSyncStore((s) => s.config?.sync.rootDir?.trim() || null);
   const [menuNode, setMenuNode] = useState<FileTreeNode | null>(null);
   const [renameNode, setRenameNode] = useState<FileTreeNode | null>(null);
   const [deleteNode, setDeleteNode] = useState<FileTreeNode | null>(null);
@@ -646,6 +656,23 @@ export function MobileHome() {
               <span className="nb-m-action-desc">从手机其它位置复制到当前文件夹</span>
             </span>
           </button>
+          {syncRoot && (
+            <button
+              type="button"
+              className="nb-m-action"
+              onClick={() => {
+                setCreateOpen(false);
+                setHomeSection('files');
+                void openSyncFolderOnMobile();
+              }}
+            >
+              <span className="nb-m-action-icon"><FolderSync size={18} /></span>
+              <span className="nb-m-action-text">
+                <span className="nb-m-action-label">打开同步文件夹</span>
+                <span className="nb-m-action-desc">{syncRoot}</span>
+              </span>
+            </button>
+          )}
         </div>
       </BottomSheet>
 

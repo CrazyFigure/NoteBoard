@@ -2998,16 +2998,17 @@ button:not(:disabled) {
   transform: scale(0.94);
 }
 
-/* ── 多维表格数字输入：禁用原生上下微调箭头与滚轮调整 ──
-   number 输入框聚焦后滚轮会直接改值，与表格滚动严重冲突；
-   微调箭头在紧凑单元格里也极易误触，故统一屏蔽，只允许键盘直接输入。 */
-.nb-bitable-num-input::-webkit-outer-spin-button,
-.nb-bitable-num-input::-webkit-inner-spin-button {
+/* ── 数字输入：全局禁用原生上下微调箭头（滚轮调整由 core/numberInputGuard 统一屏蔽） ──
+   number 输入框聚焦后滚轮会直接改值，与表格/设置页滚动严重冲突；
+   微调箭头在紧凑单元格与设置项里也极易误触，故统一屏蔽，只允许键盘直接输入。
+   最早仅多维表格单元格（.nb-bitable-num-input）屏蔽，现推广到设置页等全部数字输入框。 */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
 
-.nb-bitable-num-input {
+input[type='number'] {
   -moz-appearance: textfield;
   appearance: textfield;
 }

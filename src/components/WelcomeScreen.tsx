@@ -27,7 +27,10 @@ import {
   Archive,
   Table2,
   Star,
+  FolderSync,
 } from 'lucide-react';
+import { useSyncStore } from '../stores/syncStore';
+import { formatRelative } from '../features/sync/syncFormat';
 
 interface WelcomeScreenProps {
   onOpenFile?: () => void;
@@ -46,6 +49,8 @@ interface WelcomeScreenProps {
   onNewInfographic?: () => void;
   onNewJson?: () => void;
   onNewSql?: () => void;
+  /** 打开多端同步文件夹（设置了同步文件夹时显示入口） */
+  onOpenSyncFolder?: () => void;
 }
 
 export function WelcomeScreen({
@@ -65,8 +70,21 @@ export function WelcomeScreen({
   onNewInfographic,
   onNewJson,
   onNewSql,
+  onOpenSyncFolder,
 }: WelcomeScreenProps) {
   const [showMoreFormats, setShowMoreFormats] = useState(false);
+  // 同步文件夹入口：路径与最近同步状态
+  const syncRoot = useSyncStore((s) => s.config?.sync.rootDir?.trim() || null);
+  const syncEnabled = useSyncStore((s) => s.config?.sync.enabled ?? false);
+  const lastSyncAt = useSyncStore((s) => s.status?.lastSync?.at ?? 0);
+  const syncing = useSyncStore((s) => s.status?.syncing ?? false);
+  const syncStatusText = !syncEnabled
+    ? '多端同步未开启'
+    : syncing
+      ? '正在同步…'
+      : lastSyncAt
+        ? `上次同步 ${formatRelative(lastSyncAt)}`
+        : '尚未同步';
 
   // 🔴 P0-1b：首帧提交后空闲预取最常用入口（markdown 为主，code 次之）——
   //    requestIdleCallback 空闲发起（jsdom/旧环境回退 setTimeout），不与首屏
@@ -611,6 +629,69 @@ export function WelcomeScreen({
             ) : null}
           </button>
         ))}
+
+        {/* 设置了同步文件夹时显示：横跨两列，附带路径与最近同步时间 */}
+        {syncRoot && onOpenSyncFolder ? (
+          <button
+            type="button"
+            className="nb-btn-card"
+            onClick={onOpenSyncFolder}
+            style={{
+              gridColumn: '1 / -1',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '10px 14px',
+              border: '1px solid rgba(14, 165, 233, 0.18)',
+              borderRadius: 8,
+              background: 'rgba(14, 165, 233, 0.05)',
+              cursor: 'pointer',
+              fontSize: 13,
+              color: 'var(--editor-text)',
+              boxShadow: 'var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.03))',
+              transition: 'all var(--transition-fast, 150ms ease)',
+              textAlign: 'left',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(14, 165, 233, 0.10)';
+              e.currentTarget.style.borderColor = 'rgba(14, 165, 233, 0.38)';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(14, 165, 233, 0.05)';
+              e.currentTarget.style.borderColor = 'rgba(14, 165, 233, 0.18)';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.transform = 'scale(0.99)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+          >
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 6,
+                background: 'rgba(14, 165, 233, 0.10)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <FolderSync size={18} color="#0ea5e9" />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 500, lineHeight: 1.3 }}>打开同步文件夹</div>
+              <div style={{ fontSize: 11, color: 'var(--editor-text-muted)', marginTop: 2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                {syncRoot}
+              </div>
+            </div>
+            <span style={{ fontSize: 11, color: 'var(--editor-text-muted)', flexShrink: 0 }}>{syncStatusText}</span>
+          </button>
+        ) : null}
       </div>
     </div>
   );

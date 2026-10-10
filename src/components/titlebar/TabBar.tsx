@@ -45,6 +45,7 @@ import {
   Table2,
   ChartColumn,
   Star,
+  FolderSync,
 } from 'lucide-react';
 import { Tooltip } from '../Tooltip';
 import { on, off } from '../../core/emitter';
@@ -72,10 +73,12 @@ import {
   openFileDialog,
   openFolderDialog,
   openStagingArea,
+  openSyncFolder,
 } from '../../features/welcome/welcomeActions';
 import * as ipc from '../../core/ipc/commands';
 import { getExplorerFileIcon } from '../../features/explorer/fileIcons';
 import { checkOpenDocumentStillExists } from '../../features/external/missingFileGuard';
+import { useSyncStore } from '../../stores/syncStore';
 
 // ── 类型图标映射 ──
 
@@ -596,6 +599,8 @@ export function TabBar() {
   const saveBtnRef = useRef<HTMLButtonElement>(null);
 
   const [newMenuPos, setNewMenuPos] = useState<{ x: number; y: number } | null>(null);
+  // 设置了同步文件夹时「+」菜单显示「打开同步文件夹」
+  const syncRoot = useSyncStore((s) => s.config?.sync.rootDir?.trim() || null);
   const [showMoreSubMenu, setShowMoreSubMenu] = useState(false);
   const [flipSubMenuLeft, setFlipSubMenuLeft] = useState(false);
   const subMenuTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1268,6 +1273,26 @@ export function TabBar() {
             <Archive size={13} color="#8b5cf6" />
             <span>打开暂存区</span>
           </button>
+
+          {/* 打开同步文件夹：仅在设置了多端同步文件夹时显示 */}
+          {syncRoot && (
+            <button
+              type="button"
+              style={getMenuItemStyle(false)}
+              onClick={() => {
+                setNewMenuPos(null);
+                setShowMoreSubMenu(false);
+                void openSyncFolder();
+              }}
+              onMouseEnter={handleMenuItemMouseEnter}
+              onMouseLeave={handleMenuItemMouseLeave}
+              onMouseDown={handleMenuItemMouseDown}
+              onMouseUp={handleMenuItemMouseUp}
+            >
+              <FolderSync size={13} color="#0ea5e9" />
+              <span>打开同步文件夹</span>
+            </button>
+          )}
         </div>
       )}
 
