@@ -274,10 +274,20 @@ export function EditorBubbleMenu({
 }) {
   const [showColorPicker, setShowColorPicker] = useState(false);
 
+  // EditorContent 挂载时会把正文从 TipTap 临时容器迁入页面；必须等挂载完成后再查找滚动边界。
+  // 同时记录编辑器身份，切换实例时不让新菜单沿用旧编辑器的容器。
+  const [mountedContainer, setMountedContainer] = useState<{
+    editor: Editor;
+    scrollParent: HTMLElement;
+  } | null>(null);
+  useEffect(() => {
+    setMountedContainer({ editor, scrollParent: findScrollParent(editor.view.dom) });
+  }, [editor]);
+  const scrollParent = mountedContainer?.editor === editor ? mountedContainer.scrollParent : undefined;
+
   // TipTap 3.30 的 BubbleMenu 会在 shouldShow/options 引用变化时派发更新事务。
   // 选区变化期间若每次渲染都创建新对象，会形成 React → TipTap 事务 → React 的
   // 无限更新闭环（React #185）；按 editor 身份稳定所有配置引用。
-  const scrollParent = useMemo(() => findScrollParent(editor.view.dom), [editor]);
   const shouldShow = useCallback(({
     editor: currentEditor,
     state,
@@ -310,6 +320,9 @@ export function EditorBubbleMenu({
     // 监听编辑器真实滚动容器，滚动时即时更新定位与翻转。
     scrollTarget: scrollParent,
   }), [scrollParent]);
+
+  // 未取得真实容器时暂不注册定位插件，避免零尺寸临时边界把菜单挤向窗口左侧。
+  if (!scrollParent) return null;
 
   return (
     <BubbleMenu
