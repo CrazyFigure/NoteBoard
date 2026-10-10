@@ -296,6 +296,10 @@ export interface EditorSettings {
   showLineEndings: boolean;
   // Markdown 进入可视化模式时的格式规范化策略（缺省视为 ask）
   markdownNormalization?: MarkdownNormalizationPolicy;
+  // 可视化模式中代码块默认展开（缺省视为 true；仅影响显示，不写入文件）
+  codeBlockDefaultExpanded?: boolean;
+  // 可视化模式中折叠块 <details> 默认展开（缺省视为 false；源码带 open 属性时始终展开）
+  detailsDefaultExpanded?: boolean;
 }
 
 /** Markdown 规范化策略：每次询问 / 总是规范化 / 保持源码模式 */

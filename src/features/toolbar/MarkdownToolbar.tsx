@@ -25,6 +25,7 @@ import {
   ListOrdered,
   CheckSquare,
   Quote,
+  ListCollapse,
   Table as TableIcon,
   Code2,
   Sigma,
@@ -56,6 +57,7 @@ import {
   useDocumentHistory,
 } from '../history/documentHistory';
 import { insertLocalImageWithDialog, pickAndSaveLocalImage } from '../editor-md/imagePaste';
+import { DETAILS_SOURCE_SNIPPET, insertDetailsContent } from '../editor-md/detailsExtension';
 // 🔴 S03：从 editor-md 边界内实例表获取内核实例（不再依赖编辑器组件文件的 getter 导出）
 import { getMdTipTapEditor as getActiveTipTapEditor, getMdSourceView as getActiveSourceView } from '../editor-md/editorInstances';
 import { emit } from '../../core/emitter';
@@ -346,6 +348,20 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
     }
     if (!editor) return;
     editor.chain().focus().toggleBlockquote().run();
+  };
+
+  // 插入折叠块：源码模式写入标准 <details> 片段，可视化模式插入折叠块节点
+  const handleInsertDetails = () => {
+    setInsertDropdownOpen(false);
+    if (isSourceMode) {
+      executeSourceAction((view) => {
+        const { from } = view.state.selection.main;
+        view.dispatch({ changes: { from, to: from, insert: DETAILS_SOURCE_SNIPPET } });
+      });
+      return;
+    }
+    if (!editor) return;
+    editor.chain().focus().insertContent(insertDetailsContent()).run();
   };
 
   const handleInsertDivider = () => {
@@ -679,7 +695,7 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
             icon={<PlusSquare size={15} />}
             label="插入"
             hasDropdown
-            title="插入超链接、图片、表格、公式、图表、提示块、日期时间等"
+            title="插入超链接、图片、表格、公式、图表、提示块、折叠块、日期时间等"
           />
         }
       >
@@ -730,6 +746,13 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
           icon={<Quote size={14} />}
           label="引用块 (Quote)"
           onClick={handleInsertQuote}
+        />
+
+        {/* 3.1 折叠块 (Details) */}
+        <ToolbarDropdownItem
+          icon={<ListCollapse size={14} />}
+          label="折叠块 (Details)"
+          onClick={handleInsertDetails}
         />
 
         {/* 4. 表格二级菜单 */}

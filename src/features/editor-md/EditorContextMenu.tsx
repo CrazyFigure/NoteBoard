@@ -1,12 +1,13 @@
 // NoteBoard Markdown 编辑器右键双模上下文菜单
 // 1. 选中文本：浮现加粗、斜体、代码、多色高亮(二级菜单)、标题转换(H1~H6二级菜单)、引用、复制剪切
-// 2. 未选中文本：浮现标题(H1~H6二级菜单)、提示块(二级菜单)、列表(二级菜单)、代码块、表格、公式、图表等
+// 2. 未选中文本：浮现标题(H1~H6二级菜单)、提示块(二级菜单)、列表(二级菜单)、代码块、引用块、折叠块、表格、公式、图表等
 // 详见 docs/07-UI布局与交互规范.md
 
 import React, { useState, useEffect, useRef } from 'react';
 import type { Editor } from '@tiptap/core';
 import { isInTable } from '@tiptap/pm/tables';
 import { applyTablePaste } from './tableClipboard';
+import { insertDetailsContent } from './detailsExtension';
 import {
   Bold,
   Italic,
@@ -26,6 +27,7 @@ import {
   ListOrdered,
   ListTodo,
   Quote,
+  ListCollapse,
   Table,
   FileCode,
   Sigma,
@@ -607,6 +609,26 @@ export function EditorContextMenu({
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Quote size={15} />
                 <span>插入引用块</span>
+              </div>
+            </button>
+
+            {/* 5.1 插入折叠块（<details>，可展开/收起） */}
+            <button
+              type="button"
+              style={btnStyle}
+              onClick={() => {
+                onClose();
+                editor.chain().focus().insertContent(insertDetailsContent()).run();
+              }}
+              onMouseEnter={(e) => {
+                setActiveSubmenu(null);
+                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
+              }}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <ListCollapse size={15} />
+                <span>插入折叠块</span>
               </div>
             </button>
 

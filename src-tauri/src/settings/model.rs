@@ -180,6 +180,12 @@ pub struct EditorSettings {
     // Markdown 进入可视化模式时的格式规范化策略：ask（每次询问）/ always（总是规范化）/ never（保持源码模式）
     #[serde(default = "default_markdown_normalization")]
     pub markdown_normalization: String,
+    // 可视化模式中代码块默认展开（默认 true，仅影响显示，不写入文件）
+    #[serde(default = "default_true")]
+    pub code_block_default_expanded: bool,
+    // 可视化模式中折叠块 <details> 默认展开（默认 false；源码带 open 属性时始终展开）
+    #[serde(default)]
+    pub details_default_expanded: bool,
 }
 
 impl Default for EditorSettings {
@@ -198,6 +204,8 @@ impl Default for EditorSettings {
             show_whitespace: false,
             show_line_endings: false,
             markdown_normalization: default_markdown_normalization(),
+            code_block_default_expanded: true,
+            details_default_expanded: false,
         }
     }
 }
