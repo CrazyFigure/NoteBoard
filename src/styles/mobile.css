@@ -921,10 +921,22 @@ html[data-platform='mobile'] body {
   backdrop-filter: none !important;
 }
 
+/* 面板是 max-height 滚动的纵向 flex 容器：条目必须禁止收缩。
+ * 显式 min-height 会覆盖 flex 子项默认的 min-height:auto，内容超高时条目会被压回 40px，
+ * 展开的子菜单随即溢出、与下方条目叠在一起。 */
 [data-platform='mobile'] .nb-toolbar-dropdown-panel > div {
   flex-wrap: wrap;
+  flex-shrink: 0;
   min-height: 40px;
   font-size: 14px !important;
+}
+
+/* 子菜单内的条目：同样禁止收缩，并放大触控热区 */
+[data-platform='mobile'] .nb-toolbar-submenu > .nb-toolbar-dropdown-item {
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  min-height: 36px;
+  font-size: 13px !important;
 }
 
 /* 含子菜单的条目：子菜单独占下一行 */
@@ -932,6 +944,45 @@ html[data-platform='mobile'] body {
   flex-basis: 100%;
   width: 100%;
   order: 3;
+}
+
+/* 内联展开后不再需要鼠标悬停连桥 */
+[data-platform='mobile'] .nb-toolbar-submenu-bridge {
+  display: none;
+}
+
+/* 手风琴展开：箭头收起时朝右、展开时朝下（覆盖桌面端按左右翻转计算的旋转） */
+[data-platform='mobile'] .nb-toolbar-dropdown-item > div > .nb-toolbar-submenu-arrow {
+  transform: none !important;
+}
+
+[data-platform='mobile'] .nb-toolbar-dropdown-item[data-submenu-open] > div > .nb-toolbar-submenu-arrow {
+  transform: rotate(90deg) !important;
+}
+
+/* 斜杠菜单下钻子页的返回按钮（仅移动端渲染） */
+.nb-slash-submenu-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  margin: -4px 0 -4px -6px;
+  padding: 0 8px 0 4px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.nb-slash-submenu-back:hover {
+  background: var(--toolbar-hover, rgba(0, 0, 0, 0.06));
+}
+
+.nb-slash-submenu-back:active {
+  background: var(--editor-selection-background, rgba(59, 130, 246, 0.15));
 }
 
 /* 标题层级标记位于正文左侧留白，手机边距较窄时会被裁切，隐藏 */

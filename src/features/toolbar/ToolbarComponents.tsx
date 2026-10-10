@@ -321,12 +321,29 @@ export function ToolbarDropdownItem({
     }
   };
 
+  // 移动端子菜单在可滚动面板内内联展开：展开后若内容落在面板可视区下方，则把面板滚到可见
+  // 桌面端面板不滚动（scrollHeight 不超出），直接跳过
+  const revealExpandedSubmenu = () => {
+    requestAnimationFrame(() => {
+      const item = itemRef.current;
+      const panel = item?.closest<HTMLElement>('.nb-toolbar-dropdown-panel');
+      if (!item || !panel || panel.scrollHeight <= panel.clientHeight) return;
+      const itemRect = item.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const overflowBottom = itemRect.bottom - panelRect.bottom;
+      if (overflowBottom <= 0) return;
+      // 滚动量不超过条目顶部到面板顶部的距离，避免子菜单过长时把一级项本身滚出视野
+      panel.scrollTop += Math.min(overflowBottom + 6, itemRect.top - panelRect.top);
+    });
+  };
+
   // 统一点击处理：含子菜单时点击切换展开状态，叶子项点击执行并冒泡
   const handleClick = (e: React.MouseEvent) => {
     if (disabled) return;
     if (hasSubmenu) {
       e.stopPropagation();
       updateSubmenuPosition();
+      if (!submenuOpen) revealExpandedSubmenu();
       setSubmenuOpen((prev) => !prev);
     } else if (onClick) {
       onClick();
@@ -336,6 +353,8 @@ export function ToolbarDropdownItem({
   return (
     <div
       ref={itemRef}
+      className="nb-toolbar-dropdown-item"
+      data-submenu-open={submenuOpen || undefined}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onClick={handleClick}
@@ -371,6 +390,7 @@ export function ToolbarDropdownItem({
         )}
         {hasSubmenu && (
           <ChevronRight
+            className="nb-toolbar-submenu-arrow"
             size={13}
             strokeWidth={2}
             style={{
@@ -416,6 +436,7 @@ export function ToolbarDropdownItem({
         >
           {/* 透明悬停连桥：覆盖父子菜单间隙，确保鼠标移动不会产生盲区 */}
           <div
+            className="nb-toolbar-submenu-bridge"
             style={{
               position: 'absolute',
               top: 0,
