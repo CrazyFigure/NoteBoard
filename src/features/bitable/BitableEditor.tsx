@@ -1353,7 +1353,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             <Search size={12} style={{ opacity: 0.5 }} />
             <input
               type="text"
-              placeholder="搜索表格记录..."
+              placeholder="搜索表格记录"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{
