@@ -1,34 +1,14 @@
 // NoteBoard 同步设置通用控件：密钥输入、确认弹窗、远端服务配置表单与时间格式化
 
-import { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ExternalLink, Eye, EyeOff, Loader2, PlugZap, X } from 'lucide-react';
+import { useEffect, useId, useState } from 'react';
+import { AlertTriangle, CheckCircle2, ChevronRight, ExternalLink, Eye, EyeOff, HelpCircle, Loader2, PlugZap, X } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 import * as ipc from '../../core/ipc/commands';
 import type { GitRepoConfig, SyncProviderConfig, SyncProviderKind } from '../../core/ipc/types';
 
 // ── 格式化 ──
 
-export function formatDateTime(ms: number): string {
-  if (!ms) return '—';
-  const d = new Date(ms);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-export function formatRelative(ms: number, now = Date.now()): string {
-  if (!ms) return '';
-  const diff = now - ms;
-  const future = diff < 0;
-  const abs = Math.abs(diff);
-  const minutes = Math.round(abs / 60_000);
-  let text: string;
-  if (minutes < 1) text = future ? '即将' : '刚刚';
-  else if (minutes < 60) text = `${minutes} 分钟`;
-  else if (minutes < 60 * 24) text = `${Math.round(minutes / 60)} 小时`;
-  else text = `${Math.round(minutes / 60 / 24)} 天`;
-  if (minutes < 1) return text;
-  return future ? `${text}后` : `${text}前`;
-}
+export { formatDateTime, formatRelative } from './syncFormat';
 
 export function formatSize(bytes: number): string {
   if (!bytes) return '0 B';
@@ -61,6 +41,126 @@ export function HelpLink({ href, children }: { href: string; children: React.Rea
         <ExternalLink size={11} />
       </button>
     </Tooltip>
+  );
+}
+
+// ── 折叠说明块（默认收起，减少设置页篇幅） ──
+
+export function Collapsible({
+  title,
+  icon,
+  variant = 'notice',
+  children,
+}: {
+  title: React.ReactNode;
+  icon?: React.ReactNode;
+  /** notice：蓝色说明卡片；help：虚线帮助框 */
+  variant?: 'notice' | 'help';
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <div className={`nb-sync-collapsible is-${variant}${open ? ' is-open' : ''}`}>
+      <button
+        type="button"
+        className="nb-sync-collapsible-head"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {icon}
+        <span>{title}</span>
+        <ChevronRight size={14} className="nb-sync-collapsible-chevron" />
+      </button>
+      {open && (
+        <div id={id} className="nb-sync-collapsible-body">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 开关行（说明文字在左，数值输入与复选框统一放在行末） ──
+
+/** 拖选说明文字时不触发勾选（label 点击默认会切换复选框） */
+function guardTextSelection(e: React.MouseEvent<HTMLLabelElement>): void {
+  const selection = window.getSelection();
+  if (selection && !selection.isCollapsed && selection.anchorNode && e.currentTarget.contains(selection.anchorNode)) {
+    e.preventDefault();
+  }
+}
+
+export function ToggleRow({
+  title,
+  desc,
+  checked,
+  onChange,
+  extra,
+}: {
+  title: React.ReactNode;
+  desc?: React.ReactNode;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  /** 复选框之前的附加控件（例如「每 30 分钟」） */
+  extra?: React.ReactNode;
+}) {
+  const id = useId();
+  return (
+    <div className="nb-sync-row">
+      {/* htmlFor 显式绑定复选框：点击行末数值输入框不会误切换开关 */}
+      <label htmlFor={id} className="nb-sync-row-label" onClick={guardTextSelection}>
+        <div>{title}</div>
+        {desc && <div className="nb-sync-muted">{desc}</div>}
+      </label>
+      <div className="nb-sync-row-inline">
+        {extra}
+        <input id={id} type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      </div>
+    </div>
+  );
+}
+
+// ── 数值输入（无上下调节按钮、不响应滚轮，只接受数字） ──
+
+/**
+ * 使用 text + inputMode=numeric 而非 type=number：没有右侧微调按钮，滚轮滑过也不会改动数值；
+ * 输入过程中可以清空重输，失焦时回到有效值。
+ */
+export function NumberInput({
+  value,
+  min,
+  max,
+  disabled,
+  onChange,
+  ariaLabel,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  disabled?: boolean;
+  onChange: (value: number) => void;
+  ariaLabel?: string;
+}) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  return (
+    <input
+      className="nb-sync-input is-number"
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      aria-label={ariaLabel}
+      value={text}
+      disabled={disabled}
+      onChange={(e) => {
+        const digits = e.target.value.replace(/\D/g, '').slice(0, String(max).length);
+        setText(digits);
+        if (digits !== '') onChange(Math.min(max, Math.max(min, parseInt(digits, 10))));
+      }}
+      onBlur={() => setText(String(value))}
+    />
   );
 }
 
@@ -211,6 +311,14 @@ function TextInput({ value, onChange, placeholder }: { value: string; onChange: 
     />
   );
 }
+
+const HELP_TITLES: Record<SyncProviderKind, string> = {
+  webdav: '如何获取 WebDAV 地址与应用密码（坚果云 / Nextcloud / NAS）',
+  s3: '如何获取 S3 端点与访问密钥（OSS / COS / AWS / R2 / MinIO）',
+  github: '如何创建 GitHub 仓库与访问令牌',
+  gitee: '如何创建 Gitee 仓库与私人令牌',
+  gitlab: '如何创建 GitLab 项目与访问令牌',
+};
 
 function WebDavHelp() {
   return (
@@ -477,17 +585,21 @@ export function ProviderForm({
           <Field label="对象前缀（远端目录）" hint="留空表示存储桶根目录">
             <TextInput value={value.s3.prefix} onChange={(v) => onChange({ ...value, s3: { ...value.s3, prefix: v } })} placeholder="NoteBoard" />
           </Field>
-          <label className="nb-sync-row" style={{ alignSelf: 'end' }}>
-            <div>
-              <div style={{ fontSize: 12 }}>路径风格访问</div>
-              <div className="nb-sync-muted">MinIO 等自建服务通常需要开启</div>
-            </div>
-            <input
-              type="checkbox"
-              checked={value.s3.pathStyle}
-              onChange={(e) => onChange({ ...value, s3: { ...value.s3, pathStyle: e.target.checked } })}
+          <Field label="User-Agent（可选）" hint="留空使用 NoteBoard 默认标识">
+            <TextInput
+              value={value.s3.userAgent}
+              onChange={(v) => onChange({ ...value, s3: { ...value.s3, userAgent: v } })}
+              placeholder="NoteBoard"
             />
-          </label>
+          </Field>
+          <div className="nb-sync-field is-wide">
+            <ToggleRow
+              title="路径风格访问"
+              desc="MinIO 等自建服务通常需要开启"
+              checked={value.s3.pathStyle}
+              onChange={(checked) => onChange({ ...value, s3: { ...value.s3, pathStyle: checked } })}
+            />
+          </div>
         </div>
       )}
 
@@ -495,10 +607,15 @@ export function ProviderForm({
         <GitFields kind={value.kind} value={value[value.kind]} onChange={(patch) => patchGit(value.kind as 'github' | 'gitee' | 'gitlab', patch)} />
       )}
 
-      {showHelp && value.kind === 'webdav' && <WebDavHelp />}
-      {showHelp && value.kind === 's3' && <S3Help />}
-      {showHelp && (value.kind === 'github' || value.kind === 'gitee' || value.kind === 'gitlab') && (
-        <GitHelp kind={value.kind} baseUrl={value.gitlab.baseUrl} />
+      {/* 获取地址与密钥的说明：默认收起，切换服务类型后标题随之变化 */}
+      {showHelp && (
+        <Collapsible key={value.kind} variant="help" icon={<HelpCircle size={14} />} title={HELP_TITLES[value.kind]}>
+          {value.kind === 'webdav' && <WebDavHelp />}
+          {value.kind === 's3' && <S3Help />}
+          {(value.kind === 'github' || value.kind === 'gitee' || value.kind === 'gitlab') && (
+            <GitHelp kind={value.kind} baseUrl={value.gitlab.baseUrl} />
+          )}
+        </Collapsible>
       )}
 
       <div className="nb-sync-actions">

@@ -630,3 +630,138 @@ label.nb-sync-row {
 [data-platform='mobile'] .nb-sync-segment-btn {
   flex: 1 1 auto;
 }
+
+/* 开关行：说明文字在左（点击切换开关），数值输入与复选框统一在行末 */
+.nb-sync-row-label {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.nb-sync-row-inline input[type='checkbox'] {
+  margin-left: 4px;
+  cursor: pointer;
+}
+
+/*
+ * 全局 body 禁止选中文字（应用式交互）；同步页的说明、提示、状态与列表信息需要能选中复制，
+ * 例如复制服务地址、区域示例、备份文件名与错误信息
+ */
+.nb-sync-panel > div:first-child p,
+.nb-sync-muted,
+.nb-sync-notice,
+.nb-sync-help,
+.nb-sync-field > small,
+.nb-sync-status-text,
+.nb-sync-list-main,
+.nb-sync-dialog-body,
+.nb-sync-test-result {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.nb-sync-notice,
+.nb-sync-help,
+.nb-sync-status-text,
+.nb-sync-list-main,
+.nb-sync-dialog-body {
+  cursor: text;
+}
+
+.nb-sync-help code {
+  user-select: all;
+  -webkit-user-select: all;
+}
+
+/* 折叠说明块（同步规则、获取地址与密钥的说明），默认收起 */
+.nb-sync-collapsible {
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--editor-text-secondary);
+}
+
+.nb-sync-collapsible.is-notice {
+  background: color-mix(in srgb, var(--accent-strong) 7%, var(--editor-surface));
+  border: 1px solid color-mix(in srgb, var(--accent-strong) 25%, var(--editor-border));
+}
+
+.nb-sync-collapsible.is-help {
+  background: var(--editor-bg);
+  border: 1px dashed var(--editor-border);
+  border-radius: var(--radius-sm);
+}
+
+.nb-sync-collapsible-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  border-radius: inherit;
+  background: transparent;
+  color: var(--editor-text);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-sync-collapsible.is-notice .nb-sync-collapsible-head > svg:first-child {
+  color: var(--accent-strong);
+}
+
+.nb-sync-collapsible.is-help .nb-sync-collapsible-head {
+  font-weight: 500;
+  color: var(--accent-strong);
+}
+
+.nb-sync-collapsible-head:hover {
+  background: var(--toolbar-hover);
+}
+
+.nb-sync-collapsible-head:active {
+  transform: scale(0.995);
+  background: var(--toolbar-active);
+}
+
+.nb-sync-collapsible-head > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.nb-sync-collapsible-chevron {
+  flex-shrink: 0;
+  color: var(--editor-text-muted);
+  transition: transform var(--transition-fast);
+}
+
+.nb-sync-collapsible.is-open .nb-sync-collapsible-chevron {
+  transform: rotate(90deg);
+}
+
+.nb-sync-collapsible-body {
+  padding: 0 14px 12px 34px;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+.nb-sync-collapsible-body ul {
+  margin: 0;
+  padding-left: 16px;
+  list-style: disc;
+}
+
+.nb-sync-collapsible-body li + li {
+  margin-top: 2px;
+}
+
+/* 帮助内容放进折叠块后去掉自身边框，避免双层框线 */
+.nb-sync-collapsible .nb-sync-help {
+  padding: 0;
+  border: none;
+  background: transparent;
+}

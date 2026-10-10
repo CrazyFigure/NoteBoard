@@ -14,6 +14,7 @@ import { openDocument } from '../editor-code/orchestration/openDocument';
 import { prefetchEditor, resolveEditorKind } from '../editor-host/editorLoaders';
 import type { DocumentKind, LanguageId } from '../../core/ipc/types';
 import { showToast } from '../../stores/toastStore';
+import { useSyncStore } from '../../stores/syncStore';
 import { createDefaultBitableDocument, serializeBitableDocument } from '../bitable/bitableConverter';
 import { INFOGRAPHIC_TEMPLATES } from '../infographic/infographicTemplates';
 
@@ -82,6 +83,23 @@ export async function openStagingArea(): Promise<void> {
     useExplorerStore.getState().setRoot(root, nodes);
   } catch (error) {
     showToast(`无法打开暂存区：${error instanceof Error ? error.message : String(error)}`, 'error', 5000);
+  }
+}
+
+/**
+ * 打开多端同步文件夹并加载到左侧文件树（设置了同步文件夹时 Home 与「+」菜单提供该入口）。
+ */
+export async function openSyncFolder(): Promise<void> {
+  const root = useSyncStore.getState().config?.sync.rootDir?.trim();
+  if (!root) {
+    showToast('尚未设置同步文件夹，请在 设置 → 同步与备份 中选择', 'warning', 5000);
+    return;
+  }
+  try {
+    const nodes = await ipc.readDir(root, false);
+    useExplorerStore.getState().setRoot(root, nodes);
+  } catch (error) {
+    showToast(`无法打开同步文件夹：${error instanceof Error ? error.message : String(error)}`, 'error', 5000);
   }
 }
 

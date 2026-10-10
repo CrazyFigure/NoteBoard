@@ -96,6 +96,30 @@ export async function switchLocation(location: StorageLocation, preferredFolder?
   await loadFolder(folder);
 }
 
+/** 打开多端同步文件夹：按其所在存储位置（我的笔记 / 手机存储）切换后进入 */
+export async function openSyncFolderOnMobile(): Promise<void> {
+  const root = useSyncStore.getState().config?.sync.rootDir?.trim();
+  const platform = useMobileStore.getState().platform;
+  if (!root || !platform) {
+    showToast('尚未设置同步文件夹，请在 设置 → 同步与备份 中选择', 'warning', 5000);
+    return;
+  }
+  if (platform.defaultWorkspace && isSubPath(platform.defaultWorkspace, root)) {
+    await switchLocation('workspace', root);
+    return;
+  }
+  if (platform.externalRoot && isSubPath(platform.externalRoot, root)) {
+    if (!platform.allFilesAccess) {
+      showToast('同步文件夹位于手机存储，需要先授予「所有文件访问权限」', 'warning', 5000);
+      return;
+    }
+    await switchLocation('device', root);
+    return;
+  }
+  // 其他位置（应用无法归入两个存储位置）：直接载入
+  await loadFolder(root);
+}
+
 /** 打开文件或进入文件夹 */
 export async function openEntry(node: FileTreeNode): Promise<void> {
   if (node.isDir) {

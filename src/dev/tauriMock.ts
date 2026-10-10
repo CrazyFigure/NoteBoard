@@ -34,7 +34,7 @@ const emptyGit = { baseUrl: '', owner: '', repo: '', branch: '', token: '', remo
 const mockProvider = {
   kind: 'webdav',
   webdav: { url: 'https://dav.jianguoyun.com/dav/', username: 'me@example.com', password: 'app-password', userAgent: '', remoteDir: 'NoteBoard' },
-  s3: { endpoint: '', region: '', bucket: '', accessKeyId: '', secretAccessKey: '', prefix: '', pathStyle: false },
+  s3: { endpoint: '', region: '', bucket: '', accessKeyId: '', secretAccessKey: '', prefix: '', pathStyle: false, userAgent: '' },
   github: { ...emptyGit },
   gitee: { ...emptyGit },
   gitlab: { ...emptyGit },

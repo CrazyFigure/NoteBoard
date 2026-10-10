@@ -36,6 +36,7 @@ import {
   openFileDialog,
   openFolderDialog,
   openStagingArea,
+  openSyncFolder,
   newMarkdown,
   newMindmap,
   newTextDiff,
@@ -400,6 +401,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
                     onOpenFile={openFileDialog}
                     onOpenFolder={openFolderDialog}
                     onOpenStaging={openStagingArea}
+                    onOpenSyncFolder={openSyncFolder}
                     onOpenFavorites={() => useFavoritesStore.getState().openFavoritesModal()}
                     onNewMarkdown={newMarkdown}
                     onNewText={newText}

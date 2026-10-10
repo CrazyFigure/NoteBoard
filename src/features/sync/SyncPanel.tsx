@@ -16,6 +16,7 @@ import {
   Info,
   Loader2,
   RefreshCw,
+  RotateCcw,
   Trash2,
 } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -25,7 +26,7 @@ import type { BackupInfo, SyncConfigFile, SyncProviderConfig } from '../../core/
 import { IS_MOBILE_UI } from '../../core/platform';
 import { describeSyncReport, SYNC_TOAST_KEY, useSyncStore } from '../../stores/syncStore';
 import { showToast } from '../../stores/toastStore';
-import { ConfirmDialog, errorText, formatDateTime, formatRelative, formatSize, ProviderForm } from './SyncControls';
+import { Collapsible, ConfirmDialog, errorText, formatDateTime, formatRelative, formatSize, NumberInput, ProviderForm, ToggleRow } from './SyncControls';
 import './sync.css';
 
 const SAVE_DEBOUNCE_MS = 600;
@@ -129,6 +130,17 @@ function SyncSection({ draft, update, flush }: { draft: SyncConfigFile; update: 
   const last = status?.lastSync ?? null;
   const syncing = status?.syncing ?? false;
   const [mobilePath, setMobilePath] = useState(draft.sync.rootDir);
+  const [resetOpen, setResetOpen] = useState(false);
+
+  /** 重置同步文件夹：清空路径并关闭同步；本机文件、回收站与云端数据都保持原样 */
+  const resetFolder = () => {
+    update((c) => {
+      c.sync.rootDir = '';
+      c.sync.enabled = false;
+    }, true);
+    setResetOpen(false);
+    showToast('已重置同步文件夹并关闭多端同步，文件均未删除', 'success', 4000, SYNC_TOAST_KEY);
+  };
 
   useEffect(() => setMobilePath(draft.sync.rootDir), [draft.sync.rootDir]);
 
@@ -203,18 +215,15 @@ function SyncSection({ draft, update, flush }: { draft: SyncConfigFile; update: 
         </button>
       </div>
 
-      <label className="nb-sync-row">
-        <div>
-          <div>开启多端同步</div>
-          <div className="nb-sync-muted">默认关闭。开启后会立即在后台同步一次，不影响正常编辑。</div>
-        </div>
-        <input type="checkbox" checked={draft.sync.enabled} onChange={(e) => update((c) => (c.sync.enabled = e.target.checked), true)} />
-      </label>
+      <ToggleRow
+        title="开启多端同步"
+        desc="默认关闭。开启后会立即在后台同步一次，不影响正常编辑。"
+        checked={draft.sync.enabled}
+        onChange={(checked) => update((c) => (c.sync.enabled = checked), true)}
+      />
 
-      <div className="nb-sync-notice">
-        <Info size={15} />
+      <Collapsible title="同步规则" icon={<Info size={15} />}>
         <div>
-          <strong style={{ color: 'var(--editor-text)' }}>同步规则</strong>
           <ul>
             <li>多台设备之间<strong>双向同步</strong>：任一设备上的新增、修改、删除、重命名都会同步到其他设备。</li>
             <li>
@@ -226,7 +235,7 @@ function SyncSection({ draft, update, flush }: { draft: SyncConfigFile; update: 
             <li>启用回收站时，被删除的文件会先进入回收站，在任一设备上都可以恢复。</li>
           </ul>
         </div>
-      </div>
+      </Collapsible>
 
       <div className="nb-sync-field">
         <span>同步文件夹</span>
@@ -264,6 +273,13 @@ function SyncSection({ draft, update, flush }: { draft: SyncConfigFile; update: 
               )}
             </>
           )}
+          {/* 重置：清空同步文件夹并关闭多端同步（不删除任何文件） */}
+          {draft.sync.rootDir && (
+            <button type="button" className="nb-btn-secondary" disabled={syncing} onClick={() => setResetOpen(true)}>
+              <RotateCcw size={14} />
+              重置
+            </button>
+          )}
         </div>
         <small>
           只有这个文件夹（含子文件夹）参与同步。多台设备请选择各自存放笔记的文件夹，首次同步时同名文件会自动配对。
@@ -282,6 +298,18 @@ function SyncSection({ draft, update, flush }: { draft: SyncConfigFile; update: 
         />
         <small>用于区分是哪台设备在同步、哪台设备产生的备份</small>
       </label>
+
+      <ConfirmDialog
+        open={resetOpen}
+        title="重置同步文件夹"
+        confirmLabel="重置"
+        onConfirm={resetFolder}
+        onClose={() => setResetOpen(false)}
+      >
+        <div>
+          清空同步文件夹并关闭多端同步，本机和云端的文件都<strong>不会被删除</strong>。
+        </div>
+      </ConfirmDialog>
     </div>
   );
 }
@@ -313,64 +341,44 @@ function TimingSection({ draft, update, nextSyncAt }: { draft: SyncConfigFile; u
         <Clock size={15} />
         <span>同步时机</span>
       </div>
-      <label className="nb-sync-row">
-        <div>
-          <div>保存后同步</div>
-          <div className="nb-sync-muted">每次手动或自动保存后同步；连续保存会合并，停止保存约 3 秒后同步一次</div>
-        </div>
-        <input type="checkbox" checked={draft.sync.syncOnSave} onChange={(e) => update((c) => (c.sync.syncOnSave = e.target.checked), true)} />
-      </label>
-      <div className="nb-sync-row">
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flex: 1 }}>
-          <input
-            type="checkbox"
-            checked={draft.sync.intervalEnabled}
-            onChange={(e) => update((c) => (c.sync.intervalEnabled = e.target.checked), true)}
-          />
-          <div>
-            <div>定时同步</div>
-            <div className="nb-sync-muted">
-              拉取其他设备的改动
-              {draft.sync.enabled && draft.sync.intervalEnabled && nextSyncAt > 0 ? ` · 下次约 ${formatRelative(nextSyncAt)}` : ''}
-            </div>
-          </div>
-        </label>
-        <div className="nb-sync-row-inline">
-          每
-          <input
-            className="nb-sync-input is-number"
-            type="number"
-            min={1}
-            max={1440}
-            value={draft.sync.intervalMinutes}
-            disabled={!draft.sync.intervalEnabled}
-            onChange={(e) => update((c) => (c.sync.intervalMinutes = Math.max(1, parseInt(e.target.value, 10) || 1)))}
-          />
-          分钟
-        </div>
-      </div>
-      <label className="nb-sync-row">
-        <div>
-          <div>启动后同步</div>
-          <div className="nb-sync-muted">每次打开 NoteBoard 后在后台同步一次，不阻塞正常使用</div>
-        </div>
-        <input
-          type="checkbox"
-          checked={draft.sync.syncOnStartup}
-          onChange={(e) => update((c) => (c.sync.syncOnStartup = e.target.checked), true)}
-        />
-      </label>
-      <label className="nb-sync-row">
-        <div>
-          <div>没有变化时也提示</div>
-          <div className="nb-sync-muted">默认只在有增删改、出错或手动同步时弹出结果提示</div>
-        </div>
-        <input
-          type="checkbox"
-          checked={draft.sync.notifyNoChange}
-          onChange={(e) => update((c) => (c.sync.notifyNoChange = e.target.checked), true)}
-        />
-      </label>
+      <ToggleRow
+        title="保存后同步"
+        desc="每次手动或自动保存后同步；连续保存会合并，停止保存约 3 秒后同步一次"
+        checked={draft.sync.syncOnSave}
+        onChange={(checked) => update((c) => (c.sync.syncOnSave = checked), true)}
+      />
+      <ToggleRow
+        title="定时同步"
+        desc={`拉取其他设备的改动${draft.sync.enabled && draft.sync.intervalEnabled && nextSyncAt > 0 ? ` · 下次约 ${formatRelative(nextSyncAt)}` : ''}`}
+        checked={draft.sync.intervalEnabled}
+        onChange={(checked) => update((c) => (c.sync.intervalEnabled = checked), true)}
+        extra={
+          <>
+            每
+            <NumberInput
+              ariaLabel="定时同步间隔（分钟）"
+              min={1}
+              max={1440}
+              value={draft.sync.intervalMinutes}
+              disabled={!draft.sync.intervalEnabled}
+              onChange={(v) => update((c) => (c.sync.intervalMinutes = v))}
+            />
+            分钟
+          </>
+        }
+      />
+      <ToggleRow
+        title="启动后同步"
+        desc="每次打开 NoteBoard 后在后台同步一次，不阻塞正常使用"
+        checked={draft.sync.syncOnStartup}
+        onChange={(checked) => update((c) => (c.sync.syncOnStartup = checked), true)}
+      />
+      <ToggleRow
+        title="没有变化时也提示"
+        desc="默认只在有增删改、出错或手动同步时弹出结果提示"
+        checked={draft.sync.notifyNoChange}
+        onChange={(checked) => update((c) => (c.sync.notifyNoChange = checked), true)}
+      />
     </div>
   );
 }
@@ -389,29 +397,24 @@ function TrashSection({ draft, update, onOpenTrash }: { draft: SyncConfigFile; u
           打开回收站
         </button>
       </div>
-      <label className="nb-sync-row">
-        <div>
-          <div>启用回收站</div>
-          <div className="nb-sync-muted">
-            同步文件夹中删除的文件和文件夹先移入回收站（文件树底部的「回收站」），回收站同样参与同步，任一设备都能恢复；
-            关闭后删除会同步为直接删除。
-          </div>
-        </div>
-        <input type="checkbox" checked={draft.sync.trashEnabled} onChange={(e) => update((c) => (c.sync.trashEnabled = e.target.checked), true)} />
-      </label>
+      <ToggleRow
+        title="启用回收站"
+        desc="同步文件夹中删除的文件和文件夹先移入回收站（文件树底部的「回收站」），回收站同样参与同步，任一设备都能恢复；关闭后删除会同步为直接删除。"
+        checked={draft.sync.trashEnabled}
+        onChange={(checked) => update((c) => (c.sync.trashEnabled = checked), true)}
+      />
       <div className="nb-sync-row">
         <div>
           <div>保留天数</div>
           <div className="nb-sync-muted">超过天数后自动彻底删除；填 0 表示不自动删除</div>
         </div>
         <div className="nb-sync-row-inline">
-          <input
-            className="nb-sync-input is-number"
-            type="number"
+          <NumberInput
+            ariaLabel="回收站保留天数"
             min={0}
             max={3650}
             value={draft.sync.trashDays}
-            onChange={(e) => update((c) => (c.sync.trashDays = Math.max(0, parseInt(e.target.value, 10) || 0)))}
+            onChange={(v) => update((c) => (c.sync.trashDays = v))}
           />
           天
         </div>
@@ -541,41 +544,38 @@ function BackupSection({ draft, update, flush }: { draft: SyncConfigFile; update
         备份同步文件夹中的全部文件（不含回收站），打包为 ZIP；备份与同步开关相互独立，未开启同步也可以备份。
       </div>
 
-      <div className="nb-sync-row">
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flex: 1 }}>
-          <input type="checkbox" checked={backup.autoEnabled} onChange={(e) => update((c) => (c.backup.autoEnabled = e.target.checked), true)} />
-          <div>
-            <div>自动备份</div>
-            <div className="nb-sync-muted">按间隔在后台自动备份</div>
-          </div>
-        </label>
-        <div className="nb-sync-row-inline">
-          每
-          <input
-            className="nb-sync-input is-number"
-            type="number"
-            min={1}
-            max={720}
-            value={backup.intervalHours}
-            disabled={!backup.autoEnabled}
-            onChange={(e) => update((c) => (c.backup.intervalHours = Math.max(1, parseInt(e.target.value, 10) || 1)))}
-          />
-          小时
-        </div>
-      </div>
+      <ToggleRow
+        title="自动备份"
+        desc="按间隔在后台自动备份"
+        checked={backup.autoEnabled}
+        onChange={(checked) => update((c) => (c.backup.autoEnabled = checked), true)}
+        extra={
+          <>
+            每
+            <NumberInput
+              ariaLabel="自动备份间隔（小时）"
+              min={1}
+              max={720}
+              value={backup.intervalHours}
+              disabled={!backup.autoEnabled}
+              onChange={(v) => update((c) => (c.backup.intervalHours = v))}
+            />
+            小时
+          </>
+        }
+      />
       <div className="nb-sync-row">
         <div>
           <div>保留份数</div>
           <div className="nb-sync-muted">只保留本机最新的 N 份备份，更早的自动清理；填 0 表示全部保留</div>
         </div>
         <div className="nb-sync-row-inline">
-          <input
-            className="nb-sync-input is-number"
-            type="number"
+          <NumberInput
+            ariaLabel="备份保留份数"
             min={0}
             max={1000}
             value={backup.keepCount}
-            onChange={(e) => update((c) => (c.backup.keepCount = Math.max(0, parseInt(e.target.value, 10) || 0)))}
+            onChange={(v) => update((c) => (c.backup.keepCount = v))}
           />
           份
         </div>

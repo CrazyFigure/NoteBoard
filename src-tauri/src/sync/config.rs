@@ -57,6 +57,8 @@ pub struct S3Config {
     pub prefix: String,
     /// 路径风格访问（MinIO 等自建服务通常需要开启）
     pub path_style: bool,
+    /// 自定义 User-Agent（部分网关/代理按 UA 放行或限流）；留空使用 NoteBoard/版本号
+    pub user_agent: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
