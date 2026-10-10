@@ -25,7 +25,9 @@ import { flushPendingSourceSnapshot, flushPendingVisualSnapshot } from '../edito
  * 以 store 内容重建）、基线重置为磁盘内容、历史首节点同步、解除冲突；
  * 读盘失败（外部删除/权限）：保持冲突状态，提示可重试。
  */
-export async function reloadFromDisk(docKey: string): Promise<boolean> {
+export async function reloadFromDisk(docKey: string, options?: { silent?: boolean }): Promise<boolean> {
+  // 多端同步拉取远端改动后自动重新加载：结果已由同步提示统一展示，这里不再单独弹提示
+  const silent = options?.silent ?? false;
   try {
     const payload = await ipc.readDocument(docKey);
     const store = useDocumentStore.getState();
@@ -38,7 +40,7 @@ export async function reloadFromDisk(docKey: string): Promise<boolean> {
     // 读盘成功路径必为字符串；null 视为失败保持冲突状态）
     const diskContent = payload.content;
     if (diskContent == null) {
-      showToast('读取到的文件内容为空引用，冲突状态保留', 'error');
+      if (!silent) showToast('读取到的文件内容为空引用，冲突状态保留', 'error');
       return false;
     }
     store.setContent(docKey, diskContent);
@@ -59,11 +61,11 @@ export async function reloadFromDisk(docKey: string): Promise<boolean> {
     // 解除冲突（文档与标签双侧）
     store.setExternalStatus(docKey, 'clean');
     useWindowStore.getState().setTabExternalStatus(docKey, 'clean');
-    showToast('已从磁盘重新加载', 'success');
+    if (!silent) showToast('已从磁盘重新加载', 'success');
     return true;
   } catch (e) {
     console.error('重新加载失败:', e);
-    showToast('重新加载失败（文件可能已被删除或无法访问），冲突状态保留', 'error');
+    if (!silent) showToast('重新加载失败（文件可能已被删除或无法访问），冲突状态保留', 'error');
     return false;
   }
 }

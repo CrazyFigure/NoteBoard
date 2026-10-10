@@ -17,6 +17,7 @@ import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 // 🔴 R3-10：异步核对结果按会话代际条件提交（旧读取不误标同路径新会话）
 import { getSessionGeneration } from '../session/documentSession';
+import { isRecreateOnSaveAllowed } from '../external/missingFileGuard';
 
 /** 目录监听记录 */
 interface WatchRecord {
@@ -142,7 +143,8 @@ async function recheckDocument(docKey: string): Promise<void> {
       if (getSessionGeneration(docKey) !== generationAtStart) return;
       const docNow = useDocumentStore.getState().getDocument(docKey);
       if (!docNow) return;
-      if (!state.exists && docNow.externalStatus !== 'deleted') {
+      // 被同步删除且等待保存重建的文档不标记删除（见 missingFileGuard.allowRecreateOnSave）
+      if (!state.exists && docNow.externalStatus !== 'deleted' && !isRecreateOnSaveAllowed(docKey)) {
         useDocumentStore.getState().setExternalStatus(docKey, 'deleted');
         useWindowStore.getState().setTabExternalStatus(docKey, 'deleted');
       }

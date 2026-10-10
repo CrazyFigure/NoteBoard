@@ -32,6 +32,11 @@ import type {
   FontPackStatus,
   FavoritesData,
   PlatformInfo,
+  SyncConfigFile,
+  SyncProviderConfig,
+  SyncStatus,
+  SyncTrashItem,
+  BackupInfo,
 } from './types';
 
 // ── 窗口（S04 打开队列 + 迁移协议） ──
@@ -437,4 +442,64 @@ export function moveAppToBackground(): Promise<void> {
 /** 设置系统栏背景色与图标深浅（Android，跟随应用主题） */
 export function setSystemBarStyle(color: string, dark: boolean): Promise<void> {
   return invoke<void>('set_system_bar_style', { color, dark });
+}
+
+// ── 多端同步与备份 ──
+
+export function syncGetConfig(): Promise<SyncConfigFile> {
+  return invoke<SyncConfigFile>('sync_get_config');
+}
+
+/** 保存同步与备份配置（返回 Rust 校正后的配置） */
+export function syncSaveConfig(config: SyncConfigFile): Promise<SyncConfigFile> {
+  return invoke<SyncConfigFile>('sync_save_config', { config });
+}
+
+/** 测试远端连接（不保存配置），成功返回提示文本 */
+export function syncTestConnection(provider: SyncProviderConfig): Promise<string> {
+  return invoke<string>('sync_test_connection', { provider });
+}
+
+/** 立即同步（结果通过 nb://sync-report 事件返回） */
+export function syncNow(): Promise<void> {
+  return invoke<void>('sync_now');
+}
+
+export function syncGetStatus(): Promise<SyncStatus> {
+  return invoke<SyncStatus>('sync_get_status');
+}
+
+export function syncTrashList(): Promise<SyncTrashItem[]> {
+  return invoke<SyncTrashItem[]>('sync_trash_list');
+}
+
+/** 从同步回收站恢复（重名时自动追加序号），返回恢复后的绝对路径 */
+export function syncTrashRestore(id: string): Promise<string> {
+  return invoke<string>('sync_trash_restore', { id });
+}
+
+export function syncTrashDelete(id: string): Promise<void> {
+  return invoke<void>('sync_trash_delete', { id });
+}
+
+export function syncTrashEmpty(): Promise<number> {
+  return invoke<number>('sync_trash_empty');
+}
+
+/** 立即备份（结果通过 nb://sync-report 事件返回） */
+export function backupNow(): Promise<void> {
+  return invoke<void>('backup_now');
+}
+
+export function backupList(): Promise<BackupInfo[]> {
+  return invoke<BackupInfo[]>('backup_list');
+}
+
+export function backupDelete(name: string): Promise<void> {
+  return invoke<void>('backup_delete', { name });
+}
+
+/** 恢复备份：targetDir 为空表示恢复到同步目录 */
+export function backupRestore(name: string, targetDir: string | null): Promise<string> {
+  return invoke<string>('backup_restore', { name, targetDir });
 }

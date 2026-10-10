@@ -12,6 +12,7 @@ import { basenameOf, dirnameOf, isSubPath, joinPath, sameKey } from '../features
 import { useDocumentStore } from '../stores/documentStore';
 import { useWindowStore } from '../stores/windowStore';
 import { showToast } from '../stores/toastStore';
+import { syncTrashPath, useSyncStore } from '../stores/syncStore';
 import { rememberLocation, useMobileStore, type StorageLocation } from './mobileStore';
 
 // 文件名非法字符（取 Windows 与 Android 的并集，保证跨设备同步时也合法）
@@ -35,7 +36,11 @@ export function validateFileName(name: string): string | null {
 
 /** 列表排序：文件夹在前，其余按名称自然排序 */
 function sortEntries(entries: FileTreeNode[]): FileTreeNode[] {
+  // 同步回收站固定排在最后
+  const trash = syncTrashPath(useSyncStore.getState().config);
+  const isTrash = (node: FileTreeNode) => trash !== null && node.isDir && sameKey(node.path, trash);
   return [...entries].sort((left, right) => {
+    if (isTrash(left) !== isTrash(right)) return isTrash(left) ? 1 : -1;
     if (left.isDir !== right.isDir) return left.isDir ? -1 : 1;
     return left.name.localeCompare(right.name, 'zh-CN', { numeric: true, sensitivity: 'base' });
   });

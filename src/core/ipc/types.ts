@@ -481,3 +481,155 @@ export interface PlatformInfo {
   /** 是否已获得外部存储完整访问权限（Android） */
   allFilesAccess: boolean;
 }
+
+// ── 多端同步与备份 ──
+
+/** 远端服务类型 */
+export type SyncProviderKind = 'webdav' | 's3' | 'github' | 'gitee' | 'gitlab';
+
+export interface WebDavConfig {
+  url: string;
+  username: string;
+  password: string;
+  /** 自定义 User-Agent，留空使用 NoteBoard/版本号 */
+  userAgent: string;
+  remoteDir: string;
+}
+
+export interface S3Config {
+  endpoint: string;
+  region: string;
+  bucket: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  prefix: string;
+  pathStyle: boolean;
+}
+
+export interface GitRepoConfig {
+  /** 自建实例地址（GitLab 自建 / GitHub Enterprise），留空使用官方地址 */
+  baseUrl: string;
+  owner: string;
+  repo: string;
+  branch: string;
+  token: string;
+  remoteDir: string;
+}
+
+/** 一套远端服务配置（各类型输入都保留，切换类型不丢失） */
+export interface SyncProviderConfig {
+  kind: SyncProviderKind;
+  webdav: WebDavConfig;
+  s3: S3Config;
+  github: GitRepoConfig;
+  gitee: GitRepoConfig;
+  gitlab: GitRepoConfig;
+}
+
+export interface SyncSettings {
+  enabled: boolean;
+  rootDir: string;
+  deviceName: string;
+  provider: SyncProviderConfig;
+  syncOnSave: boolean;
+  intervalEnabled: boolean;
+  intervalMinutes: number;
+  syncOnStartup: boolean;
+  notifyNoChange: boolean;
+  trashEnabled: boolean;
+  trashDays: number;
+}
+
+export type BackupTarget = 'local' | 'remote';
+
+export interface BackupSettings {
+  autoEnabled: boolean;
+  intervalHours: number;
+  /** 只保留本机最新 N 份，0 表示不限制 */
+  keepCount: number;
+  target: BackupTarget;
+  localDir: string;
+  provider: SyncProviderConfig;
+}
+
+export interface SyncConfigFile {
+  version: number;
+  deviceId: string;
+  sync: SyncSettings;
+  backup: BackupSettings;
+}
+
+export interface SyncCounts {
+  added: number;
+  modified: number;
+  deleted: number;
+}
+
+export interface SyncReport {
+  at: number;
+  durationMs: number;
+  trigger: string;
+  ok: boolean;
+  /** 本机 → 云端 */
+  upload: SyncCounts;
+  /** 云端 → 本机 */
+  download: SyncCounts;
+  merged: number;
+  conflicts: number;
+  errors: string[];
+  message: string;
+}
+
+export interface BackupReport {
+  at: number;
+  ok: boolean;
+  trigger: string;
+  name: string;
+  size: number;
+  fileCount: number;
+  removedOld: number;
+  message: string;
+}
+
+export interface SyncStatus {
+  syncing: boolean;
+  backingUp: boolean;
+  lastSync: SyncReport | null;
+  lastBackup: BackupReport | null;
+  nextSyncAt: number;
+  nextBackupAt: number;
+}
+
+/** 同步对本机文件的改动 */
+export interface SyncLocalChange {
+  kind: 'modified' | 'added' | 'deleted' | 'moved';
+  path: string;
+  from?: string;
+}
+
+export interface SyncReportEvent {
+  kind: 'sync' | 'backup';
+  report: SyncReport | BackupReport;
+  notify: boolean;
+}
+
+export interface SyncTrashItem {
+  /** 回收站内相对路径（.nb-trash/xxx） */
+  id: string;
+  name: string;
+  isDir: boolean;
+  origPath: string;
+  trashedAt: number;
+  /** 自动彻底删除时间，0 表示不会自动删除 */
+  expiresAt: number;
+  size: number;
+  fileCount: number;
+}
+
+export interface BackupInfo {
+  name: string;
+  size: number;
+  createdAt: number;
+  device: string;
+  isOwn: boolean;
+}

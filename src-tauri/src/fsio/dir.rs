@@ -15,9 +15,9 @@ pub fn read_directory(path: &Path, show_hidden: bool) -> Result<Vec<FileTreeNode
         .filter_map(|e| {
             let name = e.file_name().to_string_lossy().to_string();
 
-            // 隐藏文件过滤
+            // 隐藏文件过滤（同步目录根下的回收站始终显示，前端渲染为「回收站」特殊节点）
             let is_hidden = name.starts_with('.') || is_hidden_attr(&e);
-            if is_hidden && !show_hidden {
+            if is_hidden && !show_hidden && !crate::sync::hooks::is_sync_trash_dir(&e.path()) {
                 return None;
             }
 
@@ -68,6 +68,11 @@ pub fn read_directory(path: &Path, show_hidden: bool) -> Result<Vec<FileTreeNode
         // 各自自然排序
         natural_compare(&a.name, &b.name)
     });
+    // 同步回收站固定排在最后
+    if let Some(pos) = nodes.iter().position(|n| n.is_dir && crate::sync::hooks::is_sync_trash_dir(Path::new(&n.path))) {
+        let trash = nodes.remove(pos);
+        nodes.push(trash);
+    }
 
     Ok(nodes)
 }

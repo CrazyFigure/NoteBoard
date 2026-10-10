@@ -19,6 +19,8 @@ pub mod staging;
 pub mod favorites;
 pub mod perf;
 pub mod mobile_bridge;
+// 多端同步与备份（WebDAV / S3 / GitHub / Gitee / GitLab）
+pub mod sync;
 
 use state::AppState;
 use std::sync::Mutex;
@@ -143,6 +145,20 @@ pub fn run() {
             mobile_bridge::commands::share_file,
             mobile_bridge::commands::move_app_to_background,
             mobile_bridge::commands::set_system_bar_style,
+            // 多端同步与备份
+            sync::commands::sync_get_config,
+            sync::commands::sync_save_config,
+            sync::commands::sync_test_connection,
+            sync::commands::sync_now,
+            sync::commands::sync_get_status,
+            sync::commands::sync_trash_list,
+            sync::commands::sync_trash_restore,
+            sync::commands::sync_trash_delete,
+            sync::commands::sync_trash_empty,
+            sync::commands::backup_now,
+            sync::commands::backup_list,
+            sync::commands::backup_delete,
+            sync::commands::backup_restore,
         ])
         .on_window_event(|window, event| {
             window::manager::on_window_event(window, event)

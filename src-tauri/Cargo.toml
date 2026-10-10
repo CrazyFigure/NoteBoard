@@ -37,6 +37,11 @@ sha2 = "0.10"
 uuid = { version = "1", features = ["v4"] }
 # 字体资源包使用标准 ZIP 分发；只启用 Deflate 解压，避免引入无关压缩算法。
 zip = { version = "8.4", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+# 多端同步：GitHub/GitLab/Gitee 文件内容与 WebDAV Basic 认证使用 Base64 编码。
+base64 = "0.22"
+# 多端同步：S3 签名摘要输出、WebDAV/GitLab 路径分段编码。
+hex = "0.4"
+percent-encoding = "2"
 
 # 桌面专属依赖：单实例、窗口状态记忆、系统回收站、font-kit 字体枚举均无 Android 后端
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
@@ -47,4 +52,5 @@ font-kit = "0.14"
 
 [target."cfg(windows)".dependencies]
 # Win32_Graphics_Gdi：S06 起系统字体枚举使用 GDI EnumFontFamiliesExW 原生实现（替代 PowerShell 子进程）
-windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi"] }
+# Win32_Security_Cryptography：同步与备份的密码/令牌使用 DPAPI 绑定当前 Windows 用户加密保存
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_Security_Cryptography"] }
