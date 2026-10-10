@@ -302,6 +302,7 @@ function FilesSection({ onEntryMenu }: { onEntryMenu: (node: FileTreeNode) => vo
 function FavoriteRows({ nodes, depth }: { nodes: FavoriteNode[]; depth: number }) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const removeFavorite = useFavoritesStore((s) => s.removeFavorite);
+  const openAddModal = useFavoritesStore((s) => s.openAddModal);
   const [menuTarget, setMenuTarget] = useState<FavoriteNode | null>(null);
 
   return (
@@ -351,6 +352,8 @@ function FavoriteRows({ nodes, depth }: { nodes: FavoriteNode[]; depth: number }
         title={menuTarget?.name}
         actions={menuTarget && menuTarget.type === 'file' ? [
           { key: 'open', label: '打开', icon: <FileText size={18} />, onSelect: () => void openPathInEditor(menuTarget.path) },
+          // 已收藏文件也使用同一个弹窗，允许后续修改名称或移到其他收藏文件夹。
+          { key: 'edit', label: '编辑收藏', icon: <Pencil size={18} />, onSelect: () => openAddModal({ name: menuTarget.name, path: menuTarget.path }) },
           { key: 'remove', label: '取消收藏', icon: <StarOff size={18} />, danger: true, onSelect: () => void removeFavorite(menuTarget.id) },
         ] : []}
       />
@@ -457,7 +460,7 @@ export function MobileHome() {
   const setSettingsOpen = useLayoutStore((s) => s.setSettingsModalVisible);
   const openCount = useWindowStore((s) => s.tabs.length);
   const favoriteRoots = useFavoritesStore((s) => s.data.roots);
-  const addFavorite = useFavoritesStore((s) => s.addFavorite);
+  const openAddModal = useFavoritesStore((s) => s.openAddModal);
   const removeFavorite = useFavoritesStore((s) => s.removeFavorite);
 
   // 分段指示条位置：直接写 transform，拖动过程中不触发 React 重渲染
@@ -499,14 +502,15 @@ export function MobileHome() {
               label: '加入收藏',
               icon: <Star size={18} />,
               onSelect: () => {
-                void addFavorite('root', menuNode.name, menuNode.path).then(() => showToast('已加入收藏', 'success'));
+                // 先选择收藏文件夹与名称，确认后才写入收藏；复用全局弹窗的新建文件夹流程。
+                openAddModal({ name: menuNode.name, path: menuNode.path });
               },
             },
       );
     }
     actions.push({ key: 'delete', label: '删除', icon: <Trash2 size={18} />, danger: true, onSelect: () => setDeleteNode(menuNode) });
     return actions;
-  }, [menuNode, favoriteRoots, addFavorite, removeFavorite]);
+  }, [menuNode, favoriteRoots, openAddModal, removeFavorite]);
 
   return (
     <div className="nb-m-page">

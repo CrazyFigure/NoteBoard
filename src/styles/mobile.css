@@ -849,6 +849,47 @@ html[data-platform='mobile'] body {
 
 /* ── 编辑页 ── */
 
+/* 收藏设置复用全局弹窗：键盘弹出时表单可滚动，所有输入和按钮至少留出 44px 触控高度。 */
+[data-platform='mobile'] .nb-add-favorite-dialog {
+  max-height: calc(100dvh - 32px);
+  border-radius: 16px !important;
+}
+
+[data-platform='mobile'] .nb-add-favorite-dialog > :first-child {
+  flex-shrink: 0;
+}
+
+[data-platform='mobile'] .nb-add-favorite-form {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+[data-platform='mobile'] .nb-add-favorite-dialog input,
+[data-platform='mobile'] .nb-add-favorite-dialog select,
+[data-platform='mobile'] .nb-add-favorite-dialog button {
+  min-height: 44px;
+  font-size: 16px !important;
+}
+
+[data-platform='mobile'] .nb-add-favorite-dialog button {
+  min-width: 44px;
+}
+
+/* 内联创建行的输入框允许在窄屏缩小，确认与取消按钮保留完整的触控区域。 */
+[data-platform='mobile'] .nb-add-favorite-create-row input {
+  min-width: 0;
+}
+
+[data-platform='mobile'] .nb-add-favorite-dialog button:hover {
+  filter: brightness(1.06);
+}
+
+[data-platform='mobile'] .nb-add-favorite-dialog button:active {
+  transform: scale(0.96) !important;
+  filter: brightness(0.94);
+}
+
 .nb-m-editor-page {
   position: absolute;
   inset: 0;

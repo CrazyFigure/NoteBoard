@@ -1,12 +1,14 @@
 // NoteBoard 添加/编辑收藏夹模态弹窗
 // 支持设置收藏名称、所属目标文件夹、内联快速新建文件夹、已有收藏移除与保存
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useId } from 'react';
 import { Star, Folder, X, Trash2, Check, FolderPlus } from 'lucide-react';
 import { useFavoritesStore } from './favoritesStore';
 import { getAllFolders, findFavoriteByPath, findParentFolder } from './favoritesUtils';
 import { showToast } from '../../stores/toastStore';
 import { Tooltip } from '../../components/Tooltip';
+import { IS_MOBILE_UI } from '../../core/platform';
+import { useBackDismiss } from '../../mobile/components';
 
 export function AddFavoriteModal() {
   const {
@@ -19,6 +21,9 @@ export function AddFavoriteModal() {
   } = useFavoritesStore();
 
   const { open, target, initialFolderId } = addModalState;
+  // 移动端返回键只关闭收藏弹窗；使用独立 ID 关联标题、表单标签，允许移动端输入框正常聚焦。
+  const dialogId = useId();
+  useBackDismiss(IS_MOBILE_UI && open, closeAddModal);
 
   const [name, setName] = useState('');
   const [selectedFolderId, setSelectedFolderId] = useState('root');
@@ -37,13 +42,15 @@ export function AddFavoriteModal() {
   useEffect(() => {
     if (open && target) {
       const targetPath = target.path || '';
-      const existing = targetPath ? findFavoriteByPath(data.roots, targetPath) : null;
+      // 只在打开或切换收藏目标时读取快照；新建文件夹导致 roots 变化时不能重置用户正在编辑的表单。
+      const roots = useFavoritesStore.getState().data.roots;
+      const existing = targetPath ? findFavoriteByPath(roots, targetPath) : null;
 
       if (existing) {
         setIsFavorited(true);
         setExistingId(existing.id);
         setName(existing.name);
-        const parent = findParentFolder(data.roots, existing.id);
+        const parent = findParentFolder(roots, existing.id);
         setSelectedFolderId(parent ? parent.id : initialFolderId || 'root');
       } else {
         setIsFavorited(false);
@@ -56,12 +63,13 @@ export function AddFavoriteModal() {
       setIsCreatingFolder(false);
       setNewFolderName('');
 
-      setTimeout(() => {
+      const timer = window.setTimeout(() => {
         nameInputRef.current?.focus();
         nameInputRef.current?.select();
       }, 50);
+      return () => window.clearTimeout(timer);
     }
-  }, [open, target, initialFolderId, data.roots]);
+  }, [open, target, initialFolderId]);
 
   // 全局 Escape 关闭
   useEffect(() => {
@@ -120,6 +128,7 @@ export function AddFavoriteModal() {
 
   return (
     <div
+      className="nb-add-favorite-overlay"
       style={{
         position: 'fixed',
         top: 0,
@@ -140,6 +149,10 @@ export function AddFavoriteModal() {
       }}
     >
       <div
+        className="nb-add-favorite-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={`${dialogId}-title`}
         style={{
           width: 440,
           maxWidth: '92vw',
@@ -177,7 +190,7 @@ export function AddFavoriteModal() {
                 fill: isFavorited ? '#f97316' : 'none',
               }}
             />
-            <span style={{ fontWeight: 600, fontSize: 14 }}>
+            <span id={`${dialogId}-title`} style={{ fontWeight: 600, fontSize: 14 }}>
               {isFavorited ? '编辑收藏' : '添加到收藏夹'}
             </span>
           </div>
@@ -213,10 +226,11 @@ export function AddFavoriteModal() {
         </div>
 
         {/* 表单输入区域 */}
-        <form onSubmit={handleSave} style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <form className="nb-add-favorite-form" onSubmit={handleSave} style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
           {/* 名称输入 */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <label
+              htmlFor={`${dialogId}-name`}
               style={{
                 fontSize: 12,
                 fontWeight: 500,
@@ -226,6 +240,7 @@ export function AddFavoriteModal() {
               名称
             </label>
             <input
+              id={`${dialogId}-name`}
               ref={nameInputRef}
               type="text"
               value={name}
@@ -290,6 +305,7 @@ export function AddFavoriteModal() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <label
+                htmlFor={`${dialogId}-folder`}
                 style={{
                   fontSize: 12,
                   fontWeight: 500,
@@ -338,7 +354,7 @@ export function AddFavoriteModal() {
 
             {/* 内联新建文件夹输入框 */}
             {isCreatingFolder && (
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 2 }}>
+              <div className="nb-add-favorite-create-row" style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 2 }}>
                 <input
                   ref={newFolderInputRef}
                   type="text"
@@ -368,6 +384,7 @@ export function AddFavoriteModal() {
                 />
                 <button
                   type="button"
+                  aria-label="确认新建文件夹"
                   onClick={handleCreateNewFolder}
                   style={{
                     padding: '0 8px',
@@ -387,6 +404,7 @@ export function AddFavoriteModal() {
                 </button>
                 <button
                   type="button"
+                  aria-label="取消新建文件夹"
                   onClick={() => setIsCreatingFolder(false)}
                   style={{
                     padding: '0 8px',
@@ -409,6 +427,7 @@ export function AddFavoriteModal() {
 
             {/* 下拉选择框 */}
             <select
+              id={`${dialogId}-folder`}
               value={selectedFolderId}
               onChange={(e) => setSelectedFolderId(e.target.value)}
               style={{
