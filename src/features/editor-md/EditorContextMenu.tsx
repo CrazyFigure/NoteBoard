@@ -133,11 +133,16 @@ export function EditorContextMenu({
   // 打开二级子菜单并计算位置
   const handleOpenSubmenu = (submenuKey: string, e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const spaceOnRight = window.innerWidth - rect.right;
+    const viewportWidth = window.innerWidth;
+    const submenuWidth = 185;
+    const spaceOnRight = viewportWidth - rect.right;
     const flipLeft = spaceOnRight < 190;
+    // 窄屏（手机）左右两侧都放不下子菜单时，改为在触发项下方展开并夹进视口，避免被推到屏幕外
+    const fitsSide = !flipLeft || rect.left - submenuWidth >= 8;
+    const rawLeft = fitsSide ? (flipLeft ? rect.left - submenuWidth : rect.right + 4) : rect.left + 16;
     setSubmenuPos({
-      top: rect.top,
-      left: flipLeft ? rect.left - 185 : rect.right + 4,
+      top: fitsSide ? rect.top : rect.bottom + 2,
+      left: Math.max(8, Math.min(rawLeft, viewportWidth - submenuWidth - 8)),
       flipLeft,
     });
     setActiveSubmenu(submenuKey);
@@ -751,7 +756,7 @@ export function EditorContextMenu({
           className="nb-context-menu"
           style={{
             position: 'fixed',
-            top: Math.min(submenuPos.top, window.innerHeight - 300),
+            top: Math.max(8, Math.min(submenuPos.top, window.innerHeight - 300)),
             left: submenuPos.left,
             zIndex: 10000,
             background: 'var(--editor-surface, #ffffff)',

@@ -37,6 +37,7 @@ import {
   Pilcrow,
   RemoveFormatting,
   ChevronRight,
+  ChevronLeft,
   Boxes,
   BarChart3,
   ListCollapse,
@@ -44,6 +45,8 @@ import {
 import { insertLocalImageWithDialog } from './imagePaste';
 import { useWindowStore } from '../../stores/windowStore';
 import { emit } from '../../core/emitter';
+import { IS_MOBILE_UI } from '../../core/platform';
+import { isTouchInteraction } from '../../core/inputModality';
 import { INFOGRAPHIC_TEMPLATES } from '../infographic/infographicTemplates';
 import { insertDetailsContent } from './detailsExtension';
 
@@ -902,7 +905,8 @@ function SlashMenu({
           boxShadow: '0 10px 30px -4px rgba(0, 0, 0, 0.18), 0 3px 8px -2px rgba(0, 0, 0, 0.1)',
           backdropFilter: 'blur(10px)',
           overflow: 'hidden',
-          width: 300,
+          // 窄屏（手机）下不超出视口：弹层左侧固定留 16px，右侧同样保留 16px
+          width: IS_MOBILE_UI ? 'min(300px, calc(100vw - 32px))' : 300,
           maxHeight: 370,
           display: 'flex',
           flexDirection: 'column',
@@ -923,7 +927,7 @@ function SlashMenu({
           }}
         >
           <span>{isSearching ? `搜索命令: "${query}"` : '插入块或命令'}</span>
-          <span style={{ fontSize: 10, opacity: 0.8 }}>↑↓ 移动 · → 伸展子项</span>
+          {!IS_MOBILE_UI && <span style={{ fontSize: 10, opacity: 0.8 }}>↑↓ 移动 · → 伸展子项</span>}
         </div>
 
         <div
@@ -948,6 +952,9 @@ function SlashMenu({
                 type="button"
                 aria-label={item.shortcutHint ? `快捷触发词：${item.shortcutHint}` : undefined}
                 onMouseEnter={() => {
+                  // 触屏补发的兼容 mouseenter 不参与悬展：移动端二级菜单会覆盖在主面板上，
+                  // 若在 click 之前就弹出，同一次点按可能落到刚出现的子项上被误执行
+                  if (isTouchInteraction()) return;
                   setSelectedIndex(index);
                   if (isGroup) {
                     setHoveredGroupId(item.id);
@@ -959,6 +966,7 @@ function SlashMenu({
                 }}
                 onClick={() => {
                   if (isGroup) {
+                    setSelectedIndex(index);
                     setHoveredGroupId(item.id);
                     setIsFocusInSubmenu(true);
                     setSubSelectedIndex(0);
@@ -1101,18 +1109,24 @@ function SlashMenu({
         </div>
       </div>
 
-      {/* ── 伸展式二级子菜单面板 (Flyout Submenu) ── */}
-      {!isSearching && activeGroup && (
+      {/* ── 伸展式二级子菜单面板 (Flyout Submenu) ──
+          移动端屏宽放不下侧边浮层（左右翻转都会落到屏幕外），改为覆盖主面板的下钻式子页，
+          且仅在进入子菜单（点按 / 回车 / →）后显示，键盘在一级项间移动时不遮挡主列表 */}
+      {!isSearching && activeGroup && (!IS_MOBILE_UI || isFocusInSubmenu) && (
         <div
           onMouseEnter={() => setIsFocusInSubmenu(true)}
           style={{
             position: 'absolute',
-            top: submenuLayout.top,
-            ...(flipSubmenuLeft
-              ? { right: 'calc(100% + 6px)' }
-              : { left: 'calc(100% + 6px)' }),
-            width: 290,
-            maxHeight: submenuLayout.maxHeight,
+            ...(IS_MOBILE_UI
+              ? { top: 0, left: 0, right: 0, bottom: 0 }
+              : {
+                  top: submenuLayout.top,
+                  ...(flipSubmenuLeft
+                    ? { right: 'calc(100% + 6px)' }
+                    : { left: 'calc(100% + 6px)' }),
+                  width: 290,
+                  maxHeight: submenuLayout.maxHeight,
+                }),
             background: 'var(--editor-surface, #ffffff)',
             border: '1px solid var(--editor-border, rgba(0,0,0,0.12))',
             borderRadius: 8,
@@ -1137,7 +1151,22 @@ function SlashMenu({
               justifyContent: 'space-between',
             }}
           >
-            <span>{activeGroup.label}</span>
+            {IS_MOBILE_UI ? (
+              // 移动端下钻子页：标题即返回按钮
+              <button
+                type="button"
+                className="nb-slash-submenu-back"
+                onClick={() => {
+                  setIsFocusInSubmenu(false);
+                  setHoveredGroupId(null);
+                }}
+              >
+                <ChevronLeft size={14} />
+                <span>{activeGroup.label}</span>
+              </button>
+            ) : (
+              <span>{activeGroup.label}</span>
+            )}
             <span style={{ fontSize: 10, color: 'var(--editor-text-secondary, #64748b)' }}>
               {activeGroup.children.length} 个选项
             </span>
