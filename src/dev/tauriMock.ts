@@ -15,7 +15,7 @@ const EXTERNAL_ROOT = '/storage/emulated/0';
 
 const now = Date.now();
 const files = new Map<string, MockFile>();
-const dirs = new Set<string>([WORKSPACE, `${WORKSPACE}/项目笔记`, `${WORKSPACE}/读书`, EXTERNAL_ROOT, `${EXTERNAL_ROOT}/Documents`]);
+const dirs = new Set<string>([WORKSPACE, `${WORKSPACE}/项目笔记`, `${WORKSPACE}/读书`, `${WORKSPACE}/.nb-trash`, EXTERNAL_ROOT, `${EXTERNAL_ROOT}/Documents`]);
 
 function seed(path: string, content: string, ageMinutes: number): void {
   files.set(path, { content, mtime: now - ageMinutes * 60_000 });
@@ -28,6 +28,27 @@ seed(`${WORKSPACE}/架构草图.excalidraw`, '', 60 * 5);
 seed(`${WORKSPACE}/项目笔记/需求.md`, '# 需求\n\n## 背景\n\n## 目标\n', 90);
 seed(`${WORKSPACE}/读书/摘录.md`, '# 摘录\n', 2000);
 seed(`${WORKSPACE}/任务看板.bitable`, serializeBitableDocument(createDefaultBitableDocument('任务看板')), 30);
+
+/** 同步配置样例（保存后在内存中保留，便于预览交互） */
+const emptyGit = { baseUrl: '', owner: '', repo: '', branch: '', token: '', remoteDir: '' };
+const mockProvider = {
+  kind: 'webdav',
+  webdav: { url: 'https://dav.jianguoyun.com/dav/', username: 'me@example.com', password: 'app-password', userAgent: '', remoteDir: 'NoteBoard' },
+  s3: { endpoint: '', region: '', bucket: '', accessKeyId: '', secretAccessKey: '', prefix: '', pathStyle: false },
+  github: { ...emptyGit },
+  gitee: { ...emptyGit },
+  gitlab: { ...emptyGit },
+};
+let mockSyncConfig: Record<string, unknown> = {
+  version: 1,
+  deviceId: 'mock-device',
+  sync: {
+    enabled: true, rootDir: WORKSPACE, deviceName: '我的电脑', provider: mockProvider,
+    syncOnSave: true, intervalEnabled: true, intervalMinutes: 30, syncOnStartup: true, notifyNoChange: false,
+    trashEnabled: true, trashDays: 30,
+  },
+  backup: { autoEnabled: true, intervalHours: 24, keepCount: 10, target: 'local', localDir: 'D:/Backup/NoteBoard', provider: { ...mockProvider, kind: 'github' } },
+};
 
 function parentOf(path: string): string {
   const index = path.lastIndexOf('/');
@@ -155,6 +176,48 @@ export function installTauriMock(): void {
       case 'move_app_to_background':
       case 'set_system_bar_style':
       case 'share_file':
+        return null;
+      // ── 多端同步与备份（界面预览用样例数据） ──
+      case 'sync_get_config':
+      case 'sync_save_config':
+        if (cmd === 'sync_save_config') mockSyncConfig = args.config as typeof mockSyncConfig;
+        return mockSyncConfig;
+      case 'sync_get_status':
+        return {
+          syncing: false,
+          backingUp: false,
+          lastSync: {
+            at: now - 4 * 60_000, durationMs: 1800, trigger: 'interval', ok: true,
+            upload: { added: 1, modified: 2, deleted: 0 }, download: { added: 0, modified: 1, deleted: 1 },
+            merged: 1, conflicts: 0, errors: [], message: '同步完成 · 本机→云端：新增 1、修改 2 · 云端→本机：修改 1、删除 1 · 按行合并 1 个',
+          },
+          lastBackup: { at: now - 26 * 3600_000, ok: true, trigger: 'auto', name: 'NoteBoard-backup-mock.zip', size: 2_400_000, fileCount: 42, removedOld: 0, message: '备份完成：42 个文件（2.3 MB）' },
+          nextSyncAt: now + 26 * 60_000,
+          nextBackupAt: now + 3600_000,
+        };
+      case 'sync_test_connection':
+        return '连接成功，远端已有同步数据，开启同步后将与本机双向合并';
+      case 'sync_now':
+      case 'backup_now':
+      case 'sync_trash_delete':
+        return null;
+      case 'sync_trash_empty':
+        return 2;
+      case 'sync_trash_list':
+        return [
+          { id: '.nb-trash/旧方案', name: '旧方案', isDir: true, origPath: '项目笔记/旧方案', trashedAt: now - 3 * 86_400_000, expiresAt: now + 27 * 86_400_000, size: 52_000, fileCount: 6 },
+          { id: '.nb-trash/草稿.md', name: '草稿.md', isDir: false, origPath: '草稿.md', trashedAt: now - 28 * 86_400_000, expiresAt: now + 1.5 * 86_400_000, size: 1_200, fileCount: 1 },
+        ];
+      case 'sync_trash_restore':
+        return `${WORKSPACE}/草稿 (1).md`;
+      case 'backup_list':
+        return [
+          { name: 'NoteBoard-backup-20261010-090000-mock_PC-12345678.zip', size: 2_400_000, createdAt: now - 26 * 3600_000, device: 'mock_PC', isOwn: true },
+          { name: 'NoteBoard-backup-20261009-090000-安卓设备-abcdef12.zip', size: 2_300_000, createdAt: now - 50 * 3600_000, device: '安卓设备', isOwn: false },
+        ];
+      case 'backup_restore':
+        return '已恢复备份：写回 3 个文件，1 个备份之外的文件已移入回收站';
+      case 'backup_delete':
         return null;
       // ── 文件系统 ──
       case 'read_dir':

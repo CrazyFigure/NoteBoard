@@ -9,23 +9,28 @@ export interface ToastItem {
   message: string;
   type?: 'info' | 'warning' | 'error' | 'success';
   duration?: number;
+  /** 分组键：同一分组只保留最新一条（例如连续的同步结果提示） */
+  key?: string;
 }
 
 interface ToastStore {
   toasts: ToastItem[];
   // 显示 Toast
-  showToast: (message: string, type?: ToastItem['type'], duration?: number) => void;
+  showToast: (message: string, type?: ToastItem['type'], duration?: number, key?: string) => void;
   // 移除 Toast
   removeToast: (id: string) => void;
 }
 
 export const useToastStore = create<ToastStore>((set) => ({
   toasts: [],
-  showToast: (message, type = 'info', duration = 3500) => {
+  showToast: (message, type = 'info', duration = 3500, key) => {
     const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    // 添加到列表
+    // 添加到列表；带分组键时先移除同组旧提示，只展示最新一条
     set((state) => ({
-      toasts: [...state.toasts, { id, message, type, duration }],
+      toasts: [
+        ...(key ? state.toasts.filter((t) => t.key !== key) : state.toasts),
+        { id, message, type, duration, key },
+      ],
     }));
 
     // 超时自动清除
@@ -48,6 +53,7 @@ export const showToast = (
   message: string,
   type?: ToastItem['type'],
   duration?: number,
+  key?: string,
 ) => {
-  useToastStore.getState().showToast(message, type, duration);
+  useToastStore.getState().showToast(message, type, duration, key);
 };

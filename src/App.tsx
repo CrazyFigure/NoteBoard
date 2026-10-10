@@ -38,6 +38,8 @@ import {
   restoreLastClosedWindow,
   startClosedWindowSessionTracker,
 } from './features/session/closedWindowSession';
+import { startSyncEffects } from './features/sync/syncEffects';
+import { useSyncStore } from './stores/syncStore';
 
 // 🔴 S05：全局弹窗首次触发才装载（E 节 6）——未打开时不渲染即不加载，
 //    装载后保持挂载以保留关闭动画；安全关闭保护（UnsavedGuardDialog）仍轻量常驻
@@ -55,6 +57,10 @@ const FavoritesManagerModal = lazy(() =>
 );
 const AddFavoriteModal = lazy(() =>
   import('./features/favorites/AddFavoriteModal').then((m) => ({ default: m.AddFavoriteModal })),
+);
+// 同步回收站弹窗（文件树「回收站」节点或设置页打开时装载）
+const SyncTrashDialog = lazy(() =>
+  import('./features/sync/SyncTrashDialog').then((m) => ({ default: m.SyncTrashDialog })),
 );
 // 移动端界面独立分包：桌面构建入口不加载移动端外壳
 const MobileShell = lazy(() =>
@@ -102,6 +108,9 @@ export default function App() {
     // 增量暂存覆盖任务管理器直接终止进程、来不及执行关闭回调的系统边界。
     const stopStagingManager = startStagingManager();
     const stopClosedWindowSessionTracker = startClosedWindowSessionTracker();
+    // 多端同步：监听同步结果（提示）与同步对本机文件的改动（刷新文件树、重新加载已打开文档）
+    const stopSyncEffects = startSyncEffects();
+    void useSyncStore.getState().init();
     // 先建立监听与握手（含关闭保护），再加载设置；显式打开文件不抢占用户操作。
     // 🔴 S04 顺序（C 节）：监听与数据保护 → listeners-ready 握手 → 设置 → 壳显示 → drain 队列
     const initializeWindow = async () => {
@@ -205,6 +214,7 @@ export default function App() {
       cleanup();
       stopStagingManager();
       stopClosedWindowSessionTracker();
+      stopSyncEffects();
       window.removeEventListener('contextmenu', handleContextMenu);
       window.removeEventListener('click', handleGlobalAnchorClick, true);
       window.removeEventListener('auxclick', handleGlobalAnchorClick, true);
@@ -277,6 +287,8 @@ export default function App() {
   const fontPackPromptEverOpened = useEverOpened(fontPackPromptOpen);
   const favoritesManagerEverOpened = useEverOpened(favoritesManagerOpen);
   const addFavoriteEverOpened = useEverOpened(addFavoriteOpen);
+  const syncTrashOpen = useSyncStore((s) => s.trashOpen);
+  const syncTrashEverOpened = useEverOpened(syncTrashOpen);
 
   /** 用户拒绝下载时立即切换并保存真实存在的系统字体，避免后续每次启动重复询问。 */
   const handleUseSystemFonts = async () => {
@@ -430,6 +442,12 @@ export default function App() {
           {addFavoriteEverOpened && (
             <Suspense fallback={null}>
               <AddFavoriteModal />
+            </Suspense>
+          )}
+          {/* 同步回收站（内部以 trashOpen 控制开关） */}
+          {syncTrashEverOpened && (
+            <Suspense fallback={null}>
+              <SyncTrashDialog />
             </Suspense>
           )}
         </div>

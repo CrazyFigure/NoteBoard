@@ -2405,12 +2405,15 @@ dependencies = [
 name = "noteboard"
 version = "0.4.6"
 dependencies = [
+ "base64 0.22.1",
  "chardetng",
  "chrono",
  "dunce",
  "encoding_rs",
  "font-kit",
+ "hex",
  "log",
+ "percent-encoding",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

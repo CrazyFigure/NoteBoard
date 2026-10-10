@@ -85,14 +85,19 @@ pub fn write_document(
     eol: crate::dto::Eol,
 ) -> Result<WriteResult, String> {
     let p = Path::new(&path);
+    crate::sync::hooks::prepare_write(p);
 
     match write::write_with_encoding(p, &content, encoding, eol) {
-        Ok((size, mtime)) => Ok(WriteResult {
-            ok: true,
-            mtime,
-            size,
-            error: None,
-        }),
+        Ok((size, mtime)) => {
+            // 同步目录内的手动/自动保存触发同步（防抖合并）
+            crate::sync::hooks::on_written(p);
+            Ok(WriteResult {
+                ok: true,
+                mtime,
+                size,
+                error: None,
+            })
+        }
         Err(e) => Ok(WriteResult {
             ok: false,
             mtime: 0,
@@ -117,6 +122,7 @@ pub fn save_binary_file(path: String, data: Vec<u8>) -> Result<WriteResult, Stri
 
     // 写入二进制字节数据
     std::fs::write(p, &data).map_err(|e| format!("写入二进制文件失败: {}", e))?;
+    crate::sync::hooks::on_written(p);
 
     let metadata = std::fs::metadata(p).map_err(|e| e.to_string())?;
     let mtime = metadata
@@ -160,6 +166,7 @@ pub fn create_file(
 
     // 创建文件
     std::fs::write(&path, "").map_err(|e| format!("创建文件失败: {}", e))?;
+    crate::sync::hooks::on_written(&path);
 
     // 读取返回
     let result = read::read_file(&path).map_err(|e| e.to_string())?;
@@ -201,12 +208,19 @@ pub fn create_dir(dir: String, name: String) -> Result<(), String> {
 /// 重命名
 #[tauri::command]
 pub fn rename_path(from: String, to: String) -> Result<(), String> {
-    std::fs::rename(&from, &to).map_err(|e| format!("重命名失败: {}", e))
+    std::fs::rename(&from, &to).map_err(|e| format!("重命名失败: {}", e))?;
+    // 同步目录内改名：登记改名线索，其他设备执行改名而不是删除+新建
+    crate::sync::hooks::on_renamed(Path::new(&from), Path::new(&to));
+    Ok(())
 }
 
 /// 移到回收站
 #[tauri::command]
 pub fn move_to_trash(path: String) -> Result<(), String> {
+    // 已开启多端同步且启用回收站时，同步目录内的删除移入同步回收站（可在各设备恢复）
+    if let Some(result) = crate::sync::hooks::try_move_to_sync_trash(Path::new(&path)) {
+        return result;
+    }
     trash::move_to_trash(Path::new(&path))
 }
 

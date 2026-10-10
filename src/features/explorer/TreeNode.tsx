@@ -24,6 +24,8 @@ import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
 import * as ipc from '../../core/ipc/commands';
+import { syncTrashPath, useSyncStore } from '../../stores/syncStore';
+import { sameKey } from './pathUtils';
 
 interface TreeNodeProps {
   node: FileTreeNode;
@@ -33,7 +35,130 @@ interface TreeNodeProps {
 
 // ── 单节点渲染 ──
 
-export const TreeNode = memo(function TreeNode({
+/** 树节点入口：同步文件夹根下的回收站渲染为特殊节点，其余走普通文件/目录节点 */
+export const TreeNode = memo(function TreeNode(props: TreeNodeProps) {
+  const isSyncTrash = useSyncStore((s) => {
+    const trash = syncTrashPath(s.config);
+    return trash !== null && props.node.isDir && sameKey(trash, props.node.path);
+  });
+  if (isSyncTrash) return <SyncTrashNode depth={props.depth} path={props.node.path} />;
+  return <TreeNodeImpl {...props} />;
+});
+
+/** 同步回收站节点：不可展开、不可打开其中文件，单击/双击打开回收站弹窗（恢复、彻底删除） */
+function SyncTrashNode({ depth, path }: { depth: number; path: string }) {
+  const setTrashOpen = useSyncStore((s) => s.setTrashOpen);
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // 点击外部关闭右键菜单
+  useEffect(() => {
+    if (!menuPos) return;
+    const handleDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuPos(null);
+    };
+    document.addEventListener('mousedown', handleDown);
+    return () => document.removeEventListener('mousedown', handleDown);
+  }, [menuPos]);
+
+  return (
+    <div role="treeitem" aria-level={depth + 1}>
+      <Tooltip content="同步回收站：查看、恢复或彻底删除已删除的文件" disabled={Boolean(menuPos)} side="right" sideOffset={6}>
+        <div
+          tabIndex={0}
+          style={{
+            height: 'var(--explorer-item-height, 24px)',
+            minHeight: 'var(--explorer-item-height, 24px)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            paddingLeft: depth * 12 + 8,
+            paddingRight: 8,
+            cursor: 'pointer',
+            userSelect: 'none',
+            borderLeft: '2px solid transparent',
+            color: 'var(--explorer-text-muted, var(--explorer-text))',
+            fontSize: 'var(--explorer-font-size, 13px)',
+            fontFamily: 'var(--explorer-font-family, inherit)',
+            whiteSpace: 'nowrap',
+            outline: 'none',
+            transition: 'background var(--transition-fast)',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--explorer-hover)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+          }}
+          onMouseDown={(e) => {
+            if (e.button === 0) e.currentTarget.style.background = 'var(--explorer-active)';
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.background = 'var(--explorer-hover)';
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            setTrashOpen(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setTrashOpen(true);
+            }
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const x = e.clientX + 180 > window.innerWidth ? Math.max(8, e.clientX - 180) : e.clientX;
+            const y = e.clientY + 90 > window.innerHeight ? Math.max(8, e.clientY - 90) : e.clientY;
+            setMenuPos({ x, y });
+          }}
+        >
+          <span style={{ width: 12, flexShrink: 0 }} />
+          <Trash2 size={14} style={{ flexShrink: 0 }} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>回收站</span>
+        </div>
+      </Tooltip>
+      {menuPos && (
+        <div
+          ref={menuRef}
+          style={{
+            position: 'fixed',
+            top: menuPos.y,
+            left: menuPos.x,
+            zIndex: 9999,
+            background: 'var(--editor-surface)',
+            border: '1px solid var(--editor-border)',
+            borderRadius: 'var(--radius-sm)',
+            boxShadow: 'var(--shadow-md)',
+            padding: '4px',
+            minWidth: 175,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <ContextMenuItem
+            icon={Trash2}
+            label="打开回收站"
+            onClick={() => {
+              setMenuPos(null);
+              setTrashOpen(true);
+            }}
+          />
+          <ContextMenuItem
+            icon={ExternalLink}
+            label="在文件管理器中定位"
+            onClick={() => {
+              setMenuPos(null);
+              ipc.revealInExplorer(path);
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+const TreeNodeImpl = memo(function TreeNodeImpl({
   node,
   depth,
 }: TreeNodeProps) {

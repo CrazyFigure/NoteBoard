@@ -1,0 +1,632 @@
+/* NoteBoard 多端同步与备份：设置页面板、回收站与确认弹窗 */
+
+.nb-sync-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.nb-sync-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+  background: var(--editor-surface);
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-md);
+}
+
+.nb-sync-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.nb-sync-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--editor-text);
+}
+
+.nb-sync-card-title svg {
+  color: var(--accent-strong);
+  flex-shrink: 0;
+}
+
+.nb-sync-muted {
+  font-size: 11px;
+  color: var(--editor-text-muted);
+  line-height: 1.6;
+}
+
+/* 开关/选项行 */
+.nb-sync-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 13px;
+  padding: 2px 0;
+}
+
+label.nb-sync-row {
+  cursor: pointer;
+}
+
+.nb-sync-row > div:first-child {
+  min-width: 0;
+}
+
+.nb-sync-row input[type='checkbox'] {
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.nb-sync-row-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--editor-text-secondary);
+}
+
+/* 表单 */
+.nb-sync-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+}
+
+.nb-sync-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.nb-sync-field.is-wide {
+  grid-column: 1 / -1;
+}
+
+.nb-sync-field > span {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--editor-text);
+}
+
+.nb-sync-field > small {
+  font-size: 11px;
+  color: var(--editor-text-muted);
+  line-height: 1.5;
+}
+
+.nb-sync-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  font-size: 12px;
+  border: 1px solid var(--control-border, var(--editor-border));
+  border-radius: var(--radius-sm);
+  background: var(--editor-bg);
+  color: var(--editor-text);
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.nb-sync-input:hover:not(:disabled):not(:read-only) {
+  border-color: var(--editor-border-focus);
+}
+
+.nb-sync-input:focus {
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-strong) 18%, transparent);
+}
+
+.nb-sync-input:read-only {
+  color: var(--editor-text-secondary);
+}
+
+.nb-sync-input.is-number {
+  width: 72px;
+  text-align: center;
+}
+
+.nb-sync-path {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.nb-sync-path .nb-sync-input {
+  flex: 1;
+  min-width: 200px;
+}
+
+/* 密钥输入：右侧明文切换按钮 */
+.nb-sync-secret {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.nb-sync-secret .nb-sync-input {
+  padding-right: 34px;
+}
+
+.nb-sync-secret .nb-sync-icon-btn {
+  position: absolute;
+  right: 3px;
+}
+
+.nb-sync-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--editor-text-muted);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-sync-icon-btn:hover:not(:disabled) {
+  background: var(--toolbar-hover);
+  color: var(--editor-text);
+}
+
+.nb-sync-icon-btn:active:not(:disabled) {
+  background: var(--toolbar-active);
+  transform: scale(0.92);
+}
+
+.nb-sync-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 服务类型分段选择 */
+.nb-sync-segment {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.nb-sync-segment-btn {
+  flex: 1;
+  min-width: 72px;
+  padding: 7px 10px;
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--editor-border);
+  background: var(--editor-bg);
+  color: var(--editor-text);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.nb-sync-segment-btn:hover:not(.is-active) {
+  background: var(--toolbar-hover);
+  border-color: var(--editor-border-focus);
+  transform: translateY(-1px);
+}
+
+.nb-sync-segment-btn:active {
+  transform: translateY(0) scale(0.96);
+}
+
+.nb-sync-segment-btn.is-active {
+  border-color: var(--accent-strong);
+  background: var(--editor-selection);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+/* 获取方式说明 */
+.nb-sync-help {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--editor-text-secondary);
+  background: var(--editor-bg);
+  border: 1px dashed var(--editor-border);
+  border-radius: var(--radius-sm);
+}
+
+.nb-sync-help strong {
+  color: var(--editor-text);
+  font-weight: 600;
+}
+
+.nb-sync-help ol,
+.nb-sync-help ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.nb-sync-help code {
+  font-family: var(--mono-font-family);
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--code-inline-bg);
+  color: var(--code-inline-text);
+  word-break: break-all;
+}
+
+.nb-sync-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  margin: 0 -2px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--accent-strong);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-sync-link:hover {
+  background: var(--toolbar-hover);
+  text-decoration: underline;
+}
+
+.nb-sync-link:active {
+  transform: scale(0.97);
+}
+
+/* 说明卡片 */
+.nb-sync-notice {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--editor-text-secondary);
+  background: color-mix(in srgb, var(--accent-strong) 7%, var(--editor-surface));
+  border: 1px solid color-mix(in srgb, var(--accent-strong) 25%, var(--editor-border));
+  border-radius: var(--radius-md);
+}
+
+.nb-sync-notice svg {
+  color: var(--accent-strong);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.nb-sync-notice ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+/* 状态条 */
+.nb-sync-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--editor-bg);
+  border: 1px solid var(--editor-border);
+  font-size: 12px;
+}
+
+.nb-sync-status-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.nb-sync-status-main svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.nb-sync-status-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.nb-sync-status-text > span:first-child {
+  color: var(--editor-text);
+  word-break: break-word;
+}
+
+.nb-sync-status.is-ok .nb-sync-status-main svg {
+  color: var(--success-600, #10b981);
+}
+
+.nb-sync-status.is-warn .nb-sync-status-main svg {
+  color: var(--warning-600, #f59e0b);
+}
+
+.nb-sync-status.is-error {
+  border-color: color-mix(in srgb, var(--error-500, #ef4444) 45%, var(--editor-border));
+}
+
+.nb-sync-status.is-error .nb-sync-status-main svg {
+  color: var(--error-500, #ef4444);
+}
+
+.nb-sync-status.is-running .nb-sync-status-main svg {
+  color: var(--accent-strong);
+}
+
+.nb-sync-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.nb-sync-spin {
+  animation: nb-sync-spin 1s linear infinite;
+}
+
+@keyframes nb-sync-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.nb-sync-test-result {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.nb-sync-test-result.is-ok {
+  color: var(--success-600, #10b981);
+}
+
+.nb-sync-test-result.is-error {
+  color: var(--error-500, #ef4444);
+}
+
+/* 列表（备份 / 回收站） */
+.nb-sync-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--editor-bg);
+}
+
+.nb-sync-list-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  font-size: 12px;
+  transition: background var(--transition-fast);
+}
+
+.nb-sync-list-item + .nb-sync-list-item {
+  border-top: 1px solid var(--editor-border);
+}
+
+.nb-sync-list-item:hover {
+  background: var(--explorer-hover, var(--toolbar-hover));
+}
+
+.nb-sync-list-item > svg {
+  flex-shrink: 0;
+  color: var(--editor-text-muted);
+}
+
+.nb-sync-list-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nb-sync-list-name {
+  color: var(--editor-text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nb-sync-list-meta {
+  color: var(--editor-text-muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nb-sync-list-meta .is-urgent {
+  color: var(--error-500, #ef4444);
+}
+
+.nb-sync-list-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.nb-sync-list-empty {
+  padding: 22px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--editor-text-muted);
+}
+
+.nb-sync-chip {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 500;
+  background: var(--editor-selection);
+  color: var(--accent-strong);
+  vertical-align: 1px;
+}
+
+.nb-sync-icon-btn.is-danger:hover:not(:disabled) {
+  color: var(--error-500, #ef4444);
+  background: color-mix(in srgb, var(--error-500, #ef4444) 12%, transparent);
+}
+
+/* 弹窗：位于设置弹窗（z-index 9990）之上 */
+.nb-sync-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10010;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(3px);
+}
+
+.nb-sync-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(640px, calc(100vw - 32px));
+  max-height: min(640px, calc(100vh - 64px));
+  background: var(--editor-bg);
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  color: var(--editor-text);
+  font-family: var(--ui-font-family);
+  overflow: hidden;
+  animation: nb-toast-in 0.18s ease-out;
+}
+
+.nb-sync-dialog.is-small {
+  width: min(460px, calc(100vw - 32px));
+}
+
+.nb-sync-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--editor-border);
+  background: var(--editor-surface);
+}
+
+.nb-sync-dialog-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.nb-sync-dialog-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--editor-text-secondary);
+}
+
+.nb-sync-dialog-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--editor-border);
+  background: var(--editor-surface);
+}
+
+/* 移动端：单列布局，弹窗改为底部面板 */
+[data-platform='mobile'] .nb-sync-grid {
+  grid-template-columns: 1fr;
+}
+
+[data-platform='mobile'] .nb-sync-card {
+  padding: 14px;
+}
+
+[data-platform='mobile'] .nb-sync-path .nb-sync-input {
+  min-width: 0;
+  flex-basis: 100%;
+}
+
+[data-platform='mobile'] .nb-sync-icon-btn {
+  width: 34px;
+  height: 34px;
+}
+
+[data-platform='mobile'] .nb-sync-dialog-overlay {
+  align-items: flex-end;
+}
+
+[data-platform='mobile'] .nb-sync-dialog {
+  width: 100vw;
+  max-height: 88dvh;
+  border-radius: 18px 18px 0 0;
+  padding-bottom: var(--nb-m-safe-bottom, 0px);
+}
+
+[data-platform='mobile'] .nb-sync-status {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/* 全局样式重置了列表符号，说明文字中的列表需要恢复 */
+.nb-sync-notice ul,
+.nb-sync-help ul,
+.nb-sync-dialog-body ul {
+  list-style: disc;
+}
+
+.nb-sync-help ol {
+  list-style: decimal;
+}
+
+.nb-sync-notice li + li,
+.nb-sync-help li + li {
+  margin-top: 2px;
+}
+
+/* 状态条右侧操作按钮不换行 */
+.nb-sync-status > button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.nb-sync-segment-btn {
+  white-space: nowrap;
+}
+
+/* 移动端：列表说明允许换行，避免删除时间与剩余天数被截断 */
+[data-platform='mobile'] .nb-sync-list-meta {
+  white-space: normal;
+}
+
+[data-platform='mobile'] .nb-sync-segment-btn {
+  flex: 1 1 auto;
+}

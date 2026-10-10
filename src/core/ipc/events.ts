@@ -4,7 +4,16 @@
 
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWebview, type DragDropEvent } from '@tauri-apps/api/webview';
-import type { DownloadProgress, ExternalChangePayload, FontPackStatus, Settings } from './types';
+import type {
+  DownloadProgress,
+  ExternalChangePayload,
+  FontPackStatus,
+  Settings,
+  SyncConfigFile,
+  SyncLocalChange,
+  SyncReportEvent,
+  SyncStatus,
+} from './types';
 
 // ── 事件名常量 ──
 
@@ -21,6 +30,10 @@ export const EVENTS = {
   CLOSE_REQUESTED: 'nb://close-requested',
   FONT_PACK_DOWNLOAD_PROGRESS: 'noteboard-font-pack-download-progress',
   FONT_PACK_CHANGED: 'noteboard-font-pack-changed',
+  SYNC_STATUS: 'nb://sync-status',
+  SYNC_REPORT: 'nb://sync-report',
+  SYNC_APPLIED: 'nb://sync-applied',
+  SYNC_CONFIG_CHANGED: 'nb://sync-config-changed',
 } as const;
 
 // ── 监听封装 ──
@@ -80,6 +93,28 @@ export function onFontPackDownloadProgress(cb: (progress: DownloadProgress) => v
 /** 多窗口同步字体包安装、修复和删除结果。 */
 export function onFontPackChanged(cb: (status: FontPackStatus) => void): Promise<UnlistenFn> {
   return listen<FontPackStatus>(EVENTS.FONT_PACK_CHANGED, (e) => cb(e.payload));
+}
+
+// ── 多端同步 ──
+
+/** 同步/备份运行状态变化（所有窗口） */
+export function onSyncStatus(cb: (status: SyncStatus) => void): Promise<UnlistenFn> {
+  return listen<SyncStatus>(EVENTS.SYNC_STATUS, (e) => cb(e.payload));
+}
+
+/** 一次同步或备份完成 */
+export function onSyncReport(cb: (event: SyncReportEvent) => void): Promise<UnlistenFn> {
+  return listen<SyncReportEvent>(EVENTS.SYNC_REPORT, (e) => cb(e.payload));
+}
+
+/** 同步改动了本机文件（刷新文件树、重新加载已打开文档） */
+export function onSyncApplied(cb: (changes: SyncLocalChange[]) => void): Promise<UnlistenFn> {
+  return listen<{ changes: SyncLocalChange[] }>(EVENTS.SYNC_APPLIED, (e) => cb(e.payload.changes));
+}
+
+/** 同步配置在任一窗口被修改 */
+export function onSyncConfigChanged(cb: (config: SyncConfigFile) => void): Promise<UnlistenFn> {
+  return listen<SyncConfigFile>(EVENTS.SYNC_CONFIG_CHANGED, (e) => cb(e.payload));
 }
 
 // ── 系统文件拖拽监听 ──

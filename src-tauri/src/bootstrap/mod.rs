@@ -28,6 +28,9 @@ pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         let _ = window.set_title("NoteBoard Dev");
     }
 
+    // 多端同步后台调度线程（进程唯一；启动后延迟数秒在后台同步，不阻塞窗口显示）
+    crate::sync::scheduler::init(app.handle().clone());
+
     // 注册主窗口
     let state = app.state::<Mutex<AppState>>();
     {

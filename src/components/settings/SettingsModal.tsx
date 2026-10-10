@@ -2,8 +2,8 @@
 // 外观主题切换（晨光/琥珀/墨夜/跟随系统） + 排版设置（字体/字号/行高/内容宽度） + 快捷键与关于
 // 详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
-import { useState, useEffect, useRef } from 'react';
-import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon } from 'lucide-react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud } from 'lucide-react';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { THEMES } from '../../core/theme/themes';
 import { contentWidthToPercent, CONTENT_WIDTH_PERCENT_MAP } from '../../core/theme/applyTheme';
@@ -23,7 +23,10 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type TabType = 'appearance' | 'typography' | 'editor' | 'file' | 'shortcuts' | 'about';
+type TabType = 'appearance' | 'typography' | 'editor' | 'file' | 'sync' | 'shortcuts' | 'about';
+
+// 同步与备份面板体积较大（含各服务表单与说明），切到该页时才加载
+const SyncPanel = lazy(() => import('../../features/sync/SyncPanel').then((m) => ({ default: m.SyncPanel })));
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('appearance');
@@ -223,6 +226,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               icon={<Folder size={15} />}
               label="文件与保存"
               onClick={() => setActiveTab('file')}
+            />
+            <NavBtn
+              active={activeTab === 'sync'}
+              icon={<Cloud size={15} />}
+              label="同步与备份"
+              onClick={() => setActiveTab('sync')}
             />
             {/* 移动端没有物理键盘快捷键，隐藏该分组 */}
             {!IS_MOBILE_UI && (
@@ -1229,7 +1238,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </div>
             )}
 
-            {/* 5. 快捷键指南 */}
+            {/* 5. 同步与备份 */}
+            {activeTab === 'sync' && (
+              <Suspense fallback={<div style={{ fontSize: 12, color: 'var(--editor-text-muted)' }}>正在加载同步设置</div>}>
+                <SyncPanel />
+              </Suspense>
+            )}
+
+            {/* 6. 快捷键指南 */}
             {activeTab === 'shortcuts' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                 <div>

@@ -53,6 +53,7 @@ import {
   newTextDiff,
 } from '../features/welcome/welcomeActions';
 import { useWindowStore } from '../stores/windowStore';
+import { syncTrashPath, useSyncStore } from '../stores/syncStore';
 import { useLayoutStore } from '../stores/layoutStore';
 import { showToast } from '../stores/toastStore';
 import {
@@ -141,6 +142,15 @@ function findFavoriteByPath(nodes: FavoriteNode[], path: string): FavoriteNode |
   return null;
 }
 
+/** 删除是否会移入同步回收站（已开启同步与回收站，且位于同步文件夹内） */
+function deletesIntoSyncTrash(path: string): boolean {
+  const config = useSyncStore.getState().config;
+  const trash = syncTrashPath(config);
+  if (!config?.sync.enabled || !config.sync.trashEnabled || !trash) return false;
+  const root = config.sync.rootDir;
+  return isSubPath(root, path) && pathKey(root) !== pathKey(path) && !isSubPath(trash, path);
+}
+
 // ── 文件行 ──
 
 interface FileRowProps {
@@ -217,6 +227,7 @@ function FilesSection({ onEntryMenu }: { onEntryMenu: (node: FileTreeNode) => vo
   const platform = useMobileStore((s) => s.platform);
   const tabs = useWindowStore((s) => s.tabs);
   const openKeys = useMemo(() => new Set(tabs.map((tab) => pathKey(tab.path ?? ''))), [tabs]);
+  const syncTrash = useSyncStore((s) => syncTrashPath(s.config));
 
   // 切换到手机存储：未授权时先引导开启"所有文件访问权限"
   const chooseDevice = async () => {
@@ -282,15 +293,35 @@ function FilesSection({ onEntryMenu }: { onEntryMenu: (node: FileTreeNode) => vo
             <div className="nb-m-empty-sub">点击右下角 ＋ 新建笔记，或导入文件</div>
           </div>
         ) : (
-          entries.map((node) => (
-            <FileRow
-              key={node.path}
-              node={node}
-              isOpen={!node.isDir && openKeys.has(pathKey(node.path))}
-              onOpen={() => void openEntry(node)}
-              onMenu={() => onEntryMenu(node)}
-            />
-          ))
+          entries.map((node) =>
+            // 同步文件夹根下的回收站：显示为「回收站」，点开管理已删除文件（其中文件不能直接打开）
+            syncTrash && node.isDir && pathKey(node.path) === pathKey(syncTrash) ? (
+              <div
+                key={node.path}
+                className="nb-m-row"
+                role="button"
+                tabIndex={0}
+                onClick={() => useSyncStore.getState().setTrashOpen(true)}
+              >
+                <span className="nb-m-row-icon">
+                  <Trash2 size={22} />
+                </span>
+                <span className="nb-m-row-text">
+                  <span className="nb-m-row-title">回收站</span>
+                  <span className="nb-m-row-meta">查看、恢复或彻底删除已删除的文件</span>
+                </span>
+                <ChevronRight size={18} className="nb-m-row-chevron" />
+              </div>
+            ) : (
+              <FileRow
+                key={node.path}
+                node={node}
+                isOpen={!node.isDir && openKeys.has(pathKey(node.path))}
+                onOpen={() => void openEntry(node)}
+                onMenu={() => onEntryMenu(node)}
+              />
+            ),
+          )
         )}
       </div>
     </>
@@ -646,7 +677,11 @@ export function MobileHome() {
       <ConfirmDialog
         open={deleteNode !== null}
         title={deleteNode?.isDir ? '删除文件夹' : '删除文件'}
-        message={`「${deleteNode ? basenameOf(deleteNode.path) : ''}」${deleteNode?.isDir ? '及其中的全部内容' : ''}将被永久删除，无法恢复。`}
+        message={
+          deleteNode && deletesIntoSyncTrash(deleteNode.path)
+            ? `「${basenameOf(deleteNode.path)}」${deleteNode.isDir ? '及其中的全部内容' : ''}将移入回收站，可在回收站中恢复，其他设备也会同步移入回收站。`
+            : `「${deleteNode ? basenameOf(deleteNode.path) : ''}」${deleteNode?.isDir ? '及其中的全部内容' : ''}将被永久删除，无法恢复。`
+        }
         confirmLabel="删除"
         danger
         onClose={() => setDeleteNode(null)}
