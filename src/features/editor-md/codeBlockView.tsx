@@ -5,11 +5,13 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { NodeViewWrapper, NodeViewContent, ReactNodeViewRenderer, type NodeViewProps } from '@tiptap/react';
 import CodeBlock from '@tiptap/extension-code-block';
-import { Copy, Check, ChevronDown, Search, X } from 'lucide-react';
+import { Copy, Check, ChevronDown, ChevronRight, Search, X } from 'lucide-react';
 // 语言标签是纯元数据，不让普通 Markdown 首开加载全部高亮语法。
 import { normalizeLanguage } from './codeLanguages';
 import { PREVIEW_FENCE_LANGUAGES, fenceLanguageOf, isBlockCodeToken, renderFencedCode } from './markdownFence';
 import { Tooltip } from '../../components/Tooltip';
+import { useSettingsStore } from '../../stores/settingsStore';
+import { useCollapsibleState } from './collapsibleState';
 
 /** 语言配置结构定义 */
 interface LanguageItem {
@@ -40,7 +42,11 @@ const LANGUAGES: LanguageItem[] = [
   { value: 'shell', label: 'Shell', aliases: ['sh', 'bash', 'zsh'] },
 ];
 
-function CodeBlockComponent({ node, updateAttributes }: NodeViewProps) {
+function CodeBlockComponent({ node, editor, getPos, updateAttributes }: NodeViewProps) {
+  // 展开/收起只是显示状态，默认值取自设置（默认展开）
+  const defaultExpanded = useSettingsStore((s) => s.settings.editor.codeBlockDefaultExpanded ?? true);
+  const [expanded, setExpanded] = useCollapsibleState(editor, getPos, node, defaultExpanded);
+  const lineCount = node.textContent === '' ? 0 : node.textContent.split('\n').length;
   const [showDropdown, setShowDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -145,6 +151,7 @@ function CodeBlockComponent({ node, updateAttributes }: NodeViewProps) {
 
   return (
     <NodeViewWrapper
+      className={`nb-code-block${expanded ? '' : ' is-collapsed'}`}
       style={{
         position: 'relative',
         margin: '16px 0',
@@ -157,21 +164,47 @@ function CodeBlockComponent({ node, updateAttributes }: NodeViewProps) {
     >
       {/* 代码块顶部工具条 */}
       <div
+        className="nb-code-block-header"
         contentEditable={false}
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '4px 10px',
+          padding: '4px 10px 4px 4px',
           background: 'var(--editor-surface)',
-          borderBottom: '1px solid var(--editor-border)',
-          borderTopLeftRadius: 'calc(var(--radius-md) - 1px)',
-          borderTopRightRadius: 'calc(var(--radius-md) - 1px)',
+          // 收起时工具条即整个代码块，去掉分隔线并补齐底部圆角
+          borderBottom: expanded ? '1px solid var(--editor-border)' : 'none',
+          borderRadius: expanded
+            ? 'calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0 0'
+            : 'calc(var(--radius-md) - 1px)',
           fontSize: 12,
           color: 'var(--editor-text-muted)',
           userSelect: 'none',
         }}
+        // 点击工具条空白处切换展开状态
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) e.preventDefault();
+        }}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) setExpanded(!expanded);
+        }}
       >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }}>
+        {/* 展开/收起按钮 */}
+        <Tooltip content={expanded ? '收起代码块' : '展开代码块'} side="top" sideOffset={4}>
+          <button
+            type="button"
+            className={`nb-collapse-toggle${expanded ? ' is-expanded' : ''}`}
+            aria-expanded={expanded}
+            aria-label={expanded ? '收起代码块' : '展开代码块'}
+            // 阻止按下时编辑器失焦或移动选区
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setExpanded(!expanded)}
+          >
+            <ChevronRight size={14} className="nb-collapse-chevron" />
+          </button>
+        </Tooltip>
+
         {/* 语言选择下拉 */}
         <div
           ref={dropdownRef}
@@ -334,6 +367,18 @@ function CodeBlockComponent({ node, updateAttributes }: NodeViewProps) {
           )}
         </div>
 
+        {/* 收起时提示被折叠的行数，点击可展开 */}
+        {!expanded && (
+          <span
+            className="nb-code-block-folded"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setExpanded(true)}
+          >
+            已折叠 {lineCount} 行
+          </span>
+        )}
+        </div>
+
         {/* 复制按钮 */}
         <Tooltip content="复制代码内容" side="top" sideOffset={4}>
           <button
@@ -377,9 +422,10 @@ function CodeBlockComponent({ node, updateAttributes }: NodeViewProps) {
         </Tooltip>
       </div>
 
-      {/* 代码内容区域（TipTap 可直接输入） */}
+      {/* 代码内容区域（TipTap 可直接输入）；收起时仅隐藏，保持 ProseMirror 内容 DOM 常驻 */}
       <pre
         style={{
+          display: expanded ? undefined : 'none',
           margin: 0,
           padding: '12px 16px',
           overflowX: 'auto',

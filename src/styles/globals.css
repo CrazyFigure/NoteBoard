@@ -1951,6 +1951,141 @@ button:not(:disabled) {
   min-height: 48px;
 }
 
+/* 可折叠块通用展开/收起按钮（代码块、折叠块共用）：展开时箭头朝下 */
+.nb-collapse-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--editor-text-muted);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+.nb-collapse-toggle:active {
+  background: var(--toolbar-active);
+  transform: scale(0.92);
+}
+.nb-collapse-chevron {
+  transition: transform var(--transition-fast);
+}
+.nb-collapse-toggle.is-expanded .nb-collapse-chevron {
+  transform: rotate(90deg);
+}
+
+/* 代码块收起时的行数提示 */
+.nb-code-block-folded {
+  margin-left: 6px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: var(--editor-text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.nb-code-block-folded:active {
+  background: var(--toolbar-active);
+}
+
+/* 折叠块（<details>）：标题栏 + 可隐藏的正文 */
+.ProseMirror .nb-details {
+  margin: 8px 0;
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-md);
+  background: var(--editor-bg, transparent);
+  transition: border-color var(--transition-fast);
+}
+.ProseMirror .nb-details.is-selected {
+  border-color: var(--editor-accent);
+}
+.nb-details-summary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px 4px 4px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: calc(var(--radius-md) - 1px);
+  transition: background var(--transition-fast);
+}
+.nb-details.is-open > .nb-details-summary {
+  border-bottom: 1px solid var(--editor-border);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.nb-details-title {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  outline: none;
+  background: transparent;
+  color: var(--editor-text);
+  font: inherit;
+  cursor: text;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.nb-details-title:focus {
+  border-color: var(--editor-accent);
+  background: var(--editor-surface);
+}
+.nb-details-title::placeholder {
+  color: var(--editor-text-muted);
+}
+.ProseMirror .nb-details-content {
+  padding: 4px 14px;
+}
+/* 收起时只隐藏正文，内容 DOM 仍由 ProseMirror 管理 */
+.ProseMirror .nb-details:not(.is-open) > .nb-details-content {
+  display: none;
+}
+
+/* 悬停反馈仅在支持悬停的设备上生效，避免触屏点按后背景"粘住" */
+@media (hover: hover) {
+  .nb-collapse-toggle:hover,
+  .nb-code-block-folded:hover {
+    background: var(--toolbar-hover);
+    color: var(--editor-text);
+  }
+  .ProseMirror .nb-details:hover {
+    border-color: color-mix(in srgb, var(--editor-accent) 35%, var(--editor-border));
+  }
+  .nb-details-summary:hover {
+    background: var(--toolbar-hover);
+  }
+  .nb-details-title:hover {
+    border-color: var(--editor-border);
+  }
+}
+
+/* 移动端：放大点按区域；标题输入框 16px 避免系统自动缩放 */
+[data-platform='mobile'] .nb-collapse-toggle {
+  width: 36px;
+  height: 36px;
+}
+[data-platform='mobile'] .nb-code-block-folded {
+  padding: 8px 8px;
+  font-size: 12px;
+}
+[data-platform='mobile'] .nb-details-summary {
+  min-height: 44px;
+  padding: 2px 8px 2px 2px;
+}
+[data-platform='mobile'] .nb-details-title {
+  font-size: 16px;
+  padding: 6px 6px;
+}
+[data-platform='mobile'] .ProseMirror .nb-details-content {
+  padding: 4px 10px;
+}
+
 /* 通用模态框：遮罩 + 居中卡片（移动端在 [data-platform=mobile] 下改为底部面板） */
 .nb-modal-overlay {
   position: fixed;

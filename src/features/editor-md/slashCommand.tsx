@@ -39,11 +39,13 @@ import {
   ChevronRight,
   Boxes,
   BarChart3,
+  ListCollapse,
 } from 'lucide-react';
 import { insertLocalImageWithDialog } from './imagePaste';
 import { useWindowStore } from '../../stores/windowStore';
 import { emit } from '../../core/emitter';
 import { INFOGRAPHIC_TEMPLATES } from '../infographic/infographicTemplates';
+import { insertDetailsContent } from './detailsExtension';
 
 /** 叶子具体执行命令项 */
 export interface LeafCommandItem {
@@ -452,6 +454,19 @@ const BLOCKQUOTE_LEAF: LeafCommandItem = {
   action: (editor, range) => editor.chain().focus().deleteRange(range).toggleBlockquote().run(),
 };
 
+const DETAILS_LEAF: LeafCommandItem = {
+  id: 'details',
+  label: '折叠块 (Details)',
+  description: '可展开/收起的内容块，兼容 GitHub 等平台',
+  shortcutHint: '/fold',
+  icon: <ListCollapse size={17} />,
+  aliases: ['zhedie', 'zd', 'fold', 'details', 'collapse', 'toggle', 'zhankai', 'shouqi'],
+  keywords: '折叠 折叠块 展开 收起 details summary collapse fold zhedie',
+  action: (editor, range) => {
+    editor.chain().focus().deleteRange(range).insertContent(insertDetailsContent()).run();
+  },
+};
+
 const IMAGE_LOCAL_LEAF: LeafCommandItem = {
   id: 'image',
   label: '插入本地图片',
@@ -602,13 +617,14 @@ const ROOT_GROUPS: GroupCommandItem[] = [
   },
 ];
 
-/** 全量叶子命令扁平池（优先级：标题 > 列表 > 代码块 > 提示块 > 引用块 > 表格 > 公式 > 信息图 > 图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
+/** 全量叶子命令扁平池（优先级：标题 > 列表 > 代码块 > 提示块 > 引用块 > 折叠块 > 表格 > 公式 > 信息图 > 图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
 const ALL_LEAFS: LeafCommandItem[] = [
   ...HEADING_LEAFS,
   ...LIST_LEAFS,
   CODE_BLOCK_LEAF,
   ...ALERT_LEAFS,
   BLOCKQUOTE_LEAF,
+  DETAILS_LEAF,
   ...TABLE_LEAFS,
   ...MATH_LEAFS,
   ...INFOGRAPHIC_LEAFS,
@@ -621,13 +637,14 @@ const ALL_LEAFS: LeafCommandItem[] = [
   CLEAR_FORMAT_LEAF,
 ];
 
-/** 默认根级菜单项（严格遵循优先级：标题 > 列表 > 代码块 > GitHub提示 > 引用块 > 表格 > 公式与图表 > 本地图片 > 网络图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
+/** 默认根级菜单项（严格遵循优先级：标题 > 列表 > 代码块 > GitHub提示 > 引用块 > 折叠块 > 表格 > 公式与图表 > 本地图片 > 网络图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
 const ROOT_MENU_ENTRIES: MenuEntry[] = [
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'headings')! },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'lists')! },
   { type: 'leaf', item: CODE_BLOCK_LEAF },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'alerts')! },
   { type: 'leaf', item: BLOCKQUOTE_LEAF },
+  { type: 'leaf', item: DETAILS_LEAF },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'tables')! },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'math')! },
   { type: 'leaf', item: IMAGE_LOCAL_LEAF },

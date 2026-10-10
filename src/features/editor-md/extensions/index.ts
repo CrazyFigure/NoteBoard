@@ -26,6 +26,7 @@ import { MermaidBlock } from '../mermaidExtension';
 import { PlantUmlBlock } from '../../plantuml/plantumlExtension';
 import { InfographicBlock } from '../infographicExtension';
 import { GitHubAlert } from '../alertExtension';
+import { DetailsBlock } from '../detailsExtension';
 import { FootnoteDefinitionBlock, FootnoteReference, FrontMatterBlock, RawHtmlBlock, RawHtmlInline } from '../markdownPreserveExtensions';
 import { slashSuggestion } from '../slashCommand';
 
@@ -308,6 +309,9 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // GitHub Alerts
     GitHubAlert,
+
+    // 折叠块：只接管标准写法的 <details>，须先于块级 HTML 原样保留注册
+    DetailsBlock,
 
     // 原样保留语法：front matter、脚注、块级 HTML（可视化中只读展示，保证往返不丢失）
     FrontMatterBlock,

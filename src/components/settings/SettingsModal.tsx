@@ -1003,6 +1003,31 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <option value="never">保持源码模式</option>
                     </select>
                   </div>
+
+                  {/* 可视化模式中代码块 / 折叠块的初始展开状态（仅影响显示，不写入文件） */}
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '2px 0' }}>
+                    <div>
+                      <div>代码块默认展开</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>关闭后可视化模式中的代码块默认收起，只显示语言与行数</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.editor.codeBlockDefaultExpanded ?? true}
+                      onChange={(e) => setEditor({ codeBlockDefaultExpanded: e.target.checked })}
+                    />
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '2px 0' }}>
+                    <div>
+                      <div>折叠块默认展开</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>{'<details> 折叠块的初始状态；源码带 open 属性的始终展开'}</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.editor.detailsDefaultExpanded ?? false}
+                      onChange={(e) => setEditor({ detailsDefaultExpanded: e.target.checked })}
+                    />
+                  </label>
                 </div>
 
                 {/* ── 3.3 Markdown 渲染增强 ── */}

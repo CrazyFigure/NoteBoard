@@ -49,6 +49,7 @@ const BLOCK_TYPE_LABELS: Record<string, string> = {
   mermaidBlock: 'Mermaid 图表',
   mathBlock: '公式块',
   githubAlert: '提示块',
+  detailsBlock: '折叠块',
 };
 
 interface DragHandleState {

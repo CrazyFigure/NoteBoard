@@ -66,6 +66,8 @@ const DEFAULT_SETTINGS: Settings = {
     showWhitespace: false,
     showLineEndings: false,
     markdownNormalization: 'ask',
+    codeBlockDefaultExpanded: true,
+    detailsDefaultExpanded: false,
   },
   file: {
     autoSaveMarkdown: false,

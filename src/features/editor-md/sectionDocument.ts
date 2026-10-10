@@ -68,8 +68,8 @@ function findSafeCutPoint(md: MarkdownIt, content: string, start: number, maxEnd
       continue;
     }
 
-    // 检查是否是块级边界（空行后非空行开头）
-    if (isBlockBoundary(content, pos)) {
+    // 检查是否是块级边界（空行后非空行开头），且不切开折叠块 <details>
+    if (isBlockBoundary(content, pos) && !isInsideDetails(content, pos)) {
       return pos;
     }
 
@@ -123,6 +123,15 @@ function isInsideFrontmatter(content: string, pos: number): boolean {
   if (!content.startsWith('---\n')) return false;
   const endMarker = content.indexOf('\n---\n', 4);
   return pos < endMarker;
+}
+
+/** 检查 pos 是否在折叠块 <details> 内（按开始/结束标签数量配对，只在候选边界处调用） */
+function isInsideDetails(content: string, pos: number): boolean {
+  const before = content.substring(0, pos);
+  const opens = before.match(/<details[\s>]/gi)?.length ?? 0;
+  if (opens === 0) return false;
+  const closes = before.match(/<\/details\s*>/gi)?.length ?? 0;
+  return opens > closes;
 }
 
 /** 检查 pos 是否是块级边界 */
