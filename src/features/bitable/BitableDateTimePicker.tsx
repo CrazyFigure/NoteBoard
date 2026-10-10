@@ -536,7 +536,8 @@ export function DateTimeFieldEditor({
           userSelect: 'none',
         }}
       >
-        {type === 'time' ? <Clock size={12} /> : <Calendar size={12} />}
+        {/* 表格单元格为空时整体留白（不显示图标与占位符），表单形态保留图标提示 */}
+        {(displayText || isForm) && (type === 'time' ? <Clock size={12} /> : <Calendar size={12} />)}
         <span
           style={{
             flex: 1,
@@ -547,7 +548,7 @@ export function DateTimeFieldEditor({
             whiteSpace: 'nowrap',
           }}
         >
-          {displayText || (isForm ? '点击选择' : '-')}
+          {displayText || (isForm ? '点击选择' : ' ')}
         </span>
         {/* 已有值时给一个就地清除入口，省去打开面板再点清除 */}
         {raw && (

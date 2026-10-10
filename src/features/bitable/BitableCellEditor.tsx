@@ -72,8 +72,8 @@ interface CellEditorProps {
   variant?: 'cell' | 'form';
 }
 
-/** 空值占位的统一表现 */
-const EMPTY_HINT = <span style={{ opacity: 0.5 }}>-</span>;
+/** 空值占位的统一表现：表格中空单元格直接留白（不间断空格仅用于撑住行高） */
+const EMPTY_HINT = ' ';
 
 /**
  * 多行文本的只读展示
@@ -464,7 +464,7 @@ export function BitableCellEditor({
           fontVariantNumeric: 'tabular-nums',
         }}
       >
-        {value !== null && value !== undefined ? String(value) : <span style={{ opacity: 0.5 }}>-</span>}
+        {value !== null && value !== undefined ? String(value) : EMPTY_HINT}
       </div>
     );
   }
@@ -524,7 +524,7 @@ export function BitableCellEditor({
           <OptionBadge option={selectedOption} />
         ) : (
           <span style={{ fontSize: 12, color: 'var(--editor-text-muted, #94a3b8)', opacity: 0.6 }}>
-            {isForm ? '点击选择标签' : '-'}
+            {isForm ? '点击选择标签' : EMPTY_HINT}
           </span>
         )}
 
@@ -623,7 +623,7 @@ export function BitableCellEditor({
             ))
           ) : (
             <span style={{ fontSize: 12, color: 'var(--editor-text-muted, #94a3b8)', opacity: 0.6 }}>
-              {isForm ? '点击选择标签' : '-'}
+              {isForm ? '点击选择标签' : EMPTY_HINT}
             </span>
           )}
         </div>
@@ -958,7 +958,7 @@ export function BitableCellEditor({
             whiteSpace: 'nowrap',
           }}
         >
-          {String(value ?? '') || '-'}
+          {String(value ?? '') || EMPTY_HINT}
         </span>
         {Boolean(value) && (
           <a
@@ -976,5 +976,5 @@ export function BitableCellEditor({
     );
   }
 
-  return <div>-</div>;
+  return <div>{EMPTY_HINT}</div>;
 }
