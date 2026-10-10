@@ -13,7 +13,7 @@ export function AppearancePanel() {
   const themes: { id: string; label: string; preview: string }[] = [
     { id: 'chen-guang', label: '晨光', preview: '#fffef7' },
     { id: 'hu-po', label: '琥珀', preview: '#fffbf0' },
-    { id: 'mo-ye', label: '墨夜', preview: '#1e1e1e' },
+    { id: 'mo-ye', label: '墨夜', preview: '#111113' },
   ];
 
   const rowStyle: React.CSSProperties = {

@@ -535,7 +535,7 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
                 gap: 6,
                 padding: '6px 12px',
                 borderRadius: 6,
-                border: '1px solid var(--editor-border)',
+                border: '1px solid var(--control-border)',
                 background: 'var(--editor-surface)',
                 color: 'var(--editor-text)',
                 cursor: 'pointer',

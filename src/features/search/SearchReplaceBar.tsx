@@ -427,7 +427,7 @@ export function SearchReplaceBar() {
               height: 32,
               padding: '0 8px',
               borderRadius: 8,
-              border: '1px solid var(--editor-border)',
+              border: '1px solid var(--control-border)',
               background: 'var(--editor-bg)',
               color: 'var(--editor-text)',
               fontSize: 12,
@@ -447,7 +447,7 @@ export function SearchReplaceBar() {
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = 'var(--editor-bg)';
-              e.currentTarget.style.borderColor = 'var(--editor-border)';
+              e.currentTarget.style.borderColor = 'var(--control-border)';
               e.currentTarget.style.transform = 'translateY(0)';
             }}
             onMouseDown={(e) => {
@@ -473,7 +473,7 @@ export function SearchReplaceBar() {
               height: 32,
               padding: '0 8px',
               borderRadius: 8,
-              border: '1px solid var(--editor-border)',
+              border: '1px solid var(--control-border)',
               background: 'var(--editor-bg)',
               color: 'var(--editor-text)',
               fontSize: 12,
@@ -493,7 +493,7 @@ export function SearchReplaceBar() {
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = 'var(--editor-bg)';
-              e.currentTarget.style.borderColor = 'var(--editor-border)';
+              e.currentTarget.style.borderColor = 'var(--control-border)';
               e.currentTarget.style.transform = 'translateY(0)';
             }}
             onMouseDown={(e) => {

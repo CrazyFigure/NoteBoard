@@ -74,7 +74,7 @@ export function AboutPanel() {
               padding: '3px 10px',
               fontSize: 12,
               borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--editor-border)',
+              border: '1px solid var(--control-border)',
               background: 'var(--editor-surface)',
               color: 'var(--accent-strong)',
               cursor: checkingUpdate ? 'not-allowed' : 'pointer',
@@ -93,7 +93,7 @@ export function AboutPanel() {
             onMouseLeave={(e) => {
               if (!checkingUpdate) {
                 e.currentTarget.style.background = 'var(--editor-surface)';
-                e.currentTarget.style.borderColor = 'var(--editor-border)';
+                e.currentTarget.style.borderColor = 'var(--control-border)';
                 e.currentTarget.style.transform = 'translateY(0)';
                 e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
               }

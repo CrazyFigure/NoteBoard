@@ -151,6 +151,10 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   --explorer-font-size: 13px;
   --explorer-item-height: 24px;
 
+  /* 控件边框：按钮等可点击控件比分隔线更需要清晰轮廓，
+   * 在通用边框色中混入弱化文字色加深一档，自动适配各主题色调 */
+  --control-border: color-mix(in srgb, var(--editor-border) 65%, var(--editor-text-muted));
+
   /* 通用兼容别名 */
   --editor-selection-background: var(--editor-selection);
   --editor-hover-background: var(--toolbar-hover);
@@ -167,11 +171,13 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / .1), 0 4px 6px -4px rgb(0 0 0 / .1);
 }
 
-/* 暗色阴影 */
+/* 暗色阴影（墨黑底色上需要更浓的投影才能托起浮层） */
 :root[data-theme="mo-ye"] {
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / .2);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / .3), 0 2px 4px -2px rgb(0 0 0 / .2);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / .3), 0 4px 6px -4px rgb(0 0 0 / .2);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / .45);
+  --shadow-md: 0 4px 8px -1px rgb(0 0 0 / .55), 0 2px 4px -2px rgb(0 0 0 / .4);
+  --shadow-lg: 0 12px 24px -4px rgb(0 0 0 / .6), 0 4px 8px -4px rgb(0 0 0 / .45);
+  /* 墨夜单独指定控件边框，避免混色后在黑底上过亮 */
+  --control-border: #3c3c43;
 }
 
 /* ═════════════════════════════════════════════════════════
@@ -238,8 +244,8 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
 
   /* 组件层 */
   --titlebar-bg: #ffffff;
-  --toolbar-hover: #f1f5f9;
-  --toolbar-active: #e5e7eb;
+  --toolbar-hover: #e5eaf0;
+  --toolbar-active: #d5dbe3;
 
   --tab-bg: #ffffff;
   --tab-active-bg: #ffffff;
@@ -253,19 +259,19 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   --explorer-surface: #ffffff;
   --explorer-text: #334155;
   --explorer-text-muted: #94a3b8;
-  --explorer-hover: #f9fafb;
-  --explorer-active: #e5e7eb;
+  --explorer-hover: #e8ecf2;
+  --explorer-active: #dde3eb;
   --explorer-border: #e5e7eb;
   --explorer-indent-guide: #e5e7eb;
 
   --outline-bg: #ffffff;
   --outline-item-active-bg: #eff6ff;
-  --outline-item-hover-bg: #f9fafb;
+  --outline-item-hover-bg: #e8ecf2;
   --outline-item-active-text: #1d4ed8;
 
   --rail-bg: #ffffff;
   --rail-fg: #64748b;
-  --rail-hover-bg: #f1f5f9;
+  --rail-hover-bg: #e5eaf0;
 
   --statusbar-bg: #ffffff;
   --statusbar-text: #64748b;
@@ -306,7 +312,7 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   --board-panel-bg: #ffffff;
   --board-panel-border: #e5e7eb;
   --board-icon-fg: #334155;
-  --board-button-hover-bg: #f9fafb;
+  --board-button-hover-bg: #ebeff4;
   --board-button-active-bg: #eff6ff;
   --board-selection-outline: #3b82f6;
 }
@@ -375,8 +381,8 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
 
   /* 组件层 */
   --titlebar-bg: #FAF9F5;
-  --toolbar-hover: #EFEEE9;
-  --toolbar-active: #E2DFD3;
+  --toolbar-hover: #E6E3D9;
+  --toolbar-active: #DAD6C9;
 
   --tab-bg: #F5F4EF;
   --tab-active-bg: #FAF9F5;
@@ -390,19 +396,19 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   --explorer-surface: #FFFFFF;
   --explorer-text: #141413;
   --explorer-text-muted: #9B978F;
-  --explorer-hover: #EFEEE9;
-  --explorer-active: #E2DFD3;
+  --explorer-hover: #E5E2D8;
+  --explorer-active: #DCD8CB;
   --explorer-border: #E2DFD3;
   --explorer-indent-guide: #E2DFD3;
 
   --outline-bg: #F5F4EF;
   --outline-item-active-bg: #FDF0EB;
-  --outline-item-hover-bg: #EFEEE9;
+  --outline-item-hover-bg: #E5E2D8;
   --outline-item-active-text: #A34D2E;
 
   --rail-bg: #FAF9F5;
   --rail-fg: #6B6860;
-  --rail-hover-bg: #EFEEE9;
+  --rail-hover-bg: #E6E3D9;
 
   --statusbar-bg: #FAF9F5;
   --statusbar-text: #6B6860;
@@ -443,7 +449,7 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   --board-panel-bg: #F5F4EF;
   --board-panel-border: #E2DFD3;
   --board-icon-fg: #141413;
-  --board-button-hover-bg: #EFEEE9;
+  --board-button-hover-bg: #E6E3D9;
   --board-button-active-bg: #FDF0EB;
   --board-selection-outline: #C4623E;
 }
@@ -456,10 +462,10 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   /* 明暗模式标识 */
   color-scheme: dark;
 
-  /* 色板层（反向递进） */
-  --primary-50: #0f172a;  --primary-100: #1e293b;  --primary-200: #334155;
-  --primary-300: #475569;  --primary-400: #64748b;  --primary-500: #94a3b8;
-  --primary-600: #cbd5e1;  --primary-700: #e2e8f0;  --primary-800: #f1f5f9;  --primary-900: #f8fafc;
+  /* 色板层（反向递进 · 中性墨灰，略带冷调，避免旧版 slate 的蓝雾感） */
+  --primary-50: #0a0a0b;  --primary-100: #18181b;  --primary-200: #27272a;
+  --primary-300: #3f3f46;  --primary-400: #52525b;  --primary-500: #a1a1aa;
+  --primary-600: #d4d4d8;  --primary-700: #e4e4e7;  --primary-800: #f4f4f5;  --primary-900: #fafafa;
 
   --accent-50: #eff6ff;  --accent-100: #dbeafe;  --accent-200: #bfdbfe;
   --accent-300: #93c5fd;  --accent-400: #60a5fa;  --accent-500: #60a5fa;
@@ -469,39 +475,41 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   --warning-500: #f59e0b;  --warning-600: #d97706;
   --error-500: #ef4444;    --error-600: #dc2626;
 
-  /* 语义层 */
-  --editor-bg: #0f172a;
-  --editor-surface: #1e293b;
-  --editor-text: #e2e8f0;
-  --editor-text-secondary: #94a3b8;
-  --editor-text-muted: #64748b;
-  --editor-border: #334155;
+  /* 语义层
+   * 明度分三层：外框 #0a0a0b（最深）→ 编辑区 #111113 → 浮层/代码块 #19191c
+   * 不用纯黑 #000，避免高亮文字在纯黑上产生光晕、长时间阅读刺眼 */
+  --editor-bg: #111113;
+  --editor-surface: #19191c;
+  --editor-text: #e4e4e7;
+  --editor-text-secondary: #a1a1aa;
+  --editor-text-muted: #71717a;
+  --editor-border: #34343a;
   --editor-border-focus: #60a5fa;
-  --editor-heading: #f8fafc;
+  --editor-heading: #fafafa;
   --editor-accent: #60a5fa;
   --accent-strong: #60a5fa;
-  --editor-link: #60a5fa;
-  --editor-quote-bg: rgba(96,165,250,0.10);
-  --editor-selection: rgba(96,165,250,0.20);
-  --editor-code-bg: #1e293b;
+  --editor-link: #6cb0ff;
+  --editor-quote-bg: rgba(255,255,255,0.035);
+  --editor-selection: rgba(96,165,250,0.22);
+  --editor-code-bg: #19191c;
 
-  --code-inline-bg: #1e3a5f;
-  --code-inline-text: #93c5fd;
-  --code-block-bg: #1e293b;
-  --code-block-container-bg: #0f172a;
-  --code-block-text: #e2e8f0;
+  --code-inline-bg: #1c2230;
+  --code-inline-text: #a5c8fc;
+  --code-block-bg: #19191c;
+  --code-block-container-bg: #111113;
+  --code-block-text: #e4e4e7;
 
-  /* 语法高亮 */
-  --hljs-comment: #8496ad;
-  --hljs-keyword: #f472b6;
+  /* 语法高亮（在墨黑底上略降饱和，减少霓虹感） */
+  --hljs-comment: #8b8b94;
+  --hljs-keyword: #f08fc0;
   --hljs-string: #a5d6ff;
   --hljs-number: #dab55f;
-  --hljs-title: #60a5fa;
+  --hljs-title: #79b8ff;
   --hljs-function: #93c5fd;
-  --hljs-params: #94a3b8;
-  --hljs-variable: #fbbf24;
+  --hljs-params: #a1a1aa;
+  --hljs-variable: #f5c26b;
   --hljs-class: #86efac;
-  --hljs-meta: #e2e8f0;
+  --hljs-meta: #e4e4e7;
   --hljs-addition: #3fb950;
   --hljs-deletion: #fca5a5;
   --hljs-regexp: #67e8f9;
@@ -510,56 +518,56 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   --hljs-link: #93c5fd;
   --hljs-attr: #a5d6ff;
 
-  /* 组件层 */
-  --titlebar-bg: #1e293b;
-  --toolbar-hover: #334155;
-  --toolbar-active: #475569;
+  /* 组件层（标题栏/侧栏/状态栏统一用最深一层，让编辑区自然浮起） */
+  --titlebar-bg: #0a0a0b;
+  --toolbar-hover: #2e2e34;
+  --toolbar-active: #3a3a41;
 
-  --tab-bg: #1e293b;
-  --tab-active-bg: #0f172a;
-  --tab-inactive-bg: #1e293b;
-  --tab-hover-bg: #334155;
-  --tab-border: #3b4d66;
+  --tab-bg: #0a0a0b;
+  --tab-active-bg: #111113;
+  --tab-inactive-bg: #0a0a0b;
+  --tab-hover-bg: #242429;
+  --tab-border: #2c2c31;
   --tab-active-indicator: #60a5fa;
   --tab-dirty-dot: #60a5fa;
 
-  --explorer-bg: #1e293b;
-  --explorer-surface: #334155;
-  --explorer-text: #e2e8f0;
-  --explorer-text-muted: #64748b;
-  --explorer-hover: #334155;
-  --explorer-active: #475569;
-  --explorer-border: #334155;
-  --explorer-indent-guide: #334155;
+  --explorer-bg: #0a0a0b;
+  --explorer-surface: #19191c;
+  --explorer-text: #d4d4d8;
+  --explorer-text-muted: #71717a;
+  --explorer-hover: #242429;
+  --explorer-active: #303036;
+  --explorer-border: #26262b;
+  --explorer-indent-guide: #232327;
 
-  --outline-bg: #1e293b;
-  --outline-item-active-bg: #1e3a5f;
-  --outline-item-hover-bg: #334155;
+  --outline-bg: #0a0a0b;
+  --outline-item-active-bg: #172033;
+  --outline-item-hover-bg: #242429;
   --outline-item-active-text: #93c5fd;
 
-  --rail-bg: #1e293b;
-  --rail-fg: #94a3b8;
-  --rail-hover-bg: #334155;
+  --rail-bg: #0a0a0b;
+  --rail-fg: #8b8b94;
+  --rail-hover-bg: #2a2a30;
 
-  --statusbar-bg: #1e293b;
-  --statusbar-text: #94a3b8;
+  --statusbar-bg: #0a0a0b;
+  --statusbar-text: #8b8b94;
 
-  --scrollbar-track: #2d2d2d;
-  --scrollbar-thumb: #666666;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #34343a;
 
   /* CodeMirror */
-  --cm-gutter-bg: #0f172a;
-  --cm-gutter-text: #7688a0;
-  --cm-gutter-active-text: #e2e8f0;
-  --cm-active-line-bg: rgba(96,165,250,0.08);
+  --cm-gutter-bg: #111113;
+  --cm-gutter-text: #6b6b74;
+  --cm-gutter-active-text: #d4d4d8;
+  --cm-active-line-bg: rgba(255,255,255,0.035);
   --cm-selection-bg: rgba(96,165,250,0.25);
-  --cm-cursor: #e2e8f0;
-  --cm-bracket-bg: rgba(96,165,250,0.25);
+  --cm-cursor: #e4e4e7;
+  --cm-bracket-bg: rgba(96,165,250,0.22);
   --cm-bracket-outline: #60a5fa;
   --cm-search-match-bg: rgba(210,153,34,0.35);
   --cm-search-active-bg: #d29922;
-  --cm-indent-guide: #334155;
-  --cm-fold-placeholder-bg: #1e3a5f;
+  --cm-indent-guide: #26262b;
+  --cm-fold-placeholder-bg: #172033;
   --cm-lint-error: #f85149;
   --cm-lint-warning: #d29922;
 
@@ -576,12 +584,12 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   --alert-caution-bg: rgba(248,81,73,0.10);
 
   /* 画板 */
-  --board-canvas-bg: #0f172a;
-  --board-panel-bg: #1e293b;
-  --board-panel-border: #334155;
-  --board-icon-fg: #e2e8f0;
-  --board-button-hover-bg: #334155;
-  --board-button-active-bg: #1e3a5f;
+  --board-canvas-bg: #111113;
+  --board-panel-bg: #19191c;
+  --board-panel-border: #34343a;
+  --board-icon-fg: #e4e4e7;
+  --board-button-hover-bg: #2e2e34;
+  --board-button-active-bg: #172033;
   --board-selection-outline: #60a5fa;
 }
 
@@ -1330,7 +1338,7 @@ button:not(:disabled) {
   align-items: center;
   gap: 12px;
   padding: 10px 18px;
-  border: 1px solid var(--editor-border);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-lg, 8px);
   background: var(--editor-surface);
   color: var(--editor-text);
@@ -1397,7 +1405,7 @@ button:not(:disabled) {
   gap: 6px;
   padding: 6px 14px;
   border-radius: var(--radius-md, 6px);
-  border: 1px solid var(--editor-border);
+  border: 1px solid var(--control-border);
   background: var(--editor-surface);
   color: var(--editor-text);
   font-size: 13px;
@@ -1535,6 +1543,39 @@ button:not(:disabled) {
 
 :root[data-theme="mo-ye"] .nb-btn-soft:active:not(:disabled) {
   background: color-mix(in srgb, var(--accent-strong) 34%, var(--editor-surface));
+}
+
+/* 墨夜主题下的次级/卡片按钮适配：
+ * 按钮底色与弹窗浮层同为 surface，仅靠边框区分，因此加亮轮廓并略微抬高底色，
+ * 再叠一道 1px 顶部内高光，模拟光从上方照射的立体感，黑底上边界更清楚 */
+:root[data-theme="mo-ye"] .nb-btn-secondary,
+:root[data-theme="mo-ye"] .nb-btn-card {
+  background: #1e1e22;
+  border-color: var(--control-border);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .05), var(--shadow-sm);
+}
+
+:root[data-theme="mo-ye"] .nb-btn-secondary:hover:not(:disabled),
+:root[data-theme="mo-ye"] .nb-btn-card:hover {
+  background: var(--toolbar-hover);
+  border-color: var(--editor-border-focus);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .06), var(--shadow-md);
+}
+
+:root[data-theme="mo-ye"] .nb-btn-secondary:active:not(:disabled),
+:root[data-theme="mo-ye"] .nb-btn-card:active {
+  background: var(--toolbar-active);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / .35);
+}
+
+/* 墨夜主题下的主按钮：顶部内高光让实心蓝更有质感，悬浮投影改用墨夜强调色 */
+:root[data-theme="mo-ye"] .nb-btn-primary {
+  border-color: color-mix(in srgb, var(--accent-strong) 70%, #ffffff);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .18), var(--shadow-sm);
+}
+
+:root[data-theme="mo-ye"] .nb-btn-primary:hover:not(:disabled) {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .2), 0 4px 14px rgba(96, 165, 250, 0.3);
 }
 
 /* 应用字体包管理卡片与首次启动提示共用状态、进度和错误反馈样式。 */
@@ -2363,7 +2404,7 @@ button:not(:disabled) {
   align-items: center;
   justify-content: center;
   background: transparent;
-  border: 1px solid var(--editor-border, #e2e8f0);
+  border: 1px solid var(--control-border);
   border-radius: 4px;
   padding: 3px 6px;
   cursor: pointer;
@@ -2392,7 +2433,7 @@ button:not(:disabled) {
   white-space: nowrap;
   padding: 4px 8px;
   border-radius: 5px;
-  border: 1px solid var(--editor-border, #e2e8f0);
+  border: 1px solid var(--control-border);
   background: var(--editor-bg, #ffffff);
   color: var(--editor-text, #1e293b);
   cursor: pointer;
@@ -2472,7 +2513,7 @@ button:not(:disabled) {
   gap: 4px;
   padding: 4px 6px;
   border-radius: 5px;
-  border: 1px solid var(--editor-border, #e2e8f0);
+  border: 1px solid var(--control-border);
   background: var(--editor-bg, #ffffff);
   color: var(--editor-text, #1e293b);
   font-size: 12px;
@@ -2595,7 +2636,7 @@ button:not(:disabled) {
   gap: 5px;
   padding: 4px 8px;
   border-radius: 5px;
-  border: 1px solid var(--editor-border, #cbd5e1);
+  border: 1px solid var(--control-border);
   background: var(--editor-bg, #ffffff);
   color: var(--editor-text, #1e293b);
   font-size: 12px;
@@ -2722,6 +2763,11 @@ button:not(:disabled) {
 
 .nb-bitable-tab:hover {
   background: var(--toolbar-hover, rgba(148, 163, 184, 0.12)) !important;
+}
+
+/* 未激活 Tab 默认无边框，悬浮时补出控件轮廓，让可点击范围更明确（内联样式需 !important 覆盖） */
+.nb-bitable-tab:not(.is-active):hover {
+  border-color: var(--control-border) !important;
 }
 
 .nb-bitable-tab.is-active:hover {
@@ -2873,6 +2919,17 @@ button:not(:disabled) {
 .nb-bitable-gantt-row:hover .nb-bitable-gantt-left-cell,
 .nb-bitable-gantt-row:hover .nb-bitable-gantt-num-cell {
   background: #f8fafc;
+}
+
+/* 墨夜主题：上方悬浮色为浅色写死值，深色下会闪出白行，改为基于 surface 的轻度提亮 */
+:root[data-theme="mo-ye"] .nb-bitable-gantt-row:hover,
+:root[data-theme="mo-ye"] .nb-bitable-gantt-row:hover .nb-bitable-gantt-left-cell,
+:root[data-theme="mo-ye"] .nb-bitable-gantt-row:hover .nb-bitable-gantt-num-cell {
+  background: #222226;
+}
+
+:root[data-theme="mo-ye"] .nb-bitable-gantt-group-cell:hover {
+  background: var(--toolbar-hover);
 }
 
 /* 时间轴刻度切换（周 / 月 / 季 / 年） */

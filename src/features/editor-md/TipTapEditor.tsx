@@ -826,7 +826,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
             style={{
               marginLeft: 'auto',
               padding: '4px 12px',
-              border: '1px solid var(--editor-border)',
+              border: '1px solid var(--control-border)',
               borderRadius: 3,
               background: 'transparent',
               color: 'inherit',

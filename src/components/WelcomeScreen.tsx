@@ -323,7 +323,7 @@ export function WelcomeScreen({
               alignItems: 'center',
               gap: 12,
               padding: '10px 14px',
-              border: '1px solid var(--editor-border)',
+              border: '1px solid var(--control-border)',
               borderRadius: 8,
               background: 'var(--editor-surface)',
               cursor: 'pointer',
@@ -340,7 +340,7 @@ export function WelcomeScreen({
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = 'var(--editor-surface)';
-              e.currentTarget.style.borderColor = 'var(--editor-border)';
+              e.currentTarget.style.borderColor = 'var(--control-border)';
               e.currentTarget.style.transform = 'translateY(0)';
             }}
             onMouseDown={(e) => {
@@ -477,7 +477,7 @@ export function WelcomeScreen({
                 alignItems: 'center',
                 gap: 10,
                 padding: '8px 12px',
-                border: '1px solid var(--editor-border)',
+                border: '1px solid var(--control-border)',
                 borderRadius: 6,
                 background: 'var(--editor-bg)',
                 cursor: 'pointer',
@@ -493,7 +493,7 @@ export function WelcomeScreen({
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = 'var(--editor-bg)';
-                e.currentTarget.style.borderColor = 'var(--editor-border)';
+                e.currentTarget.style.borderColor = 'var(--control-border)';
                 e.currentTarget.style.transform = 'translateY(0)';
               }}
               onMouseDown={(e) => {

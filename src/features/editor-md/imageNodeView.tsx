@@ -538,7 +538,7 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
                 alignItems: 'center',
                 gap: 4,
                 padding: '4px 10px',
-                border: '1px solid var(--editor-border)',
+                border: '1px solid var(--control-border)',
                 borderRadius: 4,
                 background: 'var(--editor-surface)',
                 fontSize: 12,

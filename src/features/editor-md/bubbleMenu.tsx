@@ -222,7 +222,7 @@ function HighlightPalette({
         style={{
           marginTop: 2,
           padding: '4px 8px',
-          border: '1px solid var(--editor-border, rgba(0,0,0,0.1))',
+          border: '1px solid var(--control-border, rgba(0,0,0,0.1))',
           borderRadius: 4,
           background: 'transparent',
           color: 'var(--editor-text-secondary, #64748b)',

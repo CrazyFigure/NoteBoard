@@ -326,7 +326,7 @@ export function LinkModal({
                 style={{
                   padding: '5px 14px',
                   background: 'transparent',
-                  border: '1px solid var(--editor-border, #cbd5e1)',
+                  border: '1px solid var(--control-border, #cbd5e1)',
                   color: 'var(--editor-text, #334155)',
                   borderRadius: 'var(--radius-md, 6px)',
                   cursor: 'pointer',

@@ -438,7 +438,7 @@ export function FontSelect({
                 borderBottom: '1px dashed var(--editor-border)',
               }}
               onMouseEnter={(e) => {
-                if (value) e.currentTarget.style.background = 'var(--editor-surface)';
+                if (value) e.currentTarget.style.background = 'var(--toolbar-hover)';
               }}
               onMouseLeave={(e) => {
                 if (value) e.currentTarget.style.background = 'transparent';
@@ -513,7 +513,7 @@ export function FontSelect({
                       color: isSelected ? 'var(--accent-strong)' : 'var(--editor-text)',
                     }}
                     onMouseEnter={(e) => {
-                      if (!isSelected) e.currentTarget.style.background = 'var(--editor-surface)';
+                      if (!isSelected) e.currentTarget.style.background = 'var(--toolbar-hover)';
                     }}
                     onMouseLeave={(e) => {
                       if (!isSelected) e.currentTarget.style.background = 'transparent';
