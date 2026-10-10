@@ -5,6 +5,7 @@
 // 1. 所有文件访问权限查询与申请（浏览手机外部文件夹）；
 // 2. 接收"用其他应用打开 / 分享到 NoteBoard"的文件（content:// 复制到应用收件箱后返回真实路径）；
 // 3. 调用系统分享面板分享文件。
+// 4. 更新检测失败时通过非 VPN 的 Wi-Fi / 蜂窝网络尝试直连 GitHub。
 
 package com.crazyfigure.noteboard
 
@@ -163,6 +164,19 @@ class NbMobilePlugin(private val activity: Activity) : Plugin(activity) {
     result.put("externalRoot", Environment.getExternalStorageDirectory().absolutePath)
     result.put("sdkInt", Build.VERSION.SDK_INT)
     invoke.resolve(result)
+  }
+
+  /** 更新直连在独立短时线程执行，结果交回 Rust；只绑定此请求，不改变整个应用的网络路由。 */
+  @Command
+  fun checkUpdateDirect(invoke: Invoke) {
+    val context = activity.applicationContext
+    Thread({
+      try {
+        invoke.resolve(NbUpdateNetwork.fetchLatestRelease(context))
+      } catch (error: Exception) {
+        invoke.reject("更新直连失败: ${error.message}")
+      }
+    }, "noteboard-update-direct").start()
   }
 
   @Command
