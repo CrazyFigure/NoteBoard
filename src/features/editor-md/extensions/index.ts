@@ -33,6 +33,7 @@ import { slashSuggestion } from '../slashCommand';
 import { handleLinkClick } from '../linkHandler';
 import { TableClipboard } from '../tableClipboard';
 import { ListEmptyItemBackspaceFix } from '../listItemBackspace';
+import { SelectionHighlight } from '../selectionHighlight';
 import { useWindowStore } from '../../../stores/windowStore';
 
 import Suggestion from '@tiptap/suggestion';
@@ -265,6 +266,9 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // 字数统计
     CharacterCount,
+
+    // 选区可视化：完整选中的块（列表、代码块、折叠块、图片等）整体显示底板
+    SelectionHighlight,
 
     // 任务列表
     TaskList,

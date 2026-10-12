@@ -1433,6 +1433,68 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   background-color: var(--cm-selection-bg);
 }
 
+/* 整块选中底板（features/editor-md/selectionHighlight.ts）：选区完整覆盖的块整体铺一层主题色底板 + 细描边，
+   列表、代码块、折叠块、图片、公式、图表、分割线、空行是否会被整块删除一眼可辨；
+   部分选中的块仍只显示文字高亮。底板以叠层绘制，不改变块自身的背景与布局。 */
+.ProseMirror .nb-sel-block {
+  position: relative;
+}
+.ProseMirror .nb-sel-block::after {
+  content: "";
+  position: absolute;
+  inset: -2px -6px;
+  z-index: 1;
+  border-radius: 8px;
+  background: var(--cm-selection-bg);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--editor-accent) 45%, transparent);
+  pointer-events: none;
+  animation: nb-sel-block-in 140ms ease-out;
+}
+/* 底板内不再叠加文字高亮，避免同一处颜色双层加深、边界杂乱 */
+.ProseMirror:not(.ProseMirror-hideselection) .nb-sel-block ::selection,
+.ProseMirror:not(.ProseMirror-hideselection) .nb-sel-block::selection {
+  background-color: transparent;
+}
+/* 有序 / 无序列表项：底板向左延伸，把列表符号一并包进来（任务项的勾选框在项内，无需延伸） */
+.ProseMirror ul:not([data-type="taskList"]) > li.nb-sel-block::after,
+.ProseMirror ol > li.nb-sel-block::after {
+  left: -1.6em;
+}
+/* 自带边框的组件（代码块、折叠块、图表、公式块、图片等节点视图）：底板四周等距贴合外框 */
+.ProseMirror .react-renderer.nb-sel-block::after {
+  inset: -3px;
+}
+/* 表格外层是横向滚动容器，向外扩出的底板会撑出滚动条，改为贴合容器内沿 */
+.ProseMirror .tableWrapper.nb-sel-block::after {
+  inset: 0;
+}
+/* 折叠块被整块选中时由底板统一表达，收起其自身的强调边框，避免内外两圈描边 */
+.ProseMirror .nb-sel-block > .nb-details.is-selected {
+  border-color: var(--editor-border);
+}
+/* 分割线本身只有 2px 高，底板上下扩出可感知的区域；浏览器默认 hr 为 overflow: hidden，需放开才能显示 */
+.ProseMirror hr.nb-sel-block {
+  overflow: visible;
+}
+.ProseMirror hr.nb-sel-block::after {
+  inset: -9px -6px;
+}
+/* 部分选中的段落中，被完整选入的行内公式 / 脚注引用 / 行内 HTML 图片：没有文字可高亮，单独上色 */
+.ProseMirror .nb-sel-inline {
+  border-radius: var(--radius-sm, 4px);
+  background-color: var(--cm-selection-bg);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--editor-accent) 45%, transparent);
+}
+@keyframes nb-sel-block-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ProseMirror .nb-sel-block::after {
+    animation: none;
+  }
+}
+
 /* 搜索匹配高亮：与 CodeMirror（features/editor-code/theme.ts 的 .cm-searchMatch）保持一致，
    全部候选为浅色主题底，当前项为选区底色 + 主题色描边（不再使用实心橙底 + 强制黑字） */
 .nb-search-result {
