@@ -12,8 +12,11 @@ import {
   openSearchPanel,
   closeSearchPanel,
   searchPanelOpen,
+  search as cmSearch,
 } from '@codemirror/search';
+import type { Extension } from '@codemirror/state';
 import { EDITOR_SEARCH_NAVIGATION_META } from '../../core/editor/searchNavigation';
+import type { SearchCapabilities } from '../../core/editor/editorTypes';
 
 export interface SearchOptions {
   searchText: string;
@@ -64,6 +67,16 @@ function buildRegexPattern(text: string, wholeWord: boolean, isRegex: boolean): 
   if (!text) return '';
   const pattern = isRegex ? text : escapeRegExp(text);
   return wholeWord ? `\\b(?:${pattern})\\b` : pattern;
+}
+
+/**
+ * 按搜索选项构建正则（区分大小写/全字/正则语义与编辑器搜索一致）。
+ * 搜索词为空返回 null；正则不合法时抛出异常。
+ */
+export function buildSearchRegExp(options: SearchOptions, global: boolean): RegExp | null {
+  const pattern = buildRegexPattern(options.searchText, options.wholeWord, options.isRegex);
+  if (!pattern) return null;
+  return new RegExp(pattern, `${global ? 'g' : ''}${options.caseSensitive ? '' : 'i'}`);
 }
 
 /** 匹配区间（文档绝对位置） */
@@ -550,4 +563,51 @@ export function focusActiveEditor(target: EditorTarget): void {
   } else if (target.type === 'tiptap') {
     target.editor.commands.focus();
   }
+}
+
+/**
+ * 独立装配的 CodeMirror 实例（图表双栏编辑器等，未使用 code 编辑器公共配置）所需的搜索支持：
+ * 搜索状态与匹配高亮，并隐藏 CM 自带搜索面板（统一由自研悬浮搜索栏提供界面）。
+ */
+export const codeMirrorSearchSupport: Extension = [
+  cmSearch({ top: false }),
+  EditorView.theme({
+    '.cm-searchMatch': {
+      backgroundColor: 'var(--cm-search-match-bg)',
+      borderRadius: '2px',
+    },
+    '.cm-searchMatch.cm-searchMatch-selected, .cm-searchMatch-selected': {
+      backgroundColor: 'var(--editor-selection, rgba(59, 130, 246, 0.38)) !important',
+      outline: '1.5px solid var(--accent-strong, #3b82f6)',
+      borderRadius: '2px',
+    },
+    '.cm-panel.cm-search': {
+      display: 'none !important',
+    },
+  }),
+];
+
+/**
+ * 基于按需读取的 CodeMirror 视图构造搜索能力（视图未挂载时视为无匹配）。
+ * @param getView 读取当前视图
+ * @param beforeSearch 搜索词非空时、执行前的回调（如把隐藏的源码区切回可见）
+ */
+export function createCodeMirrorSearchCapabilities(
+  getView: () => EditorView | null,
+  beforeSearch?: () => void,
+): SearchCapabilities {
+  const target = (options: SearchOptions): EditorTarget => {
+    if (options.searchText) beforeSearch?.();
+    const view = getView();
+    return view ? { type: 'codemirror', view } : null;
+  };
+  return {
+    search: (options) => executeSearch(target(options), options),
+    findNext: (options) => executeFindNext(target(options), options),
+    findPrev: (options) => executeFindPrev(target(options), options),
+    findFirst: (options) => executeFindFirst(target(options), options),
+    findLast: (options) => executeFindLast(target(options), options),
+    replace: (options) => executeReplace(target(options), options),
+    replaceAll: (options) => executeReplaceAll(target(options), options),
+  };
 }

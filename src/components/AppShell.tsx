@@ -145,7 +145,9 @@ export function AppShell(_props: { children?: React.ReactNode }) {
         if (!currentTab) return;
         // 选中文本经能力注册表按当前模式获取（code / markdown visual / markdown source）
         const capabilities = getEditorCapabilities(currentTab.key);
-        const selected = capabilities?.getSelectedText() ?? '';
+        // 画板/思维导图/表格等无文本搜索能力的编辑器不打开搜索栏（打开也永远 0 匹配）
+        if (!capabilities?.search) return;
+        const selected = capabilities.getSelectedText();
         const searchStore = useSearchStore.getState();
         searchStore.openSearch(selected.trim() ? selected : undefined, 'search');
       },
@@ -160,7 +162,9 @@ export function AppShell(_props: { children?: React.ReactNode }) {
         const currentTab = useWindowStore.getState().activeTab();
         if (!currentTab) return;
         const capabilities = getEditorCapabilities(currentTab.key);
-        const selected = capabilities?.getSelectedText() ?? '';
+        // 画板/思维导图/表格等无文本搜索能力的编辑器不打开搜索栏（打开也永远 0 匹配）
+        if (!capabilities?.search) return;
+        const selected = capabilities.getSelectedText();
         const searchStore = useSearchStore.getState();
         searchStore.openSearch(selected.trim() ? selected : undefined, 'replace');
       },

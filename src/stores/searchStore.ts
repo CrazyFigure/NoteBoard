@@ -35,52 +35,64 @@ export interface SearchState {
   setFocusTarget: (target: 'search' | 'replace' | null) => void;
 }
 
-export const useSearchStore = create<SearchState>((set) => ({
-  isOpen: false,
-  searchText: '',
-  replaceText: '',
-  caseSensitive: false,
-  wholeWord: false,
-  isRegex: false,
-  matchIndex: 0,
-  matchCount: 0,
-  focusTarget: 'search',
+/**
+ * 创建一份独立的搜索状态（文本对比左右两侧等需要各自搜索栏的视图使用）。
+ * 全局搜索栏使用下方的 useSearchStore 单例。
+ */
+export function createSearchStore() {
+  return create<SearchState>((set) => ({
+    isOpen: false,
+    searchText: '',
+    replaceText: '',
+    caseSensitive: false,
+    wholeWord: false,
+    isRegex: false,
+    matchIndex: 0,
+    matchCount: 0,
+    focusTarget: 'search',
 
-  // 打开搜索栏，可传入初始搜索词与聚焦目标
-  openSearch: (initialText, focusTarget = 'search') => {
-    set((state) => ({
-      isOpen: true,
-      searchText: initialText !== undefined ? initialText : state.searchText,
-      focusTarget,
-    }));
-  },
+    // 打开搜索栏，可传入初始搜索词与聚焦目标
+    openSearch: (initialText, focusTarget = 'search') => {
+      set((state) => ({
+        isOpen: true,
+        searchText: initialText !== undefined ? initialText : state.searchText,
+        focusTarget,
+      }));
+    },
 
-  // 关闭搜索栏
-  closeSearch: () => {
-    set({
-      isOpen: false,
-      focusTarget: null,
-    });
-  },
+    // 关闭搜索栏
+    closeSearch: () => {
+      set({
+        isOpen: false,
+        focusTarget: null,
+      });
+    },
 
-  // 设置搜索文本
-  setSearchText: (text) => set({ searchText: text }),
+    // 设置搜索文本
+    setSearchText: (text) => set({ searchText: text }),
 
-  // 设置替换文本
-  setReplaceText: (text) => set({ replaceText: text }),
+    // 设置替换文本
+    setReplaceText: (text) => set({ replaceText: text }),
 
-  // 切换区分大小写
-  setCaseSensitive: (val) => set({ caseSensitive: val }),
+    // 切换区分大小写
+    setCaseSensitive: (val) => set({ caseSensitive: val }),
 
-  // 切换全字匹配
-  setWholeWord: (val) => set({ wholeWord: val }),
+    // 切换全字匹配
+    setWholeWord: (val) => set({ wholeWord: val }),
 
-  // 切换正则表达式
-  setIsRegex: (val) => set({ isRegex: val }),
+    // 切换正则表达式
+    setIsRegex: (val) => set({ isRegex: val }),
 
-  // 更新当前匹配数统计
-  setMatchStats: (current, total) => set({ matchIndex: current, matchCount: total }),
+    // 更新当前匹配数统计
+    setMatchStats: (current, total) => set({ matchIndex: current, matchCount: total }),
 
-  // 设置焦点目标
-  setFocusTarget: (target) => set({ focusTarget: target }),
-}));
+    // 设置焦点目标
+    setFocusTarget: (target) => set({ focusTarget: target }),
+  }));
+}
+
+/** 搜索状态 Hook 类型（全局单例与 createSearchStore 创建的实例通用） */
+export type SearchStoreHook = ReturnType<typeof createSearchStore>;
+
+/** 全局搜索状态（主编辑区悬浮搜索栏） */
+export const useSearchStore = createSearchStore();

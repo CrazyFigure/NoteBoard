@@ -18,6 +18,7 @@ import { computeMindmapLayout, buildLinkPath, type LayoutNode } from './mindmapL
 import type { MindmapTheme } from './mindmapTheme';
 import { MindmapIconPicker } from './MindmapIconPicker';
 import { Tooltip } from '../../components/Tooltip';
+import type { MindmapSearchHighlight } from './mindmapSearch';
 
 interface MindmapRendererProps {
   root: MindNode;
@@ -28,6 +29,8 @@ interface MindmapRendererProps {
   layout: MindmapLayout;
   /** 配色主题 */
   theme: MindmapTheme;
+  /** 搜索匹配高亮与当前项定位 */
+  searchHighlight?: MindmapSearchHighlight;
 }
 
 type DropPosition = 'before' | 'inside' | 'after';
@@ -56,6 +59,35 @@ function countSubtreeDescendants(node: MindNode): number {
     }
   }
   return count;
+}
+
+/** 搜索命中片段的高亮底色（与代码编辑器搜索高亮同一 Token） */
+const SEARCH_MARK_STYLE: React.CSSProperties = {
+  background: 'var(--cm-search-match-bg)',
+  color: 'inherit',
+  borderRadius: 2,
+  padding: 0,
+};
+
+/** 把标题文本按匹配区间切分渲染，命中片段包 <mark> */
+function renderHighlightedText(
+  text: string,
+  ranges: ReadonlyArray<readonly [number, number]> | undefined,
+): React.ReactNode {
+  if (!ranges || ranges.length === 0) return text;
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+  ranges.forEach(([from, to], i) => {
+    if (from > cursor) parts.push(text.slice(cursor, from));
+    parts.push(
+      <mark key={i} style={SEARCH_MARK_STYLE}>
+        {text.slice(from, to)}
+      </mark>,
+    );
+    cursor = to;
+  });
+  if (cursor < text.length) parts.push(text.slice(cursor));
+  return parts;
 }
 
 /** 在树中定位节点并改写其文本 */
@@ -123,6 +155,7 @@ export function MindmapRenderer({
   onZoomChange,
   layout,
   theme,
+  searchHighlight,
 }: MindmapRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -195,6 +228,22 @@ export function MindmapRenderer({
     () => computeMindmapLayout(root, layout, theme.branchColors.length),
     [root, layout, theme.branchColors.length],
   );
+
+  // 搜索跳转：把当前匹配节点平移到画布中央（focusSeq 每次显式跳转递增；
+  // 跳转可能刚展开折叠分支，effect 在新布局渲染后执行，nodes 已含目标节点）
+  const searchFocusSeq = searchHighlight?.focusSeq ?? 0;
+  useEffect(() => {
+    if (!searchFocusSeq) return;
+    const targetId = searchHighlight?.currentId;
+    const container = containerRef.current;
+    const target = targetId ? nodes.find((n) => n.node.id === targetId) : undefined;
+    if (!container || !target) return;
+    setPan({
+      x: container.clientWidth / 2 - (target.x + target.width / 2) * zoom,
+      y: container.clientHeight / 2 - (target.y + target.height / 2) * zoom,
+    });
+    // 仅响应跳转序号变化，不随缩放/布局变化反复居中
+  }, [searchFocusSeq]);
 
   // 深度克隆并更新树
   const updateTree = useCallback(
@@ -908,6 +957,8 @@ export function MindmapRenderer({
           const isLevel1 = n.level === 1;
           const isEditing = editingNodeId === n.node.id;
           const isSelected = selectedNodeId === n.node.id;
+          const searchRanges = searchHighlight?.ranges.get(n.node.id);
+          const isSearchCurrent = searchHighlight?.currentId === n.node.id;
           const hasChildren = Boolean(n.node.children && n.node.children.length > 0);
           const isExpanded = n.node.isExpanded !== false;
           const nodeColor =
@@ -989,6 +1040,13 @@ export function MindmapRenderer({
                 opacity: isSourceOrDescendant ? 0.35 : 1,
                 transform: isSourceOrDescendant ? 'scale(0.97)' : isDropTargetInside ? 'scale(1.02)' : 'none',
                 boxSizing: 'border-box',
+                // 搜索命中：外描边标出命中节点，当前项用强调色加粗
+                outline: isSearchCurrent
+                  ? '2.5px solid var(--cm-search-active-bg)'
+                  : searchRanges
+                    ? '2px solid var(--cm-search-match-bg)'
+                    : undefined,
+                outlineOffset: 2,
                 transition: 'border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, opacity 0.2s ease, transform 0.15s ease',
               }}
             >
@@ -1116,7 +1174,7 @@ export function MindmapRenderer({
                         textAlign: hasNote || hasImage ? 'left' : 'center',
                       }}
                     >
-                      {n.node.text || '未命名'}
+                      {n.node.text ? renderHighlightedText(n.node.text, searchRanges) : '未命名'}
                     </span>
                   </Tooltip>
                 )}

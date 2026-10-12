@@ -34,6 +34,7 @@ import { loadLanguageExtension } from '../editor-code/languages';
 import { ChartExportMenu } from '../export/ChartExportMenu';
 import { Tooltip } from '../../components/Tooltip';
 import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
+import { codeMirrorSearchSupport } from '../search/searchController';
 
 interface InfographicSplitEditorProps {
   docKey: string;
@@ -92,6 +93,8 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
         instanceId,
         getEditorView: () => editorViewRef.current,
         captureExtra: () => extraStateRef.current,
+        // 纯预览布局隐藏了源码区：搜索时切回双栏，命中项才能被看到
+        revealSource: () => setLayoutMode((mode) => (mode === 'preview' ? 'split' : mode)),
       }),
     );
     return dispose;
@@ -151,6 +154,8 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
         highlightActiveLineGutter(),
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
+        // Ctrl+F 搜索高亮与查询状态（界面由统一悬浮搜索栏提供）
+        codeMirrorSearchSupport,
         languageCompartmentRef.current.of([]),
         EditorView.updateListener.of((update: ViewUpdate) => {
           if (update.docChanged) {
