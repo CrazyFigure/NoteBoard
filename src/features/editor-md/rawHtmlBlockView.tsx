@@ -48,6 +48,11 @@ function resolveLocalSrc(src: string, baseDir: string | null): string {
   }
 }
 
+/** 按当前文档目录解析 HTML 中的图片地址（行内 HTML 视图共用） */
+export function resolveDocumentImageSrc(src: string): string {
+  return resolveLocalSrc(src, currentBaseDir());
+}
+
 export function RawHtmlBlockComponent({ node, editor, getPos, selected, updateAttributes, deleteNode }: NodeViewProps) {
   const raw = String(node.attrs.raw ?? '');
   // 新插入的空块直接进入编辑

@@ -1343,6 +1343,22 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
 .ProseMirror code.nb-md-raw-inline.ProseMirror-selectednode {
   border-color: var(--editor-accent);
 }
+/* 行内 HTML 图片（段落内 <img>、链接包裹的徽章/Logo）：按渲染结果显示 */
+/* 保持普通行内元素：若用 inline-block 收缩包裹，只写 height 的图片（如 SVG 徽章）的百分比 max-width 会被算成 0 宽而不显示 */
+.ProseMirror .nb-md-html-inline {
+  border-radius: var(--radius-sm, 4px);
+}
+.ProseMirror .nb-md-html-inline img {
+  max-width: 100%;
+  vertical-align: middle;
+}
+.ProseMirror .nb-md-html-inline a:has(img) {
+  text-decoration: none;
+}
+.ProseMirror .nb-md-html-inline.ProseMirror-selectednode {
+  outline: 2px solid var(--editor-accent);
+  outline-offset: 1px;
+}
 .ProseMirror .nb-md-footnote-definition.ProseMirror-selectednode,
 .ProseMirror .nb-md-footnote-ref.ProseMirror-selectednode {
   outline: 1px solid var(--editor-accent);

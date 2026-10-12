@@ -38,6 +38,12 @@ describe('块级 HTML：可渲染内容', () => {
     expect(html).toContain('src="r/light.png"');
   });
 
+  it('height 属性改写为内联尺寸，已有内联高度时不覆盖', () => {
+    expect(renderedHtml('<a href="https://a.example"><img src="b.svg" height="40"></a>')).toContain('style="height: 40px;"');
+    expect(renderedHtml('<p><img src="b.svg" height="50%"></p>')).toContain('style="height: 50%;"');
+    expect(renderedHtml('<p><img src="b.svg" height="40" style="height: 10px"></p>')).toContain('height: 10px');
+  });
+
   it('只有图片、没有文字也算可见内容', () => {
     expect(renderRawHtmlPreview('<div align="center"><img src="a.png"></div>').kind).toBe('render');
   });
@@ -99,5 +105,26 @@ describe('块级 HTML：往返逐字不变', () => {
   ])('%s', (_name, markdown) => {
     expect(parseMarkdown(editor, markdown)).toBe(true);
     expect(serializeMarkdown(editor)).toBe(markdown);
+  });
+
+  // 此前段落内的 <img> 与 `<a><img></a>` 会被整个丢弃，规范化后变成空行
+  it.each([
+    ['行首链接包裹图片', 'before\n\n<a href="https://x.example"><img src="https://y.example/a.png" alt="A" width="150"></a>\n\nafter', 1],
+    ['同一段落两个徽章', '<a href="https://x.example"><img src="a.png"></a> <a href="https://z.example"><img src="b.png"></a>', 2],
+    ['文字中的图片', 'text <img src="a.png" alt="A"> more', 1],
+    ['文字中的链接图片', 'text <a href="https://x.example"><img src="a.png"></a> more', 1],
+  ])('段落内图片：%s', (_name, markdown, count) => {
+    expect(parseMarkdown(editor, markdown)).toBe(true);
+    expect(serializeMarkdown(editor)).toBe(markdown);
+    const raws: string[] = [];
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === 'rawHtmlInline') raws.push(String(node.attrs.raw));
+    });
+    expect(raws.filter((raw) => raw.includes('<img'))).toHaveLength(count);
+  });
+
+  it('不含图片的 <a> 仍转为普通链接', () => {
+    expect(parseMarkdown(editor, '<a href="https://x.example">文字</a> tail')).toBe(true);
+    expect(serializeMarkdown(editor)).toBe('[文字](https://x.example) tail');
   });
 });
