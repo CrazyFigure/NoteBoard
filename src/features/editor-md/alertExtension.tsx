@@ -7,7 +7,8 @@
 
 import { Node, mergeAttributes, type JSONContent } from '@tiptap/core';
 import { useEffect, useRef, useState } from 'react';
-import { ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react';
+import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react';
+import { contentReactNodeViewRenderer } from './contentNodeView';
 import { Check, ChevronDown } from 'lucide-react';
 
 export type AlertKind = 'note' | 'tip' | 'important' | 'warning' | 'caution';
@@ -216,7 +217,7 @@ export const GitHubAlert = Node.create({
     return ['div', mergeAttributes(HTMLAttributes, { 'data-alert': '' }), 0];
   },
   addNodeView() {
-    return ReactNodeViewRenderer(AlertComponent);
+    return contentReactNodeViewRenderer(AlertComponent);
   },
   addCommands() {
     return {

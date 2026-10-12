@@ -3,7 +3,8 @@
 // 详见 docs/09-开发路线图.md 7.8
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { NodeViewWrapper, NodeViewContent, ReactNodeViewRenderer, type NodeViewProps } from '@tiptap/react';
+import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react';
+import { contentReactNodeViewRenderer } from './contentNodeView';
 import CodeBlock from '@tiptap/extension-code-block';
 import { Copy, Check, ChevronDown, ChevronRight, Search, X } from 'lucide-react';
 // 语言标签是纯元数据，不让普通 Markdown 首开加载全部高亮语法。
@@ -419,7 +420,7 @@ function CodeBlockComponent({ node, editor, getPos, updateAttributes }: NodeView
   );
 }
 
-// 导出扩展：基于 @tiptap/extension-code-block + ReactNodeViewRenderer
+// 导出扩展：基于 @tiptap/extension-code-block + React 节点视图（contentReactNodeViewRenderer）
 export const CodeBlockView = CodeBlock.extend({
   addOptions() {
     const parent = (this.parent?.() ?? {}) as Record<string, unknown>;
@@ -430,7 +431,7 @@ export const CodeBlockView = CodeBlock.extend({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(CodeBlockComponent);
+    return contentReactNodeViewRenderer(CodeBlockComponent);
   },
 
   // 保留父扩展插件，并追加按需加载 lowlight 的 Decoration 高亮插件

@@ -14,7 +14,8 @@
 
 import { Node, mergeAttributes } from '@tiptap/core';
 import { useEffect, useRef, useState } from 'react';
-import { ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react';
+import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react';
+import { contentReactNodeViewRenderer } from './contentNodeView';
 import { TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { ChevronRight } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
@@ -342,7 +343,7 @@ export const DetailsBlock = Node.create({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(DetailsComponent);
+    return contentReactNodeViewRenderer(DetailsComponent);
   },
 
   addKeyboardShortcuts() {
