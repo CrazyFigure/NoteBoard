@@ -2,7 +2,7 @@
 // 统一负责顶层块命中、落点计算与 ProseMirror 原子移动，避免列表、表格、代码块等嵌套结构接收非法落点
 
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import { NodeSelection, TextSelection } from '@tiptap/pm/state';
+import { NodeSelection, Selection, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
 /** 顶层块的 DOM、文档位置与节点信息。 */
@@ -198,4 +198,32 @@ export function moveTopLevelBlock(
     // Schema 拒绝或文档在指针释放前变化时保持原文档不变。
     return null;
   }
+}
+
+/**
+ * 整块选中顶层块（单击拖拽把手时使用），便于随后删除、复制或整段设置格式。
+ * 可选节点使用 NodeSelection；不可选节点退化为覆盖其全部文本的文本选区。
+ */
+export function selectTopLevelBlock(view: EditorView, pos: number): boolean {
+  const { state } = view;
+  const node = state.doc.nodeAt(pos);
+  if (!node || state.doc.resolve(pos).depth !== 0) return false;
+
+  let selection: Selection | null = null;
+  if (NodeSelection.isSelectable(node)) {
+    selection = NodeSelection.create(state.doc, pos);
+  } else {
+    const end = pos + node.nodeSize;
+    const first = Selection.findFrom(state.doc.resolve(pos), 1, true);
+    const last = Selection.findFrom(state.doc.resolve(end), -1, true);
+    // 只在首末文本位置都落在该块内部时才选中，避免越界选到相邻块
+    if (first && last && first.from < end && last.to > pos) {
+      selection = TextSelection.create(state.doc, first.from, last.to);
+    }
+  }
+  if (!selection) return false;
+
+  view.dispatch(state.tr.setSelection(selection));
+  view.focus();
+  return true;
 }

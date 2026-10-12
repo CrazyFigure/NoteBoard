@@ -9,7 +9,9 @@ import {
   isTopLevelBlockMoveAllowed,
   moveTopLevelBlock,
   resolveTopLevelDropTarget,
+  selectTopLevelBlock,
 } from '@/features/editor-md/blockReorder';
+import { NodeSelection } from '@tiptap/pm/state';
 
 const editors: Editor[] = [];
 
@@ -195,5 +197,55 @@ describe('Markdown 顶层块安全重排序', () => {
     expect(target?.element).toBe(listElement);
     expect(editor.state.doc.resolve(target?.insertPos ?? -1).depth).toBe(0);
     expect(isTopLevelBlockMoveAllowed(editor.state.doc, 0, target?.insertPos ?? -1)).toBe(false);
+  });
+});
+
+describe('单击拖拽把手整块选中顶层块', () => {
+  it('整块选中段落与列表，随后删除只移除该块', () => {
+    const editor = createEditor({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: '第一段' }] },
+        {
+          type: 'bulletList',
+          content: [
+            { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: '项一' }] }] },
+            { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: '项二' }] }] },
+          ],
+        },
+        { type: 'paragraph', content: [{ type: 'text', text: '第三段' }] },
+      ],
+    });
+    const positions = getTopLevelPositions(editor);
+
+    expect(selectTopLevelBlock(editor.view, positions[0])).toBe(true);
+    let { selection } = editor.state;
+    expect(selection).toBeInstanceOf(NodeSelection);
+    expect((selection as NodeSelection).node.textContent).toBe('第一段');
+
+    expect(selectTopLevelBlock(editor.view, positions[1])).toBe(true);
+    selection = editor.state.selection;
+    expect((selection as NodeSelection).node.type.name).toBe('bulletList');
+
+    editor.commands.deleteSelection();
+    expect(editor.state.doc.content.content.map((node) => node.textContent)).toEqual(['第一段', '第三段']);
+  });
+
+  it('非顶层位置不会被选中，原选区保持不变', () => {
+    const editor = createEditor({
+      type: 'doc',
+      content: [
+        {
+          type: 'bulletList',
+          content: [
+            { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: '项一' }] }] },
+          ],
+        },
+      ],
+    });
+    const before = editor.state.selection;
+    // 位置 1 是列表项（嵌套于列表内部）
+    expect(selectTopLevelBlock(editor.view, 1)).toBe(false);
+    expect(editor.state.selection.eq(before)).toBe(true);
   });
 });

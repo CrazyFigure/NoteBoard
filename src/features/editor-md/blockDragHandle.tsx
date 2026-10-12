@@ -16,6 +16,7 @@ import {
   isTopLevelBlockMoveAllowed,
   moveTopLevelBlock,
   resolveTopLevelDropTarget,
+  selectTopLevelBlock,
   type TopLevelDropTarget,
 } from './blockReorder';
 import { Tooltip } from '../../components/Tooltip';
@@ -384,6 +385,16 @@ export function BlockDragHandle({ editor }: { editor: Editor | null }) {
     event.preventDefault();
     event.stopPropagation();
 
+    // 未越过拖动阈值即视为单击：整块选中该块，方便直接删除、复制或设置格式
+    if (!session.dragging && editor) {
+      cleanupDrag();
+      // 单击后指针仍停在把手上，恢复悬停态，便于紧接着按住拖动
+      isHoveringHandleRef.current = true;
+      setIsHoveringHandle(true);
+      selectTopLevelBlock(editor.view, session.sourcePos);
+      return;
+    }
+
     const target = dropTargetRef.current;
     const result = session.dragging && target && editor
       ? moveTopLevelBlock(editor.view, session.sourcePos, target.insertPos)
@@ -431,7 +442,7 @@ export function BlockDragHandle({ editor }: { editor: Editor | null }) {
 
   return (
     <>
-      <Tooltip content={`按住并拖动以移动${blockLabel}`} side="left" sideOffset={6}>
+      <Tooltip content={`单击选中${blockLabel}，按住拖动以移动`} side="left" sideOffset={6}>
         <button
           ref={handleRef}
           type="button"
