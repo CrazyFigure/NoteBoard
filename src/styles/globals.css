@@ -2342,6 +2342,205 @@ button:not(:disabled) {
   padding: 4px 10px;
 }
 
+/* 分栏卡片：外层为 flex 容器，每栏是一张卡片；栏间拖拽条调整宽度，浮动工具栏增减栏数 */
+.ProseMirror .nb-columns {
+  position: relative;
+  margin: 16px 0 12px;
+  /* 以自身宽度判断是否改为上下堆叠：手机与桌面窄窗口表现一致 */
+  container-type: inline-size;
+}
+.ProseMirror .nb-columns-content > [data-node-view-content-react] {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+}
+.ProseMirror .nb-column {
+  position: relative;
+  /* flex-grow 由节点视图按栏宽写入内联样式 */
+  flex: 1 1 0%;
+  min-width: 0;
+  padding: 6px 14px;
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--editor-text) 3%, transparent);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+/* 卡片内首尾块不再叠加外边距，内容贴合卡片内边距 */
+.ProseMirror .nb-column-content > :first-child {
+  margin-top: 0;
+}
+.ProseMirror .nb-column-content > :last-child {
+  margin-bottom: 0;
+}
+/* 栏内没有左侧装订线空间，标题级别标签会落进栏间隙与边框重叠，隐藏之 */
+.ProseMirror .nb-column :is(h1, h2, h3, h4, h5, h6)::before {
+  display: none;
+}
+.ProseMirror .nb-columns.is-focused > .nb-columns-content .nb-column {
+  border-color: color-mix(in srgb, var(--editor-accent) 30%, var(--editor-border));
+}
+.ProseMirror .nb-columns.is-selected > .nb-columns-content .nb-column {
+  border-color: var(--editor-accent);
+}
+
+/* 栏间拖拽条：恰好覆盖两栏之间的间隙，中线在悬停 / 拖动时显示 */
+.ProseMirror .nb-column-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -13px;
+  width: 12px;
+  z-index: 2;
+  cursor: col-resize;
+  touch-action: none;
+}
+.ProseMirror .nb-column-resizer::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 50%;
+  width: 2px;
+  border-radius: 1px;
+  transform: translateX(-50%);
+  background: transparent;
+  transition: background var(--transition-fast), width var(--transition-fast);
+}
+.ProseMirror .nb-column-resizer.is-dragging::after {
+  width: 3px;
+  background: var(--editor-accent);
+}
+.ProseMirror .nb-column:last-child > .nb-column-resizer,
+.ProseMirror[contenteditable='false'] .nb-column-resizer {
+  display: none;
+}
+/* 拖动期间全局保持调整光标，并禁止拖出文字选区 */
+body.nb-column-resizing,
+body.nb-column-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+/* 浮动工具栏：悬停或光标位于分栏内时出现在右上角 */
+.nb-columns-toolbar {
+  position: absolute;
+  top: -15px;
+  right: 10px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-md);
+  background: var(--editor-surface);
+  box-shadow: var(--shadow-sm);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(2px);
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+.nb-columns.is-focused > .nb-columns-toolbar,
+.nb-columns.is-selected > .nb-columns-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+.nb-columns-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--editor-text-muted);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+.nb-columns-tool:not(:disabled):active {
+  background: var(--toolbar-active);
+  transform: scale(0.92);
+}
+.nb-columns-tool:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.nb-columns-count {
+  min-width: 34px;
+  padding: 0 2px;
+  font-size: 12px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--editor-text-secondary);
+  user-select: none;
+}
+.nb-columns-divider {
+  width: 1px;
+  height: 14px;
+  margin: 0 3px;
+  background: var(--editor-border);
+}
+
+/* 悬停反馈仅在支持悬停的设备上生效，避免触屏点按后状态"粘住" */
+@media (hover: hover) {
+  .nb-columns:hover > .nb-columns-toolbar {
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+  .ProseMirror .nb-column:hover {
+    border-color: color-mix(in srgb, var(--editor-accent) 35%, var(--editor-border));
+  }
+  .ProseMirror .nb-column-resizer:hover::after {
+    background: color-mix(in srgb, var(--editor-accent) 60%, transparent);
+  }
+  .nb-columns-tool:not(:disabled):hover {
+    background: var(--toolbar-hover);
+    color: var(--editor-text);
+  }
+  .nb-columns-tool.is-danger:not(:disabled):hover {
+    background: color-mix(in srgb, #ef4444 14%, transparent);
+    color: #ef4444;
+  }
+}
+
+/* 窄容器（手机、窄窗口）：各栏改为上下堆叠，栏宽比例不再适用，隐藏拖拽条 */
+@container (max-width: 480px) {
+  .ProseMirror .nb-columns-content > [data-node-view-content-react] {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .ProseMirror .nb-column {
+    flex: 0 0 auto !important;
+  }
+  .ProseMirror .nb-column-resizer {
+    display: none;
+  }
+}
+
+/* 移动端：放大工具栏与拖拽条的点按区域（平板等宽屏仍可拖动调整栏宽）；
+   工具栏整体浮在分栏上方的留白中，避免遮住第一栏内容 */
+[data-platform='mobile'] .nb-columns-toolbar {
+  top: -40px;
+}
+[data-platform='mobile'] .nb-columns-tool {
+  width: 32px;
+  height: 32px;
+}
+[data-platform='mobile'] .ProseMirror .nb-columns {
+  margin-top: 44px;
+}
+[data-platform='mobile'] .ProseMirror .nb-column {
+  padding: 6px 10px;
+}
+[data-platform='mobile'] .ProseMirror .nb-column-resizer {
+  right: -19px;
+  width: 24px;
+}
+
 /* 通用模态框：遮罩 + 居中卡片（移动端在 [data-platform=mobile] 下改为底部面板） */
 .nb-modal-overlay {
   position: fixed;

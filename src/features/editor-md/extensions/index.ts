@@ -27,6 +27,7 @@ import { PlantUmlBlock } from '../../plantuml/plantumlExtension';
 import { InfographicBlock } from '../infographicExtension';
 import { GitHubAlert } from '../alertExtension';
 import { DetailsBlock } from '../detailsExtension';
+import { ColumnBlock, ColumnsBlock } from '../columnsExtension';
 import { FootnoteDefinitionBlock, FootnoteReference, FrontMatterBlock, RawHtmlBlock, RawHtmlInline } from '../markdownPreserveExtensions';
 import { slashSuggestion } from '../slashCommand';
 
@@ -184,7 +185,9 @@ const MarkdownTable = Table.extend({
     }).parent;
     const rendered = parentRender?.(node, helpers, context) ?? '';
     const withoutTrailing = rendered.replace(/(?:\n[ \t]*)+$/, '');
-    const isTopLevel = !context?.parentType || context.parentType === 'doc';
+    // 折叠块正文、分栏的单栏与文档一样以空行分隔子块，首部换行同样会多出一个空行
+    const isTopLevel =
+      !context?.parentType || ['doc', 'detailsBlock', 'columnBlock'].includes(String(context.parentType));
     return isTopLevel ? withoutTrailing.replace(/^(?:[ \t]*\n)+/, '') : withoutTrailing;
   },
 });
@@ -317,6 +320,10 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // 折叠块：只接管标准写法的 <details>，须先于块级 HTML 原样保留注册
     DetailsBlock,
+
+    // 分栏卡片：只接管标准写法的 <div class="nb-columns">，同样须先于块级 HTML 原样保留注册
+    ColumnsBlock,
+    ColumnBlock,
 
     // 原样保留语法：front matter、脚注、块级 HTML（可视化中只读展示，保证往返不丢失）
     FrontMatterBlock,
