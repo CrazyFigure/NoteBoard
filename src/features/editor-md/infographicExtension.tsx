@@ -2,13 +2,12 @@
 // 自研 infographicBlock 节点 + 视口门控 + 就地编辑 + 模板选择 + 全屏缩放预览
 // 信息图是纯 DOM 渲染，对外只产出图片：复制/导出 SVG 矢量图或 PNG 位图
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
 import {
   Maximize2,
   Edit2,
-  X,
   AlertCircle,
   Sparkles,
   ChevronDown,
@@ -20,6 +19,7 @@ import { INFOGRAPHIC_TEMPLATES } from '../infographic/infographicTemplates';
 import { observe } from './viewportActivation';
 import { diagramFenceMarkdown } from './markdownFence';
 import { ChartExportMenu } from '../export/ChartExportMenu';
+import { DiagramFullscreenModal } from './DiagramFullscreenModal';
 import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
 import { Tooltip } from '../../components/Tooltip';
 
@@ -151,28 +151,6 @@ const INFOGRAPHIC_STYLES = `
   background: var(--toolbar-active, #e2e8f0);
   transform: scale(0.96);
 }
-
-/* 关闭按钮 */
-.nb-info-close-btn {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  color: var(--editor-text-muted, #64748b);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
-}
-.nb-info-close-btn:hover {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-}
-.nb-info-close-btn:active {
-  background: rgba(239, 68, 68, 0.2);
-  transform: scale(0.92);
-}
 `;
 
 function InfographicComponent({ node, updateAttributes, selected }: NodeViewProps) {
@@ -180,6 +158,8 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
   const [editValue, setEditValue] = useState('');
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  // 关闭回调保持稳定引用，避免弹窗内 Esc 监听反复重绑
+  const closeFullscreen = useCallback(() => setFullscreen(false), []);
 
   // 内联与全屏两套渲染节点分别登记：信息图是纯 DOM 渲染，导出时抓取对应快照。
   // 用 state 保存 DOM 节点，挂载/卸载能触发重渲染，按钮禁用态才跟得上。
@@ -512,87 +492,28 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
         </div>
       </div>
 
-      {/* 全屏放大模态框 */}
-      {fullscreen && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 99999,
-            background: 'rgba(0, 0, 0, 0.75)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            flexDirection: 'column',
-          }}
-          onClick={() => setFullscreen(false)}
+      {/* 全屏放大模态框：支持拖动平移、Ctrl+滚轮缩放 */}
+      {fullscreen && data && (
+        <DiagramFullscreenModal
+          title="Infographic 信息图预览"
+          exportSource={exportSource}
+          exportFileName={exportFileName}
+          onClose={closeFullscreen}
         >
           <div
+            ref={setFullscreenEl}
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '12px 20px',
+              // 平移缩放容器按内容收缩，这里给定明确宽度，避免百分比宽度失去参照
+              width: 'min(900px, calc(100vw - 80px))',
               background: 'var(--editor-surface, #ffffff)',
-              borderBottom: '1px solid var(--editor-border, #e2e8f0)',
+              borderRadius: 12,
+              padding: 24,
+              boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
             }}
-            onClick={(e) => e.stopPropagation()}
           >
-            <span style={{ fontWeight: 600, color: 'var(--editor-text, #1e293b)' }}>
-              Infographic 信息图预览
-            </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <ChartExportMenu
-                action="copy"
-                variant="outline"
-                source={exportSource}
-                fileName={exportFileName}
-              />
-              <ChartExportMenu
-                action="download"
-                variant="primary"
-                source={exportSource}
-                fileName={exportFileName}
-              />
-              <Tooltip content="关闭预览" side="bottom" sideOffset={4}>
-                <button
-                  type="button"
-                  className="nb-info-close-btn"
-                  onClick={() => setFullscreen(false)}
-                  aria-label="关闭预览"
-                >
-                  <X size={20} />
-                </button>
-              </Tooltip>
-            </div>
+            <InfographicRenderer data={data} />
           </div>
-          <div
-            style={{
-              flex: 1,
-              overflow: 'auto',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 40,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {data && (
-              <div
-                ref={setFullscreenEl}
-                style={{
-                  maxWidth: 900,
-                  width: '100%',
-                  background: 'var(--editor-surface, #ffffff)',
-                  borderRadius: 12,
-                  padding: 24,
-                  boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
-                }}
-              >
-                <InfographicRenderer data={data} />
-              </div>
-            )}
-          </div>
-        </div>
+        </DiagramFullscreenModal>
       )}
     </NodeViewWrapper>
   );
