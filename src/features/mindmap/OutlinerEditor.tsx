@@ -18,10 +18,13 @@ import type { MindNode } from './mindmapTypes';
 import { generateNodeId, moveMindNode, isMindNodeDescendant } from './mindmapConverter';
 import { MindmapIconPicker } from './MindmapIconPicker';
 import { Tooltip } from '../../components/Tooltip';
+import type { MindmapSearchHighlight } from './mindmapSearch';
 
 interface OutlinerEditorProps {
   root: MindNode;
   onChange: (newRoot: MindNode) => void;
+  /** 搜索匹配高亮与当前项定位 */
+  searchHighlight?: MindmapSearchHighlight;
 }
 
 interface FlatItem {
@@ -45,7 +48,7 @@ interface DragSession {
   isDragging: boolean;
 }
 
-export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
+export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
@@ -498,6 +501,15 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
     }
   };
 
+  // 搜索跳转：把当前匹配行滚动到可视区中央（focusSeq 每次显式跳转递增；
+  // 跳转可能刚展开折叠分支，effect 在新行渲染后执行）
+  const searchFocusSeq = searchHighlight?.focusSeq ?? 0;
+  useEffect(() => {
+    if (!searchFocusSeq || !searchHighlight?.currentId) return;
+    rowRefs.current.get(searchHighlight.currentId)?.scrollIntoView({ block: 'center' });
+    // 仅响应跳转序号变化
+  }, [searchFocusSeq]);
+
   // 按 Esc 键随时取消拖拽
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -547,6 +559,9 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
           const isInsideTarget = isTarget && dropPos === 'inside';
           const hasNote = item.node.note !== undefined;
           const hasImage = Boolean(item.node.image);
+          // 搜索命中：标题底色标出命中行，当前项再加强调色描边
+          const isSearchMatch = Boolean(searchHighlight?.ranges.has(item.node.id));
+          const isSearchCurrent = searchHighlight?.currentId === item.node.id;
 
           return (
             <div
@@ -808,13 +823,14 @@ export function OutlinerEditor({ root, onChange }: OutlinerEditorProps) {
                     flex: 1,
                     border: 'none',
                     outline: 'none',
-                    background: 'transparent',
                     color: isRoot ? 'var(--editor-heading, #0f172a)' : 'var(--editor-text, #1e293b)',
                     fontSize: isRoot ? 24 : item.depth === 1 ? 16 : 14,
                     fontWeight: isRoot ? 700 : item.depth === 1 ? 600 : 400,
                     lineHeight: 1.5,
                     padding: '4px 8px',
                     borderRadius: 4,
+                    background: isSearchMatch ? 'var(--cm-search-match-bg)' : 'transparent',
+                    boxShadow: isSearchCurrent ? 'inset 0 0 0 2px var(--cm-search-active-bg)' : undefined,
                     pointerEvents: isDragging ? 'none' : 'auto',
                   }}
                 />

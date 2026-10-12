@@ -2,8 +2,9 @@
 // 左右两个 CodeMirror 编辑器（复用 txt 编辑器观感）+ @codemirror/merge 实时差异高亮
 // 中缝双箭头按钮逐处采用（◀ 左侧采用右侧 / ▶ 右侧采用左侧），中缝可左右拖拽调整分栏（双击复位）
 // 纯前端工具视图：不落盘、不进 documentStore、不参与暂存/会话恢复（tab 关闭即释放）
+// 左右两侧各有一个独立的查找/替换栏（Ctrl+F / Ctrl+H 按光标所在侧打开）
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   MergeView,
   getChunks,
@@ -29,6 +30,10 @@ import * as ipc from '../../core/ipc/commands';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { showToast } from '../../stores/toastStore';
 import { Tooltip } from '../../components/Tooltip';
+import { SearchReplaceBar } from '../search/SearchReplaceBar';
+import { createCodeMirrorSearchCapabilities } from '../search/searchController';
+import { createSearchStore } from '../../stores/searchStore';
+import { useEditorActive } from '../../core/editor/EditorActivityContext';
 
 /** 文本对比可打开的文件类型（文本类优先） */
 const TEXT_DIFF_FILE_FILTERS = [
@@ -82,7 +87,8 @@ const TEXT_DIFF_CSS = `
 }
 .nb-diff-count { font-size: 11px; color: var(--editor-text-muted, #64748b); padding: 0 4px; white-space: nowrap; }
 .nb-diff-spacer { flex: 1 1 0; }
-.nb-diff-host { flex: 1 1 0; min-height: 0; }
+.nb-diff-stage { position: relative; flex: 1 1 0; min-height: 0; }
+.nb-diff-host { height: 100%; }
 /* merge 视图外层滚动（merge 默认不设高度，需宿主显式给高） */
 .nb-diff-host > .cm-mergeView { height: 100%; overflow-y: auto; }
 /* 编辑区撑满整栏：使整个区域如同普通文本编辑器，行号槽与文本区垂直铺满全高，下方空白可直接点击定位 */
@@ -102,8 +108,9 @@ const TEXT_DIFF_CSS = `
 .nb-diff-host .cm-mergeViewEditor .cm-content {
   min-height: 100% !important; cursor: text;
 }
-/* 左侧编辑器宽度由变量控制（中缝拖拽调整 inline 覆盖；默认左右平分去掉中缝宽） */
-.nb-diff-host { --nb-diff-left: calc((100% - ${CHUNK_BAR_WIDTH}px) / 2); }
+/* 左侧编辑器宽度由变量控制（中缝拖拽调整 inline 覆盖；默认左右平分去掉中缝宽）。
+   变量定义在外层舞台上，两侧搜索栏也据此定位；百分比在使用处按各自容器解析 */
+.nb-diff-stage { --nb-diff-left: calc((100% - ${CHUNK_BAR_WIDTH}px) / 2); }
 .nb-diff-host .cm-mergeViewEditor:first-child { flex: 0 0 var(--nb-diff-left); }
 /* 中缝列：可拖拽调整分栏（col-resize），内嵌采用按钮 */
 .nb-diff-chunkbar {
@@ -141,8 +148,21 @@ function replaceDoc(view: EditorView, text: string): void {
   view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
 }
 
+/** 左侧搜索栏定位：贴左栏右上角，宽度不超出左栏 */
+const LEFT_SEARCH_BAR_STYLE: React.CSSProperties = {
+  right: 'calc(100% - var(--nb-diff-left) + 12px)',
+  maxWidth: 'calc(var(--nb-diff-left) - 24px)',
+};
+
+/** 右侧搜索栏定位：贴右栏右上角（右侧让出外层滚动条），宽度不超出右栏 */
+const RIGHT_SEARCH_BAR_STYLE: React.CSSProperties = {
+  right: 20,
+  maxWidth: `calc(100% - var(--nb-diff-left) - ${CHUNK_BAR_WIDTH}px - 32px)`,
+};
+
 // props.docKey 由 EditorHost 统一传入（编辑器签名约定）；文本对比不落盘，不消费该值
 export function TextDiffView(_props: { docKey: string }) {
+  const stageRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const mergeRef = useRef<MergeView | null>(null);
   const chunkBarRef = useRef<HTMLDivElement | null>(null);
@@ -161,9 +181,22 @@ export function TextDiffView(_props: { docKey: string }) {
   const softWrapRef = useRef(softWrap);
   softWrapRef.current = softWrap;
 
+  // 左右两侧各自独立的搜索状态与搜索目标（互不影响，也不影响全局搜索栏）
+  const [searchStoreA] = useState(createSearchStore);
+  const [searchStoreB] = useState(createSearchStore);
+  const searchA = useMemo(() => createCodeMirrorSearchCapabilities(() => mergeRef.current?.a ?? null), []);
+  const searchB = useMemo(() => createCodeMirrorSearchCapabilities(() => mergeRef.current?.b ?? null), []);
+  const getSearchA = useCallback(() => searchA, [searchA]);
+  const getSearchB = useCallback(() => searchB, [searchB]);
+  const focusA = useCallback(() => mergeRef.current?.a.focus(), []);
+  const focusB = useCallback(() => mergeRef.current?.b.focus(), []);
+  // 保活的后台标签不响应快捷键
+  const isActive = useEditorActive();
+
   useEffect(() => {
     const host = hostRef.current;
-    if (!host) return;
+    const stage = stageRef.current;
+    if (!host || !stage) return;
 
     // 挂载时取编辑器设置快照（工具视图不随设置热切换；重开 tab 生效）
     const settings = useSettingsStore.getState().settings.editor;
@@ -289,7 +322,7 @@ export function TextDiffView(_props: { docKey: string }) {
         const usable = Math.max(1, rect.width - CHUNK_BAR_WIDTH);
         const leftPx = moveEvent.clientX - rect.left - CHUNK_BAR_WIDTH / 2;
         const clamped = Math.max(usable * 0.2, Math.min(usable * 0.8, leftPx));
-        host.style.setProperty('--nb-diff-left', `${Math.round(clamped)}px`);
+        stage.style.setProperty('--nb-diff-left', `${Math.round(clamped)}px`);
       };
       const handleUp = () => {
         bar.classList.remove('nb-diff-resizing');
@@ -318,7 +351,7 @@ export function TextDiffView(_props: { docKey: string }) {
     };
     const handleBarDblClick = () => {
       // 双击复位为默认左右平分（CSS 里的变量默认值）
-      host.style.removeProperty('--nb-diff-left');
+      stage.style.removeProperty('--nb-diff-left');
     };
     bar.addEventListener('mousedown', handleBarMouseDown);
     bar.addEventListener('dblclick', handleBarDblClick);
@@ -379,6 +412,32 @@ export function TextDiffView(_props: { docKey: string }) {
       mergeRef.current = null;
     };
   }, []);
+
+  // Ctrl+F / Ctrl+H：按光标所在侧打开该侧搜索栏（焦点不在右侧时默认左侧）。
+  // 全局快捷键对本视图不做处理（无文档搜索能力），这里在冒泡阶段接管；
+  // 多个对比标签同时挂载时只有活动标签注册监听。
+  useEffect(() => {
+    if (!isActive) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+      const key = e.key.toLowerCase();
+      if (key !== 'f' && key !== 'h') return;
+      const stage = stageRef.current;
+      const mv = mergeRef.current;
+      if (!stage || !mv) return;
+      e.preventDefault();
+      const active = document.activeElement;
+      const inRightBar = !!active && !!stage.querySelector('.nb-diff-search-b')?.contains(active);
+      const toRight = mv.b.dom.contains(active) || inRightBar;
+      const view = toRight ? mv.b : mv.a;
+      const store = toRight ? searchStoreB : searchStoreA;
+      const sel = view.state.selection.main;
+      const selected = sel.empty ? '' : view.state.sliceDoc(sel.from, sel.to);
+      store.getState().openSearch(selected.trim() ? selected : undefined, key === 'h' ? 'replace' : 'search');
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isActive, searchStoreA, searchStoreB]);
 
   // 打开文本文件到指定侧（后端统一探测编码 utf8/bom/gbk）
   const handleOpenFile = async (side: 'a' | 'b') => {
@@ -555,8 +614,17 @@ export function TextDiffView(_props: { docKey: string }) {
           </button>
         </Tooltip>
       </div>
-      {/* MergeView 宿主（左右编辑器 + 中缝采用按钮层/拖拽把手） */}
-      <div ref={hostRef} className="nb-diff-host" />
+      <div ref={stageRef} className="nb-diff-stage">
+        {/* MergeView 宿主（左右编辑器 + 中缝采用按钮层/拖拽把手） */}
+        <div ref={hostRef} className="nb-diff-host" />
+        {/* 左右两侧各自的查找/替换栏 */}
+        <div className="nb-diff-search-a">
+          <SearchReplaceBar store={searchStoreA} getSearch={getSearchA} focusEditor={focusA} positionStyle={LEFT_SEARCH_BAR_STYLE} />
+        </div>
+        <div className="nb-diff-search-b">
+          <SearchReplaceBar store={searchStoreB} getSearch={getSearchB} focusEditor={focusB} positionStyle={RIGHT_SEARCH_BAR_STYLE} />
+        </div>
+      </div>
     </div>
   );
 }

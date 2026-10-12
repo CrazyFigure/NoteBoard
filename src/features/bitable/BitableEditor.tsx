@@ -58,6 +58,7 @@ import {
 import { submitCapturedContent } from '../session/documentSession';
 import { takeViewState } from '../session/editorSuspension';
 import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
+import { useEditorActive } from '../../core/editor/EditorActivityContext';
 import type { EditorCapabilities } from '../../core/editor/editorTypes';
 import {
   Table as TableIcon,
@@ -214,6 +215,24 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
   const editorRootRef = useRef<HTMLDivElement>(null);
   const searchQueryRef = useRef(searchQuery);
   searchQueryRef.current = searchQuery;
+  // 表格自带的记录搜索框：Ctrl+F 直接聚焦它（不使用全局搜索栏）
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const isEditorActive = useEditorActive();
+  useEffect(() => {
+    // 保活的后台标签不响应
+    if (!isEditorActive) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'f') return;
+      const input = searchInputRef.current;
+      // 搜索框隐藏（如移动端布局）时不拦截
+      if (!input || input.offsetParent === null) return;
+      e.preventDefault();
+      input.focus();
+      input.select();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isEditorActive]);
   const recordPanelRowIdRef = useRef(recordPanelRowId);
   recordPanelRowIdRef.current = recordPanelRowId;
   const activeViewIdRef = useRef(data.activeViewId);
@@ -1352,6 +1371,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
           >
             <Search size={12} style={{ opacity: 0.5 }} />
             <input
+              ref={searchInputRef}
               type="text"
               placeholder="搜索表格记录"
               value={searchQuery}

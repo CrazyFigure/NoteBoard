@@ -51,6 +51,11 @@ import { submitCapturedContent } from '../session/documentSession';
 import { takeViewState } from '../session/editorSuspension';
 import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
 import type { EditorCapabilities } from '../../core/editor/editorTypes';
+import {
+  createMindmapSearchCapabilities,
+  EMPTY_MINDMAP_SEARCH_HIGHLIGHT,
+  type MindmapSearchHighlight,
+} from './mindmapSearch';
 
 interface MindmapEditorProps {
   docKey: string;
@@ -91,6 +96,10 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
   layoutRef.current = layout;
   const themeIdRef = useRef<string>(themeId);
   themeIdRef.current = themeId;
+  // 全局搜索栏的匹配高亮（导图与大纲两种视图共用）
+  const [searchHighlight, setSearchHighlight] = useState<MindmapSearchHighlight>(EMPTY_MINDMAP_SEARCH_HIGHLIGHT);
+  // 搜索替换提交新树走与手动编辑相同的落盘/历史链路（函数在下方定义，经 ref 读取最新版本）
+  const handleRootChangeRef = useRef<(newRoot: MindNode) => void>(() => {});
 
   // 注册统一文档历史快照应用器
   useEffect(() => {
@@ -151,6 +160,16 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
         viewMode: viewModeRef.current,
         zoom: zoomRef.current,
       }),
+      // 节点标题文本搜索替换（Ctrl+F / Ctrl+H 打开全局搜索栏）
+      search: createMindmapSearchCapabilities({
+        getRoot: () => rootNodeRef.current,
+        commitRoot: (newRoot) => {
+          // 同步更新引用：同一次搜索操作内紧随的匹配计算需读到新树
+          rootNodeRef.current = newRoot;
+          handleRootChangeRef.current(newRoot);
+        },
+        onHighlight: setSearchHighlight,
+      }),
     };
     // 🔴 N10.2：思维导图实例就绪终点（能力注册完成；requestId 与打开请求对齐）
     perfMarkEditorInstanceReady(docKey, instanceId);
@@ -196,6 +215,7 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
     },
     [persistDocument],
   );
+  handleRootChangeRef.current = handleRootChange;
 
   // 切换布局 / 配色主题并即时持久化
   const handleStyleChange = useCallback(
@@ -467,11 +487,13 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
             onZoomChange={setZoom}
             layout={layout}
             theme={theme}
+            searchHighlight={searchHighlight}
           />
         ) : (
           <OutlinerEditor
             root={rootNode}
             onChange={handleRootChange}
+            searchHighlight={searchHighlight}
           />
         )}
       </div>

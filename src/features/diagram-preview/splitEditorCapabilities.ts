@@ -7,6 +7,7 @@ import type { EditorView } from '@codemirror/view';
 import type { EditorCapabilities } from '../../core/editor/editorTypes';
 // 🔴 R03：flush 镜像写入经统一提交屏障
 import { submitCapturedContent } from '../session/documentSession';
+import { createCodeMirrorSearchCapabilities } from '../search/searchController';
 
 /** 双栏编辑器的额外视图状态（布局模式与预览变换） */
 export interface SplitEditorExtraState {
@@ -22,17 +23,20 @@ export interface SplitEditorCapabilitiesOptions {
   getEditorView: () => EditorView | null;
   /** 捕获布局模式与预览变换（组件 state 的 ref 镜像读取） */
   captureExtra: () => SplitEditorExtraState;
+  /** 搜索前确保源码区可见（纯预览布局下源码区隐藏，搜索命中无法呈现） */
+  revealSource?: () => void;
 }
 
 /**
  * 构造图表类双栏编辑器能力。
  * flush：CM 文本 → store 镜像（图表源码即可序列化文本）；
- * captureViewState：源码选区/滚动 + 布局模式/预览变换。
+ * captureViewState：源码选区/滚动 + 布局模式/预览变换；
+ * search：源码区 Ctrl+F 查找替换（与 code 编辑器同一套控制器）。
  */
 export function createSplitEditorCapabilities(
   options: SplitEditorCapabilitiesOptions,
 ): EditorCapabilities {
-  const { docKey, instanceId, getEditorView, captureExtra } = options;
+  const { docKey, instanceId, getEditorView, captureExtra, revealSource } = options;
   return {
     docKey,
     instanceId,
@@ -71,5 +75,7 @@ export function createSplitEditorCapabilities(
         scrollTop: view?.scrollDOM?.scrollTop ?? 0,
       };
     },
+    // 源码文本搜索能力：缺失时搜索栏拿不到能力，Ctrl+F 只能打开空壳栏且永远 0 匹配
+    search: createCodeMirrorSearchCapabilities(getEditorView, revealSource),
   };
 }

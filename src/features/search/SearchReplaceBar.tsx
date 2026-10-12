@@ -1,8 +1,9 @@
 // NoteBoard 现代浮动搜索与替换栏
-// 适用于 Markdown（可视化/源码）、TXT 及全部代码文档
+// 适用于 Markdown（可视化/源码）、TXT 及全部代码文档；
+// 也可传入独立状态与搜索目标嵌入其它视图（如文本对比左右两侧各一个）
 // 样式与交互遵循设计规范与主题色彩 Token
 
-import React, { useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useEffect, useRef, useMemo, useCallback, type CSSProperties } from 'react';
 import {
   Search,
   ChevronUp,
@@ -14,14 +15,30 @@ import {
   Grid2X2,
 } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
-import { useSearchStore } from '../../stores/searchStore';
+import { useSearchStore, type SearchStoreHook } from '../../stores/searchStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
 // 🔴 S03：搜索栏统一通过 core 能力注册表分发，不再从编辑器组件导入实例 getter
 import { getEditorCapabilities } from '../../core/editor/editorRegistry';
 import type { SearchCapabilities } from '../../core/editor/editorTypes';
 
-export function SearchReplaceBar() {
+interface SearchReplaceBarProps {
+  /** 搜索状态（缺省为全局单例） */
+  store?: SearchStoreHook;
+  /** 搜索目标（缺省为当前活动文档在能力注册表中的搜索能力；需保持引用稳定） */
+  getSearch?: () => SearchCapabilities | null;
+  /** 关闭后焦点回归（缺省聚焦当前活动文档编辑器） */
+  focusEditor?: () => void;
+  /** 定位样式覆盖（缺省悬浮在编辑区右上角） */
+  positionStyle?: CSSProperties;
+}
+
+export function SearchReplaceBar({
+  store = useSearchStore,
+  getSearch: customGetSearch,
+  focusEditor,
+  positionStyle,
+}: SearchReplaceBarProps = {}) {
   const {
     isOpen,
     searchText,
@@ -39,7 +56,7 @@ export function SearchReplaceBar() {
     setWholeWord,
     setIsRegex,
     setMatchStats,
-  } = useSearchStore();
+  } = store();
 
   const activeKey = useWindowStore((s) => s.activeKey);
   const tabs = useWindowStore((s) => s.tabs);
@@ -49,11 +66,17 @@ export function SearchReplaceBar() {
   const replaceInputRef = useRef<HTMLInputElement>(null);
 
   // 当前活动文档的搜索能力（code / markdown visual / markdown source 由注册表分派）
-  const getSearch = useCallback((): SearchCapabilities | null => {
-    if (!activeTab || !activeKey) return null;
-    if (activeTab.kind !== 'code' && activeTab.kind !== 'markdown') return null;
+  // 活动标签是否接入全局搜索栏：文本/代码文档与思维导图（节点标题搜索）；
+  // 画板/drawio/多维表格走各自内置搜索，文本对比（kind 同为 code）两侧自带独立搜索栏
+  const activeDocSearchable =
+    !!activeTab &&
+    (activeTab.kind === 'code' || activeTab.kind === 'markdown' || activeTab.kind === 'mindmap') &&
+    !activeTab.toolKind;
+  const getActiveDocSearch = useCallback((): SearchCapabilities | null => {
+    if (!activeTab || !activeKey || !activeDocSearchable) return null;
     return getEditorCapabilities(activeKey)?.search ?? null;
-  }, [activeTab, activeKey]);
+  }, [activeTab, activeKey, activeDocSearchable]);
+  const getSearch = customGetSearch ?? getActiveDocSearch;
 
   // 搜索选项参数
   const searchOptions = useMemo(
@@ -115,10 +138,12 @@ export function SearchReplaceBar() {
         isRegex: false,
       });
     }
-    if (search && activeKey) {
+    if (focusEditor) {
+      focusEditor();
+    } else if (search && activeKey) {
       getEditorCapabilities(activeKey)?.focus();
     }
-  }, [getSearch, closeSearch, activeKey]);
+  }, [getSearch, closeSearch, activeKey, focusEditor]);
 
   // 查找下一处
   const handleFindNext = useCallback(() => {
@@ -203,6 +228,8 @@ export function SearchReplaceBar() {
   }, [getSearch, searchOptions, searchText, setMatchStats]);
 
   if (!isOpen) return null;
+  // 全局搜索栏切到不可文本搜索的标签时仅隐藏（保留打开状态，切回文本文档继续显示）
+  if (!customGetSearch && !activeDocSearchable) return null;
 
   return (
     <div
@@ -230,6 +257,7 @@ export function SearchReplaceBar() {
         color: 'var(--editor-text)',
         backdropFilter: 'blur(8px)',
         userSelect: 'none',
+        ...positionStyle,
       }}
     >
       {/* ── 第一行：搜索输入框 + 匹配计数 + 上下导航 + 关闭 ── */}
@@ -272,6 +300,9 @@ export function SearchReplaceBar() {
                 }
               } else if (e.key === 'ArrowDown') {
                 replaceInputRef.current?.focus();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                handleClose();
               }
             }}
             style={{
@@ -404,6 +435,9 @@ export function SearchReplaceBar() {
                 }
               } else if (e.key === 'ArrowUp') {
                 searchInputRef.current?.focus();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                handleClose();
               }
             }}
             style={{
