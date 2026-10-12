@@ -45,6 +45,7 @@ import {
   Columns2,
   Columns3,
   Columns4,
+  Highlighter,
 } from 'lucide-react';
 import { insertLocalImageWithDialog } from './imagePaste';
 import { promptImageUrl } from '../../components/promptPresets';
@@ -55,6 +56,8 @@ import { isTouchInteraction } from '../../core/inputModality';
 import { INFOGRAPHIC_TEMPLATES } from '../infographic/infographicTemplates';
 import { insertDetailsContent } from './detailsExtension';
 import { insertColumnsBlock } from './columnsExtension';
+import { insertCalloutBlock } from './calloutExtension';
+import { CALLOUT_PRESETS, CalloutPresetIcon } from './calloutPickers';
 import { insertRawHtmlContent } from './rawHtmlBlockView';
 import { CODE_LANGUAGES } from './codeLanguages';
 
@@ -516,6 +519,25 @@ const COLUMNS_LEAFS: LeafCommandItem[] = [
   },
 }));
 
+/** 高亮块：常用颜色 + 图标组合（插入后可在块工具栏中随时更换颜色与图标） */
+const CALLOUT_LEAFS: LeafCommandItem[] = CALLOUT_PRESETS.map((preset, index) => ({
+  id: `callout-${preset.id}`,
+  label: `${preset.label}高亮块`,
+  description: `${preset.description}，块内支持任意 Markdown / HTML`,
+  groupId: 'callout',
+  groupLabel: '高亮块',
+  shortcutHint: index === 0 ? '/callout' : undefined,
+  icon: <CalloutPresetIcon preset={preset} size={17} />,
+  aliases:
+    index === 0
+      ? ['callout', 'hl', 'gaoliang', 'gl', 'gaoliangkuai', 'glk', 'highlight']
+      : [`callout-${preset.id}`, `gl${preset.id}`],
+  keywords: `高亮块 高亮 底色块 标注 callout highlight gaoliang ${preset.label} ${preset.description}`,
+  action: (editor: Editor, range: Range) => {
+    insertCalloutBlock(editor, preset, range);
+  },
+}));
+
 const RAW_HTML_LEAF: LeafCommandItem = {
   id: 'rawHtml',
   label: 'HTML 块',
@@ -645,6 +667,15 @@ const ROOT_GROUPS: GroupCommandItem[] = [
     children: ALERT_LEAFS,
   },
   {
+    id: 'callout',
+    label: '高亮块',
+    description: '带底色与图标的高亮块，颜色、图标可随时更换',
+    shortcutHint: '/callout',
+    icon: <Highlighter size={17} color="#8b5cf6" />,
+    isGroup: true,
+    children: CALLOUT_LEAFS,
+  },
+  {
     id: 'columns',
     label: '分栏卡片',
     description: '两栏、三栏、四栏并排卡片，可拖动调整栏宽',
@@ -691,13 +722,14 @@ const ROOT_GROUPS: GroupCommandItem[] = [
   },
 ];
 
-/** 全量叶子命令扁平池（优先级：标题 > 列表 > 代码块 > 各语言代码块 > 提示块 > 引用块 > 折叠块 > 分栏 > HTML 块 > 表格 > 公式 > 信息图 > 图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
+/** 全量叶子命令扁平池（优先级：标题 > 列表 > 代码块 > 各语言代码块 > 提示块 > 高亮块 > 引用块 > 折叠块 > 分栏 > HTML 块 > 表格 > 公式 > 信息图 > 图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
 const ALL_LEAFS: LeafCommandItem[] = [
   ...HEADING_LEAFS,
   ...LIST_LEAFS,
   CODE_BLOCK_LEAF,
   ...CODE_LANGUAGE_LEAFS,
   ...ALERT_LEAFS,
+  ...CALLOUT_LEAFS,
   BLOCKQUOTE_LEAF,
   DETAILS_LEAF,
   ...COLUMNS_LEAFS,
@@ -714,12 +746,13 @@ const ALL_LEAFS: LeafCommandItem[] = [
   CLEAR_FORMAT_LEAF,
 ];
 
-/** 默认根级菜单项（严格遵循优先级：标题 > 列表 > 代码块 > GitHub提示 > 引用块 > 折叠块 > 分栏 > HTML 块 > 表格 > 公式与图表 > 本地图片 > 网络图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
+/** 默认根级菜单项（严格遵循优先级：标题 > 列表 > 代码块 > GitHub提示 > 高亮块 > 引用块 > 折叠块 > 分栏 > HTML 块 > 表格 > 公式与图表 > 本地图片 > 网络图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
 const ROOT_MENU_ENTRIES: MenuEntry[] = [
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'headings')! },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'lists')! },
   { type: 'leaf', item: CODE_BLOCK_LEAF },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'alerts')! },
+  { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'callout')! },
   { type: 'leaf', item: BLOCKQUOTE_LEAF },
   { type: 'leaf', item: DETAILS_LEAF },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'columns')! },
