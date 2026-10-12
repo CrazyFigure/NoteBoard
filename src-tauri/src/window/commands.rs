@@ -514,6 +514,8 @@ mod tests {
                     baseline: Some("基线".into()),
                     revision: 3,
                     history: None,
+                    view_state_snapshot: None,
+                    display_name: None,
                 }),
             },
         );
@@ -705,6 +707,8 @@ mod tests {
                     baseline: None,
                     revision: 1,
                     history: None,
+                    view_state_snapshot: None,
+                    display_name: None,
                 }),
             },
         );

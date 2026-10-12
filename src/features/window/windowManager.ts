@@ -128,8 +128,12 @@ async function adoptTransferredDocument(transferId: string): Promise<void> {
   const doc = await ipc.takeTransferPayload(label, transferId);
   if (!doc) return; // 已被拉取 / 已中止
 
-  const name = doc.key.split(/[\\/]/).pop() ?? doc.key;
-  const dirPath = dirnameOf(doc.key) || doc.key;
+  // 未命名文档的 key（untitled:txt:时间戳:序号）不是磁盘路径：
+  // 显示名取载荷携带的名称，且不能把 key 当作 path/dirPath（否则标签与 Tooltip 显示内部 key）
+  const isUntitled = doc.key.startsWith('untitled:');
+  const name = doc.displayName
+    || (isUntitled ? '未命名' : (doc.key.split(/[\\/]/).pop() ?? doc.key));
+  const dirPath = isUntitled ? '' : (dirnameOf(doc.key) || doc.key);
   // 缺省策略集中在此：类型/语言按 key 推断，编码缺省 utf8/lf，基线缺省取内容
   const kind = (doc.kind ?? kindFromPath(doc.key)) as Tab['kind'];
   // 迁移载荷的 language 为 string（由源窗口的 LanguageId 序列化而来），此处收窄回 LanguageId
@@ -171,7 +175,7 @@ async function adoptTransferredDocument(transferId: string): Promise<void> {
   const tab: Tab = {
     key: doc.key,
     displayName: name,
-    path: doc.key,
+    path: isUntitled ? null : doc.key,
     kind,
     language,
     isDirty: doc.isDirty,
@@ -542,6 +546,8 @@ export async function moveToNewWindow(docKey: string): Promise<boolean> {
     history: serializedHistory,
     // 额外视图状态（captureViewState 的判别联合快照）
     viewStateSnapshot: capturedViewState,
+    // 未命名文档的 key 是内部标识，显示名必须随载荷传递
+    displayName: doc.displayName,
   };
 
   showToast('正在移动到新窗口…', 'info');
