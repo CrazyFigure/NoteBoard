@@ -2541,6 +2541,427 @@ body.nb-column-resizing * {
   width: 24px;
 }
 
+/* 高亮块：主题色调和的底色卡片，左侧可选图标，正文支持任意 Markdown / HTML；
+   颜色由 --callout-accent 决定（预设色按主题调校，自定义色由节点视图写入内联变量），
+   底色、描边、图标色均由它与主题背景 / 正文色混合得出，切换主题自动适配 */
+.ProseMirror .nb-callout {
+  --callout-bg-mix: 8%;
+  --callout-border-mix: 22%;
+  --callout-chip-mix: 14%;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 10px 16px;
+  border: 1px solid color-mix(in srgb, var(--callout-accent, #3b82f6) var(--callout-border-mix), var(--editor-bg));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--callout-accent, #3b82f6) var(--callout-bg-mix), var(--editor-bg));
+  transition: border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+}
+.ProseMirror .nb-callout[data-color="blue"] { --callout-accent: #3b82f6; }
+.ProseMirror .nb-callout[data-color="green"] { --callout-accent: #22c55e; }
+.ProseMirror .nb-callout[data-color="yellow"] { --callout-accent: #eab308; --callout-bg-mix: 11%; --callout-border-mix: 30%; }
+.ProseMirror .nb-callout[data-color="orange"] { --callout-accent: #f97316; }
+.ProseMirror .nb-callout[data-color="red"] { --callout-accent: #ef4444; }
+.ProseMirror .nb-callout[data-color="pink"] { --callout-accent: #ec4899; }
+.ProseMirror .nb-callout[data-color="purple"] { --callout-accent: #8b5cf6; }
+.ProseMirror .nb-callout[data-color="teal"] { --callout-accent: #14b8a6; }
+.ProseMirror .nb-callout[data-color="gray"] { --callout-accent: #64748b; --callout-bg-mix: 6%; }
+/* 墨夜：预设色提亮一档，底色与描边加深混合比例，保证在深色背景上可辨识 */
+:root[data-theme="mo-ye"] .ProseMirror .nb-callout {
+  --callout-bg-mix: 13%;
+  --callout-border-mix: 30%;
+  --callout-chip-mix: 22%;
+}
+:root[data-theme="mo-ye"] .ProseMirror .nb-callout[data-color="blue"] { --callout-accent: #60a5fa; }
+:root[data-theme="mo-ye"] .ProseMirror .nb-callout[data-color="green"] { --callout-accent: #4ade80; --callout-bg-mix: 11%; }
+:root[data-theme="mo-ye"] .ProseMirror .nb-callout[data-color="yellow"] { --callout-accent: #facc15; --callout-bg-mix: 10%; }
+:root[data-theme="mo-ye"] .ProseMirror .nb-callout[data-color="orange"] { --callout-accent: #fb923c; }
+:root[data-theme="mo-ye"] .ProseMirror .nb-callout[data-color="red"] { --callout-accent: #f87171; }
+:root[data-theme="mo-ye"] .ProseMirror .nb-callout[data-color="pink"] { --callout-accent: #f472b6; }
+:root[data-theme="mo-ye"] .ProseMirror .nb-callout[data-color="purple"] { --callout-accent: #a78bfa; }
+:root[data-theme="mo-ye"] .ProseMirror .nb-callout[data-color="teal"] { --callout-accent: #2dd4bf; --callout-bg-mix: 11%; }
+:root[data-theme="mo-ye"] .ProseMirror .nb-callout[data-color="gray"] { --callout-accent: #94a3b8; --callout-bg-mix: 9%; }
+.ProseMirror .nb-callout.is-selected {
+  border-color: color-mix(in srgb, var(--callout-accent, #3b82f6) 70%, var(--editor-bg));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--callout-accent, #3b82f6) 70%, var(--editor-bg));
+}
+/* 整块选中时由选区底板统一表达，收起自身强调描边，避免内外两圈描边 */
+.ProseMirror .nb-sel-block > .nb-callout.is-selected {
+  box-shadow: none;
+}
+
+/* 图标：高度与正文首行一致，垂直居中对齐首行文字 */
+.nb-callout-icon-slot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: calc(1em * var(--content-line-height, 1.7));
+}
+.nb-callout-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--callout-accent, #3b82f6) var(--callout-chip-mix), transparent);
+  /* 图标色向正文色偏移：浅色主题下加深、深色主题下提亮，黄色等浅色调也清晰可辨 */
+  color: color-mix(in srgb, var(--callout-accent, #3b82f6) 80%, var(--editor-text));
+  transition: background var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+button.nb-callout-icon {
+  cursor: pointer;
+}
+button.nb-callout-icon:active {
+  transform: scale(0.9);
+}
+.ProseMirror .nb-callout-content {
+  flex: 1;
+  min-width: 0;
+}
+/* 块内首尾元素不再叠加外边距，内容贴合内边距 */
+.ProseMirror .nb-callout-content > [data-node-view-content-react] > :first-child {
+  margin-top: 0;
+}
+.ProseMirror .nb-callout-content > [data-node-view-content-react] > :last-child {
+  margin-bottom: 0;
+}
+/* 块内没有左侧装订线空间，隐藏标题级别标签 */
+.ProseMirror .nb-callout :is(h1, h2, h3, h4, h5, h6)::before {
+  display: none;
+}
+
+/* 浮动工具栏：悬停或光标位于块内时出现在右上角 */
+.nb-callout-toolbar {
+  position: absolute;
+  top: -15px;
+  right: 10px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-md);
+  background: var(--editor-surface);
+  box-shadow: var(--shadow-sm);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(2px);
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+.nb-callout.is-focused > .nb-callout-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+.nb-callout-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--editor-text-muted);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+.nb-callout-tool:active {
+  background: var(--toolbar-active);
+  transform: scale(0.92);
+}
+.nb-callout-tool.is-active {
+  background: var(--toolbar-active);
+  color: var(--editor-text);
+}
+.nb-callout-tool-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--callout-accent, #3b82f6);
+  box-shadow: 0 0 0 2px var(--editor-surface), 0 0 0 3px color-mix(in srgb, var(--callout-accent, #3b82f6) 45%, transparent);
+}
+.nb-callout-divider {
+  width: 1px;
+  height: 14px;
+  margin: 0 3px;
+  background: var(--editor-border);
+}
+
+/* 颜色 / 图标选择面板（Portal 到 body，fixed 定位） */
+.nb-callout-popover {
+  position: fixed;
+  z-index: 10000;
+  box-sizing: border-box;
+  padding: 4px 10px 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-lg, 10px);
+  background: var(--editor-surface);
+  color: var(--editor-text);
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+  animation: nb-callout-popover-in 120ms ease-out;
+}
+@keyframes nb-callout-popover-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: none; }
+}
+.nb-callout-popover-title {
+  margin: 8px 2px 6px;
+  font-size: 12px;
+  color: var(--editor-text-muted);
+  user-select: none;
+}
+.nb-callout-swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(28px, 1fr));
+  justify-items: center;
+  gap: 6px;
+}
+/* 色块：与块颜色一致（同样按主题调校） */
+.nb-callout-swatch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--callout-accent, #3b82f6);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+.nb-callout-swatch:active {
+  transform: scale(0.9);
+}
+.nb-callout-swatch.is-active {
+  box-shadow: 0 0 0 2px var(--editor-surface), 0 0 0 4px var(--callout-accent, #3b82f6);
+}
+.nb-callout-swatch[data-color="blue"] { --callout-accent: #3b82f6; }
+.nb-callout-swatch[data-color="green"] { --callout-accent: #22c55e; }
+.nb-callout-swatch[data-color="yellow"] { --callout-accent: #eab308; }
+.nb-callout-swatch[data-color="orange"] { --callout-accent: #f97316; }
+.nb-callout-swatch[data-color="red"] { --callout-accent: #ef4444; }
+.nb-callout-swatch[data-color="pink"] { --callout-accent: #ec4899; }
+.nb-callout-swatch[data-color="purple"] { --callout-accent: #8b5cf6; }
+.nb-callout-swatch[data-color="teal"] { --callout-accent: #14b8a6; }
+.nb-callout-swatch[data-color="gray"] { --callout-accent: #64748b; }
+:root[data-theme="mo-ye"] .nb-callout-swatch { color: #111827; }
+:root[data-theme="mo-ye"] .nb-callout-swatch[data-color="blue"] { --callout-accent: #60a5fa; }
+:root[data-theme="mo-ye"] .nb-callout-swatch[data-color="green"] { --callout-accent: #4ade80; }
+:root[data-theme="mo-ye"] .nb-callout-swatch[data-color="yellow"] { --callout-accent: #facc15; }
+:root[data-theme="mo-ye"] .nb-callout-swatch[data-color="orange"] { --callout-accent: #fb923c; }
+:root[data-theme="mo-ye"] .nb-callout-swatch[data-color="red"] { --callout-accent: #f87171; }
+:root[data-theme="mo-ye"] .nb-callout-swatch[data-color="pink"] { --callout-accent: #f472b6; }
+:root[data-theme="mo-ye"] .nb-callout-swatch[data-color="purple"] { --callout-accent: #a78bfa; }
+:root[data-theme="mo-ye"] .nb-callout-swatch[data-color="teal"] { --callout-accent: #2dd4bf; }
+:root[data-theme="mo-ye"] .nb-callout-swatch[data-color="gray"] { --callout-accent: #94a3b8; }
+.nb-callout-custom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* 系统取色器：彩虹色环包住当前颜色，原生 input 透明铺满以接收点按 */
+.nb-callout-swatch.is-native {
+  flex: none;
+  background: conic-gradient(#ef4444, #eab308, #22c55e, #14b8a6, #3b82f6, #8b5cf6, #ec4899, #ef4444);
+  overflow: hidden;
+}
+.nb-callout-swatch.is-native.is-active {
+  box-shadow: 0 0 0 2px var(--editor-surface), 0 0 0 4px var(--editor-accent);
+}
+.nb-callout-native-preview {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--editor-surface);
+  pointer-events: none;
+}
+.nb-callout-swatch.is-native input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  opacity: 0;
+  cursor: pointer;
+}
+.nb-callout-hex {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--control-border, var(--editor-border));
+  border-radius: var(--radius-sm);
+  outline: none;
+  background: var(--editor-bg);
+  color: var(--editor-text);
+  font: 12px/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: 0.04em;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.nb-callout-hex:focus {
+  border-color: var(--editor-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--editor-accent) 18%, transparent);
+}
+.nb-callout-hex.is-invalid {
+  border-color: #ef4444;
+}
+.nb-callout-icon-none {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--editor-text-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.nb-callout-icon-none:active {
+  background: var(--toolbar-active);
+}
+.nb-callout-icon-none.is-active {
+  color: var(--editor-accent);
+}
+.nb-callout-icon-none-check {
+  margin-left: auto;
+}
+.nb-callout-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(32px, 1fr));
+  gap: 2px;
+}
+.nb-callout-icon-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--editor-text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+.nb-callout-icon-cell:active {
+  transform: scale(0.9);
+  background: var(--toolbar-active);
+}
+.nb-callout-icon-cell.is-active {
+  background: color-mix(in srgb, var(--editor-accent) 16%, transparent);
+  color: var(--editor-accent);
+}
+
+/* 悬停反馈仅在支持悬停的设备上生效，避免触屏点按后状态"粘住" */
+@media (hover: hover) {
+  .nb-callout:hover > .nb-callout-toolbar {
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+  button.nb-callout-icon:hover {
+    background: color-mix(in srgb, var(--callout-accent, #3b82f6) calc(var(--callout-chip-mix) + 10%), transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--callout-accent, #3b82f6) 35%, transparent);
+  }
+  .nb-callout-tool:hover {
+    background: var(--toolbar-hover);
+    color: var(--editor-text);
+  }
+  .nb-callout-tool.is-danger:hover {
+    background: color-mix(in srgb, #ef4444 14%, transparent);
+    color: #ef4444;
+  }
+  .nb-callout-swatch:hover {
+    transform: scale(1.1);
+  }
+  .nb-callout-icon-none:hover,
+  .nb-callout-icon-cell:hover {
+    background: var(--toolbar-hover);
+    color: var(--editor-text);
+  }
+  .nb-callout-icon-cell.is-active:hover {
+    background: color-mix(in srgb, var(--editor-accent) 22%, transparent);
+    color: var(--editor-accent);
+  }
+}
+
+/* 移动端：工具栏改为块底部的操作条（只在光标位于块内时出现，不额外占用块上方空间），放大点按区域 */
+[data-platform='mobile'] .ProseMirror .nb-callout {
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+}
+[data-platform='mobile'] .nb-callout-toolbar {
+  position: static;
+  display: none;
+  flex-basis: 100%;
+  justify-content: flex-end;
+  gap: 4px;
+  margin: 0 -4px -4px;
+  padding: 6px 0 0;
+  border: none;
+  border-top: 1px solid color-mix(in srgb, var(--callout-accent, #3b82f6) var(--callout-border-mix), transparent);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+[data-platform='mobile'] .nb-callout.is-focused > .nb-callout-toolbar {
+  display: flex;
+}
+[data-platform='mobile'] .nb-callout-tool {
+  width: 36px;
+  height: 32px;
+}
+[data-platform='mobile'] .nb-callout-icon {
+  width: 30px;
+  height: 30px;
+}
+[data-platform='mobile'] .nb-callout-swatch {
+  width: 32px;
+  height: 32px;
+}
+[data-platform='mobile'] .nb-callout-swatches {
+  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+  gap: 8px;
+}
+[data-platform='mobile'] .nb-callout-hex {
+  height: 34px;
+  font-size: 14px;
+}
+[data-platform='mobile'] .nb-callout-icon-grid {
+  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+}
+[data-platform='mobile'] .nb-callout-icon-cell {
+  height: 40px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nb-callout-popover {
+    animation: none;
+  }
+}
+
 /* 通用模态框：遮罩 + 居中卡片（移动端在 [data-platform=mobile] 下改为底部面板） */
 .nb-modal-overlay {
   position: fixed;

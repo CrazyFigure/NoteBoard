@@ -30,6 +30,7 @@ import { AlignHorizontalSpaceAround, Minus, Plus, Trash2, Ungroup } from 'lucide
 import { Tooltip } from '../../components/Tooltip';
 import { emitRawSegment } from './rawMarkdownSegments';
 import { isSelectionInside } from './collapsibleState';
+import { DIV_CLOSE_TAG, readDivBody } from './divBlockSyntax';
 
 /** 界面上允许的栏数范围（解析时不限，保证任意标准写法都能往返） */
 export const MIN_COLUMNS = 2;
@@ -39,15 +40,9 @@ const MIN_COLUMN_RATIO = 0.1;
 
 /** 外层容器开始标签（标准写法，逐字匹配） */
 export const COLUMNS_OPEN_TAG = '<div class="nb-columns" style="display: flex; gap: 16px;">';
-const DIV_CLOSE_TAG = '</div>';
 // 单栏开始标签：栏宽只接受规范数字（无前导零、无多余小数位），保证解析后能逐字还原
 const COLUMN_OPEN_PATTERN = /^<div class="nb-column" style="flex: (0\.[1-9]|[1-9]\d{0,2}(?:\.[1-9])?); min-width: 0;">$/;
 const COLUMNS_START_PATTERN = /(?:^|\n)<div class="nb-columns" style="display: flex; gap: 16px;">\n<div class="nb-column" /;
-// 嵌套计数：统计行内出现的 div 开始/结束标签（含正文中的手写 HTML），保证与正确的 </div> 配对
-const DIV_OPEN_TAG = /<div[\s>]/gi;
-const DIV_CLOSE_TAG_PATTERN = /<\/div\s*>/gi;
-// 代码围栏起止：围栏内的 </div> 文本不参与配对
-const FENCE_OPEN_PATTERN = /^ {0,3}(`{3,}|~{3,})/;
 
 /** 栏宽取一位小数；结果的字符串形式即规范写法 */
 function roundWidth(value: number): number {
@@ -76,49 +71,10 @@ function normalizeWidths(widths: number[]): number[] {
   return widths.map((width) => roundWidth((width / total) * 100));
 }
 
-/** 统计一行中某类标签的出现次数 */
-function countMatches(line: string, pattern: RegExp): number {
-  pattern.lastIndex = 0;
-  return line.match(pattern)?.length ?? 0;
-}
-
-/** 判断某行是否闭合了给定的代码围栏（同字符、长度不短于开启围栏） */
-function closesFence(line: string, fence: string): boolean {
-  const match = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(line);
-  return Boolean(match && match[1][0] === fence[0] && match[1].length >= fence.length);
-}
-
 /** 标准写法分栏块的分析结果 */
 interface ColumnsMatch {
   raw: string;
   columns: Array<{ width: number; body: string }>;
-}
-
-/**
- * 从 lines[start] 开始查找与当前栏配对的 `</div>` 行号（跳过代码围栏与嵌套 div）；
- * 结构不符合标准写法时返回 -1。
- */
-function findColumnClose(lines: string[], start: number): number {
-  let depth = 0;
-  let fence: string | null = null;
-  for (let index = start; index < lines.length; index += 1) {
-    const line = lines[index];
-    if (fence) {
-      if (closesFence(line, fence)) fence = null;
-      continue;
-    }
-    const fenceOpen = FENCE_OPEN_PATTERN.exec(line);
-    if (fenceOpen) {
-      fence = fenceOpen[1];
-      continue;
-    }
-    // 同层的结束标签必须独占一行且无缩进、无多余空白
-    if (depth === 0 && line === DIV_CLOSE_TAG) return index;
-    depth += countMatches(line, DIV_OPEN_TAG) - countMatches(line, DIV_CLOSE_TAG_PATTERN);
-    // 出现多余的结束标签说明结构不是标准写法
-    if (depth < 0) return -1;
-  }
-  return -1;
 }
 
 /**
@@ -134,20 +90,10 @@ export function matchColumnsBlock(src: string): ColumnsMatch | null {
   while (index < lines.length) {
     const open = COLUMN_OPEN_PATTERN.exec(lines[index]);
     if (!open) break;
-    // 开始标签后必须是一个空行（空行允许含空白：列表内序列化会给空行补缩进）
-    if (index + 1 >= lines.length || lines[index + 1].trim() !== '') return null;
-    const bodyStart = index + 2;
-    const closeIndex = findColumnClose(lines, bodyStart);
-    if (closeIndex < 0) return null;
-
-    const between = lines.slice(bodyStart, closeIndex);
-    let body = '';
-    if (between.length > 0) {
-      // 非空正文与结束标签之间必须恰有一个空行
-      if (between.length < 2 || between[between.length - 1].trim() !== '') return null;
-      body = between.slice(0, -1).join('\n');
-      if (body.trim() === '') return null;
-    }
+    // 单栏为「开始标签 + 空行 + 正文 + 空行 + 结束标签」，结构不符即整体不识别
+    const parsed = readDivBody(lines, index);
+    if (!parsed) return null;
+    const { body, closeIndex } = parsed;
     columns.push({ width: Number(open[1]), body });
     index = closeIndex + 1;
   }

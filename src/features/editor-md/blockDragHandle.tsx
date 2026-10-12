@@ -52,6 +52,7 @@ const BLOCK_TYPE_LABELS: Record<string, string> = {
   githubAlert: '提示块',
   detailsBlock: '折叠块',
   columnsBlock: '分栏',
+  calloutBlock: '高亮块',
   rawHtmlBlock: 'HTML 块',
 };
 

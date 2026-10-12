@@ -1,6 +1,6 @@
 // NoteBoard Markdown 编辑器右键双模上下文菜单
 // 1. 选中文本：浮现加粗、斜体、代码、多色高亮(二级菜单)、标题转换(H1~H6二级菜单)、引用、复制剪切
-// 2. 未选中文本：浮现标题(H1~H6二级菜单)、提示块(二级菜单)、列表(二级菜单)、代码块、引用块、折叠块、分栏(二级菜单)、表格、公式、图表等
+// 2. 未选中文本：浮现标题(H1~H6二级菜单)、提示块(二级菜单)、高亮块(二级菜单)、列表(二级菜单)、代码块、引用块、折叠块、分栏(二级菜单)、表格、公式、图表等
 // 详见 docs/07-UI布局与交互规范.md
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -9,6 +9,8 @@ import { isInTable } from '@tiptap/pm/tables';
 import { applyTablePaste } from './tableClipboard';
 import { insertDetailsContent } from './detailsExtension';
 import { insertColumnsBlock } from './columnsExtension';
+import { insertCalloutBlock } from './calloutExtension';
+import { CALLOUT_PRESETS, CalloutPresetIcon } from './calloutPickers';
 import { insertRawHtmlContent } from './rawHtmlBlockView';
 import { promptLinkUrl } from '../../components/promptPresets';
 import {
@@ -605,6 +607,26 @@ export function EditorContextMenu({
               <ChevronRight size={14} style={{ opacity: 0.6 }} />
             </button>
 
+            {/* 4.5 高亮块 (带二级子菜单：常用颜色与图标组合) */}
+            <button
+              type="button"
+              style={{
+                ...btnStyle,
+                background:
+                  activeSubmenu === 'insert-callout'
+                    ? 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))'
+                    : 'transparent',
+              }}
+              onMouseEnter={(e) => handleOpenSubmenu('insert-callout', e)}
+              onClick={(e) => handleOpenSubmenu('insert-callout', e)}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Highlighter size={15} color="#8b5cf6" />
+                <span>插入高亮块</span>
+              </div>
+              <ChevronRight size={14} style={{ opacity: 0.6 }} />
+            </button>
+
             {/* 5. 插入引用块 */}
             <button
               type="button"
@@ -959,6 +981,32 @@ export function EditorContextMenu({
                   <span>有序列表 (Numbered)</span>
                 </div>
               </button>
+            </>
+          )}
+
+          {/* 二级：高亮块 */}
+          {activeSubmenu === 'insert-callout' && (
+            <>
+              {CALLOUT_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  style={btnStyle}
+                  onClick={() => {
+                    // 插入预设颜色与图标的高亮块，光标落在块内
+                    insertCalloutBlock(editor, preset);
+                    onClose();
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <CalloutPresetIcon preset={preset} />
+                    <span>{preset.label}</span>
+                    <span style={{ fontSize: 12, opacity: 0.55 }}>{preset.description.split(' · ')[0]}</span>
+                  </div>
+                </button>
+              ))}
             </>
           )}
 

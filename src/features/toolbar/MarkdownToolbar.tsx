@@ -64,6 +64,8 @@ import { insertLocalImageWithDialog, pickAndSaveLocalImage } from '../editor-md/
 import { promptImageUrl } from '../../components/promptPresets';
 import { DETAILS_SOURCE_SNIPPET, insertDetailsContent } from '../editor-md/detailsExtension';
 import { columnsSourceSnippet, insertColumnsBlock } from '../editor-md/columnsExtension';
+import { calloutSourceSnippet, insertCalloutBlock } from '../editor-md/calloutExtension';
+import { CALLOUT_PRESETS, CalloutPresetIcon, type CalloutPreset } from '../editor-md/calloutPickers';
 import { RAW_HTML_SOURCE_SNIPPET, insertRawHtmlContent } from '../editor-md/rawHtmlBlockView';
 // 🔴 S03：从 editor-md 边界内实例表获取内核实例（不再依赖编辑器组件文件的 getter 导出）
 import { getMdTipTapEditor as getActiveTipTapEditor, getMdSourceView as getActiveSourceView } from '../editor-md/editorInstances';
@@ -327,6 +329,20 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
       attrs: { kind },
       content: [{ type: 'paragraph' }],
     }).run();
+  };
+
+  // 插入高亮块：源码模式写入标准高亮块片段，可视化模式插入高亮块并把光标放到块内
+  const handleInsertCallout = (preset: CalloutPreset) => {
+    setInsertDropdownOpen(false);
+    if (isSourceMode) {
+      executeSourceAction((view) => {
+        const { from } = view.state.selection.main;
+        view.dispatch({ changes: { from, to: from, insert: calloutSourceSnippet(preset) } });
+      });
+      return;
+    }
+    if (!editor) return;
+    insertCalloutBlock(editor, preset);
   };
 
   const handleInsertCodeBlock = () => {
@@ -731,7 +747,7 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
             icon={<PlusSquare size={15} />}
             label="插入"
             hasDropdown
-            title="插入超链接、图片、表格、公式、图表、提示块、折叠块、分栏、HTML 块、日期时间等"
+            title="插入超链接、图片、表格、公式、图表、提示块、高亮块、折叠块、分栏、HTML 块、日期时间等"
           />
         }
       >
@@ -773,6 +789,24 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
                 label="Caution 高危警告"
                 onClick={() => handleInsertAlert('caution')}
               />
+            </>
+          }
+        />
+
+        {/* 2.5 高亮块二级菜单（常用颜色与图标组合，插入后可随时更换） */}
+        <ToolbarDropdownItem
+          icon={<Highlighter size={14} color="#8b5cf6" />}
+          label="高亮块"
+          submenu={
+            <>
+              {CALLOUT_PRESETS.map((preset) => (
+                <ToolbarDropdownItem
+                  key={preset.id}
+                  icon={<CalloutPresetIcon preset={preset} size={14} />}
+                  label={`${preset.label}（${preset.description.split(' · ')[0]}）`}
+                  onClick={() => handleInsertCallout(preset)}
+                />
+              ))}
             </>
           }
         />
