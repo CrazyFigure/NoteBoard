@@ -262,6 +262,9 @@ export default defineConfig(({ command }) => ({
             return 'vendor-react';
           }
           if (id.includes('node_modules')) {
+            // 🔴 dompurify 同时被 mermaid 与入口闭包（块级 HTML 渲染）静态依赖；
+            //    不显式归组会被并进 mermaid 重 chunk，入口为拿它静态 import 整个图表运行时。
+            if (/[\\/]dompurify[\\/]/.test(id)) return 'vendor-purify';
             if (id.includes('mermaid')) return 'mermaid';
             if (id.includes('@excalidraw') || id.includes('excalidraw')) return 'excalidraw';
             if (id.includes('katex')) return 'katex';
