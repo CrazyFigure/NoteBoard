@@ -19,6 +19,29 @@ import {
   type TimeFormatId,
 } from './bitableTypes';
 
+/**
+ * 键盘隔离区标记：记录详情侧栏、多行文本编辑弹层等独立面板挂上此属性（并设 tabIndex=-1 承接焦点），
+ * 表格视图的全局快捷键（Delete/Backspace 删除选中行、方向键移动选区等）不处理来自这些区域的按键。
+ * 否则点击面板空白处后焦点落回 body，Backspace 会删掉面板背后仍处于选中状态的行。
+ */
+export const KEYBOARD_SCOPE_ATTR = 'data-bitable-keyboard-scope';
+
+/** 判断节点是否位于键盘隔离区内 */
+export function isInKeyboardScope(node: EventTarget | null): boolean {
+  return node instanceof Element && node.closest(`[${KEYBOARD_SCOPE_ATTR}]`) !== null;
+}
+
+/**
+ * 表格视图根节点的 mousedown 捕获处理：用户点回表格时释放停留在隔离区（如记录侧栏）的焦点，
+ * 让表格的剪贴板代理重新接管键盘（Shift+点击等会 preventDefault 的操作不会自然转移焦点）。
+ * 只处理 DOM 上真正位于表格内的点击：Portal 弹层的事件会沿 React 树传到表格根节点，必须排除。
+ */
+export function releaseScopedFocusOnPointerDown(e: { currentTarget: Element; target: EventTarget }): void {
+  if (!(e.target instanceof Node) || !e.currentTarget.contains(e.target)) return;
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && isInKeyboardScope(active)) active.blur();
+}
+
 let idSequence = 0;
 
 /**
@@ -303,6 +326,12 @@ export function stripMarkdown(raw: string): string {
     .replace(/^\s{0,3}>\s?/gm, '')
     .replace(/^\s{0,3}([-*+]|\d+[.)])\s+/gm, '')
     .replace(/^\s{0,3}([-*_])(\s*\1){2,}\s*$/gm, '')
+    // 笔记本扩展语法的行首标记：任务勾选框、GitHub 提示块类型、块公式定界符
+    .replace(/^\s{0,3}\[[ xX]\]\s+/gm, '')
+    .replace(/^\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$/gim, '')
+    .replace(/^\s*\$\$\s*$/gm, '')
+    // HTML 标签（高亮块、折叠块、分栏、<u>、<mark> 等）只保留其中文字
+    .replace(/<\/?[a-zA-Z][^>]*>/g, ' ')
     // 行内标记：加粗、斜体、删除线、行内代码、图片
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
@@ -310,6 +339,10 @@ export function stripMarkdown(raw: string): string {
     .replace(/(\*\*|__)(.*?)\1/g, '$2')
     .replace(/(\*|_)(.*?)\1/g, '$2')
     .replace(/~~(.*?)~~/g, '$1')
+    // 高亮、下划线与行内公式：定界规则与笔记本一致，不误伤 `a == b`、`C++`、`$5 与 $6`
+    .replace(/==(?!\s)([^=]*?[^=\s])==(?!=)/g, '$1')
+    .replace(/\+\+(?!\s)([^+]*?\S)\+\+(?!\+)/g, '$1')
+    .replace(/\$(?![\s$])([^$\n]*?[^\s$\\])\$(?!\d)/g, '$1')
     // 合并替换产生的多余空格，并把换行压成空格
     .replace(/[ \t]+/g, ' ')
     .replace(/\s*\n+\s*/g, ' ')
@@ -335,8 +368,15 @@ export function firstLineOf(raw: string): string {
 export function previewLongText(raw: string, config: LongTextConfig): string {
   const text = raw === null || raw === undefined ? '' : String(raw);
   if (config.displayMode === 'full') return text;
-  const first = firstLineOf(text);
-  return config.markdown ? stripMarkdown(first) : first;
+  if (!config.markdown) return firstLineOf(text);
+  // Markdown：先整体移除代码/图表围栏，再逐行剥离标记取首个有文字的行；
+  // 高亮块、折叠块等以独占一行的 HTML 标签或 [!NOTE] 开头时，预览落到其中的正文而非空白
+  const withoutFences = text.replace(/```[\s\S]*?```/g, '\n').replace(/~~~[\s\S]*?~~~/g, '\n');
+  for (const line of withoutFences.split(/\r?\n/)) {
+    const stripped = stripMarkdown(line);
+    if (stripped) return stripped;
+  }
+  return '';
 }
 
 /**

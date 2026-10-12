@@ -72,17 +72,46 @@ import { getMdTipTapEditor as getActiveTipTapEditor, getMdSourceView as getActiv
 import { emit } from '../../core/emitter';
 import type { EditorView } from '@codemirror/view';
 
+/**
+ * 嵌入式编辑器自带的撤销栈（不走文件级时间线）
+ * 可用性以函数提供：工具栏随编辑器事务自行刷新，每次渲染时读取最新状态。
+ */
+export interface MarkdownToolbarHistory {
+  canUndo: () => boolean;
+  canRedo: () => boolean;
+  undo: () => void;
+  redo: () => void;
+}
+
 interface MarkdownToolbarProps {
   docKey: string;
   editor: Editor | null;
   viewMode?: 'visual' | 'source' | null;
+  /** 覆盖撤销/重做来源：多维表格单元格等嵌入式编辑器使用编辑器自身历史 */
+  history?: MarkdownToolbarHistory;
+  /** 覆盖超链接入口：未提供时按 docKey 广播给可视化内核的链接弹窗 */
+  onOpenLink?: () => void;
+  /** 空间不足时按钮换行排列（侧栏等窄容器） */
+  wrap?: boolean;
 }
 
-export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: MarkdownToolbarProps) {
+export function MarkdownToolbar({
+  docKey,
+  editor: propEditor,
+  viewMode,
+  history,
+  onOpenLink,
+  wrap,
+}: MarkdownToolbarProps) {
   // 保证获取到最新的 TipTap editor 实例
   const editor = propEditor || getActiveTipTapEditor(docKey) || null;
   const isSourceMode = viewMode === 'source';
-  const { canUndo, canRedo } = useDocumentHistory(docKey);
+  // Hook 必须无条件调用；嵌入式编辑器传入 history 时以其为准
+  const documentHistory = useDocumentHistory(docKey);
+  const canUndo = history ? history.canUndo() : documentHistory.canUndo;
+  const canRedo = history ? history.canRedo() : documentHistory.canRedo;
+  const handleUndo = () => (history ? history.undo() : undoDocumentHistory(docKey));
+  const handleRedo = () => (history ? history.redo() : redoDocumentHistory(docKey));
 
   // 状态更新标识（促使 TipTap 选区变化时刷新 Active 状态）
   const [, setTick] = useState(0);
@@ -431,6 +460,10 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
   // ── 超链接与图片处理 ──
   const handleOpenLink = () => {
     setInsertDropdownOpen(false);
+    if (onOpenLink) {
+      onOpenLink();
+      return;
+    }
     emit('open-link-modal', { key: docKey });
   };
 
@@ -570,21 +603,31 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
   };
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 2, overflow: 'visible', flex: 1 }}>
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 2,
+        overflow: 'visible',
+        flex: 1,
+        flexWrap: wrap ? 'wrap' : undefined,
+        rowGap: wrap ? 2 : undefined,
+      }}
+    >
       {/* ── 历史操作组 ── */}
       <ToolbarButton
         icon={<Undo2 size={15} strokeWidth={2.2} />}
         title="撤销"
         shortcut="Ctrl+Z"
         disabled={!canUndo}
-        onClick={() => undoDocumentHistory(docKey)}
+        onClick={handleUndo}
       />
       <ToolbarButton
         icon={<Redo2 size={15} strokeWidth={2.2} />}
         title="重做"
         shortcut="Ctrl+Y"
         disabled={!canRedo}
-        onClick={() => redoDocumentHistory(docKey)}
+        onClick={handleRedo}
       />
 
       <ToolbarDivider />

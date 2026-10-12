@@ -1084,6 +1084,8 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
   // 全局撤销/重做快捷键
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // 多行文本富文本编辑器有自己的撤销栈，焦点在其中时不应同时撤销整张表
+      if (e.target instanceof Element && e.target.closest('.nb-bitable-rte')) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         if (e.shiftKey) {
           e.preventDefault();

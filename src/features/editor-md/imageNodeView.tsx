@@ -46,12 +46,15 @@ function ImageLightboxModal({
   const [rotate, setRotate] = useState(0);
 
   // 监听 Esc 键快速关闭
+  // 捕获阶段处理并标记 defaultPrevented：外层弹层（如多维表格单元格编辑弹层）据此不再随之关闭
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      onClose();
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [onClose]);
 
   return (

@@ -8,6 +8,7 @@ import type { BitableColumn, LongTextConfig } from './bitableTypes';
 import { BitableRichTextEditor, type RichTextMode } from './BitableRichTextEditor';
 import { X, Check } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
+import { KEYBOARD_SCOPE_ATTR } from './bitableUtils';
 
 interface LongTextPopoverProps {
   /** 所属列，用于取字段名与 Markdown 配置 */
@@ -20,7 +21,22 @@ interface LongTextPopoverProps {
   onClose: () => void;
 }
 
-const PANEL_WIDTH = 640;
+// 容纳与笔记本一致的完整工具栏不折行；窄窗口由 maxWidth 兜底
+const PANEL_WIDTH = 720;
+
+/** 事件来自编辑器节点内部的输入框（图表/公式源码、代码块语言、折叠块标题等），而非正文本身 */
+function isNestedEditorTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return !!target.closest('.ProseMirror') && !!target.closest('input, textarea, select');
+}
+
+/** 弹层中心是否被更高层的浮层覆盖（如图表全屏预览、输入弹窗） */
+function isPanelCovered(panel: HTMLElement | null): boolean {
+  if (!panel) return false;
+  const rect = panel.getBoundingClientRect();
+  const topmost = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+  return !!topmost && !panel.contains(topmost);
+}
 
 export function BitableLongTextPopover({
   column,
@@ -51,23 +67,45 @@ export function BitableLongTextPopover({
   const finishRef = useRef(finish);
   finishRef.current = finish;
 
-  // Esc 取消、Ctrl/⌘+Enter 保存；键盘事件挂在 document 上以保证浮层内任何位置都生效
+  /**
+   * 键盘事件挂在 document/window 上以保证浮层内任何位置都生效：
+   * 1. Ctrl/⌘+Enter 保存：捕获阶段处理，抢在编辑器「硬换行」快捷键之前；
+   * 2. Esc 取消：冒泡阶段处理，先让右键菜单、图片预览、节点内源码框等内层浮层消费，
+   *    它们处理过（defaultPrevented / 阻止冒泡）或仍遮挡在弹层之上时不关闭弹层。
+   *    富文本正文里的 Esc 总会被 ProseMirror 标记 defaultPrevented，改由编辑器 onEscape 回调处理（见 handleEditorEscape）。
+   */
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        finishRef.current(false);
-        return;
-      }
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        e.stopPropagation();
-        finishRef.current(true);
-      }
+    const handleSaveKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return;
+      // 图表源码、公式、HTML 块等节点内编辑框自有 Ctrl+Enter「完成」语义
+      if (isNestedEditorTarget(e.target)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      finishRef.current(true);
     };
-    document.addEventListener('keydown', handleKeyDown, true);
-    return () => document.removeEventListener('keydown', handleKeyDown, true);
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (isNestedEditorTarget(e.target)) return;
+      if (isPanelCovered(panelRef.current)) return;
+      finishRef.current(false);
+    };
+    document.addEventListener('keydown', handleSaveKey, true);
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('keydown', handleSaveKey, true);
+      window.removeEventListener('keydown', handleEscape);
+    };
   }, []);
+
+  /**
+   * 富文本正文中的 Esc（斜杠菜单未打开时由编辑器回调）
+   * 遮挡判断须在按键当下进行：同一次 Esc 可能正在关闭图表全屏预览等更高层浮层；
+   * 关闭延后一拍，避免在 ProseMirror 处理按键途中销毁编辑器。
+   */
+  const handleEditorEscape = () => {
+    if (isPanelCovered(panelRef.current)) return;
+    window.setTimeout(() => finishRef.current(false), 0);
+  };
 
   return createPortal(
     <div
@@ -88,9 +126,13 @@ export function BitableLongTextPopover({
     >
       <div
         ref={panelRef}
+        // 键盘隔离区：点击标题栏/底栏空白处焦点留在面板上，表格全局快捷键不会把 Backspace 当成清空单元格
+        {...{ [KEYBOARD_SCOPE_ATTR]: '' }}
+        tabIndex={-1}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         style={{
+          outline: 'none',
           width: PANEL_WIDTH,
           maxWidth: '100%',
           maxHeight: 'min(72vh, 640px)',
@@ -100,7 +142,7 @@ export function BitableLongTextPopover({
           border: '1px solid var(--editor-border, #e2e8f0)',
           borderRadius: 10,
           boxShadow: '0 18px 48px rgba(15, 23, 42, 0.22)',
-          overflow: 'hidden',
+          // 不裁剪溢出：编辑器顶部工具栏的插入菜单及其子菜单需要伸出面板边界
         }}
       >
         {/* 头部：字段名、形态说明与关闭 */}
@@ -140,13 +182,22 @@ export function BitableLongTextPopover({
         </div>
 
         {/* 编辑区：Markdown 列走富文本，普通列走纯文本多行输入 */}
-        <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        {/* Markdown 编辑器自带滚动区：外层只负责按剩余高度收缩，工具栏与模式切换栏始终可见 */}
+        <div
+          style={
+            config.markdown
+              ? { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }
+              : { flex: 1, minHeight: 0, overflow: 'auto' }
+          }
+        >
           {config.markdown ? (
             <BitableRichTextEditor
               value={draft}
               onChange={setDraft}
               mode={mode}
               onModeChange={setMode}
+              onEscape={handleEditorEscape}
+              autoFocus
               minHeight={220}
             />
           ) : (
@@ -183,6 +234,8 @@ export function BitableLongTextPopover({
             padding: '10px 14px',
             borderTop: '1px solid var(--editor-border, #e2e8f0)',
             background: 'var(--editor-bg, #f8fafc)',
+            // 面板不再裁剪溢出，底栏自带圆角以贴合面板外形
+            borderRadius: '0 0 10px 10px',
             flexShrink: 0,
           }}
         >

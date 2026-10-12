@@ -2700,10 +2700,10 @@ button.nb-callout-icon:active {
   background: var(--editor-border);
 }
 
-/* 颜色 / 图标选择面板（Portal 到 body，fixed 定位） */
+/* 颜色 / 图标选择面板（Portal 到 body，fixed 定位；层级需高于多维表格单元格编辑弹层 100002） */
 .nb-callout-popover {
   position: fixed;
-  z-index: 10000;
+  z-index: 100005;
   box-sizing: border-box;
   padding: 4px 10px 10px;
   overflow-y: auto;

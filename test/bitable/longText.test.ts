@@ -67,6 +67,21 @@ describe('多行文本预览文本折算', () => {
     expect(previewLongText(md, { displayMode: 'firstLine', markdown: true })).toBe('标题行');
   });
 
+  test('previewLongText 剥离笔记本扩展语法标记，金额与比较运算保持原样', () => {
+    const config = { displayMode: 'firstLine', markdown: true } as const;
+    expect(previewLongText('**加粗** ==高亮== ++下划线++ 与公式 $E=mc^2$', config)).toBe('加粗 高亮 下划线 与公式 E=mc^2');
+    expect(previewLongText('售价 $5 与 $6，a == b，C++', config)).toBe('售价 $5 与 $6，a == b，C++');
+    expect(previewLongText('- [x] 已完成事项', config)).toBe('已完成事项');
+  });
+
+  test('previewLongText 跳过独占一行的块标记，落到块内正文', () => {
+    const config = { displayMode: 'firstLine', markdown: true } as const;
+    expect(previewLongText('> [!TIP]\n> 这是提示块', config)).toBe('这是提示块');
+    expect(previewLongText('<div class="nb-callout" data-color="blue">\n\n高亮块内容\n\n</div>', config)).toBe('高亮块内容');
+    expect(previewLongText('```mermaid\ngraph TD\n```\n\n图表说明', config)).toBe('图表说明');
+    expect(previewLongText('$$\nx^2\n$$', config)).toBe('x^2');
+  });
+
   test('previewLongText 在全显示模式下返回原文', () => {
     const md = '**标题行**\n第二段';
     expect(previewLongText(md, { displayMode: 'full', markdown: true })).toBe(md);
@@ -109,10 +124,70 @@ describe('多行文本的 Markdown 渲染', () => {
     expect(html).toContain('const');
   });
 
-  test('原始 HTML 被转义，杜绝脚本注入', () => {
+  test('原始 HTML 经白名单净化，杜绝脚本注入', () => {
     const html = renderBitableMarkdown('<script>alert(1)</script>\n\n正常文本');
     expect(html).not.toContain('<script>');
     expect(html).toContain('正常文本');
+  });
+
+  test('事件属性与非白名单 class 被剔除', () => {
+    const html = renderBitableMarkdown('<div class="nb-prompt-overlay nb-callout" onclick="alert(1)">内容</div>');
+    expect(html).not.toContain('onclick');
+    expect(html).not.toContain('nb-prompt-overlay');
+    expect(html).toContain('nb-callout');
+  });
+
+  test('公式渲染为待排版占位，金额文本不误判', () => {
+    const html = renderBitableMarkdown('质能方程 $E=mc^2$，售价 $5 与 $6\n\n$$\n\\frac{a}{b}\n$$');
+    expect(html).toContain('<span class="nb-md-math">E=mc^2</span>');
+    expect(html).toContain('<div class="nb-md-math">\\frac{a}{b}</div>');
+    expect(html).toContain('售价 $5 与 $6');
+  });
+
+  test('高亮与下划线使用安全定界，不误伤比较运算与 C++', () => {
+    const html = renderBitableMarkdown('==重点== 与 ++下划线++，但 a == b 且 C++ and C++ 保持原样');
+    expect(html).toContain('<mark>重点</mark>');
+    expect(html).toContain('<u>下划线</u>');
+    expect(html).toContain('a == b');
+    expect(html).toContain('C++ and C++');
+  });
+
+  test('GitHub 提示块与任务列表', () => {
+    const html = renderBitableMarkdown('> [!WARNING]\n> 小心\n\n- [ ] 待办\n- [x] 完成');
+    expect(html).toContain('nb-md-alert nb-md-alert-warning');
+    expect(html).toContain('Warning');
+    expect(html).not.toContain('[!WARNING]');
+    expect(html).toContain('nb-md-task-list');
+    expect(html).toContain('<li class="nb-md-task nb-md-task-checked">');
+    expect(html).not.toContain('[x]');
+  });
+
+  test('高亮块、分栏、折叠块按 HTML 结构渲染且内部 Markdown 生效', () => {
+    const md = [
+      '<div class="nb-callout" data-color="blue" style="background: #eff6ff;">',
+      '',
+      '**提示**内容',
+      '',
+      '</div>',
+      '',
+      '<details>',
+      '<summary>展开</summary>',
+      '',
+      '隐藏内容',
+      '',
+      '</details>',
+    ].join('\n');
+    const html = renderBitableMarkdown(md);
+    expect(html).toContain('class="nb-callout"');
+    expect(html).toContain('<strong>提示</strong>');
+    expect(html).toContain('<summary>展开</summary>');
+    expect(html).toContain('隐藏内容');
+  });
+
+  test('图表围栏以占位展示，普通代码块不受影响', () => {
+    const html = renderBitableMarkdown('```mermaid\ngraph TD\n  A --> B\n```');
+    expect(html).toContain('Mermaid 图表');
+    expect(html).not.toContain('graph TD');
   });
 
   test('常见块级与行内标记正常渲染', () => {

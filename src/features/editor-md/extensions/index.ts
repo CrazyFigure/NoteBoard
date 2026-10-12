@@ -196,6 +196,13 @@ const MarkdownTable = Table.extend({
 
 export interface BuildExtensionsOptions {
   onOpenLinkModal?: () => void;
+  /**
+   * 是否由文件级统一时间线接管撤销/重做（默认 true）
+   * 多维表格单元格等嵌入式编辑器没有独立的文档历史，需关闭以保留 TipTap 自带的短程撤销。
+   */
+  documentHistory?: boolean;
+  /** 空文档占位文案 */
+  placeholder?: string;
 }
 
 // Markdown 允许粗体、斜体等标记包裹行内代码；默认 Code 的 excludes: '_'
@@ -209,6 +216,7 @@ const MarkdownCompatibleCode = Code.extend({
  * 这是唯一的扩展装配点，不分散到各组件
  */
 export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): Extensions {
+  const useDocumentHistory = options?.documentHistory !== false;
   return [
     // StarterKit 包含：bold, italic, strike, code, heading, bulletList, orderedList,
     // listItem, blockquote, horizontalRule, history, paragraph, text, document,
@@ -245,8 +253,9 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
     // 文档末尾换行等源文件级信息
     MarkdownDocumentAttributes,
 
-    // 撤销/重做由文件级时间线统一接管，原生历史仅用于判断输入分组边界
-    UnifiedDocumentHistoryKeys.configure({ docKey }),
+    // 撤销/重做由文件级时间线统一接管，原生历史仅用于判断输入分组边界；
+    // 嵌入式编辑器关闭接管后，Mod-z 等快捷键回落到 StarterKit 自带的撤销栈
+    ...(useDocumentHistory ? [UnifiedDocumentHistoryKeys.configure({ docKey })] : []),
     // 空列表项退格只删除该节点本身，避免内置 listKeymap 触发 liftListItem
     // 把后面的同级列表项收编为子列表、导致层级整体错乱
     ListEmptyItemBackspaceFix,
@@ -265,7 +274,7 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // 占位符
     Placeholder.configure({
-      placeholder: '开始输入，或键入 / 插入内容',
+      placeholder: options?.placeholder ?? '开始输入，或键入 / 插入内容',
       emptyEditorClass: 'is-empty',
     }),
 

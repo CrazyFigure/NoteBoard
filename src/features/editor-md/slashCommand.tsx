@@ -1480,7 +1480,8 @@ export const slashSuggestion = {
         if (props.clientRect && component.element) {
           popup = document.createElement('div');
           popup.style.position = 'fixed';
-          popup.style.zIndex = '9999';
+          // 挂在 body 下：层级需高于多维表格单元格编辑弹层（100002），否则菜单被遮罩挡住
+          popup.style.zIndex = '100005';
           updatePosition(props);
           popup.appendChild(component.element);
           document.body.appendChild(popup);

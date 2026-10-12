@@ -96,6 +96,47 @@ export function renderRawHtmlPreview(raw: string, resolveSrc: (src: string) => s
     return { kind: 'source', reason: 'empty' };
   }
 
+  rewriteMediaSources(fragment, resolveSrc);
+
+  const container = document.createElement('div');
+  container.appendChild(fragment);
+  return { kind: 'render', html: container.innerHTML };
+}
+
+// 整篇 Markdown 渲染结果允许保留的 class：代码高亮配色、高亮块/分栏结构与只读渲染自身的标记类。
+// 其余 class 一律剔除，防止内容借用应用自身的类名（如全屏遮罩）伪装界面。
+const ALLOWED_CLASS_PATTERN = /^(?:hljs(?:-[\w-]+)?|language-[\w+#.-]+|nb-callout|nb-columns|nb-column|nb-md-[\w-]+|[\w-]+_)$/;
+
+/**
+ * 净化整篇 Markdown 渲染出的 HTML（多维表格只读单元格等不经编辑器渲染的场景）。
+ * 与块级 HTML 预览共用同一白名单，额外放行受限的 class。
+ * @param html markdown-it 等渲染器输出的 HTML
+ * @param resolveSrc 图片地址解析（本地相对路径 → webview 可访问的地址），默认原样返回
+ */
+export function sanitizeRenderedMarkdown(html: string, resolveSrc: (src: string) => string = (src) => src): string {
+  if (!html) return '';
+  const fragment = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS,
+    ALLOWED_ATTR: [...ALLOWED_ATTR, 'class'],
+    ALLOWED_URI_REGEXP,
+    ALLOW_DATA_ATTR: false,
+    RETURN_DOM_FRAGMENT: true,
+  });
+
+  for (const element of fragment.querySelectorAll('[class]')) {
+    const kept = Array.from(element.classList).filter((name) => ALLOWED_CLASS_PATTERN.test(name));
+    if (kept.length > 0) element.setAttribute('class', kept.join(' '));
+    else element.removeAttribute('class');
+  }
+  rewriteMediaSources(fragment, resolveSrc);
+
+  const container = document.createElement('div');
+  container.appendChild(fragment);
+  return container.innerHTML;
+}
+
+/** 改写片段内图片/媒体地址，并统一图片的拖拽、Referer 与尺寸处理 */
+function rewriteMediaSources(fragment: DocumentFragment, resolveSrc: (src: string) => string): void {
   // 本地图片地址改写为 webview 可加载的地址；禁止原生拖拽图片（会把地址拖进编辑器）；
   // 网络图片与图片节点一致不发送 Referer（兼顾隐私与图床防盗链）
   for (const image of fragment.querySelectorAll('img')) {
@@ -113,8 +154,4 @@ export function renderRawHtmlPreview(raw: string, resolveSrc: (src: string) => s
   for (const source of fragment.querySelectorAll('source[src]')) {
     source.setAttribute('src', resolveSrc(source.getAttribute('src') ?? ''));
   }
-
-  const container = document.createElement('div');
-  container.appendChild(fragment);
-  return { kind: 'render', html: container.innerHTML };
 }

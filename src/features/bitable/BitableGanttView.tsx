@@ -38,8 +38,10 @@ import {
   ganttAxisIndexEnd,
   ganttAxisIndexStart,
   groupFlatTreeRows,
+  isInKeyboardScope,
   isSlotNoop,
   isWeekendDay,
+  releaseScopedFocusOnPointerDown,
   parseClipboardMatrix,
   slotToSpliceIndex,
   tileMatrix,
@@ -275,7 +277,12 @@ export function BitableGanttView({
   const rowBodyRef = useRef<HTMLTableSectionElement>(null);
 
   const focusClipboardProxy = useCallback(() => {
-    window.setTimeout(() => clipboardProxyRef.current?.focus({ preventScroll: true }), 0);
+    window.setTimeout(() => {
+      // 双击行打开记录详情时，单击排队的抢焦点会晚于侧栏接管焦点执行；焦点已在隔离区内则不抢回，
+      // 否则 Backspace 会落到代理框上清空背后选中行的数据
+      if (isInKeyboardScope(document.activeElement)) return;
+      clipboardProxyRef.current?.focus({ preventScroll: true });
+    }, 0);
   }, []);
   const blurClipboardProxy = useCallback(() => {
     clipboardProxyRef.current?.blur();
@@ -1312,6 +1319,8 @@ export function BitableGanttView({
 
   return (
     <div
+      // 点回甘特图时释放记录侧栏持有的焦点，键盘交还给表格
+      onMouseDownCapture={releaseScopedFocusOnPointerDown}
       style={{
         width: '100%',
         height: '100%',

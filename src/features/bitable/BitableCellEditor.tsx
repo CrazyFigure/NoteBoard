@@ -304,11 +304,12 @@ export function BitableCellEditor({
       if (config.markdown) {
         return (
           <div
+            // 不裁剪溢出：顶部工具栏的插入/标题下拉需要伸出边框，圆角由编辑器首尾栏自行处理
+            className="nb-bitable-rte-framed"
             style={{
               border: '1px solid var(--editor-border, #cbd5e1)',
               borderRadius: 6,
               background: 'var(--editor-bg, #ffffff)',
-              overflow: 'hidden',
             }}
           >
             <BitableRichTextEditor

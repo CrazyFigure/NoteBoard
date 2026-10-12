@@ -7,7 +7,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { BitableColumn, BitableRow, ColumnOptionAction } from './bitableTypes';
 import { BitableCellEditor } from './BitableCellEditor';
 import { getFieldTypeMeta } from './BitableFieldMeta';
-import { previewLongText, resolveLongTextConfig } from './bitableUtils';
+import { KEYBOARD_SCOPE_ATTR, previewLongText, resolveLongTextConfig } from './bitableUtils';
 import { X, Trash2 } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 
@@ -80,6 +80,18 @@ export function BitableRecordPanel({
   const widthRef = useRef(width);
   widthRef.current = width;
   const [resizing, setResizing] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * 打开或切换记录时把焦点接到侧栏上：否则焦点仍停在表格行的「展开」按钮或剪贴板代理上，
+   * 此时按 Backspace 会被表格当成「删除选中行」，删掉的正是刚展开的这条记录。
+   * 焦点已在侧栏内（如正在编辑某个字段）时不打断。
+   */
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel || panel.contains(document.activeElement)) return;
+    panel.focus({ preventScroll: true });
+  }, [row.id]);
   // 拖拽起点的鼠标 X 与当时的宽度，用于在 mousemove 中换算新的目标宽度
   const startXRef = useRef(0);
   const startWidthRef = useRef(width);
@@ -131,10 +143,16 @@ export function BitableRecordPanel({
 
   return (
     <div
+      ref={panelRef}
+      // 键盘隔离区：tabIndex=-1 让点击空白处时焦点停在侧栏自身而非 body，
+      // 表格的全局快捷键据此识别并放行，避免 Backspace 删掉背后选中的行
+      {...{ [KEYBOARD_SCOPE_ATTR]: '' }}
+      tabIndex={-1}
       // 阻断事件冒泡：避免点击侧边栏时误触发表格的选区清空
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
       style={{
+        outline: 'none',
         position: 'absolute',
         top: 0,
         right: 0,
