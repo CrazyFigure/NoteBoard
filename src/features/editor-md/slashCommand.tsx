@@ -398,7 +398,7 @@ const INFOGRAPHIC_LEAFS: LeafCommandItem[] = INFOGRAPHIC_TEMPLATES.map((tmpl) =>
 const DATETIME_LEAFS: LeafCommandItem[] = [
   {
     id: 'date',
-    label: '插入当前日期',
+    label: '当前日期',
     description: '插入当前日期（如 ' + new Date().toISOString().slice(0, 10) + '）',
     groupId: 'datetime',
     groupLabel: '日期时间',
@@ -414,7 +414,7 @@ const DATETIME_LEAFS: LeafCommandItem[] = [
   },
   {
     id: 'time',
-    label: '插入当前时间',
+    label: '当前时间',
     description: '插入当前时刻（如 ' + new Date().toTimeString().slice(0, 8) + '）',
     groupId: 'datetime',
     groupLabel: '日期时间',
@@ -430,7 +430,7 @@ const DATETIME_LEAFS: LeafCommandItem[] = [
   },
   {
     id: 'datetime',
-    label: '插入日期与时间',
+    label: '日期与时间',
     description: '插入完整日期时刻（如 ' + new Date().toISOString().slice(0, 10) + ' ' + new Date().toTimeString().slice(0, 8) + '）',
     groupId: 'datetime',
     groupLabel: '日期时间',
@@ -553,7 +553,7 @@ const RAW_HTML_LEAF: LeafCommandItem = {
 
 const IMAGE_LOCAL_LEAF: LeafCommandItem = {
   id: 'image',
-  label: '插入本地图片',
+  label: '本地图片',
   description: '选择本地图片并自动保存到文档 /img 目录',
   shortcutHint: '/img',
   icon: <ImageIcon size={17} />,
@@ -570,7 +570,7 @@ const IMAGE_LOCAL_LEAF: LeafCommandItem = {
 
 const IMAGE_URL_LEAF: LeafCommandItem = {
   id: 'imageUrl',
-  label: '插入网络图片',
+  label: '网络图片',
   description: '通过在线网络 URL 插入图片',
   shortcutHint: '/urlimg',
   icon: <ImageIcon size={17} style={{ opacity: 0.7 }} />,
@@ -589,7 +589,7 @@ const IMAGE_URL_LEAF: LeafCommandItem = {
 
 const LINK_LEAF: LeafCommandItem = {
   id: 'link',
-  label: '插入超链接',
+  label: '超链接',
   description: '插入网页链接或文档相对链接',
   shortcutHint: '/link',
   icon: <Link2 size={17} color="#3b82f6" />,

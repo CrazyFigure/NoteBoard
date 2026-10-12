@@ -3,7 +3,7 @@
 // 2. 未选中文本：浮现标题(H1~H6二级菜单)、提示块(二级菜单)、高亮块(二级菜单)、列表(二级菜单)、代码块、引用块、折叠块、分栏(二级菜单)、表格、公式、图表等
 // 详见 docs/07-UI布局与交互规范.md
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import type { Editor } from '@tiptap/core';
 import { isInTable } from '@tiptap/pm/tables';
 import { applyTablePaste } from './tableClipboard';
@@ -94,6 +94,16 @@ export function EditorContextMenu({
     left: 0,
     flipLeft: false,
   });
+  // 按子菜单实际高度做底部越界防护后的 top，避免矮子菜单也被按固定高度上推而与触发项错位
+  const [submenuTop, setSubmenuTop] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    const el = submenuRef.current;
+    if (!activeSubmenu || !el) return;
+    // 绘制前量出子菜单真实高度，仅在确实会超出视口底部时才上移
+    const maxTop = window.innerHeight - el.offsetHeight - 8;
+    setSubmenuTop(Math.max(8, Math.min(submenuPos.top, maxTop)));
+  }, [activeSubmenu, submenuPos]);
 
   useEffect(() => {
     if (!position) return;
@@ -602,7 +612,7 @@ export function EditorContextMenu({
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Boxes size={15} color="#3b82f6" />
-                <span>GitHub 提示块</span>
+                <span>插入 GitHub 提示块</span>
               </div>
               <ChevronRight size={14} style={{ opacity: 0.6 }} />
             </button>
@@ -745,7 +755,7 @@ export function EditorContextMenu({
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Sigma size={15} />
-                <span>行内公式 ($...$)</span>
+                <span>插入行内公式 ($...$)</span>
               </div>
             </button>
 
@@ -765,7 +775,7 @@ export function EditorContextMenu({
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Workflow size={15} color="var(--accent-500, #3b82f6)" />
-                <span>Mermaid 图表</span>
+                <span>插入 Mermaid 图表</span>
               </div>
             </button>
 
@@ -813,7 +823,7 @@ export function EditorContextMenu({
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Minus size={15} />
-                <span>水平分割线 (---)</span>
+                <span>插入水平分割线 (---)</span>
               </div>
             </button>
           </>
@@ -827,7 +837,7 @@ export function EditorContextMenu({
           className="nb-context-menu"
           style={{
             position: 'fixed',
-            top: Math.max(8, Math.min(submenuPos.top, window.innerHeight - 300)),
+            top: submenuTop ?? submenuPos.top,
             left: submenuPos.left,
             zIndex: 10000,
             background: 'var(--editor-surface, #ffffff)',
