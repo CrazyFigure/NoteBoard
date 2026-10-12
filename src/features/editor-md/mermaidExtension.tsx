@@ -147,7 +147,15 @@ function MermaidComponent({ node, updateAttributes, selected, editor, getPos }: 
   // 关闭回调保持稳定引用，避免弹窗内 Esc 监听反复重绑
   const closeFullscreen = useCallback(() => setFullscreen(false), []);
   const containerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const renderTokenRef = useRef<number>(0);
+
+  // 进入编辑时聚焦源码框：否则焦点仍在编辑器且整块处于节点选中，首次按键会把整个图表替换掉
+  useEffect(() => {
+    if (!editing) return;
+    const frame = requestAnimationFrame(() => textareaRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [editing]);
 
   const code = node.attrs.code || '';
 
@@ -281,6 +289,7 @@ function MermaidComponent({ node, updateAttributes, selected, editor, getPos }: 
             </div>
           </div>
           <textarea
+            ref={textareaRef}
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
             placeholder="输入 Mermaid 语法，例如:&#10;graph TD&#10;    A[开始] --> B[结束]"

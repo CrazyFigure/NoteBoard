@@ -1464,6 +1464,11 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
 .ProseMirror .react-renderer.nb-sel-block::after {
   inset: -3px;
 }
+/* 节点视图处于源码编辑态（Mermaid / 信息图 / 公式 / HTML 块的编辑框）：用户关注的是输入内容，
+   整块底板会把编辑区整体染成主题色，干扰阅读，编辑期间隐藏 */
+.ProseMirror .nb-sel-block:has(textarea)::after {
+  display: none;
+}
 /* 表格外层是横向滚动容器，向外扩出的底板会撑出滚动条，改为贴合容器内沿 */
 .ProseMirror .tableWrapper.nb-sel-block::after {
   inset: 0;
