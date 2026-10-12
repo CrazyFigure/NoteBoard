@@ -51,6 +51,7 @@ import { isTouchInteraction } from '../../core/inputModality';
 import { INFOGRAPHIC_TEMPLATES } from '../infographic/infographicTemplates';
 import { insertDetailsContent } from './detailsExtension';
 import { insertRawHtmlContent } from './rawHtmlBlockView';
+import { CODE_LANGUAGES } from './codeLanguages';
 
 /** 叶子具体执行命令项 */
 export interface LeafCommandItem {
@@ -63,6 +64,8 @@ export interface LeafCommandItem {
   shortcutHint?: string;
   icon: ReactNode;
   keywords?: string;
+  /** 次级候选：仅精确命中别名时与常规命令同级，前缀/包含匹配排在常规命令之后 */
+  secondary?: boolean;
   action: (editor: Editor, range: Range) => void;
 }
 
@@ -443,10 +446,26 @@ const CODE_BLOCK_LEAF: LeafCommandItem = {
   description: '带语法高亮与语言切换的多行代码框',
   shortcutHint: '/code',
   icon: <Code2 size={17} />,
-  aliases: ['daima', 'daimakuai', 'dm', 'code', 'codeblock', 'pre', 'js', 'ts', 'py', 'sql', 'json', 'cpp'],
+  // 具体语言（js、py 等）由 CODE_LANGUAGE_LEAFS 承接，直接插入对应语言的代码块
+  aliases: ['daima', 'daimakuai', 'dm', 'code', 'codeblock', 'pre'],
   keywords: '代码 代码块 code codeblock daima dm',
   action: (editor, range) => editor.chain().focus().deleteRange(range).toggleCodeBlock().run(),
 };
+
+/** 指定语言的代码块（仅参与搜索联想：/java、/py 等直接插入带语言的代码块）；纯文本即通用代码块，不重复生成 */
+const CODE_LANGUAGE_LEAFS: LeafCommandItem[] = CODE_LANGUAGES.filter((lang) => lang.value !== 'plaintext').map((lang) => ({
+  id: `codeBlock-${lang.value}`,
+  label: `${lang.label} 代码块`,
+  description: `插入 ${lang.label} 语法高亮代码块`,
+  groupId: 'codeLanguages',
+  groupLabel: '代码块',
+  shortcutHint: `/${lang.shortcut}`,
+  icon: <Code2 size={17} />,
+  aliases: [...new Set([lang.value, lang.shortcut, ...lang.aliases])],
+  keywords: `代码 代码块 code codeblock daima ${lang.label}`,
+  secondary: true,
+  action: (editor, range) => editor.chain().focus().deleteRange(range).setCodeBlock({ language: lang.value }).run(),
+}));
 
 const BLOCKQUOTE_LEAF: LeafCommandItem = {
   id: 'blockquote',
@@ -635,11 +654,12 @@ const ROOT_GROUPS: GroupCommandItem[] = [
   },
 ];
 
-/** 全量叶子命令扁平池（优先级：标题 > 列表 > 代码块 > 提示块 > 引用块 > 折叠块 > HTML 块 > 表格 > 公式 > 信息图 > 图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
+/** 全量叶子命令扁平池（优先级：标题 > 列表 > 代码块 > 各语言代码块 > 提示块 > 引用块 > 折叠块 > HTML 块 > 表格 > 公式 > 信息图 > 图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
 const ALL_LEAFS: LeafCommandItem[] = [
   ...HEADING_LEAFS,
   ...LIST_LEAFS,
   CODE_BLOCK_LEAF,
+  ...CODE_LANGUAGE_LEAFS,
   ...ALERT_LEAFS,
   BLOCKQUOTE_LEAF,
   DETAILS_LEAF,
@@ -691,7 +711,13 @@ function searchLeafCommands(query: string): LeafCommandItem[] {
     const aliases = (item.aliases ?? []).map((a) => a.toLowerCase());
 
     let score = 0;
-    if (label.startsWith(q)) score = 160;
+    if (item.secondary) {
+      // 次级候选（具体语言代码块）：精确命中才与常规快捷词同级，前缀匹配低于常规命令的别名前缀，
+      // 避免 /p、/t 等既有快捷词被 Python、TypeScript 抢占首位
+      if (aliases.includes(q)) score = 150;
+      else if (label.startsWith(q) || aliases.some((a) => a.startsWith(q))) score = 110;
+      else if (label.includes(q) || aliases.some((a) => a.includes(q)) || keywords.includes(q)) score = 60;
+    } else if (label.startsWith(q)) score = 160;
     else if (aliases.some((a) => a === q)) score = 150;
     else if (aliases.some((a) => a.startsWith(q))) score = 120;
     else if (label.includes(q)) score = 100 - label.indexOf(q);
