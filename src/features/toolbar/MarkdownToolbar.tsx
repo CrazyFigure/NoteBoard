@@ -26,6 +26,7 @@ import {
   CheckSquare,
   Quote,
   ListCollapse,
+  SquareCode,
   Table as TableIcon,
   Code2,
   Sigma,
@@ -58,6 +59,7 @@ import {
 } from '../history/documentHistory';
 import { insertLocalImageWithDialog, pickAndSaveLocalImage } from '../editor-md/imagePaste';
 import { DETAILS_SOURCE_SNIPPET, insertDetailsContent } from '../editor-md/detailsExtension';
+import { RAW_HTML_SOURCE_SNIPPET, insertRawHtmlContent } from '../editor-md/rawHtmlBlockView';
 // 🔴 S03：从 editor-md 边界内实例表获取内核实例（不再依赖编辑器组件文件的 getter 导出）
 import { getMdTipTapEditor as getActiveTipTapEditor, getMdSourceView as getActiveSourceView } from '../editor-md/editorInstances';
 import { emit } from '../../core/emitter';
@@ -362,6 +364,20 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
     }
     if (!editor) return;
     editor.chain().focus().insertContent(insertDetailsContent()).run();
+  };
+
+  // 插入 HTML 块：源码模式写入示例片段，可视化模式插入空块并直接进入源码编辑
+  const handleInsertRawHtml = () => {
+    setInsertDropdownOpen(false);
+    if (isSourceMode) {
+      executeSourceAction((view) => {
+        const { from } = view.state.selection.main;
+        view.dispatch({ changes: { from, to: from, insert: RAW_HTML_SOURCE_SNIPPET } });
+      });
+      return;
+    }
+    if (!editor) return;
+    editor.chain().focus().insertContent(insertRawHtmlContent()).run();
   };
 
   const handleInsertDivider = () => {
@@ -695,7 +711,7 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
             icon={<PlusSquare size={15} />}
             label="插入"
             hasDropdown
-            title="插入超链接、图片、表格、公式、图表、提示块、折叠块、日期时间等"
+            title="插入超链接、图片、表格、公式、图表、提示块、折叠块、HTML 块、日期时间等"
           />
         }
       >
@@ -753,6 +769,13 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
           icon={<ListCollapse size={14} />}
           label="折叠块 (Details)"
           onClick={handleInsertDetails}
+        />
+
+        {/* 3.2 HTML 块 */}
+        <ToolbarDropdownItem
+          icon={<SquareCode size={14} />}
+          label="HTML 块"
+          onClick={handleInsertRawHtml}
         />
 
         {/* 4. 表格二级菜单 */}

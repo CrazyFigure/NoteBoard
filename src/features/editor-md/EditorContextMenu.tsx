@@ -8,6 +8,7 @@ import type { Editor } from '@tiptap/core';
 import { isInTable } from '@tiptap/pm/tables';
 import { applyTablePaste } from './tableClipboard';
 import { insertDetailsContent } from './detailsExtension';
+import { insertRawHtmlContent } from './rawHtmlBlockView';
 import {
   Bold,
   Italic,
@@ -28,6 +29,7 @@ import {
   ListTodo,
   Quote,
   ListCollapse,
+  SquareCode,
   Table,
   FileCode,
   Sigma,
@@ -634,6 +636,26 @@ export function EditorContextMenu({
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <ListCollapse size={15} />
                 <span>插入折叠块</span>
+              </div>
+            </button>
+
+            {/* 5.2 插入 HTML 块（插入后直接进入源码编辑） */}
+            <button
+              type="button"
+              style={btnStyle}
+              onClick={() => {
+                onClose();
+                editor.chain().focus().insertContent(insertRawHtmlContent()).run();
+              }}
+              onMouseEnter={(e) => {
+                setActiveSubmenu(null);
+                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
+              }}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <SquareCode size={15} />
+                <span>插入 HTML 块</span>
               </div>
             </button>
 

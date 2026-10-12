@@ -5,6 +5,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from 'react';
 import { type Editor } from '@tiptap/core';
 import { BubbleMenu } from '@tiptap/react/menus';
+import { NodeSelection, type Selection } from '@tiptap/pm/state';
 import {
   Bold,
   Italic,
@@ -293,7 +294,7 @@ export function EditorBubbleMenu({
     state,
   }: {
     editor: Editor;
-    state: { selection: { empty: boolean } };
+    state: { selection: Selection };
   }) => {
     const { selection } = state;
     if (selection.empty) return false;
@@ -301,6 +302,8 @@ export function EditorBubbleMenu({
     if (currentEditor.isActive('codeBlock')) return false;
     // 跨单元格多选时不弹出行内文本气泡菜单，交由表格工具栏处理
     if (isCellSelection(selection)) return false;
+    // 选中块级 HTML 节点时文本格式无从施加，且浮层会遮挡渲染内容
+    if (selection instanceof NodeSelection && selection.node.type.name === 'rawHtmlBlock') return false;
     return true;
   }, []);
   const bubbleMenuOptions = useMemo(() => ({
