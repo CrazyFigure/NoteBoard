@@ -42,6 +42,9 @@ import {
   BarChart3,
   ListCollapse,
   SquareCode,
+  Columns2,
+  Columns3,
+  Columns4,
 } from 'lucide-react';
 import { insertLocalImageWithDialog } from './imagePaste';
 import { promptImageUrl } from '../../components/promptPresets';
@@ -51,6 +54,7 @@ import { IS_MOBILE_UI } from '../../core/platform';
 import { isTouchInteraction } from '../../core/inputModality';
 import { INFOGRAPHIC_TEMPLATES } from '../infographic/infographicTemplates';
 import { insertDetailsContent } from './detailsExtension';
+import { insertColumnsBlock } from './columnsExtension';
 import { insertRawHtmlContent } from './rawHtmlBlockView';
 import { CODE_LANGUAGES } from './codeLanguages';
 
@@ -492,6 +496,26 @@ const DETAILS_LEAF: LeafCommandItem = {
   },
 };
 
+/** 分栏卡片：两栏 / 三栏 / 四栏（插入后可在分栏工具栏中增减栏数，最多 6 栏） */
+const COLUMNS_LEAFS: LeafCommandItem[] = [
+  { count: 2, label: '两栏分栏', alias: 'col2', icon: <Columns2 size={17} /> },
+  { count: 3, label: '三栏分栏', alias: 'col3', icon: <Columns3 size={17} /> },
+  { count: 4, label: '四栏分栏', alias: 'col4', icon: <Columns4 size={17} /> },
+].map(({ count, label, alias, icon }) => ({
+  id: `columns${count}`,
+  label,
+  description: `并排的 ${count} 个卡片栏，可拖动调整栏宽，栏内支持任意 Markdown / HTML`,
+  groupId: 'columns',
+  groupLabel: '分栏卡片',
+  shortcutHint: `/${alias}`,
+  icon,
+  aliases: [alias, `fl${count}`, `fenlan${count}`, ...(count === 2 ? ['fenlan', 'fl', 'columns', 'cols', 'col', 'lanmu'] : [])],
+  keywords: `分栏 分列 多栏 卡片 并排 ${count}栏 columns column layout fenlan fl`,
+  action: (editor: Editor, range: Range) => {
+    insertColumnsBlock(editor, count, range);
+  },
+}));
+
 const RAW_HTML_LEAF: LeafCommandItem = {
   id: 'rawHtml',
   label: 'HTML 块',
@@ -621,6 +645,15 @@ const ROOT_GROUPS: GroupCommandItem[] = [
     children: ALERT_LEAFS,
   },
   {
+    id: 'columns',
+    label: '分栏卡片',
+    description: '两栏、三栏、四栏并排卡片，可拖动调整栏宽',
+    shortcutHint: '/col2, /col3',
+    icon: <Columns2 size={17} />,
+    isGroup: true,
+    children: COLUMNS_LEAFS,
+  },
+  {
     id: 'tables',
     label: '表格数据',
     description: '标准 3x3 表格、紧凑 2x2 与宽表格 4x4',
@@ -658,7 +691,7 @@ const ROOT_GROUPS: GroupCommandItem[] = [
   },
 ];
 
-/** 全量叶子命令扁平池（优先级：标题 > 列表 > 代码块 > 各语言代码块 > 提示块 > 引用块 > 折叠块 > HTML 块 > 表格 > 公式 > 信息图 > 图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
+/** 全量叶子命令扁平池（优先级：标题 > 列表 > 代码块 > 各语言代码块 > 提示块 > 引用块 > 折叠块 > 分栏 > HTML 块 > 表格 > 公式 > 信息图 > 图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
 const ALL_LEAFS: LeafCommandItem[] = [
   ...HEADING_LEAFS,
   ...LIST_LEAFS,
@@ -667,6 +700,7 @@ const ALL_LEAFS: LeafCommandItem[] = [
   ...ALERT_LEAFS,
   BLOCKQUOTE_LEAF,
   DETAILS_LEAF,
+  ...COLUMNS_LEAFS,
   RAW_HTML_LEAF,
   ...TABLE_LEAFS,
   ...MATH_LEAFS,
@@ -680,7 +714,7 @@ const ALL_LEAFS: LeafCommandItem[] = [
   CLEAR_FORMAT_LEAF,
 ];
 
-/** 默认根级菜单项（严格遵循优先级：标题 > 列表 > 代码块 > GitHub提示 > 引用块 > 折叠块 > HTML 块 > 表格 > 公式与图表 > 本地图片 > 网络图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
+/** 默认根级菜单项（严格遵循优先级：标题 > 列表 > 代码块 > GitHub提示 > 引用块 > 折叠块 > 分栏 > HTML 块 > 表格 > 公式与图表 > 本地图片 > 网络图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
 const ROOT_MENU_ENTRIES: MenuEntry[] = [
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'headings')! },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'lists')! },
@@ -688,6 +722,7 @@ const ROOT_MENU_ENTRIES: MenuEntry[] = [
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'alerts')! },
   { type: 'leaf', item: BLOCKQUOTE_LEAF },
   { type: 'leaf', item: DETAILS_LEAF },
+  { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'columns')! },
   { type: 'leaf', item: RAW_HTML_LEAF },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'tables')! },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'math')! },

@@ -1,6 +1,6 @@
 // NoteBoard Markdown 编辑器右键双模上下文菜单
 // 1. 选中文本：浮现加粗、斜体、代码、多色高亮(二级菜单)、标题转换(H1~H6二级菜单)、引用、复制剪切
-// 2. 未选中文本：浮现标题(H1~H6二级菜单)、提示块(二级菜单)、列表(二级菜单)、代码块、引用块、折叠块、表格、公式、图表等
+// 2. 未选中文本：浮现标题(H1~H6二级菜单)、提示块(二级菜单)、列表(二级菜单)、代码块、引用块、折叠块、分栏(二级菜单)、表格、公式、图表等
 // 详见 docs/07-UI布局与交互规范.md
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -8,6 +8,7 @@ import type { Editor } from '@tiptap/core';
 import { isInTable } from '@tiptap/pm/tables';
 import { applyTablePaste } from './tableClipboard';
 import { insertDetailsContent } from './detailsExtension';
+import { insertColumnsBlock } from './columnsExtension';
 import { insertRawHtmlContent } from './rawHtmlBlockView';
 import { promptLinkUrl } from '../../components/promptPresets';
 import {
@@ -31,6 +32,9 @@ import {
   Quote,
   ListCollapse,
   SquareCode,
+  Columns2,
+  Columns3,
+  Columns4,
   Table,
   FileCode,
   Sigma,
@@ -641,6 +645,26 @@ export function EditorContextMenu({
               </div>
             </button>
 
+            {/* 5.15 插入分栏卡片 (带二级子菜单：两栏 / 三栏 / 四栏) */}
+            <button
+              type="button"
+              style={{
+                ...btnStyle,
+                background:
+                  activeSubmenu === 'insert-columns'
+                    ? 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))'
+                    : 'transparent',
+              }}
+              onMouseEnter={(e) => handleOpenSubmenu('insert-columns', e)}
+              onClick={(e) => handleOpenSubmenu('insert-columns', e)}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Columns2 size={15} />
+                <span>插入分栏</span>
+              </div>
+              <ChevronRight size={14} style={{ opacity: 0.6 }} />
+            </button>
+
             {/* 5.2 插入 HTML 块（插入后直接进入源码编辑） */}
             <button
               type="button"
@@ -935,6 +959,35 @@ export function EditorContextMenu({
                   <span>有序列表 (Numbered)</span>
                 </div>
               </button>
+            </>
+          )}
+
+          {/* 二级：分栏卡片 */}
+          {activeSubmenu === 'insert-columns' && (
+            <>
+              {[
+                { count: 2, label: '两栏', icon: <Columns2 size={15} /> },
+                { count: 3, label: '三栏', icon: <Columns3 size={15} /> },
+                { count: 4, label: '四栏', icon: <Columns4 size={15} /> },
+              ].map((c) => (
+                <button
+                  key={c.count}
+                  type="button"
+                  style={btnStyle}
+                  onClick={() => {
+                    // 插入均分的分栏卡片，光标落在第一栏
+                    insertColumnsBlock(editor, c.count);
+                    onClose();
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {c.icon}
+                    <span>{c.label}</span>
+                  </div>
+                </button>
+              ))}
             </>
           )}
 

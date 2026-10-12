@@ -50,6 +50,8 @@ describe('折叠块：标准写法逐字往返', () => {
     // 列表项内块间的空行写法沿用列表序列化规则（与引用、代码块一致），此处使用其输出形式
     ['列表中的折叠块', '- item\n  <details>\n  <summary>x</summary>\n  \n  body\n  \n  </details>'],
     ['引用中的折叠块', '> <details>\n> <summary>x</summary>\n>\n> body\n>\n> </details>'],
+    // 表格首部换行不得在正文开头多出空行
+    ['正文为表格', '<details>\n<summary>x</summary>\n\n| a   | b   |\n| --- | --- |\n| 1   | 2   |\n\n</details>'],
     ['正文首尾空行', '<details>\n<summary>x</summary>\n\n\n\nbody\n\n\n\n</details>'],
   ];
 

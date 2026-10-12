@@ -27,6 +27,9 @@ import {
   Quote,
   ListCollapse,
   SquareCode,
+  Columns2,
+  Columns3,
+  Columns4,
   Table as TableIcon,
   Code2,
   Sigma,
@@ -60,6 +63,7 @@ import {
 import { insertLocalImageWithDialog, pickAndSaveLocalImage } from '../editor-md/imagePaste';
 import { promptImageUrl } from '../../components/promptPresets';
 import { DETAILS_SOURCE_SNIPPET, insertDetailsContent } from '../editor-md/detailsExtension';
+import { columnsSourceSnippet, insertColumnsBlock } from '../editor-md/columnsExtension';
 import { RAW_HTML_SOURCE_SNIPPET, insertRawHtmlContent } from '../editor-md/rawHtmlBlockView';
 // 🔴 S03：从 editor-md 边界内实例表获取内核实例（不再依赖编辑器组件文件的 getter 导出）
 import { getMdTipTapEditor as getActiveTipTapEditor, getMdSourceView as getActiveSourceView } from '../editor-md/editorInstances';
@@ -365,6 +369,20 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
     }
     if (!editor) return;
     editor.chain().focus().insertContent(insertDetailsContent()).run();
+  };
+
+  // 插入分栏卡片：源码模式写入标准分栏片段，可视化模式插入分栏节点并把光标放到第一栏
+  const handleInsertColumns = (count: number) => {
+    setInsertDropdownOpen(false);
+    if (isSourceMode) {
+      executeSourceAction((view) => {
+        const { from } = view.state.selection.main;
+        view.dispatch({ changes: { from, to: from, insert: columnsSourceSnippet(count) } });
+      });
+      return;
+    }
+    if (!editor) return;
+    insertColumnsBlock(editor, count);
   };
 
   // 插入 HTML 块：源码模式写入示例片段，可视化模式插入空块并直接进入源码编辑
@@ -713,7 +731,7 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
             icon={<PlusSquare size={15} />}
             label="插入"
             hasDropdown
-            title="插入超链接、图片、表格、公式、图表、提示块、折叠块、HTML 块、日期时间等"
+            title="插入超链接、图片、表格、公式、图表、提示块、折叠块、分栏、HTML 块、日期时间等"
           />
         }
       >
@@ -771,6 +789,31 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
           icon={<ListCollapse size={14} />}
           label="折叠块 (Details)"
           onClick={handleInsertDetails}
+        />
+
+        {/* 3.15 分栏卡片二级菜单 */}
+        <ToolbarDropdownItem
+          icon={<Columns2 size={14} />}
+          label="分栏卡片"
+          submenu={
+            <>
+              <ToolbarDropdownItem
+                icon={<Columns2 size={14} />}
+                label="两栏"
+                onClick={() => handleInsertColumns(2)}
+              />
+              <ToolbarDropdownItem
+                icon={<Columns3 size={14} />}
+                label="三栏"
+                onClick={() => handleInsertColumns(3)}
+              />
+              <ToolbarDropdownItem
+                icon={<Columns4 size={14} />}
+                label="四栏"
+                onClick={() => handleInsertColumns(4)}
+              />
+            </>
+          }
         />
 
         {/* 3.2 HTML 块 */}

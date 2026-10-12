@@ -68,8 +68,8 @@ function findSafeCutPoint(md: MarkdownIt, content: string, start: number, maxEnd
       continue;
     }
 
-    // 检查是否是块级边界（空行后非空行开头），且不切开折叠块 <details>
-    if (isBlockBoundary(content, pos) && !isInsideDetails(content, pos)) {
+    // 检查是否是块级边界（空行后非空行开头），且不切开折叠块 <details> 与分栏块
+    if (isBlockBoundary(content, pos) && !isInsideDetails(content, pos) && !isInsideColumns(content, pos)) {
       return pos;
     }
 
@@ -131,6 +131,19 @@ function isInsideDetails(content: string, pos: number): boolean {
   const opens = before.match(/<details[\s>]/gi)?.length ?? 0;
   if (opens === 0) return false;
   const closes = before.match(/<\/details\s*>/gi)?.length ?? 0;
+  return opens > closes;
+}
+
+/**
+ * 检查 pos 是否在分栏块（<div class="nb-columns">）内：从首个分栏块起按 div 开始/结束标签配对，
+ * 文档中没有分栏块时不做任何统计，避免普通手写 HTML 影响切点。
+ */
+function isInsideColumns(content: string, pos: number): boolean {
+  const first = content.indexOf('<div class="nb-columns"');
+  if (first < 0 || first >= pos) return false;
+  const segment = content.substring(first, pos);
+  const opens = segment.match(/<div[\s>]/gi)?.length ?? 0;
+  const closes = segment.match(/<\/div\s*>/gi)?.length ?? 0;
   return opens > closes;
 }
 
