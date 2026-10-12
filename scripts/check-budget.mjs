@@ -52,9 +52,10 @@ const FORBIDDEN_PACKAGES = [
 
 // 🔴 N10.1 可配置字节预算：入口静态闭包的硬上限（KiB，minified）。
 //    当前实测约 1006 KiB（JS）/ 68 KiB（CSS）；预算留约 20% 余量，超限即回归。
+//    v0.4.9：分栏、高亮块、HTML 块与主题化输入弹窗样式并入 globals.css，CSS 实测约 137 KiB，预算上调至 160 KiB。
 const BUDGET = {
   initialJsKiB: 1200,
-  initialCssKiB: 120,
+  initialCssKiB: 160,
 };
 
 /** 从产物 HTML 提取首屏必执行 JS 与 CSS */
