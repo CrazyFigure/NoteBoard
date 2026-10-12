@@ -197,6 +197,12 @@ pub struct TransferredDocument {
     /// 可序列化统一历史（按类型 JSON 表示）
     #[serde(default)]
     pub history: Option<serde_json::Value>,
+    /// 编辑器视图状态快照（选区/滚动/折叠/查看变换的判别联合，原样透传给目标窗口）
+    #[serde(default)]
+    pub view_state_snapshot: Option<serde_json::Value>,
+    /// 标签显示名（未命名文档的 key 不含可读名称，必须随载荷传递；缺省按 key 推断）
+    #[serde(default)]
+    pub display_name: Option<String>,
 }
 
 // ── 打开请求队列（C 节协议） ──

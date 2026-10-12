@@ -97,6 +97,8 @@ export interface TransferredDocument {
   history?: unknown;
   /** R06：编辑器侧 captureViewState 的判别联合快照（选区/滚动/折叠/查看变换） */
   viewStateSnapshot?: unknown;
+  /** 标签显示名（未命名文档的 key 不含可读名称，须随载荷传递；缺省按 key 推断） */
+  displayName?: string | null;
 }
 
 // ── 打开请求队列（S04 C 节协议） ──
