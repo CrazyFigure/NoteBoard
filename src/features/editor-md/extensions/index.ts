@@ -289,6 +289,7 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // 普通 CodeBlock + 自定义 NodeView 不消费 lowlight 选项；语言选择、复制及 Markdown 序列化保持原样。
     // 高亮库仍由真正使用它的视图加载，不能为无效选项在首开注册全部语法。
+    // 语法高亮由 CodeBlockView 内置的 codeHighlightPlugin 负责，遇到需高亮的代码块才动态加载 lowlight。
     CodeBlockView,
 
     // 查找/替换

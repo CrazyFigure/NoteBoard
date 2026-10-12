@@ -12,6 +12,7 @@ import { PREVIEW_FENCE_LANGUAGES, fenceLanguageOf, isBlockCodeToken, renderFence
 import { Tooltip } from '../../components/Tooltip';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useCollapsibleState } from './collapsibleState';
+import { codeHighlightPlugin } from './codeHighlightPlugin';
 
 /** 语言配置结构定义 */
 interface LanguageItem {
@@ -37,9 +38,9 @@ const LANGUAGES: LanguageItem[] = [
   { value: 'yaml', label: 'YAML', aliases: ['yml'] },
   { value: 'xml', label: 'XML', aliases: ['html', 'xhtml', 'svg'] },
   { value: 'markdown', label: 'Markdown', aliases: ['md'] },
-  { value: 'bash', label: 'Bash', aliases: ['sh', 'shell', 'zsh', 'terminal'] },
+  // shell / sh 在 normalizeLanguage 中统一归一为 bash，只保留一个条目，避免选 Shell 后显示为 Bash
+  { value: 'bash', label: 'Bash / Shell', aliases: ['sh', 'shell', 'zsh', 'terminal'] },
   { value: 'css', label: 'CSS', aliases: ['scss', 'less', 'style'] },
-  { value: 'shell', label: 'Shell', aliases: ['sh', 'bash', 'zsh'] },
 ];
 
 function CodeBlockComponent({ node, editor, getPos, updateAttributes }: NodeViewProps) {
@@ -456,6 +457,11 @@ export const CodeBlockView = CodeBlock.extend({
 
   addNodeView() {
     return ReactNodeViewRenderer(CodeBlockComponent);
+  },
+
+  // 保留父扩展插件，并追加按需加载 lowlight 的 Decoration 高亮插件
+  addProseMirrorPlugins() {
+    return [...(this.parent?.() ?? []), codeHighlightPlugin()];
   },
 
   // 解析：Mermaid / Infographic 围栏交给对应预览块节点（返回空数组即让出 token），其余照常生成代码块
