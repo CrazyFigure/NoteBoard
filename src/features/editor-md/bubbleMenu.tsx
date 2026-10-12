@@ -303,8 +303,9 @@ export function EditorBubbleMenu({
     if (currentEditor.isActive('codeBlock')) return false;
     // 跨单元格多选时不弹出行内文本气泡菜单，交由表格工具栏处理
     if (isCellSelection(selection)) return false;
-    // 选中块级 HTML 节点时文本格式无从施加，且浮层会遮挡渲染内容
-    if (selection instanceof NodeSelection && selection.node.type.name === 'rawHtmlBlock') return false;
+    // 选中原子节点（Mermaid / 信息图 / 公式 / 图片 / HTML 块 / 分割线等）时文本格式无从施加，
+    // 且浮层会遮挡节点自带的操作栏；容器类节点（折叠块、提示块等）内含文本，仍保留菜单
+    if (selection instanceof NodeSelection && selection.node.isAtom) return false;
     return true;
   }, []);
   const bubbleMenuOptions = useMemo(() => ({

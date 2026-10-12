@@ -168,6 +168,14 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
 
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // 进入编辑时聚焦源码框：否则焦点仍在编辑器且整块处于节点选中，首次按键会把整个信息图替换掉
+  useEffect(() => {
+    if (!editing) return;
+    const frame = requestAnimationFrame(() => textareaRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [editing]);
   const code = node.attrs.code || '';
 
   // 解析当前代码
@@ -317,6 +325,7 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
           </div>
 
           <textarea
+            ref={textareaRef}
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
             placeholder="输入 Infographic 结构化配置 (YAML 或 JSON)..."
