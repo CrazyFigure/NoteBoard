@@ -917,12 +917,12 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
             <>
               <ToolbarDropdownItem
                 icon={<ImageIcon size={14} />}
-                label="插入本地图片"
+                label="本地图片"
                 onClick={handleInsertLocalImage}
               />
               <ToolbarDropdownItem
                 icon={<ImageIcon size={14} style={{ opacity: 0.7 }} />}
-                label="插入网络图片"
+                label="网络图片"
                 onClick={handleInsertNetworkImage}
               />
             </>
@@ -945,17 +945,17 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
             <>
               <ToolbarDropdownItem
                 icon={<Calendar size={14} />}
-                label="插入当前日期"
+                label="当前日期"
                 onClick={() => handleInsertDateTime('date')}
               />
               <ToolbarDropdownItem
                 icon={<Clock size={14} />}
-                label="插入当前时刻"
+                label="当前时刻"
                 onClick={() => handleInsertDateTime('time')}
               />
               <ToolbarDropdownItem
                 icon={<Calendar size={14} />}
-                label="插入日期与时刻"
+                label="日期与时刻"
                 onClick={() => handleInsertDateTime('datetime')}
               />
             </>
