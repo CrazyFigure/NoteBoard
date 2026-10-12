@@ -22,7 +22,8 @@
 
 import { Node, mergeAttributes, type Editor, type Range } from '@tiptap/core';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react';
+import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react';
+import { contentReactNodeViewRenderer } from './contentNodeView';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
@@ -617,7 +618,7 @@ export const ColumnsBlock = Node.create({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(ColumnsComponent);
+    return contentReactNodeViewRenderer(ColumnsComponent);
   },
 
   addKeyboardShortcuts() {

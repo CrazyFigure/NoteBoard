@@ -16,7 +16,8 @@
 
 import { Node, mergeAttributes, type Editor, type Range } from '@tiptap/core';
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react';
+import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react';
+import { contentReactNodeViewRenderer } from './contentNodeView';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { Smile, Trash2, Ungroup } from 'lucide-react';
@@ -440,7 +441,7 @@ export const CalloutBlock = Node.create({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(CalloutComponent);
+    return contentReactNodeViewRenderer(CalloutComponent);
   },
 
   addKeyboardShortcuts() {
