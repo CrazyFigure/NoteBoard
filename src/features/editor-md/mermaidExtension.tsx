@@ -126,8 +126,9 @@ function getCurrentMermaidTheme(): 'default' | 'dark' | 'forest' {
   return isDark ? 'dark' : 'default';
 }
 
-import { Maximize2, Edit2, X, AlertCircle } from 'lucide-react';
+import { Maximize2, Edit2, AlertCircle } from 'lucide-react';
 import { ChartExportMenu } from '../export/ChartExportMenu';
+import { DiagramFullscreenModal } from './DiagramFullscreenModal';
 import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
 
 // ── React NodeView ──
@@ -143,7 +144,8 @@ function MermaidComponent({ node, updateAttributes, selected, editor, getPos }: 
   const [editValue, setEditValue] = useState('');
   const [inViewport, setInViewport] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
-  const [zoom, setZoom] = useState(1);
+  // 关闭回调保持稳定引用，避免弹窗内 Esc 监听反复重绑
+  const closeFullscreen = useCallback(() => setFullscreen(false), []);
   const containerRef = useRef<HTMLDivElement>(null);
   const renderTokenRef = useRef<number>(0);
 
@@ -461,113 +463,24 @@ function MermaidComponent({ node, updateAttributes, selected, editor, getPos }: 
         </div>
       </div>
 
-      {/* 全屏模态弹窗 */}
-      {fullscreen && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 99999,
-            background: 'rgba(0, 0, 0, 0.75)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            flexDirection: 'column',
-          }}
-          onClick={() => setFullscreen(false)}
+      {/* 全屏模态弹窗：支持拖动平移、Ctrl+滚轮缩放 */}
+      {fullscreen && svg && (
+        <DiagramFullscreenModal
+          title="Mermaid 图表预览"
+          exportSource={exportSource}
+          exportFileName={exportFileName}
+          onClose={closeFullscreen}
         >
           <div
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '12px 20px',
               background: 'var(--editor-surface, #ffffff)',
-              borderBottom: '1px solid var(--editor-border, #e2e8f0)',
+              padding: 24,
+              borderRadius: 8,
+              boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
             }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span style={{ fontWeight: 600, color: 'var(--editor-text, #1e293b)' }}>Mermaid 图表预览</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <button
-                  type="button"
-                  className="nb-editor-icon-btn"
-                  onClick={() => setZoom((z) => Math.max(0.2, z - 0.2))}
-                  style={{ minWidth: 28, height: 28 }}
-                  aria-label="缩小"
-                >
-                  -
-                </button>
-                <span style={{ fontSize: 12, minWidth: 44, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
-                <button
-                  type="button"
-                  className="nb-editor-icon-btn"
-                  onClick={() => setZoom((z) => Math.min(3, z + 0.2))}
-                  style={{ minWidth: 28, height: 28 }}
-                  aria-label="放大"
-                >
-                  +
-                </button>
-                <button
-                  type="button"
-                  className="nb-editor-toolbar-btn"
-                  onClick={() => setZoom(1)}
-                  style={{ padding: '3px 8px', fontSize: 12 }}
-                  aria-label="重置"
-                >
-                  重置
-                </button>
-              </div>
-              <ChartExportMenu
-                action="copy"
-                variant="outline"
-                source={exportSource}
-                fileName={exportFileName}
-              />
-              <ChartExportMenu
-                action="download"
-                variant="primary"
-                source={exportSource}
-                fileName={exportFileName}
-              />
-              <button
-                type="button"
-                className="nb-diagram-action-btn"
-                onClick={() => setFullscreen(false)}
-                aria-label="关闭预览"
-                style={{ padding: 4 }}
-              >
-                <X size={20} />
-              </button>
-            </div>
-          </div>
-          <div
-            style={{
-              flex: 1,
-              overflow: 'auto',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 40,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {svg && (
-              <div
-                style={{
-                  transform: `scale(${zoom})`,
-                  transformOrigin: 'center center',
-                  transition: 'transform 0.15s ease',
-                  background: 'var(--editor-surface, #ffffff)',
-                  padding: 24,
-                  borderRadius: 8,
-                  boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
-                }}
-                dangerouslySetInnerHTML={{ __html: svg }}
-              />
-            )}
-          </div>
-        </div>
+            dangerouslySetInnerHTML={{ __html: svg }}
+          />
+        </DiagramFullscreenModal>
       )}
     </NodeViewWrapper>
   );
