@@ -103,6 +103,9 @@ export function renderRawHtmlPreview(raw: string, resolveSrc: (src: string) => s
     if (src) image.setAttribute('src', resolveSrc(src));
     image.setAttribute('draggable', 'false');
     image.setAttribute('referrerpolicy', 'no-referrer');
+    // 全局预检样式 `img { height: auto }` 会让 height 属性失效（只写 height 的 SVG 徽章会被撑满整行），改写为内联尺寸
+    const height = image.getAttribute('height')?.trim();
+    if (height && !image.style.height) image.style.height = /^\d+(?:\.\d+)?$/.test(height) ? `${height}px` : height;
   }
   for (const element of fragment.querySelectorAll('img[srcset], source[srcset]')) {
     element.setAttribute('srcset', resolveSrcset(element.getAttribute('srcset') ?? '', resolveSrc));

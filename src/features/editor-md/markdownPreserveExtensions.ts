@@ -11,6 +11,7 @@ import { ReactNodeViewRenderer } from '@tiptap/react';
 import { emitRawSegment } from './rawMarkdownSegments';
 import { normalizeImageAlign, normalizeImageWidth } from './imageNodeView';
 import { RawHtmlBlockComponent } from './rawHtmlBlockView';
+import { createRawHtmlInlineView } from './rawHtmlInlineView';
 
 // Front matter：必须位于文档最开始，结束标记为 `---` 或 `...`
 const FRONT_MATTER_PATTERN = /^---[ \t]*\n((?:[^\n]*\n)*?)(?:---|\.\.\.)[ \t]*(?:\n|$)/;
@@ -23,7 +24,9 @@ const FOOTNOTE_DEFINITION_PATTERN = /^(?: {0,3}\[\^[^\]\s]+\]:[^\n]*(?:\n(?: {2,
 
 // 行内 HTML：CommonMark 开始/结束标签与注释。schema 已能表达的标签交给默认路径（转为下划线、高亮等）
 const INLINE_HTML_TAG_PATTERN = /^(?:<!--[\s\S]*?-->|<\/?([a-zA-Z][a-zA-Z0-9-]*)(?:\s+[a-zA-Z_:][\w:.-]*(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*\/?>)/;
-const SCHEMA_INLINE_HTML_TAGS = new Set(['b', 'strong', 'i', 'em', 'u', 's', 'del', 'strike', 'mark', 'code', 'a', 'img', 'br']);
+// 不含 img：图片节点是块级节点，段落内的 <img> 交给默认解析会被整个丢弃，需原样保留
+const SCHEMA_INLINE_HTML_TAGS = new Set(['b', 'strong', 'i', 'em', 'u', 's', 'del', 'strike', 'mark', 'code', 'a', 'br']);
+const ANCHOR_CLOSE_PATTERN = /<\/a\s*>/i;
 const FOOTNOTE_DEFINITION_START = /(?:^|\n) {0,3}\[\^[^\]\s]+\]:/;
 // 脚注引用：`[^id]`，后面不能紧跟冒号（那是定义）
 const FOOTNOTE_REFERENCE_PATTERN = /^\[\^([^\]\s]+)\](?!:)/;
@@ -40,6 +43,18 @@ function decodeHtmlAttribute(value: string): string {
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&');
+}
+
+/**
+ * 匹配包裹图片的链接 `<a href><img></a>`（README 徽章/Logo 的常见写法），返回整段原文。
+ * 链接标记无法承载图片，交给默认解析会连同图片一起丢失，因此整体作为一个行内节点保留。
+ */
+function matchLinkedImage(src: string, openTagLength: number): string | null {
+  const close = ANCHOR_CLOSE_PATTERN.exec(src.slice(openTagLength));
+  if (!close) return null;
+  const inner = src.slice(openTagLength, openTagLength + close.index);
+  if (!/<img\b/i.test(inner) || /<a\b/i.test(inner)) return null;
+  return src.slice(0, openTagLength + close.index + close[0].length);
 }
 
 /** 解析独立 <img> 标签为图片节点属性；含 width/align 以外的复杂属性也只取已知字段。 */
@@ -202,7 +217,8 @@ export const FootnoteReference = Node.create({
   renderMarkdown: (node) => emitRawSegment(`[^${String(node.attrs?.id ?? '')}]`),
 });
 
-/** 行内原始 HTML 标签原子节点：保留 <kbd>、<span style>、<sub> 等 schema 无法表达的标签，标签间文字仍可编辑 */
+/** 行内原始 HTML 标签原子节点：保留 <kbd>、<span style>、<sub>、<img> 等 schema 无法表达的标签，标签间文字仍可编辑；
+ *  包裹图片的链接 `<a href><img></a>` 整体作为一个节点 */
 export const RawHtmlInline = Node.create({
   name: 'rawHtmlInline',
   group: 'inline',
@@ -227,6 +243,10 @@ export const RawHtmlInline = Node.create({
       String(node.attrs.raw ?? ''),
     ];
   },
+  // 可视化显示：含图片的渲染为过滤后的图片，其余维持源码标签样式；renderHTML 仍用于剪贴板与 getHTML
+  addNodeView() {
+    return createRawHtmlInlineView;
+  },
   markdownTokenizer: {
     name: 'rawHtmlInline',
     level: 'inline',
@@ -234,6 +254,11 @@ export const RawHtmlInline = Node.create({
     tokenize: (src) => {
       const match = INLINE_HTML_TAG_PATTERN.exec(src);
       if (!match) return undefined;
+      // 包裹图片的链接整体保留（开始标签以 `<a` 开头且不是结束标签）
+      if (match[1]?.toLowerCase() === 'a' && match[0][1] !== '/') {
+        const linkedImage = matchLinkedImage(src, match[0].length);
+        if (linkedImage) return { type: 'rawHtmlInline', raw: linkedImage, text: linkedImage };
+      }
       // 已有对应节点/标记的标签维持默认 HTML 解析
       if (match[1] && SCHEMA_INLINE_HTML_TAGS.has(match[1].toLowerCase())) return undefined;
       return {
