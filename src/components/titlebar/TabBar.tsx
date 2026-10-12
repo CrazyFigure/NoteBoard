@@ -2,7 +2,7 @@
 // tab 栏 + dnd-kit 排序 + 横向滚动 + 右键上下文操作菜单
 // 详见 docs/07-UI布局与交互规范.md §3
 
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useLayoutEffect, useCallback } from 'react';
 import {
   DndContext,
   PointerSensor,
@@ -172,8 +172,8 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
     flex: '0 0 auto',
     height: 28,
     padding: '0 6px 0 10px',
-    // 左右留出充足的间距，防止任何边缘遮挡
-    margin: '0 3px',
+    // 左右留出间距，防止边缘遮挡（相邻 Tab 间缝隙为 4px）
+    margin: '0 2px',
     borderRadius: 6,
     background: isActive
       ? 'var(--tab-active-bg)'
@@ -588,11 +588,39 @@ function handleMenuItemMouseUp(e: React.MouseEvent<HTMLButtonElement>) {
   }
 }
 
+// ── 自绘横向滚动条 ──
+
+// 滚动条轨道距 Tab 栏左右两端的内缩（与滚动容器 padding 对齐）
+const TAB_SCROLLBAR_INSET = 4;
+// 滑块最小宽度，标签很多时仍能稳定命中拖动
+const TAB_SCROLLBAR_MIN_THUMB = 24;
+
+type TabScrollbarState = {
+  visible: boolean;
+  thumbLeft: number;
+  thumbWidth: number;
+};
+
+type TabScrollbarDragState = {
+  pointerId: number;
+  originX: number;
+  originScrollLeft: number;
+  maxScrollLeft: number;
+  maxThumbTravel: number;
+};
+
+const HIDDEN_TAB_SCROLLBAR: TabScrollbarState = { visible: false, thumbLeft: 0, thumbWidth: 0 };
+
 // ── TabBar ──
 
 export function TabBar() {
   const { tabs, activeKey, activateTab, requestCloseTab, reorderTabs } = useWindowStore();
   const scrollRef = useRef<HTMLDivElement>(null);
+  // 自绘滚动条：几何状态、悬停/拖动态与拖动起点
+  const [scrollbar, setScrollbar] = useState<TabScrollbarState>(HIDDEN_TAB_SCROLLBAR);
+  const [scrollbarHovered, setScrollbarHovered] = useState(false);
+  const [scrollbarDragging, setScrollbarDragging] = useState(false);
+  const scrollbarDragRef = useRef<TabScrollbarDragState | null>(null);
   // 保存弹出菜单状态及引用
   const [saveMenuPos, setSaveMenuPos] = useState<{ x: number; y: number } | null>(null);
   const saveMenuRef = useRef<HTMLDivElement>(null);
@@ -697,7 +725,95 @@ export function TabBar() {
     }
   };
 
-  // Tab 栏横向滚动容器
+  // 按滚动容器的可视比例重算滑块宽度与位置；内容未溢出时隐藏滚动条
+  const updateScrollbar = useCallback(() => {
+    const el = scrollRef.current;
+    const maxScrollLeft = el ? Math.max(0, el.scrollWidth - el.clientWidth) : 0;
+    if (!el || maxScrollLeft <= 1) {
+      setScrollbar((cur) => (cur.visible ? HIDDEN_TAB_SCROLLBAR : cur));
+      return;
+    }
+    const trackWidth = Math.max(1, el.clientWidth - TAB_SCROLLBAR_INSET * 2);
+    const thumbWidth = Math.min(
+      trackWidth,
+      Math.max(TAB_SCROLLBAR_MIN_THUMB, Math.round((trackWidth * el.clientWidth) / el.scrollWidth)),
+    );
+    const maxThumbTravel = Math.max(1, trackWidth - thumbWidth);
+    const thumbLeft = Math.round((el.scrollLeft / maxScrollLeft) * maxThumbTravel);
+    setScrollbar((cur) => (
+      cur.visible && cur.thumbLeft === thumbLeft && cur.thumbWidth === thumbWidth
+        ? cur
+        : { visible: true, thumbLeft, thumbWidth }
+    ));
+  }, []);
+
+  // 标签增删、改名、切换激活（字重变化）及窗口尺寸变化时都可能改变溢出量
+  useLayoutEffect(() => {
+    updateScrollbar();
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => updateScrollbar());
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [tabs, activeKey, updateScrollbar]);
+
+  // 滚动条隐藏时 pointerleave 不会触发，需手动复位悬停态，避免下次出现时仍是高亮
+  useEffect(() => {
+    if (!scrollbar.visible) setScrollbarHovered(false);
+  }, [scrollbar.visible]);
+
+  // 按下轨道：先把滑块中心移到指针处，再进入拖动，细滑块也无需精确命中
+  const startScrollbarDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    if (e.button !== 0 || !el || !scrollbar.visible) return;
+    e.preventDefault();
+    const maxScrollLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+    const maxThumbTravel = Math.max(1, e.currentTarget.clientWidth - scrollbar.thumbWidth);
+    const trackRect = e.currentTarget.getBoundingClientRect();
+    const nextThumbLeft = Math.min(
+      maxThumbTravel,
+      Math.max(0, e.clientX - trackRect.left - scrollbar.thumbWidth / 2),
+    );
+    el.scrollLeft = (nextThumbLeft / maxThumbTravel) * maxScrollLeft;
+    scrollbarDragRef.current = {
+      pointerId: e.pointerId,
+      originX: e.clientX,
+      originScrollLeft: el.scrollLeft,
+      maxScrollLeft,
+      maxThumbTravel,
+    };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    setScrollbarDragging(true);
+    updateScrollbar();
+  };
+
+  // 拖动中：指针位移按「滑块可移动距离 → 可滚动距离」比例换算
+  const moveScrollbarDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = scrollbarDragRef.current;
+    const el = scrollRef.current;
+    if (!drag || drag.pointerId !== e.pointerId || !el) return;
+    const delta = ((e.clientX - drag.originX) / drag.maxThumbTravel) * drag.maxScrollLeft;
+    el.scrollLeft = Math.min(drag.maxScrollLeft, Math.max(0, drag.originScrollLeft + delta));
+    updateScrollbar();
+  };
+
+  const finishScrollbarDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = scrollbarDragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    scrollbarDragRef.current = null;
+    setScrollbarDragging(false);
+  };
+
+  // 滑块配色跟随主题：静止时取次要文字色的淡化版，悬停/拖动时切到主题强调色
+  const scrollbarActive = scrollbarHovered || scrollbarDragging;
+  const scrollbarThumbColor = scrollbarDragging
+    ? 'color-mix(in srgb, var(--accent-strong) 85%, transparent)'
+    : scrollbarHovered
+      ? 'color-mix(in srgb, var(--accent-strong) 60%, transparent)'
+      : 'color-mix(in srgb, var(--editor-text-secondary) 30%, transparent)';
+
+  // Tab 栏横向滚动容器（隐藏原生滚动条，改用下方自绘细滑块）
   const containerStyle: React.CSSProperties = {
     display: 'flex',
     alignItems: 'center',
@@ -707,7 +823,8 @@ export function TabBar() {
     scrollbarWidth: 'none',
     flex: '0 1 auto',
     minWidth: 0,
-    padding: '0 4px',
+    // 左侧不留内边距：应用图标容器自带 10px 留白，再叠加会让首个 Tab 离图标过远
+    padding: '0 4px 0 0',
     boxSizing: 'border-box',
   };
 
@@ -724,8 +841,8 @@ export function TabBar() {
     color: 'var(--editor-text-secondary)',
     cursor: 'pointer',
     flexShrink: 0,
-    marginLeft: 4,
-    marginRight: 6,
+    // 相邻按钮间缝隙 6px
+    margin: '0 3px',
     transition: 'background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast)',
   };
 
@@ -745,28 +862,72 @@ export function TabBar() {
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', height: '100%', minWidth: 0, flex: '0 1 auto', maxWidth: 'calc(100vw - 210px)' }}>
-      <div
-        ref={scrollRef}
-        style={containerStyle}
-        onWheel={handleWheel}
-        role="tablist"
-      >
-        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-          <SortableContext
-            items={tabs.map((t) => t.key)}
-            strategy={horizontalListSortingStrategy}
+      {/* 滚动外壳：不随内容滚动，为自绘滚动条提供定位基准 */}
+      <div style={{ position: 'relative', display: 'flex', height: '100%', minWidth: 0, flex: '0 1 auto' }}>
+        <div
+          ref={scrollRef}
+          className="scrollbar-none"
+          style={containerStyle}
+          onWheel={handleWheel}
+          onScroll={updateScrollbar}
+          role="tablist"
+        >
+          <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+            <SortableContext
+              items={tabs.map((t) => t.key)}
+              strategy={horizontalListSortingStrategy}
+            >
+              {tabs.map((tab) => (
+                <TabItem
+                  key={tab.key}
+                  tab={tab}
+                  isActive={tab.key === activeKey}
+                  onActivate={() => handleActivateTab(tab.key)}
+                  onClose={() => requestCloseTab(tab.key)}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
+        </div>
+
+        {/* 自绘横向滚动条：只占用 Tab 下方与标题栏底边之间的空隙，不挤占 Tab 及其激活指示线 */}
+        {scrollbar.visible && (
+          <div
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              left: TAB_SCROLLBAR_INSET,
+              right: TAB_SCROLLBAR_INSET,
+              // 命中区向下越过标题栏底边 2px 以便抓取，可见滑块仍居中于空隙内
+              bottom: -2,
+              height: 6,
+              paddingBottom: 2,
+              display: 'flex',
+              alignItems: 'center',
+              cursor: 'pointer',
+              zIndex: 1,
+              touchAction: 'none',
+            }}
+            onPointerEnter={() => setScrollbarHovered(true)}
+            onPointerLeave={() => setScrollbarHovered(false)}
+            onPointerDown={startScrollbarDrag}
+            onPointerMove={moveScrollbarDrag}
+            onPointerUp={finishScrollbarDrag}
+            onPointerCancel={finishScrollbarDrag}
           >
-            {tabs.map((tab) => (
-              <TabItem
-                key={tab.key}
-                tab={tab}
-                isActive={tab.key === activeKey}
-                onActivate={() => handleActivateTab(tab.key)}
-                onClose={() => requestCloseTab(tab.key)}
-              />
-            ))}
-          </SortableContext>
-        </DndContext>
+            <div
+              style={{
+                width: scrollbar.thumbWidth,
+                height: scrollbarActive ? 3 : 2,
+                borderRadius: 999,
+                background: scrollbarThumbColor,
+                transform: `translateX(${scrollbar.thumbLeft}px)`,
+                transition: 'height 120ms ease, background-color 120ms ease',
+                willChange: 'transform',
+              }}
+            />
+          </div>
+        )}
       </div>
 
       {/* 保存与另存为快捷按钮 */}
