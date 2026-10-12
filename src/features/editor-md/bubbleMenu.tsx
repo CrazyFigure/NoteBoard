@@ -25,6 +25,7 @@ import {
 import { handleLinkClick } from './linkHandler';
 import { useWindowStore } from '../../stores/windowStore';
 import { Tooltip } from '../../components/Tooltip';
+import { promptLinkUrl } from '../../components/promptPresets';
 
 interface BubbleButtonProps {
   icon: ReactNode;
@@ -428,13 +429,14 @@ export function EditorBubbleMenu({
               onOpenLinkModal();
             } else {
               const previousUrl = editor.getAttributes('link').href || '';
-              const url = window.prompt('输入链接 URL (支持网络链接或本地相对文件路径):', previousUrl);
-              if (url === null) return;
-              if (url === '') {
-                editor.chain().focus().extendMarkRange('link').unsetLink().run();
-              } else {
-                editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
-              }
+              void promptLinkUrl(previousUrl).then((url) => {
+                if (url === null || editor.isDestroyed) return;
+                if (url === '') {
+                  editor.chain().focus().extendMarkRange('link').unsetLink().run();
+                } else {
+                  editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+                }
+              });
             }
           }}
           active={editor.isActive('link')}

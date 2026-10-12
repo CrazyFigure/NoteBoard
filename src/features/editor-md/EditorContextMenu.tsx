@@ -9,6 +9,7 @@ import { isInTable } from '@tiptap/pm/tables';
 import { applyTablePaste } from './tableClipboard';
 import { insertDetailsContent } from './detailsExtension';
 import { insertRawHtmlContent } from './rawHtmlBlockView';
+import { promptLinkUrl } from '../../components/promptPresets';
 import {
   Bold,
   Italic,
@@ -415,13 +416,14 @@ export function EditorContextMenu({
                   onOpenLinkModal();
                 } else {
                   const previousUrl = editor.getAttributes('link').href || '';
-                  const url = window.prompt('输入链接地址 URL:', previousUrl);
-                  if (url === null) return;
-                  if (url === '') {
-                    editor.chain().focus().unsetLink().run();
-                  } else {
-                    editor.chain().focus().setLink({ href: url }).run();
-                  }
+                  void promptLinkUrl(previousUrl).then((url) => {
+                    if (url === null || editor.isDestroyed) return;
+                    if (url === '') {
+                      editor.chain().focus().unsetLink().run();
+                    } else {
+                      editor.chain().focus().setLink({ href: url }).run();
+                    }
+                  });
                 }
               }}
               onMouseEnter={(e) => {
@@ -730,10 +732,11 @@ export function EditorContextMenu({
                 if (onOpenLinkModal) {
                   onOpenLinkModal();
                 } else {
-                  const url = window.prompt('输入链接地址 URL:');
-                  if (url) {
-                    editor.chain().focus().setLink({ href: url }).run();
-                  }
+                  void promptLinkUrl().then((url) => {
+                    if (url && !editor.isDestroyed) {
+                      editor.chain().focus().setLink({ href: url }).run();
+                    }
+                  });
                 }
               }}
               onMouseEnter={(e) => {

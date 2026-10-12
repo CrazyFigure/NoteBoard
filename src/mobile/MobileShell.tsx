@@ -12,6 +12,7 @@ import { useLayoutStore } from '../stores/layoutStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { showToast } from '../stores/toastStore';
 import { ToastContainer } from '../components/Toast';
+import { PromptDialogHost } from '../components/PromptDialogHost';
 import { UnsavedGuardDialog } from '../features/editor-code/UnsavedGuardDialog';
 import { MissingFileDialog } from '../features/external/MissingFileDialog';
 import { checkActiveDocumentStillExists } from '../features/external/missingFileGuard';
@@ -234,6 +235,7 @@ export function MobileShell() {
       />
       <MissingFileDialog />
       <ToastContainer />
+      <PromptDialogHost />
     </div>
   );
 }
