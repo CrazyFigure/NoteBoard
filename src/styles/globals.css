@@ -1162,6 +1162,8 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
 /* 原样保留块（front matter / 块级 HTML）：只读源码样式，右上角标注类型，选中时描边强调 */
 .ProseMirror pre.nb-md-raw-block {
   position: relative;
+  /* 右侧为类型标注留出空间，避免长行文字与标注重叠 */
+  padding-right: 52px;
   color: var(--editor-text-secondary, var(--code-block-text));
   white-space: pre-wrap;
   word-break: break-word;
@@ -1184,6 +1186,140 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
 .ProseMirror pre.nb-md-raw-block.ProseMirror-selectednode {
   border-color: var(--editor-accent);
   opacity: 1;
+}
+/* 块级 HTML 节点视图：渲染预览 / 源码样式，右上角悬停显示"编辑源码"按钮 */
+.ProseMirror .nb-raw-html {
+  position: relative;
+  margin: 0 0 16px;
+}
+.ProseMirror .nb-raw-html > pre.nb-md-raw-block {
+  margin: 0;
+}
+.ProseMirror .nb-raw-html.is-selected > pre.nb-md-raw-block {
+  border-color: var(--editor-accent);
+  opacity: 1;
+}
+/* 可编辑时悬停/选中由按钮取代类型标注，避免重复 */
+.ProseMirror .nb-raw-html.is-editable:hover > pre.nb-md-raw-block::after,
+.ProseMirror .nb-raw-html.is-editable.is-selected > pre.nb-md-raw-block::after {
+  visibility: hidden;
+}
+.ProseMirror .nb-md-html-render {
+  /* 约束内联样式的越界绘制（如 position: fixed 遮盖界面），超宽内容横向滚动 */
+  contain: content;
+  overflow-x: auto;
+  padding: 2px 4px;
+  margin: 0 -4px;
+  border-radius: var(--radius-sm, 4px);
+  outline: 1px dashed transparent;
+  outline-offset: 2px;
+  transition: outline-color var(--transition-fast);
+}
+.ProseMirror .nb-raw-html.is-editable:not(.is-selected):hover > .nb-md-html-render {
+  outline-color: var(--editor-border);
+}
+.ProseMirror .nb-raw-html.is-selected > .nb-md-html-render {
+  outline: 2px solid var(--editor-accent);
+}
+.ProseMirror .nb-md-html-render > :first-child { margin-top: 0; }
+.ProseMirror .nb-md-html-render > :last-child { margin-bottom: 0; }
+.ProseMirror .nb-md-html-render img {
+  max-width: 100%;
+}
+/* 渲染出的标题不属于文档大纲，不显示装订线级别标签 */
+.ProseMirror .nb-md-html-render :is(h1, h2, h3, h4, h5, h6)::before {
+  content: none;
+}
+.ProseMirror .nb-md-html-render kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  font-family: var(--mono-font-family);
+  font-size: 0.85em;
+  line-height: 1.4;
+  border: 1px solid var(--editor-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--editor-code-bg);
+}
+.ProseMirror .nb-raw-html-toolbar {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+}
+.ProseMirror .nb-raw-html:hover > .nb-raw-html-toolbar,
+.ProseMirror .nb-raw-html.is-selected > .nb-raw-html-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+}
+.ProseMirror .nb-raw-html-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-family: var(--ui-font-family, inherit);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--editor-text-muted);
+  background: var(--editor-surface, var(--editor-bg));
+  border: 1px solid var(--editor-border);
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+.ProseMirror .nb-raw-html-btn:hover {
+  color: var(--editor-text);
+  background: var(--toolbar-hover, var(--editor-code-bg));
+}
+.ProseMirror .nb-raw-html-btn:active {
+  background: var(--toolbar-active, var(--editor-code-bg));
+  transform: scale(0.96);
+}
+.ProseMirror .nb-raw-html-btn.is-primary {
+  color: #fff;
+  background: var(--editor-accent);
+  border-color: transparent;
+}
+.ProseMirror .nb-raw-html-btn.is-primary:hover {
+  opacity: 0.9;
+}
+/* 源码编辑态 */
+.ProseMirror .nb-raw-html.is-editing {
+  border: 1px solid var(--editor-accent);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.ProseMirror .nb-raw-html-editor-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px 4px 12px;
+  font-size: 12px;
+  color: var(--editor-text-muted);
+  background: var(--code-block-bg);
+  border-bottom: 1px solid var(--editor-border);
+  user-select: none;
+}
+.ProseMirror .nb-raw-html-editor-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+.ProseMirror .nb-raw-html-textarea {
+  display: block;
+  width: 100%;
+  padding: 12px 16px;
+  font-family: var(--mono-font-family);
+  font-size: var(--mono-font-size);
+  line-height: var(--mono-line-height, 1.5);
+  color: var(--editor-text);
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: vertical;
+  tab-size: 2;
 }
 /* 脚注：引用为上标，定义为弱化的小号原文 */
 .ProseMirror .nb-md-footnote-ref {

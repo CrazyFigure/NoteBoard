@@ -3,11 +3,14 @@
 // 1. Front matter（文档首部 `---` YAML 块）——此前会被解析成分隔线 + 二级标题并持续漂移；
 // 2. 脚注引用 `[^id]` 与脚注定义 `[^id]: 内容`——此前被 marked 当作引用式链接改写为 `[^1](note)`；
 // 3. 块级原始 HTML（`<details>`、`<div align>` 等）——此前被剥成纯文本。
-// 这些节点在可视化模式中以只读源码样式展示，编辑需切换到源码模式。
+// 这些节点在可视化模式中以只读源码样式展示，编辑需切换到源码模式；
+// 块级 HTML 例外：可渲染时显示过滤后的渲染结果，并可就地编辑源码（见 rawHtmlBlockView）。
 
 import { Node, mergeAttributes } from '@tiptap/core';
+import { ReactNodeViewRenderer } from '@tiptap/react';
 import { emitRawSegment } from './rawMarkdownSegments';
 import { normalizeImageAlign, normalizeImageWidth } from './imageNodeView';
+import { RawHtmlBlockComponent } from './rawHtmlBlockView';
 
 // Front matter：必须位于文档最开始，结束标记为 `---` 或 `...`
 const FRONT_MATTER_PATTERN = /^---[ \t]*\n((?:[^\n]*\n)*?)(?:---|\.\.\.)[ \t]*(?:\n|$)/;
@@ -268,6 +271,10 @@ export const RawHtmlBlock = Node.create({
       }),
       String(node.attrs.raw ?? ''),
     ];
+  },
+  // 可视化显示：渲染预览 / 源码样式 + 就地编辑；renderHTML 仍用于剪贴板与 getHTML
+  addNodeView() {
+    return ReactNodeViewRenderer(RawHtmlBlockComponent);
   },
   markdownTokenName: 'html',
   parseMarkdown: (token, helpers) => {

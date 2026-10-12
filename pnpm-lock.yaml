@@ -182,6 +182,9 @@ importers:
       '@tiptap/suggestion':
         specifier: ^3.30.1
         version: 3.30.1(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.1(@tiptap/pm@3.30.1))(@tiptap/pm@3.30.1)
+      dompurify:
+        specifier: ^3.4.13
+        version: 3.4.13
       hast-util-to-html:
         specifier: ^9.0.5
         version: 9.0.5

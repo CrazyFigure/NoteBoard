@@ -50,6 +50,7 @@ const BLOCK_TYPE_LABELS: Record<string, string> = {
   mathBlock: '公式块',
   githubAlert: '提示块',
   detailsBlock: '折叠块',
+  rawHtmlBlock: 'HTML 块',
 };
 
 interface DragHandleState {

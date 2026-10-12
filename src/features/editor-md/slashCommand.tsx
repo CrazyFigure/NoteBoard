@@ -41,6 +41,7 @@ import {
   Boxes,
   BarChart3,
   ListCollapse,
+  SquareCode,
 } from 'lucide-react';
 import { insertLocalImageWithDialog } from './imagePaste';
 import { useWindowStore } from '../../stores/windowStore';
@@ -49,6 +50,7 @@ import { IS_MOBILE_UI } from '../../core/platform';
 import { isTouchInteraction } from '../../core/inputModality';
 import { INFOGRAPHIC_TEMPLATES } from '../infographic/infographicTemplates';
 import { insertDetailsContent } from './detailsExtension';
+import { insertRawHtmlContent } from './rawHtmlBlockView';
 
 /** 叶子具体执行命令项 */
 export interface LeafCommandItem {
@@ -470,6 +472,19 @@ const DETAILS_LEAF: LeafCommandItem = {
   },
 };
 
+const RAW_HTML_LEAF: LeafCommandItem = {
+  id: 'rawHtml',
+  label: 'HTML 块',
+  description: '直接书写 HTML（如居中标题、图文排版），按 GitHub 规则渲染',
+  shortcutHint: '/html',
+  icon: <SquareCode size={17} />,
+  aliases: ['html', 'htm', 'yuanma', 'center', 'juzhong'],
+  keywords: 'HTML html 源码 居中 排版 div center yuanma juzhong',
+  action: (editor, range) => {
+    editor.chain().focus().deleteRange(range).insertContent(insertRawHtmlContent()).run();
+  },
+};
+
 const IMAGE_LOCAL_LEAF: LeafCommandItem = {
   id: 'image',
   label: '插入本地图片',
@@ -620,7 +635,7 @@ const ROOT_GROUPS: GroupCommandItem[] = [
   },
 ];
 
-/** 全量叶子命令扁平池（优先级：标题 > 列表 > 代码块 > 提示块 > 引用块 > 折叠块 > 表格 > 公式 > 信息图 > 图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
+/** 全量叶子命令扁平池（优先级：标题 > 列表 > 代码块 > 提示块 > 引用块 > 折叠块 > HTML 块 > 表格 > 公式 > 信息图 > 图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
 const ALL_LEAFS: LeafCommandItem[] = [
   ...HEADING_LEAFS,
   ...LIST_LEAFS,
@@ -628,6 +643,7 @@ const ALL_LEAFS: LeafCommandItem[] = [
   ...ALERT_LEAFS,
   BLOCKQUOTE_LEAF,
   DETAILS_LEAF,
+  RAW_HTML_LEAF,
   ...TABLE_LEAFS,
   ...MATH_LEAFS,
   ...INFOGRAPHIC_LEAFS,
@@ -640,7 +656,7 @@ const ALL_LEAFS: LeafCommandItem[] = [
   CLEAR_FORMAT_LEAF,
 ];
 
-/** 默认根级菜单项（严格遵循优先级：标题 > 列表 > 代码块 > GitHub提示 > 引用块 > 折叠块 > 表格 > 公式与图表 > 本地图片 > 网络图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
+/** 默认根级菜单项（严格遵循优先级：标题 > 列表 > 代码块 > GitHub提示 > 引用块 > 折叠块 > HTML 块 > 表格 > 公式与图表 > 本地图片 > 网络图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
 const ROOT_MENU_ENTRIES: MenuEntry[] = [
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'headings')! },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'lists')! },
@@ -648,6 +664,7 @@ const ROOT_MENU_ENTRIES: MenuEntry[] = [
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'alerts')! },
   { type: 'leaf', item: BLOCKQUOTE_LEAF },
   { type: 'leaf', item: DETAILS_LEAF },
+  { type: 'leaf', item: RAW_HTML_LEAF },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'tables')! },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'math')! },
   { type: 'leaf', item: IMAGE_LOCAL_LEAF },
