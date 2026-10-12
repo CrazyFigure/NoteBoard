@@ -1,0 +1,8 @@
+# 统一使用 LF 换行：覆盖本机 core.autocrlf=true，检出与提交均保持 LF
+* text=auto eol=lf
+
+# 二进制资源：不做换行转换，也不做文本 diff
+*.png binary
+*.ico binary
+*.woff2 binary
+*.ttf binary
