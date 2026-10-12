@@ -116,8 +116,19 @@ export function EditorContextMenu({
         onClose();
       }
     };
+    // Esc 只关闭菜单本身：捕获阶段拦截，避免同时关闭外层弹层（如多维表格的单元格编辑弹层）
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
+    };
     document.addEventListener('mousedown', handleDown);
-    return () => document.removeEventListener('mousedown', handleDown);
+    document.addEventListener('keydown', handleKey, true);
+    return () => {
+      document.removeEventListener('mousedown', handleDown);
+      document.removeEventListener('keydown', handleKey, true);
+    };
   }, [position, onClose]);
 
   if (!position) return null;

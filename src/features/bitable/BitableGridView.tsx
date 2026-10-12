@@ -29,7 +29,9 @@ import {
   createRow,
   formatCellValue,
   groupFlatTreeRows,
+  isInKeyboardScope,
   isSlotNoop,
+  releaseScopedFocusOnPointerDown,
   parseClipboardMatrix,
   previewLongText,
   resolveDateTimeConfig,
@@ -1292,6 +1294,8 @@ export function BitableGridView({
   const focusClipboardProxy = useCallback(() => {
     window.setTimeout(() => {
       const active = document.activeElement as HTMLElement | null;
+      // 焦点停在隔离区面板上（如点了记录侧栏空白处）时不抢回焦点
+      if (isInKeyboardScope(active)) return;
       if (active && active !== clipboardProxyRef.current && active !== document.body) {
         const tag = active.tagName.toLowerCase();
         if (tag === 'input' || tag === 'textarea' || tag === 'select' || active.isContentEditable) return;
@@ -1313,6 +1317,8 @@ export function BitableGridView({
     const handleKeyDown = (e: KeyboardEvent) => {
       // 避免在单元格编辑框与列重命名框内触发表格级快捷键
       const active = document.activeElement as HTMLElement | null;
+      // 焦点或按键目标在记录详情侧栏、多行文本弹层等隔离区内时一律不处理（防止 Backspace 删掉背后选中的行）
+      if (isInKeyboardScope(active) || isInKeyboardScope(e.target)) return;
       if (active && active !== clipboardProxyRef.current) {
         const tag = active.tagName.toLowerCase();
         if (tag === 'input' || tag === 'textarea' || tag === 'select' || active.isContentEditable) {
@@ -1646,6 +1652,8 @@ export function BitableGridView({
         // 拖拽换列 / 换行期间禁用文本选中，避免拖出蓝色选区
         userSelect: colDrag || rowDrag ? 'none' : undefined,
       }}
+      // 点回表格时释放记录侧栏持有的焦点，键盘交还给表格
+      onMouseDownCapture={releaseScopedFocusOnPointerDown}
       onClick={(e) => {
         // 点击空白处取消菜单并把焦点交还剪贴板代理
         closeColumnMenu();

@@ -137,7 +137,8 @@ export function DiagramFullscreenModal({
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 99999,
+        // 需高于多维表格单元格编辑弹层（100002），低于全局输入弹窗（100010）
+        zIndex: 100006,
         background: 'rgba(0, 0, 0, 0.75)',
         backdropFilter: 'blur(4px)',
         display: 'flex',

@@ -5,18 +5,31 @@
 import { describe, test, expect } from 'vitest';
 import { Editor } from '@tiptap/core';
 import { buildLongTextExtensions } from '@/features/bitable/BitableRichTextEditor';
+import { parseMarkdown, serializeMarkdown } from '@/features/editor-md/serialize';
+import { buildExtensions } from '@/features/editor-md/extensions';
 
-/** 用与线上一致的扩展集创建一个挂载到 jsdom 的编辑器 */
+/**
+ * 用与线上一致的扩展集创建编辑器
+ * 与笔记本编辑器测试一致不挂载视图（jsdom 缺少部分装饰所需的布局能力）；
+ * 与组件相同：先以空文档创建，再经笔记本的 parseMarkdown 管线写入（空串直接用 Markdown 解析会得到非法的空 doc）
+ */
 function createTestEditor(content = '') {
-  const element = document.createElement('div');
-  document.body.appendChild(element);
   const editor = new Editor({
-    element,
+    element: null,
     extensions: buildLongTextExtensions(),
-    content,
-    contentType: 'markdown',
+    content: '',
   });
+  parseMarkdown(editor, content);
   return editor;
+}
+
+/** 收集文档中出现的节点类型 */
+function nodeTypesOf(editor: Editor): Set<string> {
+  const types = new Set<string>();
+  editor.state.doc.descendants((node) => {
+    types.add(node.type.name);
+  });
+  return types;
 }
 
 describe('多行文本富文本编辑器扩展集', () => {
@@ -83,5 +96,50 @@ describe('多行文本富文本编辑器扩展集', () => {
     const editor = createTestEditor('');
     expect(editor.getMarkdown()).toBeDefined();
     editor.destroy();
+  });
+
+  test('与笔记本共用扩展：公式、图表、提示块、任务列表、表格被识别为对应节点', () => {
+    const md = [
+      '行内公式 $E=mc^2$',
+      '',
+      '$$\n\\sum_{i=1}^n i\n$$',
+      '',
+      '```mermaid\ngraph TD\n  A --> B\n```',
+      '',
+      '> [!TIP]\n> 小技巧',
+      '',
+      '- [ ] 待办\n- [x] 已完成',
+      '',
+      '| a | b |\n| --- | --- |\n| 1 | 2 |',
+    ].join('\n');
+    const editor = createTestEditor(md);
+    const types = nodeTypesOf(editor);
+    expect(types.has('mathInline')).toBe(true);
+    expect(types.has('mathBlock')).toBe(true);
+    expect(types.has('mermaidBlock')).toBe(true);
+    expect(types.has('githubAlert')).toBe(true);
+    expect(types.has('taskList')).toBe(true);
+    expect(types.has('table')).toBe(true);
+    editor.destroy();
+  });
+
+  test('扩展语法经笔记本序列化管线往返不丢失', () => {
+    const md = '==高亮== 与 $x^2$\n\n> [!NOTE]\n> 说明\n\n- [x] 完成';
+    const editor = createTestEditor(md);
+    const output = serializeMarkdown(editor);
+    expect(output).toContain('==高亮==');
+    expect(output).toContain('$x^2$');
+    expect(output).toContain('[!NOTE]');
+    expect(output).toContain('- [x] 完成');
+    editor.destroy();
+  });
+
+  test('撤销不由文件级时间线接管：Mod-z 回落到编辑器自带历史', () => {
+    const names = (extensions: { name: string }[]) => extensions.map((extension) => extension.name);
+    // 笔记本编辑器由文件级时间线接管撤销，单元格编辑器没有独立文档历史，必须关闭接管
+    expect(names(buildExtensions('doc-key'))).toContain('unifiedDocumentHistoryKeys');
+    expect(names(buildLongTextExtensions())).not.toContain('unifiedDocumentHistoryKeys');
+    // 斜杠菜单与笔记本同源
+    expect(names(buildLongTextExtensions())).toContain('slashCommand');
   });
 });
