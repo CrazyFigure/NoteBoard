@@ -235,10 +235,20 @@ export default defineConfig(({ command }) => ({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  // 依赖预构建只从应用入口爬取；未配置时 Vite 会把 src-tauri/target、test-results、tools 下的 HTML 也当入口扫描
+  optimizeDeps: {
+    entries: ['index.html'],
+  },
   server: {
     host: '127.0.0.1',
     port: devPort,
     strictPort: hasAllocatedDevPort,
+    watch: {
+      // 🔴 src-tauri/target 有数万个构建产物，chokidar 初次遍历会长时间占住事件循环，
+      //    把依赖扫描从约 1 秒拖到 100 秒以上（冷启动白屏近 2 分钟）；且 cargo 编译期间持续写入会刷屏触发事件。
+      //    这些目录均不被前端 import；Rust 侧的改动监听由 Tauri CLI 自行负责。
+      ignored: ['**/src-tauri/**', '**/test-results/**', '**/tools/**', '**/dist/**'],
+    },
   },
   build: {
     target: 'chrome105', // WebView2 基线
