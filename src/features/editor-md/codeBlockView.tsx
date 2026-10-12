@@ -7,41 +7,15 @@ import { NodeViewWrapper, NodeViewContent, ReactNodeViewRenderer, type NodeViewP
 import CodeBlock from '@tiptap/extension-code-block';
 import { Copy, Check, ChevronDown, ChevronRight, Search, X } from 'lucide-react';
 // 语言标签是纯元数据，不让普通 Markdown 首开加载全部高亮语法。
-import { normalizeLanguage } from './codeLanguages';
+import { normalizeLanguage, CODE_LANGUAGES } from './codeLanguages';
 import { PREVIEW_FENCE_LANGUAGES, fenceLanguageOf, isBlockCodeToken, renderFencedCode } from './markdownFence';
 import { Tooltip } from '../../components/Tooltip';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useCollapsibleState } from './collapsibleState';
 import { codeHighlightPlugin } from './codeHighlightPlugin';
 
-/** 语言配置结构定义 */
-interface LanguageItem {
-  value: string;
-  label: string;
-  aliases: string[];
-}
-
-/** 支持的代码语言完整列表及检索别名 */
-const LANGUAGES: LanguageItem[] = [
-  { value: 'plaintext', label: '纯文本', aliases: ['text', 'txt', 'plain', 'chunwenben', 'wb'] },
-  { value: 'javascript', label: 'JavaScript', aliases: ['js', 'jsx', 'node', 'react'] },
-  { value: 'typescript', label: 'TypeScript', aliases: ['ts', 'tsx'] },
-  { value: 'python', label: 'Python', aliases: ['py', 'python3', 'py3'] },
-  { value: 'java', label: 'Java', aliases: ['jvm'] },
-  { value: 'c', label: 'C', aliases: ['clang'] },
-  { value: 'cpp', label: 'C++', aliases: ['c++', 'cplusplus', 'cc'] },
-  { value: 'csharp', label: 'C#', aliases: ['c#', 'cs', 'dotnet', '.net'] },
-  { value: 'go', label: 'Go', aliases: ['golang'] },
-  { value: 'rust', label: 'Rust', aliases: ['rs', 'cargo'] },
-  { value: 'sql', label: 'SQL', aliases: ['mysql', 'postgres', 'sqlite', 'oracle'] },
-  { value: 'json', label: 'JSON', aliases: [] },
-  { value: 'yaml', label: 'YAML', aliases: ['yml'] },
-  { value: 'xml', label: 'XML', aliases: ['html', 'xhtml', 'svg'] },
-  { value: 'markdown', label: 'Markdown', aliases: ['md'] },
-  // shell / sh 在 normalizeLanguage 中统一归一为 bash，只保留一个条目，避免选 Shell 后显示为 Bash
-  { value: 'bash', label: 'Bash / Shell', aliases: ['sh', 'shell', 'zsh', 'terminal'] },
-  { value: 'css', label: 'CSS', aliases: ['scss', 'less', 'style'] },
-];
+/** 支持的代码语言完整列表及检索别名（与斜杠命令共用 codeLanguages 中的定义） */
+const LANGUAGES = CODE_LANGUAGES;
 
 function CodeBlockComponent({ node, editor, getPos, updateAttributes }: NodeViewProps) {
   // 展开/收起只是显示状态，默认值取自设置（默认展开）

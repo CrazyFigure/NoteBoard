@@ -302,5 +302,26 @@ describe('顶部操作栏与工具单元测试 (Toolbar & Ops)', () => {
       const byBg4 = slashSuggestion.items({ query: 'bg4' });
       expect(byBg4.some((i) => i.id === 'tableLarge')).toBe(true);
     });
+
+    it('输入语言名或别名应首选对应语言代码块，前缀输入时联想出语言项', async () => {
+      const { slashSuggestion } = await import('../../src/features/editor-md/slashCommand');
+      expect(slashSuggestion.items({ query: 'java' })[0].id).toBe('codeBlock-java');
+      expect(slashSuggestion.items({ query: 'py' })[0].id).toBe('codeBlock-python');
+      expect(slashSuggestion.items({ query: 'js' })[0].id).toBe('codeBlock-javascript');
+      expect(slashSuggestion.items({ query: 'ts' })[0].id).toBe('codeBlock-typescript');
+      expect(slashSuggestion.items({ query: 'shell' })[0].id).toBe('codeBlock-bash');
+
+      const byJa = slashSuggestion.items({ query: 'ja' }).map((i) => i.id);
+      expect(byJa).toContain('codeBlock-java');
+      expect(byJa).toContain('codeBlock-javascript');
+    });
+
+    it('语言代码块不应抢占既有快捷词', async () => {
+      const { slashSuggestion } = await import('../../src/features/editor-md/slashCommand');
+      expect(slashSuggestion.items({ query: 'p' })[0].id).toBe('paragraph');
+      expect(slashSuggestion.items({ query: 'code' })[0].id).toBe('codeBlock');
+      expect(slashSuggestion.items({ query: 'html' })[0].id).toBe('rawHtml');
+      expect(slashSuggestion.items({ query: 'text' })[0].id).toBe('paragraph');
+    });
   });
 });
