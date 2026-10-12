@@ -25,6 +25,7 @@ import {
   Minus,
 } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
+import { promptLinkUrl } from '../../components/promptPresets';
 
 /** Markdown 允许粗体/斜体包裹行内代码；默认 Code 的 excludes: '_' 会导致解析出非法 marks */
 const MarkdownCompatibleCode = Code.extend({ excludes: '' });
@@ -259,13 +260,15 @@ export function BitableRichTextEditor({
     onModeChange('rich');
   }, [editor, sourceDraft, onChange, onModeChange]);
 
-  /** 插入或清除链接：用原生输入获取地址，避免在单元格浮层里再嵌一层弹窗 */
-  const handleLink = useCallback(() => {
+  /**
+   * 插入或清除链接：使用全局输入弹窗获取地址
+   * 弹窗挂在 body 下且层级高于单元格编辑弹层，并在捕获阶段接管 Esc，不会误关外层弹层
+   */
+  const handleLink = useCallback(async () => {
     if (!editor || editor.isDestroyed) return;
     const previous = editor.getAttributes('link').href as string | undefined;
-    const input = window.prompt('输入链接地址（留空则移除链接）', previous ?? 'https://');
-    if (input === null) return;
-    const url = input.trim();
+    const url = await promptLinkUrl(previous);
+    if (url === null || editor.isDestroyed) return;
     if (!url) {
       editor.chain().focus().extendMarkRange('link').unsetLink().run();
       return;

@@ -44,6 +44,7 @@ import {
   SquareCode,
 } from 'lucide-react';
 import { insertLocalImageWithDialog } from './imagePaste';
+import { promptImageUrl } from '../../components/promptPresets';
 import { useWindowStore } from '../../stores/windowStore';
 import { emit } from '../../core/emitter';
 import { IS_MOBILE_UI } from '../../core/platform';
@@ -530,10 +531,13 @@ const IMAGE_URL_LEAF: LeafCommandItem = {
   aliases: ['urltp', 'wangluotp', 'imgurl', 'imageurl'],
   keywords: '网络图片 图片链接 image url img photo wangluo',
   action: (editor, range) => {
-    const url = window.prompt('请输入图片网络 URL:');
-    if (url) {
-      editor.chain().focus().deleteRange(range).setImage({ src: url }).run();
-    }
+    // 先删掉斜杠指令文本再弹窗：取消时文档保持干净，确认后在原位置插入
+    editor.chain().focus().deleteRange(range).run();
+    void promptImageUrl().then((url) => {
+      if (url && !editor.isDestroyed) {
+        editor.chain().focus().setImage({ src: url }).run();
+      }
+    });
   },
 };
 

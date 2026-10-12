@@ -9,6 +9,7 @@ import { TitleBar } from './titlebar/TitleBar';
 import { StatusBar } from './statusbar/StatusBar';
 import { WelcomeScreen } from './WelcomeScreen';
 import { ToastContainer } from './Toast';
+import { PromptDialogHost } from './PromptDialogHost';
 import { RailToggle } from './rail/RailToggle';
 import { FileDropOverlay } from './FileDropOverlay';
 import { EditorStack } from './shell/EditorStack';
@@ -483,6 +484,9 @@ export function AppShell(_props: { children?: React.ReactNode }) {
 
       {/* 全局 Toast 提示 */}
       <ToastContainer />
+
+      {/* 全局输入弹窗（替代原生 prompt） */}
+      <PromptDialogHost />
 
       {/* 全局文件拖拽释放提示 */}
       {!isBoardPresentationMode && <FileDropOverlay />}

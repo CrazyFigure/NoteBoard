@@ -58,6 +58,7 @@ import {
   useDocumentHistory,
 } from '../history/documentHistory';
 import { insertLocalImageWithDialog, pickAndSaveLocalImage } from '../editor-md/imagePaste';
+import { promptImageUrl } from '../../components/promptPresets';
 import { DETAILS_SOURCE_SNIPPET, insertDetailsContent } from '../editor-md/detailsExtension';
 import { RAW_HTML_SOURCE_SNIPPET, insertRawHtmlContent } from '../editor-md/rawHtmlBlockView';
 // 🔴 S03：从 editor-md 边界内实例表获取内核实例（不再依赖编辑器组件文件的 getter 导出）
@@ -420,9 +421,9 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
     }
   };
 
-  const handleInsertNetworkImage = () => {
+  const handleInsertNetworkImage = async () => {
     setInsertDropdownOpen(false);
-    const url = window.prompt('请输入图片网络 URL:');
+    const url = await promptImageUrl();
     if (!url) return;
     if (isSourceMode) {
       executeSourceAction((view) => {
@@ -435,7 +436,8 @@ export function MarkdownToolbar({ docKey, editor: propEditor, viewMode }: Markdo
       });
       return;
     }
-    if (!editor) return;
+    // 弹窗期间标签可能已被关闭，编辑器实例随之销毁
+    if (!editor || editor.isDestroyed) return;
     editor.chain().focus().setImage({ src: url }).run();
   };
 
