@@ -2,7 +2,7 @@
 // 外观主题切换（晨光/琥珀/墨夜/跟随系统） + 排版设置（字体/字号/行高/内容宽度） + 快捷键与关于
 // 详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
-import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud } from 'lucide-react';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { THEMES } from '../../core/theme/themes';
@@ -18,6 +18,8 @@ import { SettingsRange } from './SettingsRange';
 import { Tooltip } from '../Tooltip';
 import type { MarkdownNormalizationPolicy } from '../../core/ipc/types';
 import { IS_MOBILE_UI } from '../../core/platform';
+// 设置窗口已在 App 中按需加载；同步面板及样式随窗口就绪，避免首次切换先显示加载占位。
+import { SyncPanel } from '../../features/sync/SyncPanel';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -25,9 +27,6 @@ interface SettingsModalProps {
 }
 
 type TabType = 'appearance' | 'typography' | 'editor' | 'file' | 'sync' | 'shortcuts' | 'about';
-
-// 同步与备份面板体积较大（含各服务表单与说明），切到该页时才加载
-const SyncPanel = lazy(() => import('../../features/sync/SyncPanel').then((m) => ({ default: m.SyncPanel })));
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('appearance');
@@ -1231,12 +1230,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </div>
             )}
 
-            {/* 5. 同步与备份 */}
-            {activeTab === 'sync' && (
-              <Suspense fallback={<div style={{ fontSize: 12, color: 'var(--editor-text-muted)' }}>正在加载同步设置</div>}>
-                <SyncPanel />
-              </Suspense>
-            )}
+            {/* 5. 同步与备份：与其他页签一样直接渲染，配置未就绪的提示由面板自身处理。 */}
+            {activeTab === 'sync' && <SyncPanel />}
 
             {/* 6. 快捷键指南 */}
             {activeTab === 'shortcuts' && (
