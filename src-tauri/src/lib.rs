@@ -19,7 +19,7 @@ pub mod staging;
 pub mod favorites;
 pub mod perf;
 pub mod mobile_bridge;
-// 多端同步与备份（WebDAV / S3 / GitHub / Gitee / GitLab）
+// 多端同步与备份（WebDAV / S3 / GitHub / Gitee / GitCode / GitLab）
 pub mod sync;
 
 use state::AppState;
