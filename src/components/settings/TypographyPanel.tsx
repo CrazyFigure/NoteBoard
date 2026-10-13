@@ -7,6 +7,7 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { applyTypography, contentWidthToPercent } from '../../core/theme/applyTheme';
 import { FontSelect } from './FontSelect';
 import { FontPackSettingsCard } from './FontPackSettingsCard';
+import { SettingsRange } from './SettingsRange';
 
 export function TypographyPanel() {
   const settings = useSettingsStore((s) => s.settings);
@@ -67,8 +68,7 @@ export function TypographyPanel() {
       {/* 界面 UI 字号 */}
       <div style={rowStyle}>
         <span style={labelStyle}>界面 UI 基础字号</span>
-        <input
-          type="range"
+        <SettingsRange
           min="12"
           max="18"
           step="1"
@@ -139,8 +139,7 @@ export function TypographyPanel() {
       {/* 正文行高 */}
       <div style={rowStyle}>
         <span style={labelStyle}>正文行高</span>
-        <input
-          type="range"
+        <SettingsRange
           min="1.3"
           max="2.4"
           step="0.1"
@@ -180,8 +179,7 @@ export function TypographyPanel() {
           </select>
           {/* 滑动条自定义宽度调节 */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <input
-              type="range"
+            <SettingsRange
               min="40"
               max="100"
               step="1"
@@ -257,8 +255,7 @@ export function TypographyPanel() {
       {/* 代码行高 */}
       <div style={rowStyle}>
         <span style={labelStyle}>代码行高</span>
-        <input
-          type="range"
+        <SettingsRange
           min="1.2"
           max="2.2"
           step="0.1"
@@ -298,8 +295,7 @@ export function TypographyPanel() {
           </select>
           {/* 滑动条自定义宽度调节 */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <input
-              type="range"
+            <SettingsRange
               min="40"
               max="100"
               step="1"
