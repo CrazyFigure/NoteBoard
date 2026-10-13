@@ -22,6 +22,9 @@ pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // 后台清理已安装或过期的更新安装包（必须在缓存目录初始化之后；不阻塞启动）
+    std::thread::spawn(crate::updater::commands::cleanup_installed_update_packages);
+
     #[cfg(debug_assertions)]
     if let Some(window) = app.get_webview_window("nb-main") {
         // 开发版可与安装版并行运行，标题必须明确区分，避免调试时误操作正式实例。

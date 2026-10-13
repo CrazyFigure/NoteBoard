@@ -6,6 +6,7 @@
 // 2. 接收"用其他应用打开 / 分享到 NoteBoard"的文件（content:// 复制到应用收件箱后返回真实路径）；
 // 3. 调用系统分享面板分享文件。
 // 4. 更新检测失败时通过非 VPN 的 Wi-Fi / 蜂窝网络尝试直连 GitHub。
+// 5. 应用内下载的更新 APK 交给系统软件包安装器安装。
 
 package com.crazyfigure.noteboard
 
@@ -55,6 +56,11 @@ class SystemBarArgs {
 class ShareArgs {
   lateinit var path: String
   var mimeType: String? = null
+}
+
+@InvokeArg
+class InstallApkArgs {
+  lateinit var path: String
 }
 
 /** 待处理的外部输入：文件 URI 或纯文本分享 */
@@ -285,6 +291,31 @@ class NbMobilePlugin(private val activity: Activity) : Plugin(activity) {
   fun moveToBackground(invoke: Invoke) {
     activity.moveTaskToBack(true)
     invoke.resolve()
+  }
+
+  /**
+   * 调起系统软件包安装器安装应用内下载的更新 APK（文件位于应用缓存目录，经专用 FileProvider 授权读取）。
+   * 首次安装时系统会提示允许本应用安装未知应用，授权后安装器继续执行；需在清单中声明 REQUEST_INSTALL_PACKAGES。
+   */
+  @Command
+  fun installApk(invoke: Invoke) {
+    try {
+      val args = invoke.parseArgs(InstallApkArgs::class.java)
+      val file = File(args.path)
+      if (!file.isFile) {
+        invoke.reject("安装包不存在")
+        return
+      }
+      val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.nbfileprovider", file)
+      val install = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, "application/vnd.android.package-archive")
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+      }
+      activity.startActivity(install)
+      invoke.resolve()
+    } catch (e: Exception) {
+      invoke.reject("启动安装器失败: ${e.message}")
+    }
   }
 
   @Command

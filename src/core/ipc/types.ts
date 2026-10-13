@@ -431,6 +431,24 @@ export interface UpdateCheckResult {
   installerSize?: number | null;
   // Release 更新说明
   releaseBody?: string | null;
+  // 当前版本之后所有未安装版本的更新日志（最新版在前）
+  releaseNotes?: UpdateReleaseNote[];
+  // 未安装版本超出单页 Release 列表，更早的日志需前往 Release 页面查看
+  releaseNotesTruncated?: boolean;
+}
+
+// 单个版本的更新日志条目
+export interface UpdateReleaseNote {
+  // 版本号（不含 v 前缀）
+  version: string;
+  // Release 标题
+  name?: string | null;
+  // 该版本 Release 页面链接
+  url: string;
+  // 发布时间戳字符串
+  publishedAt?: string | null;
+  // 更新日志正文
+  body?: string | null;
 }
 
 export interface UpdateDownloadProgress {

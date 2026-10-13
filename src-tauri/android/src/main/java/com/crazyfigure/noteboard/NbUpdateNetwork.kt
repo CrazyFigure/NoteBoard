@@ -14,8 +14,8 @@ import java.net.Proxy
 import java.net.URL
 
 internal object NbUpdateNetwork {
-  // 固定为本仓库 Release API，不接受前端传入任意直连地址。
-  private const val RELEASE_URL = "https://api.github.com/repos/CrazyFigure/NoteBoard/releases/latest"
+  // 固定为本仓库 Release 列表 API（与 Rust 侧 GITHUB_RELEASE_API_URL 保持一致），不接受前端传入任意直连地址。
+  private const val RELEASE_URL = "https://api.github.com/repos/CrazyFigure/NoteBoard/releases?per_page=30"
   // 与 Rust 侧更新检查保持 8 秒连接、40 秒总体时限，并限制元数据为 2 MiB。
   private const val CONNECT_TIMEOUT_MS = 8_000
   private const val TOTAL_TIMEOUT_MS = 40_000L

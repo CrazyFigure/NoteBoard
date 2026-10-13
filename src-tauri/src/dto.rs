@@ -537,4 +537,26 @@ pub struct UpdateCheckResult {
     pub installer_size: Option<u64>,
     // Release 更新日志正文说明
     pub release_body: Option<String>,
+    // 当前版本之后所有未安装版本的更新日志（最新版在前），无更新时为空
+    #[serde(default)]
+    pub release_notes: Vec<UpdateReleaseNote>,
+    // 未安装版本过多、超出单页 Release 列表时为 true，前端提示前往 Release 页面查看更早日志
+    #[serde(default)]
+    pub release_notes_truncated: bool,
+}
+
+// 单个版本的更新日志条目
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateReleaseNote {
+    // 版本号（不含 v 前缀）
+    pub version: String,
+    // Release 标题名称
+    pub name: Option<String>,
+    // 该版本 Release 页面 URL
+    pub url: String,
+    // 发布时间 ISO8601 字符串
+    pub published_at: Option<String>,
+    // 更新日志正文
+    pub body: Option<String>,
 }

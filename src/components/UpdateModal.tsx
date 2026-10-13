@@ -1,5 +1,6 @@
 // NoteBoard 自动更新模态弹窗组件
-// 支持新版本展示、Release Notes 渲染、下载进度条、代理与错误提示及一键安装
+// 支持新版本展示、分版本可折叠的 Release Notes、下载进度条、代理与错误提示及一键安装
+// 桌面端为居中弹窗，移动端为底部面板（Android 应用内下载 APK 后调起系统安装器）
 
 import { useState, useEffect, useMemo } from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
@@ -11,11 +12,15 @@ import {
   CheckCircle2,
   AlertCircle,
   Sparkles,
+  ArrowRight,
 } from 'lucide-react';
 import { Tooltip } from './Tooltip';
-import type { UpdateCheckResult, UpdateDownloadProgress } from '../core/ipc/types';
+import { UpdateReleaseNotes } from './UpdateReleaseNotes';
+import type { UpdateCheckResult, UpdateDownloadProgress, UpdateReleaseNote } from '../core/ipc/types';
 import * as ipc from '../core/ipc/commands';
-import { IS_NATIVE_MOBILE } from '../core/platform';
+import { IS_MOBILE_UI, IS_NATIVE_MOBILE } from '../core/platform';
+import { useBackDismiss } from '../mobile/components';
+import './update-modal.css';
 
 interface UpdateModalProps {
   isOpen: boolean;
@@ -40,6 +45,15 @@ function formatBytes(bytes?: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// 发布时间格式化为 YYYY-MM-DD
+function formatDate(value?: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const pad = (num: number) => String(num).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 export function UpdateModal({
   isOpen,
   onClose,
@@ -51,6 +65,22 @@ export function UpdateModal({
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<UpdateDownloadProgress | null>(null);
   const [installError, setInstallError] = useState<string | null>(null);
+
+  // 移动端返回键关闭弹窗（下载中不响应，避免中断进度展示）
+  useBackDismiss(IS_MOBILE_UI && isOpen && !downloading, onClose);
+
+  // 桌面端 Esc 关闭弹窗（下载中不响应）
+  useEffect(() => {
+    if (!isOpen || downloading) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, downloading, onClose]);
 
   // 监听 Tauri 后端推送的下载进度事件
   useEffect(() => {
@@ -92,6 +122,21 @@ export function UpdateModal({
     return 0;
   }, [downloadProgress]);
 
+  // 分版本更新日志；兼容旧结构（仅有最新版正文）时合成单个版本条目
+  const releaseNotes = useMemo<UpdateReleaseNote[]>(() => {
+    if (!result) return [];
+    if (result.releaseNotes && result.releaseNotes.length > 0) return result.releaseNotes;
+    return [
+      {
+        version: result.latestVersion,
+        name: result.releaseName,
+        url: result.releaseUrl,
+        publishedAt: result.publishedAt,
+        body: result.releaseBody,
+      },
+    ];
+  }, [result]);
+
   // 处理下载并执行安装
   const handleDownloadAndInstall = async () => {
     if (!result?.installerDownloadUrl || !result?.installerAssetName) {
@@ -109,7 +154,12 @@ export function UpdateModal({
       onClose();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      setInstallError(`安装包下载或启动失败：${msg}`);
+      // 移动端失败时引导改用浏览器从 Release 页面下载
+      setInstallError(
+        IS_NATIVE_MOBILE
+          ? `安装包下载或安装失败：${msg}。可点击「Release 页面」在浏览器中下载。`
+          : `安装包下载或启动失败：${msg}`,
+      );
     } finally {
       setDownloading(false);
     }
@@ -125,9 +175,11 @@ export function UpdateModal({
   if (!isOpen) return null;
 
   const showDetail = Boolean(result?.updateAvailable && !checkError && !checking);
+  const latestDate = formatDate(result?.publishedAt);
 
   return (
     <div
+      className="nb-update-overlay"
       style={{
         position: 'fixed',
         top: 0,
@@ -144,8 +196,11 @@ export function UpdateModal({
       onClick={downloading ? undefined : onClose}
     >
       <div
+        className="nb-update-dialog"
+        role="dialog"
+        aria-modal="true"
         style={{
-          width: 520,
+          width: 540,
           maxWidth: '92vw',
           maxHeight: '85vh',
           background: 'var(--editor-bg)',
@@ -313,65 +368,41 @@ export function UpdateModal({
           {/* 4. 发现新版本详情 */}
           {showDetail && result && (
             <>
-              {/* 版本跳跃指示器 */}
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '10px 14px',
-                  background: 'var(--editor-surface)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--editor-border)',
-                }}
-              >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>版本更新</span>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent-strong)' }}>
-                    v{result.currentVersion} → v{result.latestVersion}
-                  </span>
+              {/* 版本概览：当前版本 → 最新版本，跨多个版本时标注数量 */}
+              <div className="nb-update-hero">
+                <div className="nb-update-hero-versions">
+                  <div className="nb-update-hero-version">
+                    <span className="nb-update-hero-label">当前版本</span>
+                    <span className="nb-update-hero-value is-current">v{result.currentVersion}</span>
+                  </div>
+                  <ArrowRight size={16} className="nb-update-hero-arrow" />
+                  <div className="nb-update-hero-version">
+                    <span className="nb-update-hero-label">
+                      最新版本{latestDate ? ` · ${latestDate}` : ''}
+                    </span>
+                    <span className="nb-update-hero-value is-latest">v{result.latestVersion}</span>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, textAlign: 'right' }}>
-                  <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>安装包大小</span>
-                  <span style={{ fontSize: 13, fontWeight: 500 }}>
+                <div className="nb-update-hero-meta">
+                  {releaseNotes.length > 1 && (
+                    <span className="nb-update-chip">
+                      {result.releaseNotesTruncated ? `${releaseNotes.length}+` : releaseNotes.length} 个版本待更新
+                    </span>
+                  )}
+                  <span className="nb-update-hero-size">
+                    <span className="nb-update-hero-label">安装包 </span>
                     {formatBytes(result.installerSize)}
                   </span>
                 </div>
               </div>
 
-              {/* 发布时间 */}
-              {result.publishedAt && (
-                <div style={{ fontSize: 12, color: 'var(--editor-text-muted)', marginTop: -4 }}>
-                  发布时间：{new Date(result.publishedAt).toLocaleString('zh-CN')}
-                </div>
-              )}
-
-              {/* 更新日志正文 */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <span style={{ fontSize: 12, fontWeight: 600 }}>更新日志</span>
-                <div
-                  style={{
-                    // 更新日志区域加高，一屏可见更多条目；矮屏时按视口高度收缩，避免弹窗溢出
-                    maxHeight: 'min(260px, 36vh)',
-                    overflowY: 'auto',
-                    padding: '10px 12px',
-                    background: 'var(--editor-surface)',
-                    border: '1px solid var(--editor-border)',
-                    borderRadius: 'var(--radius-sm)',
-                    fontSize: 12,
-                    lineHeight: 1.6,
-                    color: 'var(--editor-text)',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                  }}
-                >
-                  {result.releaseBody?.trim() ? (
-                    result.releaseBody
-                  ) : (
-                    <span style={{ color: 'var(--editor-text-muted)' }}>本次更新暂无详细日志说明。</span>
-                  )}
-                </div>
-              </div>
+              {/* 分版本更新日志：单个版本默认展开，多个版本默认折叠 */}
+              <UpdateReleaseNotes
+                key={result.latestVersion}
+                notes={releaseNotes}
+                truncated={Boolean(result.releaseNotesTruncated)}
+                onOpenUrl={handleOpenUrl}
+              />
 
               {/* 下载错误提示 */}
               {installError && (
@@ -400,7 +431,7 @@ export function UpdateModal({
                       color: 'var(--editor-text-muted)',
                     }}
                   >
-                    <span>正在下载安装包</span>
+                    <span>{progressPercent >= 100 ? '下载完成，正在启动安装程序' : '正在下载安装包'}</span>
                     <span>
                       {downloadProgress
                         ? `${formatBytes(downloadProgress.downloadedBytes)} / ${formatBytes(
@@ -409,23 +440,8 @@ export function UpdateModal({
                         : `${progressPercent}%`}
                     </span>
                   </div>
-                  <div
-                    style={{
-                      height: 6,
-                      background: 'var(--editor-surface)',
-                      borderRadius: 3,
-                      overflow: 'hidden',
-                      border: '1px solid var(--editor-border)',
-                    }}
-                  >
-                    <div
-                      style={{
-                        height: '100%',
-                        width: `${progressPercent}%`,
-                        background: 'var(--accent-strong)',
-                        transition: 'width 0.15s ease',
-                      }}
-                    />
+                  <div className="nb-update-progress-track">
+                    <div className="nb-update-progress-bar" style={{ width: `${progressPercent}%` }} />
                   </div>
                 </div>
               )}
@@ -435,6 +451,7 @@ export function UpdateModal({
 
         {/* 底部操作按钮 */}
         <div
+          className="nb-update-footer"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -521,8 +538,8 @@ export function UpdateModal({
               }}
             >
               <Download size={14} />
-              {/* 移动端交给浏览器下载 APK，由系统安装器完成升级 */}
-              <span>{IS_NATIVE_MOBILE ? '前往下载' : downloading ? '正在下载' : '下载并安装'}</span>
+              {/* 移动端同样在应用内下载 APK，完成后由系统安装器完成升级 */}
+              <span>{downloading ? '正在下载' : '下载并安装'}</span>
             </button>
           )}
         </div>

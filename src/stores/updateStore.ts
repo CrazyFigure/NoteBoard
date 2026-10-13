@@ -47,6 +47,8 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
   checkForUpdates: async (silent = false) => {
     // 若当前正在检查中，避免重复请求
     if (get().checking) return;
+    // 弹窗打开期间跳过静默检查：否则弹窗会闪回"检查中"状态，并重置用户展开的版本日志与下载进度
+    if (silent && get().modalOpen) return;
 
     try {
       set({
