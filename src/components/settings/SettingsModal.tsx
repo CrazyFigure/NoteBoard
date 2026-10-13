@@ -108,8 +108,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'rgba(0, 0, 0, 0.45)',
-        backdropFilter: 'blur(4px)',
+        // 不用 backdrop-filter：全屏毛玻璃会让面板内每一帧滚动都扩大为整窗重绘并重新模糊，
+        // WebView2 高 DPI 下滚动明显掉帧；改为略深的纯色遮罩维持层次感
+        background: 'rgba(0, 0, 0, 0.5)',
       }}
     >
       <div

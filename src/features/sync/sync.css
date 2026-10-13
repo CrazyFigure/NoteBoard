@@ -499,8 +499,8 @@ label.nb-sync-row {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(3px);
+  /* 不用 backdrop-filter：全屏毛玻璃会让弹窗内滚动每帧整窗重绘，WebView2 下明显掉帧 */
+  background: rgba(0, 0, 0, 0.5);
 }
 
 .nb-sync-dialog {
