@@ -487,7 +487,7 @@ export interface PlatformInfo {
 // ── 多端同步与备份 ──
 
 /** 远端服务类型 */
-export type SyncProviderKind = 'webdav' | 's3' | 'github' | 'gitee' | 'gitlab';
+export type SyncProviderKind = 'webdav' | 's3' | 'github' | 'gitee' | 'gitcode' | 'gitlab';
 
 export interface WebDavConfig {
   url: string;
@@ -527,6 +527,7 @@ export interface SyncProviderConfig {
   s3: S3Config;
   github: GitRepoConfig;
   gitee: GitRepoConfig;
+  gitcode: GitRepoConfig;
   gitlab: GitRepoConfig;
 }
 

@@ -276,6 +276,7 @@ const KIND_OPTIONS: { kind: SyncProviderKind; label: string }[] = [
   { kind: 's3', label: 'S3 对象存储' },
   { kind: 'github', label: 'GitHub' },
   { kind: 'gitee', label: 'Gitee' },
+  { kind: 'gitcode', label: 'GitCode' },
   { kind: 'gitlab', label: 'GitLab' },
 ];
 
@@ -317,6 +318,7 @@ const HELP_TITLES: Record<SyncProviderKind, string> = {
   s3: '如何获取 S3 端点与访问密钥（OSS / COS / AWS / R2 / MinIO）',
   github: '如何创建 GitHub 仓库与访问令牌',
   gitee: '如何创建 Gitee 仓库与私人令牌',
+  gitcode: '如何创建 GitCode 仓库与访问令牌',
   gitlab: '如何创建 GitLab 项目与访问令牌',
 };
 
@@ -367,7 +369,14 @@ function S3Help() {
   );
 }
 
-function GitHelp({ kind, baseUrl }: { kind: 'github' | 'gitee' | 'gitlab'; baseUrl: string }) {
+/** Git 托管平台类服务 */
+type GitKind = 'github' | 'gitee' | 'gitcode' | 'gitlab';
+
+function isGitKind(kind: SyncProviderKind): kind is GitKind {
+  return kind === 'github' || kind === 'gitee' || kind === 'gitcode' || kind === 'gitlab';
+}
+
+function GitHelp({ kind, baseUrl }: { kind: GitKind; baseUrl: string }) {
   if (kind === 'github') {
     return (
       <div className="nb-sync-help">
@@ -401,6 +410,23 @@ function GitHelp({ kind, baseUrl }: { kind: 'github' | 'gitee' | 'gitlab'; baseU
       </div>
     );
   }
+  if (kind === 'gitcode') {
+    return (
+      <div className="nb-sync-help">
+        <ol>
+          <li>
+            在 GitCode 新建仓库（建议私有），<strong>创建时勾选「添加 README 文件」</strong>初始化仓库——接口无法向完全空白的仓库写入。
+          </li>
+          <li>
+            创建访问令牌：头像 → 个人设置 → 访问令牌 → 新建访问令牌，授予仓库的读写权限。令牌只显示一次，请立即复制。
+            <HelpLink href="https://gitcode.com/setting/token-classic">打开访问令牌页面</HelpLink>
+          </li>
+          <li>所属空间填写仓库地址中的用户名或组织名，例如 <code>gitcode.com/zhangsan/notes</code> 中的 <code>zhangsan</code>。</li>
+        </ol>
+        <div>GitCode 不支持一次提交多个文件，每个文件的变更会单独提交；单个文件不能超过 50MB。</div>
+      </div>
+    );
+  }
   const base = (baseUrl.trim() || 'https://gitlab.com').replace(/\/+$/, '');
   return (
     <div className="nb-sync-help">
@@ -422,15 +448,16 @@ function GitFields({
   value,
   onChange,
 }: {
-  kind: 'github' | 'gitee' | 'gitlab';
+  kind: GitKind;
   value: GitRepoConfig;
   onChange: (patch: Partial<GitRepoConfig>) => void;
 }) {
-  const ownerLabel = kind === 'gitee' ? '所属空间（用户名/组织）' : kind === 'gitlab' ? '用户名 / 群组路径' : '所有者（用户名/组织）';
-  const tokenLabel = kind === 'gitee' ? '私人令牌' : '访问令牌（Personal access token）';
+  const ownerLabel = kind === 'gitee' || kind === 'gitcode' ? '所属空间（用户名/组织）' : kind === 'gitlab' ? '用户名 / 群组路径' : '所有者（用户名/组织）';
+  const tokenLabel = kind === 'gitee' ? '私人令牌' : kind === 'gitcode' ? '访问令牌' : '访问令牌（Personal access token）';
   return (
     <div className="nb-sync-grid">
-      {kind !== 'gitee' && (
+      {/* Gitee / GitCode 只支持官方地址，不显示服务地址 */}
+      {kind !== 'gitee' && kind !== 'gitcode' && (
         <Field
           label={kind === 'gitlab' ? '服务地址（自建实例）' : '服务地址（GitHub Enterprise）'}
           hint={kind === 'gitlab' ? '使用 gitlab.com 时留空' : '使用 github.com 时留空'}
@@ -480,7 +507,7 @@ export function ProviderForm({
     setResult(null);
   }, [value]);
 
-  const patchGit = (kind: 'github' | 'gitee' | 'gitlab', patch: Partial<GitRepoConfig>) =>
+  const patchGit = (kind: GitKind, patch: Partial<GitRepoConfig>) =>
     onChange({ ...value, [kind]: { ...value[kind], ...patch } });
 
   const handleTest = async () => {
@@ -603,8 +630,8 @@ export function ProviderForm({
         </div>
       )}
 
-      {(value.kind === 'github' || value.kind === 'gitee' || value.kind === 'gitlab') && (
-        <GitFields kind={value.kind} value={value[value.kind]} onChange={(patch) => patchGit(value.kind as 'github' | 'gitee' | 'gitlab', patch)} />
+      {isGitKind(value.kind) && (
+        <GitFields kind={value.kind} value={value[value.kind]} onChange={(patch) => patchGit(value.kind as GitKind, patch)} />
       )}
 
       {/* 获取地址与密钥的说明：默认收起，切换服务类型后标题随之变化 */}
@@ -612,9 +639,7 @@ export function ProviderForm({
         <Collapsible key={value.kind} variant="help" icon={<HelpCircle size={14} />} title={HELP_TITLES[value.kind]}>
           {value.kind === 'webdav' && <WebDavHelp />}
           {value.kind === 's3' && <S3Help />}
-          {(value.kind === 'github' || value.kind === 'gitee' || value.kind === 'gitlab') && (
-            <GitHelp kind={value.kind} baseUrl={value.gitlab.baseUrl} />
-          )}
+          {isGitKind(value.kind) && <GitHelp kind={value.kind} baseUrl={value.gitlab.baseUrl} />}
         </Collapsible>
       )}
 

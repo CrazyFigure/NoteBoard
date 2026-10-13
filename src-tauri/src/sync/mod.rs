@@ -2,7 +2,7 @@
 //
 // 模块分层：
 //   config / secret      —— 配置与密钥本机加密
-//   backend/*            —— WebDAV、S3、GitHub、Gitee、GitLab 远端适配
+//   backend/*            —— WebDAV、S3、GitHub、Gitee、GitCode、GitLab 远端适配
 //   manifest / state     —— 远端同步清单与本机同步基线
 //   plan / diff3         —— 合并决策（纯函数）与行级三方合并
 //   engine               —— 一次完整同步的执行

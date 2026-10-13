@@ -15,6 +15,7 @@ pub enum ProviderKind {
     S3,
     Github,
     Gitee,
+    Gitcode,
     Gitlab,
 }
 
@@ -25,6 +26,7 @@ impl ProviderKind {
             ProviderKind::S3 => "S3",
             ProviderKind::Github => "GitHub",
             ProviderKind::Gitee => "Gitee",
+            ProviderKind::Gitcode => "GitCode",
             ProviderKind::Gitlab => "GitLab",
         }
     }
@@ -64,7 +66,7 @@ pub struct S3Config {
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct GitRepoConfig {
-    /// 自建实例地址（GitLab 自建；GitHub/Gitee 留空使用官方地址）
+    /// 自建实例地址（GitLab 自建；GitHub/Gitee/GitCode 留空使用官方地址）
     pub base_url: String,
     /// 仓库所有者（GitLab 可为多级群组路径 group/subgroup）
     pub owner: String,
@@ -85,6 +87,7 @@ pub struct ProviderConfig {
     pub s3: S3Config,
     pub github: GitRepoConfig,
     pub gitee: GitRepoConfig,
+    pub gitcode: GitRepoConfig,
     pub gitlab: GitRepoConfig,
 }
 
@@ -95,6 +98,7 @@ impl ProviderConfig {
         self.s3.secret_access_key = f(&self.s3.secret_access_key);
         self.github.token = f(&self.github.token);
         self.gitee.token = f(&self.gitee.token);
+        self.gitcode.token = f(&self.gitcode.token);
         self.gitlab.token = f(&self.gitlab.token);
     }
 
@@ -113,7 +117,7 @@ impl ProviderConfig {
                 self.s3.bucket.trim(),
                 self.s3.prefix.trim().trim_matches('/')
             ),
-            ProviderKind::Github | ProviderKind::Gitee | ProviderKind::Gitlab => {
+            ProviderKind::Github | ProviderKind::Gitee | ProviderKind::Gitcode | ProviderKind::Gitlab => {
                 let g = self.git();
                 format!(
                     "{}|{}|{}/{}|{}|{}",
@@ -132,6 +136,7 @@ impl ProviderConfig {
     pub fn git(&self) -> &GitRepoConfig {
         match self.kind {
             ProviderKind::Gitee => &self.gitee,
+            ProviderKind::Gitcode => &self.gitcode,
             ProviderKind::Gitlab => &self.gitlab,
             _ => &self.github,
         }

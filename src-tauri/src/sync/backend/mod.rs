@@ -4,11 +4,12 @@
 //   begin   —— 开始一次会话（Git 类后端读取分支当前提交作为一致快照）
 //   read    —— 读取文件（不存在返回 None）
 //   commit  —— 提交一批写入/删除与新的同步清单
-//              Git 类：GitHub/GitLab 单个原子提交 + 分支乐观锁；Gitee 逐文件提交 + 清单 sha 乐观锁
+//              Git 类：GitHub/GitLab 单个原子提交 + 分支乐观锁；Gitee/GitCode 逐文件提交 + 清单 sha 乐观锁
 //              WebDAV/S3：先写内容、再校验清单版本后写清单、最后删除旧文件
 //   list    —— 列出某目录下的文件（备份列表与保留策略使用）
 //   put/delete —— 单文件写入与删除（备份上传与清理使用）
 
+pub mod gitcode;
 pub mod gitee;
 pub mod github;
 pub mod gitlab;
@@ -51,6 +52,7 @@ pub enum Backend {
     S3(s3::S3),
     GitHub(github::GitHub),
     Gitee(gitee::Gitee),
+    GitCode(gitcode::GitCode),
     GitLab(gitlab::GitLab),
     #[cfg(test)]
     Memory(memory::Memory),
@@ -60,7 +62,7 @@ pub enum Backend {
 pub fn max_file_size(kind: ProviderKind) -> u64 {
     match kind {
         ProviderKind::Github => 90 * 1024 * 1024,
-        ProviderKind::Gitee | ProviderKind::Gitlab => 50 * 1024 * 1024,
+        ProviderKind::Gitee | ProviderKind::Gitcode | ProviderKind::Gitlab => 50 * 1024 * 1024,
         _ => 1024 * 1024 * 1024,
     }
 }
@@ -127,6 +129,7 @@ impl Backend {
             ProviderKind::S3 => Backend::S3(s3::S3::new(client, &cfg.s3)?),
             ProviderKind::Github => Backend::GitHub(github::GitHub::new(client, &cfg.github)?),
             ProviderKind::Gitee => Backend::Gitee(gitee::Gitee::new(client, &cfg.gitee)?),
+            ProviderKind::Gitcode => Backend::GitCode(gitcode::GitCode::new(client, &cfg.gitcode)?),
             ProviderKind::Gitlab => Backend::GitLab(gitlab::GitLab::new(client, &cfg.gitlab)?),
         })
     }
@@ -140,6 +143,7 @@ impl Backend {
         match self {
             Backend::GitHub(b) => b.begin().await,
             Backend::Gitee(b) => b.begin().await,
+            Backend::GitCode(b) => b.begin().await,
             Backend::GitLab(b) => b.begin().await,
             _ => Ok(()),
         }
@@ -151,6 +155,7 @@ impl Backend {
             Backend::S3(b) => b.read(rel).await,
             Backend::GitHub(b) => b.read(rel).await,
             Backend::Gitee(b) => b.read(rel).await,
+            Backend::GitCode(b) => b.read(rel).await,
             Backend::GitLab(b) => b.read(rel).await,
             #[cfg(test)]
             Backend::Memory(b) => b.read(rel).await,
@@ -163,6 +168,7 @@ impl Backend {
             Backend::S3(b) => b.put(rel, data).await,
             Backend::GitHub(b) => b.put_single(rel, data, message).await,
             Backend::Gitee(b) => b.put_single(rel, data, message).await,
+            Backend::GitCode(b) => b.put_single(rel, data, message).await,
             Backend::GitLab(b) => b.put_single(rel, data, message).await,
             #[cfg(test)]
             Backend::Memory(b) => b.put(rel, data).await,
@@ -175,6 +181,7 @@ impl Backend {
             Backend::S3(b) => b.delete(rel).await,
             Backend::GitHub(b) => b.delete_single(rel, message).await,
             Backend::Gitee(b) => b.delete_single(rel, message).await,
+            Backend::GitCode(b) => b.delete_single(rel, message).await,
             Backend::GitLab(b) => b.delete_single(rel, message).await,
             #[cfg(test)]
             Backend::Memory(b) => b.delete(rel).await,
@@ -187,6 +194,7 @@ impl Backend {
             Backend::S3(b) => b.list(dir).await,
             Backend::GitHub(b) => b.list(dir).await,
             Backend::Gitee(b) => b.list(dir).await,
+            Backend::GitCode(b) => b.list(dir).await,
             Backend::GitLab(b) => b.list(dir).await,
             #[cfg(test)]
             Backend::Memory(b) => b.list(dir).await,
@@ -198,6 +206,7 @@ impl Backend {
             Backend::GitHub(b) => b.commit(batch).await,
             Backend::GitLab(b) => b.commit(batch).await,
             Backend::Gitee(b) => b.commit(batch).await,
+            Backend::GitCode(b) => b.commit(batch).await,
             _ => self.commit_plain(batch).await,
         }
     }

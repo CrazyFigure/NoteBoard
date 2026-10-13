@@ -37,6 +37,7 @@ const mockProvider = {
   s3: { endpoint: '', region: '', bucket: '', accessKeyId: '', secretAccessKey: '', prefix: '', pathStyle: false, userAgent: '' },
   github: { ...emptyGit },
   gitee: { ...emptyGit },
+  gitcode: { ...emptyGit },
   gitlab: { ...emptyGit },
 };
 let mockSyncConfig: Record<string, unknown> = {

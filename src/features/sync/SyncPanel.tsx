@@ -1,5 +1,5 @@
 // NoteBoard 设置 → 同步与备份
-// 多端同步（WebDAV / S3 / GitHub / Gitee / GitLab）、同步时机、同步回收站、备份与恢复。
+// 多端同步（WebDAV / S3 / GitHub / Gitee / GitCode / GitLab）、同步时机、同步回收站、备份与恢复。
 // 配置修改后防抖自动保存（与其他设置项一致，无需点击保存按钮）。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
