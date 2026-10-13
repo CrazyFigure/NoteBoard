@@ -1,5 +1,5 @@
 // NoteBoard 图表全屏预览弹窗
-// Mermaid / PlantUML / Infographic 共用：按住左键拖动平移、Ctrl(⌘)+滚轮以光标为中心缩放、普通滚轮平移
+// Mermaid / PlantUML / Infographic 共用：按住左键拖动平移、Ctrl(⌘)+滚轮以光标为中心缩放
 // 通过 Portal 挂到 body：避免 ProseMirror 截获鼠标事件（拖动时误选节点），也不受编辑区祖先 transform 影响
 
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
@@ -37,57 +37,83 @@ export function DiagramFullscreenModal({
   onClose,
   children,
 }: DiagramFullscreenModalProps) {
+  // 仅用于工具栏百分比与按钮禁用态；拖动期间值不变，React 会跳过重渲染
   const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   // 拖动起点：记录按下时的指针位置与当时的平移量
   const dragStartRef = useRef<{ pointer: Point; pan: Point } | null>(null);
-  // 同步镜像，供原生 wheel 监听在不重新绑定的情况下读取最新值
-  const viewRef = useRef({ zoom, pan });
-  viewRef.current = { zoom, pan };
+  // 视图真值放在 ref：平移缩放直接写 DOM transform，不经 React 渲染，避免高频指针事件引起整棵弹窗重渲染
+  const viewRef = useRef<{ zoom: number; pan: Point }>({ zoom: 1, pan: { x: 0, y: 0 } });
+  const rafRef = useRef<number | null>(null);
+  const animateRef = useRef(false);
+
+  // 卸载时取消尚未执行的帧
+  useEffect(() => () => {
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+  }, []);
+
+  /**
+   * 更新视图：同一帧内的多次更新合并为一次 DOM 写入。
+   * animate 仅用于按钮缩放/复位的过渡；拖动与滚轮需即时跟手，不加过渡。
+   */
+  const setView = useCallback((next: { zoom: number; pan: Point }, animate = false) => {
+    viewRef.current = next;
+    animateRef.current = animate;
+    if (rafRef.current !== null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      const { zoom: z, pan: p } = viewRef.current;
+      // 百分比显示随帧刷新一次即可，连续滚轮不逐次触发渲染
+      setZoom(z);
+      const el = contentRef.current;
+      if (!el) return;
+      el.style.transition = animateRef.current ? 'transform 0.12s ease-out' : 'none';
+      el.style.transform = `translate(${p.x}px, ${p.y}px) scale(${z})`;
+    });
+  }, []);
 
   /**
    * 以视口内某点为锚点缩放：锚点下的图表内容在缩放前后保持不动。
    * anchor 为相对视口中心的坐标；内容以视口中心为原点居中，屏幕坐标 p = pan + zoom * q。
    */
-  const zoomAt = useCallback((nextZoomRaw: number, anchor: Point) => {
+  const zoomAt = useCallback((nextZoomRaw: number, anchor: Point, animate = false) => {
     const { zoom: prevZoom, pan: prevPan } = viewRef.current;
     const nextZoom = clampZoom(nextZoomRaw);
     if (nextZoom === prevZoom) return;
     const ratio = nextZoom / prevZoom;
-    setZoom(nextZoom);
-    setPan({
-      x: anchor.x - (anchor.x - prevPan.x) * ratio,
-      y: anchor.y - (anchor.y - prevPan.y) * ratio,
-    });
-  }, []);
+    setView(
+      {
+        zoom: nextZoom,
+        pan: {
+          x: anchor.x - (anchor.x - prevPan.x) * ratio,
+          y: anchor.y - (anchor.y - prevPan.y) * ratio,
+        },
+      },
+      animate,
+    );
+  }, [setView]);
 
   const resetView = useCallback(() => {
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
-  }, []);
+    setView({ zoom: 1, pan: { x: 0, y: 0 } }, true);
+  }, [setView]);
 
   // 滚轮：React 的 onWheel 是 passive 监听，无法 preventDefault 拦截 WebView 自身的 Ctrl+滚轮页面缩放，需原生绑定
   useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
     const handleWheel = (e: WheelEvent) => {
+      // 不带 Ctrl 的滚轮不移动图表；统一拦截，防止滚动穿透到底层编辑区
       e.preventDefault();
-      if (e.ctrlKey || e.metaKey) {
-        const rect = el.getBoundingClientRect();
-        const anchor = {
-          x: e.clientX - rect.left - rect.width / 2,
-          y: e.clientY - rect.top - rect.height / 2,
-        };
-        const factor = e.deltaY < 0 ? WHEEL_ZOOM_FACTOR : 1 / WHEEL_ZOOM_FACTOR;
-        zoomAt(viewRef.current.zoom * factor, anchor);
-        return;
-      }
-      // 普通滚轮平移；Shift+滚轮在部分平台只给 deltaY，转为横向
-      const dx = e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX;
-      const dy = e.shiftKey && e.deltaX === 0 ? 0 : e.deltaY;
-      setPan((p) => ({ x: p.x - dx, y: p.y - dy }));
+      if (!e.ctrlKey && !e.metaKey) return;
+      const rect = el.getBoundingClientRect();
+      const anchor = {
+        x: e.clientX - rect.left - rect.width / 2,
+        y: e.clientY - rect.top - rect.height / 2,
+      };
+      const factor = e.deltaY < 0 ? WHEEL_ZOOM_FACTOR : 1 / WHEEL_ZOOM_FACTOR;
+      zoomAt(viewRef.current.zoom * factor, anchor);
     };
     el.addEventListener('wheel', handleWheel, { passive: false });
     return () => el.removeEventListener('wheel', handleWheel);
@@ -117,9 +143,12 @@ export function DiagramFullscreenModal({
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const start = dragStartRef.current;
     if (!start) return;
-    setPan({
-      x: start.pan.x + e.clientX - start.pointer.x,
-      y: start.pan.y + e.clientY - start.pointer.y,
+    setView({
+      zoom: viewRef.current.zoom,
+      pan: {
+        x: start.pan.x + e.clientX - start.pointer.x,
+        y: start.pan.y + e.clientY - start.pointer.y,
+      },
     });
   };
 
@@ -139,8 +168,8 @@ export function DiagramFullscreenModal({
         inset: 0,
         // 需高于多维表格单元格编辑弹层（100002），低于全局输入弹窗（100010）
         zIndex: 100006,
-        background: 'rgba(0, 0, 0, 0.75)',
-        backdropFilter: 'blur(4px)',
+        // 不用 backdrop-filter：全屏毛玻璃在内容每帧变化时都要重新模糊，拖动缩放会明显掉帧
+        background: 'rgba(0, 0, 0, 0.8)',
         display: 'flex',
         flexDirection: 'column',
       }}
@@ -163,7 +192,7 @@ export function DiagramFullscreenModal({
               <button
                 type="button"
                 className="nb-editor-icon-btn"
-                onClick={() => zoomAt(zoom / BUTTON_ZOOM_FACTOR, { x: 0, y: 0 })}
+                onClick={() => zoomAt(viewRef.current.zoom / BUTTON_ZOOM_FACTOR, { x: 0, y: 0 }, true)}
                 disabled={zoom <= MIN_ZOOM}
                 aria-label="缩小"
                 style={{ padding: '4px 6px' }}
@@ -185,7 +214,7 @@ export function DiagramFullscreenModal({
               <button
                 type="button"
                 className="nb-editor-icon-btn"
-                onClick={() => zoomAt(zoom * BUTTON_ZOOM_FACTOR, { x: 0, y: 0 })}
+                onClick={() => zoomAt(viewRef.current.zoom * BUTTON_ZOOM_FACTOR, { x: 0, y: 0 }, true)}
                 disabled={zoom >= MAX_ZOOM}
                 aria-label="放大"
                 style={{ padding: '4px 6px' }}
@@ -243,13 +272,13 @@ export function DiagramFullscreenModal({
           touchAction: 'none',
         }}
       >
+        {/* transform / transition 由 setView 直接写入，这里不声明，避免重渲染时被 React 覆盖 */}
         <div
+          ref={contentRef}
           style={{
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
             transformOrigin: 'center center',
-            // 拖动时取消过渡，避免跟手延迟
-            transition: dragging ? 'none' : 'transform 0.12s ease-out',
-            willChange: 'transform',
+            // 仅拖动期间提升为合成层：平移只做合成不重绘；缩放时不保留，以便按新比例重新光栅化保持清晰
+            willChange: dragging ? 'transform' : 'auto',
           }}
         >
           {children}
