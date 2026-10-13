@@ -1806,8 +1806,80 @@ button:not(:disabled) {
   padding: 16px 18px;
   border: 1px solid var(--editor-border);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--editor-surface) 86%, var(--accent-strong) 14%);
-  box-shadow: var(--shadow-sm);
+  /* 与设置页其他分组块保持同一背景，不再额外着色与投影 */
+  background: var(--editor-surface);
+}
+
+/* 设置页滑块：替换 WebView2 原生粗轨道，改为 4px 细轨道 + 14px 圆形拇指 */
+.nb-settings-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 14px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* 拇指左侧用主题色填充，右侧保持灰色；--nb-range-fill 由 SettingsRange 按当前值写入 */
+.nb-settings-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--accent-strong) 0 var(--nb-range-fill, 0%),
+    var(--editor-border) var(--nb-range-fill, 0%) 100%
+  );
+}
+
+.nb-settings-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  /* 拇指垂直居中于 4px 轨道：(4 - 14) / 2 */
+  margin-top: -5px;
+  border: 2px solid var(--editor-surface);
+  border-radius: 50%;
+  background: var(--accent-strong);
+  box-shadow: 0 0 0 1px var(--editor-border);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.nb-settings-range:hover::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+
+.nb-settings-range:active::-webkit-slider-thumb {
+  transform: scale(1.25);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-strong) 22%, transparent);
+}
+
+.nb-settings-range:focus-visible {
+  outline: none;
+}
+
+.nb-settings-range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-strong) 35%, transparent);
+}
+
+.nb-settings-range::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--editor-border);
+}
+
+.nb-settings-range::-moz-range-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--accent-strong);
+}
+
+.nb-settings-range::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--editor-surface);
+  border-radius: 50%;
+  background: var(--accent-strong);
 }
 
 .nb-font-pack-settings-heading {

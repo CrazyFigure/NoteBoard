@@ -14,6 +14,7 @@ import { APP_VERSION } from '../../core/version';
 import { open } from '@tauri-apps/plugin-dialog';
 import { showToast } from '../../stores/toastStore';
 import { FontPackSettingsCard } from './FontPackSettingsCard';
+import { SettingsRange } from './SettingsRange';
 import { Tooltip } from '../Tooltip';
 import type { MarkdownNormalizationPolicy } from '../../core/ipc/types';
 import { IS_MOBILE_UI } from '../../core/platform';
@@ -360,8 +361,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div style={formRowStyle}>
                     <label style={labelStyle}>界面 UI 基础字号 ({settings.typography.uiFontSize ?? 13}px)</label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <input
-                        type="range"
+                      <SettingsRange
                         min="12"
                         max="18"
                         step="1"
@@ -409,8 +409,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                     <div style={formRowStyle}>
                       <label style={labelStyle}>正文字号 ({settings.typography.contentFontSize}px)</label>
-                      <input
-                        type="range"
+                      <SettingsRange
                         min="12"
                         max="26"
                         step="1"
@@ -421,8 +420,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </div>
                     <div style={formRowStyle}>
                       <label style={labelStyle}>正文行高 ({settings.typography.contentLineHeight})</label>
-                      <input
-                        type="range"
+                      <SettingsRange
                         min="1.3"
                         max="2.4"
                         step="0.1"
@@ -495,8 +493,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                       {/* 滑动条自定义宽度调节 */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 6 }}>
-                        <input
-                          type="range"
+                        <SettingsRange
                           min="40"
                           max="100"
                           step="1"
@@ -552,8 +549,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                     <div style={formRowStyle}>
                       <label style={labelStyle}>代码字号 ({settings.typography.monoFontSize ?? 14}px)</label>
-                      <input
-                        type="range"
+                      <SettingsRange
                         min="10"
                         max="24"
                         step="1"
@@ -564,8 +560,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </div>
                     <div style={formRowStyle}>
                       <label style={labelStyle}>代码行高 ({settings.typography.monoLineHeight ?? 1.5})</label>
-                      <input
-                        type="range"
+                      <SettingsRange
                         min="1.2"
                         max="2.2"
                         step="0.1"
@@ -638,8 +633,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                       {/* 滑动条自定义宽度调节 */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 6 }}>
-                        <input
-                          type="range"
+                        <SettingsRange
                           min="40"
                           max="100"
                           step="1"
@@ -693,8 +687,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                     <div style={formRowStyle}>
                       <label style={labelStyle}>文件树字号 ({settings.typography.explorerFontSize ?? 13}px)</label>
-                      <input
-                        type="range"
+                      <SettingsRange
                         min="11"
                         max="18"
                         step="1"
@@ -705,8 +698,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </div>
                     <div style={formRowStyle}>
                       <label style={labelStyle}>目录条目行高 ({settings.typography.explorerLineHeight ?? 24}px)</label>
-                      <input
-                        type="range"
+                      <SettingsRange
                         min="20"
                         max="36"
                         step="1"
