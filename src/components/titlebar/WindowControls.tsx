@@ -23,7 +23,11 @@ export function WindowControls() {
     };
   }, []);
 
-  const handleMinimize = () => getCurrentWindow().minimize();
+  // 最小化前主动释放按钮焦点并关闭提示，避免窗口恢复焦点时 Radix 再次打开 Tooltip。
+  const handleMinimize = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.currentTarget.blur();
+    return getCurrentWindow().minimize();
+  };
   const handleMaximize = () => getCurrentWindow().toggleMaximize();
   // 标题栏关闭与系统关闭事件共用同一入口，确保确认保存或丢弃后继续关闭软件。
   const handleClose = () => requestCurrentWindowClose();
