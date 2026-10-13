@@ -151,10 +151,26 @@ jobs:
           java-version: 17
 
       # 只安装实际需要的包：默认的 "tools" 包已从 SDK 仓库移除，按默认值安装会失败
+      # NDK 单独安装（见下一步），以便下载中断时重试
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: 'platform-tools ndk;${{ env.NDK_VERSION }}'
+          packages: 'platform-tools'
+
+      # NDK 压缩包约 700 MB，下载偶发中断（解压报 "Error on ZipFile unknown archive"）；
+      # 失败时清理残缺目录与临时下载后重试，运行器镜像已预装该版本时直接跳过
+      - name: Install Android NDK
+        run: |
+          NDK_DIR="${ANDROID_HOME}/ndk/${NDK_VERSION}"
+          for attempt in 1 2 3; do
+            if [ -f "${NDK_DIR}/source.properties" ]; then break; fi
+            echo "安装 NDK ${NDK_VERSION}（第 ${attempt} 次）"
+            sdkmanager --install "ndk;${NDK_VERSION}" && break
+            echo "::warning title=NDK 安装::第 ${attempt} 次安装失败，清理后重试"
+            rm -rf "${NDK_DIR}" "${ANDROID_HOME}/.temp"
+            sleep 20
+          done
+          test -f "${NDK_DIR}/source.properties"
 
       - name: Configure Android NDK
         run: |
