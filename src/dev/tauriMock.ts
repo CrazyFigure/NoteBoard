@@ -29,6 +29,47 @@ seed(`${WORKSPACE}/项目笔记/需求.md`, '# 需求\n\n## 背景\n\n## 目标\
 seed(`${WORKSPACE}/读书/摘录.md`, '# 摘录\n', 2000);
 seed(`${WORKSPACE}/任务看板.bitable`, serializeBitableDocument(createDefaultBitableDocument('任务看板')), 30);
 
+/** 更新样例模式：URL 参数 mockUpdate=1（多个版本）/ single（单个版本），未设置时为 null */
+function mockUpdateMode(): 'multi' | 'single' | null {
+  const value = new URLSearchParams(window.location.search).get('mockUpdate');
+  if (!value) return null;
+  return value === 'single' ? 'single' : 'multi';
+}
+
+/** 更新检查样例：格式与真实 Release 正文一致（新增 / 修复 / 优化小节） */
+function mockUpdateResult() {
+  const day = 24 * 60 * 60_000;
+  const notes = [
+    { version: '0.5.2', body: '新增：\n- 同步与备份新增 GitCode 远端\n\n修复：\n- 安卓构建单独安装 NDK 并在下载中断时重试\n\n优化：\n- 设置弹窗与同步弹窗去掉全屏毛玻璃，修复桌面端滚动卡顿\n- 字体包卡片背景与其他分组统一，设置页滑块改为细轨道并填充已选区间\n- 图表全屏预览拖动缩放改为直写 DOM，去掉普通滚轮平移' },
+    { version: '0.5.1', body: '修复：\n- 修复最小化恢复后 Tooltip 残留\n- 消除同步与备份页首次切换闪烁' },
+    { version: '0.5.0', body: '新增：\n- 多端同步与备份：支持 WebDAV、S3、GitHub、Gitee\n- 同步回收站，可恢复被远端删除的笔记\n\n优化：\n- 设置页分组重新排版\n- 移动端底部格式栏支持 `代码块` 快捷插入' },
+    { version: '0.4.9', body: '新增：\n- 多维表格支持长文本单元格编辑浮层\n\n修复：\n- 多维表格 Backspace 误删整行' },
+    { version: '0.4.8', body: '' },
+  ];
+  const list = mockUpdateMode() === 'single' ? notes.slice(0, 1) : notes;
+  const releaseNotes = list.map((note, index) => ({
+    version: note.version,
+    name: `v${note.version}`,
+    url: `https://github.com/CrazyFigure/NoteBoard/releases/tag/v${note.version}`,
+    publishedAt: new Date(now - index * day).toISOString(),
+    body: note.body,
+  }));
+  return {
+    currentVersion: '0.4.7',
+    latestVersion: releaseNotes[0].version,
+    releaseName: releaseNotes[0].name,
+    releaseUrl: releaseNotes[0].url,
+    publishedAt: releaseNotes[0].publishedAt,
+    updateAvailable: true,
+    installerAssetName: 'NoteBoard_0.5.2_x64-setup.exe',
+    installerDownloadUrl: 'https://example.com/NoteBoard_0.5.2_x64-setup.exe',
+    installerSize: 12_874_301,
+    releaseBody: releaseNotes[0].body,
+    releaseNotes,
+    releaseNotesTruncated: false,
+  };
+}
+
 /** 同步配置样例（保存后在内存中保留，便于预览交互） */
 const emptyGit = { baseUrl: '', owner: '', repo: '', branch: '', token: '', remoteDir: '' };
 const mockProvider = {
@@ -164,6 +205,8 @@ export function installTauriMock(): void {
       case 'refresh_font_pack_status':
         return { id: 'mock', version: '0', state: 'ready', installedSizeBytes: 0, downloadSizeBytes: 0, downloadUrl: '', faces: [] };
       case 'check_for_updates':
+        // URL 带 mockUpdate=1 时返回跨多个版本的更新样例（mockUpdate=single 为单个版本），否则模拟离线
+        if (mockUpdateMode()) return mockUpdateResult();
         throw new Error('mock：离线');
       case 'get_default_staging_directory':
       case 'ensure_staging_directory':

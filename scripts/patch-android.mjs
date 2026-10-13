@@ -83,6 +83,15 @@ manifest = insertAfter(
   manifest,
   '<uses-permission android:name="android.permission.INTERNET" />',
   `
+    <!-- ${PATCH_MARKER}: 应用内下载更新 APK 后调起系统安装器（首次安装需用户允许安装未知应用） -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />`,
+  '更新安装权限',
+);
+
+manifest = insertAfter(
+  manifest,
+  '<uses-permission android:name="android.permission.INTERNET" />',
+  `
     <!-- ${PATCH_MARKER}: 外部存储访问（"手机存储"浏览外部文件夹；Android 11+ 需用户在系统设置中授予所有文件访问权限） -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
@@ -206,6 +215,7 @@ writeFileSync(
     '-keep class com.crazyfigure.noteboard.NbFileProvider { *; }',
     '-keep class com.crazyfigure.noteboard.InboxArgs { *; }',
     '-keep class com.crazyfigure.noteboard.ShareArgs { *; }',
+    '-keep class com.crazyfigure.noteboard.InstallApkArgs { *; }',
     '-keep class com.crazyfigure.noteboard.SystemBarArgs { *; }',
     '',
   ].join('\n'),

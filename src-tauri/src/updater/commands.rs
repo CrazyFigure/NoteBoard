@@ -1,18 +1,23 @@
 //! NoteBoard 应用更新检查、安装包下载与系统外链唤起模块。
 //! 支持 Windows 系统代理与 Android 非 VPN 网络直连回退，以及准确的 GitHub API 限流识别。
+//! 一次请求 Release 列表，汇总当前版本之后所有未安装版本的更新日志；
+//! Android 在应用内下载 APK 后直接调起系统安装器，不再依赖浏览器下载。
 
 use std::{
-    env, fs,
+    fs,
     io::{ErrorKind, Write},
     path::{Path, PathBuf},
-    process::Command,
     time::{Duration, Instant},
 };
+
+// 仅桌面端需要启动安装器进程或系统打开命令
+#[cfg(desktop)]
+use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
-use crate::dto::UpdateCheckResult;
+use crate::dto::{UpdateCheckResult, UpdateReleaseNote};
 
 // GitHub Release 响应实体定义
 #[derive(Debug, Deserialize)]
@@ -22,6 +27,11 @@ struct GitHubReleaseResponse {
     html_url: String,
     published_at: Option<String>,
     body: Option<String>,
+    // 草稿与预发布版本不参与更新提示，与原 releases/latest 接口语义一致
+    #[serde(default)]
+    draft: bool,
+    #[serde(default)]
+    prerelease: bool,
     #[serde(default)]
     assets: Vec<GitHubReleaseAsset>,
 }
@@ -47,8 +57,10 @@ const UPDATE_DOWNLOAD_PROGRESS_THROTTLE: Duration = Duration::from_millis(100);
 
 // GitHub 仓库与 API 默认地址
 const GITHUB_REPO_URL: &str = "https://github.com/CrazyFigure/NoteBoard";
+// 单页 Release 数量；改动时需同步 Android 直连（NbUpdateNetwork.kt）中的地址
+const GITHUB_RELEASE_PAGE_SIZE: usize = 30;
 const GITHUB_RELEASE_API_URL: &str =
-    "https://api.github.com/repos/CrazyFigure/NoteBoard/releases/latest";
+    "https://api.github.com/repos/CrazyFigure/NoteBoard/releases?per_page=30";
 
 /// 统一 Rust HTTP 与 Android 原生直连的响应，保留限流头与正文供后续准确分类。
 #[derive(Debug, Deserialize)]
@@ -176,17 +188,32 @@ fn sanitize_asset_file_name(asset_name: &str) -> String {
         })
         .collect();
     if sanitized.trim_matches('_').is_empty() {
-        "NoteBoard-update.exe".into()
+        // 移动端安装包为 APK，桌面端为 EXE
+        if cfg!(mobile) {
+            "NoteBoard-update.apk".into()
+        } else {
+            "NoteBoard-update.exe".into()
+        }
     } else {
         sanitized
     }
 }
 
 /// 校验更新安装包下载地址合法性
+#[cfg(not(mobile))]
 fn is_valid_update_download_url(url: &str) -> bool {
     let normalized = url.trim().to_ascii_lowercase();
     (normalized.starts_with("https://") || normalized.starts_with("http://"))
         && (normalized.ends_with(".exe") || normalized.ends_with(".msi"))
+        && !normalized.chars().any(|character| character.is_control())
+}
+
+/// 校验更新安装包下载地址合法性（移动端：仅接受 HTTPS 的 APK）
+#[cfg(mobile)]
+fn is_valid_update_download_url(url: &str) -> bool {
+    let normalized = url.trim().to_ascii_lowercase();
+    normalized.starts_with("https://")
+        && normalized.ends_with(".apk")
         && !normalized.chars().any(|character| character.is_control())
 }
 
@@ -325,7 +352,97 @@ async fn download_update_installer(
     Ok(())
 }
 
+/// 移动端：通过原生桥接以 FileProvider 授权调起系统软件包安装器；安装完成后由系统替换并重启应用
+#[cfg(mobile)]
+async fn launch_mobile_installer(app_handle: &AppHandle, installer_path: &Path) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri::Manager;
+        let app = app_handle.clone();
+        let path = installer_path.to_string_lossy().to_string();
+        // 原生调用为同步阻塞，放入阻塞任务，避免占用异步运行时工作线程
+        return tauri::async_runtime::spawn_blocking(move || {
+            let bridge = app
+                .try_state::<crate::mobile_bridge::NbMobile<tauri::Wry>>()
+                .ok_or_else(|| "原生桥接未初始化".to_string())?;
+            bridge
+                .0
+                .run_mobile_plugin::<serde_json::Value>(
+                    "installApk",
+                    serde_json::json!({ "path": path }),
+                )
+                .map(|_| ())
+                .map_err(|error| format!("无法启动系统安装器：{error}"))
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app_handle, installer_path);
+        Err("当前平台暂不支持应用内安装".to_string())
+    }
+}
+
+/// 更新安装包缓存目录（桌面为系统临时目录，移动端为应用私有缓存目录）
+fn update_cache_dir() -> PathBuf {
+    crate::app_dirs::cache_dir().join("NoteBoard-updates")
+}
+
+/// 从安装包文件名中提取版本号（如 NoteBoard_0.5.2_android_arm64.apk → 0.5.2）
+fn version_from_installer_name(file_name: &str) -> Option<&str> {
+    file_name
+        .split(['_', '-'])
+        .find(|segment| segment.contains('.') && parse_version_parts(segment).is_some())
+}
+
+/// 判断缓存的安装包是否应清理：下载残留、无法识别版本，或版本不高于当前版本（已安装 / 已过期）。
+/// 高于当前版本的安装包保留，用户取消安装后再次点击可直接安装，无需重新下载。
+fn should_remove_cached_installer(file_name: &str, current_version: &str) -> bool {
+    if file_name.ends_with(".download") {
+        return true;
+    }
+    match version_from_installer_name(file_name) {
+        Some(version) => !is_newer_version(version, current_version),
+        None => true,
+    }
+}
+
+/// 启动时清理已安装或过期的更新安装包，避免安装包长期累积占用存储空间。
+/// 尽力而为：文件被占用（如桌面安装器仍在运行）或删除失败时忽略，下次启动再试。
+pub fn cleanup_installed_update_packages() {
+    let current_version = env!("CARGO_PKG_VERSION");
+    let Ok(entries) = fs::read_dir(update_cache_dir()) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let file_name = entry.file_name().to_string_lossy().to_string();
+        if should_remove_cached_installer(&file_name, current_version) {
+            let _ = fs::remove_file(&path);
+        }
+    }
+}
+
+/// 移动端：清理更新目录中除目标安装包外的旧 APK 与残留临时文件，避免旧版本长期占用存储空间
+#[cfg(mobile)]
+fn remove_stale_update_files(update_dir: &Path, keep: &Path) {
+    let Ok(entries) = fs::read_dir(update_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path != keep && path.is_file() {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
 /// 直接唤起安装包；安装后的启动行为完全交给安装器完成页的用户选项决定
+#[cfg(not(mobile))]
 fn spawn_update_installer(installer_path: &Path) -> std::io::Result<()> {
     let extension = installer_path
         .extension()
@@ -351,7 +468,7 @@ fn spawn_update_installer(installer_path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// 请求 GitHub Release 元数据并保存状态、限流头与正文；桌面支持忽略系统 HTTP 代理。
+/// 请求 GitHub Release 列表元数据并保存状态、限流头与正文；桌面支持忽略系统 HTTP 代理。
 async fn fetch_latest_release(use_system_proxy: bool) -> Result<ReleaseHttpResponse, String> {
     let client = if use_system_proxy {
         build_update_http_client(UPDATE_HTTP_READ_TIMEOUT)?
@@ -437,8 +554,10 @@ async fn release_response_with_fallback(
     }
 }
 
-/// 解析统一响应，识别主限流、次级限流与普通拒绝访问，成功时读取 Release 元数据。
-fn parse_release_response(response: ReleaseHttpResponse) -> Result<GitHubReleaseResponse, String> {
+/// 解析统一响应，识别主限流、次级限流与普通拒绝访问，成功时读取 Release 列表元数据。
+fn parse_release_response(
+    response: ReleaseHttpResponse,
+) -> Result<Vec<GitHubReleaseResponse>, String> {
     if matches!(response.status, 403 | 429) {
         let message = serde_json::from_str::<serde_json::Value>(&response.body)
             .ok()
@@ -478,6 +597,46 @@ fn parse_release_response(response: ReleaseHttpResponse) -> Result<GitHubRelease
     serde_json::from_str(&response.body).map_err(|err| format!("update_error:parse:{err}"))
 }
 
+/// 从 Release 列表中挑选最新正式版，并按版本从新到旧收集高于当前版本的其余正式版。
+/// 返回 (最新版本, 更早的未安装版本)；没有任何可解析的正式版时返回 None。
+fn collect_pending_releases(
+    releases: Vec<GitHubReleaseResponse>,
+    current_version: &str,
+) -> Option<(GitHubReleaseResponse, Vec<GitHubReleaseResponse>)> {
+    // 仅保留版本号可解析的正式版，按语义化版本从高到低排序（不依赖 GitHub 的创建时间顺序）
+    let mut stable: Vec<(Vec<u64>, GitHubReleaseResponse)> = releases
+        .into_iter()
+        .filter(|release| !release.draft && !release.prerelease)
+        .filter_map(|release| parse_version_parts(&release.tag_name).map(|parts| (parts, release)))
+        .map(|(mut parts, release)| {
+            // 去掉末尾的 0，使 1.2 与 1.2.0 比较结果一致
+            while parts.len() > 1 && parts.last() == Some(&0) {
+                parts.pop();
+            }
+            (parts, release)
+        })
+        .collect();
+    stable.sort_by(|left, right| right.0.cmp(&left.0));
+
+    let mut iter = stable.into_iter().map(|(_, release)| release);
+    let latest = iter.next()?;
+    let pending: Vec<GitHubReleaseResponse> = iter
+        .take_while(|release| is_newer_version(&release.tag_name, current_version))
+        .collect();
+    Some((latest, pending))
+}
+
+/// 将 Release 元数据转为前端展示用的版本日志条目
+fn to_release_note(release: &GitHubReleaseResponse) -> UpdateReleaseNote {
+    UpdateReleaseNote {
+        version: release.tag_name.trim_start_matches(['v', 'V']).to_string(),
+        name: release.name.clone(),
+        url: release.html_url.clone(),
+        published_at: release.published_at.clone(),
+        body: release.body.clone(),
+    }
+}
+
 /// 检查应用更新：先使用默认网络，网络故障或限流时按平台尝试真实直连，再挑选安装包。
 #[tauri::command]
 pub async fn check_for_updates(app: AppHandle) -> Result<UpdateCheckResult, String> {
@@ -488,11 +647,27 @@ pub async fn check_for_updates(app: AppHandle) -> Result<UpdateCheckResult, Stri
         fetch_direct_latest_release(&app),
     )
     .await?;
-    let release = parse_release_response(response)?;
+    let releases = parse_release_response(response)?;
+    // 列表满页时，更早的未安装版本可能落在下一页，需提示前端日志不完整
+    let page_full = releases.len() >= GITHUB_RELEASE_PAGE_SIZE;
+    let (release, older_pending) = collect_pending_releases(releases, &current_version)
+        .ok_or_else(|| "update_error:parse:未找到已发布的正式版本".to_string())?;
 
     let latest_version = release.tag_name.trim_start_matches(['v', 'V']).to_string();
     let update_available = is_newer_version(&release.tag_name, &current_version);
     let installer_asset = select_update_installer_asset(&release.assets);
+
+    // 未安装版本日志：最新版在前，其后依次为更早的未安装版本
+    let release_notes: Vec<UpdateReleaseNote> = if update_available {
+        std::iter::once(&release)
+            .chain(older_pending.iter())
+            .map(to_release_note)
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let release_notes_truncated =
+        update_available && page_full && older_pending.len() + 1 >= GITHUB_RELEASE_PAGE_SIZE;
 
     Ok(UpdateCheckResult {
         current_version,
@@ -511,7 +686,38 @@ pub async fn check_for_updates(app: AppHandle) -> Result<UpdateCheckResult, Stri
             .map(|asset| asset.browser_download_url.clone()),
         installer_size: installer_asset.and_then(|asset| asset.size),
         release_body: release.body,
+        release_notes,
+        release_notes_truncated,
     })
+}
+
+/// 优先系统代理下载，遇到 403 回退直连重试
+async fn download_installer_with_fallback(
+    app_handle: &AppHandle,
+    download_url: &str,
+    installer_path: &Path,
+    installer_size: Option<u64>,
+) -> Result<(), String> {
+    let client = build_update_http_client(UPDATE_INSTALLER_DOWNLOAD_TIMEOUT)?;
+    if let Err(error) =
+        download_update_installer(app_handle, &client, download_url, installer_path, installer_size)
+            .await
+    {
+        if error.contains("403") {
+            let direct_client = build_direct_http_client(UPDATE_INSTALLER_DOWNLOAD_TIMEOUT)?;
+            download_update_installer(
+                app_handle,
+                &direct_client,
+                download_url,
+                installer_path,
+                installer_size,
+            )
+            .await?;
+        } else {
+            return Err(error);
+        }
+    }
+    Ok(())
 }
 
 /// 下载并执行安装包升级
@@ -522,39 +728,37 @@ pub async fn download_and_install_update(
     asset_name: String,
     installer_size: Option<u64>,
 ) -> Result<String, String> {
-    // 移动端不能静默安装：交给系统浏览器下载 APK，由系统安装器完成升级
-    #[cfg(mobile)]
-    {
-        let _ = (&asset_name, installer_size);
-        let normalized = download_url.trim();
-        let lowered = normalized.to_ascii_lowercase();
-        if !(lowered.starts_with("https://") && lowered.ends_with(".apk"))
-            || normalized.chars().any(|character| character.is_control())
-        {
-            return Err("无效的更新安装包下载地址".to_string());
-        }
-        use tauri_plugin_opener::OpenerExt;
-        app_handle
-            .opener()
-            .open_url(normalized, None::<&str>)
-            .map_err(|error| format!("无法打开浏览器下载：{}", error))?;
-        return Ok("browser".to_string());
-    }
-
-    #[allow(unreachable_code)]
     let normalized_url = download_url.trim();
     if !is_valid_update_download_url(normalized_url) {
         return Err("无效的更新安装包下载地址".to_string());
     }
 
     let safe_file_name = sanitize_asset_file_name(&asset_name);
-    // 下载至系统的临时更新目录中
-    let update_dir = env::temp_dir().join("NoteBoard-updates");
+    // 下载至缓存目录下的更新子目录（桌面为系统临时目录，移动端为应用私有缓存目录）
+    let update_dir = update_cache_dir();
     fs::create_dir_all(&update_dir).map_err(|error| error.to_string())?;
     let installer_path: PathBuf = update_dir.join(safe_file_name);
 
-    // 本地已有完整匹配安装包时直接启动，免去二次下载
-    if installer_path_matches_expected_size(&installer_path, installer_size)? {
+    // 本地已有完整匹配安装包时直接启动（如上次取消了安装），免去二次下载
+    if !installer_path_matches_expected_size(&installer_path, installer_size)? {
+        // 移动端顺带清理旧版本 APK 与残留临时文件，避免长期占用存储空间
+        #[cfg(mobile)]
+        remove_stale_update_files(&update_dir, &installer_path);
+        download_installer_with_fallback(&app_handle, normalized_url, &installer_path, installer_size)
+            .await?;
+    }
+
+    // 移动端：应用内下载 APK 后调起系统安装器。
+    // 不再交给浏览器下载：部分浏览器（如 Edge）由外部 Intent 发起的 APK 下载会卡在 99% 无法完成。
+    // 也不主动退出：系统覆盖安装时会自动结束旧进程，用户取消安装则继续使用当前版本。
+    #[cfg(mobile)]
+    {
+        launch_mobile_installer(&app_handle, &installer_path).await?;
+        return Ok(installer_path.to_string_lossy().to_string());
+    }
+
+    #[cfg(not(mobile))]
+    {
         spawn_update_installer(&installer_path).map_err(|error| error.to_string())?;
 
         // 延迟 600ms 退出当前实例，让前端收到成功结果，并为安装器释放程序文件与单实例资源
@@ -564,45 +768,8 @@ pub async fn download_and_install_update(
             handle_clone.exit(0);
         });
 
-        return Ok(installer_path.to_string_lossy().to_string());
+        Ok(installer_path.to_string_lossy().to_string())
     }
-
-    // 优先系统代理，遇到 403 回退直连重试
-    let client = build_update_http_client(UPDATE_INSTALLER_DOWNLOAD_TIMEOUT)?;
-    if let Err(error) = download_update_installer(
-        &app_handle,
-        &client,
-        normalized_url,
-        &installer_path,
-        installer_size,
-    )
-    .await
-    {
-        if error.contains("403") {
-            let direct_client = build_direct_http_client(UPDATE_INSTALLER_DOWNLOAD_TIMEOUT)?;
-            download_update_installer(
-                &app_handle,
-                &direct_client,
-                normalized_url,
-                &installer_path,
-                installer_size,
-            )
-            .await?;
-        } else {
-            return Err(error);
-        }
-    }
-
-    spawn_update_installer(&installer_path).map_err(|error| error.to_string())?;
-
-    // 延迟 600ms 退出当前实例，让前端收到成功结果，并为安装器释放程序文件与单实例资源
-    let handle_clone = app_handle.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(600));
-        handle_clone.exit(0);
-    });
-
-    Ok(installer_path.to_string_lossy().to_string())
 }
 
 /// 在系统默认浏览器中打开外部链接
@@ -685,8 +852,61 @@ mod tests {
         }
     }
 
-    // 模拟真实 Release 包含 Android 安装包，验证直连结果进入原来的版本及安装包处理流程。
-    const RELEASE_BODY: &str = r#"{"tag_name":"v0.4.6","html_url":"https://github.com/CrazyFigure/NoteBoard/releases/tag/v0.4.6","assets":[{"name":"NoteBoard_android_arm64.apk","browser_download_url":"https://example.com/update.apk","size":123}]}"#;
+    // 模拟真实 Release 列表包含 Android 安装包，验证直连结果进入原来的版本及安装包处理流程。
+    const RELEASE_BODY: &str = r#"[{"tag_name":"v0.4.6","html_url":"https://github.com/CrazyFigure/NoteBoard/releases/tag/v0.4.6","assets":[{"name":"NoteBoard_android_arm64.apk","browser_download_url":"https://example.com/update.apk","size":123}]}]"#;
+
+    /// 构造仅含版本号的 Release，用于版本筛选与排序测试
+    fn release(tag: &str, prerelease: bool) -> GitHubReleaseResponse {
+        GitHubReleaseResponse {
+            tag_name: tag.to_string(),
+            name: None,
+            html_url: String::new(),
+            published_at: None,
+            body: Some(format!("{tag} 更新说明")),
+            draft: false,
+            prerelease,
+            assets: Vec::new(),
+        }
+    }
+
+    /// 跨多个版本更新时，按版本从新到旧收集所有未安装的正式版，跳过预发布与已安装版本。
+    #[test]
+    fn collects_all_pending_stable_releases_in_order() {
+        let releases = vec![
+            release("v0.4.10", false),
+            release("v0.5.0-beta", true),
+            release("v0.4.8", false),
+            release("v0.4.9", false),
+            release("v0.4.7", false),
+            release("v0.4.6", false),
+        ];
+        let (latest, pending) = collect_pending_releases(releases, "0.4.7").unwrap();
+        assert_eq!(latest.tag_name, "v0.4.10");
+        let tags: Vec<&str> = pending.iter().map(|item| item.tag_name.as_str()).collect();
+        assert_eq!(tags, ["v0.4.9", "v0.4.8"]);
+    }
+
+    /// 启动清理：已安装 / 过期的安装包与下载残留被删除，比当前版本新的安装包保留以便直接安装。
+    #[test]
+    fn cleanup_keeps_only_newer_installers() {
+        let current = "0.5.2";
+        assert!(should_remove_cached_installer("NoteBoard_0.5.2_android_arm64.apk", current));
+        assert!(should_remove_cached_installer("NoteBoard_0.5.1_windows_x64-setup.exe", current));
+        assert!(should_remove_cached_installer("NoteBoard_0.5.3_android_arm64.apk.download", current));
+        assert!(should_remove_cached_installer("NoteBoard-update.apk", current));
+        assert!(!should_remove_cached_installer("NoteBoard_0.5.3_android_arm64.apk", current));
+        assert!(!should_remove_cached_installer("NoteBoard_0.6.0_windows_x64-setup.exe", current));
+    }
+
+    /// 已是最新版本时，最新正式版仍被识别，但没有更早的未安装版本。
+    #[test]
+    fn up_to_date_has_no_pending_releases() {
+        let (latest, pending) =
+            collect_pending_releases(vec![release("v0.4.6", false)], "0.4.6").unwrap();
+        assert_eq!(latest.tag_name, "v0.4.6");
+        assert!(pending.is_empty());
+        assert!(collect_pending_releases(vec![release("v1.0.0", true)], "0.4.6").is_none());
+    }
 
     /// 默认出口被 403 / 429 限流时，必须等待并使用直连出口的成功结果。
     #[test]
@@ -701,7 +921,8 @@ mod tests {
                 },
             ))
             .unwrap();
-            let release = parse_release_response(result).unwrap();
+            let releases = parse_release_response(result).unwrap();
+            let release = &releases[0];
             assert_eq!(direct_calls.get(), 1);
             assert_eq!(release.tag_name, "v0.4.6");
             assert_eq!(release.assets[0].size, Some(123));
