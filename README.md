@@ -156,7 +156,7 @@ TAURI_ENV_PLATFORM=android pnpm vite --port 1437
 
 ## 开源协议
 
-NoteBoard 遵循 **GPL-3.0-only** 开源许可协议。
+NoteBoard 遵循 **[GPL-3.0-only](LICENSE)** 开源许可协议，仅适用 GNU GPL 第 3 版。完整许可条款见根目录的 [LICENSE](LICENSE) 文件。
 
 ## Star 走势
 
