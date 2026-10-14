@@ -318,10 +318,10 @@ describe('顶部操作栏与工具单元测试 (Toolbar & Ops)', () => {
 
     it('语言代码块不应抢占既有快捷词', async () => {
       const { slashSuggestion } = await import('../../src/features/editor-md/slashCommand');
-      expect(slashSuggestion.items({ query: 'p' })[0].id).toBe('paragraph');
+      // 「正文段落」命令已移除：/p 的首项不应被 php、perl 等具体语言代码块抢占
+      expect(slashSuggestion.items({ query: 'p' })[0].id).not.toMatch(/^codeBlock-/);
       expect(slashSuggestion.items({ query: 'code' })[0].id).toBe('codeBlock');
       expect(slashSuggestion.items({ query: 'html' })[0].id).toBe('rawHtml');
-      expect(slashSuggestion.items({ query: 'text' })[0].id).toBe('paragraph');
     });
   });
 });
