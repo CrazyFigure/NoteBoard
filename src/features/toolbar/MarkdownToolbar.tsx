@@ -58,9 +58,17 @@ import {
 } from '../history/documentHistory';
 import { insertLocalImageWithDialog, pickAndSaveLocalImage } from '../editor-md/imagePaste';
 import { promptImageUrl } from '../../components/promptPresets';
-import { DETAILS_SOURCE_SNIPPET, insertDetailsContent } from '../editor-md/detailsExtension';
+import {
+  DEFAULT_DETAILS_SUMMARY,
+  DETAILS_SOURCE_SNIPPET,
+  detailsSourceBlock,
+  insertDetailsContent,
+  requestDetailsSummaryFocus,
+} from '../editor-md/detailsExtension';
 import { columnsSourceSnippet, insertColumnsBlock } from '../editor-md/columnsExtension';
-import { calloutSourceSnippet, insertCalloutBlock } from '../editor-md/calloutExtension';
+import { calloutSourceBlock, calloutSourceSnippet, insertCalloutBlock } from '../editor-md/calloutExtension';
+import { convertSelectionToCodeBlock, wrapSelectionInBlock } from '../editor-md/blockConvert';
+import { alertSourceBlock, codeSourceBlock, quoteSourceBlock, wrapSourceLines } from '../editor-md/sourceBlockWrap';
 import { ALERT_KINDS, AlertMenuIcon, alertMenuLabel, type AlertKind } from '../editor-md/alertExtension';
 import { CALLOUT_PRESETS, CalloutPresetIcon, type CalloutPreset } from '../editor-md/calloutPickers';
 import { RAW_HTML_SOURCE_SNIPPET, insertRawHtmlContent } from '../editor-md/rawHtmlBlockView';
@@ -68,6 +76,23 @@ import { RAW_HTML_SOURCE_SNIPPET, insertRawHtmlContent } from '../editor-md/rawH
 import { getMdTipTapEditor as getActiveTipTapEditor, getMdSourceView as getActiveSourceView } from '../editor-md/editorInstances';
 import { emit } from '../../core/emitter';
 import type { EditorView } from '@codemirror/view';
+
+/**
+ * 源码模式有选区时把选中的整行包成块（与可视化模式「选中内容成为块正文」一致）
+ * 无选区或选中的全是空行时返回 false，由调用方按原逻辑插入示例片段
+ */
+function wrapSourceSelection(view: EditorView, wrap: (body: string) => string): boolean {
+  const { from, to, empty } = view.state.selection.main;
+  if (empty) return false;
+  const edit = wrapSourceLines(view.state.doc, from, to, wrap);
+  if (!edit) return false;
+  view.dispatch({
+    changes: { from: edit.from, to: edit.to, insert: edit.insert },
+    selection: { anchor: edit.anchor, head: edit.head },
+    scrollIntoView: true,
+  });
+  return true;
+}
 
 /**
  * 嵌入式编辑器自带的撤销栈（不走文件级时间线）
@@ -342,14 +367,20 @@ export function MarkdownToolbar({
   const handleInsertAlert = (kind: AlertKind) => {
     setInsertDropdownOpen(false);
     if (isSourceMode) {
-      const alertSnippet = `\n> [!${kind.toUpperCase()}]\n> 提示内容\n\n`;
+      const alertSnippet = `\n${alertSourceBlock(kind, '提示内容')}\n\n`;
       executeSourceAction((view) => {
+        if (wrapSourceSelection(view, (body) => alertSourceBlock(kind, body))) return;
         const { from } = view.state.selection.main;
         view.dispatch({ changes: { from, to: from, insert: alertSnippet } });
       });
       return;
     }
     if (!editor) return;
+    // 有选区时选中内容成为提示块正文，不再被空块替换掉
+    if (!editor.state.selection.empty) {
+      wrapSelectionInBlock(editor, 'githubAlert', { kind });
+      return;
+    }
     editor.chain().focus().insertContent({
       type: 'githubAlert',
       attrs: { kind },
@@ -358,16 +389,22 @@ export function MarkdownToolbar({
   };
 
   // 插入高亮块：源码模式写入标准高亮块片段，可视化模式插入高亮块并把光标放到块内
+  // 有选区时两种模式一致：选中内容成为高亮块正文
   const handleInsertCallout = (preset: CalloutPreset) => {
     setInsertDropdownOpen(false);
     if (isSourceMode) {
       executeSourceAction((view) => {
+        if (wrapSourceSelection(view, (body) => calloutSourceBlock(body, preset))) return;
         const { from } = view.state.selection.main;
         view.dispatch({ changes: { from, to: from, insert: calloutSourceSnippet(preset) } });
       });
       return;
     }
     if (!editor) return;
+    if (!editor.state.selection.empty) {
+      wrapSelectionInBlock(editor, 'calloutBlock', { color: preset.color, icon: preset.icon });
+      return;
+    }
     insertCalloutBlock(editor, preset);
   };
 
@@ -376,12 +413,18 @@ export function MarkdownToolbar({
     if (isSourceMode) {
       const codeBlockSnippet = '\n```typescript\n// 在此编写代码\n```\n';
       executeSourceAction((view) => {
+        if (wrapSourceSelection(view, codeSourceBlock)) return;
         const { from } = view.state.selection.main;
         view.dispatch({ changes: { from, to: from, insert: codeBlockSnippet } });
       });
       return;
     }
     if (!editor) return;
+    // 有选区时选中的多个块合并为一个代码块（逐块切换会拆成多个代码块）
+    if (!editor.state.selection.empty) {
+      convertSelectionToCodeBlock(editor);
+      return;
+    }
     editor.chain().focus().toggleCodeBlock().run();
   };
 
@@ -389,6 +432,8 @@ export function MarkdownToolbar({
     setInsertDropdownOpen(false);
     if (isSourceMode) {
       executeSourceAction((view) => {
+        // 有选区时选中的每一行都加引用前缀，与可视化模式整块转为引用一致
+        if (wrapSourceSelection(view, quoteSourceBlock)) return;
         const { from } = view.state.selection.main;
         const line = view.state.doc.lineAt(from);
         view.dispatch({ changes: { from: line.from, to: line.from, insert: '> ' } });
@@ -404,12 +449,19 @@ export function MarkdownToolbar({
     setInsertDropdownOpen(false);
     if (isSourceMode) {
       executeSourceAction((view) => {
+        if (wrapSourceSelection(view, detailsSourceBlock)) return;
         const { from } = view.state.selection.main;
         view.dispatch({ changes: { from, to: from, insert: DETAILS_SOURCE_SNIPPET } });
       });
       return;
     }
     if (!editor) return;
+    // 有选区时选中内容成为折叠正文，随后聚焦标题输入框
+    if (!editor.state.selection.empty) {
+      requestDetailsSummaryFocus();
+      wrapSelectionInBlock(editor, 'detailsBlock', { summary: DEFAULT_DETAILS_SUMMARY });
+      return;
+    }
     editor.chain().focus().insertContent(insertDetailsContent()).run();
   };
 
