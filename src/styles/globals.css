@@ -1091,9 +1091,10 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   margin-top: 6px;
 }
 
-/* 单元格多选与跨行跨列选区高亮 */
+/* 单元格多选与跨行跨列选区高亮：配色跟随主题，与块选中底板（.nb-sel-block）一致 */
 .ProseMirror .selectedCell {
-  background: rgba(59, 130, 246, 0.12) !important;
+  /* 清掉表头底色，选中区域由下方叠层统一着色，表头与正文单元格颜色一致 */
+  background: transparent !important;
   position: relative;
 }
 .ProseMirror .selectedCell::after {
@@ -1104,8 +1105,8 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   right: 0;
   top: 0;
   bottom: 0;
-  background: rgba(59, 130, 246, 0.15);
-  border: 1px solid rgba(59, 130, 246, 0.4);
+  background: var(--cm-selection-bg);
+  border: 1px solid color-mix(in srgb, var(--editor-accent) 45%, transparent);
   pointer-events: none;
 }
 
