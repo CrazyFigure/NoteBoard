@@ -1,5 +1,5 @@
 // NoteBoard Markdown 编辑器右键双模上下文菜单
-// 1. 选中文本：浮现加粗、斜体、代码、多色高亮(二级菜单)、标题转换(H1~H6二级菜单)、引用、复制剪切
+// 1. 选中文本：浮现加粗、斜体、代码、多色高亮(二级菜单)、标题转换(H1~H6二级菜单)、转为代码块/提示块/高亮块/引用块/折叠块、复制剪切
 // 2. 未选中文本：浮现标题(H1~H6二级菜单)、提示块(二级菜单)、高亮块(二级菜单)、列表(二级菜单)、代码块、引用块、折叠块、分栏(二级菜单)、表格、公式、图表等
 // 详见 docs/07-UI布局与交互规范.md
 
@@ -7,9 +7,10 @@ import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import type { Editor } from '@tiptap/core';
 import { isInTable } from '@tiptap/pm/tables';
 import { applyTablePaste } from './tableClipboard';
-import { insertDetailsContent } from './detailsExtension';
+import { DEFAULT_DETAILS_SUMMARY, insertDetailsContent, requestDetailsSummaryFocus } from './detailsExtension';
 import { insertColumnsBlock } from './columnsExtension';
 import { insertCalloutBlock } from './calloutExtension';
+import { convertSelectionToCodeBlock, wrapSelectionInBlock } from './blockConvert';
 import { ALERT_KINDS, AlertMenuIcon, alertMenuLabel } from './alertExtension';
 import { CALLOUT_PRESETS, CalloutPresetIcon } from './calloutPickers';
 import { insertRawHtmlContent } from './rawHtmlBlockView';
@@ -101,6 +102,16 @@ export function EditorContextMenu({
     setSubmenuTop(Math.max(8, Math.min(submenuPos.top, maxTop)));
   }, [activeSubmenu, submenuPos]);
 
+  // 主菜单按实际高度做底部越界防护（选中文本模式菜单项较多，固定高度估算会让菜单出现滚动条或越出视口）
+  const [menuTop, setMenuTop] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!position || !el) return;
+    const maxTop = window.innerHeight - el.offsetHeight - 8;
+    setMenuTop(Math.max(40, Math.min(position.y, maxTop)));
+  }, [position, hasSelection]);
+
   useEffect(() => {
     if (!position) return;
     const handleDown = (e: MouseEvent) => {
@@ -182,7 +193,7 @@ export function EditorContextMenu({
         className="nb-context-menu"
         style={{
           position: 'fixed',
-          top: Math.max(adjustedY, 40),
+          top: menuTop ?? Math.max(adjustedY, 40),
           left: Math.max(adjustedX, 10),
           zIndex: 9999,
           background: 'var(--editor-surface, #ffffff)',
@@ -192,7 +203,8 @@ export function EditorContextMenu({
           backdropFilter: 'blur(8px)',
           padding: '5px',
           minWidth: 195,
-          maxHeight: 460,
+          // 上方预留 40px（与 top 下限一致）、下方 8px，只有视口实在放不下时才滚动
+          maxHeight: 'calc(100vh - 48px)',
           overflowY: 'auto',
         }}
         onClick={(e) => e.stopPropagation()}
@@ -408,6 +420,66 @@ export function EditorContextMenu({
               <ChevronRight size={14} style={{ opacity: 0.6 }} />
             </button>
 
+            {/* ── 转为代码块（多个段落合并为一个代码块，每段一行） ── */}
+            <button
+              type="button"
+              style={btnStyle}
+              onClick={() => {
+                onClose();
+                convertSelectionToCodeBlock(editor);
+              }}
+              onMouseEnter={(e) => {
+                setActiveSubmenu(null);
+                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
+              }}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <FileCode size={15} color="var(--accent-strong, #6366f1)" />
+                <span>转为代码块</span>
+              </div>
+            </button>
+
+            {/* ── 转为 GitHub 提示块 (带类型二级子菜单) ── */}
+            <button
+              type="button"
+              style={{
+                ...btnStyle,
+                background:
+                  activeSubmenu === 'selection-alert'
+                    ? 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))'
+                    : 'transparent',
+              }}
+              onMouseEnter={(e) => handleOpenSubmenu('selection-alert', e)}
+              onClick={(e) => handleOpenSubmenu('selection-alert', e)}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Boxes size={15} color="#3b82f6" />
+                <span>转为 GitHub 提示块</span>
+              </div>
+              <ChevronRight size={14} style={{ opacity: 0.6 }} />
+            </button>
+
+            {/* ── 转为高亮块 (带预设二级子菜单) ── */}
+            <button
+              type="button"
+              style={{
+                ...btnStyle,
+                background:
+                  activeSubmenu === 'selection-callout'
+                    ? 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))'
+                    : 'transparent',
+              }}
+              onMouseEnter={(e) => handleOpenSubmenu('selection-callout', e)}
+              onClick={(e) => handleOpenSubmenu('selection-callout', e)}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Highlighter size={15} color="#8b5cf6" />
+                <span>转为高亮块</span>
+              </div>
+              <ChevronRight size={14} style={{ opacity: 0.6 }} />
+            </button>
+
             <button
               type="button"
               style={btnStyle}
@@ -424,6 +496,27 @@ export function EditorContextMenu({
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Quote size={15} />
                 <span>转为引用块</span>
+              </div>
+            </button>
+
+            {/* ── 转为折叠块（选中内容作为折叠正文，随后聚焦标题输入框） ── */}
+            <button
+              type="button"
+              style={btnStyle}
+              onClick={() => {
+                onClose();
+                requestDetailsSummaryFocus();
+                wrapSelectionInBlock(editor, 'detailsBlock', { summary: DEFAULT_DETAILS_SUMMARY });
+              }}
+              onMouseEnter={(e) => {
+                setActiveSubmenu(null);
+                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
+              }}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <ListCollapse size={15} />
+                <span>转为折叠块</span>
               </div>
             </button>
 
@@ -1001,8 +1094,8 @@ export function EditorContextMenu({
             </>
           )}
 
-          {/* 二级：高亮块 */}
-          {activeSubmenu === 'insert-callout' && (
+          {/* 二级：高亮块（插入 / 选区转换共用） */}
+          {(activeSubmenu === 'insert-callout' || activeSubmenu === 'selection-callout') && (
             <>
               {CALLOUT_PRESETS.map((preset) => (
                 <button
@@ -1010,8 +1103,13 @@ export function EditorContextMenu({
                   type="button"
                   style={btnStyle}
                   onClick={() => {
-                    // 插入预设颜色与图标的高亮块，光标落在块内
-                    insertCalloutBlock(editor, preset);
+                    if (activeSubmenu === 'selection-callout') {
+                      // 用预设颜色与图标的高亮块包裹选中的块
+                      wrapSelectionInBlock(editor, 'calloutBlock', { color: preset.color, icon: preset.icon });
+                    } else {
+                      // 插入预设颜色与图标的高亮块，光标落在块内
+                      insertCalloutBlock(editor, preset);
+                    }
                     onClose();
                   }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))')}
@@ -1056,8 +1154,8 @@ export function EditorContextMenu({
             </>
           )}
 
-          {/* 二级：GitHub 提示块 */}
-          {activeSubmenu === 'insert-alert' && (
+          {/* 二级：GitHub 提示块（插入 / 选区转换共用） */}
+          {(activeSubmenu === 'insert-alert' || activeSubmenu === 'selection-alert') && (
             <>
               {/* 文案与图标取自 alertExtension，与斜杠命令、工具栏保持一致 */}
               {ALERT_KINDS.map((kind) => ({ kind, label: alertMenuLabel(kind), icon: <AlertMenuIcon kind={kind} /> })).map((a) => (
@@ -1066,8 +1164,13 @@ export function EditorContextMenu({
                   type="button"
                   style={btnStyle}
                   onClick={() => {
-                    // 插入 GitHub 风格的彩色提示警告块
-                    editor.chain().focus().insertContent({ type: 'githubAlert', attrs: { kind: a.kind }, content: [{ type: 'paragraph' }] }).run();
+                    if (activeSubmenu === 'selection-alert') {
+                      // 用对应类型的提示块包裹选中的块
+                      wrapSelectionInBlock(editor, 'githubAlert', { kind: a.kind });
+                    } else {
+                      // 插入 GitHub 风格的彩色提示警告块
+                      editor.chain().focus().insertContent({ type: 'githubAlert', attrs: { kind: a.kind }, content: [{ type: 'paragraph' }] }).run();
+                    }
                     onClose();
                   }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))')}
