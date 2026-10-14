@@ -261,6 +261,8 @@ export interface TypographySettings {
   contentFontSize: number;
   monoFontSize: number;
   contentLineHeight: number;
+  // Markdown 正文段落间距 (px，缺省 14)
+  contentParagraphSpacing?: number;
   // 代码/纯文本行高
   monoLineHeight?: number;
   // Markdown / 正文编辑区最大宽度（预设 wide/standard 等或百分比，默认 wide）
@@ -304,6 +306,8 @@ export interface EditorSettings {
   codeBlockDefaultExpanded?: boolean;
   // 可视化模式中折叠块 <details> 默认展开（缺省视为 false；源码带 open 属性时始终展开）
   detailsDefaultExpanded?: boolean;
+  // 可视化模式中 Enter 与 Shift+Enter 互换：Enter 段内换行、Shift+Enter 换段落（缺省视为 false）
+  swapEnterKeys?: boolean;
 }
 
 /** Markdown 规范化策略：每次询问 / 总是规范化 / 保持源码模式 */
