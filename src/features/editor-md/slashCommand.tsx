@@ -47,7 +47,7 @@ import { useWindowStore } from '../../stores/windowStore';
 import { emit } from '../../core/emitter';
 import { IS_MOBILE_UI } from '../../core/platform';
 import { isTouchInteraction } from '../../core/inputModality';
-import { INFOGRAPHIC_TEMPLATES } from '../infographic/infographicTemplates';
+import { DEFAULT_INFOGRAPHIC_CODE, INFOGRAPHIC_TEMPLATES } from '../infographic/infographicTemplates';
 import { insertDetailsContent } from './detailsExtension';
 import { insertColumnsBlock } from './columnsExtension';
 import { insertCalloutBlock } from './calloutExtension';
@@ -345,8 +345,7 @@ const MATH_LEAFS: LeafCommandItem[] = [
     aliases: ['infographic', 'info', 'xinxitu', 'xxt', 'kpi', 'timeline', 'funnel', 'comparison'],
     keywords: '信息图 infographic info xinxitu 指标 看板 时间线 流程 对比 漏斗 象限',
     action: (editor, range) => {
-      const defaultTmpl = INFOGRAPHIC_TEMPLATES[0]?.code || 'type: metric-cards\ntitle: 核心指标看板';
-      editor.chain().focus().deleteRange(range).insertContent({ type: 'infographicBlock', attrs: { code: defaultTmpl } }).run();
+      editor.chain().focus().deleteRange(range).insertContent({ type: 'infographicBlock', attrs: { code: DEFAULT_INFOGRAPHIC_CODE } }).run();
     },
   },
 ];
@@ -448,7 +447,7 @@ const CODE_LANGUAGE_LEAFS: LeafCommandItem[] = CODE_LANGUAGES.filter((lang) => l
 
 const BLOCKQUOTE_LEAF: LeafCommandItem = {
   id: 'blockquote',
-  label: '引用块 (Quote)',
+  label: '引用块',
   description: '插入引述文字或要点摘录',
   shortcutHint: '/quote',
   icon: <Quote size={17} />,
@@ -459,7 +458,7 @@ const BLOCKQUOTE_LEAF: LeafCommandItem = {
 
 const DETAILS_LEAF: LeafCommandItem = {
   id: 'details',
-  label: '折叠块 (Details)',
+  label: '折叠块',
   description: '可展开/收起的内容块，兼容 GitHub 等平台',
   shortcutHint: '/fold',
   icon: <ListCollapse size={17} />,
@@ -619,7 +618,7 @@ const ROOT_GROUPS: GroupCommandItem[] = [
   },
   {
     id: 'alerts',
-    label: 'GitHub 提示块 (Alert)',
+    label: 'GitHub 提示块',
     description: 'Note, Tip, Important, Warning, Caution',
     shortcutHint: '/alert',
     icon: <Boxes size={17} color="#3b82f6" />,

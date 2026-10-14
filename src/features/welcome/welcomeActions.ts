@@ -16,7 +16,7 @@ import type { DocumentKind, LanguageId } from '../../core/ipc/types';
 import { showToast } from '../../stores/toastStore';
 import { useSyncStore } from '../../stores/syncStore';
 import { createDefaultBitableDocument, serializeBitableDocument } from '../bitable/bitableConverter';
-import { INFOGRAPHIC_TEMPLATES } from '../infographic/infographicTemplates';
+import { DEFAULT_INFOGRAPHIC_CODE } from '../infographic/infographicTemplates';
 
 let untitledCounter = 0;
 
@@ -161,7 +161,7 @@ function createUntitledDocument(
     kind = 'code';
     language = 'infographic';
     displayName = '未命名.infographic';
-    initialContent = INFOGRAPHIC_TEMPLATES[0]?.code ?? 'type: metric-cards\n';
+    initialContent = DEFAULT_INFOGRAPHIC_CODE;
   } else if (type === 'json') {
     kind = 'code';
     language = 'json';

@@ -242,3 +242,6 @@ chart:
       color: emerald`,
   },
 ];
+
+/** 默认插入的信息图源码：工具栏、斜杠命令、右键菜单与新建信息图文件共用模板库第一项「核心指标看板」 */
+export const DEFAULT_INFOGRAPHIC_CODE = INFOGRAPHIC_TEMPLATES[0].code;

@@ -1,6 +1,6 @@
 // NoteBoard Markdown 编辑器右键双模上下文菜单
 // 1. 选中文本：浮现加粗、斜体、代码、多色高亮(二级菜单)、标题转换(H1~H6二级菜单)、转为代码块/提示块/高亮块/引用块/折叠块、复制剪切
-// 2. 未选中文本：浮现标题(H1~H6二级菜单)、提示块(二级菜单)、高亮块(二级菜单)、列表(二级菜单)、代码块、引用块、折叠块、分栏(二级菜单)、表格、公式、图表等
+// 2. 未选中文本：浮现标题(H1~H6二级菜单)、提示块(二级菜单)、高亮块(二级菜单)、列表(二级菜单)、代码块、引用块、折叠块、分栏(二级菜单)、表格(二级菜单)、公式与图表(二级菜单)、图片(二级菜单)等
 // 详见 docs/07-UI布局与交互规范.md
 
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
@@ -14,7 +14,10 @@ import { convertSelectionToCodeBlock, wrapSelectionInBlock } from './blockConver
 import { ALERT_KINDS, AlertMenuIcon, alertMenuLabel } from './alertExtension';
 import { CALLOUT_PRESETS, CalloutPresetIcon } from './calloutPickers';
 import { insertRawHtmlContent } from './rawHtmlBlockView';
-import { promptLinkUrl } from '../../components/promptPresets';
+import { insertLocalImageWithDialog } from './imagePaste';
+import { DEFAULT_INFOGRAPHIC_CODE } from '../infographic/infographicTemplates';
+import { promptImageUrl, promptLinkUrl } from '../../components/promptPresets';
+import { useWindowStore } from '../../stores/windowStore';
 import {
   Bold,
   Italic,
@@ -43,6 +46,8 @@ import {
   FileCode,
   Sigma,
   Workflow,
+  BarChart3,
+  Image as ImageIcon,
   Boxes,
   Minus,
   Copy,
@@ -839,44 +844,44 @@ export function EditorContextMenu({
 
             <div style={dividerStyle} />
 
-            {/* 7. 行内公式 */}
+            {/* 7. 公式与图表 (带二级子菜单：行内公式 / 独立公式块 / Mermaid / Infographic，与工具栏「插入」下拉一致) */}
             <button
               type="button"
-              style={btnStyle}
-              onClick={() => {
-                onClose();
-                editor.chain().focus().insertContent({ type: 'mathInline', attrs: { latex: 'E=mc^2' } }).run();
+              style={{
+                ...btnStyle,
+                background:
+                  activeSubmenu === 'insert-math'
+                    ? 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))'
+                    : 'transparent',
               }}
-              onMouseEnter={(e) => {
-                setActiveSubmenu(null);
-                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
-              }}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              onMouseEnter={(e) => handleOpenSubmenu('insert-math', e)}
+              onClick={(e) => handleOpenSubmenu('insert-math', e)}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Sigma size={15} />
-                <span>插入行内公式 ($...$)</span>
+                <span>插入公式与图表</span>
               </div>
+              <ChevronRight size={14} style={{ opacity: 0.6 }} />
             </button>
 
-            {/* 8. Mermaid 图表 */}
+            {/* 8. 图片 (带二级子菜单：本地图片 / 网络图片) */}
             <button
               type="button"
-              style={btnStyle}
-              onClick={() => {
-                onClose();
-                editor.chain().focus().insertContent({ type: 'mermaidBlock', attrs: { code: 'graph TD\n  A --> B' } }).run();
+              style={{
+                ...btnStyle,
+                background:
+                  activeSubmenu === 'insert-image'
+                    ? 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))'
+                    : 'transparent',
               }}
-              onMouseEnter={(e) => {
-                setActiveSubmenu(null);
-                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
-              }}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              onMouseEnter={(e) => handleOpenSubmenu('insert-image', e)}
+              onClick={(e) => handleOpenSubmenu('insert-image', e)}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Workflow size={15} color="var(--accent-500, #3b82f6)" />
-                <span>插入 Mermaid 图表</span>
+                <ImageIcon size={15} />
+                <span>插入图片</span>
               </div>
+              <ChevronRight size={14} style={{ opacity: 0.6 }} />
             </button>
 
             {/* 9. 插入超链接 */}
@@ -1180,6 +1185,91 @@ export function EditorContextMenu({
                   </div>
                 </button>
               ))}
+            </>
+          )}
+
+          {/* 二级：公式与图表 */}
+          {activeSubmenu === 'insert-math' && (
+            <>
+              {[
+                { key: 'mathInline', label: '行内公式 ($...$)', icon: <Sigma size={15} />, content: { type: 'mathInline', attrs: { latex: 'E=mc^2' } } },
+                { key: 'mathBlock', label: '独立公式块 ($$...$$)', icon: <Sigma size={15} />, content: { type: 'mathBlock', attrs: { latex: '' } } },
+                {
+                  key: 'mermaid',
+                  label: 'Mermaid 流程图表',
+                  icon: <Workflow size={15} color="var(--accent-500, #3b82f6)" />,
+                  content: { type: 'mermaidBlock', attrs: { code: 'graph TD\n  A[开始] --> B[处理]\n  B --> C[完成]' } },
+                },
+                {
+                  key: 'infographic',
+                  label: 'Infographic 现代信息图',
+                  icon: <BarChart3 size={15} color="#3b82f6" />,
+                  // 默认信息图模板与工具栏、斜杠命令共用
+                  content: { type: 'infographicBlock', attrs: { code: DEFAULT_INFOGRAPHIC_CODE } },
+                },
+              ].map((m) => (
+                <button
+                  key={m.key}
+                  type="button"
+                  style={btnStyle}
+                  onClick={() => {
+                    editor.chain().focus().insertContent(m.content).run();
+                    onClose();
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {m.icon}
+                    <span>{m.label}</span>
+                  </div>
+                </button>
+              ))}
+            </>
+          )}
+
+          {/* 二级：图片 */}
+          {activeSubmenu === 'insert-image' && (
+            <>
+              <button
+                type="button"
+                style={btnStyle}
+                onClick={() => {
+                  onClose();
+                  // 选择本地图片并保存到当前文档的 img 目录（与斜杠命令一致，按活动标签定位文档）
+                  const docKey = useWindowStore.getState().activeKey;
+                  if (docKey) {
+                    void insertLocalImageWithDialog(editor, docKey);
+                  }
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <ImageIcon size={15} />
+                  <span>本地图片</span>
+                </div>
+              </button>
+              <button
+                type="button"
+                style={btnStyle}
+                onClick={() => {
+                  onClose();
+                  void promptImageUrl().then((url) => {
+                    // 弹窗期间标签可能已被关闭，编辑器实例随之销毁
+                    if (url && !editor.isDestroyed) {
+                      editor.chain().focus().setImage({ src: url }).run();
+                    }
+                  });
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <ImageIcon size={15} style={{ opacity: 0.7 }} />
+                  <span>网络图片</span>
+                </div>
+              </button>
             </>
           )}
 
