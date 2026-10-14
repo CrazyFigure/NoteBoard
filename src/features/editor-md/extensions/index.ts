@@ -34,6 +34,7 @@ import { slashSuggestion } from '../slashCommand';
 
 import { handleLinkClick } from '../linkHandler';
 import { TableClipboard } from '../tableClipboard';
+import { fixTableEditingSelection } from '../tableSelectionFix';
 import { ListEmptyItemBackspaceFix } from '../listItemBackspace';
 import { SelectionHighlight } from '../selectionHighlight';
 import { MultiClickSelectionFix } from '../multiClickSelection';
@@ -192,6 +193,10 @@ const MarkdownTable = Table.extend({
       !context?.parentType ||
       ['doc', 'detailsBlock', 'columnBlock', 'calloutBlock'].includes(String(context.parentType));
     return isTopLevel ? withoutTrailing.replace(/^(?:[ \t]*\n)+/, '') : withoutTrailing;
+  },
+  // 从表格外的空段落拖选进表格时，官方选区规整会把选区收缩成单元格内的光标，这里修正
+  addProseMirrorPlugins() {
+    return fixTableEditingSelection(this.parent?.() ?? []);
   },
 });
 
