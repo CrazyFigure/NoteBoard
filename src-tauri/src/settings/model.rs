@@ -90,6 +90,9 @@ pub struct TypographySettings {
     pub mono_font_size: u32,
     #[serde(default = "default_line_height")]
     pub content_line_height: f64,
+    // Markdown 正文段落间距 (px)
+    #[serde(default = "default_paragraph_spacing")]
+    pub content_paragraph_spacing: u32,
     // 代码/纯文本行高
     #[serde(default = "default_mono_line_height")]
     pub mono_line_height: f64,
@@ -134,6 +137,7 @@ impl Default for TypographySettings {
             content_font_size: 16,
             mono_font_size: 14,
             content_line_height: 1.7,
+            content_paragraph_spacing: default_paragraph_spacing(),
             mono_line_height: 1.5,
             content_width: "wide".to_string(),
             mono_content_width: "full".to_string(),
@@ -186,6 +190,9 @@ pub struct EditorSettings {
     // 可视化模式中折叠块 <details> 默认展开（默认 false；源码带 open 属性时始终展开）
     #[serde(default)]
     pub details_default_expanded: bool,
+    // 可视化模式中 Enter 与 Shift+Enter 互换：Enter 段内换行、Shift+Enter 换段落（默认 false）
+    #[serde(default)]
+    pub swap_enter_keys: bool,
 }
 
 impl Default for EditorSettings {
@@ -206,6 +213,7 @@ impl Default for EditorSettings {
             markdown_normalization: default_markdown_normalization(),
             code_block_default_expanded: true,
             details_default_expanded: false,
+            swap_enter_keys: false,
         }
     }
 }
@@ -281,6 +289,8 @@ fn default_mono_font_zh() -> String { "Maple Mono Normal NF CN".to_string() }
 fn default_content_font_size() -> u32 { 16 }
 fn default_mono_font_size() -> u32 { 14 }
 fn default_line_height() -> f64 { 1.7 }
+// 默认 Markdown 正文段落间距 (px)
+fn default_paragraph_spacing() -> u32 { 14 }
 fn default_mono_line_height() -> f64 { 1.5 }
 fn default_explorer_font_size() -> u32 { 13 }
 fn default_explorer_line_height() -> u32 { 24 }

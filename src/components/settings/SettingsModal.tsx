@@ -431,6 +431,27 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </div>
                   </div>
 
+                  {/* 正文段落间距：相邻段落（Enter 换段落）之间的空白高度；段内换行（Shift + Enter）不受影响 */}
+                  <div style={formRowStyle}>
+                    <label style={labelStyle}>正文段落间距 ({settings.typography.contentParagraphSpacing ?? 14}px)</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <SettingsRange
+                        min="0"
+                        max="32"
+                        step="1"
+                        value={settings.typography.contentParagraphSpacing ?? 14}
+                        onChange={(e) => setTypography({ contentParagraphSpacing: parseInt(e.target.value, 10) })}
+                        style={{ flex: 1, cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: 12, color: 'var(--editor-text-muted)', minWidth: 36, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                        {settings.typography.contentParagraphSpacing ?? 14}px
+                      </span>
+                    </div>
+                    <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>
+                      相邻段落之间的空白（Enter 换段落）；段内换行（Shift + Enter）没有段落间距
+                    </span>
+                  </div>
+
                   {/* Markdown 编辑区最大宽度 */}
                   <div style={formRowStyle}>
                     <label style={labelStyle}>Markdown 编辑区最大宽度 (默认宽屏 92%)</label>
@@ -717,7 +738,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     style={{
                       display: 'flex',
                       flexDirection: 'column',
-                      gap: 16,
+                      // 各预览分组之间留出足够间距，小标题与上一组内容区分清楚
+                      gap: 24,
                       padding: '18px 20px',
                       background: 'var(--editor-surface)',
                       border: '1px solid var(--editor-border)',
@@ -726,7 +748,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   >
                     {/* 软件界面 UI 效果预览 */}
                     <div>
-                      <p style={{ margin: '0 0 6px', fontWeight: 600, fontSize: 12, color: 'var(--editor-text-muted)' }}>
+                      <p style={previewCaptionStyle}>
                         软件界面 UI 与提示效果 (中英文混合测试: NoteBoard 2026 Ready)：
                       </p>
                       <div
@@ -758,33 +780,39 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       </div>
                     </div>
 
-                    {/* Markdown 正文预览 */}
-                    <div
-                      style={{
-                        fontFamily: 'var(--content-font-family)',
-                        fontSize: settings.typography.contentFontSize,
-                        lineHeight: settings.typography.contentLineHeight,
-                      }}
-                    >
-                      <p style={{ margin: '0 0 4px', fontWeight: 600, fontSize: '0.9em', color: 'var(--editor-text-muted)' }}>
+                    {/* Markdown 正文预览：小标题放在正文字体容器之外，与其他分组的小标题字体一致 */}
+                    <div>
+                      <p style={previewCaptionStyle}>
                         Markdown 正文效果：
                       </p>
-                      <p style={{ margin: 0 }}>
-                        这是中英文正文排版效果（Typography Test: Quick Brown Fox 123），包含 <strong>加粗文本 Bold</strong>、<em>斜体 Italic</em> 与 <code style={{
-                          background: 'var(--code-inline-bg)',
-                          color: 'var(--code-inline-text)',
-                          padding: '2px 6px',
-                          borderRadius: 'var(--radius-sm)',
-                          fontFamily: 'var(--mono-font-family)',
-                          fontSize: '0.88em',
-                          border: '1px solid var(--editor-border)',
-                        }}>const note = "NoteBoard 2026";</code> 行内代码。
-                      </p>
+                      <div
+                        style={{
+                          fontFamily: 'var(--content-font-family)',
+                          fontSize: settings.typography.contentFontSize,
+                          lineHeight: settings.typography.contentLineHeight,
+                        }}
+                      >
+                        <p style={{ margin: 0 }}>
+                          这是中英文正文排版效果（Typography Test: Quick Brown Fox 123），包含 <strong>加粗文本 Bold</strong>、<em>斜体 Italic</em> 与 <code style={{
+                            background: 'var(--code-inline-bg)',
+                            color: 'var(--code-inline-text)',
+                            padding: '2px 6px',
+                            borderRadius: 'var(--radius-sm)',
+                            fontFamily: 'var(--mono-font-family)',
+                            fontSize: '0.88em',
+                            border: '1px solid var(--editor-border)',
+                          }}>const note = "NoteBoard 2026";</code> 行内代码。
+                        </p>
+                        {/* 第二段：体现段落间距设置 */}
+                        <p style={{ margin: `${settings.typography.contentParagraphSpacing ?? 14}px 0 0` }}>
+                          这是第二个段落，与上一段之间的空白即「正文段落间距」。
+                        </p>
+                      </div>
                     </div>
 
                     {/* 代码文件预览 */}
                     <div>
-                      <p style={{ margin: '0 0 4px', fontWeight: 600, fontSize: 12, color: 'var(--editor-text-muted)' }}>
+                      <p style={previewCaptionStyle}>
                         SQL / 代码 / 纯文本效果：
                       </p>
                       <pre className="nb-typography-code-preview" style={{
@@ -804,7 +832,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                     {/* 文件树条目预览 */}
                     <div>
-                      <p style={{ margin: '0 0 4px', fontWeight: 600, fontSize: 12, color: 'var(--editor-text-muted)' }}>
+                      <p style={previewCaptionStyle}>
                         文件树目录条目效果：
                       </p>
                       <div
@@ -1290,6 +1318,66 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                   <ShortcutItem keyCombo="/" label="Markdown 中触发斜杠快捷插入" />
                 </div>
+
+                {/* Markdown 回车类按键（规则实现见 features/editor-md/enterKeyBehavior.ts）；细节放在 tip 中，行内只留要点 */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-strong)', marginBottom: 4 }}>
+                    Markdown 回车类按键
+                  </div>
+                  {/* Enter 与 Shift+Enter 互换开关：与快捷键条目同高，复选框占据右侧按键位 */}
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      padding: '8px 12px',
+                      background: 'var(--editor-surface)',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--editor-border)',
+                      fontSize: 12,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <ShortcutLabel
+                      label="Enter 与 Shift + Enter 互换"
+                      tip="开启后 Enter 段内换行、Shift + Enter 换段落；代码块、表格、标题与空行不受影响"
+                    />
+                    <input
+                      type="checkbox"
+                      checked={settings.editor.swapEnterKeys ?? false}
+                      onChange={(e) => setEditor({ swapEnterKeys: e.target.checked })}
+                    />
+                  </label>
+                  <ShortcutItem
+                    keyCombo={settings.editor.swapEnterKeys ? 'Shift + Enter' : 'Enter'}
+                    label="换段落"
+                    tip="新建段落或列表新项，源码中以空行分隔；在空行上再按一次，跳出列表、引用、提示块、高亮块、折叠块"
+                  />
+                  <ShortcutItem
+                    keyCombo={settings.editor.swapEnterKeys ? 'Enter' : 'Shift + Enter'}
+                    label="段内换行"
+                    tip="不新建段落、没有段落间距，源码中为行尾两个空格；标题中与空行上等同换段落"
+                  />
+                  <ShortcutItem
+                    keyCombo="Ctrl + Enter"
+                    label="跳出到下方新段落"
+                    tip="在所在的代码块、表格、列表、引用、提示块、高亮块、折叠块、分栏下方新建段落；普通段落则在其下方新建，不拆分当前内容"
+                  />
+                  <ShortcutItem keyCombo="Alt + Enter" label="无作用" />
+                  <ShortcutItem
+                    keyCombo="Enter / Shift + Enter"
+                    label="代码块、表格内换行"
+                    tip="代码块末尾连按三次 Enter 跳出；表格单元格内的换行保存为 <br>"
+                  />
+                  <ShortcutItem keyCombo="Enter" label="折叠块标题进入正文" />
+                  <ShortcutItem
+                    keyCombo="Ctrl + Enter / Esc"
+                    label="源码编辑框完成 / 取消"
+                    tip="公式、Mermaid、信息图、HTML 块的源码编辑框；行内公式按 Enter 即完成"
+                  />
+                  <ShortcutItem keyCombo="Ctrl + Enter / Esc" label="多维表格长文本保存 / 取消" />
+                </div>
               </div>
             )}
 
@@ -1540,13 +1628,37 @@ function ThemeCard({
   );
 }
 
-function ShortcutItem({ keyCombo, label }: { keyCombo: string; label: string }) {
+/** 快捷键条目说明文字；有 tip 时在文字后附信息图标，悬停查看详细说明 */
+function ShortcutLabel({ label, tip }: { label: string; tip?: string }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--editor-text)' }}>
+      {label}
+      {tip && (
+        <Tooltip content={<span style={{ display: 'block', maxWidth: 320, lineHeight: 1.6 }}>{tip}</span>} side="top" sideOffset={4}>
+          <span
+            className="nb-shortcut-tip"
+            style={{ display: 'inline-flex', color: 'var(--editor-text-muted)', cursor: 'help', transition: 'color var(--transition-fast)' }}
+            aria-label={tip}
+            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--accent-strong)')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--editor-text-muted)')}
+          >
+            <Info size={13} />
+          </span>
+        </Tooltip>
+      )}
+    </span>
+  );
+}
+
+function ShortcutItem({ keyCombo, label, tip }: { keyCombo: string; label: string; tip?: string }) {
   return (
     <div
       style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
+        // 说明文字较长时换行，按键标签保持在右侧不被挤压
+        gap: 12,
         padding: '8px 12px',
         background: 'var(--editor-surface)',
         borderRadius: 'var(--radius-sm)',
@@ -1554,9 +1666,11 @@ function ShortcutItem({ keyCombo, label }: { keyCombo: string; label: string }) 
         fontSize: 12,
       }}
     >
-      <span style={{ color: 'var(--editor-text)' }}>{label}</span>
+      <ShortcutLabel label={label} tip={tip} />
       <kbd
         style={{
+          flexShrink: 0,
+          whiteSpace: 'nowrap',
           padding: '2px 6px',
           background: 'var(--editor-bg)',
           border: '1px solid var(--editor-border)',
@@ -1576,6 +1690,16 @@ const formRowStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: 6,
+};
+
+/** 实时排版预览中各分组的小标题：统一使用界面字体，不随所预览的正文 / 代码字体变化 */
+const previewCaptionStyle: React.CSSProperties = {
+  margin: '0 0 8px',
+  fontFamily: 'var(--ui-font-family)',
+  fontSize: 12,
+  fontWeight: 600,
+  lineHeight: 1.5,
+  color: 'var(--editor-text-muted)',
 };
 
 const labelStyle: React.CSSProperties = {

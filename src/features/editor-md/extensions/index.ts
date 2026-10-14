@@ -38,6 +38,7 @@ import { fixTableEditingSelection } from '../tableSelectionFix';
 import { ListEmptyItemBackspaceFix } from '../listItemBackspace';
 import { SelectionHighlight } from '../selectionHighlight';
 import { MultiClickSelectionFix } from '../multiClickSelection';
+import { EnterKeyBehavior } from '../enterKeyBehavior';
 import { useWindowStore } from '../../../stores/windowStore';
 
 import Suggestion from '@tiptap/suggestion';
@@ -291,6 +292,8 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
     SelectionHighlight,
     // 双击 / 三击选区不跨越段落边界：行尾空白双击不再选中换行，段落间隙判给更近的文本块
     MultiClickSelectionFix,
+    // 回车类按键统一行为：Enter 换段落、Shift+Enter 段内换行、Ctrl+Enter 跳出到下方（支持 Enter 与 Shift+Enter 互换）
+    EnterKeyBehavior,
 
     // 任务列表
     TaskList,

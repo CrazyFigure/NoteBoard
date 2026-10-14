@@ -902,7 +902,8 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
 }
 
 /* 段落 */
-.ProseMirror p { margin-bottom: 16px; }
+/* 段落间距由设置「排版与字体 → 段落间距」控制 */
+.ProseMirror p { margin-bottom: var(--content-paragraph-spacing, 14px); }
 .ProseMirror p:last-child { margin-bottom: 0; }
 
 /* 超链接（支持主题响应与清晰下划线格式展示） */

@@ -186,6 +186,7 @@ const DEFAULT_TYPOGRAPHY: TypographySettings = {
   contentFontSize: 16,
   monoFontSize: 14,
   contentLineHeight: 1.7,
+  contentParagraphSpacing: 14,
   monoLineHeight: 1.5,
   contentWidth: 'wide',
   monoContentWidth: 'full',
@@ -215,6 +216,8 @@ export function applyTypography(t: Partial<TypographySettings>): void {
   root.style.setProperty('--content-font-family', contentFontFamilyCss);
   root.style.setProperty('--content-font-size', `${merged.contentFontSize}px`);
   root.style.setProperty('--content-line-height', `${merged.contentLineHeight}`);
+  // Markdown 正文段落间距（相邻段落之间的空白高度）
+  root.style.setProperty('--content-paragraph-spacing', `${merged.contentParagraphSpacing ?? 14}px`);
   // Markdown 正文内容区域最大宽度（默认 wide 宽屏 92%）
   root.style.setProperty('--content-max-width', resolveContentWidth(merged.contentWidth));
 

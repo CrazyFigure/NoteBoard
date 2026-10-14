@@ -41,6 +41,7 @@ const DEFAULT_SETTINGS: Settings = {
     contentFontSize: 16,
     monoFontSize: 14,
     contentLineHeight: 1.7,
+    contentParagraphSpacing: 14,
     monoLineHeight: 1.5,
     contentWidth: 'wide',
     monoContentWidth: 'full',
@@ -68,6 +69,7 @@ const DEFAULT_SETTINGS: Settings = {
     markdownNormalization: 'ask',
     codeBlockDefaultExpanded: true,
     detailsDefaultExpanded: false,
+    swapEnterKeys: false,
   },
   file: {
     autoSaveMarkdown: false,

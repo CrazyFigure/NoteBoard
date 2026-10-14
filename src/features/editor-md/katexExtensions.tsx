@@ -236,7 +236,8 @@ function MathComponent({ node, updateAttributes, selected }: NodeViewProps) {
               e.preventDefault();
               setEditing(false);
             }
-            if (e.key === 'Enter' && !isBlock && !e.shiftKey) {
+            // 完成编辑：Ctrl+Enter（与 Mermaid、信息图、HTML 块一致）；行内公式直接按 Enter 也完成，Shift+Enter 换行
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || (!isBlock && !e.shiftKey))) {
               e.preventDefault();
               updateAttributes({ latex: editValue });
               setEditing(false);
