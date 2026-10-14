@@ -75,6 +75,7 @@ import { RAW_HTML_SOURCE_SNIPPET, insertRawHtmlContent } from '../editor-md/rawH
 // 🔴 S03：从 editor-md 边界内实例表获取内核实例（不再依赖编辑器组件文件的 getter 导出）
 import { getMdTipTapEditor as getActiveTipTapEditor, getMdSourceView as getActiveSourceView } from '../editor-md/editorInstances';
 import { emit } from '../../core/emitter';
+import { DEFAULT_INFOGRAPHIC_CODE } from '../infographic/infographicTemplates';
 import type { EditorView } from '@codemirror/view';
 
 /**
@@ -348,7 +349,8 @@ export function MarkdownToolbar({
   // 插入 Infographic 现代化信息图
   const handleInsertInfographic = () => {
     setInsertDropdownOpen(false);
-    const tmpl = `type: metric-cards\ntitle: 核心运营与业务指标\ndata:\n  - label: 日活跃用户\n    value: "128,450"\n    change: "+12.5%"\n    trend: up\n    color: blue\n  - label: 核心功能转化率\n    value: "38.6%"\n    change: "+3.2%"\n    trend: up\n    color: emerald`;
+    // 默认信息图模板与斜杠命令、右键菜单共用
+    const tmpl = DEFAULT_INFOGRAPHIC_CODE;
     if (isSourceMode) {
       const infoSnippet = `\n\`\`\`infographic\n${tmpl}\n\`\`\`\n`;
       executeSourceAction((view) => {
@@ -853,7 +855,7 @@ export function MarkdownToolbar({
         {/* 2. GitHub 提示块 (Alert) 二级菜单 */}
         <ToolbarDropdownItem
           icon={<Boxes size={14} color="#3b82f6" />}
-          label="GitHub 提示块 (Alert)"
+          label="GitHub 提示块"
           submenu={
             <>
               {/* 文案与图标取自 alertExtension，与斜杠命令、右键菜单保持一致 */}
@@ -890,14 +892,14 @@ export function MarkdownToolbar({
         {/* 3. 引用块 (Quote) */}
         <ToolbarDropdownItem
           icon={<Quote size={14} />}
-          label="引用块 (Quote)"
+          label="引用块"
           onClick={handleInsertQuote}
         />
 
         {/* 3.1 折叠块 (Details) */}
         <ToolbarDropdownItem
           icon={<ListCollapse size={14} />}
-          label="折叠块 (Details)"
+          label="折叠块"
           onClick={handleInsertDetails}
         />
 
