@@ -60,7 +60,8 @@ export function MobileEditorPage({ activeTab, activeEditor, getMarkdownEditorRea
   const [switcherOpen, setSwitcherOpen] = useState(false);
 
   const isMarkdown = activeTab?.kind === 'markdown';
-  const isTextual = !!activeTab && (activeTab.kind === 'markdown' || activeTab.kind === 'code') && activeTab.toolKind !== 'textdiff';
+  // 恢复标签正文加载中不算文本视图：编辑器未挂载，未知扩展名的 kind 也只是按路径暂推断
+  const isTextual = !!activeTab && (activeTab.kind === 'markdown' || activeTab.kind === 'code') && activeTab.toolKind !== 'textdiff' && !activeTab.lazySource;
   const isVisible = page === 'editor' && !!activeTab;
   // 画板演示模式：隐藏顶栏与格式栏，画布独占屏幕
   const boardPresentationMode = useLayoutStore((s) => s.boardPresentationMode);

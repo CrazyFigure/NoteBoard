@@ -421,11 +421,15 @@ export async function loadRestoredTab(key: string): Promise<LazyLoadResult> {
       // 🔴 N02：opened/focused/cancelled 都不能只凭返回值清除懒标记——
       //    必须验证本 key 的会话确实拿到正文（focused=另一处已打开，本标签无正文）
       const doc = useDocumentStore.getState().getDocument(key);
-      if (!doc || doc.content == null) {
+      if (!doc) return 'stale';
+      // 图片/不支持格式本就不读正文（content 恒为 null）：本窗口打开链建立了会话
+      // （result=opened）即视为加载完成，否则恢复标签会永远停在"正在加载"
+      const isContentless = doc.kind === 'image' || doc.kind === 'unsupported';
+      if (doc.content == null && !(isContentless && result === 'opened')) {
         return 'stale';
       }
-      // 打开链完成后清除懒标记（正文已在 store；编辑器正常挂载）
-      useWindowStore.getState().clearLazy(key);
+      // 打开链完成后清除懒标记，并以打开链判定的类型为准（编辑器/图片/不支持视图正常挂载）
+      useWindowStore.getState().clearLazy(key, { kind: doc.kind, language: doc.language });
       return 'loaded';
     } finally {
       loadingLazyTabs.delete(key);

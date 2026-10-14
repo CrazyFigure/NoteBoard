@@ -243,4 +243,91 @@ describe('S10 会话恢复轻量描述符', () => {
     // 懒标记保留（可重试）
     expect(useWindowStore.getState().getTab(KEY_A)?.lazySource).toBe(KEY_A);
   });
+
+  /** 构造恢复出的懒标签（kind 为恢复时按扩展名推断的结果） */
+  function setLazyTab(key: string, kind: 'image' | 'code') {
+    useWindowStore.setState({
+      tabs: [{
+        key,
+        displayName: key.split('\\').pop() ?? key,
+        path: key,
+        kind,
+        language: 'plaintext',
+        isDirty: false,
+        isPreview: false,
+        viewMode: null,
+        externalStatus: null,
+        isDetached: false,
+        lazySource: key,
+        lazyStagedPath: null,
+      }],
+      activeKey: key,
+    });
+  }
+
+  /** 模拟打开链为无正文类型建立会话（图片/不支持格式 content 恒为 null） */
+  function mockContentlessOpen(key: string, kind: 'image' | 'unsupported') {
+    openDocumentMock.mockImplementation(async () => {
+      useDocumentStore.getState().upsertFromPayload({
+        key,
+        displayName: key.split('\\').pop() ?? key,
+        dirPath: 'C:\\t',
+        kind,
+        language: 'plaintext',
+        content: null,
+        encoding: 'utf8',
+        eol: 'lf',
+        size: 1024,
+        mtime: 0,
+        readonly: true,
+      });
+      return 'opened';
+    });
+  }
+
+  it('图片恢复标签：打开链建立会话后清除懒标记（正文恒为 null 不能判为未交付）', async () => {
+    const key = 'C:\\t\\pic.png';
+    setLazyTab(key, 'image');
+    mockContentlessOpen(key, 'image');
+
+    const result = await loadRestoredTab(key);
+    expect(result).toBe('loaded');
+    expect(useWindowStore.getState().getTab(key)?.lazySource).toBeUndefined();
+  });
+
+  it('不支持格式恢复标签：清除懒标记并同步为 unsupported 类型（.lnk 恢复时推断为 code）', async () => {
+    const key = 'C:\\t\\app.lnk';
+    setLazyTab(key, 'code');
+    mockContentlessOpen(key, 'unsupported');
+
+    const result = await loadRestoredTab(key);
+    expect(result).toBe('loaded');
+    const tab = useWindowStore.getState().getTab(key);
+    expect(tab?.lazySource).toBeUndefined();
+    expect(tab?.kind).toBe('unsupported');
+  });
+
+  it('图片恢复标签被其它窗口持有（focused）：不清除懒标记', async () => {
+    const key = 'C:\\t\\pic.png';
+    setLazyTab(key, 'image');
+    // 恢复占位会话（kind 按扩展名为 image，正文 null）
+    useDocumentStore.getState().upsertFromPayload({
+      key,
+      displayName: 'pic.png',
+      dirPath: 'C:\\t',
+      kind: 'image',
+      language: 'plaintext',
+      content: null,
+      encoding: 'utf8',
+      eol: 'lf',
+      size: 0,
+      mtime: 0,
+      readonly: false,
+    });
+    openDocumentMock.mockResolvedValue('focused');
+
+    const result = await loadRestoredTab(key);
+    expect(result).toBe('stale');
+    expect(useWindowStore.getState().getTab(key)?.lazySource).toBe(key);
+  });
 });
