@@ -43,6 +43,7 @@ import {
   RemoveFormatting,
   PlusSquare,
   BarChart3,
+  Smile,
 } from 'lucide-react';
 import {
   ToolbarButton,
@@ -72,6 +73,7 @@ import { alertSourceBlock, codeSourceBlock, quoteSourceBlock, wrapSourceLines } 
 import { ALERT_KINDS, AlertMenuIcon, alertMenuLabel, type AlertKind } from '../editor-md/alertExtension';
 import { CALLOUT_PRESETS, CalloutPresetIcon, type CalloutPreset } from '../editor-md/calloutPickers';
 import { RAW_HTML_SOURCE_SNIPPET, insertRawHtmlContent } from '../editor-md/rawHtmlBlockView';
+import { InlineEmojiGrid, insertInlineEmoji } from '../editor-md/inlineEmoji';
 // 🔴 S03：从 editor-md 边界内实例表获取内核实例（不再依赖编辑器组件文件的 getter 导出）
 import { getMdTipTapEditor as getActiveTipTapEditor, getMdSourceView as getActiveSourceView } from '../editor-md/editorInstances';
 import { emit } from '../../core/emitter';
@@ -582,6 +584,23 @@ export function MarkdownToolbar({
     editor.chain().focus().insertContent(textToInsert).run();
   };
 
+  // ── 表情插入处理：两种模式写入的都是标准 Unicode 表情字符 ──
+  const handleInsertEmoji = (char: string) => {
+    setInsertDropdownOpen(false);
+    if (isSourceMode) {
+      executeSourceAction((view) => {
+        const { from, to } = view.state.selection.main;
+        view.dispatch({
+          changes: { from, to, insert: char },
+          selection: { anchor: from + char.length },
+        });
+      });
+      return;
+    }
+    if (!editor) return;
+    insertInlineEmoji(editor, char);
+  };
+
   const handleClearFormat = () => {
     if (isSourceMode) {
       executeSourceAction((view) => {
@@ -841,7 +860,7 @@ export function MarkdownToolbar({
             icon={<PlusSquare size={15} />}
             label="插入"
             hasDropdown
-            title="插入超链接、图片、表格、公式、图表、GitHub 提示块、高亮块、折叠块、分栏、HTML 块、日期时间等"
+            title="插入超链接、图片、表格、公式、图表、GitHub 提示块、高亮块、折叠块、分栏、HTML 块、表情、日期时间等"
           />
         }
       >
@@ -1005,6 +1024,14 @@ export function MarkdownToolbar({
               />
             </>
           }
+        />
+
+        {/* 6.5 表情二级面板（写入标准 Unicode 表情，与高亮块「表情」页同一套图案） */}
+        <ToolbarDropdownItem
+          icon={<Smile size={14} color="#f59e0b" />}
+          label="表情"
+          submenuWidth={310}
+          submenu={<InlineEmojiGrid onSelect={handleInsertEmoji} />}
         />
 
         {/* 7. 超链接菜单项 */}

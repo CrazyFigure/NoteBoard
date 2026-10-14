@@ -2715,6 +2715,28 @@ button.nb-callout-icon:active {
   -webkit-user-drag: none;
   pointer-events: none;
 }
+/* 正文表情：字符保持不变（隐藏系统字形），背景换成与表情面板一致的 Noto SVG；光标颜色单独指定，避免随透明文字一起消失 */
+.ProseMirror .nb-inline-emoji {
+  color: transparent;
+  caret-color: var(--editor-text);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 1.15em 1.15em;
+}
+/* 表情选择面板（工具栏「插入」、右键菜单的二级面板）：固定宽度，超出高度时内部滚动 */
+.nb-inline-emoji-panel {
+  width: 296px;
+  max-height: min(340px, calc(100vh - 120px));
+  overflow-y: auto;
+  padding: 0 4px 4px;
+}
+.nb-inline-emoji-panel .nb-callout-popover-title:first-child {
+  margin-top: 4px;
+}
+/* 固定 8 列（需压过后文 .nb-callout-icon-grid 的自适应列）：表情各组数量都是 8 的倍数，斜杠菜单按行列键盘移动依赖此列数 */
+.nb-callout-icon-grid.nb-inline-emoji-grid {
+  grid-template-columns: repeat(8, 1fr);
+}
 .ProseMirror .nb-callout-content {
   flex: 1;
   min-width: 0;

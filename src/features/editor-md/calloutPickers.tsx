@@ -241,53 +241,55 @@ export interface CalloutEmojiDef {
   label: string;
   /** SVG 地址（public/callout-emoji 下的本地文件） */
   src: string;
+  /** 对应的 Unicode 表情字符：正文插入表情时写入 Markdown 的内容（见 inlineEmoji） */
+  char: string;
 }
 
-/** 由「文件名 + 中文名」生成一组表情定义 */
-function emojiGroup(label: string, items: Array<[file: string, label: string]>): { label: string; icons: CalloutEmojiDef[] } {
+/** 由「文件名 + 中文名 + Unicode 字符」生成一组表情定义 */
+function emojiGroup(label: string, items: Array<[file: string, label: string, char: string]>): { label: string; icons: CalloutEmojiDef[] } {
   return {
     label,
-    icons: items.map(([file, itemLabel]) => ({ id: `emoji-${file}`, label: itemLabel, src: `/callout-emoji/${file}.svg` })),
+    icons: items.map(([file, itemLabel, char]) => ({ id: `emoji-${file}`, label: itemLabel, src: `/callout-emoji/${file}.svg`, char })),
   };
 }
 
 /** 彩色表情分组（面板「表情」页中按组展示）；「表情」「手势」两组按微信常用表情的含义与顺序编排 */
 export const CALLOUT_EMOJI_GROUPS: Array<{ label: string; icons: CalloutEmojiDef[] }> = [
   emojiGroup('表情', [
-    ['smile', '微笑'], ['pout', '撇嘴'], ['heart-eyes', '色'], ['daze', '发呆'],
-    ['cool', '得意'], ['sob', '流泪'], ['shy', '害羞'], ['zip', '闭嘴'],
-    ['sleeping', '睡'], ['awkward', '尴尬'], ['angry', '发怒'], ['tongue', '调皮'],
-    ['grin', '呲牙'], ['surprised', '惊讶'], ['sad', '难过'], ['anxious', '囧'],
-    ['tired', '抓狂'], ['vomit', '吐'], ['giggle', '偷笑'], ['happy', '愉快'],
-    ['eye-roll', '白眼'], ['huff', '傲慢'], ['yawn', '困'], ['scream', '惊恐'],
-    ['relieved', '悠闲'], ['curse', '咒骂'], ['thinking', '疑问'], ['shush', '嘘'],
-    ['dizzy', '晕'], ['skull', '骷髅'], ['sweat', '擦汗'], ['smirk', '坏笑'],
-    ['unamused', '鄙视'], ['pleading', '委屈'], ['holding-tears', '快哭了'], ['kiss', '亲亲'],
-    ['mask', '生病'], ['joy', '破涕为笑'], ['peek', '让我看看'], ['sigh', '叹气'],
-    ['bittersweet', '苦涩'], ['melting', '裂开'], ['star-struck', '哇'], ['hug', '拥抱'],
-    ['party', '庆祝'], ['mind-blown', '震惊'], ['monocle', '审视'], ['wink', '眨眼'],
+    ['smile', '微笑', '🙂'], ['pout', '撇嘴', '😕'], ['heart-eyes', '色', '😍'], ['daze', '发呆', '😳'],
+    ['cool', '得意', '😎'], ['sob', '流泪', '😭'], ['shy', '害羞', '☺️'], ['zip', '闭嘴', '🤐'],
+    ['sleeping', '睡', '😴'], ['awkward', '尴尬', '😅'], ['angry', '发怒', '😡'], ['tongue', '调皮', '😜'],
+    ['grin', '呲牙', '😁'], ['surprised', '惊讶', '😮'], ['sad', '难过', '🙁'], ['anxious', '囧', '😰'],
+    ['tired', '抓狂', '😫'], ['vomit', '吐', '🤮'], ['giggle', '偷笑', '🤭'], ['happy', '愉快', '😊'],
+    ['eye-roll', '白眼', '🙄'], ['huff', '傲慢', '😤'], ['yawn', '困', '🥱'], ['scream', '惊恐', '😱'],
+    ['relieved', '悠闲', '😌'], ['curse', '咒骂', '🤬'], ['thinking', '疑问', '🤔'], ['shush', '嘘', '🤫'],
+    ['dizzy', '晕', '😵‍💫'], ['skull', '骷髅', '💀'], ['sweat', '擦汗', '😓'], ['smirk', '坏笑', '😏'],
+    ['unamused', '鄙视', '😒'], ['pleading', '委屈', '🥺'], ['holding-tears', '快哭了', '🥹'], ['kiss', '亲亲', '😘'],
+    ['mask', '生病', '😷'], ['joy', '破涕为笑', '😂'], ['peek', '让我看看', '🫣'], ['sigh', '叹气', '😮‍💨'],
+    ['bittersweet', '苦涩', '🥲'], ['melting', '裂开', '🫠'], ['star-struck', '哇', '🤩'], ['hug', '拥抱', '🤗'],
+    ['party', '庆祝', '🥳'], ['mind-blown', '震惊', '🤯'], ['monocle', '审视', '🧐'], ['wink', '眨眼', '😉'],
   ]),
   emojiGroup('手势', [
-    ['thumbs-up', '强'], ['thumbs-down', '弱'], ['handshake', '握手'], ['victory', '胜利'],
-    ['ok', 'OK'], ['pray', '合十'], ['clap', '鼓掌'], ['muscle', '加油'],
-    ['wave', '再见'], ['raised-hands', '欢呼'], ['fist', '拳头'], ['point-down', '看下面'],
-    ['point-right', '看这里'], ['writing', '记录'], ['eyes', '关注'], ['facepalm', '捂脸'],
+    ['thumbs-up', '强', '👍'], ['thumbs-down', '弱', '👎'], ['handshake', '握手', '🤝'], ['victory', '胜利', '✌️'],
+    ['ok', 'OK', '👌'], ['pray', '合十', '🙏'], ['clap', '鼓掌', '👏'], ['muscle', '加油', '💪'],
+    ['wave', '再见', '👋'], ['raised-hands', '欢呼', '🙌'], ['fist', '拳头', '👊'], ['point-down', '看下面', '👇'],
+    ['point-right', '看这里', '👉'], ['writing', '记录', '✍️'], ['eyes', '关注', '👀'], ['facepalm', '捂脸', '🤦'],
   ]),
   emojiGroup('符号', [
-    ['bulb', '灵感'], ['sparkles', '闪光'], ['star', '亮点'], ['fire', '热门'],
-    ['zap', '速记'], ['100', '满分'], ['check', '完成'], ['cross', '错误'],
-    ['warning', '警告'], ['no-entry', '禁止'], ['question', '问号'], ['exclamation', '重要'],
-    ['heart', '爱心'], ['broken-heart', '心碎'], ['bullseye', '目标'], ['bell', '提醒'],
+    ['bulb', '灵感', '💡'], ['sparkles', '闪光', '✨'], ['star', '亮点', '⭐'], ['fire', '热门', '🔥'],
+    ['zap', '速记', '⚡'], ['100', '满分', '💯'], ['check', '完成', '✅'], ['cross', '错误', '❌'],
+    ['warning', '警告', '⚠️'], ['no-entry', '禁止', '⛔'], ['question', '问号', '❓'], ['exclamation', '重要', '❗'],
+    ['heart', '爱心', '❤️'], ['broken-heart', '心碎', '💔'], ['bullseye', '目标', '🎯'], ['bell', '提醒', '🔔'],
   ]),
   emojiGroup('物件', [
-    ['memo', '笔记'], ['books', '阅读'], ['graduation', '学习'], ['calendar', '日程'],
-    ['alarm', '闹钟'], ['megaphone', '公告'], ['speech', '讨论'], ['chart', '增长'],
-    ['pushpin', '置顶'], ['key', '关键'], ['lock', '私密'], ['tools', '工具'],
-    ['laptop', '电脑'], ['bug', '缺陷'], ['rocket', '发布'], ['tada', '喝彩'],
-    ['gift', '礼物'], ['red-envelope', '红包'], ['trophy', '奖杯'], ['gem', '宝藏'],
-    ['coffee', '咖啡'], ['beer', '啤酒'], ['cake', '蛋糕'], ['watermelon', '吃瓜'],
-    ['rose', '玫瑰'], ['seedling', '成长'], ['clover', '幸运'], ['rainbow', '彩虹'],
-    ['sun', '晴天'], ['moon', '夜晚'], ['lips', '嘴唇'], ['poop', '便便'],
+    ['memo', '笔记', '📝'], ['books', '阅读', '📚'], ['graduation', '学习', '🎓'], ['calendar', '日程', '📅'],
+    ['alarm', '闹钟', '⏰'], ['megaphone', '公告', '📣'], ['speech', '讨论', '💬'], ['chart', '增长', '📈'],
+    ['pushpin', '置顶', '📌'], ['key', '关键', '🔑'], ['lock', '私密', '🔒'], ['tools', '工具', '🛠️'],
+    ['laptop', '电脑', '💻'], ['bug', '缺陷', '🐛'], ['rocket', '发布', '🚀'], ['tada', '喝彩', '🎉'],
+    ['gift', '礼物', '🎁'], ['red-envelope', '红包', '🧧'], ['trophy', '奖杯', '🏆'], ['gem', '宝藏', '💎'],
+    ['coffee', '咖啡', '☕'], ['beer', '啤酒', '🍺'], ['cake', '蛋糕', '🎂'], ['watermelon', '吃瓜', '🍉'],
+    ['rose', '玫瑰', '🌹'], ['seedling', '成长', '🌱'], ['clover', '幸运', '🍀'], ['rainbow', '彩虹', '🌈'],
+    ['sun', '晴天', '🌞'], ['moon', '夜晚', '🌙'], ['lips', '嘴唇', '💋'], ['poop', '便便', '💩'],
   ]),
 ];
 
