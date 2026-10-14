@@ -21,10 +21,13 @@ export function EditorToolbar({ activeTab, activeEditor }: EditorToolbarProps) {
   const { editorToolbarVisible, setEditorToolbarVisible } = useLayoutStore();
 
   // 若当前无激活标签页、非文本格式或为纯前端工具视图（如文本对比），不渲染操作栏
+  // 恢复标签正文加载中也不渲染：编辑器尚未挂载，且未知扩展名（.lnk/.docx 等）
+  // 按路径暂推断为 code，加载后才知道真实类型，避免闪出无效的代码工具栏
   if (
     !activeTab ||
     (activeTab.kind !== 'markdown' && activeTab.kind !== 'code') ||
-    activeTab.toolKind === 'textdiff'
+    activeTab.toolKind === 'textdiff' ||
+    activeTab.lazySource
   ) {
     return null;
   }

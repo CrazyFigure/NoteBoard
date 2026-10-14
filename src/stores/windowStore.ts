@@ -104,8 +104,11 @@ interface WindowStore {
   // ── S10 会话恢复轻量描述符 ──
   /** 批量加入恢复标签（不激活、不动 activeKey；Home 保持首屏） */
   addRestoredTabs: (tabs: Tab[]) => void;
-  /** 清除标签的懒加载标记（正文加载完成后调用；dirty 等状态保持现值） */
-  clearLazy: (key: string) => void;
+  /**
+   * 清除标签的懒加载标记（正文加载完成后调用；dirty 等状态保持现值）。
+   * resolved：打开链判定的真实类型（恢复时按扩展名推断的 kind 可能与之不符，如 .lnk 推断为 code）
+   */
+  clearLazy: (key: string, resolved?: Pick<Tab, 'kind' | 'language'>) => void;
   // ── 迁移保护（S04 transferId 协议）──
   /** 正在迁移到新窗口的文档 key 集合：期间阻止该文档新编辑与关闭竞争 */
   transferringKeys: string[];
@@ -477,13 +480,14 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
     });
   },
 
-  clearLazy: (key) => {
+  clearLazy: (key, resolved) => {
     set((state) => {
       const target = state.tabs.find((t) => t.key === key);
       if (!target || (!target.lazySource && !target.lazyStagedPath)) return state;
       return {
         tabs: state.tabs.map((t) => (
-          t.key === key ? { ...t, lazySource: undefined, lazyStagedPath: undefined } : t
+          // 同步打开链判定的真实类型：EditorStack 按 tab.kind 选择视图（图片/不支持/编辑器）
+          t.key === key ? { ...t, ...resolved, lazySource: undefined, lazyStagedPath: undefined } : t
         )),
       };
     });
