@@ -8,7 +8,7 @@
 //   </div>
 //
 // - data-color：预设颜色名（blue / green …）或小写 6 位十六进制色；
-// - data-icon：图标名（lucide 图标），不带图标时省略该属性；
+// - data-icon：图标名（lucide 图标名，或 emoji- 前缀的彩色表情名），不带图标时省略该属性；
 // - style：由颜色唯一推导，让支持 HTML 的渲染器（VS Code 预览、Typora 等）显示为带底色的块，
 //   会过滤 style 的平台（GitHub）退化为普通段落，内容不丢失。
 // 规范化约束：只接管上述标准写法（属性顺序、样式与颜色一致、正文前后各一个空行），保证"解析→序列化"逐字一致；
@@ -34,6 +34,7 @@ import {
   calloutColorHex,
   calloutColorLabel,
   getCalloutIcon,
+  isCalloutEmoji,
   isPresetColor,
   isValidCalloutColor,
   type CalloutPreset,
@@ -279,6 +280,8 @@ function CalloutComponent({ node, editor, getPos, selected }: NodeViewProps) {
   // 预设色由样式表按主题调校；自定义色写入 CSS 变量，底色与描边按主题自动混合
   const style = isPresetColor(color) ? undefined : ({ '--callout-accent': color } as CSSProperties);
   const iconLabel = icon ? getCalloutIcon(icon)?.label ?? icon : '';
+  // 彩色表情自带色彩，图标底板默认透明，仅悬停时显示
+  const iconClass = `nb-callout-icon${isCalloutEmoji(icon) ? ' is-emoji' : ''}`;
   const toolbarVisible = focused || selected || picker !== null;
 
   return (
@@ -295,7 +298,7 @@ function CalloutComponent({ node, editor, getPos, selected }: NodeViewProps) {
               <button
                 ref={iconButtonRef}
                 type="button"
-                className="nb-callout-icon"
+                className={iconClass}
                 aria-label={`图标：${iconLabel}，点击更换`}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={(event) => togglePicker('icon', event.currentTarget)}
@@ -304,7 +307,7 @@ function CalloutComponent({ node, editor, getPos, selected }: NodeViewProps) {
               </button>
             </Tooltip>
           ) : (
-            <span className="nb-callout-icon">
+            <span className={iconClass}>
               <CalloutIconGlyph id={icon} />
             </span>
           )}

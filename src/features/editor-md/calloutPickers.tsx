@@ -1,5 +1,7 @@
 // NoteBoard 高亮块：图标库、颜色预设与选择面板
-// 图标全部来自本地打包的 lucide 线性图标（无需联网，国内网络环境下同样可用），按场景分组；
+// 图标分两类，均为本地资源（无需联网，国内网络环境下同样可用），按场景分组：
+//   - 线性图标：lucide，随块颜色着色；
+//   - 彩色表情：谷歌 Noto Emoji 的 SVG（public/callout-emoji，Apache-2.0），图标名统一带 emoji- 前缀，与 lucide 图标名互不冲突；
 // 颜色为 9 种预设 + 自定义十六进制色，预设色在各主题下由样式表单独调校，自定义色按主题自动混合出底色与描边。
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
@@ -233,16 +235,94 @@ export const CALLOUT_ICON_GROUPS: Array<{ label: string; icons: CalloutIconDef[]
 
 const ICON_MAP = new Map(CALLOUT_ICON_GROUPS.flatMap((group) => group.icons.map((icon) => [icon.id, icon] as const)));
 
+export interface CalloutEmojiDef {
+  /** 写入 Markdown 的图标名（emoji- 前缀 + 文件名） */
+  id: string;
+  label: string;
+  /** SVG 地址（public/callout-emoji 下的本地文件） */
+  src: string;
+}
+
+/** 由「文件名 + 中文名」生成一组表情定义 */
+function emojiGroup(label: string, items: Array<[file: string, label: string]>): { label: string; icons: CalloutEmojiDef[] } {
+  return {
+    label,
+    icons: items.map(([file, itemLabel]) => ({ id: `emoji-${file}`, label: itemLabel, src: `/callout-emoji/${file}.svg` })),
+  };
+}
+
+/** 彩色表情分组（面板「表情」页中按组展示）；「表情」「手势」两组按微信常用表情的含义与顺序编排 */
+export const CALLOUT_EMOJI_GROUPS: Array<{ label: string; icons: CalloutEmojiDef[] }> = [
+  emojiGroup('表情', [
+    ['smile', '微笑'], ['pout', '撇嘴'], ['heart-eyes', '色'], ['daze', '发呆'],
+    ['cool', '得意'], ['sob', '流泪'], ['shy', '害羞'], ['zip', '闭嘴'],
+    ['sleeping', '睡'], ['awkward', '尴尬'], ['angry', '发怒'], ['tongue', '调皮'],
+    ['grin', '呲牙'], ['surprised', '惊讶'], ['sad', '难过'], ['anxious', '囧'],
+    ['tired', '抓狂'], ['vomit', '吐'], ['giggle', '偷笑'], ['happy', '愉快'],
+    ['eye-roll', '白眼'], ['huff', '傲慢'], ['yawn', '困'], ['scream', '惊恐'],
+    ['relieved', '悠闲'], ['curse', '咒骂'], ['thinking', '疑问'], ['shush', '嘘'],
+    ['dizzy', '晕'], ['skull', '骷髅'], ['sweat', '擦汗'], ['smirk', '坏笑'],
+    ['unamused', '鄙视'], ['pleading', '委屈'], ['holding-tears', '快哭了'], ['kiss', '亲亲'],
+    ['mask', '生病'], ['joy', '破涕为笑'], ['peek', '让我看看'], ['sigh', '叹气'],
+    ['bittersweet', '苦涩'], ['melting', '裂开'], ['star-struck', '哇'], ['hug', '拥抱'],
+    ['party', '庆祝'], ['mind-blown', '震惊'], ['monocle', '审视'], ['wink', '眨眼'],
+  ]),
+  emojiGroup('手势', [
+    ['thumbs-up', '强'], ['thumbs-down', '弱'], ['handshake', '握手'], ['victory', '胜利'],
+    ['ok', 'OK'], ['pray', '合十'], ['clap', '鼓掌'], ['muscle', '加油'],
+    ['wave', '再见'], ['raised-hands', '欢呼'], ['fist', '拳头'], ['point-down', '看下面'],
+    ['point-right', '看这里'], ['writing', '记录'], ['eyes', '关注'], ['facepalm', '捂脸'],
+  ]),
+  emojiGroup('符号', [
+    ['bulb', '灵感'], ['sparkles', '闪光'], ['star', '亮点'], ['fire', '热门'],
+    ['zap', '速记'], ['100', '满分'], ['check', '完成'], ['cross', '错误'],
+    ['warning', '警告'], ['no-entry', '禁止'], ['question', '问号'], ['exclamation', '重要'],
+    ['heart', '爱心'], ['broken-heart', '心碎'], ['bullseye', '目标'], ['bell', '提醒'],
+  ]),
+  emojiGroup('物件', [
+    ['memo', '笔记'], ['books', '阅读'], ['graduation', '学习'], ['calendar', '日程'],
+    ['alarm', '闹钟'], ['megaphone', '公告'], ['speech', '讨论'], ['chart', '增长'],
+    ['pushpin', '置顶'], ['key', '关键'], ['lock', '私密'], ['tools', '工具'],
+    ['laptop', '电脑'], ['bug', '缺陷'], ['rocket', '发布'], ['tada', '喝彩'],
+    ['gift', '礼物'], ['red-envelope', '红包'], ['trophy', '奖杯'], ['gem', '宝藏'],
+    ['coffee', '咖啡'], ['beer', '啤酒'], ['cake', '蛋糕'], ['watermelon', '吃瓜'],
+    ['rose', '玫瑰'], ['seedling', '成长'], ['clover', '幸运'], ['rainbow', '彩虹'],
+    ['sun', '晴天'], ['moon', '夜晚'], ['lips', '嘴唇'], ['poop', '便便'],
+  ]),
+];
+
+const EMOJI_MAP = new Map(CALLOUT_EMOJI_GROUPS.flatMap((group) => group.icons.map((icon) => [icon.id, icon] as const)));
+
 /** 默认图标 */
 export const DEFAULT_CALLOUT_ICON = 'lightbulb';
 
-/** 按图标名查找图标定义；未知图标名（如手写的其他名称）返回 undefined */
-export function getCalloutIcon(id: string): CalloutIconDef | undefined {
-  return ICON_MAP.get(id);
+/** 按图标名查找图标定义（线性图标或表情）；未知图标名（如手写的其他名称）返回 undefined */
+export function getCalloutIcon(id: string): CalloutIconDef | CalloutEmojiDef | undefined {
+  return ICON_MAP.get(id) ?? EMOJI_MAP.get(id);
+}
+
+/** 是否为彩色表情图标 */
+export function isCalloutEmoji(id: string): boolean {
+  return EMOJI_MAP.has(id);
 }
 
 /** 渲染图标；未知图标名退化为通用的亮点图标（源码中的图标名保持不变） */
 export function CalloutIconGlyph({ id, size = 16 }: { id: string; size?: number }) {
+  const emoji = EMOJI_MAP.get(id);
+  if (emoji) {
+    // 彩色表情没有描边留白，视觉上比同尺寸线性图标小一圈，放大 4px 与之平衡
+    return (
+      <img
+        className="nb-callout-emoji"
+        src={emoji.src}
+        width={size + 4}
+        height={size + 4}
+        alt=""
+        aria-hidden="true"
+        draggable={false}
+      />
+    );
+  }
   const Icon = ICON_MAP.get(id)?.Icon ?? Sparkles;
   return <Icon size={size} strokeWidth={2} aria-hidden="true" />;
 }
@@ -287,11 +367,14 @@ const VIEWPORT_PADDING = 8;
 function CalloutPopover({
   anchor,
   width,
+  layoutKey,
   onClose,
   children,
 }: {
   anchor: HTMLElement;
   width: number;
+  /** 内容切换（如切换分页）导致高度变化时传入新值，重新计算位置 */
+  layoutKey?: string;
   onClose: () => void;
   children: ReactNode;
 }) {
@@ -318,7 +401,7 @@ function CalloutPopover({
       const maxHeight = Math.max(160, above);
       setLayout({ top: Math.max(VIEWPORT_PADDING, rect.top - 6 - Math.min(height, maxHeight)), left, maxHeight });
     }
-  }, [anchor, effectiveWidth]);
+  }, [anchor, effectiveWidth, layoutKey]);
 
   useEffect(() => {
     const inside = (target: EventTarget | null) =>
@@ -470,7 +553,14 @@ export function CalloutColorPicker({
   );
 }
 
-/** 图标选择面板：不显示图标 + 分组图标网格 */
+type IconPickerTab = 'line' | 'emoji';
+
+const ICON_PICKER_TABS: Array<{ id: IconPickerTab; label: string }> = [
+  { id: 'line', label: '图标' },
+  { id: 'emoji', label: '表情' },
+];
+
+/** 图标选择面板：图标 / 表情分页 + 不显示图标 + 分组网格 */
 export function CalloutIconPicker({
   anchor,
   icon,
@@ -482,6 +572,11 @@ export function CalloutIconPicker({
   onChange: (icon: string) => void;
   onClose: () => void;
 }) {
+  // 打开时定位到当前图标所在的分页
+  const [tab, setTab] = useState<IconPickerTab>(() => (isCalloutEmoji(icon) ? 'emoji' : 'line'));
+  const groups: Array<{ label: string; icons: Array<CalloutIconDef | CalloutEmojiDef> }> =
+    tab === 'emoji' ? CALLOUT_EMOJI_GROUPS : CALLOUT_ICON_GROUPS;
+
   /** 选择后立即关闭面板 */
   const choose = (next: string) => {
     if (next !== icon) onChange(next);
@@ -489,7 +584,22 @@ export function CalloutIconPicker({
   };
 
   return (
-    <CalloutPopover anchor={anchor} width={IS_MOBILE_UI ? 340 : 312} onClose={onClose}>
+    <CalloutPopover anchor={anchor} width={IS_MOBILE_UI ? 340 : 312} layoutKey={tab} onClose={onClose}>
+      <div className="nb-callout-tabs" role="tablist" aria-label="图标类型">
+        {ICON_PICKER_TABS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            role="tab"
+            aria-selected={item.id === tab}
+            className={`nb-callout-tab${item.id === tab ? ' is-active' : ''}`}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => setTab(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
       <button
         type="button"
         className={`nb-callout-icon-none${icon === '' ? ' is-active' : ''}`}
@@ -500,7 +610,7 @@ export function CalloutIconPicker({
         <span>不显示图标</span>
         {icon === '' && <Check size={14} className="nb-callout-icon-none-check" />}
       </button>
-      {CALLOUT_ICON_GROUPS.map((group) => (
+      {groups.map((group) => (
         <div key={group.label}>
           <div className="nb-callout-popover-title">{group.label}</div>
           <div className="nb-callout-icon-grid" role="listbox" aria-label={group.label}>
@@ -515,7 +625,7 @@ export function CalloutIconPicker({
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => choose(item.id)}
                 >
-                  <item.Icon size={18} strokeWidth={1.9} />
+                  {'Icon' in item ? <item.Icon size={18} strokeWidth={1.9} /> : <CalloutIconGlyph id={item.id} size={18} />}
                 </button>
               </Tooltip>
             ))}

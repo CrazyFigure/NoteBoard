@@ -2696,6 +2696,18 @@ button.nb-callout-icon {
 button.nb-callout-icon:active {
   transform: scale(0.9);
 }
+/* 彩色表情：自带色彩，不再叠加底色板，避免与块底色叠成一团 */
+.nb-callout-icon.is-emoji {
+  background: transparent;
+}
+/* 表情图片：禁止被选中或拖出，并保持清晰的矢量缩放 */
+.nb-callout-emoji {
+  display: block;
+  flex: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
 .ProseMirror .nb-callout-content {
   flex: 1;
   min-width: 0;
@@ -2898,6 +2910,36 @@ button.nb-callout-icon:active {
 .nb-callout-hex.is-invalid {
   border-color: #ef4444;
 }
+/* 图标面板分页：图标 / 表情分段切换 */
+.nb-callout-tabs {
+  display: flex;
+  gap: 2px;
+  margin-top: 6px;
+  padding: 2px;
+  border-radius: var(--radius-md);
+  background: var(--toolbar-active);
+}
+.nb-callout-tab {
+  flex: 1;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: transparent;
+  color: var(--editor-text-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.nb-callout-tab:active {
+  transform: scale(0.97);
+}
+.nb-callout-tab.is-active {
+  background: var(--editor-surface);
+  color: var(--editor-text);
+  box-shadow: var(--shadow-sm);
+}
 .nb-callout-icon-none {
   display: flex;
   align-items: center;
@@ -2960,6 +3002,10 @@ button.nb-callout-icon:active {
   button.nb-callout-icon:hover {
     background: color-mix(in srgb, var(--callout-accent, #3b82f6) calc(var(--callout-chip-mix) + 10%), transparent);
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--callout-accent, #3b82f6) 35%, transparent);
+  }
+  .nb-callout-tab:not(.is-active):hover {
+    background: var(--toolbar-hover);
+    color: var(--editor-text);
   }
   .nb-callout-tool:hover {
     background: var(--toolbar-hover);
@@ -3032,6 +3078,10 @@ button.nb-callout-icon:active {
 }
 [data-platform='mobile'] .nb-callout-icon-cell {
   height: 40px;
+}
+[data-platform='mobile'] .nb-callout-tab {
+  height: 32px;
+  font-size: 13px;
 }
 @media (prefers-reduced-motion: reduce) {
   .nb-callout-popover {
