@@ -817,24 +817,24 @@ export function EditorContextMenu({
               </div>
             </button>
 
-            {/* 6. 插入表格 */}
+            {/* 6. 插入表格 (带二级子菜单：3x3 / 2x2 / 4x4，与工具栏「插入」下拉一致) */}
             <button
               type="button"
-              style={btnStyle}
-              onClick={() => {
-                onClose();
-                editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+              style={{
+                ...btnStyle,
+                background:
+                  activeSubmenu === 'insert-table'
+                    ? 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))'
+                    : 'transparent',
               }}
-              onMouseEnter={(e) => {
-                setActiveSubmenu(null);
-                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
-              }}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              onMouseEnter={(e) => handleOpenSubmenu('insert-table', e)}
+              onClick={(e) => handleOpenSubmenu('insert-table', e)}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Table size={15} />
-                <span>插入表格 (3x3)</span>
+                <span>插入表格</span>
               </div>
+              <ChevronRight size={14} style={{ opacity: 0.6 }} />
             </button>
 
             <div style={dividerStyle} />
@@ -1148,6 +1148,35 @@ export function EditorContextMenu({
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     {c.icon}
                     <span>{c.label}</span>
+                  </div>
+                </button>
+              ))}
+            </>
+          )}
+
+          {/* 二级：表格尺寸 */}
+          {activeSubmenu === 'insert-table' && (
+            <>
+              {[
+                { rows: 3, cols: 3, label: '标准表格 (3x3)' },
+                { rows: 2, cols: 2, label: '紧凑表格 (2x2)' },
+                { rows: 4, cols: 4, label: '宽表格 (4x4)' },
+              ].map((t) => (
+                <button
+                  key={t.label}
+                  type="button"
+                  style={btnStyle}
+                  onClick={() => {
+                    // 插入带表头行的指定尺寸表格
+                    editor.chain().focus().insertTable({ rows: t.rows, cols: t.cols, withHeaderRow: true }).run();
+                    onClose();
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Table size={15} />
+                    <span>{t.label}</span>
                   </div>
                 </button>
               ))}
