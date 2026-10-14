@@ -258,6 +258,9 @@ pub struct WindowBootDto {
     pub startup_mode: String,
     pub transfer_id: Option<String>,
     pub queue_version: u64,
+    /// 握手时除本窗口外没有其他存活窗口（冷启动首窗或进程内窗口已全部关闭）；
+    /// 只有这种窗口才恢复最近关闭窗口快照，避免新建窗口重复打开存活窗口的标签
+    pub is_sole_window: bool,
 }
 
 // ── 文档迁移（transferId 协议） ──

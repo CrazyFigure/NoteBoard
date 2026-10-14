@@ -62,13 +62,22 @@ async function collectDocuments(keys?: string[]): Promise<StagingDocument[]> {
   });
 }
 
+/** 文档本身就是该暂存副本（从暂存副本恢复的未命名文档，key 即副本路径） */
+function isOwnStagedCopy(docKey: string, stagedPath: string): boolean {
+  return docKey.toLowerCase() === stagedPath.toLowerCase();
+}
+
 /** 清理已恢复干净且未被明确保留的副本，避免正常编辑产生长期垃圾。 */
 async function cleanupResolvedCopies(): Promise<void> {
   const cleanupTasks: Promise<void>[] = [];
   for (const [key, record] of stagedPaths) {
     if (retainedKeys.has(key) || shouldStage(key)) continue;
     // 🔴 R01：未加载的恢复标签（正文未知）不在清理范围——副本是唯一恢复来源
-    if (useWindowStore.getState().getTab(key)?.lazySource) continue;
+    const tab = useWindowStore.getState().getTab(key);
+    if (tab?.lazySource) continue;
+    // 从暂存副本恢复的未命名标签直接打开副本本身（key 即副本路径）：脏态被清除
+    // （如可视化模式确认内容未变）时不得删除标签正在显示的文件，否则重启后无法再恢复
+    if (tab && isOwnStagedCopy(key, record.path)) continue;
     stagedPaths.delete(key);
     cleanupTasks.push(ipc.deleteStagedFile(record.path).catch((error) => {
       console.warn('[stagingManager] 清理已恢复文档的暂存副本失败:', error);
@@ -165,6 +174,8 @@ export async function onDocumentSaved(docKey: string, savedContent?: string): Pr
   await writeQueue.catch(() => []);
   const record = stagedPaths.get(docKey);
   if (!record) return;
+  // 保存目标就是暂存副本本身（从副本恢复的未命名文档）：刚写入的文件不能当作副本删除
+  if (isOwnStagedCopy(docKey, record.path)) return;
   if (savedContent !== undefined) {
     // 🔴 内容证明判定：未知内容（undefined，恢复登记的副本）必须保留；
     //    只有暂存内容为空（此前确认的空写入）或与保存内容一致时才视为被覆盖

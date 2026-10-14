@@ -61,6 +61,17 @@ pub struct SessionTab {
     pub display_name: String,
 }
 
+/// 会话快照文件名。
+/// 开发版（tauri dev 的 debug 构建）与安装版共用 %APPDATA%\NoteBoard 数据目录且可并行运行，
+/// 若共用同一快照，开发版启动恢复/退出改写会覆盖安装版记住的标签，因此开发版单独使用一份。
+fn session_file_name() -> &'static str {
+    if cfg!(debug_assertions) {
+        "session-dev.json"
+    } else {
+        "session.json"
+    }
+}
+
 pub mod commands {
     use super::*;
     use std::sync::Mutex;
@@ -69,7 +80,7 @@ pub mod commands {
     static SESSION_WRITE_LOCK: Mutex<()> = Mutex::new(());
 
     fn session_path() -> PathBuf {
-        app_data_dir().join("session.json")
+        app_data_dir().join(super::session_file_name())
     }
 
     fn recent_path() -> PathBuf {
@@ -319,5 +330,12 @@ mod tests {
         assert!(tab.source_path.is_none());
         assert!(tab.staged_path.is_none());
         assert!(tab.display_name.is_empty());
+    }
+
+    /// 开发版（debug 构建）使用独立快照文件，不覆盖安装版记住的标签。
+    #[test]
+    fn debug_build_uses_separate_session_file() {
+        let expected = if cfg!(debug_assertions) { "session-dev.json" } else { "session.json" };
+        assert_eq!(session_file_name(), expected);
     }
 }

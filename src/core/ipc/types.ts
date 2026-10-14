@@ -133,6 +133,8 @@ export interface WindowBootDto {
   startupMode: 'empty' | 'explicit-open' | 'handoff';
   transferId: string | null;
   queueVersion: number;
+  /** 握手时除本窗口外没有其他存活窗口（只有这种窗口才恢复最近关闭窗口快照；缺省视为 true） */
+  isSoleWindow?: boolean;
 }
 
 // ── 文档迁移（transferId 协议） ──
