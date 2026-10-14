@@ -16,7 +16,14 @@ import {
   setCalloutAttrs,
   unwrapCallout,
 } from '../../src/features/editor-md/calloutExtension';
-import { normalizeHexInput } from '../../src/features/editor-md/calloutPickers';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+  CALLOUT_EMOJI_GROUPS,
+  CALLOUT_ICON_GROUPS,
+  isCalloutEmoji,
+  normalizeHexInput,
+} from '../../src/features/editor-md/calloutPickers';
 import { splitSections } from '../../src/features/editor-md/sectionDocument';
 
 const editor = new Editor({ element: null, extensions: buildExtensions('callout-test'), content: '' });
@@ -52,6 +59,7 @@ describe('高亮块：标准写法逐字往返', () => {
     ['不带图标', callout('纯色块', 'gray', '')],
     ['自定义颜色', callout('自定义', '#ff6a00', 'rocket')],
     ['未知图标名保持不变', callout('x', 'teal', 'some-other-icon')],
+    ['彩色表情图标', callout('表情', 'yellow', 'emoji-100')],
     ['空正文', callout('')],
     ['多块正文', callout('# 标题\n\n- a\n- b\n\n```js\nconst a = 1;\n```\n\n> 引用\n\n| a   | b   |\n| --- | --- |\n| 1   | 2   |')],
     ['块内 HTML', callout('<p align="center">居中</p>\n\n**粗体** 与 `code` 与 <kbd>Ctrl</kbd>')],
@@ -199,6 +207,31 @@ describe('大文档分段不切开高亮块', () => {
       const opens = section.content.match(/<div[\s>]/g)?.length ?? 0;
       const closes = section.content.match(/<\/div>/g)?.length ?? 0;
       expect(opens).toBe(closes);
+    }
+  });
+});
+
+describe('高亮块：彩色表情图标', () => {
+  const emojis = CALLOUT_EMOJI_GROUPS.flatMap((group) => group.icons);
+
+  it('表情图标名合法、唯一且不与线性图标重名', () => {
+    const lineIds = new Set(CALLOUT_ICON_GROUPS.flatMap((group) => group.icons.map((icon) => icon.id)));
+    const ids = emojis.map((emoji) => emoji.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) {
+      // 须满足 data-icon 的属性格式，才能被标准写法接管
+      expect(id).toMatch(/^emoji-[a-z0-9]+(?:-[a-z0-9]+)*$/);
+      expect(lineIds.has(id)).toBe(false);
+      expect(isCalloutEmoji(id)).toBe(true);
+    }
+    expect(isCalloutEmoji('lightbulb')).toBe(false);
+  });
+
+  it('每个表情都有对应的本地 SVG 文件', () => {
+    for (const emoji of emojis) {
+      // 测试在项目根目录运行，按 public 目录拼出文件路径
+      const file = join(process.cwd(), 'public', emoji.src);
+      expect(existsSync(file), emoji.src).toBe(true);
     }
   });
 });
