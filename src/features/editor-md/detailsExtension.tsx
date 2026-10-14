@@ -387,5 +387,10 @@ export function insertDetailsContent() {
   };
 }
 
+/** 源码模式下以 body 为正文的折叠块标准写法（不含首尾空行） */
+export function detailsSourceBlock(body: string): string {
+  return `${renderDetailsHead(false, DEFAULT_DETAILS_SUMMARY)}\n\n${body}\n\n</details>`;
+}
+
 /** 源码模式插入的标准写法片段 */
-export const DETAILS_SOURCE_SNIPPET = `\n<details>\n<summary>${DEFAULT_DETAILS_SUMMARY}</summary>\n\n折叠内容\n\n</details>\n\n`;
+export const DETAILS_SOURCE_SNIPPET = `\n${detailsSourceBlock('折叠内容')}\n\n`;

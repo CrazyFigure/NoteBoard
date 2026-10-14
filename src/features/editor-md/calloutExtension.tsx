@@ -478,9 +478,14 @@ export function exitCalloutFromEmptyParagraph(state: EditorState, dispatch: (tr:
   return true;
 }
 
-/** 源码模式插入的标准写法片段（附占位文字） */
-export function calloutSourceSnippet(preset?: Pick<CalloutPreset, 'color' | 'icon'>): string {
+/** 源码模式下以 body 为正文的高亮块标准写法（不含首尾空行） */
+export function calloutSourceBlock(body: string, preset?: Pick<CalloutPreset, 'color' | 'icon'>): string {
   const color = preset && isValidCalloutColor(preset.color) ? preset.color : DEFAULT_CALLOUT_COLOR;
   const icon = preset ? preset.icon : DEFAULT_CALLOUT_ICON;
-  return `\n${renderCalloutOpenTag(color, icon)}\n\n高亮块内容\n\n${DIV_CLOSE_TAG}\n\n`;
+  return `${renderCalloutOpenTag(color, icon)}\n\n${body}\n\n${DIV_CLOSE_TAG}`;
+}
+
+/** 源码模式插入的标准写法片段（附占位文字） */
+export function calloutSourceSnippet(preset?: Pick<CalloutPreset, 'color' | 'icon'>): string {
+  return `\n${calloutSourceBlock('高亮块内容', preset)}\n\n`;
 }
