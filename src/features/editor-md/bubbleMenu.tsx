@@ -308,7 +308,17 @@ export function EditorBubbleMenu({
     if (selection instanceof NodeSelection && selection.node.isAtom) return false;
     return true;
   }, []);
+  const menuElementRef = useRef<HTMLDivElement>(null);
   const bubbleMenuOptions = useMemo(() => ({
+    // 首次弹出定位修正：插件在算完第一次位置后才给浮层写入 position: fixed 与 width: max-content，
+    // 第一次测量时浮层仍是撑满容器宽度的 absolute 块，shift 把它挤到滚动容器左上角；
+    // onShow 在挂载之后、计算位置之前调用，这里提前补齐这两项样式
+    onShow: () => {
+      const element = menuElementRef.current;
+      if (!element) return;
+      element.style.position = 'fixed';
+      element.style.width = 'max-content';
+    },
     strategy: 'fixed' as const,
     placement: 'top' as const,
     offset: 8,
@@ -331,6 +341,7 @@ export function EditorBubbleMenu({
 
   return (
     <BubbleMenu
+      ref={menuElementRef}
       editor={editor}
       shouldShow={shouldShow}
       options={bubbleMenuOptions}
