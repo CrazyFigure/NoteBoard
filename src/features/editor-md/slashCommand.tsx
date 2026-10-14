@@ -29,7 +29,6 @@ import {
   Link2,
   Calendar,
   Clock,
-  Pilcrow,
   RemoveFormatting,
   ChevronRight,
   ChevronLeft,
@@ -576,17 +575,6 @@ const LINK_LEAF: LeafCommandItem = {
   },
 };
 
-const PARAGRAPH_LEAF: LeafCommandItem = {
-  id: 'paragraph',
-  label: '正文段落',
-  description: '普通纯文本段落',
-  shortcutHint: '/p',
-  icon: <Pilcrow size={17} />,
-  aliases: ['zw', 'zhengwen', 'p', 'paragraph', 'text'],
-  keywords: '正文 段落 text paragraph zhengwen zw',
-  action: (editor, range) => editor.chain().focus().deleteRange(range).setParagraph().run(),
-};
-
 const DIVIDER_LEAF: LeafCommandItem = {
   id: 'divider',
   label: '水平分割线',
@@ -694,7 +682,7 @@ const ROOT_GROUPS: GroupCommandItem[] = [
   },
 ];
 
-/** 全量叶子命令扁平池（优先级：标题 > 列表 > 代码块 > 各语言代码块 > 提示块 > 高亮块 > 引用块 > 折叠块 > 分栏 > HTML 块 > 表格 > 公式 > 信息图 > 图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
+/** 全量叶子命令扁平池（优先级：标题 > 列表 > 代码块 > 各语言代码块 > 提示块 > 高亮块 > 引用块 > 折叠块 > 分栏 > HTML 块 > 表格 > 公式 > 信息图 > 图片 > 超链接 > 日期时间 > 分割线 > 清除格式） */
 const ALL_LEAFS: LeafCommandItem[] = [
   ...HEADING_LEAFS,
   ...LIST_LEAFS,
@@ -713,12 +701,11 @@ const ALL_LEAFS: LeafCommandItem[] = [
   IMAGE_URL_LEAF,
   LINK_LEAF,
   ...DATETIME_LEAFS,
-  PARAGRAPH_LEAF,
   DIVIDER_LEAF,
   CLEAR_FORMAT_LEAF,
 ];
 
-/** 默认根级菜单项（严格遵循优先级：标题 > 列表 > 代码块 > GitHub提示 > 高亮块 > 引用块 > 折叠块 > 分栏 > HTML 块 > 表格 > 公式与图表 > 本地图片 > 网络图片 > 超链接 > 日期时间 > 正文 > 分割线 > 清除格式） */
+/** 默认根级菜单项（严格遵循优先级：标题 > 列表 > 代码块 > GitHub提示 > 高亮块 > 引用块 > 折叠块 > 分栏 > HTML 块 > 表格 > 公式与图表 > 本地图片 > 网络图片 > 超链接 > 日期时间 > 分割线 > 清除格式） */
 const ROOT_MENU_ENTRIES: MenuEntry[] = [
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'headings')! },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'lists')! },
@@ -735,7 +722,6 @@ const ROOT_MENU_ENTRIES: MenuEntry[] = [
   { type: 'leaf', item: IMAGE_URL_LEAF },
   { type: 'leaf', item: LINK_LEAF },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'datetime')! },
-  { type: 'leaf', item: PARAGRAPH_LEAF },
   { type: 'leaf', item: DIVIDER_LEAF },
   { type: 'leaf', item: CLEAR_FORMAT_LEAF },
 ];
