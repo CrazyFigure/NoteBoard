@@ -34,11 +34,7 @@ import {
   Code2,
   Sigma,
   Workflow,
-  Info,
-  Lightbulb,
-  AlertCircle,
-  AlertTriangle,
-  Flame,
+  Boxes,
   Minus,
   Link2,
   Image as ImageIcon,
@@ -65,6 +61,7 @@ import { promptImageUrl } from '../../components/promptPresets';
 import { DETAILS_SOURCE_SNIPPET, insertDetailsContent } from '../editor-md/detailsExtension';
 import { columnsSourceSnippet, insertColumnsBlock } from '../editor-md/columnsExtension';
 import { calloutSourceSnippet, insertCalloutBlock } from '../editor-md/calloutExtension';
+import { ALERT_KINDS, AlertMenuIcon, alertMenuLabel, type AlertKind } from '../editor-md/alertExtension';
 import { CALLOUT_PRESETS, CalloutPresetIcon, type CalloutPreset } from '../editor-md/calloutPickers';
 import { RAW_HTML_SOURCE_SNIPPET, insertRawHtmlContent } from '../editor-md/rawHtmlBlockView';
 // 🔴 S03：从 editor-md 边界内实例表获取内核实例（不再依赖编辑器组件文件的 getter 导出）
@@ -342,7 +339,7 @@ export function MarkdownToolbar({
     }).run();
   };
 
-  const handleInsertAlert = (kind: 'note' | 'tip' | 'important' | 'warning' | 'caution') => {
+  const handleInsertAlert = (kind: AlertKind) => {
     setInsertDropdownOpen(false);
     if (isSourceMode) {
       const alertSnippet = `\n> [!${kind.toUpperCase()}]\n> 提示内容\n\n`;
@@ -790,7 +787,7 @@ export function MarkdownToolbar({
             icon={<PlusSquare size={15} />}
             label="插入"
             hasDropdown
-            title="插入超链接、图片、表格、公式、图表、提示块、高亮块、折叠块、分栏、HTML 块、日期时间等"
+            title="插入超链接、图片、表格、公式、图表、GitHub 提示块、高亮块、折叠块、分栏、HTML 块、日期时间等"
           />
         }
       >
@@ -801,37 +798,21 @@ export function MarkdownToolbar({
           onClick={handleInsertCodeBlock}
         />
 
-        {/* 2. GitHub Alert 提示块二级菜单 */}
+        {/* 2. GitHub 提示块 (Alert) 二级菜单 */}
         <ToolbarDropdownItem
-          icon={<Info size={14} color="#3b82f6" />}
-          label="提示块 (Callout)"
+          icon={<Boxes size={14} color="#3b82f6" />}
+          label="GitHub 提示块 (Alert)"
           submenu={
             <>
-              <ToolbarDropdownItem
-                icon={<Info size={14} color="#3b82f6" />}
-                label="Note 补充说明"
-                onClick={() => handleInsertAlert('note')}
-              />
-              <ToolbarDropdownItem
-                icon={<Lightbulb size={14} color="#10b981" />}
-                label="Tip 技巧建议"
-                onClick={() => handleInsertAlert('tip')}
-              />
-              <ToolbarDropdownItem
-                icon={<AlertCircle size={14} color="#8b5cf6" />}
-                label="Important 重要提示"
-                onClick={() => handleInsertAlert('important')}
-              />
-              <ToolbarDropdownItem
-                icon={<AlertTriangle size={14} color="#f59e0b" />}
-                label="Warning 注意警告"
-                onClick={() => handleInsertAlert('warning')}
-              />
-              <ToolbarDropdownItem
-                icon={<Flame size={14} color="#ef4444" />}
-                label="Caution 高危警告"
-                onClick={() => handleInsertAlert('caution')}
-              />
+              {/* 文案与图标取自 alertExtension，与斜杠命令、右键菜单保持一致 */}
+              {ALERT_KINDS.map((kind) => (
+                <ToolbarDropdownItem
+                  key={kind}
+                  icon={<AlertMenuIcon kind={kind} size={14} />}
+                  label={alertMenuLabel(kind)}
+                  onClick={() => handleInsertAlert(kind)}
+                />
+              ))}
             </>
           }
         />

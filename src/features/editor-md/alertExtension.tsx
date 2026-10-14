@@ -9,7 +9,7 @@ import { Node, mergeAttributes, type JSONContent } from '@tiptap/core';
 import { useEffect, useRef, useState } from 'react';
 import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react';
 import { contentReactNodeViewRenderer } from './contentNodeView';
-import { Check, ChevronDown } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Check, ChevronDown, Flame, Info, Lightbulb, type LucideIcon } from 'lucide-react';
 
 export type AlertKind = 'note' | 'tip' | 'important' | 'warning' | 'caution';
 
@@ -237,3 +237,23 @@ export const GitHubAlert = Node.create({
 /** Alert 种类列表（供斜杠命令使用） */
 export const ALERT_KINDS = Object.keys(ALERT_META) as AlertKind[];
 export { ALERT_META };
+
+// 插入菜单（斜杠命令、工具栏、右键菜单）共用的图标与颜色，保证三处展示一致
+const ALERT_MENU_ICON: Record<AlertKind, { Icon: LucideIcon; color: string }> = {
+  note: { Icon: Info, color: '#3b82f6' },
+  tip: { Icon: Lightbulb, color: '#10b981' },
+  important: { Icon: AlertCircle, color: '#8b5cf6' },
+  warning: { Icon: AlertTriangle, color: '#f59e0b' },
+  caution: { Icon: Flame, color: '#ef4444' },
+};
+
+/** 插入菜单中的 GitHub 提示块图标 */
+export function AlertMenuIcon({ kind, size = 15 }: { kind: AlertKind; size?: number }) {
+  const { Icon, color } = ALERT_MENU_ICON[kind];
+  return <Icon size={size} color={color} />;
+}
+
+/** 插入菜单中的 GitHub 提示块文案，如「Note 补充说明」 */
+export function alertMenuLabel(kind: AlertKind): string {
+  return `${ALERT_META[kind].label} ${ALERT_META[kind].desc}`;
+}

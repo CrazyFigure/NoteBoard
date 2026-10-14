@@ -26,11 +26,6 @@ import {
   Image as ImageIcon,
   Sigma,
   Workflow,
-  Info,
-  Lightbulb,
-  AlertCircle,
-  AlertTriangle,
-  Flame,
   Link2,
   Calendar,
   Clock,
@@ -57,6 +52,7 @@ import { INFOGRAPHIC_TEMPLATES } from '../infographic/infographicTemplates';
 import { insertDetailsContent } from './detailsExtension';
 import { insertColumnsBlock } from './columnsExtension';
 import { insertCalloutBlock } from './calloutExtension';
+import { ALERT_KINDS, AlertMenuIcon, alertMenuLabel, type AlertKind } from './alertExtension';
 import { CALLOUT_PRESETS, CalloutPresetIcon } from './calloutPickers';
 import { insertRawHtmlContent } from './rawHtmlBlockView';
 import { CODE_LANGUAGES } from './codeLanguages';
@@ -208,78 +204,54 @@ const LIST_LEAFS: LeafCommandItem[] = [
   },
 ];
 
-const ALERT_LEAFS: LeafCommandItem[] = [
-  {
-    id: 'alertNote',
-    label: 'Note 提示块',
+// GitHub 提示块：文案与图标取自 alertExtension，与工具栏、右键菜单保持一致
+const ALERT_LEAF_CONFIG: Record<AlertKind, { description: string; shortcutHint: string; aliases: string[]; keywords: string }> = {
+  note: {
     description: '用于补充说明或背景信息',
-    groupId: 'alerts',
-    groupLabel: '提示块',
     shortcutHint: '/note',
-    icon: <Info size={17} color="#3b82f6" />,
     aliases: ['note', 'tishi', 'ts', 'info', 'alert'],
     keywords: '提示 note alert info tishi ts',
-    action: (editor, range) => {
-      editor.chain().focus().deleteRange(range).insertContent({ type: 'githubAlert', attrs: { kind: 'note' }, content: [{ type: 'paragraph' }] }).run();
-    },
   },
-  {
-    id: 'alertTip',
-    label: 'Tip 技巧建议',
+  tip: {
     description: '提供操作技巧与最佳实践',
-    groupId: 'alerts',
-    groupLabel: '提示块',
     shortcutHint: '/tip',
-    icon: <Lightbulb size={17} color="#10b981" />,
     aliases: ['tip', 'jianyi', 'jy', 'jiqiao', 'jq', 'alert'],
     keywords: '建议 技巧 tip jianyi jiqiao alert',
-    action: (editor, range) => {
-      editor.chain().focus().deleteRange(range).insertContent({ type: 'githubAlert', attrs: { kind: 'tip' }, content: [{ type: 'paragraph' }] }).run();
-    },
   },
-  {
-    id: 'alertImportant',
-    label: 'Important 重要提示',
+  important: {
     description: '用户不应忽视的核心要点',
-    groupId: 'alerts',
-    groupLabel: '提示块',
     shortcutHint: '/important',
-    icon: <AlertCircle size={17} color="#8b5cf6" />,
     aliases: ['important', 'zhongyao', 'zy', 'point', 'alert'],
     keywords: '重要 关键 important zhongyao zy alert',
-    action: (editor, range) => {
-      editor.chain().focus().deleteRange(range).insertContent({ type: 'githubAlert', attrs: { kind: 'important' }, content: [{ type: 'paragraph' }] }).run();
-    },
   },
-  {
-    id: 'alertWarning',
-    label: 'Warning 警告块',
+  warning: {
     description: '需要特别警惕的注意事项',
-    groupId: 'alerts',
-    groupLabel: '提示块',
     shortcutHint: '/warn',
-    icon: <AlertTriangle size={17} color="#f59e0b" />,
     aliases: ['warning', 'warn', 'jinggao', 'jg', 'alert'],
     keywords: '警告 注意 warning alert warn jinggao jg',
-    action: (editor, range) => {
-      editor.chain().focus().deleteRange(range).insertContent({ type: 'githubAlert', attrs: { kind: 'warning' }, content: [{ type: 'paragraph' }] }).run();
-    },
   },
-  {
-    id: 'alertCaution',
-    label: 'Caution 危险提示',
+  caution: {
     description: '高风险操作或破坏性后果警示',
-    groupId: 'alerts',
-    groupLabel: '提示块',
     shortcutHint: '/caution',
-    icon: <Flame size={17} color="#ef4444" />,
     aliases: ['caution', 'weixian', 'wx', 'danger', 'alert'],
     keywords: '危险 高危 caution danger weixian wx alert',
-    action: (editor, range) => {
-      editor.chain().focus().deleteRange(range).insertContent({ type: 'githubAlert', attrs: { kind: 'caution' }, content: [{ type: 'paragraph' }] }).run();
-    },
   },
-];
+};
+
+const ALERT_LEAFS: LeafCommandItem[] = ALERT_KINDS.map((kind) => ({
+  id: `alert${kind[0].toUpperCase()}${kind.slice(1)}`,
+  label: alertMenuLabel(kind),
+  description: ALERT_LEAF_CONFIG[kind].description,
+  groupId: 'alerts',
+  groupLabel: '提示块',
+  shortcutHint: ALERT_LEAF_CONFIG[kind].shortcutHint,
+  icon: <AlertMenuIcon kind={kind} size={17} />,
+  aliases: ALERT_LEAF_CONFIG[kind].aliases,
+  keywords: `GitHub 提示块 ${ALERT_LEAF_CONFIG[kind].keywords} github`,
+  action: (editor: Editor, range: Range) => {
+    editor.chain().focus().deleteRange(range).insertContent({ type: 'githubAlert', attrs: { kind }, content: [{ type: 'paragraph' }] }).run();
+  },
+}));
 
 const TABLE_LEAFS: LeafCommandItem[] = [
   {
@@ -526,13 +498,13 @@ const CALLOUT_LEAFS: LeafCommandItem[] = CALLOUT_PRESETS.map((preset, index) => 
   description: `${preset.description}，块内支持任意 Markdown / HTML`,
   groupId: 'callout',
   groupLabel: '高亮块',
-  shortcutHint: index === 0 ? '/callout' : undefined,
+  shortcutHint: index === 0 ? '/highlight' : undefined,
   icon: <CalloutPresetIcon preset={preset} size={17} />,
   aliases:
     index === 0
-      ? ['callout', 'hl', 'gaoliang', 'gl', 'gaoliangkuai', 'glk', 'highlight']
+      ? ['highlight', 'hl', 'gaoliang', 'gl', 'gaoliangkuai', 'glk', 'callout']
       : [`callout-${preset.id}`, `gl${preset.id}`],
-  keywords: `高亮块 高亮 底色块 标注 callout highlight gaoliang ${preset.label} ${preset.description}`,
+  keywords: `高亮块 高亮 底色块 标注 highlight callout gaoliang ${preset.label} ${preset.description}`,
   action: (editor: Editor, range: Range) => {
     insertCalloutBlock(editor, preset, range);
   },
@@ -659,9 +631,9 @@ const ROOT_GROUPS: GroupCommandItem[] = [
   },
   {
     id: 'alerts',
-    label: 'GitHub 提示块',
+    label: 'GitHub 提示块 (Alert)',
     description: 'Note, Tip, Important, Warning, Caution',
-    shortcutHint: '/note, /tip',
+    shortcutHint: '/alert',
     icon: <Boxes size={17} color="#3b82f6" />,
     isGroup: true,
     children: ALERT_LEAFS,
@@ -670,7 +642,7 @@ const ROOT_GROUPS: GroupCommandItem[] = [
     id: 'callout',
     label: '高亮块',
     description: '带底色与图标的高亮块，颜色、图标可随时更换',
-    shortcutHint: '/callout',
+    shortcutHint: '/highlight',
     icon: <Highlighter size={17} color="#8b5cf6" />,
     isGroup: true,
     children: CALLOUT_LEAFS,
