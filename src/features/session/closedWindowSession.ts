@@ -1,9 +1,11 @@
 // NoteBoard 最近关闭窗口
 // 只记录窗口关闭时仍在标签栏中的文件；启动时自动恢复 Tab，但保持 Home 为当前页面。
+// 运行期间标签变化后增量写入快照：应用内更新、关机、崩溃或被结束进程时来不及走关闭流程，
+// 若只在窗口关闭时记录，本次运行中打开的文件会全部丢失。
 
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import * as ipc from '../../core/ipc/commands';
-import type { SessionSnapshot, SessionTabSnapshot } from '../../core/ipc/types';
+import type { SessionSnapshot, SessionTabSnapshot, WindowBootDto } from '../../core/ipc/types';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useWindowStore } from '../../stores/windowStore';
@@ -18,12 +20,89 @@ import { showToast } from '../../stores/toastStore';
 
 let windowHadTabs = false;
 
-/** 跟踪本窗口是否曾打开标签，用于区分“纯 Home 退出”与“用户已逐个关闭全部标签”。 */
+/** 标签变化后延迟写入快照的防抖时长（连续开关标签只写一次） */
+const SNAPSHOT_PERSIST_DEBOUNCE_MS = 1_000;
+/** 定时核对快照签名：暂存路径在暂存完成后才出现，不会触发 windowStore 订阅 */
+const SNAPSHOT_PERSIST_INTERVAL_MS = 5_000;
+/** 已写入“清空”时的签名占位（避免重复 clearSession） */
+const EMPTY_SNAPSHOT_SIGNATURE = '<empty>';
+
+/** 启动恢复阶段是否已结束；结束前不增量写入，防止显式打开的文件抢先覆盖待恢复的旧快照 */
+let startupRestoreSettled = false;
+/** 窗口已进入最终关闭（或更新退出）：停止增量写入，避免关闭过程中移除标签后把快照清空 */
+let snapshotFrozen = false;
+/** 本窗口最近一次写入的快照签名（签名不变不写盘） */
+let lastPersistedSignature: string | null = null;
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+/** 增量写入串行队列（最终关闭写入前等待其排空） */
+let persistQueue: Promise<void> = Promise.resolve();
+
+/**
+ * 跟踪本窗口是否曾打开标签，用于区分“纯 Home 退出”与“用户已逐个关闭全部标签”；
+ * 同时在标签变化、失焦、定时核对时增量写入快照，覆盖来不及走关闭流程的退出方式。
+ */
 export function startClosedWindowSessionTracker(): () => void {
   windowHadTabs = useWindowStore.getState().tabs.length > 0;
-  return useWindowStore.subscribe((state) => {
+  startupRestoreSettled = false;
+  snapshotFrozen = false;
+  lastPersistedSignature = null;
+
+  const unsubscribe = useWindowStore.subscribe((state, prev) => {
     if (state.tabs.length > 0) windowHadTabs = true;
+    // 只有标签列表变化才安排写入；单纯切换激活标签不写盘
+    if (state.tabs !== prev.tabs) scheduleSnapshotPersist();
   });
+  const intervalTimer = setInterval(() => {
+    enqueueSnapshotPersist();
+  }, SNAPSHOT_PERSIST_INTERVAL_MS);
+
+  // 失焦/隐藏时立即落盘：用户切去别的程序后可能直接关机或更新
+  const handleBlur = () => flushSnapshotPersist();
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'hidden') flushSnapshotPersist();
+  };
+  // 重新获得焦点时强制重写一次：其他窗口关闭时可能覆盖了快照，以用户正在使用的窗口为准
+  const handleFocus = () => {
+    lastPersistedSignature = null;
+    scheduleSnapshotPersist();
+  };
+  window.addEventListener('blur', handleBlur);
+  window.addEventListener('focus', handleFocus);
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+
+  return () => {
+    unsubscribe();
+    clearInterval(intervalTimer);
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = null;
+    window.removeEventListener('blur', handleBlur);
+    window.removeEventListener('focus', handleFocus);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+  };
+}
+
+/** 启动恢复阶段结束（无论是否执行了恢复），此后允许增量写入快照 */
+export function markStartupRestoreSettled(): void {
+  startupRestoreSettled = true;
+  scheduleSnapshotPersist();
+}
+
+/** 解除冻结并重新写入（应用内更新启动安装器失败、窗口继续使用时调用） */
+export function resumeSnapshotTracking(): void {
+  snapshotFrozen = false;
+  lastPersistedSignature = null;
+  scheduleSnapshotPersist();
+}
+
+/**
+ * 启动时是否恢复最近关闭窗口：
+ * 只有进程内唯一存活的窗口才恢复（新建窗口/迁移窗口不恢复，避免与存活窗口重复打开同一批文件）；
+ * 空启动与双击文件冷启动都恢复，双击打开的文件照常成为当前标签。
+ */
+export function shouldRestoreOnStartup(boot: Pick<WindowBootDto, 'startupMode' | 'isSoleWindow'>): boolean {
+  if (!useSettingsStore.getState().settings.file.restoreSession) return false;
+  if (boot.isSoleWindow === false) return false;
+  return boot.startupMode === 'empty' || boot.startupMode === 'explicit-open';
 }
 
 /** 读取窗口 label 中的序号；主窗口与异常 label 均安全降级为 0。 */
@@ -33,32 +112,20 @@ function currentWindowSequence(): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-/**
- * 保存最近关闭窗口快照。
- * excludeKeys 用于“不保存”分支，明确丢弃的标签不会再次出现在恢复列表中。
- */
-export async function saveCurrentWindowSnapshot(excludeKeys: string[] = []): Promise<boolean> {
-  const settings = useSettingsStore.getState().settings;
-  if (!settings.file.restoreSession) return false;
-
+/** 收集应进入快照的标签（excludeKeys 为“不保存”分支明确丢弃的标签） */
+function collectSnapshotTabs(excludeKeys: string[] = []): Tab[] {
   const excluded = new Set(excludeKeys);
-  const tabs = useWindowStore.getState().tabs.filter((tab) => {
+  return useWindowStore.getState().tabs.filter((tab) => {
     if (excluded.has(tab.key)) return false;
+    // 文本对比等工具视图没有对应文件，恢复时只会被当成“已不存在的文件”跳过
+    if (tab.toolKind) return false;
     // 用户确认空白未命名文件无需保存，也不应进入最近关闭窗口。
     return !tab.key.startsWith('untitled:') || hasUnsavedWork(tab.key);
   });
+}
 
-  // 纯 Home 启动后直接退出不覆盖旧快照；曾打开标签后变空则说明用户已逐个关闭，应清除旧快照。
-  if (tabs.length === 0) {
-    if (windowHadTabs) await ipc.clearSession();
-    return true;
-  }
-
-  const unsavedKeys = tabs.filter((tab) => hasUnsavedWork(tab.key)).map((tab) => tab.key);
-  if (unsavedKeys.length > 0) {
-    await stashPendingDocuments({ keys: unsavedKeys });
-  }
-
+/** 按当前布局、资源管理器根目录与暂存记录组装单窗口快照 */
+function buildWindowSnapshot(tabs: Tab[]): SessionSnapshot {
   const snapshotTabs: SessionTabSnapshot[] = tabs.map((tab) => ({
     key: tab.key,
     isPinned: false,
@@ -68,7 +135,7 @@ export async function saveCurrentWindowSnapshot(excludeKeys: string[] = []): Pro
     displayName: tab.displayName,
   }));
   const layout = useLayoutStore.getState();
-  const snapshot: SessionSnapshot = {
+  return {
     schemaVersion: 1,
     savedAt: Date.now(),
     windows: [{
@@ -84,7 +151,96 @@ export async function saveCurrentWindowSnapshot(excludeKeys: string[] = []): Pro
       activeKey: useWindowStore.getState().activeKey ?? '',
     }],
   };
-  await ipc.saveSession(snapshot);
+}
+
+/** 快照签名：不含写入时间与激活标签（切换标签不触发写盘） */
+function snapshotSignature(snapshot: SessionSnapshot): string {
+  const [windowSnapshot] = snapshot.windows;
+  return JSON.stringify([windowSnapshot.explorerRoot, windowSnapshot.layout, windowSnapshot.tabs]);
+}
+
+/** 防抖安排一次增量写入 */
+function scheduleSnapshotPersist(): void {
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    enqueueSnapshotPersist();
+  }, SNAPSHOT_PERSIST_DEBOUNCE_MS);
+}
+
+/** 立即写入（取消尚未到期的防抖） */
+function flushSnapshotPersist(): void {
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = null;
+  enqueueSnapshotPersist();
+}
+
+/** 串行执行增量写入，避免定时器、失焦与订阅并发写盘 */
+function enqueueSnapshotPersist(): void {
+  persistQueue = persistQueue
+    .then(persistSnapshotIncrementally)
+    .catch((error) => {
+      console.warn('[closedWindowSession] 增量保存最近文件快照失败:', error);
+    });
+}
+
+/**
+ * 增量写入快照：只记录标签描述，不触发正文暂存（未保存内容由 stagingManager 增量暂存）。
+ * 标签变空时沿用关闭语义：曾打开过标签才清除旧快照，纯 Home 不覆盖。
+ */
+async function persistSnapshotIncrementally(): Promise<void> {
+  if (!startupRestoreSettled || snapshotFrozen) return;
+  if (!useSettingsStore.getState().settings.file.restoreSession) return;
+
+  const tabs = collectSnapshotTabs();
+  if (tabs.length === 0) {
+    if (!windowHadTabs || lastPersistedSignature === EMPTY_SNAPSHOT_SIGNATURE) return;
+    lastPersistedSignature = EMPTY_SNAPSHOT_SIGNATURE;
+    await ipc.clearSession();
+    return;
+  }
+
+  const snapshot = buildWindowSnapshot(tabs);
+  const signature = snapshotSignature(snapshot);
+  if (signature === lastPersistedSignature) return;
+  lastPersistedSignature = signature;
+  try {
+    await ipc.saveSession(snapshot);
+  } catch (error) {
+    // 写入失败时清空签名，下次核对重试
+    lastPersistedSignature = null;
+    throw error;
+  }
+}
+
+/**
+ * 保存最近关闭窗口快照（窗口最终关闭或更新退出前调用，调用后停止增量写入）。
+ * excludeKeys 用于“不保存”分支，明确丢弃的标签不会再次出现在恢复列表中。
+ */
+export async function saveCurrentWindowSnapshot(excludeKeys: string[] = []): Promise<boolean> {
+  // 最终写入：先冻结增量写入并等待在途写入结束，关闭流程随后移除标签也不会清空快照
+  snapshotFrozen = true;
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = null;
+  await persistQueue;
+
+  const settings = useSettingsStore.getState().settings;
+  if (!settings.file.restoreSession) return false;
+
+  const tabs = collectSnapshotTabs(excludeKeys);
+
+  // 纯 Home 启动后直接退出不覆盖旧快照；曾打开标签后变空则说明用户已逐个关闭，应清除旧快照。
+  if (tabs.length === 0) {
+    if (windowHadTabs) await ipc.clearSession();
+    return true;
+  }
+
+  const unsavedKeys = tabs.filter((tab) => hasUnsavedWork(tab.key)).map((tab) => tab.key);
+  if (unsavedKeys.length > 0) {
+    await stashPendingDocuments({ keys: unsavedKeys });
+  }
+
+  await ipc.saveSession(buildWindowSnapshot(tabs));
   return true;
 }
 
@@ -205,32 +361,12 @@ export async function restoreLastClosedWindow(): Promise<boolean> {
   // 🔴 R01：恢复事务落盘——把恢复出的标签（含未加载条目的原暂存路径）重写回会话，
   //    而不是 clearSession：未加载标签在进程异常退出后仍可再次恢复；
   //    窗口正常关闭时由 saveCurrentWindowSnapshot 覆盖或清除。
-  if (restoredTabs.length > 0) {
-    const layoutNow = useLayoutStore.getState();
-    const rewrite: SessionSnapshot = {
-      schemaVersion: 1,
-      savedAt: Date.now(),
-      windows: [{
-        seq: currentWindowSequence(),
-        explorerRoot: useExplorerStore.getState().root ?? '',
-        layout: {
-          explorerVisible: layoutNow.explorerVisible,
-          explorerWidth: layoutNow.explorerWidth,
-          outlineVisible: layoutNow.outlineVisible,
-          outlineWidth: layoutNow.outlineWidth,
-        },
-        tabs: restoredTabs.map((tab) => ({
-          key: tab.key,
-          isPinned: false,
-          viewMode: tab.viewMode,
-          sourcePath: tab.path,
-          stagedPath: tab.lazyStagedPath ?? getStagedPath(tab.key),
-          displayName: tab.displayName,
-        })),
-        activeKey: '',
-      }],
-    };
+  //    按当前全部标签重写：双击文件冷启动时显式打开的文件一并记录。
+  const currentTabs = collectSnapshotTabs();
+  if (currentTabs.length > 0) {
+    const rewrite = buildWindowSnapshot(currentTabs);
     await ipc.saveSession(rewrite);
+    lastPersistedSignature = snapshotSignature(rewrite);
   } else {
     await ipc.clearSession();
   }

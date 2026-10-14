@@ -20,6 +20,7 @@ import type { UpdateCheckResult, UpdateDownloadProgress, UpdateReleaseNote } fro
 import * as ipc from '../core/ipc/commands';
 import { IS_MOBILE_UI, IS_NATIVE_MOBILE } from '../core/platform';
 import { useBackDismiss } from '../mobile/components';
+import { resumeSnapshotTracking, saveCurrentWindowSnapshot } from '../features/session/closedWindowSession';
 import './update-modal.css';
 
 interface UpdateModalProps {
@@ -142,6 +143,14 @@ export function UpdateModal({
     if (!result?.installerDownloadUrl || !result?.installerAssetName) {
       return;
     }
+    // 桌面端安装器启动后进程会被直接结束、不走窗口关闭流程，先记录当前打开的文件以便更新后恢复
+    if (!IS_NATIVE_MOBILE) {
+      try {
+        await saveCurrentWindowSnapshot();
+      } catch (err) {
+        console.error('更新前保存最近文件快照失败:', err);
+      }
+    }
     try {
       setDownloading(true);
       setInstallError(null);
@@ -153,6 +162,8 @@ export function UpdateModal({
       // 安装器成功启动后关闭弹窗
       onClose();
     } catch (err: unknown) {
+      // 安装未启动、应用继续使用：恢复增量记录
+      if (!IS_NATIVE_MOBILE) resumeSnapshotTracking();
       const msg = err instanceof Error ? err.message : String(err);
       // 移动端失败时引导改用浏览器从 Release 页面下载
       setInstallError(

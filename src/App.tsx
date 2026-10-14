@@ -37,6 +37,8 @@ import { checkActiveDocumentStillExists } from './features/external/missingFileG
 import {
   restoreLastClosedWindow,
   startClosedWindowSessionTracker,
+  shouldRestoreOnStartup,
+  markStartupRestoreSettled,
 } from './features/session/closedWindowSession';
 import { startSyncEffects } from './features/sync/syncEffects';
 import { useSyncStore } from './stores/syncStore';
@@ -130,7 +132,8 @@ export default function App() {
       if (disposed) return;
       // 显示主题正确的壳并开始消费打开队列（设置已加载；字体不阻塞窗口显示）
       await requestShellReadyAndDrain();
-      if (boot.startupMode === 'empty' && useSettingsStore.getState().settings.file.restoreSession) {
+      // 空启动与双击文件冷启动都恢复最近关闭窗口（仅进程内唯一存活窗口）
+      if (shouldRestoreOnStartup(boot)) {
         try {
           await restoreLastClosedWindow();
           perfMark('session_restore_done');
@@ -138,6 +141,8 @@ export default function App() {
           console.error('自动恢复最近文件失败:', error);
         }
       }
+      // 恢复阶段结束后才开始增量记录标签，避免先打开的文件覆盖待恢复的旧快照
+      markStartupRestoreSettled();
       perfMark('listeners_subscribed');
       // 🔴 性能诊断：启动链路完成的里程碑，批量上报一次 web spans
       void reportWebSpans('boot');

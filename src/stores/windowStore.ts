@@ -468,11 +468,12 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
 
   addRestoredTabs: (tabs) => {
     set((state) => {
-      // 追加不存在的标签；不改变 activeKey（恢复期间用户可能已交互）
+      // 加入不存在的标签；不改变 activeKey（恢复期间用户可能已交互）。
+      // 恢复的是上次的标签，排在本次启动已打开（如双击打开）的标签之前。
       const existingKeys = new Set(state.tabs.map((t) => t.key));
       const additions = tabs.filter((t) => !existingKeys.has(t.key));
       if (additions.length === 0) return state;
-      return { tabs: [...state.tabs, ...additions] };
+      return { tabs: [...additions, ...state.tabs] };
     });
   },
 

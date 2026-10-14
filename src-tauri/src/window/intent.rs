@@ -131,12 +131,19 @@ pub fn window_listeners_ready_inner(s: &mut AppState, label: &str) -> WindowBoot
         .find(|t| t.target_label == label && t.state == crate::dto::TransferState::Preparing)
         .map(|t| t.transfer_id.clone());
 
+    // 除本窗口外是否还有未在关闭中的已注册窗口（正在关闭的窗口不再计入）
+    let is_sole_window = !s
+        .windows
+        .keys()
+        .any(|other| other != label && !s.is_closing(other));
+
     WindowBootDto {
         protocol_version: 1,
         consumer_id,
         startup_mode: startup_mode.to_string(),
         transfer_id,
         queue_version: s.open_queue_version,
+        is_sole_window,
     }
 }
 
@@ -362,6 +369,28 @@ mod tests {
         // 旧 consumer（boot1）被新握手取代
         assert!(list_open_requests_inner(&s, "nb-main", &boot1.consumer_id, None).is_none());
         assert!(list_open_requests_inner(&s, "nb-main", &boot2.consumer_id, None).is_some());
+    }
+
+    /// 握手判定是否为唯一存活窗口：其他窗口存活时为 false，其他窗口正在关闭时不计入
+    #[test]
+    fn handshake_reports_sole_window() {
+        let mut s = AppState::default();
+        s.register_window(
+            "nb-main".into(),
+            crate::window::manager::WindowRecord::new("nb-main".into(), 0),
+        );
+        assert!(window_listeners_ready_inner(&mut s, "nb-main").is_sole_window);
+
+        // 主窗口存活时新建窗口不是唯一窗口
+        s.register_window(
+            "nb-1".into(),
+            crate::window::manager::WindowRecord::new("nb-1".into(), 1),
+        );
+        assert!(!window_listeners_ready_inner(&mut s, "nb-1").is_sole_window);
+
+        // 主窗口正在关闭时不计入
+        s.mark_closing("nb-main");
+        assert!(window_listeners_ready_inner(&mut s, "nb-1").is_sole_window);
     }
 
     /// 窗口销毁转移：有其它窗口则转交；无窗口则进入 orphan
