@@ -8,7 +8,7 @@ import type { BitableColumn, LongTextConfig } from './bitableTypes';
 import { BitableRichTextEditor, type RichTextMode } from './BitableRichTextEditor';
 import { X, Check } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
-import { KEYBOARD_SCOPE_ATTR } from './bitableUtils';
+import { KEYBOARD_SCOPE_ATTR, stopReactPropagation } from './bitableUtils';
 
 interface LongTextPopoverProps {
   /** 所属列，用于取字段名与 Markdown 配置 */
@@ -110,9 +110,15 @@ export function BitableLongTextPopover({
   return createPortal(
     <div
       // 遮罩：点击遮罩视为放弃修改，语义与「取消」一致，避免误存
+      // Portal 内的事件会沿 React 树冒泡到渲染弹层的单元格/卡片/侧栏，引发选区变化或弹出表格右键菜单（层级低于弹层，显示在遮罩背后）；
+      // 只阻断 React 树冒泡，原生事件仍需到达 document，编辑器右键菜单、工具栏下拉才能点空白处关闭
       onMouseDown={(e) => {
+        stopReactPropagation(e);
         if (e.target === e.currentTarget) finish(false);
       }}
+      onClick={stopReactPropagation}
+      onDoubleClick={stopReactPropagation}
+      onContextMenu={stopReactPropagation}
       style={{
         position: 'fixed',
         inset: 0,
@@ -129,8 +135,6 @@ export function BitableLongTextPopover({
         // 键盘隔离区：点击标题栏/底栏空白处焦点留在面板上，表格全局快捷键不会把 Backspace 当成清空单元格
         {...{ [KEYBOARD_SCOPE_ATTR]: '' }}
         tabIndex={-1}
-        onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => e.stopPropagation()}
         style={{
           outline: 'none',
           width: PANEL_WIDTH,

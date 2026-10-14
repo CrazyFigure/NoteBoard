@@ -7,7 +7,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { BitableColumn, BitableRow, ColumnOptionAction } from './bitableTypes';
 import { BitableCellEditor } from './BitableCellEditor';
 import { getFieldTypeMeta } from './BitableFieldMeta';
-import { KEYBOARD_SCOPE_ATTR, previewLongText, resolveLongTextConfig } from './bitableUtils';
+import { KEYBOARD_SCOPE_ATTR, previewLongText, resolveLongTextConfig, stopReactPropagation } from './bitableUtils';
 import { X, Trash2 } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 
@@ -149,8 +149,9 @@ export function BitableRecordPanel({
       {...{ [KEYBOARD_SCOPE_ATTR]: '' }}
       tabIndex={-1}
       // 阻断事件冒泡：避免点击侧边栏时误触发表格的选区清空
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
+      // 只阻断 React 树冒泡：原生事件仍需到达 document，多行文本编辑器的右键菜单、工具栏下拉才能点空白处关闭
+      onMouseDown={stopReactPropagation}
+      onClick={stopReactPropagation}
       style={{
         outline: 'none',
         position: 'absolute',

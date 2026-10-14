@@ -1,6 +1,7 @@
 // NoteBoard 多维表格通用工具集
 // 覆盖唯一 ID 生成、剪贴板矩阵解析、单元格值类型归一（粘贴/填充）与纯文本展示格式化
 
+import type { SyntheticEvent } from 'react';
 import {
   DEFAULT_DATE_TIME_CONFIG,
   DEFAULT_LONG_TEXT_CONFIG,
@@ -29,6 +30,16 @@ export const KEYBOARD_SCOPE_ATTR = 'data-bitable-keyboard-scope';
 /** 判断节点是否位于键盘隔离区内 */
 export function isInKeyboardScope(node: EventTarget | null): boolean {
   return node instanceof Element && node.closest(`[${KEYBOARD_SCOPE_ATTR}]`) !== null;
+}
+
+/**
+ * 只阻断合成事件沿 React 组件树冒泡，原生事件照常冒泡到 document / window
+ * React 的 stopPropagation 会连带停止原生冒泡，挂在 document 上的「点击外部关闭」监听
+ * （编辑器右键菜单、工具栏下拉、气泡菜单等）因此收不到面板内的点击，菜单点空白处关不掉。
+ * React 派发时逐层检查 isPropagationStopped()，覆盖它即可让祖先组件的处理器跳过本次事件。
+ */
+export function stopReactPropagation(e: SyntheticEvent): void {
+  e.isPropagationStopped = () => true;
 }
 
 /**
