@@ -12,6 +12,7 @@ import { perfMark } from './core/perf/perfMarks';
 import { IS_MOBILE_UI } from './core/platform';
 import { installInputModalityTracking } from './core/inputModality';
 import { installNumberInputWheelGuard } from './core/numberInputGuard';
+import { installTextareaMultiClickFix } from './core/textareaMultiClick';
 import { installMobileFocusGuard } from './mobile/focusGuard';
 
 // 🔴 性能诊断：js_entry 是模块体首行执行的代理标记（静态依赖已求值完毕）；
@@ -33,6 +34,9 @@ installInputModalityTracking();
 
 // 数字输入框：滚轮经过时失焦，避免滚动页面时误改数值（上下微调按钮由全局样式隐藏）
 installNumberInputWheelGuard();
+
+// 多行文本框：双击 / 三击不再选中行尾换行符（行尾空白双击选最后一个词，三击不带换行）
+installTextareaMultiClickFix();
 
 // 移动端：标记平台供样式切换，并禁止双击/双指缩放整页（编辑器内容缩放由各编辑器自行处理）
 if (IS_MOBILE_UI) {

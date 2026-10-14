@@ -35,6 +35,7 @@ import { ChartExportMenu } from '../export/ChartExportMenu';
 import { Tooltip } from '../../components/Tooltip';
 import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
 import { codeMirrorSearchSupport } from '../search/searchController';
+import { tripleClickLineSelection } from '../editor-code/tripleClickLine';
 
 interface InfographicSplitEditorProps {
   docKey: string;
@@ -152,6 +153,8 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
       extensions: [
         lineNumbers(),
         highlightActiveLineGutter(),
+        // 三击选行不带换行符，避免行号高亮跳到下一行
+        tripleClickLineSelection,
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
         // Ctrl+F 搜索高亮与查询状态（界面由统一悬浮搜索栏提供）
