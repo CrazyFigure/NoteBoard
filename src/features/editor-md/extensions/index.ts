@@ -36,6 +36,7 @@ import { handleLinkClick } from '../linkHandler';
 import { TableClipboard } from '../tableClipboard';
 import { ListEmptyItemBackspaceFix } from '../listItemBackspace';
 import { SelectionHighlight } from '../selectionHighlight';
+import { MultiClickSelectionFix } from '../multiClickSelection';
 import { useWindowStore } from '../../../stores/windowStore';
 
 import Suggestion from '@tiptap/suggestion';
@@ -283,6 +284,8 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // 选区可视化：完整选中的块（列表、代码块、折叠块、图片等）整体显示底板
     SelectionHighlight,
+    // 双击 / 三击选区不跨越段落边界：行尾空白双击不再选中换行，段落间隙判给更近的文本块
+    MultiClickSelectionFix,
 
     // 任务列表
     TaskList,

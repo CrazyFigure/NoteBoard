@@ -36,6 +36,7 @@ import {
 } from '@codemirror/view';
 import { nbSyntaxHighlighting } from './highlightStyle';
 import { nbEditorTheme } from './theme';
+import { tripleClickLineSelection } from './tripleClickLine';
 
 // ── 热重配 Compartment ──
 // 详见 docs/09-开发路线图.md 4.3
@@ -150,6 +151,8 @@ export function createBaseExtensions(options?: BaseExtensionsOptions): Extension
     ),
     // 活动行高亮
     highlightActiveLine(),
+    // 三击选行不带换行符，避免活动行高亮跳到下一行
+    tripleClickLineSelection,
     // 特殊字符高亮
     highlightSpecialChars(),
     // 括号匹配
