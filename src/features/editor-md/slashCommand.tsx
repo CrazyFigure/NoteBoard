@@ -4,7 +4,7 @@
 // 兼顾全局模糊搜索直达能力（如直接输入 /h2, /ts, /todo, /bg 快速匹配执行）
 // 详见 docs/09-开发路线图.md 8.7
 
-import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useRef, useCallback, type MutableRefObject, type ReactNode } from 'react';
 import { ReactRenderer } from '@tiptap/react';
 import type { SuggestionProps } from '@tiptap/suggestion';
 import type { Editor, Range } from '@tiptap/core';
@@ -40,6 +40,7 @@ import {
   Columns3,
   Columns4,
   Highlighter,
+  Smile,
 } from 'lucide-react';
 import { insertLocalImageWithDialog } from './imagePaste';
 import { promptImageUrl } from '../../components/promptPresets';
@@ -52,7 +53,9 @@ import { insertDetailsContent } from './detailsExtension';
 import { insertColumnsBlock } from './columnsExtension';
 import { insertCalloutBlock } from './calloutExtension';
 import { ALERT_KINDS, AlertMenuIcon, alertMenuLabel, type AlertKind } from './alertExtension';
-import { CALLOUT_PRESETS, CalloutPresetIcon } from './calloutPickers';
+import { CALLOUT_EMOJI_GROUPS, CALLOUT_PRESETS, CalloutIconGlyph, CalloutPresetIcon } from './calloutPickers';
+import { insertInlineEmoji } from './inlineEmoji';
+import { Tooltip } from '../../components/Tooltip';
 import { insertRawHtmlContent } from './rawHtmlBlockView';
 import { CODE_LANGUAGES } from './codeLanguages';
 
@@ -69,6 +72,10 @@ export interface LeafCommandItem {
   keywords?: string;
   /** 次级候选：仅精确命中别名时与常规命令同级，前缀/包含匹配排在常规命令之后 */
   secondary?: boolean;
+  /** 低优先级候选（表情）：数量多，仅在精确命中或至少两个字符的前缀命中时靠前，其余匹配沉到末尾 */
+  lowPriority?: boolean;
+  /** 网格式二级菜单中的分组小标题（同组连续排列） */
+  section?: string;
   action: (editor: Editor, range: Range) => void;
 }
 
@@ -81,6 +88,8 @@ export interface GroupCommandItem {
   icon: ReactNode;
   isGroup: true;
   children: LeafCommandItem[];
+  /** 二级菜单以图标网格呈现（表情），默认为列表 */
+  layout?: 'grid';
 }
 
 export type MenuEntry =
@@ -508,6 +517,24 @@ const CALLOUT_LEAFS: LeafCommandItem[] = CALLOUT_PRESETS.map((preset, index) => 
   },
 }));
 
+/** 表情：写入标准 Unicode 表情字符，可视化模式下显示为与高亮块表情相同的 Noto 图案 */
+const EMOJI_LEAFS: LeafCommandItem[] = CALLOUT_EMOJI_GROUPS.flatMap((group) => group.icons.map((emoji) => ({
+  id: emoji.id,
+  label: emoji.label,
+  description: `插入表情 ${emoji.char}`,
+  groupId: 'emoji',
+  groupLabel: '表情',
+  icon: <CalloutIconGlyph id={emoji.id} size={18} />,
+  // 别名为英文名（如 /rocket、/thumbs-up），中文名经标签匹配
+  aliases: [emoji.id.slice('emoji-'.length)],
+  keywords: '表情 biaoqing bq emoji',
+  lowPriority: true,
+  section: group.label,
+  action: (editor: Editor, range: Range) => {
+    insertInlineEmoji(editor, emoji.char, range);
+  },
+})));
+
 const RAW_HTML_LEAF: LeafCommandItem = {
   id: 'rawHtml',
   label: 'HTML 块',
@@ -671,6 +698,16 @@ const ROOT_GROUPS: GroupCommandItem[] = [
     children: INFOGRAPHIC_LEAFS,
   },
   {
+    id: 'emoji',
+    label: '表情',
+    description: '插入标准 Unicode 表情，各平台通用',
+    shortcutHint: '/emoji',
+    icon: <Smile size={17} color="#f59e0b" />,
+    isGroup: true,
+    layout: 'grid',
+    children: EMOJI_LEAFS,
+  },
+  {
     id: 'datetime',
     label: '日期时间',
     description: '当前日期、当前时刻、日期与时刻',
@@ -681,7 +718,7 @@ const ROOT_GROUPS: GroupCommandItem[] = [
   },
 ];
 
-/** 全量叶子命令扁平池（优先级：标题 > 列表 > 代码块 > 各语言代码块 > 提示块 > 高亮块 > 引用块 > 折叠块 > 分栏 > HTML 块 > 表格 > 公式 > 信息图 > 图片 > 超链接 > 日期时间 > 分割线 > 清除格式） */
+/** 全量叶子命令扁平池（优先级：标题 > 列表 > 代码块 > 各语言代码块 > 提示块 > 高亮块 > 引用块 > 折叠块 > 分栏 > HTML 块 > 表格 > 公式 > 信息图 > 图片 > 超链接 > 日期时间 > 分割线 > 清除格式 > 表情） */
 const ALL_LEAFS: LeafCommandItem[] = [
   ...HEADING_LEAFS,
   ...LIST_LEAFS,
@@ -702,9 +739,10 @@ const ALL_LEAFS: LeafCommandItem[] = [
   ...DATETIME_LEAFS,
   DIVIDER_LEAF,
   CLEAR_FORMAT_LEAF,
+  ...EMOJI_LEAFS,
 ];
 
-/** 默认根级菜单项（严格遵循优先级：标题 > 列表 > 代码块 > GitHub提示 > 高亮块 > 引用块 > 折叠块 > 分栏 > HTML 块 > 表格 > 公式与图表 > 本地图片 > 网络图片 > 超链接 > 日期时间 > 分割线 > 清除格式） */
+/** 默认根级菜单项（严格遵循优先级：标题 > 列表 > 代码块 > GitHub提示 > 高亮块 > 引用块 > 折叠块 > 分栏 > HTML 块 > 表格 > 公式与图表 > 本地图片 > 网络图片 > 超链接 > 表情 > 日期时间 > 分割线 > 清除格式） */
 const ROOT_MENU_ENTRIES: MenuEntry[] = [
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'headings')! },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'lists')! },
@@ -720,6 +758,7 @@ const ROOT_MENU_ENTRIES: MenuEntry[] = [
   { type: 'leaf', item: IMAGE_LOCAL_LEAF },
   { type: 'leaf', item: IMAGE_URL_LEAF },
   { type: 'leaf', item: LINK_LEAF },
+  { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'emoji')! },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'datetime')! },
   { type: 'leaf', item: DIVIDER_LEAF },
   { type: 'leaf', item: CLEAR_FORMAT_LEAF },
@@ -740,7 +779,12 @@ function searchLeafCommands(query: string): LeafCommandItem[] {
     const aliases = (item.aliases ?? []).map((a) => a.toLowerCase());
 
     let score = 0;
-    if (item.secondary) {
+    if (item.lowPriority) {
+      // 表情共 112 个：精确命中（/rocket、/庆祝）直接靠前；短前缀不抢占常规命令，模糊匹配沉底
+      if (label === q || aliases.includes(q)) score = 140;
+      else if (q.length >= 2 && (label.startsWith(q) || aliases.some((a) => a.startsWith(q)))) score = 65;
+      else if (q.length >= 2 && (label.includes(q) || keywords.includes(q))) score = 40;
+    } else if (item.secondary) {
       // 次级候选（具体语言代码块）：精确命中才与常规快捷词同级，前缀匹配低于常规命令的别名前缀，
       // 避免 /p、/t 等既有快捷词被 Python、TypeScript 抢占首位
       if (aliases.includes(q)) score = 150;
@@ -762,6 +806,63 @@ function searchLeafCommands(query: string): LeafCommandItem[] {
 
   scored.sort((a, b) => b.score - a.score);
   return scored.map((s) => s.item);
+}
+
+// 网格式二级菜单的列数：表情各分组数量均为 8 的倍数，按连续序号上下移动时列位置保持对齐
+const SLASH_GRID_COLUMNS = 8;
+
+/** 网格式二级菜单（表情）：按 section 分组排列图标，序号连续以便键盘按行列移动 */
+function SlashGridSubmenu({
+  items,
+  selectedIndex,
+  itemRefs,
+  onHover,
+  onExecute,
+}: {
+  items: LeafCommandItem[];
+  selectedIndex: number;
+  itemRefs: MutableRefObject<(HTMLButtonElement | null)[]>;
+  onHover: (index: number) => void;
+  onExecute: (leaf: LeafCommandItem) => void;
+}) {
+  // 相邻且 section 相同的项归为一组
+  const sections: Array<{ label: string; entries: Array<{ leaf: LeafCommandItem; index: number }> }> = [];
+  items.forEach((leaf, index) => {
+    const label = leaf.section ?? '';
+    const last = sections[sections.length - 1];
+    if (last && last.label === label) last.entries.push({ leaf, index });
+    else sections.push({ label, entries: [{ leaf, index }] });
+  });
+
+  return (
+    <div style={{ padding: '0 2px 2px' }}>
+      {sections.map((section) => (
+        <div key={section.label}>
+          {section.label && <div className="nb-callout-popover-title">{section.label}</div>}
+          <div className="nb-callout-icon-grid nb-inline-emoji-grid" role="listbox" aria-label={section.label}>
+            {section.entries.map(({ leaf, index }) => (
+              <Tooltip key={leaf.id} content={leaf.label} side="top" sideOffset={4}>
+                <button
+                  ref={(el) => {
+                    itemRefs.current[index] = el;
+                  }}
+                  type="button"
+                  role="option"
+                  aria-selected={index === selectedIndex}
+                  aria-label={leaf.label}
+                  className={`nb-callout-icon-cell${index === selectedIndex ? ' is-active' : ''}`}
+                  onMouseEnter={() => onHover(index)}
+                  onClick={() => onExecute(leaf)}
+                >
+                  {leaf.icon}
+                </button>
+              </Tooltip>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 /** 斜杠命令菜单组件（支持右键风格的悬展式二级菜单） */
@@ -822,10 +923,19 @@ function SlashMenu({
     const statusBarHeight = 36;
     const bottomPadding = 8;
     const spaceBelow = viewportHeight - statusBarHeight - bottomPadding - itemRect.top;
-    // 至少保留 180px 高度防止只剩一截窄条；上限仍维持原 370
-    const maxHeight = Math.max(180, Math.min(370, Math.floor(spaceBelow)));
+    // 上限仍维持原 370；列表至少保留 180px 防止只剩一截窄条，表情网格需要更高才能看清多行
+    let maxHeight = Math.min(370, Math.floor(spaceBelow));
+    let top = offsetTop;
+    const minHeight = activeGroup.layout === 'grid' ? 330 : 180;
+    if (maxHeight < minHeight) {
+      // 下方放不下：整体上移，让子菜单底部贴住可用区域底边，而不是越出视口被裁掉（上移不越过顶部工具栏）
+      const topbarHeight = 40;
+      const shift = Math.min(minHeight - maxHeight, Math.max(0, Math.floor(itemRect.top - topbarHeight - bottomPadding)));
+      top = offsetTop - shift;
+      maxHeight += shift;
+    }
 
-    setSubmenuLayout({ top: offsetTop, maxHeight });
+    setSubmenuLayout({ top, maxHeight });
   }, [activeGroup, selectedIndex]);
 
   // query 变化时重置
@@ -872,7 +982,22 @@ function SlashMenu({
       if (isFocusInSubmenu && activeGroup) {
         // ── 焦点在二级子菜单中 ──
         const subCount = activeGroup.children.length;
-        if (e.key === 'ArrowDown') {
+        const isGrid = activeGroup.layout === 'grid';
+        if (isGrid && e.key === 'ArrowDown') {
+          // 网格：上下按整行移动，到边缘停住
+          e.preventDefault();
+          setSubSelectedIndex((i) => (i + SLASH_GRID_COLUMNS < subCount ? i + SLASH_GRID_COLUMNS : i));
+        } else if (isGrid && e.key === 'ArrowUp') {
+          e.preventDefault();
+          setSubSelectedIndex((i) => (i - SLASH_GRID_COLUMNS >= 0 ? i - SLASH_GRID_COLUMNS : i));
+        } else if (isGrid && e.key === 'ArrowRight') {
+          e.preventDefault();
+          setSubSelectedIndex((i) => Math.min(i + 1, subCount - 1));
+        } else if (isGrid && e.key === 'ArrowLeft' && subSelectedIndex % SLASH_GRID_COLUMNS !== 0) {
+          // 网格：非首列时左移一格；首列再按 ← 落入下方分支退回一级菜单
+          e.preventDefault();
+          setSubSelectedIndex((i) => i - 1);
+        } else if (e.key === 'ArrowDown') {
           e.preventDefault();
           setSubSelectedIndex((i) => (i + 1) % subCount);
         } else if (e.key === 'ArrowUp') {
@@ -1240,7 +1365,10 @@ function SlashMenu({
               <span>{activeGroup.label}</span>
             )}
             <span style={{ fontSize: 10, color: 'var(--editor-text-secondary, #64748b)' }}>
-              {activeGroup.children.length} 个选项
+              {/* 网格只有图案没有文字：键盘移动时在标题栏显示当前项名称 */}
+              {activeGroup.layout === 'grid' && isFocusInSubmenu && activeGroup.children[subSelectedIndex]
+                ? activeGroup.children[subSelectedIndex].label
+                : `${activeGroup.children.length} 个选项`}
             </span>
           </div>
 
@@ -1252,7 +1380,18 @@ function SlashMenu({
               minHeight: 0,
             }}
           >
-            {activeGroup.children.map((subLeaf, subIdx) => {
+            {activeGroup.layout === 'grid' ? (
+              <SlashGridSubmenu
+                items={activeGroup.children}
+                selectedIndex={isFocusInSubmenu ? subSelectedIndex : -1}
+                itemRefs={subItemRefs}
+                onHover={(subIdx) => {
+                  setIsFocusInSubmenu(true);
+                  setSubSelectedIndex(subIdx);
+                }}
+                onExecute={executeLeaf}
+              />
+            ) : activeGroup.children.map((subLeaf, subIdx) => {
               const isSubSelected = isFocusInSubmenu && subIdx === subSelectedIndex;
 
               return (

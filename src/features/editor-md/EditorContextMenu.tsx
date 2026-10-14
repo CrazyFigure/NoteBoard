@@ -1,6 +1,6 @@
 // NoteBoard Markdown 编辑器右键双模上下文菜单
 // 1. 选中文本：浮现加粗、斜体、代码、多色高亮(二级菜单)、标题转换(H1~H6二级菜单)、转为代码块/提示块/高亮块/引用块/折叠块、复制剪切
-// 2. 未选中文本：浮现标题(H1~H6二级菜单)、提示块(二级菜单)、高亮块(二级菜单)、列表(二级菜单)、代码块、引用块、折叠块、分栏(二级菜单)、表格(二级菜单)、公式与图表(二级菜单)、图片(二级菜单)等
+// 2. 未选中文本：浮现标题(H1~H6二级菜单)、提示块(二级菜单)、高亮块(二级菜单)、列表(二级菜单)、代码块、引用块、折叠块、分栏(二级菜单)、表格(二级菜单)、公式与图表(二级菜单)、图片(二级菜单)、表情(二级面板)等
 // 详见 docs/07-UI布局与交互规范.md
 
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
@@ -14,6 +14,7 @@ import { convertSelectionToCodeBlock, wrapSelectionInBlock } from './blockConver
 import { ALERT_KINDS, AlertMenuIcon, alertMenuLabel } from './alertExtension';
 import { CALLOUT_PRESETS, CalloutPresetIcon } from './calloutPickers';
 import { insertRawHtmlContent } from './rawHtmlBlockView';
+import { InlineEmojiGrid, insertInlineEmoji } from './inlineEmoji';
 import { insertLocalImageWithDialog } from './imagePaste';
 import { DEFAULT_INFOGRAPHIC_CODE } from '../infographic/infographicTemplates';
 import { promptImageUrl, promptLinkUrl } from '../../components/promptPresets';
@@ -56,6 +57,7 @@ import {
   ClipboardType,
   ChevronRight,
   RemoveFormatting,
+  Smile,
   X,
 } from 'lucide-react';
 
@@ -176,9 +178,10 @@ export function EditorContextMenu({
   const handleOpenSubmenu = (submenuKey: string, e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
-    const submenuWidth = 185;
+    // 表情面板为 8 列网格，比普通列表子菜单宽
+    const submenuWidth = submenuKey === 'insert-emoji' ? 310 : 185;
     const spaceOnRight = viewportWidth - rect.right;
-    const flipLeft = spaceOnRight < 190;
+    const flipLeft = spaceOnRight < submenuWidth + 5;
     // 窄屏（手机）左右两侧都放不下子菜单时，改为在触发项下方展开并夹进视口，避免被推到屏幕外
     const fitsSide = !flipLeft || rect.left - submenuWidth >= 8;
     const rawLeft = fitsSide ? (flipLeft ? rect.left - submenuWidth : rect.right + 4) : rect.left + 16;
@@ -884,6 +887,26 @@ export function EditorContextMenu({
               <ChevronRight size={14} style={{ opacity: 0.6 }} />
             </button>
 
+            {/* 8.5 表情 (带二级表情面板，写入标准 Unicode 表情) */}
+            <button
+              type="button"
+              style={{
+                ...btnStyle,
+                background:
+                  activeSubmenu === 'insert-emoji'
+                    ? 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))'
+                    : 'transparent',
+              }}
+              onMouseEnter={(e) => handleOpenSubmenu('insert-emoji', e)}
+              onClick={(e) => handleOpenSubmenu('insert-emoji', e)}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Smile size={15} color="#f59e0b" />
+                <span>插入表情</span>
+              </div>
+              <ChevronRight size={14} style={{ opacity: 0.6 }} />
+            </button>
+
             {/* 9. 插入超链接 */}
             <button
               type="button"
@@ -1128,6 +1151,17 @@ export function EditorContextMenu({
                 </button>
               ))}
             </>
+          )}
+
+          {/* 二级：表情面板 */}
+          {activeSubmenu === 'insert-emoji' && (
+            <InlineEmojiGrid
+              onSelect={(char) => {
+                // 在右键位置的光标处插入表情字符
+                insertInlineEmoji(editor, char);
+                onClose();
+              }}
+            />
           )}
 
           {/* 二级：分栏卡片 */}

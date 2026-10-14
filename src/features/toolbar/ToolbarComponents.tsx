@@ -246,6 +246,8 @@ export interface ToolbarDropdownItemProps {
   onClick?: () => void;
   /** 若包含二级/三级子菜单，传入子菜单组件 */
   submenu?: ReactNode;
+  /** 子菜单的大致宽度（用于判断是否向左展开），默认按普通列表子菜单的 170px 计算 */
+  submenuWidth?: number;
   /** 点击后是否自动关闭当前下拉菜单 */
   closeOnClick?: boolean;
 }
@@ -259,6 +261,7 @@ export function ToolbarDropdownItem({
   danger,
   onClick,
   submenu,
+  submenuWidth = 170,
 }: ToolbarDropdownItemProps) {
   const [hovered, setHovered] = useState(false);
   const [submenuOpen, setSubmenuOpen] = useState(false);
@@ -292,8 +295,8 @@ export function ToolbarDropdownItem({
     const editorPanel = itemRef.current.closest('#nb-editor') || document.body;
     const panelRight = editorPanel.getBoundingClientRect().right;
     const spaceRight = panelRight - rect.right;
-    // 右侧剩余空间小于 170px 时，自动向左侧展开二级子菜单，杜绝被右侧大纲栏或面板边框裁剪
-    setFlipLeft(spaceRight < 170);
+    // 右侧剩余空间放不下子菜单时，自动向左侧展开二级子菜单，杜绝被右侧大纲栏或面板边框裁剪
+    setFlipLeft(spaceRight < submenuWidth);
   };
 
   // 鼠标悬停进入（触屏补发的兼容鼠标事件忽略，子菜单改由点击切换，避免"展开即收起"）
