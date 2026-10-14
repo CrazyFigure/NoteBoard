@@ -49,7 +49,7 @@ const BLOCK_TYPE_LABELS: Record<string, string> = {
   image: '图片',
   mermaidBlock: 'Mermaid 图表',
   mathBlock: '公式块',
-  githubAlert: '提示块',
+  githubAlert: 'GitHub 提示块',
   detailsBlock: '折叠块',
   columnsBlock: '分栏',
   calloutBlock: '高亮块',

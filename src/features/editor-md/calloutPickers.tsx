@@ -260,7 +260,7 @@ export interface CalloutPreset {
 
 /** 插入菜单中的常用组合（插入后仍可随时改颜色与图标） */
 export const CALLOUT_PRESETS: CalloutPreset[] = [
-  { id: 'tip', label: '提示', color: 'blue', icon: 'lightbulb', description: '蓝色 · 灵感与补充说明' },
+  { id: 'tip', label: '灵感', color: 'blue', icon: 'lightbulb', description: '蓝色 · 灵感与补充说明' },
   { id: 'success', label: '成功', color: 'green', icon: 'circle-check-big', description: '绿色 · 完成、推荐做法' },
   { id: 'warning', label: '注意', color: 'yellow', icon: 'triangle-alert', description: '黄色 · 需要留意的事项' },
   { id: 'danger', label: '警告', color: 'red', icon: 'circle-alert', description: '红色 · 风险与禁止事项' },

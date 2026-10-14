@@ -10,6 +10,7 @@ import { applyTablePaste } from './tableClipboard';
 import { insertDetailsContent } from './detailsExtension';
 import { insertColumnsBlock } from './columnsExtension';
 import { insertCalloutBlock } from './calloutExtension';
+import { ALERT_KINDS, AlertMenuIcon, alertMenuLabel } from './alertExtension';
 import { CALLOUT_PRESETS, CalloutPresetIcon } from './calloutPickers';
 import { insertRawHtmlContent } from './rawHtmlBlockView';
 import { promptLinkUrl } from '../../components/promptPresets';
@@ -42,11 +43,6 @@ import {
   Sigma,
   Workflow,
   Boxes,
-  Info,
-  Lightbulb,
-  AlertCircle,
-  AlertTriangle,
-  Flame,
   Minus,
   Copy,
   Scissors,
@@ -1063,13 +1059,8 @@ export function EditorContextMenu({
           {/* 二级：GitHub 提示块 */}
           {activeSubmenu === 'insert-alert' && (
             <>
-              {[
-                { kind: 'note' as const, label: 'Note 提示', icon: <Info size={15} color="#3b82f6" /> },
-                { kind: 'tip' as const, label: 'Tip 建议', icon: <Lightbulb size={15} color="#10b981" /> },
-                { kind: 'important' as const, label: 'Important 重要', icon: <AlertCircle size={15} color="#8b5cf6" /> },
-                { kind: 'warning' as const, label: 'Warning 警告', icon: <AlertTriangle size={15} color="#f59e0b" /> },
-                { kind: 'caution' as const, label: 'Caution 危险', icon: <Flame size={15} color="#ef4444" /> },
-              ].map((a) => (
+              {/* 文案与图标取自 alertExtension，与斜杠命令、工具栏保持一致 */}
+              {ALERT_KINDS.map((kind) => ({ kind, label: alertMenuLabel(kind), icon: <AlertMenuIcon kind={kind} /> })).map((a) => (
                 <button
                   key={a.kind}
                   type="button"
