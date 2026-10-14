@@ -1126,7 +1126,10 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
 }
 .ProseMirror .tableWrapper {
   overflow-x: auto;
-  margin: 16px 0;
+  /* 左右各外扩 6px 再用内边距抵消：表格位置与宽度不变，外层留出与其他块一致的选中底板外扩空间
+     （外层是滚动容器，画到它外面的底板会被裁掉；拖拽把手已按内边距对齐表格左沿） */
+  margin: 16px -6px;
+  padding: 0 6px;
 }
 
 /* 文本高亮标记 */
@@ -1461,18 +1464,20 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
 .ProseMirror ol > li.nb-sel-block::after {
   left: -1.6em;
 }
-/* 自带边框的组件（代码块、折叠块、图表、公式块、图片等节点视图）：底板四周等距贴合外框 */
+/* 自带边框的组件（代码块、折叠块、图表、公式块、图片等节点视图）：底板上下贴合外框，
+   左右与文本块一致外扩 6px，保证同一层级的块选中底板等宽 */
 .ProseMirror .react-renderer.nb-sel-block::after {
-  inset: -3px;
+  inset: -3px -6px;
 }
 /* 节点视图处于源码编辑态（Mermaid / 信息图 / 公式 / HTML 块的编辑框）：用户关注的是输入内容，
    整块底板会把编辑区整体染成主题色，干扰阅读，编辑期间隐藏 */
 .ProseMirror .nb-sel-block:has(textarea)::after {
   display: none;
 }
-/* 表格外层是横向滚动容器，向外扩出的底板会撑出滚动条，改为贴合容器内沿 */
+/* 表格外层是横向滚动容器，向外扩出的底板会撑出滚动条：外层已左右外扩 6px（见 .tableWrapper），
+   底板左右贴合外层即与其他块等宽；上下扣除表格自身 16px 外边距，与其他组件一样距外框 3px */
 .ProseMirror .tableWrapper.nb-sel-block::after {
-  inset: 0;
+  inset: 13px 0;
 }
 /* 折叠块被整块选中时由底板统一表达，收起其自身的强调边框，避免内外两圈描边 */
 .ProseMirror .nb-sel-block > .nb-details.is-selected {

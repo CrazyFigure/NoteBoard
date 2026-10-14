@@ -203,8 +203,12 @@ export function BlockDragHandle({ editor }: { editor: Editor | null }) {
 
       const blockRect = blockElement.getBoundingClientRect();
       const scrollRect = scrollParent.getBoundingClientRect();
+      // 表格外层左右外扩并以内边距抵消（为选中底板留空间），把手按表格本身的左沿对齐
+      const blockLeft = blockElement.classList.contains('tableWrapper')
+        ? blockRect.left + parseFloat(getComputedStyle(blockElement).paddingLeft || '0')
+        : blockRect.left;
       const top = blockRect.top - scrollRect.top + scrollParent.scrollTop;
-      const left = blockRect.left - scrollRect.left + scrollParent.scrollLeft - 24;
+      const left = blockLeft - scrollRect.left + scrollParent.scrollLeft - 24;
 
       setState({
         visible: true,
