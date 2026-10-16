@@ -45,6 +45,7 @@ import { SelectionHighlight } from '../selectionHighlight';
 import { InlineEmojiRender } from '../inlineEmoji';
 import { MultiClickSelectionFix } from '../multiClickSelection';
 import { EnterKeyBehavior } from '../enterKeyBehavior';
+import { SelectAllBehavior } from '../selectAllBehavior';
 import { useWindowStore } from '../../../stores/windowStore';
 
 import Suggestion from '@tiptap/suggestion';
@@ -397,6 +398,8 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
     MultiClickSelectionFix,
     // 回车类按键统一行为：Enter 换段落、Shift+Enter 段内换行、Ctrl+Enter 跳出到下方（支持 Enter 与 Shift+Enter 互换）
     EnterKeyBehavior,
+    // 全选：Ctrl+A 第一次选中当前文本块，再按一次全选文档
+    SelectAllBehavior,
 
     // 任务列表（项间距：紧凑 / 宽松）
     MarkdownTaskList,
