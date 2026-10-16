@@ -1310,6 +1310,10 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
 .ProseMirror .nb-md-html-render img {
   max-width: 100%;
 }
+/* 渲染内容中的链接、图片不作为原生拖拽源：按下后轻微移动会触发拖拽，打断双击进入编辑 */
+.ProseMirror .nb-md-html-render :is(a, img) {
+  -webkit-user-drag: none;
+}
 /* 渲染出的标题不属于文档大纲，不显示装订线级别标签 */
 .ProseMirror .nb-md-html-render :is(h1, h2, h3, h4, h5, h6)::before {
   content: none;
@@ -1370,6 +1374,81 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
 .ProseMirror .nb-raw-html-btn.is-primary:hover {
   opacity: 0.9;
 }
+/* 粘贴格式转换提示：固定在编辑区可视范围左上角的单行小胶囊，不随滚动移动 */
+.nb-paste-format-anchor {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: 0;
+}
+.nb-paste-format-prompt {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 6px 0 12px;
+  font-family: var(--ui-font-family, inherit);
+  font-size: 13px;
+  color: var(--editor-text-muted);
+  background: var(--editor-surface, var(--editor-bg));
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  white-space: nowrap;
+  user-select: none;
+  animation: nb-paste-format-in 120ms ease-out;
+}
+@keyframes nb-paste-format-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.nb-paste-format-icon {
+  flex-shrink: 0;
+  color: var(--editor-accent);
+}
+.nb-paste-format-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--editor-text);
+  background: transparent;
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), opacity var(--transition-fast), transform var(--transition-fast);
+}
+.nb-paste-format-btn:hover {
+  color: var(--editor-text);
+  background: var(--toolbar-hover, var(--editor-code-bg));
+}
+.nb-paste-format-btn:active {
+  background: var(--toolbar-active, var(--editor-code-bg));
+  transform: scale(0.96);
+}
+.nb-paste-format-btn.is-primary {
+  color: #fff;
+  background: var(--editor-accent);
+  border-color: transparent;
+}
+.nb-paste-format-btn.is-primary:hover {
+  color: #fff;
+  background: var(--editor-accent);
+  opacity: 0.9;
+}
+.nb-paste-format-btn.is-icon {
+  width: 26px;
+  padding: 0;
+  color: var(--editor-text-muted);
+  border-color: transparent;
+}
+
 /* 源码编辑态 */
 .ProseMirror .nb-raw-html.is-editing {
   border: 1px solid var(--editor-accent);

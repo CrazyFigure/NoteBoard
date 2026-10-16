@@ -24,6 +24,7 @@ import {
 import { handlePastedImageFile } from './imagePaste';
 import { EditorBubbleMenu, TableToolbar } from './bubbleMenu';
 import { BlockDragHandle } from './blockDragHandle';
+import { PasteFormatPrompt } from './PasteFormatPrompt';
 import { EditorContextMenu } from './EditorContextMenu';
 import { LinkModal } from './LinkModal';
 import { useDocumentStore } from '../../stores/documentStore';
@@ -79,6 +80,7 @@ export function VisualKernel({
   // 链接回调继续由模块级工厂创建，不能重新引入持有 editor 的组件闭包。
   const extensions = useMemo(() => buildExtensions(docKey, {
     onOpenLinkModal: makeLinkModalOpener(docKey),
+    pasteFormatDetect: true,
   }), [docKey]);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
   // 超链接插入与编辑弹窗状态
@@ -402,6 +404,7 @@ export function VisualKernel({
       {active && visible && editor && <EditorBubbleMenu editor={editor} onOpenLinkModal={handleOpenLinkModal} />}
       {active && visible && editor && <TableToolbar editor={editor} />}
       {active && visible && editor && <BlockDragHandle editor={editor} />}
+      {active && visible && editor && <PasteFormatPrompt editor={editor} />}
       {active && visible && contextMenu && editor && (
         <EditorContextMenu
           editor={editor}

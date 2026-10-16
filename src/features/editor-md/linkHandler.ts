@@ -3,6 +3,7 @@
 
 import * as ipc from '../../core/ipc/commands';
 import { useDocumentStore } from '../../stores/documentStore';
+import { useWindowStore } from '../../stores/windowStore';
 import { useExplorerStore } from '../explorer/explorerStore';
 import { showToast } from '../../stores/toastStore';
 import { openDocument } from '../editor-code/orchestration/openDocument';
@@ -162,4 +163,29 @@ export async function handleLinkClick(rawHref: string, currentDocKey: string): P
     showToast(`打开本地链接失败: ${err instanceof Error ? err.message : String(err)}`, 'error');
     return true;
   }
+}
+
+/** 渲染后原始 HTML 中链接点击所需的事件字段（原生事件与 React 合成事件通用） */
+interface RenderedLinkMouseEvent {
+  target: EventTarget | null;
+  button: number;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  preventDefault(): void;
+}
+
+/**
+ * 处理 HTML 块 / 行内 HTML 渲染内容中的链接点击（click 与 auxclick 共用），返回是否点在链接上。
+ * 一律拦截原生跳转：否则 webview 自身会被导航走，target="_blank" 等写法还可能弹出应用内新窗口。
+ * Ctrl/Cmd + 单击或鼠标中键单击时按普通链接规则打开：外部链接交给系统默认浏览器，本地文件在 NoteBoard 内打开。
+ */
+export function handleRenderedHtmlLinkClick(event: RenderedLinkMouseEvent): boolean {
+  const anchor = event.target instanceof Element ? event.target.closest('a') : null;
+  if (!anchor) return false;
+  event.preventDefault();
+  const href = anchor.getAttribute('href');
+  const shouldOpen = (event.button === 0 && (event.ctrlKey || event.metaKey)) || event.button === 1;
+  const activeKey = useWindowStore.getState().activeKey;
+  if (shouldOpen && href && activeKey) void handleLinkClick(href, activeKey);
+  return true;
 }
