@@ -11,12 +11,13 @@ import { Code } from '@tiptap/extension-code';
 import '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import CharacterCount from '@tiptap/extension-character-count';
-import { TaskList, TaskItem } from '@tiptap/extension-list';
+import { TaskItem, ListItem, getListMarker } from '@tiptap/extension-list';
 import { Table } from '@tiptap/extension-table';
 import { TableRow } from '@tiptap/extension-table';
 import { TableCell } from '@tiptap/extension-table';
 import { TableHeader } from '@tiptap/extension-table';
 import { Markdown } from '@tiptap/markdown';
+import { Link } from '@tiptap/extension-link';
 
 import { CodeBlockView } from '../codeBlockView';
 import { SafeMarkdownHighlight, SafeMarkdownUnderline } from '../markdownInlineMarks';
@@ -35,6 +36,9 @@ import { slashSuggestion } from '../slashCommand';
 import { handleLinkClick } from '../linkHandler';
 import { TableClipboard } from '../tableClipboard';
 import { fixTableEditingSelection } from '../tableSelectionFix';
+import { renderTableMarkdown, tableMarkdownStyleOf, type TableMarkdownStyle } from '../markdownTable';
+import { MarkdownHtmlEntity } from '../markdownHtmlEntities';
+import { MarkdownBulletList, MarkdownOrderedList, MarkdownTaskList } from '../markdownListSpacing';
 import { ListEmptyItemBackspaceFix } from '../listItemBackspace';
 import { SelectionHighlight } from '../selectionHighlight';
 import { InlineEmojiRender } from '../inlineEmoji';
@@ -43,7 +47,7 @@ import { EnterKeyBehavior } from '../enterKeyBehavior';
 import { useWindowStore } from '../../../stores/windowStore';
 
 import Suggestion from '@tiptap/suggestion';
-import { Extension, type Extensions } from '@tiptap/core';
+import { Extension, type Extensions, type JSONContent, type MarkdownParseHelpers, type MarkdownParseResult, type MarkdownToken } from '@tiptap/core';
 import { Plugin, TextSelection } from '@tiptap/pm/state';
 import {
   redoDocumentHistory,
@@ -155,11 +159,11 @@ const UnifiedDocumentHistoryKeys = Extension.create<{ docKey: string }>({
   },
 });
 
-import { EnhancedImageBlock } from '../imageNodeView';
+import { EnhancedImageBlock, parseLinkedImageToken } from '../imageNodeView';
 
 /**
- * 文档级属性：记录源文件末尾的换行（Markdown 解析会丢弃它）。
- * 序列化时据此还原，避免"仅切换模式就让文件末尾换行消失"产生假差异。
+ * 文档级属性：记录源文件末尾的换行（Markdown 解析会丢弃它）、不可见空白的书写方式（实体或字符）。
+ * 序列化时据此还原，避免"仅切换模式就让文件末尾换行消失"等假差异。
  */
 const MarkdownDocumentAttributes = Extension.create({
   name: 'markdownDocumentAttributes',
@@ -172,6 +176,11 @@ const MarkdownDocumentAttributes = Extension.create({
             default: '',
             rendered: false,
           },
+          // 原文是否以实体（&nbsp; 等）书写不可见空白：是则序列化写回实体，否则保持字符原样
+          invisibleCharEntities: {
+            default: false,
+            rendered: false,
+          },
         },
       },
     ];
@@ -179,16 +188,34 @@ const MarkdownDocumentAttributes = Extension.create({
 });
 
 /**
- * 表格：官方序列化结果首尾自带换行，与块间分隔叠加后会多出空行（原文 `p\n\n| a |` 变成 `p\n\n\n| a |`）。
+ * 表格：按原文风格（紧凑 / 对齐）序列化，见 markdownTable.ts。
+ * 序列化结果首尾自带换行，与块间分隔叠加后会多出空行（原文 `p\n\n| a |` 变成 `p\n\n\n| a |`）。
  * 顶层表格去掉首部空行（块间距离由文档级分隔控制）；列表等容器内依赖首部换行与前一段落隔开，保持原样。
  * 尾部空白行在任何位置都去掉。
  */
 const MarkdownTable = Table.extend({
-  renderMarkdown(node, helpers, context) {
-    const parentRender = (this as unknown as {
-      parent?: (node: unknown, helpers: unknown, context: unknown) => string;
+  // markdownStyle：原文的表格书写风格，仅用于序列化时沿用原写法，不参与渲染
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      markdownStyle: {
+        default: null,
+        rendered: false,
+      },
+    };
+  },
+  parseMarkdown(token, helpers) {
+    const parentParse = (this as unknown as {
+      parent?: (token: unknown, helpers: unknown) => JSONContent | JSONContent[];
     }).parent;
-    const rendered = parentRender?.(node, helpers, context) ?? '';
+    const parsed = parentParse?.(token, helpers);
+    if (!parsed || Array.isArray(parsed)) return parsed ?? [];
+    return { ...parsed, attrs: { ...parsed.attrs, markdownStyle: tableMarkdownStyleOf(token) } };
+  },
+  renderMarkdown(node, helpers, context) {
+    // 新建的表格没有原文风格，默认按显示宽度对齐
+    const style = (node.attrs?.markdownStyle as TableMarkdownStyle | null | undefined) ?? 'aligned';
+    const rendered = renderTableMarkdown(node, helpers, style);
     const withoutTrailing = rendered.replace(/(?:\n[ \t]*)+$/, '');
     // 折叠块正文、分栏的单栏、高亮块正文与文档一样以空行分隔子块，首部换行同样会多出一个空行
     const isTopLevel =
@@ -199,6 +226,51 @@ const MarkdownTable = Table.extend({
   // 从表格外的空段落拖选进表格时，官方选区规整会把选区收缩成单元格内的光标，这里修正
   addProseMirrorPlugins() {
     return fixTableEditingSelection(this.parent?.() ?? []);
+  },
+});
+
+/**
+ * 列表项：续段与子列表缩进到列表标记之后的文字位置（`- ` 为 2 格，`1. ` 为 3 格，`10. ` 为 4 格）。
+ * 官方实现统一缩进 2 格，CommonMark 要求有序列表项的续行至少缩进到编号宽度，
+ * 否则在 GitHub 等标准渲染器中续段 / 子列表会脱离列表（NoteBoard 自身的解析器较宽松，看不出差异）。
+ */
+const MarkdownListItem = ListItem.extend({
+  renderMarkdown(node, helpers, context) {
+    const parentType = context?.parentType;
+    let prefix = '- ';
+    if (parentType === 'orderedList') {
+      const parentAttrs = context?.meta?.parentAttrs as { start?: number; type?: string } | undefined;
+      const index = (parentAttrs?.start || 1) - 1 + (context?.index || 0);
+      prefix = getListMarker(parentAttrs?.type, index, '. ');
+    }
+    const [first, ...rest] = node.content ?? [];
+    if (!first) return prefix;
+    const childIndent = ' '.repeat(prefix.length);
+    let output = `${prefix}${helpers.renderChildren([first])}`;
+    rest.forEach((child, index) => {
+      const rendered = helpers.renderChild?.(child, index + 1) ?? helpers.renderChildren([child]);
+      if (rendered === undefined || rendered === null) return;
+      // 与官方实现一致：子块内部的空行同样带缩进，保证无序列表的输出与旧版逐字相同
+      const indented = rendered.split('\n').map((line) => childIndent + line).join('\n');
+      output += child.type === 'paragraph' ? `\n\n${indented}` : `\n${indented}`;
+    });
+    return output;
+  },
+});
+
+/**
+ * 链接：`[![alt](src)](href)` 的内容只有一张图片，而图片是独立节点、无法承载链接标记，
+ * 官方解析会丢掉外层链接（README 徽章点击不再跳转）。这种情况生成带 href 的图片节点，其余照常。
+ * 注意：行内 token 只会交给第一个注册的处理器，无法另注册扩展"让出"，因此直接扩展 Link。
+ */
+const MarkdownLink = Link.extend({
+  parseMarkdown(token, helpers) {
+    const linkedImage = parseLinkedImageToken(token, helpers);
+    if (linkedImage) return linkedImage;
+    const parentParse = (this as unknown as {
+      parent?: (token: MarkdownToken, helpers: MarkdownParseHelpers) => MarkdownParseResult;
+    }).parent;
+    return parentParse?.(token, helpers) ?? [];
   },
 });
 
@@ -235,19 +307,18 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
       codeBlock: false, // 用自定义的 CodeBlockView
       // 改由 SafeMarkdownUnderline 注册：官方 `++` tokenizer 会误伤 `C++` 等普通文本
       underline: false,
+      // 改由 MarkdownListItem 注册：续段缩进需与列表标记宽度一致
+      listItem: false,
+      // 改由 MarkdownBulletList / MarkdownOrderedList 注册：记住并写回列表项间距（紧凑 / 宽松）
+      bulletList: false,
+      orderedList: false,
       // 缩短连续输入的合并窗口，并保留更多编辑步骤；保存操作不会重建该历史栈
       undoRedo: {
         depth: 200,
         newGroupDelay: 300,
       },
-      link: {
-        openOnClick: false,
-        HTMLAttributes: {
-          rel: 'noopener noreferrer',
-          target: null, // 🔴 必须为 null，绝不能设置 _blank，避免 WebView2 底层触发系统新窗口
-          title: 'Ctrl + 单击以访问链接',
-        },
-      },
+      // 改由 MarkdownLink 注册：需接管 `[![alt](src)](href)` 的解析
+      link: false,
       dropcursor: {
         width: 2,
         color: 'var(--editor-accent)',
@@ -257,6 +328,15 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // 行内代码需允许与粗体/斜体共存，才能无损承载合法 Markdown 的嵌套结构
     MarkdownCompatibleCode,
+
+    // 列表项（续段缩进与列表标记等宽）
+    MarkdownListItem,
+    // 无序 / 有序列表（项间距：紧凑 / 宽松）
+    MarkdownBulletList,
+    MarkdownOrderedList,
+
+    // HTML 实体（&copy;、&nbsp;、&#169; 等）解码为对应字符
+    MarkdownHtmlEntity,
 
     // 文档末尾换行等源文件级信息
     MarkdownDocumentAttributes,
@@ -269,6 +349,16 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
     ListEmptyItemBackspaceFix,
     LinkClickHandler.configure({
       onOpenLinkModal: options?.onOpenLinkModal,
+    }),
+
+    // 链接（带链接的图片解析为带 href 的图片节点，其余与官方一致）
+    MarkdownLink.configure({
+      openOnClick: false,
+      HTMLAttributes: {
+        rel: 'noopener noreferrer',
+        target: null, // 🔴 必须为 null，绝不能设置 _blank，避免 WebView2 底层触发系统新窗口
+        title: 'Ctrl + 单击以访问链接',
+      },
     }),
 
     // 本地图片增强扩展（支持 Base64、本地相对路径 Asset 解析、大图预览与排版调节）
@@ -298,8 +388,8 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
     // 回车类按键统一行为：Enter 换段落、Shift+Enter 段内换行、Ctrl+Enter 跳出到下方（支持 Enter 与 Shift+Enter 互换）
     EnterKeyBehavior,
 
-    // 任务列表
-    TaskList,
+    // 任务列表（项间距：紧凑 / 宽松）
+    MarkdownTaskList,
     TaskItem.configure({
       nested: true,
       HTMLAttributes: {

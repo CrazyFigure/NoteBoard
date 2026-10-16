@@ -451,7 +451,7 @@ export function BitableRichTextEditor({
       >
         {isRich && editor && <EditorBubbleMenu editor={editor} onOpenLinkModal={() => void handleLink()} />}
         {isRich && editor && <TableToolbar editor={editor} />}
-        {isRich && editor && <BlockDragHandle editor={editor} />}
+        {isRich && editor && <BlockDragHandle editor={editor} formatMenu={false} />}
         {isRich && editor && contextMenu && (
           <EditorContextMenu
             editor={editor}

@@ -14,26 +14,45 @@ export const PREVIEW_FENCE_LANGUAGES: Record<string, 'mermaidBlock' | 'infograph
   infographic: 'infographicBlock',
 };
 
-/** 计算能安全包裹内容的反引号围栏：长度为内容中最长连续反引号 + 1，且不少于 3。 */
-export function fenceFor(code: string): string {
+/**
+ * 内容中位于行首（缩进不超过 3 个空格）的最长连续围栏字符串长度。
+ * 按 CommonMark，只有这样的行才可能闭合围栏；行中间的 ``` （如字符串字面量里的）不会提前闭合代码块，
+ * 因此不计入，避免无谓地加长围栏。
+ */
+function longestLineStartRun(code: string, character: '`' | '~'): number {
+  const pattern = character === '`' ? /^ {0,3}(`+)/gm : /^ {0,3}(~+)/gm;
   let longest = 0;
-  let current = 0;
-  for (const character of code) {
-    if (character === '`') {
-      current += 1;
-      if (current > longest) longest = current;
-    } else {
-      current = 0;
-    }
+  for (const match of code.matchAll(pattern)) {
+    if (match[1].length > longest) longest = match[1].length;
   }
-  return '`'.repeat(Math.max(3, longest + 1));
+  return longest;
 }
 
-/** 把代码文本包装为围栏代码块；空内容保持与 TipTap 原实现一致的空行格式。 */
-export function renderFencedCode(language: string, code: string): string {
-  const fence = fenceFor(code);
+/** 计算能安全包裹内容的反引号围栏：长度为内容中行首最长连续反引号 + 1，且不少于 3。 */
+export function fenceFor(code: string): string {
+  return '`'.repeat(Math.max(3, longestLineStartRun(code, '`') + 1));
+}
+
+/** 判断原文围栏能否继续安全包裹当前内容（内容中没有可能提前闭合它的行）。 */
+function isUsableFence(fence: string | null | undefined, code: string): fence is string {
+  if (!fence || !/^(?:`{3,}|~{3,})$/.test(fence)) return false;
+  return longestLineStartRun(code, fence[0] as '`' | '~') < fence.length;
+}
+
+/**
+ * 把代码文本包装为围栏代码块；空内容保持与 TipTap 原实现一致的空行格式。
+ * preferredFence 为原文使用的围栏（如 ```` 或 ~~~）：仍能安全包裹内容时沿用，避免仅因进入可视化就改写源码。
+ */
+export function renderFencedCode(language: string, code: string, preferredFence?: string | null): string {
+  const fence = isUsableFence(preferredFence, code) ? preferredFence : fenceFor(code);
   if (code === '') return `${fence}${language}\n\n${fence}`;
   return `${fence}${language}\n${code}\n${fence}`;
+}
+
+/** 读取围栏代码块原文的开围栏（缩进代码块等非围栏写法返回 null）。 */
+export function sourceFenceOf(token: MarkdownToken): string | null {
+  const raw = typeof token.raw === 'string' ? token.raw : '';
+  return /^ {0,3}(`{3,}|~{3,})/.exec(raw)?.[1] ?? null;
 }
 
 /** 判断 marked 的 code token 是否来自围栏或缩进代码块（行内代码不在此列）。 */
