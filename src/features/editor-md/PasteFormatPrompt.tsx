@@ -1,6 +1,8 @@
 // NoteBoard 粘贴格式转换提示
-// 纯文本粘贴的内容含 Markdown / HTML 语法时，在编辑区左上角显示一枚小胶囊，询问是否转换为格式。
-// 胶囊固定在编辑区可视范围的左上角（不随滚动或光标移动），只占一行，便于对照纯文本效果再决定；
+// 纯文本粘贴的内容含 Markdown / HTML 语法时显示一枚小胶囊，询问是否转换为格式。
+// overlay：固定在编辑区可视范围的左上角（不随滚动或光标移动），用于笔记本正文；
+// inline：作为普通元素放进宿主的工具栏 / 底栏，用于多维表格单元格等小编辑区，不遮挡正文。
+// 只占一行，便于对照纯文本效果再决定；
 // 下一次修改文档、点击关闭或按 Esc 后消失（范围跟踪见 pasteFormatDetect）。
 
 import { useEffect, useMemo, useState } from 'react';
@@ -31,7 +33,13 @@ const MODE_ACTION: Record<PasteConvertMode, { label: string; tip: string }> = {
   htmlBlock: { label: '转为 HTML 块', tip: '整段保留为一个 HTML 块，可撤销' },
 };
 
-export function PasteFormatPrompt({ editor }: { editor: Editor }) {
+interface PasteFormatPromptProps {
+  editor: Editor;
+  /** 摆放方式：overlay 吸附在滚动容器左上角（须为其直接子元素），inline 随宿主布局 */
+  placement?: 'overlay' | 'inline';
+}
+
+export function PasteFormatPrompt({ editor, placement = 'overlay' }: PasteFormatPromptProps) {
   const [range, setRange] = useState<PastedTextRange | null>(() => getPastedTextRange(editor.state));
 
   // 跟随编辑器事务读取粘贴范围：纯选区变化时插件返回同一对象，不触发重渲染
@@ -68,43 +76,47 @@ export function PasteFormatPrompt({ editor }: { editor: Editor }) {
 
   if (!shown || !range || !detected) return null;
 
+  // 底栏中的提示向上弹出说明，左上角的提示向下弹出
+  const tooltipSide = placement === 'inline' ? 'top' : 'bottom';
+
   const handleConvert = (mode: PasteConvertMode) => {
     if (!convertPastedRange(editor, range, mode)) dismissPastedRange(editor);
   };
 
-  return (
-    // 零高度的吸顶层：随滚动容器停在可视区顶部，不占文档流、不推动正文
-    <div className="nb-paste-format-anchor">
-      <div
-        className="nb-paste-format-prompt"
-        // 按下按钮不抢编辑器焦点与选区
-        onMouseDown={(e) => e.preventDefault()}
-        role="status"
-      >
-        <Wand2 size={15} className="nb-paste-format-icon" />
-        <span className="nb-paste-format-label">{KIND_LABEL[detected.kind]}</span>
-        {detected.modes.map((mode, index) => (
-          <Tooltip key={mode} content={MODE_ACTION[mode].tip} side="bottom" sideOffset={6}>
-            <button
-              type="button"
-              className={`nb-paste-format-btn${index === 0 ? ' is-primary' : ''}`}
-              onClick={() => handleConvert(mode)}
-            >
-              {MODE_ACTION[mode].label}
-            </button>
-          </Tooltip>
-        ))}
-        <Tooltip content="保持纯文本" shortcut="Esc" side="bottom" sideOffset={6}>
+  const prompt = (
+    <div
+      className={`nb-paste-format-prompt${placement === 'inline' ? ' is-inline' : ''}`}
+      // 按下按钮不抢编辑器焦点与选区
+      onMouseDown={(e) => e.preventDefault()}
+      role="status"
+    >
+      <Wand2 size={15} className="nb-paste-format-icon" />
+      <span className="nb-paste-format-label">{KIND_LABEL[detected.kind]}</span>
+      {detected.modes.map((mode, index) => (
+        <Tooltip key={mode} content={MODE_ACTION[mode].tip} side={tooltipSide} sideOffset={6}>
           <button
             type="button"
-            className="nb-paste-format-btn is-icon"
-            aria-label="关闭"
-            onClick={() => dismissPastedRange(editor)}
+            className={`nb-paste-format-btn${index === 0 ? ' is-primary' : ''}`}
+            onClick={() => handleConvert(mode)}
           >
-            <X size={15} />
+            {MODE_ACTION[mode].label}
           </button>
         </Tooltip>
-      </div>
+      ))}
+      <Tooltip content="保持纯文本" shortcut="Esc" side={tooltipSide} sideOffset={6}>
+        <button
+          type="button"
+          className="nb-paste-format-btn is-icon"
+          aria-label="关闭"
+          onClick={() => dismissPastedRange(editor)}
+        >
+          <X size={15} />
+        </button>
+      </Tooltip>
     </div>
   );
+
+  if (placement === 'inline') return prompt;
+  // 零高度的吸顶层：随滚动容器停在可视区顶部，不占文档流、不推动正文
+  return <div className="nb-paste-format-anchor">{prompt}</div>;
 }

@@ -142,4 +142,11 @@ describe('多行文本富文本编辑器扩展集', () => {
     // 斜杠菜单与笔记本同源
     expect(names(buildLongTextExtensions())).toContain('slashCommand');
   });
+
+  test('粘贴格式检测与笔记本一致启用', () => {
+    const names = (extensions: { name: string }[]) => extensions.map((extension) => extension.name);
+    expect(names(buildLongTextExtensions())).toContain('pasteFormatDetect');
+    // 未显式开启的编辑器不跟踪粘贴
+    expect(names(buildExtensions('doc-key'))).not.toContain('pasteFormatDetect');
+  });
 });

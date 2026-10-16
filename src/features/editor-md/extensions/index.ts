@@ -292,7 +292,7 @@ export interface BuildExtensionsOptions {
   documentHistory?: boolean;
   /** 空文档占位文案 */
   placeholder?: string;
-  /** 是否跟踪纯文本粘贴以提示转换 Markdown / HTML（仅 md 文档可视化编辑器启用，默认 false） */
+  /** 是否跟踪纯文本粘贴以提示转换 Markdown / HTML（md 文档可视化编辑器与多维表格多行文本编辑器启用，默认 false） */
   pasteFormatDetect?: boolean;
 }
 

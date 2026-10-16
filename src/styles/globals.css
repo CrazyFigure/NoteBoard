@@ -1401,6 +1401,27 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   user-select: none;
   animation: nb-paste-format-in 120ms ease-out;
 }
+/* 嵌入宿主底栏 / 工具栏：随布局排在左侧，略紧凑、无投影 */
+.nb-paste-format-prompt.is-inline {
+  position: static;
+  height: 32px;
+  margin-right: auto;
+  padding: 0 4px 0 10px;
+  box-shadow: none;
+}
+.nb-paste-format-prompt.is-inline .nb-paste-format-btn {
+  height: 24px;
+  flex-shrink: 0;
+}
+/* 底栏较窄（记录侧栏表单）时只压缩说明文字，按钮保持完整 */
+.nb-paste-format-prompt.is-inline {
+  min-width: 0;
+}
+.nb-paste-format-prompt.is-inline .nb-paste-format-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 @keyframes nb-paste-format-in {
   from { opacity: 0; transform: translateY(-2px); }
   to { opacity: 1; transform: translateY(0); }

@@ -6,7 +6,7 @@
 import type { Editor } from '@tiptap/core';
 import { Extension } from '@tiptap/core';
 import { closeHistory } from '@tiptap/pm/history';
-import { DOMParser as ProseMirrorDOMParser, Fragment, Slice } from '@tiptap/pm/model';
+import { DOMParser as ProseMirrorDOMParser, Fragment, Slice, type Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { parseMarkdownToJson } from './serialize';
 
@@ -199,7 +199,11 @@ export function createConvertSlice(editor: Editor, state: EditorState, range: Pa
     if (mode === 'markdown') {
       const parsed = parseMarkdownToJson(editor, range.text) as JsonNodeLike | null;
       if (!parsed?.content?.length) return null;
-      return Slice.maxOpen(Fragment.fromJSON(state.schema, parsed.content));
+      const fragment = Fragment.fromJSON(state.schema, parsed.content);
+      // 首尾是普通段落时开放，与光标所在行合并（行内格式就地转换）；
+      // 标题、列表等块保持闭合独立成块——开放会把它们的文字并入所在段落，`## 标题` 就只剩下「标题」
+      const isParagraph = (node: ProseMirrorNode | null) => node?.type.name === 'paragraph';
+      return new Slice(fragment, isParagraph(fragment.firstChild) ? 1 : 0, isParagraph(fragment.lastChild) ? 1 : 0);
     }
     if (mode === 'htmlBlock') {
       const raw = toSingleHtmlBlockSource(range.text);
