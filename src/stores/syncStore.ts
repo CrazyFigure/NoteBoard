@@ -8,6 +8,7 @@ import * as ipc from '../core/ipc/commands';
 import { onSyncConfigChanged, onSyncReport, onSyncStatus } from '../core/ipc/events';
 import { joinPath } from '../features/explorer/pathUtils';
 import { showToast } from './toastStore';
+import { IS_WEB } from '../core/platform';
 
 /** 同步类提示的分组键 */
 export const SYNC_TOAST_KEY = 'sync';
@@ -18,6 +19,8 @@ interface SyncStore {
   config: SyncConfigFile | null;
   status: SyncStatus | null;
   initialized: boolean;
+  /** 网页未配置访问认证或同步进程不可用时，展示明确原因而非一直加载。 */
+  unavailableReason: string | null;
   /** 回收站弹窗 */
   trashOpen: boolean;
   init: () => Promise<void>;
@@ -51,9 +54,15 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
   config: null,
   status: null,
   initialized: false,
+  unavailableReason: null,
   trashOpen: false,
 
   init: async () => {
+    // 未启用部署访问认证时不请求凭证接口，公开访客仍可使用共享笔记。
+    if (IS_WEB && !(await import('../web/runtime')).canUseWebSync()) {
+      set({ initialized: true, unavailableReason: '网页同步需要设置部署访问账号密码，并使用包含同步引擎的镜像。' });
+      return;
+    }
     if (get().initialized) return;
     set({ initialized: true });
     if (!subscribed) {

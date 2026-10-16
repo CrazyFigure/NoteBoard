@@ -9,6 +9,7 @@ import { syncDocumentContent } from '../editor-code/orchestration/syncDocumentCo
 // 🔴 R13：dirty 队列签名使用真实每文档 revision
 import { getDocumentRevision } from '../../core/editor/editorRegistry';
 import { hasUnsavedWork } from './stagingPolicy';
+import { sameKey } from '../explorer/pathUtils';
 
 /** 编辑停止后快速落盘，缩小任务管理器强制终止时可能丢失的时间窗口。 */
 const STAGING_DEBOUNCE_MS = 800;
@@ -64,7 +65,8 @@ async function collectDocuments(keys?: string[]): Promise<StagingDocument[]> {
 
 /** 文档本身就是该暂存副本（从暂存副本恢复的未命名文档，key 即副本路径） */
 function isOwnStagedCopy(docKey: string, stagedPath: string): boolean {
-  return docKey.toLowerCase() === stagedPath.toLowerCase();
+  // Linux / 网页工作区必须区分大小写，复用统一路径身份规则。
+  return sameKey(docKey, stagedPath);
 }
 
 /** 清理已恢复干净且未被明确保留的副本，避免正常编辑产生长期垃圾。 */

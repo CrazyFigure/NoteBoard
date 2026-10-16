@@ -275,6 +275,8 @@ fn read_entries(bytes: Vec<u8>) -> SyncResult<Vec<(String, Vec<u8>)>> {
         let Some(path) = entry.enclosed_name() else { continue };
         let rel: Vec<String> = path.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect();
         let rel = rel.join("/");
+        // ZIP 的 enclosed_name 在不同系统上的含义不同，再按统一跨平台规则校验。
+        if !super::util::portable_relative_path(&rel) { return Err(SyncError::local("备份含不兼容或越界文件名")); }
         if rel.is_empty() || rel == META_NAME || is_in_trash(&rel) {
             continue;
         }
@@ -313,6 +315,8 @@ pub async fn restore_to_sync_root(cfg: &SyncConfigFile, name: &str) -> SyncResul
     }
     let entries = read_entries(fetch_backup(cfg, name).await?)?;
     let in_backup: std::collections::HashSet<String> = entries.iter().map(|(r, _)| super::util::pkey(r)).collect();
+    // 先验证全部恢复目标，再移动现有文件；失败时保持工作区原状。
+    for (rel, _) in &entries { super::util::ensure_safe_destination(&root, rel).map_err(SyncError::local)?; }
     let current = scan_tree(&root)?;
     let now = now_ms();
     let mut changes = Vec::new();
@@ -353,6 +357,9 @@ pub async fn restore_to_sync_root(cfg: &SyncConfigFile, name: &str) -> SyncResul
                 let removed = crate::fsio::trash::move_to_trash(&src).is_ok() || std::fs::remove_file(&src).is_ok();
                 #[cfg(mobile)]
                 let removed = std::fs::remove_file(&src).is_ok();
+                // 无 GUI 同步宿主没有 desktop / mobile 标记，仍保留服务器回收副本。
+                #[cfg(not(any(desktop, mobile)))]
+                let removed = crate::fsio::trash::move_to_trash(&src).is_ok();
                 if removed {
                     changes.push(LocalChange { kind: "deleted".into(), path: src.to_string_lossy().to_string(), from: None });
                     trashed += 1;

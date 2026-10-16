@@ -12,6 +12,33 @@ pub const META_DIR: &str = ".noteboard-sync";
 /// 本地应用远端变更时使用的同盘临时目录（保证 rename 原子且不跨卷）
 pub const TMP_DIR: &str = ".nb-sync-tmp";
 
+/// 同步路径必须同时适用于 Windows / Unix；拒绝远端清单穿越和无法跨端还原的文件名。
+pub fn portable_relative_path(rel: &str) -> bool {
+    !rel.is_empty() && rel.split('/').all(|part| {
+        let base = part.split('.').next().unwrap_or("").to_ascii_uppercase();
+        let reserved = matches!(base.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+            || base.len() == 4 && (base.starts_with("COM") || base.starts_with("LPT")) && matches!(base.as_bytes()[3], b'1'..=b'9');
+        !part.is_empty() && part != "." && part != ".." && !part.ends_with(['.', ' ']) && !reserved
+            && !part.chars().any(|character| character.is_control() || matches!(character, '\\' | ':' | '<' | '>' | '"' | '|' | '?' | '*'))
+    })
+}
+
+/// 校验同步落盘目标：相对路径和现有父级均不能经符号链接越出选定同步目录。
+pub fn ensure_safe_destination(root: &Path, rel: &str) -> Result<(), String> {
+    if !portable_relative_path(rel) { return Err("同步文件路径不合法或不兼容其他平台".into()); }
+    let mut current = root.to_path_buf();
+    for segment in rel.split('/') {
+        current.push(segment);
+        match std::fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => return Err("同步目标包含符号链接，请移出同步目录后重试".into()),
+            Ok(_) => {},
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+            Err(error) => return Err(format!("无法核对同步目标：{}", error)),
+        }
+    }
+    Ok(())
+}
+
 /// 当前 Unix 毫秒时间戳
 pub fn now_ms() -> i64 {
     std::time::SystemTime::now()
@@ -106,6 +133,9 @@ pub fn is_ignored_name(name: &str, is_dir: bool) -> bool {
         || lower.starts_with(".~lock.")
         // fsio::write::atomic_write 的同目录临时文件
         || lower.starts_with(".nb-tmp-")
+        // 网页文件服务的原子写临时文件与增量草稿不进入跨设备同步。
+        || lower.starts_with(".nb-write-")
+        || lower == ".staging"
         || lower.ends_with(".tmp")
         || lower.ends_with(".swp")
         || lower.ends_with(".crdownload")
@@ -208,6 +238,16 @@ pub fn human_size(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 任意宿主都拒绝目录穿越和另一系统的保留名称，保留中文与正常相对路径。
+    #[test]
+    fn portable_paths_reject_traversal_and_windows_reserved_names() {
+        for invalid in ["../secret", "/etc/passwd", "a/../../secret", "a\\b.md", "a/NUL.txt", "a/file:stream", "a/COM1.md", "a/file."] {
+            assert!(!portable_relative_path(invalid), "{}", invalid);
+        }
+        assert!(portable_relative_path("项目/中文笔记.md"));
+        assert!(portable_relative_path(".nb-trash/项目/中文笔记.md"));
+    }
 
     #[test]
     fn unique_path_appends_counter_before_extension() {

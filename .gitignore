@@ -69,3 +69,6 @@ tauri-private.key
 # ---------- 开发期用户数据（避免误提交本机笔记）----------
 /sandbox/
 /.noteboard-dev/
+dist-web/
+.web-data/
+server/native/target/

@@ -1,0 +1,18 @@
+# Docker / 1Panel 均可直接使用；命名卷自动持久化笔记、配置、暂存和回收文件。
+services:
+  noteboard:
+    image: crazyfigure/noteboard:latest
+    ports:
+      - "${NOTEBOARD_PORT:-8080}:3000"
+    environment:
+      # 两项同时留空为公开共享；同时设置后浏览器会要求登录。
+      NOTEBOARD_USERNAME: "${NOTEBOARD_USERNAME:-}"
+      NOTEBOARD_PASSWORD: "${NOTEBOARD_PASSWORD:-}"
+      # 反向代理保留原始 Host 时可留空；否则设置为浏览器访问的完整源地址。
+      NOTEBOARD_PUBLIC_URL: "${NOTEBOARD_PUBLIC_URL:-}"
+    volumes:
+      - noteboard-data:/data
+    restart: unless-stopped
+    stop_grace_period: 30s
+volumes:
+  noteboard-data:

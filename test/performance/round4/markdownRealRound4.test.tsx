@@ -2,7 +2,7 @@
 // 只把扩展装配缩到正文所需集合，隔离图表、拖动和菜单，以定位协调器初始化时序。
 import React, { act, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { TipTapEditor } from '@/features/editor-md/TipTapEditor';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useWindowStore } from '@/stores/windowStore';
@@ -23,6 +23,18 @@ vi.mock('@/features/editor-md/ExternalChangeBanner', () => ({ ExternalChangeBann
 vi.mock('@/features/editor-md/imagePaste', () => ({ handlePastedImageFile: vi.fn() }));
 vi.mock('@/features/editor-md/markdownAutoSave', () => ({ autoSaveDocument: vi.fn() }));
 vi.mock('@/core/shortcuts', () => ({ registerShortcut: () => () => {} }));
+
+// jsdom 不实现文本 Range 的布局 API；提供空矩形以覆盖真实编辑器的聚焦滚动流程。
+const originalRangeRect = Range.prototype.getBoundingClientRect;
+const originalRangeRects = Range.prototype.getClientRects;
+beforeAll(() => {
+  Range.prototype.getBoundingClientRect = () => new DOMRect();
+  Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
+});
+afterAll(() => {
+  Range.prototype.getBoundingClientRect = originalRangeRect;
+  Range.prototype.getClientRects = originalRangeRects;
+});
 
 beforeEach(() => {
   (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;

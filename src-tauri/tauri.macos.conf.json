@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [{
+      "label": "nb-main", "title": "NoteBoard", "width": 1200, "height": 800,
+      "minWidth": 680, "minHeight": 480, "resizable": true,
+      "decorations": true, "shadow": true, "visible": false, "dragDropEnabled": true
+    }]
+  },
+  "bundle": {
+    "targets": ["dmg"],
+    "icon": ["icons/icon.icns"],
+    "macOS": { "minimumSystemVersion": "12.0", "signingIdentity": "-" }
+  }
+}

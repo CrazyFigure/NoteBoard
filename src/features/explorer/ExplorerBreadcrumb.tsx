@@ -7,6 +7,7 @@ import { ChevronRight, HardDrive, Folder } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 import { useExplorerStore } from './explorerStore';
 import { useTreeData } from './useTreeData';
+import { USES_WINDOWS_PATHS, IS_WEB } from '../../core/platform';
 
 export interface PathSegment {
   name: string;
@@ -20,6 +21,19 @@ export interface PathSegment {
  */
 export function parsePathSegments(rawPath: string): PathSegment[] {
   if (!rawPath) return [];
+
+  // POSIX 路径保持正斜杠；网页的虚拟工作区是可访问根，不能导航到服务器真实根目录。
+  if (!USES_WINDOWS_PATHS) {
+    const parts = rawPath.split('/').filter(Boolean);
+    const result: PathSegment[] = [];
+    if (!IS_WEB) result.push({ name: '/', fullPath: '/', isDrive: true, isLast: parts.length === 0 });
+    let current = '';
+    for (let index = 0; index < parts.length; index += 1) {
+      current += '/' + parts[index];
+      result.push({ name: parts[index], fullPath: current, isDrive: false, isLast: index === parts.length - 1 });
+    }
+    return result;
+  }
 
   // 统一替换为标准 Windows 反斜杠格式
   const normalized = rawPath.replace(/\//g, '\\');

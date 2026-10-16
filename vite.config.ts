@@ -219,12 +219,13 @@ const hasAllocatedDevPort = Number.isInteger(configuredDevPort)
 const devPort = hasAllocatedDevPort ? configuredDevPort : 1421;
 
 // Vite 与 Tauri 必须使用同一端口；动态端口已预选完成时禁止 Vite 静默切换，避免 WebView 串线。
-export default defineConfig(({ command }) => ({
+export default defineConfig(({ command, mode }) => ({
   base: './',
   plugins: [react(), tailwindcss(), excalidrawLocalesPlugin(), moduleSourceManifestPlugin()],
   define: {
     // 构建目标平台（Tauri CLI 运行 beforeDev/BuildCommand 时注入 TAURI_ENV_PLATFORM），供前端同步判定桌面/移动端
-    __NB_TARGET_PLATFORM__: JSON.stringify(process.env.TAURI_ENV_PLATFORM ?? ''),
+    // 网页构建使用独立运行时；原生构建仍由 Tauri 注入真实平台。
+    __NB_TARGET_PLATFORM__: JSON.stringify(mode === 'web' ? 'web' : process.env.TAURI_ENV_PLATFORM ?? ''),
     // 仅开发服务器允许 ?mock=1 浏览器预览（模拟 Tauri IPC）；生产构建中该分支被常量折叠移除
     __NB_DEV_MOCK__: JSON.stringify(command === 'serve'),
     'process.env.IS_PREACT': JSON.stringify('false'),
@@ -232,6 +233,11 @@ export default defineConfig(({ command }) => ({
   },
   resolve: {
     alias: {
+      // 仅网页模式替换系统接口，避免改变 Windows / Android 的原生调用和界面行为。
+      ...(mode === 'web' ? Object.fromEntries([
+        '@tauri-apps/api/core', '@tauri-apps/api/window', '@tauri-apps/api/webview',
+        '@tauri-apps/api/event', '@tauri-apps/api/app', '@tauri-apps/plugin-dialog', '@tauri-apps/plugin-fs',
+      ].map((name) => [name, fileURLToPath(new URL('./src/web/runtime.ts', import.meta.url))])) : {}),
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
@@ -240,6 +246,8 @@ export default defineConfig(({ command }) => ({
     entries: ['index.html'],
   },
   server: {
+    // 网页开发时复用生产 HTTP 服务；部署镜像直接由该服务托管静态文件。
+    ...(mode === 'web' ? { proxy: { '/api': 'http://127.0.0.1:3000' } } : {}),
     host: '127.0.0.1',
     port: devPort,
     strictPort: hasAllocatedDevPort,

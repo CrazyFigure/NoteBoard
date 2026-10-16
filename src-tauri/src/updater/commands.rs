@@ -131,7 +131,7 @@ fn installer_asset_score(asset_name: &str) -> i32 {
 }
 
 /// 对 Release 附件资产进行打分，优先匹配 Windows 可执行安装包
-#[cfg(not(target_os = "android"))]
+#[cfg(target_os = "windows")]
 fn installer_asset_score(asset_name: &str) -> i32 {
     let normalized = asset_name.to_ascii_lowercase();
     if !(normalized.ends_with(".exe") || normalized.ends_with(".msi")) {
@@ -161,6 +161,19 @@ fn installer_asset_score(asset_name: &str) -> i32 {
         score += 1;
     }
     score
+}
+
+/// Unix 只匹配本系统与 CPU 架构的安装包，防止误下载 Windows EXE 或另一种 Mac 架构。
+#[cfg(all(not(target_os = "android"), not(target_os = "windows")))]
+fn installer_asset_score(asset_name: &str) -> i32 {
+    let name = asset_name.to_ascii_lowercase();
+    let extension_ok = if cfg!(target_os = "macos") { name.ends_with(".dmg") }
+        else if cfg!(target_os = "linux") { name.ends_with(".appimage") || name.ends_with(".deb") } else { false };
+    if !extension_ok { return -1; }
+    let arm = name.contains("aarch64") || name.contains("arm64");
+    let x64 = name.contains("x86_64") || name.contains("amd64") || name.contains("x64");
+    if !name.contains("universal") && ((cfg!(target_arch = "aarch64") && !arm) || (cfg!(target_arch = "x86_64") && !x64)) { return -1; }
+    if name.ends_with(".appimage") { 20 } else { 10 }
 }
 
 /// 从 Release 资产列表中挑选最优安装包
@@ -204,7 +217,9 @@ fn sanitize_asset_file_name(asset_name: &str) -> String {
 fn is_valid_update_download_url(url: &str) -> bool {
     let normalized = url.trim().to_ascii_lowercase();
     (normalized.starts_with("https://") || normalized.starts_with("http://"))
-        && (normalized.ends_with(".exe") || normalized.ends_with(".msi"))
+        && if cfg!(target_os = "windows") { normalized.ends_with(".exe") || normalized.ends_with(".msi") }
+            else if cfg!(target_os = "macos") { normalized.ends_with(".dmg") }
+            else { normalized.ends_with(".appimage") || normalized.ends_with(".deb") }
         && !normalized.chars().any(|character| character.is_control())
 }
 
@@ -442,7 +457,7 @@ fn remove_stale_update_files(update_dir: &Path, keep: &Path) {
 }
 
 /// 直接唤起安装包；安装后的启动行为完全交给安装器完成页的用户选项决定
-#[cfg(not(mobile))]
+#[cfg(target_os = "windows")]
 fn spawn_update_installer(installer_path: &Path) -> std::io::Result<()> {
     let extension = installer_path
         .extension()
@@ -465,6 +480,15 @@ fn spawn_update_installer(installer_path: &Path) -> std::io::Result<()> {
         ));
     }
 
+    Ok(())
+}
+
+/// Unix 交由系统打开安装包所在目录，由用户完成覆盖安装；不直接执行下载的文件。
+#[cfg(all(desktop, not(target_os = "windows")))]
+fn spawn_update_installer(installer_path: &Path) -> std::io::Result<()> {
+    let parent = installer_path.parent().unwrap_or(installer_path);
+    let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+    Command::new(opener).arg(parent).spawn()?;
     Ok(())
 }
 
@@ -762,7 +786,10 @@ pub async fn download_and_install_update(
         spawn_update_installer(&installer_path).map_err(|error| error.to_string())?;
 
         // 延迟 600ms 退出当前实例，让前端收到成功结果，并为安装器释放程序文件与单实例资源
+        // Windows 安装器需要释放当前程序；Unix 打开目录后继续保留应用，等待用户手动安装。
+        #[cfg(target_os = "windows")]
         let handle_clone = app_handle.clone();
+        #[cfg(target_os = "windows")]
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(600));
             handle_clone.exit(0);

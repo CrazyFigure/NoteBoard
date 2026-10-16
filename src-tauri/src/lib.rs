@@ -163,6 +163,15 @@ pub fn run() {
         .on_window_event(|window, event| {
             window::manager::on_window_event(window, event)
         })
-        .run(tauri::generate_context!())
-        .expect("error while running NoteBoard application");
+        .build(tauri::generate_context!())
+        .expect("error while building NoteBoard application")
+        .run(|_app, _event| {
+            // Finder 的“打开方式”通过 Opened 事件传入文件，不能仅依赖命令行 argv。
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = _event {
+                let mut argv = vec!["NoteBoard".to_string()];
+                argv.extend(urls.into_iter().filter_map(|url| url.to_file_path().ok()).map(|path| path.to_string_lossy().to_string()));
+                if argv.len() > 1 { bootstrap::single_instance::handle_second_instance(_app, argv); }
+            }
+        });
 }

@@ -25,7 +25,8 @@ import { useFontPackStore } from './fontPackStore';
 
 // ── 默认值 ──
 
-const DEFAULT_SETTINGS: Settings = {
+// 网页适配层复用同一套默认值，避免新部署和桌面端的设置模型逐渐分叉。
+export const DEFAULT_SETTINGS: Settings = {
   schemaVersion: 1,
   revision: 0,
   appearance: {

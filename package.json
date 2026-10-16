@@ -1,6 +1,6 @@
 {
   "name": "noteboard",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "description": "Windows 桌面笔记 + 画板软件",
   "type": "module",
   "license": "GPL-3.0-only",
@@ -10,6 +10,10 @@
     "prebuild": "node scripts/sync-version.mjs",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:web": "tsc --noEmit && vite build --mode web --outDir dist-web",
+    "dev:web": "vite --mode web",
+    "start:web": "node server/index.mjs",
+    "test:web": "node --test server/test/*.test.mjs",
     "tauri": "node scripts/run-tauri.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",

@@ -2,6 +2,8 @@
 // 注册表 + 作用域（编辑器聚焦 vs 全局）+ Ctrl+B 冲突解决
 // 详见 docs/07-UI布局与交互规范.md §9
 
+import { USES_COMMAND_KEY } from './platform';
+
 type ShortcutScope = 'global' | 'editor' | 'explorer' | 'outline';
 
 interface ShortcutEntry {
@@ -35,10 +37,11 @@ export function registerShortcut(entry: ShortcutEntry): () => void {
 /** 将 KeyboardEvent 转换为快捷键字符串 */
 function eventToKey(e: KeyboardEvent): string {
   const parts: string[] = [];
-  if (e.ctrlKey) parts.push('Ctrl');
+  // 注册表沿用 Ctrl 标记；Mac 的 Command 映射为主修饰键，Windows 保持原有行为。
+  if (e.ctrlKey || USES_COMMAND_KEY && e.metaKey) parts.push('Ctrl');
   if (e.shiftKey) parts.push('Shift');
   if (e.altKey) parts.push('Alt');
-  if (e.metaKey) parts.push('Meta');
+  if (e.metaKey && !USES_COMMAND_KEY) parts.push('Meta');
 
   // 处理特定物理按键码（如 Slash/NumpadDivide，防止输入法等环境干扰导致 e.key 非预期）
   if (e.code === 'Slash' || e.code === 'NumpadDivide') {

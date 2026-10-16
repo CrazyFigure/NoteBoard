@@ -48,7 +48,8 @@ vi.mock('@/features/session/closedWindowSession', () => ({
   loadRestoredTab: vi.fn(),
 }));
 vi.mock('@/features/external/missingFileGuard', () => ({
-  checkActiveDocumentStillExists: vi.fn().mockResolvedValue(undefined),
+  // 聚焦检查始终返回 Promise，避免 restoreAllMocks 后替身退化为 undefined。
+  checkActiveDocumentStillExists: async () => undefined,
 }));
 // Markdown 专属 UI 替身（内核真实）
 vi.mock('@/features/editor-md/extensions', async () => {

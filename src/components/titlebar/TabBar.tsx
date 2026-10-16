@@ -79,6 +79,7 @@ import * as ipc from '../../core/ipc/commands';
 import { getExplorerFileIcon } from '../../features/explorer/fileIcons';
 import { checkOpenDocumentStillExists } from '../../features/external/missingFileGuard';
 import { useSyncStore } from '../../stores/syncStore';
+import { IS_WEB } from '../../core/platform';
 
 // ── 类型图标映射 ──
 
@@ -430,7 +431,7 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
           </button>
 
           {/* 工具型视图（文本对比）无文档模型，不支持迁移到独立窗口 */}
-          {!tab.toolKind && (
+          {!tab.toolKind && !IS_WEB && (
             <>
               <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />
 

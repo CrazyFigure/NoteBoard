@@ -170,7 +170,10 @@ pub fn restore(root: &Path, id: &str) -> Result<String, String> {
         .map(|m| m.orig)
         .filter(|o| !o.is_empty() && !is_in_trash(o))
         .unwrap_or_else(|| base_name(id));
+    // 旧本机基线也可能来自其他系统，不允许用越界原路径恢复文件。
+    if !super::util::portable_relative_path(&orig) { return Err("回收站原路径不合法".into()); }
     let dest_rel = unique_rel_path(&orig, |p| rel_to_abs(root, p).exists());
+    super::util::ensure_safe_destination(root, &dest_rel)?;
     let dest = rel_to_abs(root, &dest_rel);
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("创建原目录失败：{}", e))?;

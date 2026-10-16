@@ -222,6 +222,10 @@ pub fn scan_tree(root: &Path) -> SyncResult<Vec<ScannedFile>> {
                     stack.push((entry.path(), child_rel));
                 }
             } else if meta.is_file() && !is_ignored_name(&name, false) {
+                // Linux 允许的部分文件名无法在 Windows 还原，明确失败而不是改名覆盖或静默丢弃。
+                if !super::util::portable_relative_path(&child_rel) {
+                    return Err(SyncError::local(format!("文件名不兼容多端同步，请改名后重试：{}", child_rel)));
+                }
                 out.push(ScannedFile { rel: child_rel, size: meta.len(), mtime: mtime_ms(&meta) });
             }
         }
@@ -379,6 +383,10 @@ async fn sync_once(
         }
         None => (Manifest { format: MANIFEST_FORMAT, ..Default::default() }, None),
     };
+    // 扫描虽跳过符号链接，远端下载也必须检查目标父级，避免借现有链接写出同步根目录。
+    for entry in manifest.entries.values() {
+        super::util::ensure_safe_destination(root, &entry.rec.path).map_err(SyncError::local)?;
+    }
     // 远端没有清单（首次使用或远端数据被清空）：本机基线作废，按路径与内容重新配对
     if base_rev.is_none() {
         state::with_state(|s| {

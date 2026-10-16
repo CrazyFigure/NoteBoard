@@ -20,6 +20,7 @@ pub mod error;
 pub mod hooks;
 pub mod manifest;
 pub mod plan;
+pub mod runtime;
 pub mod scheduler;
 pub mod secret;
 pub mod state;

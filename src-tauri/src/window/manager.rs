@@ -125,7 +125,8 @@ pub fn create_window(app: &tauri::AppHandle, label: String) -> Result<(), String
         .title("NoteBoard")
         .inner_size(1200.0, 800.0)
         .min_inner_size(680.0, 480.0)
-        .decorations(false)
+        // macOS / Linux 交给窗口管理器提供原生控制，Windows 继续使用现有自绘标题栏。
+        .decorations(cfg!(any(target_os = "macos", target_os = "linux")))
         .visible(false)
         .shadow(true)
         // 启用窗口拖拽文件接收能力
