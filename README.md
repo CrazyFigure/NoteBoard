@@ -32,7 +32,16 @@ NoteBoard 是一款轻量、现代化的跨端效率工具，提供桌面、安�
 | **macOS** | `.dmg` | Apple Silicon / Intel 分别构建；采用系统标题栏与 Command 快捷键，当前使用 ad-hoc 签名，未做 Apple 公证。 |
 | **Linux** | `.deb` / `.AppImage` | x86_64；基于 Ubuntu 22.04 构建，AppImage 首次使用需赋予执行权限，可能需要系统安装 FUSE。 |
 
-macOS / Linux 包由 GitHub Actions 的 **macOS and Linux packages** 工作流生成；手动运行可下载 Artifacts，`v*` 标签运行时附加到对应 Release。macOS 首次启动如被系统拦截，可在“系统设置 → 隐私与安全性”允许打开。Unix 版本的更新安装包下载后由用户手动安装。多端同步复用同一引擎和配置界面，数据与缓存保存到各系统的标准应用目录。
+macOS / Linux 包由 GitHub Actions 的 **macOS and Linux packages** 工作流生成；手动运行可下载 Artifacts，`v*` 标签运行时附加到对应 Release。macOS 首次启动如被系统拦截，可在“系统设置 → 隐私与安全性”允许打开。Unix 版本可手动下载安装更新，macOS 也可使用下方 Homebrew 命令。多端同步复用同一引擎和配置界面，数据与缓存保存到各系统的标准应用目录。
+
+### 软件包管理器
+
+| 平台 | 安装 | 更新 |
+|---|---|---|
+| Windows / WinGet | `winget install --id CrazyFigure.NoteBoard --exact` | `winget upgrade --id CrazyFigure.NoteBoard --exact` |
+| macOS / Homebrew | `brew install --cask crazyfigure/tap/noteboard` | `brew update && brew upgrade --cask crazyfigure/tap/noteboard` |
+
+WinGet 已提交[官方收录申请](https://github.com/microsoft/winget-pkgs/pull/453871)，**审核合并入库后命令才可用**。Homebrew 使用[项目维护的 Tap](https://github.com/CrazyFigure/homebrew-tap)，自动选择 Apple Silicon / Intel 包并跟进正式 Release；当前未进入 Homebrew 官方主仓，安装包仍未经过 Apple 公证。
 
 ## Docker / 1Panel 网页部署
 
@@ -118,7 +127,7 @@ docker compose up -d
 | **智能保存策略** | Markdown、画板、多维表格与思维导图支持自动保存；代码及配置文件支持手动保存与防丢拦截。 |
 | **高性能大文档优化** | 具备分段虚拟滚动、视口懒渲染与 Worker 分段解析机制，平稳处理长篇文档与海量数据。 |
 | **应用内更新** | 启动后检查新版本并展示更新日志，下载安装后自动重启。 |
-| **多端同步与备份** | 可选开启：指定一个文件夹，通过 WebDAV（可自定义 User-Agent）、S3 兼容存储、GitHub、Gitee、GitCode 或 GitLab（支持自建）在电脑与手机间双向同步；改名不丢失文件身份，两端改动不同段落时按行合并，同时修改以最新结果为准；同步回收站可跨设备恢复；支持定时将同步文件夹打包备份到本地或云端并一键恢复。密码与令牌加密保存在本机。 |
+| **多端同步与备份** | 可选开启：指定一个文件夹，通过 WebDAV（可自定义 User-Agent）、S3 兼容存储、GitHub、Gitee、GitCode 或 GitLab（支持自建）在电脑、手机与网页服务间双向同步；改名不丢失文件身份，两端改动不同段落时按行合并，同时修改以最新结果为准；同步回收站可跨设备恢复；支持定时将同步文件夹打包备份到本地或云端并一键恢复。Windows 凭证使用 DPAPI；Unix 凭证由应用目录和文件权限保护。 |
 
 ## 安卓端特性
 
