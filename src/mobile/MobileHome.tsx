@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import type { FileTreeNode, FavoriteNode } from '../core/ipc/types';
 import * as ipc from '../core/ipc/commands';
+import { IS_WEB } from '../core/platform';
 import { getExplorerFileIcon } from '../features/explorer/fileIcons';
 import { basenameOf, isSubPath, pathKey, PATH_SEP } from '../features/explorer/pathUtils';
 import { useFavoritesStore } from '../features/favorites/favoritesStore';
@@ -653,7 +654,8 @@ export function MobileHome() {
             <span className="nb-m-action-icon"><Import size={18} /></span>
             <span className="nb-m-action-text">
               <span className="nb-m-action-label">导入文件</span>
-              <span className="nb-m-action-desc">从手机其它位置复制到当前文件夹</span>
+              {/* 网页操作服务器文件，不能把服务器目录描述为手机本地存储。 */}
+              <span className="nb-m-action-desc">{IS_WEB ? '选择服务器文件，或从本机上传' : '从手机其它位置复制到当前文件夹'}</span>
             </span>
           </button>
           {syncRoot && (

@@ -229,7 +229,8 @@ function displayNameFromPicked(picked: string): string {
 
 /** 通过系统文件选择器导入文件到当前文件夹（复制，原文件不受影响） */
 export async function importFiles(): Promise<void> {
-  const picked = await open({ multiple: true });
+  // 网页选择器以当前服务器目录为起点；末尾斜杠表示目录，不能被当作待打开文件截去一级。
+  const picked = await open({ multiple: true, ...(IS_WEB ? { defaultPath: `${useMobileStore.getState().currentFolder}/` } : {}) });
   if (!picked) return;
   const list = Array.isArray(picked) ? picked : [picked];
   if (list.length === 0) return;

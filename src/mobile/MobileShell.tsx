@@ -5,7 +5,7 @@
 import { useEffect, useRef } from 'react';
 import { onBackButtonPress } from '@tauri-apps/api/app';
 import * as ipc from '../core/ipc/commands';
-import { IS_NATIVE_MOBILE } from '../core/platform';
+import { IS_NATIVE_MOBILE, IS_WEB } from '../core/platform';
 import { useWindowStore } from '../stores/windowStore';
 import { useSearchStore } from '../stores/searchStore';
 import { useLayoutStore } from '../stores/layoutStore';
@@ -118,6 +118,11 @@ export function MobileShell() {
       useMobileStore.getState().setPage('home');
     }
   }, [activeKey]);
+
+  // 手机网页保存到服务器后返回首页时重新读取列表，避免新笔记直到手动刷新才出现。
+  useEffect(() => {
+    if (IS_WEB && page === 'home') void refreshCurrentFolder();
+  }, [page]);
 
   // 进入后台立即保存；回到前台刷新权限、文件列表、外部修改检测并接收新传入文件
   useEffect(() => {
