@@ -1317,6 +1317,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     Markdown 编辑
                   </div>
                   <ShortcutItem keyCombo="/" label="Markdown 中触发斜杠快捷插入" />
+                  <ShortcutItem keyCombo="Ctrl + /" label="切换可视化 / 源码模式" />
                 </div>
 
                 {/* Markdown 回车类按键（规则实现见 features/editor-md/enterKeyBehavior.ts）；细节放在 tip 中，行内只留要点 */}

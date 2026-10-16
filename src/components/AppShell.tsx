@@ -32,6 +32,7 @@ import { useSearchStore } from '../stores/searchStore';
 // 🔴 S03：快捷键与工具栏统一走 core 能力注册表，不再从编辑器组件导入实例 getter
 import { getEditorCapabilities } from '../core/editor/editorRegistry';
 import { registerShortcut } from '../core/shortcuts';
+import { emit } from '../core/emitter';
 import { saveDocument } from '../features/editor-code/orchestration/saveDocument';
 import {
   openFileDialog,
@@ -185,6 +186,20 @@ export function AppShell(_props: { children?: React.ReactNode }) {
       description: '关闭当前标签页',
     });
 
+    // Ctrl+/ 切换 Markdown 可视化 / 源码模式：全局只注册一次，按活动标签分发
+    // （非 Markdown 标签没有该事件的监听者，按下无副作用）
+    const unregToggleMdMode = registerShortcut({
+      key: 'Ctrl+/',
+      action: () => {
+        const curKey = useWindowStore.getState().activeKey;
+        if (curKey) {
+          emit('toggle-md-view-mode', { key: curKey });
+        }
+      },
+      scope: 'global',
+      description: '切换 Markdown 可视化 / 源码模式',
+    });
+
     // ── JSON 快捷操作（支持 .json / .txt / 源码模式等） ──
 
     // 1. JSON 展开 / 格式化 (Shift+Alt+F / Ctrl+Alt+L)
@@ -256,6 +271,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
       unregCtrlF();
       unregCtrlH();
       unregCtrlW();
+      unregToggleMdMode();
       unregExpandShiftAltF();
       unregExpandCtrlAltL();
       unregMinifyShiftAltM();

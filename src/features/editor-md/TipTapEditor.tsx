@@ -39,7 +39,6 @@ import { createBaseExtensions, typographyCompartment } from '../editor-code/setu
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { useSettingsStore } from '../../stores/settingsStore';
-import { registerShortcut } from '../../core/shortcuts';
 import { on, off, emit } from '../../core/emitter';
 import { MarkdownModeToggle } from './MarkdownModeToggle';
 import { ExternalChangeBanner } from './ExternalChangeBanner';
@@ -749,23 +748,9 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     };
   }, [docKey, toggleViewMode]);
 
-  // 注册当前 Markdown 文档专用的 Ctrl+/ 模式切换快捷键
-  useEffect(() => {
-    const unreg = registerShortcut({
-      key: 'Ctrl+/',
-      action: () => {
-        const activeKey = useWindowStore.getState().activeKey;
-        if (activeKey === docKey) {
-          toggleViewMode();
-        }
-      },
-      scope: 'global',
-      description: '切换 Markdown 可视化 / 源码模式',
-    });
-    return () => {
-      unreg();
-    };
-  }, [docKey, toggleViewMode]);
+  // Ctrl+/ 模式切换快捷键由 AppShell 全局注册一次，经 toggle-md-view-mode 事件按活动文档分发到上方监听：
+  // 不能每个实例各注册一条——保活机制下会同时挂载两个 Markdown 编辑器，注册表只命中先注册的条目，
+  // 若那条属于非活动文档则按键无效。
 
   // 组件卸载时清理（注意：不要删除基线，以便切回 Tab 时仍能保持正确的脏态判定）
   useEffect(() => {
