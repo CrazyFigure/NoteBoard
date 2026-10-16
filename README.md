@@ -68,6 +68,8 @@ sudo mkdir -p /opt/noteboard/data
 sudo chown 1000:1000 /opt/noteboard/data
 ```
 
+也可在 1Panel“系统 → 文件”中找到 `/opt/noteboard/data`，点击该目录的用户 / 用户组，将两项均改为 `1000`（宿主机可能显示为 `debian (1000)` 等名称，以数字 ID 为准）。**挂载选“读写”不会自动修改目录属主，此步骤不可省略**；否则启动时会出现 `EACCES: permission denied, mkdir '/data/workspace'`。修正后启动或重启 NoteBoard 容器即可，环境变量仍可留空。
+
 | 参数 | 填写值 / 说明 |
 |---|---|
 | 名称 | `noteboard` |
