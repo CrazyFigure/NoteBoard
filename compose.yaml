@@ -3,7 +3,8 @@ services:
   noteboard:
     image: crazyfigure/noteboard:latest
     ports:
-      - "${NOTEBOARD_PORT:-8080}:3000"
+      # 仅调整宿主机访问端口；容器内保持 3000，与镜像健康检查一致。
+      - "${NOTEBOARD_PORT:-18427}:3000"
     environment:
       # 两项同时留空为公开共享；同时设置后浏览器会要求登录。
       NOTEBOARD_USERNAME: "${NOTEBOARD_USERNAME:-}"
