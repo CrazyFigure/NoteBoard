@@ -117,7 +117,7 @@ pub fn create_window(app: &tauri::AppHandle, label: String) -> Result<(), String
     let l = label.clone();
 
     std::thread::spawn(move || {
-        let _ = tauri::WebviewWindowBuilder::new(
+        let builder = tauri::WebviewWindowBuilder::new(
             &handle,
             &l,
             tauri::WebviewUrl::App("index.html".into()),
@@ -128,10 +128,11 @@ pub fn create_window(app: &tauri::AppHandle, label: String) -> Result<(), String
         // macOS / Linux 交给窗口管理器提供原生控制，Windows 继续使用现有自绘标题栏。
         .decorations(cfg!(any(target_os = "macos", target_os = "linux")))
         .visible(false)
-        .shadow(true)
-        // 启用窗口拖拽文件接收能力
-        .drag_and_drop(true)
-        .build();
+        .shadow(true);
+        // 窗口层拖拽开关是 Windows 专有 API；其他系统保留默认启用的 WebView 文件拖拽处理。
+        #[cfg(target_os = "windows")]
+        let builder = builder.drag_and_drop(true);
+        let _ = builder.build();
     });
 
     Ok(())
