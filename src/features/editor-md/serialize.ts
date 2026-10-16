@@ -8,6 +8,7 @@
 import type { Editor } from '@tiptap/core';
 import { textWouldFormInlineMath } from './mathSyntax';
 import { beginRawSegmentSession, endRawSegmentSession, restoreRawSegments } from './rawMarkdownSegments';
+import { INVISIBLE_CHARACTER_ENTITIES, isDecodableEntitySuffix, usesInvisibleCharacterEntities } from './markdownHtmlEntities';
 
 // CommonMark 允许反斜杠转义的 ASCII 标点；这些字符前的双反斜杠不能擅自折叠，
 // 否则原本可见的反斜杠会在下一次解析时被当成转义符吞掉。
@@ -18,8 +19,7 @@ const TIPTAP_MARKDOWN_SPECIAL_CHARACTERS = new Set(['`', '*', '_', '[', ']', '~'
 // Unicode 标点与符号类别用于发现“可能是转义前缀”的反斜杠，不按具体字符逐项维护。
 const UNICODE_PUNCTUATION_OR_SYMBOL = /[\p{P}\p{S}]/u;
 
-// `&` 之后若紧跟实体名/数字实体（如 `gt;`、`#39;`），该 `&` 必须保持编码
-const ENTITY_LIKE_SUFFIX = /^(?:[a-zA-Z][a-zA-Z0-9]{1,31}|#\d{1,7}|#[xX][0-9a-fA-F]{1,6});/;
+// `&` 之后若紧跟会被解码的实体（如 `gt;`、`#39;`），该 `&` 必须保持编码（判断见 isDecodableEntitySuffix）
 
 // ── 结构性必要转义 ──
 // 全局转义集合刻意保持最小（避免往返中转义累积）；但少数字面量字符在特定位置不转义就会改变文档结构：
@@ -124,7 +124,7 @@ function finalizeStructuralEscapes(markdown: string): string {
  * 转义普通文本中的 Markdown 标记，同时避免把 Windows 路径等安全反斜杠无条件翻倍。
  * 反斜杠仅在行尾或 CommonMark 可转义标点前需要自我转义；字母、数字、中文前可原样保留。
  */
-function escapeMarkdownText(text: string): string {
+function escapeMarkdownText(text: string, invisibleAsEntities = false): string {
   let output = '';
   for (let index = 0; index < text.length; index += 1) {
     const character = text[index];
@@ -140,6 +140,12 @@ function escapeMarkdownText(text: string): string {
         || nextCharacter === '\n'
         || COMMONMARK_ESCAPABLE_PUNCTUATION.has(nextCharacter);
       output += mustEscapeBackslash ? '\\\\' : '\\';
+      continue;
+    }
+    // 原文以实体书写不可见空白（如 `&nbsp;`）时写回实体；否则保持字符原样
+    const invisibleEntity = invisibleAsEntities ? INVISIBLE_CHARACTER_ENTITIES[character] : undefined;
+    if (invisibleEntity) {
+      output += invisibleEntity;
       continue;
     }
     output += TIPTAP_MARKDOWN_SPECIAL_CHARACTERS.has(character)
@@ -312,6 +318,36 @@ function applyMarkdownCleanupCandidates(
   return output;
 }
 
+/** 仅记录源码写法、不影响文档语义的节点属性（codeBlock.sourceFence、table.markdownStyle） */
+const SOURCE_FORMAT_ATTRIBUTES = ['sourceFence', 'markdownStyle'];
+
+/** 深拷贝 JSON 并去掉源码写法属性 */
+function withoutSourceFormatAttributes(json: unknown): unknown {
+  if (Array.isArray(json)) return json.map(withoutSourceFormatAttributes);
+  if (!json || typeof json !== 'object') return json;
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(json)) {
+    if (key === 'attrs' && value && typeof value === 'object') {
+      const attrs = { ...(value as Record<string, unknown>) };
+      for (const name of SOURCE_FORMAT_ATTRIBUTES) delete attrs[name];
+      result.attrs = attrs;
+    } else {
+      result[key] = withoutSourceFormatAttributes(value);
+    }
+  }
+  return result;
+}
+
+/** 忽略源码写法属性比较两个文档（仅在 eq 不相等时调用，避免常规路径整篇转 JSON） */
+function sameIgnoringSourceFormat(reference: { toJSON?(): unknown }, other: unknown): boolean {
+  const otherJson = (other as { toJSON?(): unknown } | null)?.toJSON?.();
+  if (typeof reference.toJSON !== 'function' || otherJson === undefined) return false;
+  // 参考文档按序列化时同样的规则去掉会被解析器丢弃的行尾空白，再与重新解析的结果比较
+  const referenceJson = trimDroppedTrailingWhitespace(reference.toJSON() as SerializableJsonNode);
+  return JSON.stringify(withoutSourceFormatAttributes(referenceJson))
+    === JSON.stringify(withoutSourceFormatAttributes(otherJson));
+}
+
 /**
  * 在不改变解析后文档的前提下删除冗余转义。
  * 只做一次批量语义校验：全部候选都安全时一并清理，存在 Markdown 歧义时
@@ -320,7 +356,7 @@ function applyMarkdownCleanupCandidates(
  */
 function removeRedundantMarkdownEscapes(
   markdown: string,
-  referenceDoc: { eq(other: unknown): boolean; attrs?: Record<string, unknown> },
+  referenceDoc: { eq(other: unknown): boolean; attrs?: Record<string, unknown>; toJSON?(): unknown },
   nodeFromJSON: (json: unknown) => unknown,
   manager: MarkdownManagerLike | null | undefined,
   // 把候选文本还原为最终输出形态（必要转义标记、原样片段占位符）后再做语义校验
@@ -337,7 +373,10 @@ function removeRedundantMarkdownEscapes(
       const parsed = manager.parse!(restoreForParse(candidateMarkdown));
       // 末尾换行等文档级属性不来自正文解析，比较前沿用参考文档的属性
       if (referenceDoc.attrs) parsed.attrs = { ...referenceDoc.attrs };
-      return referenceDoc.eq(nodeFromJSON(parsed));
+      const parsedDoc = nodeFromJSON(parsed);
+      if (referenceDoc.eq(parsedDoc)) return true;
+      // 原文围栏、表格风格等源码写法属性随解析来源而变（新建节点为空），与语义无关：忽略后再比较一次
+      return sameIgnoringSourceFormat(referenceDoc, parsedDoc);
     } catch {
       // 解析器无法验证时必须保留安全输出，不能为了源码美观冒险改变文档结构。
       return false;
@@ -395,7 +434,8 @@ export function normalizeSerializedMarkdown(markdown: string): string {
           cursor = offset + match[0].length;
           if (match[1] === 'amp') {
             // 字面量 `&gt;`、`&copy;`、`&#39;` 等实体形态文本必须保留 `&amp;`，否则再次解析会被当成实体解码
-            restored += ENTITY_LIKE_SUFFIX.test(segment.slice(cursor)) ? match[0] : '&';
+            // 未知名称（如 `&foo;`）不会被解码，还原为 `&` 即可保持原文
+            restored += isDecodableEntitySuffix(segment.slice(cursor)) ? match[0] : '&';
             continue;
           }
           const prefix = linePrefix + restored;
@@ -432,7 +472,7 @@ function trailingNewlineOf(markdown: string): string {
  */
 function runSerializationPipeline(
   produceRaw: () => string,
-  referenceDoc: { eq(other: unknown): boolean; attrs?: Record<string, unknown> },
+  referenceDoc: { eq(other: unknown): boolean; attrs?: Record<string, unknown>; toJSON?(): unknown },
   nodeFromJSON: (json: unknown) => unknown,
   manager: MarkdownManagerLike | null | undefined,
 ): string {
@@ -454,9 +494,52 @@ function runSerializationPipeline(
 /** 序列化前的 JSON 预处理：插入结构性必要转义哨兵（不修改编辑器中的真实文档）。 */
 function prepareJsonForSerialization(json: ReturnType<Editor['getJSON']>): ReturnType<Editor['getJSON']> {
   return markStructuralEscapes(
-    json as SerializableJsonNode,
+    trimDroppedTrailingWhitespace(json as SerializableJsonNode),
     textWouldFormInlineMath,
   ) as ReturnType<Editor['getJSON']>;
+}
+
+// 任务列表由独立 tokenizer 解析，末项行尾空格会被保留，不在此列
+const LIST_NODE_TYPES = new Set(['bulletList', 'orderedList']);
+
+/** 去掉文本块末尾文本的行尾空格/制表符（末尾文本被删空时一并移除） */
+function trimTextblockEnd(node: SerializableJsonNode): SerializableJsonNode {
+  const content = [...(node.content ?? [])];
+  while (content.length > 0) {
+    const last = content[content.length - 1];
+    if (last.type !== 'text' || typeof last.text !== 'string') break;
+    const trimmed = last.text.replace(/[ \t]+$/, '');
+    if (trimmed === last.text) break;
+    if (trimmed === '') content.pop();
+    else content[content.length - 1] = { ...last, text: trimmed };
+  }
+  return { ...node, content };
+}
+
+/**
+ * 去掉解析器会丢弃的行尾空白：标题末尾、各列表最后一项的末尾文本、有序列表各项的直接段落末尾。
+ * 这些空格在可视化模式中可以键入，若照写进文件，下次打开时会被解析器去掉，
+ * 导致每次进入可视化都提示"去除行尾空格"。其余位置（普通段落、引用、无序列表中间项）的行尾空格能往返保留，不做处理。
+ * atListEnd 表示当前节点的末尾即某个列表最后一项的末尾。
+ */
+function trimDroppedTrailingWhitespace(node: SerializableJsonNode, atListEnd = false): SerializableJsonNode {
+  if (node.type === 'heading' || (atListEnd && node.type === 'paragraph')) return trimTextblockEnd(node);
+  if (!node.content || node.content.length === 0 || node.type === 'paragraph') return node;
+  const isList = LIST_NODE_TYPES.has(node.type ?? '');
+  // 有序列表由 TipTap 自带 tokenizer 解析，每一项的直接段落末尾空白都会被去掉
+  const isOrderedItem = (child: SerializableJsonNode) => node.type === 'orderedList' && child.type === 'listItem';
+  const lastIndex = node.content.length - 1;
+  return {
+    ...node,
+    content: node.content.map((child, index) => {
+      const trimmed = trimDroppedTrailingWhitespace(child, index === lastIndex && (isList || atListEnd));
+      if (!isOrderedItem(trimmed) || !trimmed.content) return trimmed;
+      return {
+        ...trimmed,
+        content: trimmed.content.map((part) => (part.type === 'paragraph' ? trimTextblockEnd(part) : part)),
+      };
+    }),
+  };
 }
 
 /** @tiptap/markdown 注入的 MarkdownManager（serialize/parse/escapeMarkdownSyntax） */
@@ -496,7 +579,8 @@ export function serializeMarkdownFromDoc(
     // TipTap 暂未开放文本转义策略配置；在同步序列化期间临时替换其内部转义器，
     // 只影响普通文本节点，不会误改代码块、行内代码、链接地址或图片路径。
     // 🔴 同步独占，finally 恢复，不跨 await（J 节要求）。
-    manager.escapeMarkdownSyntax = escapeMarkdownText;
+    const invisibleAsEntities = doc.attrs?.invisibleCharEntities === true;
+    manager.escapeMarkdownSyntax = (text: string) => escapeMarkdownText(text, invisibleAsEntities);
   }
   try {
     return runSerializationPipeline(
@@ -533,7 +617,8 @@ export function serializeMarkdown(editor: Editor): string {
     if (manager && typeof originalEscaper === 'function') {
       // TipTap 暂未开放文本转义策略配置；在同步序列化期间临时替换其内部转义器，
       // 只影响普通文本节点，不会误改代码块、行内代码、链接地址或图片路径。
-      manager.escapeMarkdownSyntax = escapeMarkdownText;
+      const invisibleAsEntities = editor.state.doc.attrs.invisibleCharEntities === true;
+      manager.escapeMarkdownSyntax = (text: string) => escapeMarkdownText(text, invisibleAsEntities);
     }
     try {
       // 有 MarkdownManager 时直接序列化插入了必要转义哨兵的 JSON；否则回退到注入的 getMarkdown
@@ -628,10 +713,15 @@ export function parseMarkdown(
 ): boolean {
   if (markdown.trim() === '') {
     // 空内容同样必须显式控制历史，否则初次打开空文件后可能出现伪撤销步骤
-    replaceEditorContent(
-      editor,
-      editor.chain().clearContent(false),
-    );
+    const chain = editor.chain().clearContent(false);
+    // 空文档没有实体写法依据：回到默认（不可见空白保持字符），避免沿用清空前的文档属性
+    if (editor.schema.topNodeType.spec.attrs?.invisibleCharEntities) {
+      chain.command(({ tr }) => {
+        if (tr.doc.attrs.invisibleCharEntities !== false) tr.setDocAttribute('invisibleCharEntities', false);
+        return true;
+      });
+    }
+    replaceEditorContent(editor, chain);
     return true;
   }
   try {
@@ -643,11 +733,19 @@ export function parseMarkdown(
       deduplicateParsedMarkdownMarks(parsed as ParsedMarkdownNode);
       editor.schema.nodeFromJSON(parsed);
       const chain = editor.chain().setContent(parsed, { contentType: 'json' });
-      // setContent 只替换文档内容、不改 doc 节点属性：末尾换行需单独写入文档属性（同一事务、不入历史）
-      if (editor.schema.topNodeType.spec.attrs?.trailingNewline) {
+      // setContent 只替换文档内容、不改 doc 节点属性：末尾换行等需单独写入文档属性（同一事务、不入历史）
+      const docAttrSpecs = editor.schema.topNodeType.spec.attrs;
+      if (docAttrSpecs?.trailingNewline) {
         const trailing = trailingNewlineOf(markdown);
         chain.command(({ tr }) => {
           if (tr.doc.attrs.trailingNewline !== trailing) tr.setDocAttribute('trailingNewline', trailing);
+          return true;
+        });
+      }
+      if (docAttrSpecs?.invisibleCharEntities) {
+        const useEntities = usesInvisibleCharacterEntities(markdown);
+        chain.command(({ tr }) => {
+          if (tr.doc.attrs.invisibleCharEntities !== useEntities) tr.setDocAttribute('invisibleCharEntities', useEntities);
           return true;
         });
       }

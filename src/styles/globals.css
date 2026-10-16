@@ -658,6 +658,79 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--editor-accent) 36%, transparent);
 }
 
+/* 块格式菜单：单击列表 / 表格把手时弹出，设置项间距或源码排版 */
+.nb-block-format-menu {
+  position: absolute;
+  z-index: 40;
+  min-width: 196px;
+  padding: 8px;
+  border: 1px solid var(--editor-border);
+  border-radius: 8px;
+  background: var(--editor-surface, #ffffff);
+  box-shadow: 0 10px 30px -4px rgba(0, 0, 0, 0.16), 0 3px 8px -2px rgba(0, 0, 0, 0.08);
+  animation: nb-block-format-menu-in 120ms ease-out;
+}
+
+@keyframes nb-block-format-menu-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.nb-block-format-menu-title {
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--editor-text-secondary);
+}
+
+/* 分段选择：各选项等宽排列，选中项高亮 */
+.nb-block-format-menu-options {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--editor-selection);
+}
+
+.nb-block-format-option {
+  flex: 1;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--editor-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background var(--transition-fast, 150ms ease),
+    color var(--transition-fast, 150ms ease),
+    transform var(--transition-fast, 150ms ease);
+}
+
+.nb-block-format-option:hover {
+  color: var(--editor-text);
+  background: color-mix(in srgb, var(--editor-surface, #ffffff) 60%, transparent);
+}
+
+.nb-block-format-option:active {
+  transform: scale(0.96);
+}
+
+.nb-block-format-option.is-selected {
+  color: var(--editor-accent);
+  font-weight: 500;
+  background: var(--editor-surface, #ffffff);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.nb-block-format-menu-hint {
+  margin-top: 6px;
+  max-width: 220px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--editor-text-muted);
+}
+
 /* 源块只做轻量浮起与弱化，不改变其布局尺寸，避免拖动时文档跳动。 */
 .ProseMirror > .nb-block-drag-source {
   position: relative;
@@ -952,6 +1025,12 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   margin-bottom: 0 !important;
   line-height: var(--content-line-height) !important;
   font-size: inherit;
+}
+
+/* 宽松列表（Markdown 中项之间空一行）：项间距与段落间距一致，与 GitHub 等渲染效果对应 */
+.ProseMirror ul[data-spacing="loose"] > li + li,
+.ProseMirror ol[data-spacing="loose"] > li + li {
+  margin-top: var(--content-paragraph-spacing, 14px);
 }
 
 .ProseMirror li > ul,
@@ -3204,6 +3283,23 @@ button.nb-callout-icon:active {
 .nb-md-normalize-after {
   margin-top: 2px !important;
   background: color-mix(in srgb, var(--success-500, #22c55e) 14%, transparent);
+}
+.nb-md-normalize-hunk-category {
+  color: var(--editor-text-secondary);
+  font-weight: 500;
+}
+.nb-md-normalize-hunk-reason {
+  color: var(--editor-text-muted);
+}
+/* 行尾空格、制表符的可见符号：醒目但不抢正文 */
+.nb-md-normalize-ws {
+  color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent-strong) 20%, transparent);
+  border-radius: 2px;
+}
+.nb-md-normalize-empty {
+  color: var(--editor-text-muted);
+  font-style: italic;
 }
 .nb-md-normalize-remember {
   display: flex;

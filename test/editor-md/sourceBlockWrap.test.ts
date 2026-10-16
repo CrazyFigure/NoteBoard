@@ -52,8 +52,12 @@ describe('源码模式：选区包裹成块', () => {
     expect(apply('甲\n\n\n乙', 2, 3, codeSourceBlock)).toBeNull();
   });
 
-  it('代码块围栏随正文反引号加长', () => {
-    expect(codeSourceBlock('a ``` b')).toBe('````\na ``` b\n````');
+  it('代码块围栏随正文行首反引号加长', () => {
+    expect(codeSourceBlock('```js\nx\n```')).toBe('````\n```js\nx\n```\n````');
+  });
+
+  it('行中间的反引号不会闭合围栏，围栏保持 3 个', () => {
+    expect(codeSourceBlock('a ``` b')).toBe('```\na ``` b\n```');
   });
 
   it('折叠块写法与可视化模式序列化一致', () => {

@@ -2,7 +2,7 @@
 // 支持本地相对路径动态解析、悬停工具栏、大图预览查看器、多级缩放与拖拽拉伸、居左/居中/居右对齐
 
 import React, { useState, useEffect } from 'react';
-import { Node, mergeAttributes } from '@tiptap/core';
+import { Node, mergeAttributes, type JSONContent, type MarkdownParseHelpers, type MarkdownToken } from '@tiptap/core';
 import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
 import {
   ZoomIn,
@@ -18,13 +18,14 @@ import {
   X,
   AlertCircle,
   RefreshCw,
+  Link2,
 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import * as ipc from '../../core/ipc/commands';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { useExplorerStore } from '../explorer/explorerStore';
-import { isAbsoluteLocalPath, resolveRelativeDocPath } from './linkHandler';
+import { handleLinkClick, isAbsoluteLocalPath, resolveRelativeDocPath } from './linkHandler';
 import { openDocument } from '../editor-code/orchestration/openDocument';
 import { Tooltip } from '../../components/Tooltip';
 
@@ -253,6 +254,7 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
   const alt: string = node.attrs.alt || '';
   const align: 'left' | 'center' | 'right' = node.attrs.align || 'center';
   const width: string = node.attrs.width || '100%';
+  const linkHref: string = node.attrs.href || '';
 
   // 动态解析图片真实 URL
   useEffect(() => {
@@ -396,6 +398,22 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
                 <Maximize2 size={14} color="var(--accent-strong)" />
               </button>
             </Tooltip>
+
+            {/* 图片外层链接（如 README 徽章）：按普通链接规则打开 */}
+            {linkHref && (
+              <Tooltip content={`打开链接：${linkHref}`} side="top" sideOffset={4}>
+                <button
+                  type="button"
+                  aria-label="打开图片链接"
+                  onClick={() => {
+                    void handleLinkClick(linkHref, useWindowStore.getState().activeKey ?? '');
+                  }}
+                  style={actionBtnStyle}
+                >
+                  <Link2 size={14} color="var(--accent-strong)" />
+                </button>
+              </Tooltip>
+            )}
 
             <div style={{ width: 1, height: 14, background: 'var(--editor-border)' }} />
 
@@ -701,6 +719,36 @@ export function renderImageMarkdown(attrs: Record<string, unknown>): string {
     : `![${safeAlt}](${destination})`;
 }
 
+/** 带链接的图片：外层包裹 `[...](href "title")`，与 README 徽章等写法 `[![alt](src)](href)` 一致 */
+function wrapImageLink(image: string, attrs: Record<string, unknown>): string {
+  const href = typeof attrs.href === 'string' ? attrs.href : '';
+  if (!href) return image;
+  const linkTitle = typeof attrs.linkTitle === 'string' ? attrs.linkTitle : '';
+  const destination = formatImageDestination(href);
+  return linkTitle
+    ? `[${image}](${destination} "${linkTitle.replace(/(["\\])/g, '\\$1')}")`
+    : `[${image}](${destination})`;
+}
+
+/**
+ * 解析 `[![alt](src)](href)`：图片是独立节点，无法承载链接标记，原先外层链接会在解析时丢失。
+ * 链接内容仅为一张图片时返回带 href 的图片节点；其余链接返回 null，由 Link 扩展按原逻辑处理。
+ */
+export function parseLinkedImageToken(token: MarkdownToken, helpers: MarkdownParseHelpers): JSONContent | null {
+  const children = (token.tokens ?? []).filter((child) => !(child.type === 'text' && !child.raw?.trim()));
+  const image = children.length === 1 && children[0].type === 'image' ? children[0] : null;
+  if (!image) return null;
+  return helpers.createNode('image', {
+    src: image.href,
+    title: image.title,
+    alt: image.text,
+    width: '100%',
+    align: 'center',
+    href: token.href,
+    linkTitle: token.title || null,
+  });
+}
+
 /** TipTap 增强版 Image 扩展定义 */
 export const EnhancedImageBlock = Node.create({
   name: 'image',
@@ -726,6 +774,15 @@ export const EnhancedImageBlock = Node.create({
       },
       align: {
         default: 'center',
+      },
+      // 图片外层链接（`[![alt](src)](href)`）及其标题，仅用于 Markdown 往返与悬停工具栏中的打开链接
+      href: {
+        default: null,
+        rendered: false,
+      },
+      linkTitle: {
+        default: null,
+        rendered: false,
       },
     };
   },
@@ -765,7 +822,7 @@ export const EnhancedImageBlock = Node.create({
     });
   },
 
-  renderMarkdown: (node) => renderImageMarkdown(node.attrs ?? {}),
+  renderMarkdown: (node) => wrapImageLink(renderImageMarkdown(node.attrs ?? {}), node.attrs ?? {}),
 
   addNodeView() {
     return ReactNodeViewRenderer(ImageComponent);

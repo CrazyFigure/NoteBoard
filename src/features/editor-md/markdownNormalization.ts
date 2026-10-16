@@ -48,26 +48,63 @@ export interface NormalizationHunk {
   after: string;
   /** 原文中的起始行号（1 基） */
   line: number;
+  /** 该处差异的分类（用于逐处说明规范化理由） */
+  category: NormalizationCategory;
 }
 
 /** 差异分类：用于向用户说明"会改什么" */
 export type NormalizationCategory =
+  | 'trailing-whitespace'
+  | 'list-indent'
+  | 'whitespace'
+  | 'entity'
   | 'list-marker'
+  | 'list-number'
   | 'emphasis'
   | 'heading'
+  | 'horizontal-rule'
+  | 'code-fence'
   | 'table'
-  | 'whitespace'
+  | 'link'
+  | 'line-break'
   | 'escape'
   | 'other';
 
 export const NORMALIZATION_CATEGORY_LABELS: Record<NormalizationCategory, string> = {
-  'list-marker': '列表符号统一为 -',
+  'trailing-whitespace': '去除行尾空格',
+  'list-indent': '列表续行缩进对齐',
+  whitespace: '空行与缩进调整',
+  entity: 'HTML 实体写法调整',
+  'list-marker': '列表符号统一',
+  'list-number': '有序列表重新编号',
   emphasis: '强调符号统一为 * / **',
   heading: '标题写法统一为 #',
-  table: '表格列宽对齐',
-  whitespace: '空行与空白调整',
+  'horizontal-rule': '分隔线统一为 ---',
+  'code-fence': '代码块围栏调整',
+  table: '表格重新排版',
+  link: '链接改为内联写法',
+  'line-break': '换行写法调整',
   escape: '转义字符调整',
   other: '其他格式调整',
+};
+
+/** 每类规范化的理由：说明为什么可视化编辑器会这样写回 */
+export const NORMALIZATION_CATEGORY_REASONS: Record<NormalizationCategory, string> = {
+  'trailing-whitespace': '解析时会丢弃',
+  'list-indent': '兼容 GitHub',
+  whitespace: '不影响显示',
+  entity: '显示不变',
+  'list-marker': '写法等价',
+  'list-number': '显示不变',
+  emphasis: '写法等价',
+  heading: '写法等价',
+  'horizontal-rule': '写法等价',
+  'code-fence': '防止提前闭合',
+  table: '显示不变',
+  link: '写法等价',
+  'line-break': '写法等价',
+  escape: '显示不变',
+  other: '写法等价',
 };
 
 export interface NormalizationDiff {
@@ -75,14 +112,54 @@ export interface NormalizationDiff {
   categories: Array<{ category: NormalizationCategory; count: number }>;
 }
 
+// HTML 实体引用（&copy;、&#169;、&#xA9;）
+const HTML_ENTITY_PATTERN = /&(?:[a-zA-Z][a-zA-Z0-9]{1,31}|#\d{1,7}|#[xX][0-9a-fA-F]{1,6});/g;
+
+/** 行数相同、仅行首缩进加深的差异：列表续段/子列表缩进对齐到列表标记宽度 */
+function isListIndentWidening(before: string, after: string): boolean {
+  const beforeLines = before.split('\n');
+  const afterLines = after.split('\n');
+  if (beforeLines.length !== afterLines.length) return false;
+  let widened = false;
+  for (let index = 0; index < beforeLines.length; index += 1) {
+    const left = beforeLines[index];
+    const right = afterLines[index];
+    if (left === right) continue;
+    const leftIndent = /^ */.exec(left)?.[0].length ?? 0;
+    const rightIndent = /^ */.exec(right)?.[0].length ?? 0;
+    if (left.slice(leftIndent) !== right.slice(rightIndent) || rightIndent <= leftIndent) return false;
+    widened = true;
+  }
+  return widened;
+}
+
+/** 有序列表行去掉编号后的形态（用于识别仅编号不同的差异） */
+const withoutListNumbers = (value: string) => value.replace(/^(\s*)\d+([.)]\s)/gm, '$1#$2');
+
 /** 判断一处差异属于哪类规范化（启发式，仅用于说明，不影响行为） */
 function classifyHunk(before: string, after: string): NormalizationCategory {
   const compact = (value: string) => value.replace(/\s+/g, '');
-  if (compact(before) === compact(after)) return 'whitespace';
+  if (compact(before) === compact(after)) {
+    // 逐行去掉行尾空白后相同：只差行尾空格；否则为空行或缩进差异
+    const trimLines = (value: string) => value.split('\n').map((line) => line.trimEnd()).join('\n');
+    if (trimLines(before) === trimLines(after)) return 'trailing-whitespace';
+    return isListIndentWidening(before, after) ? 'list-indent' : 'whitespace';
+  }
+  const entityCount = (value: string) => value.match(HTML_ENTITY_PATTERN)?.length ?? 0;
+  if (entityCount(before) !== entityCount(after)) return 'entity';
   if (/^\s*[*+]\s/m.test(before) && /^\s*-\s/m.test(after)) return 'list-marker';
   if (/^\s*\d+\)\s/m.test(before) && /^\s*\d+\.\s/m.test(after)) return 'list-marker';
+  if (before !== after && withoutListNumbers(before) === withoutListNumbers(after)) return 'list-number';
   if (/^\s*(?:=+|-+)\s*$/m.test(before) && /^#{1,2}\s/m.test(after)) return 'heading';
+  if (/^ {0,3}(?:(?:\*\s*){3,}|(?:_\s*){3,})$/m.test(before) && /^---$/m.test(after)) return 'horizontal-rule';
+  if (/^ {0,3}(?:`{3,}|~{3,})/m.test(after) && (/^ {0,3}(?:`{3,}|~{3,})/m.test(before) || /^ {4}/m.test(before))) {
+    return 'code-fence';
+  }
   if (/^\s*\|/m.test(before) || /^\s*\|/m.test(after)) return 'table';
+  if ((/<https?:\/\/[^>]+>/.test(before) || /\]\[[^\]]*\]|^\s*\[[^\]]+\]:\s/m.test(before)) && /\]\(/.test(after)) {
+    return 'link';
+  }
+  if (/<br\s*\/?>/i.test(before) && !/<br\s*\/?>/i.test(after)) return 'line-break';
   if (/(^|[^\w])_{1,2}\S/.test(before) && /\*{1,2}\S/.test(after)) return 'emphasis';
   if (before.replace(/\\/g, '') === after.replace(/\\/g, '')) return 'escape';
   return 'other';
@@ -143,6 +220,7 @@ export async function computeNormalizationDiff(
         before: hunkBefore,
         after: hunkAfter,
         line: before.slice(0, range.fromA).split('\n').length,
+        category,
       });
     }
   }

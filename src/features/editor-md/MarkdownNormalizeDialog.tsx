@@ -2,14 +2,44 @@
 // 进入可视化模式前发现"解析→序列化"会改变原文时弹出：说明会改什么、可查看差异，
 // 由用户决定规范化并进入可视化，或保持源码模式（原文一字不改）。
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { FileCode2, Wand2, ChevronDown, ChevronRight } from 'lucide-react';
 import {
   computeNormalizationDiff,
   NORMALIZATION_CATEGORY_LABELS,
+  NORMALIZATION_CATEGORY_REASONS,
   type NormalizationChoice,
   type NormalizationDiff,
 } from './markdownNormalization';
+
+/** 空白字符的可见符号：空格 ·、制表符 → */
+function whitespaceMark(text: string): ReactNode {
+  return <span className="nb-md-normalize-ws">{text.replace(/ /g, '·').replace(/\t/g, '→')}</span>;
+}
+
+/**
+ * 差异文本中把"看不见"的空白显式标出：行尾空白与所有制表符，否则行尾空格类差异看起来像没改。
+ * 行内普通空格保持原样，避免中英混排的正文被满屏圆点干扰阅读。
+ */
+function renderVisibleWhitespace(text: string): ReactNode {
+  if (text === '') return <span className="nb-md-normalize-empty">（无）</span>;
+  return text.split('\n').map((line, index) => {
+    const trailing = /[ \t]+$/.exec(line)?.[0] ?? '';
+    const body = line.slice(0, line.length - trailing.length);
+    return (
+      <Fragment key={index}>
+        {index > 0 && '\n'}
+        {body.split('\t').map((part, partIndex) => (
+          <Fragment key={partIndex}>
+            {partIndex > 0 && whitespaceMark('\t')}
+            {part}
+          </Fragment>
+        ))}
+        {trailing && whitespaceMark(trailing)}
+      </Fragment>
+    );
+  });
+}
 
 export interface MarkdownNormalizeDialogProps {
   /** 文档显示名 */
@@ -105,9 +135,13 @@ export function MarkdownNormalizeDialog({ displayName, original, normalized, onC
           <div className="nb-md-normalize-diff">
             {diffResult.hunks.map((hunk, index) => (
               <div key={index} className="nb-md-normalize-hunk">
-                <div className="nb-md-normalize-hunk-line">第 {hunk.line} 行</div>
-                <pre className="nb-md-normalize-before">{hunk.before || ' '}</pre>
-                <pre className="nb-md-normalize-after">{hunk.after || ' '}</pre>
+                {/* 逐处标明规范化分类与理由 */}
+                <div className="nb-md-normalize-hunk-line">
+                  第 {hunk.line} 行 · <span className="nb-md-normalize-hunk-category">{NORMALIZATION_CATEGORY_LABELS[hunk.category]}</span>
+                  <span className="nb-md-normalize-hunk-reason">（{NORMALIZATION_CATEGORY_REASONS[hunk.category]}）</span>
+                </div>
+                <pre className="nb-md-normalize-before">{renderVisibleWhitespace(hunk.before)}</pre>
+                <pre className="nb-md-normalize-after">{renderVisibleWhitespace(hunk.after)}</pre>
               </div>
             ))}
             {totalChanges > diffResult.hunks.length && (

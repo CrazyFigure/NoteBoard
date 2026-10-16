@@ -20,6 +20,7 @@ import {
   type TopLevelDropTarget,
 } from './blockReorder';
 import { Tooltip } from '../../components/Tooltip';
+import { BlockFormatMenu, hasBlockFormatMenu } from './blockFormatMenu';
 
 /** 超过此位移才进入拖动，避免单击把手时误触排序。 */
 const DRAG_START_DISTANCE = 4;
@@ -62,6 +63,14 @@ interface DragHandleState {
   left: number;
   nodePos: number | null;
   nodeType: string | null;
+}
+
+/** 块格式菜单：打开时记录目标块与锚点坐标（与把手同一坐标系） */
+interface FormatMenuState {
+  pos: number;
+  nodeType: string;
+  top: number;
+  left: number;
 }
 
 interface DragFeedbackState {
@@ -112,7 +121,14 @@ function clampPreviewCoordinate(value: number, viewportSize: number, reservedSiz
   return Math.max(DRAG_PREVIEW_VIEWPORT_GAP, Math.min(value, max));
 }
 
-export function BlockDragHandle({ editor }: { editor: Editor | null }) {
+export function BlockDragHandle({
+  editor,
+  formatMenu = true,
+}: {
+  editor: Editor | null;
+  /** 单击列表 / 表格把手时是否弹出格式菜单（多维表格单元格编辑器有独立的浮层与 Esc 约定，不启用） */
+  formatMenu?: boolean;
+}) {
   const [state, setState] = useState<DragHandleState>({
     visible: false,
     top: 0,
@@ -123,6 +139,8 @@ export function BlockDragHandle({ editor }: { editor: Editor | null }) {
   const [isHoveringHandle, setIsHoveringHandle] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragFeedback, setDragFeedback] = useState<DragFeedbackState | null>(null);
+  const [menu, setMenu] = useState<FormatMenuState | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleRef = useRef<HTMLButtonElement>(null);
   const isHoveringHandleRef = useRef(false);
@@ -224,9 +242,10 @@ export function BlockDragHandle({ editor }: { editor: Editor | null }) {
     };
 
     const handleScroll = () => {
-      // 普通滚动时隐藏旧坐标把手；拖动过程由指针坐标持续刷新落点，不受这里影响。
+      // 普通滚动时隐藏旧坐标把手与格式菜单；拖动过程由指针坐标持续刷新落点，不受这里影响。
       if (!dragSessionRef.current) {
         setState((current) => ({ ...current, visible: false }));
+        setMenu(null);
       }
     };
 
@@ -374,6 +393,7 @@ export function BlockDragHandle({ editor }: { editor: Editor | null }) {
       if (distance < DRAG_START_DISTANCE) return;
 
       session.dragging = true;
+      setMenu(null);
       session.sourceElement.classList.add('nb-block-drag-source');
       document.body.style.cursor = 'grabbing';
       document.body.style.userSelect = 'none';
@@ -398,6 +418,13 @@ export function BlockDragHandle({ editor }: { editor: Editor | null }) {
       isHoveringHandleRef.current = true;
       setIsHoveringHandle(true);
       selectTopLevelBlock(editor.view, session.sourcePos);
+      // 列表、表格额外弹出格式菜单；再次单击同一块的把手则收起
+      const nodeType = editor.state.doc.nodeAt(session.sourcePos)?.type.name ?? null;
+      if (formatMenu && hasBlockFormatMenu(nodeType)) {
+        setMenu((current) => (current?.pos === session.sourcePos
+          ? null
+          : { pos: session.sourcePos, nodeType: nodeType as string, top: state.top + 26, left: state.left }));
+      }
       return;
     }
 
@@ -421,14 +448,14 @@ export function BlockDragHandle({ editor }: { editor: Editor | null }) {
         }, DROP_SETTLE_DURATION);
       });
     }
-  }, [cleanupDrag, editor]);
+  }, [cleanupDrag, editor, formatMenu, state.left, state.top]);
 
   const handlePointerCancel = useCallback(() => {
     cleanupDrag();
     setState((current) => ({ ...current, visible: false }));
   }, [cleanupDrag]);
 
-  if (!state.visible) return null;
+  if (!state.visible && !menu) return null;
 
   const blockLabel = getBlockTypeLabel(state.nodeType);
   const previewLeft = dragFeedback
@@ -448,36 +475,56 @@ export function BlockDragHandle({ editor }: { editor: Editor | null }) {
 
   return (
     <>
-      <Tooltip content={`单击选中${blockLabel}，按住拖动以移动`} side="left" sideOffset={6}>
-        <button
-          ref={handleRef}
-          type="button"
-          className={`nb-block-drag-handle${isHoveringHandle ? ' is-hovered' : ''}${isDragging ? ' is-dragging' : ''}`}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerCancel}
-          onLostPointerCapture={() => {
-            if (dragSessionRef.current) cleanupDrag();
-          }}
-          onMouseEnter={() => {
-            isHoveringHandleRef.current = true;
-            setIsHoveringHandle(true);
-            clearHideTimer();
-          }}
-          onMouseLeave={() => {
-            isHoveringHandleRef.current = false;
-            if (!dragSessionRef.current) setIsHoveringHandle(false);
-          }}
-          style={{
-            top: state.top + 2,
-            left: state.left,
-          }}
-          aria-label={`拖动${blockLabel}`}
+      {state.visible && (
+        <Tooltip
+          content={formatMenu && hasBlockFormatMenu(state.nodeType)
+            ? `单击选中并设置格式，拖动以移动`
+            : `单击选中${blockLabel}，按住拖动以移动`}
+          side="left"
+          sideOffset={6}
         >
-          ⠿
-        </button>
-      </Tooltip>
+          <button
+            ref={handleRef}
+            type="button"
+            className={`nb-block-drag-handle${isHoveringHandle ? ' is-hovered' : ''}${isDragging ? ' is-dragging' : ''}`}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerCancel}
+            onLostPointerCapture={() => {
+              if (dragSessionRef.current) cleanupDrag();
+            }}
+            onMouseEnter={() => {
+              isHoveringHandleRef.current = true;
+              setIsHoveringHandle(true);
+              clearHideTimer();
+            }}
+            onMouseLeave={() => {
+              isHoveringHandleRef.current = false;
+              if (!dragSessionRef.current) setIsHoveringHandle(false);
+            }}
+            style={{
+              top: state.top + 2,
+              left: state.left,
+            }}
+            aria-label={`拖动${blockLabel}`}
+          >
+            ⠿
+          </button>
+        </Tooltip>
+      )}
+
+      {menu && editor && (
+        <BlockFormatMenu
+          editor={editor}
+          pos={menu.pos}
+          nodeType={menu.nodeType}
+          top={menu.top}
+          left={menu.left}
+          ignoreElement={handleRef.current}
+          onClose={closeMenu}
+        />
+      )}
 
       {dragFeedback?.valid && dragFeedback.indicatorTop !== null && (
         <div
