@@ -16,6 +16,7 @@ import { EditorBubbleMenu, TableToolbar } from '../editor-md/bubbleMenu';
 import { BlockDragHandle } from '../editor-md/blockDragHandle';
 import { EditorContextMenu } from '../editor-md/EditorContextMenu';
 import { handlePastedImageFile } from '../editor-md/imagePaste';
+import { PasteFormatPrompt } from '../editor-md/PasteFormatPrompt';
 import { MarkdownToolbar, type MarkdownToolbarHistory } from '../toolbar/MarkdownToolbar';
 import { on, off, emit } from '../../core/emitter';
 import { useWindowStore } from '../../stores/windowStore';
@@ -33,6 +34,8 @@ export function buildLongTextExtensions(placeholder = DEFAULT_PLACEHOLDER, onOpe
     documentHistory: false,
     placeholder,
     onOpenLinkModal,
+    // 与笔记本一致：粘贴含 Markdown / HTML 的纯文本时提示转换
+    pasteFormatDetect: true,
   });
 }
 
@@ -119,7 +122,7 @@ const EDITOR_CSS = `
   color: var(--editor-text-muted, #94a3b8);
 }
 .nb-bitable-rte-footer {
-  display: flex; justify-content: flex-end; gap: 4px; padding: 4px 8px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding: 4px 8px; flex-shrink: 0;
   border-top: 1px solid var(--editor-border, #e5e7eb); background: var(--editor-surface, #f8fafc);
 }
 /* 带圆角边框的宿主（侧栏表单）：容器不能裁剪溢出（工具栏下拉需要伸出），改由首尾栏自行圆角 */
@@ -484,6 +487,8 @@ export function BitableRichTextEditor({
 
       {/* 模式切换：放在编辑区外，避免随内容滚动 */}
       <div className="nb-bitable-rte-footer">
+        {/* 粘贴格式提示放在底栏左侧：单元格编辑区较小，悬浮在正文上会遮挡刚粘贴的内容 */}
+        {isRich && editor && <PasteFormatPrompt editor={editor} placement="inline" />}
         <Tooltip content={isRich ? '查看与编辑 Markdown 源码' : '返回可视化编辑'} side="top" sideOffset={4}>
           <button
             type="button"

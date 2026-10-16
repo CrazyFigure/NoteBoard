@@ -212,6 +212,16 @@ describe('转换', () => {
     const converted = convert(pastePlain(createState('前后', 2), '**粗**'), 'markdown');
     expect(serializeState(converted)).toBe('前**粗**后');
   });
+
+  it('段落中间粘贴的标题、列表独立成块，不被并入所在段落', () => {
+    const converted = convert(pastePlain(createState('前后', 2), '## 标题\n- 项'), 'markdown');
+    expect(serializeState(converted)).toBe('前\n\n## 标题\n\n- 项\n\n后');
+  });
+
+  it('段落末尾粘贴标题与段落：标题独立成块，末段与后文合并', () => {
+    const converted = convert(pastePlain(createState('已有内容'), '## 小标题\n\n**加粗**'), 'markdown');
+    expect(serializeState(converted)).toBe('已有内容\n\n## 小标题\n\n**加粗**');
+  });
 });
 
 describe('已格式化判定', () => {
