@@ -3,6 +3,7 @@
 import { DEFAULT_SETTINGS } from '../stores/settingsStore';
 import type { FileTreeNode, Settings, OpenRequestItemDto } from '../core/ipc/types';
 import { useDocumentStore } from '../stores/documentStore';
+import { installWebClipboardFallback } from './clipboard';
 import './web.css';
 
 const ROOT = '/workspace';
@@ -26,6 +27,8 @@ export function canUseWebSync(): boolean { return syncAvailable; }
 
 /** 在 React 启动前连接同步事件，身份验证沿用页面 HTTP Basic 登录状态。 */
 export async function initializeWebRuntime(): Promise<void> {
+  // 服务器 IP + HTTP 也能复制文本；图片复制和主动粘贴仍遵循浏览器 HTTPS 权限限制。
+  installWebClipboardFallback();
   const capabilities = await request<{ syncAvailable: boolean; authEnabled: boolean }>('web_capabilities');
   syncAvailable = capabilities.syncAvailable;
   if (syncAvailable) {
