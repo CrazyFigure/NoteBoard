@@ -1,9 +1,10 @@
 // NoteBoard 块级原始 HTML 节点视图
 // 可渲染的 HTML 块按过滤后的结果显示（与 GitHub 渲染 README 一致），不可渲染的保持只读源码样式；
 // 双击或点击"编辑"进入源码编辑，修改只作用于 raw 原文，渲染结果从不写回文件。
-// 从插入菜单新建的块 raw 为空：挂载后直接进入编辑，未输入内容就取消/提交时自动移除。
+// 从插入菜单新建的块 raw 为空：挂载后直接进入编辑；未输入内容时失焦或"完成"保留空块（显示占位，序列化时忽略），
+// 仅按 Esc / "取消" 时移除。
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
 import { Selection } from '@tiptap/pm/state';
 import { convertFileSrc } from '@tauri-apps/api/core';
@@ -12,7 +13,7 @@ import { Tooltip } from '../../components/Tooltip';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { useExplorerStore } from '../explorer/explorerStore';
-import { handleLinkClick, isAbsoluteLocalPath, resolveRelativeDocPath } from './linkHandler';
+import { handleRenderedHtmlLinkClick, isAbsoluteLocalPath, resolveRelativeDocPath } from './linkHandler';
 import { renderRawHtmlPreview } from './rawHtmlRender';
 
 /** 可视化模式插入的空 HTML 块 */
@@ -68,13 +69,12 @@ export function RawHtmlBlockComponent({ node, editor, getPos, selected, updateAt
     setEditing(true);
   };
 
-  // 提交修改：清空即删除节点；末尾空白与解析时的处理保持一致
+  // 提交修改：末尾空白与解析时的处理保持一致；内容为空时保留空块（点到外面不让块消失），
+  // 空块显示占位、序列化时被忽略，不会写出多余空行
   const commit = () => {
     const next = draft.replace(/\s+$/, '');
     setEditing(false);
-    if (next === '') {
-      deleteNode();
-    } else if (next !== raw) {
+    if (next !== raw) {
       updateAttributes({ raw: next });
     }
   };
@@ -160,29 +160,31 @@ export function RawHtmlBlockComponent({ node, editor, getPos, selected, updateAt
     <NodeViewWrapper
       className={`nb-raw-html${selected ? ' is-selected' : ''}${editor.isEditable ? ' is-editable' : ''}`}
       contentEditable={false}
-      onDoubleClick={startEditing}
+      // 双击进入编辑：在第二次按下时（捕获阶段）判定，而非依赖 dblclick——
+      // 渲染内容里的链接、图片会被浏览器当作拖拽源，按下后轻微移动即取消 dblclick，导致这些区域双击无效
+      onMouseDownCapture={(e: ReactMouseEvent<HTMLElement>) => {
+        if (e.detail !== 2 || e.button !== 0 || (e.target as Element).closest('button')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        startEditing();
+      }}
     >
       {preview.kind === 'render' ? (
         <div
           className="nb-md-html-render"
           // 内容已经过 DOMPurify 白名单过滤
           dangerouslySetInnerHTML={{ __html: preview.html }}
+          // 链接一律拦截原生跳转；Ctrl/Cmd + 单击或中键单击用系统默认浏览器打开（本地文件在 NoteBoard 内打开）
           onClick={(e) => {
-            // 链接一律拦截原生跳转（否则 webview 自身会被导航走）；与普通链接一致，Ctrl/Cmd + 单击打开
-            const anchor = (e.target as HTMLElement).closest('a');
-            if (!anchor) return;
-            e.preventDefault();
-            const href = anchor.getAttribute('href');
-            const activeKey = useWindowStore.getState().activeKey;
-            if ((e.ctrlKey || e.metaKey) && href && activeKey) void handleLinkClick(href, activeKey);
+            handleRenderedHtmlLinkClick(e);
           }}
           onAuxClick={(e) => {
-            if ((e.target as HTMLElement).closest('a')) e.preventDefault();
+            handleRenderedHtmlLinkClick(e);
           }}
         />
       ) : (
         <pre className="nb-md-raw-block nb-md-raw-html" data-label="HTML">
-          {/* 空块只会出现在撤销插入/编辑的中间状态 */}
+          {/* 空块：新建后未输入即失焦，或清空了源码 */}
           {raw || '空 HTML 块（双击编辑）'}
         </pre>
       )}

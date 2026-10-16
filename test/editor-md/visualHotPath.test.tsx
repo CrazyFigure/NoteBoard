@@ -39,6 +39,7 @@ vi.mock('@tiptap/pm/history', () => ({ undoDepth: (state: { depth: number }) => 
 vi.mock('@/features/editor-md/extensions', () => ({ buildExtensions: () => [] }));
 vi.mock('@/features/editor-md/bubbleMenu', () => ({ EditorBubbleMenu: () => null, TableToolbar: () => null }));
 vi.mock('@/features/editor-md/blockDragHandle', () => ({ BlockDragHandle: () => null }));
+vi.mock('@/features/editor-md/PasteFormatPrompt', () => ({ PasteFormatPrompt: () => null }));
 vi.mock('@/features/editor-md/EditorContextMenu', () => ({ EditorContextMenu: () => null }));
 vi.mock('@/features/editor-md/LinkModal', () => ({ LinkModal: () => null }));
 vi.mock('@/features/editor-md/markdownAutoSave', () => ({ autoSaveDocument: vi.fn() }));

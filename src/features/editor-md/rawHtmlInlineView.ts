@@ -4,8 +4,7 @@
 
 import type { NodeViewRendererProps } from '@tiptap/core';
 import type { NodeView } from '@tiptap/pm/view';
-import { useWindowStore } from '../../stores/windowStore';
-import { handleLinkClick } from './linkHandler';
+import { handleRenderedHtmlLinkClick } from './linkHandler';
 import { renderRawHtmlPreview } from './rawHtmlRender';
 import { resolveDocumentImageSrc } from './rawHtmlBlockView';
 
@@ -34,17 +33,12 @@ export function createRawHtmlInlineView({ node }: NodeViewRendererProps): NodeVi
   for (const element of dom.querySelectorAll<HTMLElement>('[style]')) {
     if (/^(?:fixed|absolute|sticky)$/i.test(element.style.position)) element.style.removeProperty('position');
   }
-  // 链接一律拦截原生跳转（否则 webview 自身会被导航走）；与普通链接一致，Ctrl/Cmd + 单击打开
+  // 链接一律拦截原生跳转；Ctrl/Cmd + 单击或中键单击用系统默认浏览器打开（本地文件在 NoteBoard 内打开）
   dom.addEventListener('click', (event) => {
-    const anchor = (event.target as HTMLElement).closest('a');
-    if (!anchor) return;
-    event.preventDefault();
-    const href = anchor.getAttribute('href');
-    const activeKey = useWindowStore.getState().activeKey;
-    if ((event.ctrlKey || event.metaKey) && href && activeKey) void handleLinkClick(href, activeKey);
+    handleRenderedHtmlLinkClick(event);
   });
   dom.addEventListener('auxclick', (event) => {
-    if ((event.target as HTMLElement).closest('a')) event.preventDefault();
+    handleRenderedHtmlLinkClick(event);
   });
 
   return {

@@ -1,7 +1,14 @@
 // NoteBoard Markdown 链接路径解析单元测试
 
-import { describe, it, expect } from 'vitest';
-import { resolveRelativeDocPath } from '../../src/features/editor-md/linkHandler';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
+import * as ipc from '../../src/core/ipc/commands';
+import { useWindowStore } from '../../src/stores/windowStore';
+import { handleRenderedHtmlLinkClick, resolveRelativeDocPath } from '../../src/features/editor-md/linkHandler';
+
+vi.mock('../../src/core/ipc/commands', async (original) => ({
+  ...await original<typeof import('../../src/core/ipc/commands')>(),
+  openExternalUrl: vi.fn(async () => undefined),
+}));
 
 describe('Markdown 相对路径解析 (resolveRelativeDocPath)', () => {
   it('应正确解析同级相对路径', () => {
@@ -40,3 +47,50 @@ describe('Markdown 相对路径解析 (resolveRelativeDocPath)', () => {
   });
 });
 
+
+describe('HTML 块 / 行内 HTML 渲染内容中的链接 (handleRenderedHtmlLinkClick)', () => {
+  /** 在渲染容器中构造链接并返回其中的文字节点所在元素 */
+  function renderLink(href: string): HTMLElement {
+    const host = document.createElement('div');
+    host.innerHTML = `<a href="${href}" target="_blank"><span>链接文字</span></a><span>普通文字</span>`;
+    return host.querySelector('a span') as HTMLElement;
+  }
+
+  function mouseEvent(target: EventTarget | null, init: Partial<{ button: number; ctrlKey: boolean; metaKey: boolean }> = {}) {
+    return { target, button: 0, ctrlKey: false, metaKey: false, preventDefault: vi.fn(), ...init };
+  }
+
+  beforeEach(() => {
+    vi.mocked(ipc.openExternalUrl).mockClear();
+    useWindowStore.setState({ activeKey: 'doc-key' });
+  });
+
+  it('普通单击只拦截原生跳转，不打开', () => {
+    const event = mouseEvent(renderLink('https://example.com/plain'));
+    expect(handleRenderedHtmlLinkClick(event)).toBe(true);
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(ipc.openExternalUrl).not.toHaveBeenCalled();
+  });
+
+  it('Ctrl + 单击用系统默认浏览器打开外部链接', () => {
+    const event = mouseEvent(renderLink('https://example.com/ctrl'), { ctrlKey: true });
+    expect(handleRenderedHtmlLinkClick(event)).toBe(true);
+    expect(ipc.openExternalUrl).toHaveBeenCalledWith('https://example.com/ctrl');
+  });
+
+  it('中键单击用系统默认浏览器打开外部链接', () => {
+    const event = mouseEvent(renderLink('https://example.com/middle'), { button: 1 });
+    expect(handleRenderedHtmlLinkClick(event)).toBe(true);
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(ipc.openExternalUrl).toHaveBeenCalledWith('https://example.com/middle');
+  });
+
+  it('右键不打开；点在链接外不处理', () => {
+    expect(handleRenderedHtmlLinkClick(mouseEvent(renderLink('https://example.com/right'), { button: 2 }))).toBe(true);
+    expect(ipc.openExternalUrl).not.toHaveBeenCalled();
+    const plain = renderLink('https://example.com/x').closest('div')!.lastElementChild;
+    const event = mouseEvent(plain, { ctrlKey: true });
+    expect(handleRenderedHtmlLinkClick(event)).toBe(false);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+  });
+});

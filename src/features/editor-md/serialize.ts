@@ -343,7 +343,7 @@ function sameIgnoringSourceFormat(reference: { toJSON?(): unknown }, other: unkn
   const otherJson = (other as { toJSON?(): unknown } | null)?.toJSON?.();
   if (typeof reference.toJSON !== 'function' || otherJson === undefined) return false;
   // 参考文档按序列化时同样的规则去掉会被解析器丢弃的行尾空白，再与重新解析的结果比较
-  const referenceJson = trimDroppedTrailingWhitespace(reference.toJSON() as SerializableJsonNode);
+  const referenceJson = trimDroppedTrailingWhitespace(withoutEmptyRawHtmlBlocks(reference.toJSON() as SerializableJsonNode));
   return JSON.stringify(withoutSourceFormatAttributes(referenceJson))
     === JSON.stringify(withoutSourceFormatAttributes(otherJson));
 }
@@ -491,10 +491,22 @@ function runSerializationPipeline(
   return appendTrailingNewline(restore(cleaned), referenceDoc.attrs);
 }
 
+/**
+ * 去掉 raw 为空的块级 HTML 节点：可视化中新建后未输入内容的空块需保留在编辑器里，
+ * 但块级拼接不过滤空串，照常序列化会写出多余空行；空块本身也不对应任何源码。
+ */
+function withoutEmptyRawHtmlBlocks(node: SerializableJsonNode): SerializableJsonNode {
+  if (!node.content || node.content.length === 0) return node;
+  const content = node.content
+    .filter((child) => !(child.type === 'rawHtmlBlock' && String((child.attrs as { raw?: unknown } | undefined)?.raw ?? '') === ''))
+    .map(withoutEmptyRawHtmlBlocks);
+  return { ...node, content };
+}
+
 /** 序列化前的 JSON 预处理：插入结构性必要转义哨兵（不修改编辑器中的真实文档）。 */
 function prepareJsonForSerialization(json: ReturnType<Editor['getJSON']>): ReturnType<Editor['getJSON']> {
   return markStructuralEscapes(
-    trimDroppedTrailingWhitespace(json as SerializableJsonNode),
+    trimDroppedTrailingWhitespace(withoutEmptyRawHtmlBlocks(json as SerializableJsonNode)),
     textWouldFormInlineMath,
   ) as ReturnType<Editor['getJSON']>;
 }
@@ -707,6 +719,18 @@ function deduplicateParsedMarkdownMarks(root: ParsedMarkdownNode): void {
   root.content?.forEach(deduplicateParsedMarkdownMarks);
 }
 
+/**
+ * 把一段 Markdown 解析为可直接插入编辑器的文档 JSON（不修改编辑器内容）。
+ * 与整篇加载共用同一解析器与 mark 修复，并按 schema 显式校验；失败或未装配解析器时返回 null。
+ */
+export function parseMarkdownToJson(editor: Editor, markdown: string): ReturnType<Editor['getJSON']> | null {
+  const parsed = getMarkdownManager(editor)?.parse?.(markdown);
+  if (!parsed) return null;
+  deduplicateParsedMarkdownMarks(parsed as ParsedMarkdownNode);
+  editor.schema.nodeFromJSON(parsed);
+  return parsed;
+}
+
 export function parseMarkdown(
   editor: Editor,
   markdown: string,
@@ -725,13 +749,10 @@ export function parseMarkdown(
     return true;
   }
   try {
-    const manager = getMarkdownManager(editor);
-    const parsed = manager?.parse?.(markdown);
+    // @tiptap/markdown 的 marked 适配器在长文档的相邻粗体边界上可能返回
+    // bold,bold 等非法 mark 集合；进入 schema 前统一修复并显式校验（见 parseMarkdownToJson）。
+    const parsed = parseMarkdownToJson(editor, markdown);
     if (parsed) {
-      // @tiptap/markdown 的 marked 适配器在长文档的相邻粗体边界上可能返回
-      // bold,bold 等非法 mark 集合；进入 schema 前统一修复并显式校验。
-      deduplicateParsedMarkdownMarks(parsed as ParsedMarkdownNode);
-      editor.schema.nodeFromJSON(parsed);
       const chain = editor.chain().setContent(parsed, { contentType: 'json' });
       // setContent 只替换文档内容、不改 doc 节点属性：末尾换行等需单独写入文档属性（同一事务、不入历史）
       const docAttrSpecs = editor.schema.topNodeType.spec.attrs;

@@ -39,6 +39,7 @@ import { fixTableEditingSelection } from '../tableSelectionFix';
 import { renderTableMarkdown, tableMarkdownStyleOf, type TableMarkdownStyle } from '../markdownTable';
 import { MarkdownHtmlEntity } from '../markdownHtmlEntities';
 import { MarkdownBulletList, MarkdownOrderedList, MarkdownTaskList } from '../markdownListSpacing';
+import { PasteFormatDetect } from '../pasteFormatDetect';
 import { ListEmptyItemBackspaceFix } from '../listItemBackspace';
 import { SelectionHighlight } from '../selectionHighlight';
 import { InlineEmojiRender } from '../inlineEmoji';
@@ -57,6 +58,9 @@ import {
 export interface LinkClickHandlerOptions {
   onOpenLinkModal?: () => void;
 }
+
+// 渲染后的原始 HTML 容器：HTML 块渲染区与行内 HTML 渲染区
+const RENDERED_RAW_HTML_SELECTOR = '.nb-md-html-render, .nb-md-html-inline';
 
 /**
  * 链接点击分发扩展
@@ -79,6 +83,9 @@ const LinkClickHandler = Extension.create<LinkClickHandlerOptions>({
           handleDOMEvents: {
             click(view, event) {
               const target = event.target as HTMLElement | null;
+              // 渲染后的原始 HTML（HTML 块 / 行内 HTML）中的链接由其节点视图自行处理（见 handleRenderedHtmlLinkClick）：
+              // click 不是 ProseMirror 内置处理的事件，自定义处理器不经过节点视图 stopEvent 过滤，需在此显式让出
+              if (target?.closest(RENDERED_RAW_HTML_SELECTOR)) return false;
               const anchor = target?.closest('a');
               if (anchor) {
                 const href = anchor.getAttribute('href');
@@ -116,6 +123,7 @@ const LinkClickHandler = Extension.create<LinkClickHandlerOptions>({
             auxclick(_view, event) {
               // 拦截鼠标中键等辅助按键，防止触发原生导航
               const target = event.target as HTMLElement | null;
+              if (target?.closest(RENDERED_RAW_HTML_SELECTOR)) return false;
               const anchor = target?.closest('a');
               if (anchor) {
                 event.preventDefault();
@@ -283,6 +291,8 @@ export interface BuildExtensionsOptions {
   documentHistory?: boolean;
   /** 空文档占位文案 */
   placeholder?: string;
+  /** 是否跟踪纯文本粘贴以提示转换 Markdown / HTML（仅 md 文档可视化编辑器启用，默认 false） */
+  pasteFormatDetect?: boolean;
 }
 
 // Markdown 允许粗体、斜体等标记包裹行内代码；默认 Code 的 excludes: '_'
@@ -470,5 +480,8 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // Markdown 序列化/解析扩展
     Markdown,
+
+    // 粘贴格式检测：放在最后，其它扩展的粘贴处理优先
+    ...(options?.pasteFormatDetect ? [PasteFormatDetect] : []),
   ];
 }
