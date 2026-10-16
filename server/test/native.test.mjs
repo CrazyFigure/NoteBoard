@@ -59,7 +59,8 @@ test('两个网页实例通过现有 WebDAV 协议双向同步，并能备份和
       await call(kind);
       for (let attempt = 0; attempt < 200; attempt += 1) {
         const current = await call('sync_get_status');
-        if (current[field]?.at && current[field].at !== before[field]?.at) { assert.equal(current[field].ok, true, current[field].message); return current[field]; }
+        // 开启同步会异步生成 enable 报告；必须等到本次手动任务完成，不能把更早的报告当作本次结果。
+        if (current[field]?.trigger === 'manual' && current[field].at && current[field].at !== before[field]?.at) { assert.equal(current[field].ok, true, current[field].message); return current[field]; }
         await delay(50);
       }
       assert.fail('同步任务未在预期时间完成');
