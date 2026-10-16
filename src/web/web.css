@@ -1,0 +1,12 @@
+/* 服务器文件选择器只由网页构建加载，不改变原生端的布局与颜色。 */
+.nb-web-dialog { width: min(560px, calc(100vw - 32px)); max-height: 85vh; padding: 20px; border: 1px solid var(--editor-border); border-radius: 10px; background: var(--editor-bg, #fff); color: var(--editor-text, #222); box-shadow: 0 16px 60px #0003; }
+.nb-web-dialog::backdrop { background: #0006; }
+.nb-web-dialog h2 { margin: 0 0 14px; font-size: 16px; }
+.nb-web-dialog input:not([type=file]) { width: 100%; padding: 8px 10px; margin-bottom: 10px; border: 1px solid var(--editor-border); border-radius: 5px; background: transparent; color: inherit; }
+.nb-web-files { height: min(330px, 45vh); overflow: auto; display: flex; flex-direction: column; gap: 3px; margin-bottom: 12px; }
+.nb-web-dialog button { padding: 7px 10px; border: 1px solid var(--editor-border); border-radius: 5px; background: transparent; color: inherit; cursor: pointer; text-align: left; }
+.nb-web-dialog button:hover, .nb-web-dialog button[aria-pressed=true] { background: var(--toolbar-hover, #eee); }
+.nb-web-dialog button:active { background: var(--toolbar-active, #ddd); }
+.nb-web-dialog button:disabled { opacity: .5; cursor: wait; }
+.nb-web-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.nb-web-error { color: #dc2626; font-size: 13px; margin-bottom: 10px; }

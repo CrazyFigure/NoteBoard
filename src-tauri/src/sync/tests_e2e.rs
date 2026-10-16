@@ -58,7 +58,7 @@ impl Device {
         let settings = self.settings();
         let id = self.id.clone();
         let backend = Backend::Memory(remote.clone());
-        let out = self.with_state(|_| tauri::async_runtime::block_on(run_sync_with(&settings, &id, "test", Ok(backend))));
+        let out = self.with_state(|_| super::runtime::block_on(run_sync_with(&settings, &id, "test", Ok(backend))));
         assert!(out.report.ok, "{} 同步失败：{:?}", self.name, out.report.errors);
         out
     }

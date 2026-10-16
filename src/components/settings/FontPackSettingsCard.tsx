@@ -7,6 +7,7 @@ import { resolveSystemFontFallbackPatch } from '../../app/fontPack';
 import * as ipc from '../../core/ipc/commands';
 import { useFontPackStore } from '../../stores/fontPackStore';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { IS_WEB } from '../../core/platform';
 import { showToast } from '../../stores/toastStore';
 
 const formatBytes = (value?: number | null) => {
@@ -16,6 +17,8 @@ const formatBytes = (value?: number | null) => {
 
 /** 设置页长期保留管理入口，用户拒绝首次下载后仍可随时重新启用应用字体。 */
 export function FontPackSettingsCard() {
+  // 固定构建平台下组件不会切换分支；网页端不显示原生字体包管理操作。
+  if (IS_WEB) return null;
   const { settings, setTypography } = useSettingsStore();
   const {
     status,

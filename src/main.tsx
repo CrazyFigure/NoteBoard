@@ -9,7 +9,7 @@ import './styles/scrollbar.css';
 import './styles/mobile.css';
 import { applyCachedTheme, applyCachedTypography } from './core/theme/applyTheme';
 import { perfMark } from './core/perf/perfMarks';
-import { IS_MOBILE_UI } from './core/platform';
+import { IS_MOBILE_UI, IS_WEB } from './core/platform';
 import { installInputModalityTracking } from './core/inputModality';
 import { installNumberInputWheelGuard } from './core/numberInputGuard';
 import { installTextareaMultiClickFix } from './core/textareaMultiClick';
@@ -62,7 +62,13 @@ function renderApp(): void {
 declare const __NB_DEV_MOCK__: boolean | undefined;
 
 // 开发服务器 + ?mock=1：先安装 Tauri IPC 模拟再渲染（浏览器预览界面）；生产构建中整段被常量折叠移除
-if (typeof __NB_DEV_MOCK__ !== 'undefined' && __NB_DEV_MOCK__ && new URLSearchParams(window.location.search).get('mock') === '1') {
+if (IS_WEB) {
+  // 网页先读取部署能力、订阅同步事件；连接失败给出可重试反馈，不能静默白屏。
+  void import('./web/runtime').then(async (module) => { await module.initializeWebRuntime(); renderApp(); }).catch((error) => {
+    const root = document.getElementById('root')!;
+    root.textContent = `连接 NoteBoard 服务失败：${String(error)}。请刷新页面重试。`;
+  });
+} else if (typeof __NB_DEV_MOCK__ !== 'undefined' && __NB_DEV_MOCK__ && new URLSearchParams(window.location.search).get('mock') === '1') {
   void import('./dev/tauriMock').then((module) => {
     module.installTauriMock();
     renderApp();

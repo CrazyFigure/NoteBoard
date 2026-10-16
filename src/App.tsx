@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { lazy, Suspense } from 'react';
 import { AppShell } from './components/AppShell';
-import { IS_MOBILE_UI } from './core/platform';
+import { IS_MOBILE_UI, IS_WEB } from './core/platform';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { TooltipProvider } from './components/Tooltip';
 import { useSettingsStore } from './stores/settingsStore';
@@ -232,7 +232,8 @@ export default function App() {
   }, [init, initAutoUpdateTimer, bootRetryAttempt]);
 
   useEffect(() => {
-    if (!initialized || !fontPackInitialized || fontPackPromptEvaluatedRef.current) return;
+    // 网页使用访问者的浏览器字体，不能安装服务器或客户端的原生字体包。
+    if (IS_WEB || !initialized || !fontPackInitialized || fontPackPromptEvaluatedRef.current) return;
     fontPackPromptEvaluatedRef.current = true;
     let cancelled = false;
 

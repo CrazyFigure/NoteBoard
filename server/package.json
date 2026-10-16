@@ -1,0 +1,7 @@
+{
+  "name": "noteboard-web-server",
+  "private": true,
+  "type": "module",
+  "dependencies": { "iconv-lite": "^0.7.0" },
+  "engines": { "node": ">=22" }
+}

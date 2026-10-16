@@ -1,0 +1,29 @@
+[package]
+name = "noteboard-sync-server"
+version = "0.5.7"
+edition = "2021"
+license = "GPL-3.0-only"
+publish = false
+
+# 无 GUI 宿主仅装配现有同步引擎，不能引入 Tauri / WebKit / Windows 窗口依赖。
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "time", "net"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "system-proxy", "stream"] }
+sha2 = "0.10"
+uuid = { version = "1", features = ["v4"] }
+chrono = "0.4"
+zip = { version = "8.4", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+base64 = "0.22"
+hex = "0.4"
+percent-encoding = "2"
+tempfile = "3"
+encoding_rs = "0.8"
+log = "0.4"
+url = "2"
+dunce = "1"
+
+[lints.rust]
+# 复用原生业务模块中的条件编译标记，宿主本身不启用桌面窗口分支。
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(desktop)', 'cfg(mobile)'] }

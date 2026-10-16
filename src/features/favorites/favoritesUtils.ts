@@ -6,6 +6,7 @@ import type {
   FavoriteFolderItem,
   FavoriteFileItem,
 } from '../../core/ipc/types';
+import { pathKey } from '../explorer/pathUtils';
 
 /**
  * 递归深拷贝节点树，避免意外的状态共享与就地修改
@@ -63,10 +64,11 @@ export function findParentFolder(
  * 按文件绝对路径查找是否已收藏（Windows 下不区分大小写比较）
  */
 export function findFavoriteByPath(roots: FavoriteNode[], filePath: string): FavoriteFileItem | null {
-  const normalizedTarget = filePath.trim().toLowerCase();
+  // 收藏身份与打开文档一致，Linux / 网页工作区按大小写区分文件。
+  const normalizedTarget = pathKey(filePath);
   for (const node of roots) {
     if (node.type === 'file') {
-      if (node.path.trim().toLowerCase() === normalizedTarget) {
+      if (pathKey(node.path) === normalizedTarget) {
         return node as FavoriteFileItem;
       }
     } else if (node.type === 'folder' && node.children) {

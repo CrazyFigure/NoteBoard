@@ -4,5 +4,6 @@
 # 二进制资源：不做换行转换，也不做文本 diff
 *.png binary
 *.ico binary
+*.icns binary
 *.woff2 binary
 *.ttf binary

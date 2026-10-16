@@ -3,12 +3,12 @@
 
   # NoteBoard
 
-  **Windows / 安卓 笔记 + 画板 + 多维表格 + 知识工作台**
+  **Windows / macOS / Linux / 安卓 / 网页 笔记 + 画板 + 多维表格 + 知识工作台**
 
   像记事本一样随手打开任意文本文件，像 Typora 一样写 Markdown，像飞书一样整理多维表格，像白板一样画图，像 XMind 一样梳理脑图。
 
   [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
-  ![Platform](https://img.shields.io/badge/platform-Windows%2010%2B%20%7C%20Android%20arm64-lightgrey.svg)
+  ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android%20%7C%20Web-lightgrey.svg)
   ![Tauri](https://img.shields.io/badge/Tauri-v2-24C8DB.svg)
   [![Release](https://img.shields.io/github/v/release/CrazyFigure/NoteBoard)](https://github.com/CrazyFigure/NoteBoard/releases/latest)
 </div>
@@ -17,7 +17,7 @@
 
 ## 概览
 
-NoteBoard 是一款轻量、现代化的跨端效率工具，覆盖 **Windows 桌面** 与 **安卓手机**，集 Markdown 笔记、多维表格、声明式信息图、思维导图、白板绘图、代码配置编辑、文本对比与图片预览于一体。
+NoteBoard 是一款轻量、现代化的跨端效率工具，提供桌面、安卓与可自行部署的网页版本，集 Markdown 笔记、多维表格、声明式信息图、思维导图、白板绘图、代码配置编辑、文本对比与图片预览于一体。
 
 坚持本地优先（Local-First）与文件优先理念：无强制工作区绑定、无强制云端同步。双击即开，即开即写，数据完全由你掌控。
 
@@ -29,6 +29,35 @@ NoteBoard 是一款轻量、现代化的跨端效率工具，覆盖 **Windows �
 |---|---|---|
 | **Windows** | `NoteBoard_x.y.z_windows_x64-setup.exe` | Windows 10 1809+，需 WebView2 Runtime（Win11 已内置）；支持应用内检查更新与自动重启。 |
 | **安卓** | `NoteBoard_x.y.z_android_arm64.apk` | arm64 设备；新版本可在应用内检查并跳转浏览器下载 APK。 |
+| **macOS** | `.dmg` | Apple Silicon / Intel 分别构建；采用系统标题栏与 Command 快捷键，当前使用 ad-hoc 签名，未做 Apple 公证。 |
+| **Linux** | `.deb` / `.AppImage` | x86_64；基于 Ubuntu 22.04 构建，AppImage 首次使用需赋予执行权限，可能需要系统安装 FUSE。 |
+
+macOS / Linux 包由 GitHub Actions 的 **macOS and Linux packages** 工作流生成；手动运行可下载 Artifacts，`v*` 标签运行时附加到对应 Release。macOS 首次启动如被系统拦截，可在“系统设置 → 隐私与安全性”允许打开。Unix 版本的更新安装包下载后由用户手动安装。多端同步复用同一引擎和配置界面，数据与缓存保存到各系统的标准应用目录。
+
+## Docker / 1Panel 网页部署
+
+镜像：`crazyfigure/noteboard:latest`（发布工作流构建 `linux/amd64`、`linux/arm64`）。一个部署实例共用一份笔记；未保存草稿和恢复记录按浏览器区分，不提供注册和多用户隔离。
+
+```bash
+# 下载仓库中的 compose.yaml 和 .env.example 到同一目录
+cp .env.example .env
+# 可选：在 .env 中同时填写 NOTEBOARD_USERNAME / NOTEBOARD_PASSWORD
+docker compose up -d
+# 浏览器访问 http://服务器IP:8080
+```
+
+**1Panel**：进入“容器 → 编排 → 创建编排”，粘贴 [compose.yaml](compose.yaml)，按需设置端口及账号密码后部署。使用域名时添加反向代理到 `http://127.0.0.1:8080`，开启 HTTPS；代理应保留原始 `Host`，否则设置 `NOTEBOARD_PUBLIC_URL=https://你的域名`。同步事件使用 SSE，代理应关闭响应缓冲。
+
+- 账号和密码同时留空即公开共享；配置后浏览器会弹出登录框。**启用网页多端同步必须设置访问账号密码**，再在“设置 → 同步与备份”选择 `/workspace` 下的同步文件夹和 WebDAV / S3 / GitHub / Gitee / GitCode / GitLab。网页服务与桌面、安卓共用同步清单、三方合并、回收站及备份协议；同步在服务器后台运行，关闭网页不停止。
+- 命名卷 `noteboard-data` 挂载到 `/data`；笔记在 `/data/workspace`，配置、暂存、同步状态与回收文件也在该卷。网页看到的路径统一为 `/workspace`，不会直接访问服务器其他目录。不要删除该卷；备份应覆盖整个卷。若改用宿主机目录挂载，先让容器用户 `1000:1000` 有读写权限。
+- 网页“打开文件”可选择服务器文件或显式上传本机文件；保存写入服务器，右键文件选择“下载到本机”可导出。单文件上限 50 MB；同时编辑同一文件时会拦截过期保存，不提供实时协同。网页不安装系统字体包，不执行桌面更新安装器。
+- 不兼容 Windows 的文件名会在跨端同步前报错；请先改名。符号链接不参与同步，网页拒绝直接访问。Unix 的凭证文件受应用目录和文件权限保护，Windows 继续使用原有 DPAPI。
+
+更新：`docker compose pull && docker compose up -d`。自行构建：`docker build -t noteboard:local .`。不使用 Docker 时可运行 `pnpm install --frozen-lockfile && pnpm build:web && npm ci --prefix server && pnpm start:web`；如需同步，还需构建 `server/native` 并设置 `NOTEBOARD_SYNC_BINARY` 为工作进程绝对路径。
+
+### 自动发布镜像
+
+在 GitHub 仓库 Actions Secrets 中配置 `DOCKERHUB_USERNAME=crazyfigure` 和有镜像写权限的 `DOCKERHUB_TOKEN`，运行 **Docker image** 工作流，或推送 `v*` 标签。正式版本发布版本号及 `latest` 镜像；预发布标签不覆盖 `latest`。macOS / Linux 安装包工作流与现有 Windows / Android 工作流独立。
 
 ## 核心功能
 

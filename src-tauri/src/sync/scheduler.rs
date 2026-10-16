@@ -17,7 +17,7 @@ use serde::Serialize;
 use std::collections::VecDeque;
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
+use super::runtime::{block_on, EventSink};
 
 const STARTUP_DELAY_MS: i64 = 4_000;
 const SAVE_DEBOUNCE_MS: i64 = 3_000;
@@ -65,7 +65,7 @@ struct Inner {
 }
 
 pub struct Scheduler {
-    app: AppHandle,
+    app: Arc<dyn EventSink>,
     inner: Mutex<Inner>,
     cv: Condvar,
 }
@@ -89,7 +89,7 @@ fn interval_ms(cfg: &SyncConfigFile) -> i64 {
 }
 
 /// 在 setup 中启动调度线程
-pub fn init(app: AppHandle) {
+pub fn init(app: impl EventSink) {
     let cfg = config::load();
     let st = state::snapshot();
     let now = now_ms();
@@ -107,7 +107,7 @@ pub fn init(app: AppHandle) {
         backup_retry_at: 0,
         jobs: VecDeque::new(),
     };
-    let sched = Arc::new(Scheduler { app, inner: Mutex::new(inner), cv: Condvar::new() });
+    let sched = Arc::new(Scheduler { app: Arc::new(app), inner: Mutex::new(inner), cv: Condvar::new() });
     if SCHEDULER.set(sched.clone()).is_err() {
         return;
     }
@@ -124,6 +124,12 @@ enum Task {
 }
 
 impl Scheduler {
+    /// 序列化事件后交给宿主，保持原生与网页的事件名称和载荷完全一致。
+    fn emit<T: Serialize>(&self, event: &str, payload: &T) {
+        if let Ok(value) = serde_json::to_value(payload) {
+            self.app.emit_json(event, value);
+        }
+    }
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
         self.inner.lock().unwrap_or_else(|p| p.into_inner())
     }
@@ -235,7 +241,7 @@ impl Scheduler {
             s.next_backup_at = Self::next_backup_at(&g);
             s
         };
-        let _ = self.app.emit(EVENT_STATUS, &status);
+        self.emit(EVENT_STATUS, &status);
     }
 
     pub fn status(&self) -> SyncStatus {
@@ -253,7 +259,7 @@ impl Scheduler {
             g.config.clone()
         };
         self.emit_status();
-        let outcome = tauri::async_runtime::block_on(engine::run_sync(&cfg.sync, &cfg.device_id, trigger));
+        let outcome = block_on(engine::run_sync(&cfg.sync, &cfg.device_id, trigger));
         let report = outcome.report;
         let transient = !report.ok && outcome.transient;
         let now = now_ms();
@@ -274,14 +280,14 @@ impl Scheduler {
         }
         state::with_state(|s| s.last_sync = Some(report.clone()));
         if !outcome.changes.is_empty() {
-            let _ = self.app.emit(EVENT_APPLIED, &AppliedEvent { changes: &outcome.changes });
+            self.emit(EVENT_APPLIED, &AppliedEvent { changes: &outcome.changes });
         }
         let explicit = matches!(trigger, "manual" | "enable" | "restore");
         // 自动重试中的临时错误只提示首次，避免每隔几十秒弹一次
         let first_failure = !report.ok && (!transient || self.lock().retry_count <= 1);
         let has_changes = report.upload.total() + report.download.total() > 0;
         let notify = explicit || first_failure || (report.ok && (has_changes || !report.errors.is_empty())) || (report.ok && cfg.sync.notify_no_change);
-        let _ = self.app.emit(EVENT_REPORT, &ReportEvent { kind: "sync", report: &report, notify });
+        self.emit(EVENT_REPORT, &ReportEvent { kind: "sync", report: &report, notify });
         self.emit_status();
     }
 
@@ -292,7 +298,7 @@ impl Scheduler {
             g.config.clone()
         };
         self.emit_status();
-        let report: BackupReport = tauri::async_runtime::block_on(backup::run_backup(&cfg, trigger));
+        let report: BackupReport = block_on(backup::run_backup(&cfg, trigger));
         {
             let mut g = self.lock();
             g.status.backing_up = false;
@@ -307,7 +313,7 @@ impl Scheduler {
             }
         });
         let notify = trigger != "auto" || !report.ok;
-        let _ = self.app.emit(EVENT_REPORT, &ReportEvent { kind: "backup", report: &report, notify });
+        self.emit(EVENT_REPORT, &ReportEvent { kind: "backup", report: &report, notify });
         self.emit_status();
     }
 
@@ -315,11 +321,11 @@ impl Scheduler {
         match job {
             Job::RestoreToRoot { name, reply } => {
                 let cfg = self.lock().config.clone();
-                let result = tauri::async_runtime::block_on(backup::restore_to_sync_root(&cfg, &name));
+                let result = block_on(backup::restore_to_sync_root(&cfg, &name));
                 match result {
                     Ok((msg, changes)) => {
                         if !changes.is_empty() {
-                            let _ = self.app.emit(EVENT_APPLIED, &AppliedEvent { changes: &changes });
+                            self.emit(EVENT_APPLIED, &AppliedEvent { changes: &changes });
                         }
                         let _ = reply.send(Ok(msg));
                         // 恢复后立即同步，把恢复结果推送到其他设备
@@ -394,7 +400,7 @@ impl Scheduler {
             self.cv.notify_all();
         }
         let cfg = self.lock().config.clone();
-        let _ = self.app.emit(EVENT_CONFIG, &cfg);
+        self.emit(EVENT_CONFIG, &cfg);
         self.emit_status();
     }
 }

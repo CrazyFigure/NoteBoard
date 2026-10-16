@@ -12,6 +12,7 @@ import {
   Edit2,
   FilePlus,
   FolderPlus,
+  Download,
 } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 import type { FileTreeNode } from '../../core/ipc/types';
@@ -25,7 +26,8 @@ import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
 import * as ipc from '../../core/ipc/commands';
 import { syncTrashPath, useSyncStore } from '../../stores/syncStore';
-import { sameKey } from './pathUtils';
+import { sameKey, pathKey, dirnameOf, joinPath } from './pathUtils';
+import { IS_WEB } from '../../core/platform';
 
 interface TreeNodeProps {
   node: FileTreeNode;
@@ -164,12 +166,13 @@ const TreeNodeImpl = memo(function TreeNodeImpl({
 }: TreeNodeProps) {
   const { toggle, loadChildren } = useTreeData();
   const expand = useExplorerStore((s) => s.expand);
-  const nodeKey = node.path.toLowerCase();
+  // 文件树身份沿用平台路径语义，不能合并 Linux 下仅大小写不同的文件。
+  const nodeKey = pathKey(node.path);
 
   // 精确响应式订阅：当前节点的展开状态、子节点缓存、高亮状态以及定位滚动触发计数
   const isNodeExpanded = useExplorerStore((s) => s.expanded.has(nodeKey));
   const children = useExplorerStore((s) => s.children.get(nodeKey));
-  const isRevealed = useExplorerStore((s) => (s.revealed ? s.revealed.toLowerCase() === nodeKey : false));
+  const isRevealed = useExplorerStore((s) => (s.revealed ? pathKey(s.revealed) === nodeKey : false));
   const revealCount = useExplorerStore((s) => s.revealCount);
   const setRevealed = useExplorerStore((s) => s.setRevealed);
   const root = useExplorerStore((s) => s.root);
@@ -327,8 +330,8 @@ const TreeNodeImpl = memo(function TreeNodeImpl({
 
   // 刷新当前节点的父目录或根目录
   const refreshParent = async () => {
-    const lastSlash = node.path.lastIndexOf('\\');
-    const parentDir = lastSlash > 0 ? node.path.substring(0, lastSlash) : '';
+    // 刷新使用真实平台父目录，不能固定寻找 Windows 反斜杠。
+    const parentDir = dirnameOf(node.path);
     if (parentDir) {
       const parentNodes = await loadChildren(parentDir);
       useExplorerStore.getState().updateChildren(parentDir, parentNodes);
@@ -357,9 +360,9 @@ const TreeNodeImpl = memo(function TreeNodeImpl({
     }
 
     // 计算父目录与新完整路径
-    const lastSlash = node.path.lastIndexOf('\\');
-    const parentDir = lastSlash > 0 ? node.path.substring(0, lastSlash) : '';
-    const newPath = parentDir ? `${parentDir}\\${trimmed}` : trimmed;
+    // 改名路径沿用统一拼接逻辑，Linux / macOS 与网页均保留正斜杠。
+    const parentDir = dirnameOf(node.path);
+    const newPath = joinPath(parentDir, trimmed);
 
     try {
       await ipc.renamePath(node.path, newPath);
@@ -601,6 +604,13 @@ const TreeNodeImpl = memo(function TreeNodeImpl({
               ipc.revealInExplorer(node.path);
             }}
           />
+
+          {/* 网页文件需显式下载到访问者设备，不能调用服务器的桌面默认应用。 */}
+          {IS_WEB && !node.isDir && <ContextMenuItem
+            icon={Download}
+            label="下载到本机"
+            onClick={() => { setMenuPos(null); void ipc.openWithDefaultApp(node.path); }}
+          />}
 
           {/* 复制完整路径 */}
           <ContextMenuItem

@@ -5,6 +5,7 @@ import { create } from 'zustand';
 import type { UpdateCheckResult } from '../core/ipc/types';
 import * as ipc from '../core/ipc/commands';
 import { translateUpdateCheckError } from '../core/updates';
+import { IS_WEB } from '../core/platform';
 
 interface UpdateStore {
   /** 是否正在执行更新检查 */
@@ -87,6 +88,8 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
   },
 
   initAutoUpdateTimer: () => {
+    // 网页由部署者更新镜像，访问者不能触发服务器安装桌面程序。
+    if (IS_WEB) return () => {};
     // 1. 启动时延时 3 秒执行首次静默检查，避开应用冷启动高负载
     const initialTimer = setTimeout(() => {
       get().checkForUpdates(true);

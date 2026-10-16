@@ -23,7 +23,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { Tooltip } from '../../components/Tooltip';
 import * as ipc from '../../core/ipc/commands';
 import type { BackupInfo, SyncConfigFile, SyncProviderConfig } from '../../core/ipc/types';
-import { IS_MOBILE_UI } from '../../core/platform';
+import { IS_MOBILE_UI, IS_WEB, USES_WINDOWS_PATHS } from '../../core/platform';
 import { describeSyncReport, SYNC_TOAST_KEY, useSyncStore } from '../../stores/syncStore';
 import { showToast } from '../../stores/toastStore';
 import { Collapsible, ConfirmDialog, errorText, formatDateTime, formatRelative, formatSize, NumberInput, ProviderForm, ToggleRow } from './SyncControls';
@@ -39,6 +39,7 @@ function clone<T>(value: T): T {
 export function SyncPanel() {
   const storeConfig = useSyncStore((s) => s.config);
   const status = useSyncStore((s) => s.status);
+  const unavailableReason = useSyncStore((s) => s.unavailableReason);
   const saveConfig = useSyncStore((s) => s.saveConfig);
   const setTrashOpen = useSyncStore((s) => s.setTrashOpen);
   const [draft, setDraft] = useState<SyncConfigFile | null>(() => (storeConfig ? clone(storeConfig) : null));
@@ -94,6 +95,8 @@ export function SyncPanel() {
   );
 
   if (!draft) {
+    // 公开共享模式不开放同步凭证管理，需要部署者先启用访问认证。
+    if (unavailableReason) return <div className="nb-sync-panel"><div className="nb-sync-muted">{unavailableReason}</div></div>;
     return (
       <div className="nb-sync-panel">
         <div className="nb-sync-muted">
@@ -288,7 +291,7 @@ function SyncSection({ draft, update, flush }: { draft: SyncConfigFile; update: 
       </div>
 
       <label className="nb-sync-field">
-        <span>本机名称</span>
+        <span>{IS_WEB ? '服务器名称' : '本机名称'}</span>
         <input
           className="nb-sync-input"
           type="text"
@@ -325,7 +328,7 @@ function ProviderSection({ draft, update }: { draft: SyncConfigFile; update: Upd
           <Cloud size={15} />
           <span>同步方式</span>
         </div>
-        <span className="nb-sync-muted">密码与令牌加密保存在本机，不会上传</span>
+        <span className="nb-sync-muted">{USES_WINDOWS_PATHS ? '密码与令牌加密保存在本机，不会上传' : IS_WEB ? '凭证保存在服务器访问受限的配置文件中' : '凭证保存在本机应用数据目录中'}</span>
       </div>
       <ProviderForm value={draft.sync.provider} onChange={onChange} />
     </div>
@@ -471,6 +474,8 @@ function BackupSection({ draft, update, flush }: { draft: SyncConfigFile; update
   }, [lastAt, refresh]);
 
   const chooseLocalDir = async () => {
+    // 网页备份固定写入数据卷的独立目录，不能误放进同步工作区造成备份被重复同步。
+    if (IS_WEB) { update((config) => (config.backup.localDir = '/backups'), true); return; }
     const selected = await open({ directory: true, multiple: false });
     if (typeof selected === 'string') update((c) => (c.backup.localDir = selected), true);
   };
@@ -606,7 +611,7 @@ function BackupSection({ draft, update, flush }: { draft: SyncConfigFile; update
 
       {backup.target === 'local' ? (
         <div className="nb-sync-field">
-          <span>本地备份文件夹</span>
+          <span>{IS_WEB ? '服务器备份目录' : '本地备份文件夹'}</span>
           <div className="nb-sync-path">
             <Tooltip content={backup.localDir} disabled={!backup.localDir} side="top" sideOffset={4}>
               <input className="nb-sync-input" type="text" readOnly value={backup.localDir} placeholder="尚未选择" />
@@ -614,11 +619,11 @@ function BackupSection({ draft, update, flush }: { draft: SyncConfigFile; update
             {!IS_MOBILE_UI && (
               <button type="button" className="nb-btn-secondary" onClick={chooseLocalDir}>
                 <FolderOpen size={14} />
-                选择文件夹
+                {IS_WEB ? '使用服务器备份目录' : '选择文件夹'}
               </button>
             )}
           </div>
-          <small>建议选择另一块硬盘、U 盘或网盘同步目录；不能位于同步文件夹内部</small>
+          <small>{IS_WEB ? '备份保存在持久化数据卷内，与同步工作区分开；迁移时一并备份整个数据卷' : '建议选择另一块硬盘、U 盘或网盘同步目录；不能位于同步文件夹内部'}</small>
         </div>
       ) : (
         <div className="nb-sync-field">

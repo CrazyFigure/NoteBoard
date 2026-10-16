@@ -1,5 +1,5 @@
 // NoteBoard 版本号自动同步脚本
-// 以 package.json 的 version 为单一真相来源，自动同步至 src-tauri/Cargo.toml 与 src-tauri/tauri.conf.json
+// 以 package.json 的 version 为单一真相来源，同步桌面、网页同步进程及各锁文件的本包版本。
 // 支持直接执行同步，或通过命令行参数指定新版本号（如: node scripts/sync-version.mjs 0.1.2）
 
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageJsonPath = resolve(repoRoot, 'package.json');
 const cargoTomlPath = resolve(repoRoot, 'src-tauri', 'Cargo.toml');
+// 网页同步工作进程共享版本语义，避免后端 User-Agent 与桌面协议版本显示不一致。
+const serverCargoTomlPath = resolve(repoRoot, 'server', 'native', 'Cargo.toml');
 const tauriConfPath = resolve(repoRoot, 'src-tauri', 'tauri.conf.json');
 
 // 1. 读取 package.json
@@ -31,6 +33,15 @@ if (cliVersion && packageJson.version !== targetVersion) {
   console.log(`[sync-version] 已更新 package.json 版本为: ${targetVersion}`);
 }
 
+// npm 锁文件只同步根包版本，不重新解析历史依赖；前端安装仍以 pnpm-lock.yaml 为准。
+const npmLockPath = resolve(repoRoot, 'package-lock.json');
+const npmLock = JSON.parse(readFileSync(npmLockPath, 'utf8'));
+if (npmLock.version !== targetVersion || npmLock.packages?.['']?.version !== targetVersion) {
+  npmLock.version = targetVersion;
+  if (npmLock.packages?.['']) npmLock.packages[''].version = targetVersion;
+  writeFileSync(npmLockPath, `${JSON.stringify(npmLock, null, 2)}\n`, 'utf8');
+}
+
 // 4. 同步更新 src-tauri/Cargo.toml
 const cargoTomlRaw = readFileSync(cargoTomlPath, 'utf8');
 const updatedCargoToml = cargoTomlRaw.replace(
@@ -44,7 +55,22 @@ if (cargoTomlRaw !== updatedCargoToml) {
   console.log(`[sync-version] src-tauri/Cargo.toml 版本已是最新: ${targetVersion}`);
 }
 
-// 5. 同步更新 src-tauri/tauri.conf.json
+// 桌面锁文件同步本包版本，使发布构建可直接使用 --locked。
+const desktopLockPath = resolve(repoRoot, 'src-tauri', 'Cargo.lock');
+const desktopLockRaw = readFileSync(desktopLockPath, 'utf8');
+const updatedDesktopLock = desktopLockRaw.replace(/(name = "noteboard"\r?\nversion = ")[^"]+("\s*)/, `$1${targetVersion}$2`);
+if (desktopLockRaw !== updatedDesktopLock) writeFileSync(desktopLockPath, updatedDesktopLock, 'utf8');
+
+// 5. 同步网页工作进程与 Tauri 应用版本。
+const serverCargoRaw = readFileSync(serverCargoTomlPath, 'utf8');
+const updatedServerCargo = serverCargoRaw.replace(/(\[package\][\s\S]*?version\s*=\s*")[^"]+("\s*)/, `$1${targetVersion}$2`);
+if (serverCargoRaw !== updatedServerCargo) writeFileSync(serverCargoTomlPath, updatedServerCargo, 'utf8');
+// --locked 镜像构建要求工作进程锁文件中的本包版本同步更新，不改动其他依赖。
+const serverLockPath = resolve(repoRoot, 'server', 'native', 'Cargo.lock');
+const serverLockRaw = readFileSync(serverLockPath, 'utf8');
+const updatedServerLock = serverLockRaw.replace(/(name = "noteboard-sync-server"\r?\nversion = ")[^"]+("\s*)/, `$1${targetVersion}$2`);
+if (serverLockRaw !== updatedServerLock) writeFileSync(serverLockPath, updatedServerLock, 'utf8');
+
 const tauriConfRaw = readFileSync(tauriConfPath, 'utf8');
 const tauriConf = JSON.parse(tauriConfRaw);
 if (tauriConf.version !== targetVersion) {

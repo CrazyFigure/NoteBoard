@@ -11,6 +11,7 @@ import { Tooltip } from '../Tooltip';
 import { emit } from '../../core/emitter';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { useUpdateStore } from '../../stores/updateStore';
+import { IS_WEB, USES_NATIVE_WINDOW_CHROME } from '../../core/platform';
 
 export function TitleBar() {
   const toggleSettingsModal = useLayoutStore((s) => s.toggleSettingsModal);
@@ -94,12 +95,12 @@ export function TitleBar() {
           }
         }}
         onDoubleClick={() => {
-          getCurrentWindow().toggleMaximize();
+          if (!IS_WEB) getCurrentWindow().toggleMaximize();
         }}
       />
 
       {/* 检测更新按钮（主动检测更新，有新版本时标上小红点） */}
-      <Tooltip content={hasUpdate ? '发现新版本 NoteBoard (点击查看)' : '检测更新'} side="bottom" sideOffset={6}>
+      {!IS_WEB && <Tooltip content={hasUpdate ? '发现新版本 NoteBoard (点击查看)' : '检测更新'} side="bottom" sideOffset={6}>
         <button
           type="button"
           onClick={() => checkForUpdates(false)}
@@ -169,7 +170,7 @@ export function TitleBar() {
             />
           )}
         </button>
-      </Tooltip>
+      </Tooltip>}
 
       {/* 快捷主题切换菜单 */}
       <ThemeMenu />
@@ -217,7 +218,7 @@ export function TitleBar() {
       </Tooltip>
 
       {/* 窗口控制按钮 */}
-      <WindowControls />
+      {!IS_WEB && !USES_NATIVE_WINDOW_CHROME && <WindowControls />}
     </div>
   );
 }

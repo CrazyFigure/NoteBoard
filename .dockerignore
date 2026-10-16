@@ -1,0 +1,23 @@
+# 只发送构建所需源码，禁止把本机笔记、凭证和桌面构建缓存打进镜像。
+.git
+.github
+node_modules
+**/node_modules
+src-tauri/**
+!src-tauri/src
+!src-tauri/src/**
+**/target
+dist
+dist-web
+.web-data
+.env
+.env.*
+!.env.example
+test-results
+coverage
+tools
+.idea
+.claude
+.workbuddy
+assets
+docs

@@ -4,6 +4,7 @@
 
 import { open } from '@tauri-apps/plugin-dialog';
 import { readFile } from '@tauri-apps/plugin-fs';
+import { IS_WEB } from '../core/platform';
 import * as ipc from '../core/ipc/commands';
 import type { FileTreeNode } from '../core/ipc/types';
 import { openDocument } from '../features/editor-code/orchestration/openDocument';
@@ -232,6 +233,12 @@ export async function importFiles(): Promise<void> {
   if (!picked) return;
   const list = Array.isArray(picked) ? picked : [picked];
   if (list.length === 0) return;
+  // 网页选择器已完成显式上传，返回服务器文件路径，不能再次复制并制造重名副本。
+  if (IS_WEB) {
+    await refreshCurrentFolder();
+    for (const path of list) await openPathInEditor(path);
+    return;
+  }
   const folder = useMobileStore.getState().currentFolder;
   const existing = new Set(useMobileStore.getState().entries.map((entry) => entry.name.toLowerCase()));
   let imported = 0;

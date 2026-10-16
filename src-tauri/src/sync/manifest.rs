@@ -96,6 +96,13 @@ impl Manifest {
         if m.format > MANIFEST_FORMAT {
             return Err("远端同步数据由更新版本的 NoteBoard 创建，请先升级本机 NoteBoard".to_string());
         }
+        // 远端内容不是可信路径；先验证全部条目，避免落盘时越过同步根目录。
+        for entry in m.entries.values() {
+            if !super::util::portable_relative_path(&entry.rec.path)
+                || entry.rec.trash.as_ref().is_some_and(|trash| !super::util::portable_relative_path(&trash.orig)) {
+                return Err("远端同步清单含越界或不兼容的文件名，请在原设备改名后重试".into());
+            }
+        }
         Ok(m)
     }
 

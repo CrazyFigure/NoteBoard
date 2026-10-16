@@ -7,6 +7,7 @@ import { getRegisteredShortcuts } from '../../core/shortcuts';
 import * as ipc from '../../core/ipc/commands';
 import { useUpdateStore } from '../../stores/updateStore';
 import { APP_VERSION } from '../../core/version';
+import { IS_WEB } from '../../core/platform';
 
 export function AboutPanel() {
   const shortcuts = getRegisteredShortcuts();
@@ -63,7 +64,8 @@ export function AboutPanel() {
       <div style={sectionStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
           <span>版本: v{APP_VERSION}</span>
-          <button
+          {/* 网页版本由部署者更新镜像，访问者不显示桌面安装器入口。 */}
+          {!IS_WEB && <button
             type="button"
             disabled={checkingUpdate}
             onClick={handleCheckForUpdates}
@@ -113,7 +115,7 @@ export function AboutPanel() {
           >
             <RefreshCw size={12} className={checkingUpdate ? 'spin' : ''} style={checkingUpdate ? { animation: 'spin 1s linear infinite' } : undefined} />
             <span>{checkingUpdate ? '正在检查' : '检测更新'}</span>
-          </button>
+          </button>}
         </div>
         <p style={{ margin: '4px 0' }}>许可证: GPL-3.0</p>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '4px 0' }}>

@@ -18,6 +18,7 @@ import { useWindowStore } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
 import { ExplorerBreadcrumb } from './ExplorerBreadcrumb';
 import { Tooltip } from '../../components/Tooltip';
+import { pathKey } from './pathUtils';
 
 // ── Explorer 组件 ──
 
@@ -33,7 +34,8 @@ export function Explorer() {
   // 文件监听
   useWatcher();
 
-  const rootChildren = root ? children.get(root.toLowerCase()) : undefined;
+  // 与 explorerStore 使用相同身份规则，Linux 大写目录也能正确加载。
+  const rootChildren = root ? children.get(pathKey(root)) : undefined;
 
   // 刷新目录
   const handleRefresh = useCallback(async () => {

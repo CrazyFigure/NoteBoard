@@ -14,6 +14,10 @@ const nodeGlobals = {
   fetch: 'readonly',
   process: 'readonly',
   setTimeout: 'readonly',
+  clearTimeout: 'readonly',
+  setInterval: 'readonly',
+  clearInterval: 'readonly',
+  structuredClone: 'readonly',
 };
 
 export default [
