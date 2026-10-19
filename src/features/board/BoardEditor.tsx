@@ -10,6 +10,8 @@ import { mapTheme } from './excalidrawTheme';
 import { BoardPresentationToggle } from './BoardPresentationToggle';
 import { FlowchartQuickConnect } from './FlowchartQuickConnect';
 import { Tooltip } from '../../components/Tooltip';
+import { CanvasMinimap } from '../../components/minimap/CanvasMinimap';
+import { createBoardMinimapScene } from './boardMinimap';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { useWindowStore } from '../../stores/windowStore';
@@ -535,6 +537,48 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
     else redoDocumentHistory(docKey);
   }, [docKey]);
 
+  // 缩略图内容只在图元版本变化时重绘；滚动、缩放、选中只移动视口框
+  const liveElementsRef = useRef(liveElements);
+  liveElementsRef.current = liveElements;
+  const minimapContentVersion = useMemo(() => {
+    let version = liveElements.length;
+    for (const el of liveElements) version += el.version;
+    return version;
+  }, [liveElements]);
+  const getMinimapScene = useCallback(
+    () => createBoardMinimapScene(liveElementsRef.current),
+    // 版本号只作为刷新信号，内容从 ref 读取最新图元
+    [minimapContentVersion],
+  );
+
+  // 缩略图视口：Excalidraw 的 scrollX / scrollY 为画布原点在屏幕上的偏移（场景坐标）
+  const getMinimapViewport = useCallback(() => {
+    const appState = liveAppState ?? initialData?.appState;
+    const zoom = typeof appState?.zoom === 'number' ? appState.zoom : (appState?.zoom as { value?: number } | undefined)?.value ?? 1;
+    const width = typeof appState?.width === 'number' ? appState.width : boardRootRef.current?.clientWidth ?? 0;
+    const height = typeof appState?.height === 'number' ? appState.height : boardRootRef.current?.clientHeight ?? 0;
+    return {
+      left: -((appState?.scrollX as number | undefined) ?? 0),
+      top: -((appState?.scrollY as number | undefined) ?? 0),
+      width: width / zoom,
+      height: height / zoom,
+    };
+  }, [liveAppState, initialData]);
+
+  // 在缩略图上点选 / 拖动：只改滚动位置，不进入撤销历史
+  const handleMinimapNavigate = useCallback((centerX: number, centerY: number) => {
+    const api = apiRef.current;
+    if (!api) return;
+    const vp = getMinimapViewport();
+    api.updateScene({
+      appState: {
+        scrollX: vp.width / 2 - centerX,
+        scrollY: vp.height / 2 - centerY,
+      } as unknown as ExcalidrawScene['appState'],
+      captureUpdate: 'NEVER',
+    });
+  }, [getMinimapViewport]);
+
   // 自动吸附对齐开关状态（默认开启）
   const isSnapEnabled = liveAppState?.objectsSnapModeEnabled ?? initialData?.appState?.objectsSnapModeEnabled ?? true;
 
@@ -710,6 +754,18 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
               theme={theme}
             />
           </div>
+        )}
+        {/* 右下角缩略图：避开 Excalidraw 底栏帮助按钮；演示模式与移动端不显示 */}
+        {!boardPresentationMode && !IS_MOBILE_UI && (
+          <CanvasMinimap
+            storageKey="nb-minimap-visible:board"
+            getScene={getMinimapScene}
+            getViewport={getMinimapViewport}
+            onNavigate={handleMinimapNavigate}
+            right={16}
+            bottom={64}
+            canvasFilter={theme === 'dark' ? 'invert(93%) hue-rotate(180deg)' : undefined}
+          />
         )}
         <BoardPresentationToggle
           enabled={boardPresentationMode}

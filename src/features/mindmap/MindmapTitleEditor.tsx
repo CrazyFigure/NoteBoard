@@ -176,7 +176,8 @@ export const MindmapTitleEditor = forwardRef<MindmapTitleEditorHandle, MindmapTi
       const root = rootRef.current;
       if (!root) return;
       renderRuns(root, props.initialText, props.initialMarks, props.fontWeight);
-      root.focus();
+      // 聚焦不滚动祖先容器，避免画布内绝对定位控件跟着位移
+      root.focus({ preventScroll: true });
       const length = props.initialText.length;
       selectRange(root, props.selectAll ? 0 : length, length);
       // 仅在挂载时初始化，之后 DOM 由用户输入驱动

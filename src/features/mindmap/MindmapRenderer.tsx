@@ -56,7 +56,9 @@ import {
   getSharedTextMeasurer,
 } from './mindmapTextMeasure';
 import { Tooltip } from '../../components/Tooltip';
+import { CanvasMinimap, type CanvasMinimapHandle, type MinimapScene } from '../../components/minimap/CanvasMinimap';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { IS_MOBILE_UI } from '../../core/platform';
 import type { MindmapSearchHighlight } from './mindmapSearch';
 
 interface MindmapRendererProps {
@@ -290,6 +292,9 @@ function insertSiblingNode(n: MindNode, anchorId: string, sibling: MindNode): bo
   return walk(n);
 }
 
+/** 缩略图节点的最小像素尺寸，缩得很小时仍能看出分支走向 */
+const MINIMAP_MIN_NODE_PX = 1.5;
+
 /** 底部快捷键提示中的按键样式 */
 const HINT_KBD_STYLE: React.CSSProperties = {
   display: 'inline-block',
@@ -330,11 +335,17 @@ export function MindmapRenderer({
   const panFrameRef = useRef<number | null>(null);
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
+  const minimapRef = useRef<CanvasMinimapHandle>(null);
+  // 判断内容是否已全部移出视野（每次渲染指向最新闭包，供命令式平移逐帧调用）
+  const checkOffscreenRef = useRef<() => void>(() => undefined);
   // 平移先更新图层变换；移动接近缓冲区边缘时才触发 React 补绘，不改原有灵敏度与坐标规则。
   const setPan = useCallback((next: React.SetStateAction<{ x: number; y: number }>) => {
     const value = typeof next === 'function' ? next(panRef.current) : next;
     panRef.current = value;
     if (transformLayerRef.current) transformLayerRef.current.style.transform = `translate(${value.x}px, ${value.y}px) scale(${zoomRef.current})`;
+    // 缩略图视口框跟随每帧平移，只写 DOM 不触发渲染
+    minimapRef.current?.syncViewport();
+    checkOffscreenRef.current();
     const committed = committedPanRef.current;
     if (Math.max(Math.abs(value.x - committed.x), Math.abs(value.y - committed.y)) < 128) return;
     if (panFrameRef.current === null) panFrameRef.current = requestAnimationFrame(() => {
@@ -514,6 +525,128 @@ export function MindmapRenderer({
     const source = draggedNodeId ? findMindNode(root, draggedNodeId) : null;
     return new Set(source ? Array.from(walkMindNodes(source), (node) => node.id) : []);
   }, [root, draggedNodeId]);
+
+  // 全部已展开节点的外接矩形（世界坐标），缩略图与“回到内容”共用
+  const contentBounds = useMemo(() => {
+    if (nodes.length === 0) return null;
+    let left = Infinity;
+    let top = Infinity;
+    let right = -Infinity;
+    let bottom = -Infinity;
+    for (const n of nodes) {
+      if (n.x < left) left = n.x;
+      if (n.y < top) top = n.y;
+      if (n.x + n.width > right) right = n.x + n.width;
+      if (n.y + n.height > bottom) bottom = n.y + n.height;
+    }
+    return { left, top, width: right - left, height: bottom - top };
+  }, [nodes]);
+
+  // 缩略图场景：内容只随布局 / 配色变化重绘，平移和缩放只移动视口框
+  const getMinimapScene = useCallback((): MinimapScene => {
+    const colors = theme.branchColors;
+    return {
+      bounds: contentBounds,
+      paint: (ctx, scale, style) => {
+        const px = 1 / scale;
+        // 连线按分支色合并为少量路径，万级节点也只需几次 stroke
+        ctx.lineWidth = px;
+        ctx.globalAlpha = 0.5;
+        for (let ci = 0; ci < colors.length; ci += 1) {
+          ctx.beginPath();
+          for (const link of links) {
+            if (link.to.branchIndex % colors.length !== ci) continue;
+            ctx.moveTo(link.from.x + link.from.width / 2, link.from.y + link.from.height / 2);
+            ctx.lineTo(link.to.x + link.to.width / 2, link.to.y + link.to.height / 2);
+          }
+          ctx.strokeStyle = colors[ci];
+          ctx.stroke();
+        }
+        // 节点同样按分支色批量填充；过小的节点抬到最小像素，避免整片消失
+        const minSize = MINIMAP_MIN_NODE_PX * px;
+        ctx.globalAlpha = 0.85;
+        for (let ci = 0; ci < colors.length; ci += 1) {
+          ctx.beginPath();
+          for (const n of nodes) {
+            if (n.level === 0 || n.branchIndex % colors.length !== ci) continue;
+            ctx.rect(n.x, n.y, Math.max(minSize, n.width), Math.max(minSize, n.height));
+          }
+          ctx.fillStyle = colors[ci];
+          ctx.fill();
+        }
+        // 根节点用强调色单独绘制，便于快速定位中心
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = style.getPropertyValue('--editor-accent').trim() || '#3b82f6';
+        for (const n of nodes) {
+          if (n.level === 0) ctx.fillRect(n.x, n.y, Math.max(minSize, n.width), Math.max(minSize, n.height));
+        }
+      },
+    };
+  }, [contentBounds, nodes, links, theme.branchColors]);
+
+  // 缩略图视口：缩放或画布尺寸变化时换新引用，促使视口框同步
+  const getMinimapViewport = useCallback(() => ({
+    left: -panRef.current.x / zoom,
+    top: -panRef.current.y / zoom,
+    width: viewportSize.width / zoom,
+    height: viewportSize.height / zoom,
+  }), [zoom, viewportSize]);
+
+  // 在缩略图上点选 / 拖动：把可视区域中心移到对应位置
+  const handleMinimapNavigate = useCallback((centerX: number, centerY: number) => {
+    setPan({
+      x: viewportSize.width / 2 - centerX * zoomRef.current,
+      y: viewportSize.height / 2 - centerY * zoomRef.current,
+    });
+  }, [setPan, viewportSize]);
+
+  // 内容全部移出视野时显示“滚动回到内容”（同画板）；只在状态翻转时触发渲染
+  const [contentOffscreen, setContentOffscreen] = useState(false);
+  const contentOffscreenRef = useRef(false);
+  checkOffscreenRef.current = () => {
+    const z = zoomRef.current;
+    const vLeft = -panRef.current.x / z;
+    const vTop = -panRef.current.y / z;
+    const vRight = vLeft + viewportSize.width / z;
+    const vBottom = vTop + viewportSize.height / z;
+    const intersects = (l: number, t: number, w: number, h: number) => l < vRight && l + w > vLeft && t < vBottom && t + h > vTop;
+    // 先比外接矩形，相交时再逐个节点确认（视野可能落在分支之间的空白里），找到一个可见节点即停
+    const offscreen = !contentBounds
+      || !intersects(contentBounds.left, contentBounds.top, contentBounds.width, contentBounds.height)
+      || !nodes.some((n) => intersects(n.x, n.y, n.width, n.height));
+    if (offscreen === contentOffscreenRef.current) return;
+    contentOffscreenRef.current = offscreen;
+    setContentOffscreen(offscreen);
+  };
+  // 布局、缩放、画布尺寸变化后重新判断
+  useEffect(() => {
+    checkOffscreenRef.current();
+  }, [nodes, zoom, viewportSize]);
+
+  // 回到内容：整图放得下就居中整图，否则把中心主题移到画面中央，缩放不变
+  const handleScrollBackToContent = () => {
+    if (!contentBounds) return;
+    const z = zoomRef.current;
+    const fits = contentBounds.width * z <= viewportSize.width && contentBounds.height * z <= viewportSize.height;
+    const rootNode = nodes.find((n) => n.level === 0);
+    const target = fits || !rootNode
+      ? { x: contentBounds.left + contentBounds.width / 2, y: contentBounds.top + contentBounds.height / 2 }
+      : { x: rootNode.x + rootNode.width / 2, y: rootNode.y + rootNode.height / 2 };
+    setPan({ x: viewportSize.width / 2 - target.x * z, y: viewportSize.height / 2 - target.y * z });
+  };
+
+  // 画布容器虽是 overflow:hidden，编辑节点时浏览器仍会滚动它把光标露出来，
+  // 导致缩略图、快捷键提示等绝对定位控件整体上移；视图位置只由 pan 决定，滚动一律复位
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const resetScroll = () => {
+      if (el.scrollTop !== 0) el.scrollTop = 0;
+      if (el.scrollLeft !== 0) el.scrollLeft = 0;
+    };
+    el.addEventListener('scroll', resetScroll);
+    return () => el.removeEventListener('scroll', resetScroll);
+  }, []);
 
   // 搜索跳转：把当前匹配节点平移到画布中央（focusSeq 每次显式跳转递增；
   // 跳转可能刚展开折叠分支，effect 在新布局渲染后执行，nodes 已含目标节点）
@@ -1068,6 +1201,11 @@ export function MindmapRenderer({
     if (points.length === 1) {
       // 单指：仅在空白画布处开始平移，节点上的按下交给节点拖拽逻辑
       const target = e.target as HTMLElement;
+      // 缩略图自行处理拖动，不能同时触发画布平移
+      if (target.closest('[data-minimap]')) {
+        touchPointsRef.current.delete(e.pointerId);
+        return;
+      }
       if (!target.closest('.nb-mindmap-node') && !target.closest('button, input, textarea')) {
         setIsPanning(true);
         panStartRef.current = { x: e.clientX - panRef.current.x, y: e.clientY - panRef.current.y };
@@ -1913,12 +2051,12 @@ export function MindmapRenderer({
         })}
       </div>
 
-      {/* 右下角快捷键提示（仅展示，不拦截画布交互；左下角留给撤销 / 重做） */}
+      {/* 左下角快捷键提示（紧挨撤销 / 重做，仅展示不拦截画布交互；右下角留给缩略图） */}
       <div
         style={{
           position: 'absolute',
-          right: 12,
-          bottom: 10,
+          left: 86,
+          bottom: 13,
           display: 'flex',
           alignItems: 'center',
           gap: 6,
@@ -1932,7 +2070,7 @@ export function MindmapRenderer({
           pointerEvents: 'none',
           userSelect: 'none',
           backdropFilter: 'blur(6px)',
-          maxWidth: 'calc(100% - 120px)',
+          maxWidth: 'calc(100% - 330px)',
           flexWrap: 'wrap',
         }}
       >
@@ -1947,6 +2085,28 @@ export function MindmapRenderer({
         <span style={{ opacity: 0.5 }}>·</span>
         <span>双击编辑</span>
       </div>
+
+      {/* 内容全部移出视野时的回位按钮（底部居中，位于快捷键提示上方） */}
+      {contentOffscreen && (
+        <button
+          type="button"
+          className="nb-mindmap-scroll-back"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={handleScrollBackToContent}
+        >
+          滚动回到内容
+        </button>
+      )}
+
+      {/* 右下角缩略图：大导图快速定位，可收起 */}
+      <CanvasMinimap
+        ref={minimapRef}
+        storageKey="nb-minimap-visible:mindmap"
+        getScene={getMinimapScene}
+        getViewport={getMinimapViewport}
+        onNavigate={handleMinimapNavigate}
+        defaultVisible={!IS_MOBILE_UI}
+      />
 
       {/* 节点图标选择器浮层 */}
       {iconPickerState && (
