@@ -17,6 +17,8 @@ import {
 import type { MindNode } from './mindmapTypes';
 import { generateNodeId, moveMindNode, isMindNodeDescendant } from './mindmapConverter';
 import { MindmapIconPicker } from './MindmapIconPicker';
+import { MindmapImagePreview } from './MindmapImagePreview';
+import { adjustMarksForTextChange } from './mindmapRichText';
 import { Tooltip } from '../../components/Tooltip';
 import type { MindmapSearchHighlight } from './mindmapSearch';
 
@@ -150,6 +152,9 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
     updateTree((cloned) => {
       function findAndSet(n: MindNode) {
         if (n.id === id) {
+          // 大纲模式编辑纯文本时，导图中设置的格式随文字平移
+          n.marks = adjustMarksForTextChange(n.text, text, n.marks);
+          if (!n.marks) delete n.marks;
           n.text = text;
           return true;
         }
@@ -492,11 +497,9 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
           currentDropTarget.targetId,
           currentDropTarget.pos,
         );
-        cloned.text = nextRoot.text;
-        cloned.isExpanded = nextRoot.isExpanded;
-        cloned.children = nextRoot.children;
-        cloned.note = nextRoot.note;
-        cloned.color = nextRoot.color;
+        // 整体替换根节点字段，避免图标、图片、格式、宽度等字段在搬移后丢失
+        for (const key of Object.keys(cloned)) delete (cloned as unknown as Record<string, unknown>)[key];
+        Object.assign(cloned, nextRoot);
       });
     }
   };
@@ -1197,35 +1200,9 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
         />
       )}
 
-      {/* 图片全屏放大预览弹窗 (Lightbox) */}
+      {/* 图片放大预览：Portal 到 body，支持滚轮缩放与拖动 */}
       {previewImage && (
-        <div
-          onClick={() => setPreviewImage(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.75)',
-            zIndex: 100000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 24,
-            cursor: 'zoom-out',
-            animation: 'nbFadeIn 0.15s ease-out',
-          }}
-        >
-          <img
-            src={previewImage}
-            alt="大图预览"
-            style={{
-              maxWidth: '90%',
-              maxHeight: '90%',
-              objectFit: 'contain',
-              borderRadius: 8,
-              boxShadow: '0 12px 32px rgba(0, 0, 0, 0.4)',
-            }}
-          />
-        </div>
+        <MindmapImagePreview src={previewImage} onClose={() => setPreviewImage(null)} />
       )}
 
       {/* 浮动拖拽跟随胶囊 */}

@@ -71,6 +71,9 @@ export const DEFAULT_SETTINGS: Settings = {
     codeBlockDefaultExpanded: true,
     detailsDefaultExpanded: false,
     swapEnterKeys: false,
+    mindmapNodeMaxWidth: 280,
+    mindmapTextAlign: 'left',
+    mindmapImageFit: 'original',
   },
   file: {
     autoSaveMarkdown: false,

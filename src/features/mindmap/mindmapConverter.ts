@@ -6,22 +6,39 @@
 import type {
   MindNode,
   MindmapDocumentData,
+  MindmapEdgeStyle,
   MindmapLayout,
   XMindContentJson,
   XMindTopic,
   XMindSheet,
 } from './mindmapTypes';
+import { normalizeMarks } from './mindmapRichText';
 
 /** 合法布局枚举（用于反序列化时的防御性校验） */
-const VALID_LAYOUTS: MindmapLayout[] = ['right', 'left', 'balanced', 'tree'];
+const VALID_LAYOUTS: MindmapLayout[] = [
+  'right',
+  'left',
+  'balanced',
+  'tree',
+  'tree-up',
+  'indent-right',
+  'indent-left',
+  'timeline',
+  'fishbone',
+];
+
+/** 合法连线样式枚举 */
+const VALID_EDGE_STYLES: MindmapEdgeStyle[] = ['curve', 'straight', 'elbow'];
 
 export const DEFAULT_MINDMAP_LAYOUT: MindmapLayout = 'right';
 export const DEFAULT_MINDMAP_THEME = 'classic';
 
-/** 文档级外观元信息（布局 + 配色主题） */
+/** 文档级外观元信息（布局 + 配色主题 + 连线样式） */
 export interface MindmapDocumentMeta {
   layout: MindmapLayout;
   theme: string;
+  /** 未设置时跟随配色主题 */
+  edgeStyle?: MindmapEdgeStyle;
 }
 
 let nextNodeId = 1;
@@ -78,12 +95,12 @@ export function parseMindmapDocument(content: string): MindNode {
   if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
     try {
       const parsed = JSON.parse(trimmed);
-      // 若为 NoteBoard Mindmap 格式
-      if (parsed.root && parsed.root.text) {
+      // 若为 NoteBoard Mindmap 格式（标题允许为空字符串）
+      if (parsed.root && typeof parsed.root === 'object' && typeof parsed.root.text === 'string') {
         return normalizeNode(parsed.root);
       }
       // 若直接为 MindNode
-      if (parsed.text && Array.isArray(parsed.children)) {
+      if (typeof parsed.text === 'string' && Array.isArray(parsed.children)) {
         return normalizeNode(parsed);
       }
       // 若为 XMind content.json 数组
@@ -110,6 +127,15 @@ function normalizeNode(node: Partial<MindNode>): MindNode {
     note: node.note,
     image: node.image,
     color: node.color,
+    // 仅保留合法的手动宽度
+    width:
+      typeof node.width === 'number' && Number.isFinite(node.width) && node.width > 0
+        ? node.width
+        : undefined,
+    // 富文本标记按文本长度裁剪校验；对齐与图片显示方式只接受合法枚举
+    marks: normalizeMarks(node.marks, (node.text || '').length),
+    textAlign: node.textAlign === 'left' || node.textAlign === 'center' ? node.textAlign : undefined,
+    imageFit: node.imageFit === 'original' || node.imageFit === 'fill' ? node.imageFit : undefined,
     isExpanded: node.isExpanded !== false,
     children: Array.isArray(node.children) ? node.children.map(normalizeNode) : [],
   };
@@ -121,7 +147,7 @@ function normalizeNode(node: Partial<MindNode>): MindNode {
  */
 export function serializeMindmapDocument(
   root: MindNode,
-  meta?: { layout?: MindmapLayout; theme?: string },
+  meta?: { layout?: MindmapLayout; theme?: string; edgeStyle?: MindmapEdgeStyle },
 ): string {
   const doc: MindmapDocumentData = {
     version: 1,
@@ -129,11 +155,13 @@ export function serializeMindmapDocument(
     layout: meta?.layout ?? DEFAULT_MINDMAP_LAYOUT,
     theme: meta?.theme ?? DEFAULT_MINDMAP_THEME,
   };
+  // 连线样式只在显式选择时写入，缺省跟随主题
+  if (meta?.edgeStyle) doc.edgeStyle = meta.edgeStyle;
   return JSON.stringify(doc, null, 2);
 }
 
 /**
- * 仅读取文档级外观元信息（布局与配色主题），不构建节点树
+ * 仅读取文档级外观元信息（布局、配色主题与连线样式），不构建节点树
  * 非 JSON 文档（如 Markdown 大纲）统一返回默认外观
  */
 export function parseMindmapDocumentMeta(content: string): MindmapDocumentMeta {
@@ -152,6 +180,12 @@ export function parseMindmapDocumentMeta(content: string): MindmapDocumentMeta {
       }
       if (typeof parsed.theme === 'string' && parsed.theme.trim()) {
         meta.theme = parsed.theme;
+      }
+      if (
+        typeof parsed.edgeStyle === 'string' &&
+        VALID_EDGE_STYLES.includes(parsed.edgeStyle as MindmapEdgeStyle)
+      ) {
+        meta.edgeStyle = parsed.edgeStyle as MindmapEdgeStyle;
       }
     }
   } catch {
@@ -176,7 +210,7 @@ export function xmindTopicToMindNode(topic: XMindTopic): MindNode {
 
   return {
     id: topic.id || generateNodeId(),
-    text: topic.title || '分支',
+    text: typeof topic.title === 'string' ? topic.title : '分支',
     icon,
     note: topic.note?.plain?.content,
     image: topic.image?.src,
