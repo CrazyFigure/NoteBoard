@@ -10,7 +10,7 @@ import {
   lineNumbers,
   highlightActiveLineGutter,
 } from '@codemirror/view';
-import { EditorState, Prec, Transaction } from '@codemirror/state';
+import { EditorState, Prec, Text, Transaction } from '@codemirror/state';
 import { undoDepth as cmUndoDepth } from '@codemirror/commands';
 import {
   createBaseExtensions,
@@ -36,6 +36,8 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { normalizeEol } from '../editor-md/serialize';
 import {
   bumpDocumentRevision,
+  getDocumentRevision,
+  getEditorCapabilities,
   registerEditorCapabilities,
 } from '../../core/editor/editorRegistry';
 // 🔴 S09：自动保存统一走每文档写队列
@@ -48,11 +50,13 @@ import { createCodeEditorCapabilities } from './editorCapabilities';
 import { CodeEditorContextMenu } from './CodeEditorContextMenu';
 import {
   initializeDocumentHistory,
-  recordDocumentChange,
+  isApplyingDocumentHistory,
   redoDocumentHistory,
   registerDocumentHistoryAdapter,
+  registerHistoryMaterializeHook,
   undoDocumentHistory,
 } from '../history/documentHistory';
+import { discardPendingSourceSnapshot, flushPendingSourceSnapshot, hasPendingSourceSnapshot, stagePendingSourceSnapshot } from '../editor-md/visualSnapshot';
 
 // ── 实例代际 ──
 
@@ -155,6 +159,9 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
     // 内容变更监听 → 更新 store（防抖 500ms）及自动保存（800ms，仅在 auto 策略时）
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+    // 基线仅在真实保存/外部重载后重建，输入时用 Text.eq 保持即时精确脏态，避免每键转全文字符串。
+    let baselineContent = currentDoc.baselineContent ?? '';
+    let baselineText: Text | null = currentDoc.content === baselineContent ? null : Text.of(normalizeEol(baselineContent).split('\n'));
     const updateListener = EditorView.updateListener.of((update) => {
       if (!update.docChanged) return;
 
@@ -162,31 +169,35 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
       //    供注册表 flush 快照与后续迁移校验使用
       bumpDocumentRevision(docKey);
 
-      const newContent = update.state.doc.toString();
       const key = docKey;
       const targetDoc = useDocumentStore.getState().getDocument(key);
-      // 规范化换行符后即时计算脏态
-      const isDirty = normalizeEol(newContent) !== normalizeEol(targetDoc?.baselineContent);
+      if (baselineContent !== (targetDoc?.baselineContent ?? '')) {
+        baselineContent = targetDoc?.baselineContent ?? '';
+        baselineText = Text.of(normalizeEol(baselineContent).split('\n'));
+      }
+      baselineText ??= update.startState.doc;
+      const isDirty = !update.state.doc.eq(baselineText);
       setTabDirty(key, isDirty);
       useDocumentStore.getState().setDirty(key, isDirty);
 
-      // 借助 CodeMirror 原生深度只判断输入分组边界，真正历史统一记录到文件时间线
-      recordDocumentChange(key, newContent, {
-        mode: 'code',
-        startsNewGroup: cmUndoDepth(update.state) > cmUndoDepth(update.startState),
-        beforeSelection: {
-          anchor: update.startState.selection.main.anchor,
-          head: update.startState.selection.main.head,
-        },
-        selection: {
-          anchor: update.state.selection.main.anchor,
-          head: update.state.selection.main.head,
-        },
-      });
+      // 历史导航只同步当前正文，不重新记入历史；真实输入只暂存不可变 Text 引用。
+      if (isApplyingDocumentHistory(key)) {
+        setContent(key, update.state.doc.toString());
+      } else {
+        const startsNewGroup = cmUndoDepth(update.state) > cmUndoDepth(update.startState);
+        if (startsNewGroup && hasPendingSourceSnapshot(key)) flushPendingSourceSnapshot(key);
+        const hadPending = hasPendingSourceSnapshot(key);
+        stagePendingSourceSnapshot(key, {
+          mode: 'code', text: update.state.doc, revision: getDocumentRevision(key), isNewGroup: startsNewGroup,
+          groupStartBefore: startsNewGroup || !hadPending
+            ? { anchor: update.startState.selection.main.anchor, head: update.startState.selection.main.head } : undefined,
+          selection: { anchor: update.state.selection.main.anchor, head: update.state.selection.main.head },
+        });
+      }
 
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        setContent(key, newContent);
+        flushPendingSourceSnapshot(key);
       }, 500);
 
       // 若处于 auto 自动保存策略，800ms 防抖写入磁盘
@@ -195,7 +206,8 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
         if (autoSaveTimer) clearTimeout(autoSaveTimer);
         autoSaveTimer = setTimeout(async () => {
           try {
-            await queuedAutoSave(key, newContent);
+            flushPendingSourceSnapshot(key);
+            await queuedAutoSave(key, useDocumentStore.getState().getDocument(key)?.content ?? '');
           } catch (e) {
             console.error('代码/文本文件自动保存失败:', e);
           }
@@ -320,6 +332,10 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
       state,
       parent: container,
     });
+    // 保存、撤销/重做和回收前都先物化当前组，保持原有历史分组和即时保存行为。
+    const unregisterMaterializeHook = registerHistoryMaterializeHook((key) => {
+      if (key === docKey) flushPendingSourceSnapshot(key);
+    });
 
     // 🔴 注册能力到 core 注册表（保存/搜索/工具栏统一入口）；
     // instanceId 保证旧实例的 disposer 无权删除新实例的注册
@@ -424,11 +440,17 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
 
     return () => {
       // 卸载前同步刷新权威内容，避免快速切换标签时 500ms 防抖尚未落入 store 而丢字
-      const latestContent = view.state.doc.toString();
-      useDocumentStore.getState().setContent(docKey, latestContent);
+      if (getEditorCapabilities(docKey)?.instanceId === instanceId && useDocumentStore.getState().hasDocument(docKey)) {
+        const latestContent = flushPendingSourceSnapshot(docKey) ?? view.state.doc.toString();
+        useDocumentStore.getState().setContent(docKey, latestContent);
+      } else if (!useDocumentStore.getState().hasDocument(docKey)) {
+        // 放弃并关闭的文档不再物化历史；旧实例也不能消费同路径新实例的快照。
+        discardPendingSourceSnapshot(docKey);
+      }
       if (debounceTimer) clearTimeout(debounceTimer);
       if (autoSaveTimer) clearTimeout(autoSaveTimer);
       unregisterHistoryAdapter();
+      unregisterMaterializeHook();
       container.removeEventListener('wheel', handleWheel);
       window.removeEventListener('noteboard-fonts-settled', handleFontsSettled);
       view.destroy();

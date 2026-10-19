@@ -277,6 +277,9 @@ export function installTauriMock(): void {
       }
       case 'read_document':
         return payloadOf(String(args.path));
+      case 'read_xmind_file':
+        // 开发替身只存文本，旧版 JSON 后缀样例仍按二进制接口返回；真实压缩包由工具栏上传测试。
+        return new TextEncoder().encode(payloadOf(String(args.path)).content ?? '').buffer;
       case 'probe_document': {
         const path = String(args.path);
         return { exists: files.has(path), mtime: Math.floor((files.get(path)?.mtime ?? now) / 1000), size: files.get(path)?.content.length ?? 0 };

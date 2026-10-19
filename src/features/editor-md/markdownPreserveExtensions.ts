@@ -7,6 +7,7 @@
 // 块级 HTML 例外：可渲染时显示过滤后的渲染结果，并可就地编辑源码（见 rawHtmlBlockView）。
 
 import { Node, mergeAttributes } from '@tiptap/core';
+import { createIndexedBlockStart } from './markdownBlockStart';
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import { emitRawSegment } from './rawMarkdownSegments';
 import { normalizeImageAlign, normalizeImageWidth } from './imageNodeView';
@@ -155,11 +156,7 @@ export const FootnoteDefinitionBlock = Node.create({
   markdownTokenizer: {
     name: 'footnoteDefinition',
     level: 'block',
-    start: (src: string) => {
-      const match = FOOTNOTE_DEFINITION_START.exec(src);
-      if (!match) return -1;
-      return match.index + (match[0].startsWith('\n') ? 1 : 0);
-    },
+    start: createIndexedBlockStart(FOOTNOTE_DEFINITION_START),
     tokenize: (src) => {
       const match = FOOTNOTE_DEFINITION_PATTERN.exec(src);
       if (!match) return undefined;

@@ -21,7 +21,9 @@ import type {
   MindmapImageFit,
   MindmapTextAlign,
 } from './mindmapTypes';
-import { generateNodeId, moveMindNode, isMindNodeDescendant } from './mindmapConverter';
+import { generateNodeId, moveMindNode } from './mindmapConverter';
+import { cloneMindmapTree, findMindNode, findMindNodeParent, walkMindNodes } from './mindmapTree';
+import { getMindmapViewport, isMindmapNodeVisible, isMindmapLinkVisible } from './mindmapViewport';
 import {
   computeMindmapLayout,
   clampManualWidth,
@@ -86,6 +88,8 @@ interface DragSession {
   startY: number;
   sourceNode: MindNode;
   isDragging: boolean;
+  /** 一次拖拽共用后代集合，避免首次移动仍重复遍历或误选自己的子树。 */
+  descendantIds?: Set<string>;
 }
 
 interface DropTargetState {
@@ -106,15 +110,10 @@ interface ResizeSession {
   moved: boolean;
 }
 
-// 递归统计某节点下的所有子孙节点总数
+// 统计全部子孙，不依赖展开状态，也不消耗递归调用栈。
 function countSubtreeDescendants(node: MindNode): number {
-  let count = 0;
-  if (node.children && node.children.length > 0) {
-    count += node.children.length;
-    for (const child of node.children) {
-      count += countSubtreeDescendants(child);
-    }
-  }
+  let count = -1;
+  for (const _current of walkMindNodes(node)) count += 1;
   return count;
 }
 
@@ -205,48 +204,29 @@ function getDropIndicatorRect(
 
 /** 在树中定位节点并按回调改写 */
 function updateNodeById(n: MindNode, id: string, mutate: (node: MindNode) => void): boolean {
-  if (n.id === id) {
-    mutate(n);
-    return true;
-  }
-  for (const c of n.children || []) {
-    if (updateNodeById(c, id, mutate)) return true;
-  }
-  return false;
+  const target = findMindNode(n, id);
+  if (!target) return false;
+  mutate(target);
+  return true;
 }
 
 /** 在树中定位节点并改写其标题文本与格式 */
 function setNodeTextById(n: MindNode, id: string, text: string, marks?: MindTextMark[]): boolean {
-  if (n.id === id) {
-    n.text = text;
-    if (marks && marks.length > 0) n.marks = marks;
-    else delete n.marks;
-    return true;
-  }
-  for (const c of n.children || []) {
-    if (setNodeTextById(c, id, text, marks)) return true;
-  }
-  return false;
+  return updateNodeById(n, id, (target) => {
+    target.text = text;
+    if (marks && marks.length > 0) target.marks = marks;
+    else delete target.marks;
+  });
 }
 
 /** 在树中查找父节点 */
 function findParentNode(n: MindNode, id: string): MindNode | null {
-  for (const c of n.children || []) {
-    if (c.id === id) return n;
-    const found = findParentNode(c, id);
-    if (found) return found;
-  }
-  return null;
+  return findMindNodeParent(n, id)?.parent ?? null;
 }
 
 /** 在树中查找节点 */
 function findNodeById(n: MindNode, id: string): MindNode | null {
-  if (n.id === id) return n;
-  for (const c of n.children || []) {
-    const found = findNodeById(c, id);
-    if (found) return found;
-  }
-  return null;
+  return findMindNode(n, id);
 }
 
 /** 草稿去除首尾空白，并同步平移格式区间 */
@@ -342,7 +322,39 @@ export function MindmapRenderer({
   const uploadTargetNodeIdRef = useRef<string | null>(null);
 
   // 画布平移状态
-  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 80, y: 160 });
+  const [pan, commitPan] = useState<{ x: number; y: number }>({ x: 80, y: 160 });
+  const panRef = useRef(pan);
+  const committedPanRef = useRef(pan);
+  committedPanRef.current = pan;
+  const transformLayerRef = useRef<HTMLDivElement>(null);
+  const panFrameRef = useRef<number | null>(null);
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  // 平移先更新图层变换；移动接近缓冲区边缘时才触发 React 补绘，不改原有灵敏度与坐标规则。
+  const setPan = useCallback((next: React.SetStateAction<{ x: number; y: number }>) => {
+    const value = typeof next === 'function' ? next(panRef.current) : next;
+    panRef.current = value;
+    if (transformLayerRef.current) transformLayerRef.current.style.transform = `translate(${value.x}px, ${value.y}px) scale(${zoomRef.current})`;
+    const committed = committedPanRef.current;
+    if (Math.max(Math.abs(value.x - committed.x), Math.abs(value.y - committed.y)) < 128) return;
+    if (panFrameRef.current === null) panFrameRef.current = requestAnimationFrame(() => {
+      panFrameRef.current = null;
+      commitPan(panRef.current);
+    });
+  }, []);
+  const [viewportSize, setViewportSize] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const measure = () => setViewportSize({ width: container.clientWidth, height: container.clientHeight });
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(container);
+    return () => {
+      observer?.disconnect();
+      if (panFrameRef.current !== null) cancelAnimationFrame(panFrameRef.current);
+    };
+  }, []);
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
@@ -491,6 +503,18 @@ export function MindmapRenderer({
     ],
   );
 
+  // 布局仍覆盖全部已展开节点，只有真正的节点和连线 DOM 按视口裁剪。
+  const viewport = useMemo(() => getMindmapViewport(panRef.current, zoom, viewportSize.width, viewportSize.height), [pan, zoom, viewportSize]);
+  const visibleNodes = useMemo(() => nodes.filter((node) =>
+    isMindmapNodeVisible(node, viewport) || [selectedNodeId, editingNodeId, editingNoteNodeId, draggedNodeId, resizePreview?.id].includes(node.node.id)),
+  [nodes, viewport, selectedNodeId, editingNodeId, editingNoteNodeId, draggedNodeId, resizePreview?.id]);
+  const visibleLinks = useMemo(() => links.filter((link) => isMindmapLinkVisible(link, viewport)), [links, viewport]);
+  // 拖动一次只生成一次后代集合，落点扫描和节点样式不再对每个节点重复遍历整树。
+  const draggedDescendantIds = useMemo(() => {
+    const source = draggedNodeId ? findMindNode(root, draggedNodeId) : null;
+    return new Set(source ? Array.from(walkMindNodes(source), (node) => node.id) : []);
+  }, [root, draggedNodeId]);
+
   // 搜索跳转：把当前匹配节点平移到画布中央（focusSeq 每次显式跳转递增；
   // 跳转可能刚展开折叠分支，effect 在新布局渲染后执行，nodes 已含目标节点）
   const searchFocusSeq = searchHighlight?.focusSeq ?? 0;
@@ -510,7 +534,7 @@ export function MindmapRenderer({
   // 深度克隆并更新树
   const updateTree = useCallback(
     (mutator: (clonedRoot: MindNode) => void) => {
-      const cloned = JSON.parse(JSON.stringify(root)) as MindNode;
+      const cloned = cloneMindmapTree(root);
       mutator(cloned);
       onChange(cloned);
     },
@@ -520,17 +544,7 @@ export function MindmapRenderer({
   // 切换节点折叠
   const handleToggleExpand = (id: string) => {
     updateTree((cloned) => {
-      function findAndToggle(n: MindNode) {
-        if (n.id === id) {
-          n.isExpanded = !n.isExpanded;
-          return true;
-        }
-        for (const c of n.children || []) {
-          if (findAndToggle(c)) return true;
-        }
-        return false;
-      }
-      findAndToggle(cloned);
+      updateNodeById(cloned, id, (target) => { target.isExpanded = !target.isExpanded; });
     });
   };
 
@@ -905,7 +919,8 @@ export function MindmapRenderer({
     }
 
     // 更新跟随光标的半透明悬浮卡片
-    const descendantCount = countSubtreeDescendants(session.sourceNode);
+    session.descendantIds ??= new Set(Array.from(walkMindNodes(session.sourceNode), (node) => node.id));
+    const descendantCount = session.descendantIds.size - 1;
     setDragPreview({
       x: e.clientX,
       y: e.clientY,
@@ -917,8 +932,8 @@ export function MindmapRenderer({
     const containerEl = containerRef.current;
     if (!containerEl) return;
     const rect = containerEl.getBoundingClientRect();
-    const worldX = (e.clientX - rect.left - pan.x) / zoom;
-    const worldY = (e.clientY - rect.top - pan.y) / zoom;
+    const worldX = (e.clientX - rect.left - panRef.current.x) / zoom;
+    const worldY = (e.clientY - rect.top - panRef.current.y) / zoom;
 
     // 寻找最近有效落点目标 (严格过滤自身及所有子孙节点，防止成环)
     let closest: DropTargetState | null = null;
@@ -928,7 +943,7 @@ export function MindmapRenderer({
       const tId = lNode.node.id;
       if (
         tId === session.sourceNode.id ||
-        isMindNodeDescendant(root, session.sourceNode.id, tId)
+        session.descendantIds.has(tId)
       ) {
         continue;
       }
@@ -1055,7 +1070,7 @@ export function MindmapRenderer({
       const target = e.target as HTMLElement;
       if (!target.closest('.nb-mindmap-node') && !target.closest('button, input, textarea')) {
         setIsPanning(true);
-        panStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
+        panStartRef.current = { x: e.clientX - panRef.current.x, y: e.clientY - panRef.current.y };
       }
       return;
     }
@@ -1070,8 +1085,8 @@ export function MindmapRenderer({
     pinchRef.current = {
       startDist: Math.max(1, Math.hypot(p2.x - p1.x, p2.y - p1.y)),
       startZoom: zoom,
-      worldX: (midX - pan.x) / zoom,
-      worldY: (midY - pan.y) / zoom,
+      worldX: (midX - panRef.current.x) / zoom,
+      worldY: (midY - panRef.current.y) / zoom,
     };
     setIsPinching(true);
     setIsPanning(false);
@@ -1096,7 +1111,7 @@ export function MindmapRenderer({
       const rest = Array.from(touchPointsRef.current.values())[0];
       if (rest) {
         setIsPanning(true);
-        panStartRef.current = { x: rest.x - pan.x, y: rest.y - pan.y };
+        panStartRef.current = { x: rest.x - panRef.current.x, y: rest.y - panRef.current.y };
       }
     }
   };
@@ -1111,7 +1126,7 @@ export function MindmapRenderer({
     }
     setIsPanning(true);
     setSelectedNodeId(null);
-    panStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
+    panStartRef.current = { x: e.clientX - panRef.current.x, y: e.clientY - panRef.current.y };
   };
 
   // 按 Esc 随时平滑取消当前拖拽
@@ -1174,8 +1189,6 @@ export function MindmapRenderer({
 
   // 滚轮缩放与平移：React 的 onWheel 是 passive 监听，preventDefault 无效，
   // Ctrl+滚轮会同时触发 WebView 页面缩放，因此改为原生非 passive 绑定
-  const zoomRef = useRef(zoom);
-  zoomRef.current = zoom;
   const onZoomChangeRef = useRef(onZoomChange);
   onZoomChangeRef.current = onZoomChange;
   useEffect(() => {
@@ -1246,9 +1259,10 @@ export function MindmapRenderer({
 
       {/* 缩放与平移图层 */}
       <div
+        ref={transformLayerRef}
         style={{
           position: 'absolute',
-          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+          transform: `translate(${panRef.current.x}px, ${panRef.current.y}px) scale(${zoom})`,
           transformOrigin: '0 0',
           transition: isPanning || isDraggingNode || isPinching ? 'none' : 'transform 0.05s ease-out',
         }}
@@ -1278,7 +1292,7 @@ export function MindmapRenderer({
               opacity={0.55}
             />
           ))}
-          {links.map((link, idx) => {
+          {visibleLinks.map((link, idx) => {
             const color =
               theme.branchColors[link.to.branchIndex % theme.branchColors.length] ??
               theme.branchColors[0];
@@ -1334,7 +1348,7 @@ export function MindmapRenderer({
         })()}
 
         {/* 节点卡片 DOM 图层 */}
-        {nodes.map((n) => {
+        {visibleNodes.map((n) => {
           const isRoot = n.level === 0;
           const isLevel1 = n.level === 1;
           const isEditing = editingNodeId === n.node.id;
@@ -1365,7 +1379,7 @@ export function MindmapRenderer({
           const isDescendantOfDragged =
             isDraggingNode &&
             draggedNodeId !== null &&
-            isMindNodeDescendant(root, draggedNodeId, n.node.id);
+            draggedDescendantIds.has(n.node.id);
           const isSourceOrDescendant = isBeingDragged || isDescendantOfDragged;
           const isDropTargetInside =
             isDraggingNode && dropTarget?.targetId === n.node.id && dropTarget.pos === 'inside';

@@ -69,6 +69,9 @@ function renderListItems(node: JSONContent, helpers: MarkdownRendererHelpers): s
 
 type ParentParse = (token: MarkdownToken, helpers: MarkdownParseHelpers) => MarkdownParseResult;
 
+/** 有序列表入口沿用官方支持的数字/字母标记，仅提前排除普通正文，避免逐段拆分全文。 */
+const baseOrderedTokenizer = OrderedList.config.markdownTokenizer as MarkdownTokenizer | undefined;
+
 export const MarkdownBulletList = BulletList.extend({
   addAttributes() {
     return { ...this.parent?.(), ...spacingAttribute() };
@@ -81,6 +84,14 @@ export const MarkdownBulletList = BulletList.extend({
 });
 
 export const MarkdownOrderedList = OrderedList.extend({
+  markdownTokenizer: baseOrderedTokenizer ? {
+    ...baseOrderedTokenizer,
+    tokenize(src, tokens, lexer) {
+      // 空白前缀与标记规则须覆盖官方字母、罗马数字列表，实际解析仍交给原 tokenizer。
+      if (!/^\s*(?:\d+|[a-zA-Z]+)[.)](?:[ \t]|$)/.test(src)) return undefined;
+      return baseOrderedTokenizer.tokenize.call(this, src, tokens, lexer);
+    },
+  } : undefined,
   addAttributes() {
     return { ...this.parent?.(), ...spacingAttribute() };
   },
@@ -106,6 +117,8 @@ function tokenizeTaskList(
 ): MarkdownToken | undefined {
   const tokenize = baseTaskTokenizer?.tokenize;
   if (!tokenize) return undefined;
+  // 这里只做与官方入口一致的快速排除，制表符缩进等合法输入仍由原 tokenizer 决定。
+  if (!/^\s*[-+*]\s+\[[ xX]\]\s+/.test(src)) return undefined;
   const first = tokenize.call(this, src, tokens, lexer) as MarkdownToken | undefined;
   // src 可能以前一块遗留的空行开头，按首个任务项所在行识别标记与缩进
   const firstMarker = TASK_ITEM_MARKER.exec(src.replace(/^(?:[ \t]*\n)+/, ''));

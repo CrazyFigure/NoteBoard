@@ -21,6 +21,7 @@
 // 栏宽以 flex 比例记录，调整后各栏之和为 100，精度一位小数。
 
 import { Node, mergeAttributes, type Editor, type Range } from '@tiptap/core';
+import { createIndexedBlockStart } from './markdownBlockStart';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react';
 import { contentReactNodeViewRenderer } from './contentNodeView';
@@ -570,11 +571,7 @@ export const ColumnsBlock = Node.create({
   markdownTokenizer: {
     name: 'columnsBlock',
     level: 'block',
-    start: (src: string) => {
-      const match = COLUMNS_START_PATTERN.exec(src);
-      if (!match) return -1;
-      return match.index + (match[0].startsWith('\n') ? 1 : 0);
-    },
+    start: createIndexedBlockStart(COLUMNS_START_PATTERN),
     tokenize: (src, _tokens, lexer) => {
       const match = matchColumnsBlock(src);
       if (!match) return undefined;

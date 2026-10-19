@@ -6,6 +6,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { CodeEditor } from '@/features/editor-code/CodeEditor';
+import { EditorView } from '@codemirror/view';
+import { clearAllDocumentHistories, redoDocumentHistory, undoDocumentHistory } from '@/features/history/documentHistory';
+import { hasPendingSourceSnapshot } from '@/features/editor-md/visualSnapshot';
 import { syncDocumentContent } from '@/features/editor-code/orchestration/syncDocumentContent';
 import {
   getEditorCapabilities,
@@ -63,11 +66,33 @@ function seedDocument(key: string, content: string): void {
 describe('编辑器能力注册表（code 实例）', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearAllDocumentHistories();
     useWindowStore.setState({ tabs: [], activeKey: null });
     useDocumentStore.setState({ documents: new Map() });
     resetEditorRegistryForTest();
     seedDocument(KEY_A, '{"a":1}');
     seedDocument(KEY_B, 'hello b');
+  });
+
+  it('输入暂存后立即保存/撤销不丢字，改回基线立即消除脏态', async () => {
+    const mounted = mountEditor(KEY_B);
+    try {
+      const view = EditorView.findFromDOM(mounted.host.querySelector('.cm-editor')!)!;
+      act(() => view.dispatch({ changes: { from: 0, insert: 'x' } }));
+      expect(hasPendingSourceSnapshot(KEY_B)).toBe(true);
+      expect(useDocumentStore.getState().getDocument(KEY_B)?.content).toBe('hello b');
+      expect(useDocumentStore.getState().getDocument(KEY_B)?.isDirty).toBe(true);
+      await act(async () => { await getEditorCapabilities(KEY_B)!.flush('save'); });
+      expect(useDocumentStore.getState().getDocument(KEY_B)?.content).toBe('xhello b');
+      expect(hasPendingSourceSnapshot(KEY_B)).toBe(false);
+      act(() => { expect(undoDocumentHistory(KEY_B)).toBe(true); });
+      expect(view.state.doc.toString()).toBe('hello b');
+      expect(useDocumentStore.getState().getDocument(KEY_B)?.isDirty).toBe(false);
+      act(() => { expect(redoDocumentHistory(KEY_B)).toBe(true); });
+      expect(view.state.doc.toString()).toBe('xhello b');
+    } finally {
+      unmountEditor(mounted.root, mounted.host);
+    }
   });
 
   it('两个代码标签各自注册能力，flush 取到互不串线的权威内容', async () => {

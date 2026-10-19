@@ -160,6 +160,8 @@ import type { Text as CodeMirrorText } from '@codemirror/state';
 
 /** source 模式暂存快照（组内合并：同组多次输入只保留最新 Text 引用） */
 interface PendingSourceSnapshot {
+  /** 普通代码/文本与 Markdown 源码共用不可变 Text 暂存，历史模式仍分别保留。 */
+  mode?: 'source' | 'code';
   /** 🔴 R3-01：稳定组身份 */
   groupId: number;
   text: CodeMirrorText;
@@ -189,6 +191,7 @@ export function stagePendingSourceSnapshot(
   docKey: string,
   snapshot: {
     text: CodeMirrorText;
+    mode?: 'source' | 'code';
     revision: number;
     isNewGroup: boolean;
     groupStartBefore?: DocumentHistorySelection;
@@ -223,16 +226,17 @@ export function flushPendingSourceSnapshot(docKey: string): string | null {
   pendingSourceByDoc.delete(docKey);
 
   recordDocumentChange(docKey, content, {
-    mode: 'source',
+    mode: pending.mode ?? 'source',
     startsNewGroup: pending.isNewGroup,
     beforeSelection: pending.groupStartBefore,
     selection: pending.selection,
   });
 
-  const baseline =
-    getBaseline(docKey).getBaseline()
-    ?? useDocumentStore.getState().getDocument(docKey)?.baselineContent
-    ?? '';
+  const baseline = pending.mode === 'code'
+    ? useDocumentStore.getState().getDocument(docKey)?.baselineContent ?? ''
+    : getBaseline(docKey).getBaseline()
+      ?? useDocumentStore.getState().getDocument(docKey)?.baselineContent
+      ?? '';
   const isDirty = normalizeEol(content) !== normalizeEol(baseline);
   useDocumentStore.getState().setContent(docKey, content);
   useWindowStore.getState().setTabDirty(docKey, isDirty);

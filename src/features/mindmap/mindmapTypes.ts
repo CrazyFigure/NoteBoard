@@ -65,6 +65,9 @@ export interface XMindTopic {
   id: string;
   title: string;
   note?: { plain: { content: string } };
+  // 官方文件使用 notes；兼容 NoteBoard 旧版导出的 note 字段。
+  notes?: { plain?: { content: string }; html?: { content: string } };
+  branch?: string;
   // XMind 标记徽章（优先级、旗帜等）
   markers?: Array<{ markerId: string }>;
   // XMind 挂载图片

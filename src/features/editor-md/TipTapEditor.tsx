@@ -538,11 +538,12 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     initializeDocumentHistory(docKey, historyInitialContent, resolvedMode);
     if (resolvedMode === 'source') {
       // 延迟确保源码容器完成挂载；历史本身已独立于编辑器模式初始化
-      setTimeout(() => {
+      const sourceInitTimer = setTimeout(() => {
         initSourceEditor(historyInitialContent);
         // 🔴 S12：source 内核重挂载（回收后）——恢复捕获的选区/滚动视图状态
         restoreMarkdownViewState();
       }, 0);
+      return () => clearTimeout(sourceInitTimer);
     }
   }, [docKey, settings.editor.defaultViewMode, initSourceEditor]);
 
@@ -836,76 +837,50 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     };
   }, [docKey]);
 
-  // 大文档横幅
-  if (showLargeBanner && largeVerdict) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-        <div
-          style={{
-            padding: '12px 16px',
-            background: 'var(--warning-50)',
-            borderBottom: '1px solid var(--warning-200)',
-            fontSize: 13,
-            color: 'var(--editor-text)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            flexShrink: 0,
-          }}
-        >
-          <span>📄</span>
-          <span>
-            此文件较大（{(largeVerdict.charCount / 1000).toFixed(0)}k 字符），已切换到源码模式。
-            {largeVerdict.suggestedMode === 'section' && ' 可使用分段编辑模式。'}
-          </span>
-          <button
-            style={{
-              marginLeft: 'auto',
-              padding: '4px 12px',
-              border: '1px solid var(--control-border)',
-              borderRadius: 3,
-              background: 'transparent',
-              color: 'inherit',
-              cursor: 'pointer',
-              fontSize: 12,
-            }}
-            onClick={() => {
-              setShowLargeBanner(false);
-              const content = getCurrentDocumentHistoryContent(docKey)
-                ?? useDocumentStore.getState().getDocument(docKey)?.content
-                ?? '';
-              // 用户显式确认大文件仍用可视化：与普通切换走同一判定（含规范化确认与基线/历史同步）
-              requestVisualMode(content);
-            }}
-          >
-            仍要使用可视化编辑
-          </button>
-        </div>
-        <div
-          style={{
-            flex: 1,
-            overflow: 'hidden',
-            background: 'var(--editor-bg)',
-            display: 'flex',
-            justifyContent: 'center',
-          }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget && sourceViewRef.current) {
-              sourceViewRef.current.focus();
-            }
-          }}
-        >
-          <div
-            ref={sourceDivRef}
-            style={{
-              width: '100%',
-              height: '100%',
-            }}
-          />
-        </div>
-      </div>
-    );
-  }
+  // 大文档只切换横幅，不另建源码容器；否则初始化时的 CodeMirror 会留在已脱离页面的旧 DOM 上。
+  const largeBanner = showLargeBanner && largeVerdict ? (
+    <div
+      style={{
+        padding: '12px 16px',
+        background: 'var(--warning-50)',
+        borderBottom: '1px solid var(--warning-200)',
+        fontSize: 13,
+        color: 'var(--editor-text)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        flexShrink: 0,
+      }}
+    >
+      <span>📄</span>
+      <span>
+        此文件较大（{(largeVerdict.charCount / 1000).toFixed(0)}k 字符），已切换到源码模式。
+        {largeVerdict.suggestedMode === 'section' && ' 可使用分段编辑模式。'}
+      </span>
+      <button
+        style={{
+          marginLeft: 'auto',
+          padding: '4px 12px',
+          border: '1px solid var(--control-border)',
+          borderRadius: 3,
+          background: 'transparent',
+          color: 'inherit',
+          cursor: 'pointer',
+          fontSize: 12,
+        }}
+        onClick={() => {
+          setShowLargeBanner(false);
+          const content = getCurrentDocumentHistoryContent(docKey)
+            ?? useDocumentStore.getState().getDocument(docKey)?.content
+            ?? '';
+          // 用户显式确认大文件仍用可视化：与普通切换走同一判定（含规范化确认与基线/历史同步）
+          requestVisualMode(content);
+        }}
+      >
+        仍要使用可视化编辑
+      </button>
+    </div>
+  ) : null;
 
   return (
     <div
@@ -913,7 +888,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       style={{ height: '100%', overflow: 'hidden', position: 'relative' }}
       ref={editorRef}
     >
-      <ExternalChangeBanner docKey={docKey} />
+      {!showLargeBanner && <ExternalChangeBanner docKey={docKey} />}
       {/* 🔴 S08：visual 运行时（惰性挂载；TipTap 内核随本组件创建/销毁） */}
       {hasVisualKernel && (
         <VisualKernel
@@ -935,6 +910,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
           overflow: 'hidden',
           background: 'var(--editor-bg)',
           display: viewMode === 'source' ? 'flex' : 'none',
+          flexDirection: 'column',
           justifyContent: 'center',
         }}
         onClick={(e) => {
@@ -943,20 +919,23 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
           }
         }}
       >
+        {largeBanner}
         <div
           ref={sourceDivRef}
           style={{
             width: '100%',
-            height: '100%',
+            // 横幅出现和收起时仅重新分配高度，源码视图和选区始终保留在同一个挂载点。
+            flex: 1,
+            minHeight: 0,
           }}
         />
       </div>
 
       {/* 底部左侧模式切换器：可视化 / 源码模式，具备热区靠近唤出与 Hover、Active 状态反馈，仅对当前文档生效 */}
-      {!isReading && <MarkdownModeToggle viewMode={viewMode} onToggle={toggleViewMode} />}
+      {!isReading && !showLargeBanner && <MarkdownModeToggle viewMode={viewMode} onToggle={toggleViewMode} />}
 
       {/* 沉浸阅读：进度条与退出按钮 */}
-      {isReading && <ReadingModeOverlay rootRef={editorRef} onExit={exitReading} />}
+      {isReading && !showLargeBanner && <ReadingModeOverlay rootRef={editorRef} onExit={exitReading} />}
 
       {/* 格式规范化确认：仅在用户请求进入可视化且会改变源码写法时出现 */}
       {normalizePrompt && (
