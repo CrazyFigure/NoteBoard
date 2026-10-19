@@ -117,6 +117,68 @@ jobs:
           # 规范产物文件命名
           assetNamePattern: NoteBoard_[version]_[platform]_[arch][setup][ext]
 
+  # 正式标签的 Windows 安装包上传后，以仓库拥有者的跨仓库令牌提交 WinGet 更新申请。
+  # 与 APK 构建并行；预发布和仅验证安卓的手动运行不向官方软件源提交。
+  publish-winget:
+    name: Submit WinGet update
+    runs-on: windows-latest
+    needs: build-windows
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Setup .NET for WinGet Create
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Submit released installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGE_PUBLISH_TOKEN }}
+          # 令牌经环境变量交给 WinGet Create，避免出现在命令行参数中。
+          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.PACKAGE_PUBLISH_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
+            throw '请配置 PACKAGE_PUBLISH_TOKEN，以允许向 microsoft/winget-pkgs 提交更新。'
+          }
+          # 仅接受三段正式版本号，并从已发布的附件读取实际下载地址。
+          if ($env:RELEASE_TAG -notmatch '^v(\d+\.\d+\.\d+)$') {
+            throw "不支持的软件源版本：$env:RELEASE_TAG"
+          }
+          $version = $Matches[1]
+          $release = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json assets,isDraft,isPrerelease | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw '读取 Release 失败。' }
+          if ($release.isDraft -or $release.isPrerelease) { throw '软件源只接收正式 Release。' }
+          $asset = @($release.assets | Where-Object { $_.name -eq "NoteBoard_${version}_windows_x64-setup.exe" })
+          if ($asset.Count -ne 1) { throw '未找到唯一的 Windows x64 安装包。' }
+
+          # 重跑工作流时，已有入库版本或同版本待审申请均直接复用，避免重复提交。
+          $manifestPath = "manifests/c/CrazyFigure/NoteBoard/$version"
+          gh api "repos/microsoft/winget-pkgs/contents/$manifestPath" --silent 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            "WinGet $version 已入库。" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+            exit 0
+          }
+          $requests = @(gh pr list --repo microsoft/winget-pkgs --state open --author $env:GITHUB_REPOSITORY_OWNER --search "CrazyFigure.NoteBoard $version in:title" --json url | ConvertFrom-Json)
+          if ($LASTEXITCODE -ne 0) { throw '检查现有 WinGet 更新申请失败。' }
+          if ($requests.Count -gt 0) {
+            $requests.url | Out-File $env:GITHUB_STEP_SUMMARY -Append
+            exit 0
+          }
+
+          # 固定官方工具版本并验证发布摘要，更新时保留已收录的安装范围及多语言元数据。
+          $tool = Join-Path $env:RUNNER_TEMP 'wingetcreate.exe'
+          Invoke-WebRequest 'https://github.com/microsoft/winget-create/releases/download/v1.12.13.0/wingetcreate.exe' -OutFile $tool
+          if ((Get-FileHash $tool -Algorithm SHA256).Hash -ne '24042BD37915805615E6CF969AC57C6439124C3FE85823327F5F3FB24BD9FFEA') {
+            throw 'WinGet Create 校验失败。'
+          }
+          & $tool update CrazyFigure.NoteBoard --version $version --urls "$($asset[0].url)|x64" --release-notes-url "https://github.com/$env:GITHUB_REPOSITORY/releases/tag/$env:RELEASE_TAG" --submit --no-open
+          if ($LASTEXITCODE -ne 0) { throw '提交 WinGet 更新失败。' }
+          "WinGet $version 已提交，审核合并后进入官方软件源。" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+
   # 安卓 APK（arm64）：Release 由 Windows 任务创建，完成后上传 APK 附件到同一 Release
   build-android:
     name: Build Android APK

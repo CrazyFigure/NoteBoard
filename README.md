@@ -41,7 +41,9 @@ macOS / Linux 包由 GitHub Actions 的 **macOS and Linux packages** 工作流�
 | Windows / WinGet | `winget install --id CrazyFigure.NoteBoard --exact` | `winget upgrade --id CrazyFigure.NoteBoard --exact` |
 | macOS / Homebrew | `brew install --cask crazyfigure/tap/noteboard` | `brew update && brew upgrade --cask crazyfigure/tap/noteboard` |
 
-WinGet 已提交[官方收录申请](https://github.com/microsoft/winget-pkgs/pull/453871)，**审核合并入库后命令才可用**。Homebrew 使用[项目维护的 Tap](https://github.com/CrazyFigure/homebrew-tap)，自动选择 Apple Silicon / Intel 包并跟进正式 Release；当前未进入 Homebrew 官方主仓，安装包仍未经过 Apple 公证。
+WinGet 已[收录到官方软件源](https://github.com/microsoft/winget-pkgs/pull/453871)。Homebrew 使用[项目维护的 Tap](https://github.com/CrazyFigure/homebrew-tap)，自动选择 Apple Silicon / Intel 包并跟进正式 Release；当前未进入 Homebrew 官方主仓，安装包仍未经过 Apple 公证。
+
+推送 `v*` 标签会自动构建 Windows EXE、安卓 APK、macOS DMG（Apple Silicon / Intel）、Linux DEB / AppImage，以及 Docker 多架构镜像。三段正式版本（如 `v0.5.8`）还会在安装包上传后自动触发 Homebrew 更新并提交 WinGet 更新申请；WinGet 须等待官方审核合并后才能升级。预发布标签（如 `v0.5.8-beta.1`）只构建发布，不更新软件源。维护者需在本仓库配置 `PACKAGE_PUBLISH_TOKEN` Secret，令牌须允许触发 `CrazyFigure/homebrew-tap` 工作流，以及向 `microsoft/winget-pkgs` 提交 PR（含维护 `CrazyFigure/winget-pkgs` 分支）。
 
 ## Docker / 1Panel 网页部署
 
