@@ -15,7 +15,10 @@ vi.mock('@/features/mindmap/MindmapRenderer', () => ({
   ),
 }));
 vi.mock('@/components/Tooltip', () => ({ Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
-vi.mock('@/features/export/chartExport', () => ({ exportBlobWithDialog: vi.fn() }));
+vi.mock('@/features/export/chartExport', () => ({
+  exportBlobWithDialog: vi.fn(),
+  buildExportFileName: (name: string | undefined, prefix: string) => name || prefix,
+}));
 vi.mock('@/features/mindmap/mindmapConverter', async (original) => ({
   ...await original<typeof import('@/features/mindmap/mindmapConverter')>(),
   exportToXmindZip: vi.fn(),

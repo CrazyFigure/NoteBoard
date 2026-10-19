@@ -5,6 +5,13 @@
 
 @import "tailwindcss";
 
+/* 导图导入画布与图片导出范围的选择列表，保持现有确认弹窗样式和操作反馈。 */
+.nb-mindmap-import-options { display: flex; flex-direction: column; gap: 6px; max-height: 45vh; overflow-y: auto; }
+.nb-mindmap-import-option { padding: 8px 12px; text-align: left; color: inherit; background: transparent; border: 1px solid var(--control-border); border-radius: 4px; cursor: pointer; overflow-wrap: anywhere; }
+.nb-mindmap-import-option:hover { background: var(--editor-surface); border-color: var(--editor-accent); }
+.nb-mindmap-import-option:active { background: color-mix(in srgb, var(--editor-accent) 18%, transparent); }
+.nb-mindmap-import-option[aria-selected="true"] { border-color: var(--editor-accent); background: color-mix(in srgb, var(--editor-accent) 10%, transparent); }
+
 /* ═════════════════════════════════════════════════════════
  * 重置
  * ═════════════════════════════════════════════════════════ */
@@ -3475,6 +3482,11 @@ button.nb-callout-icon:active {
   display: flex !important;
 }
 
+/* 节点标题按行渲染：行内容已由布局引擎断好，禁止浏览器二次折行 */
+.nb-mindmap-title-line {
+  white-space: pre;
+}
+
 /* ── 思维导图与图表编辑器交互按钮状态反馈规范 ── */
 
 /* 思维导图节点快捷浮动工具栏小按钮 */
@@ -3757,6 +3769,656 @@ button.nb-callout-icon:active {
   background: var(--toolbar-active, rgba(59, 130, 246, 0.12));
   color: var(--editor-accent, #3b82f6);
   font-weight: 600;
+}
+
+/* 布局面板：缩略图卡片网格 */
+.nb-mindmap-layout-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 6px 7px;
+  border-radius: 8px;
+  border: 1px solid var(--editor-border, #e2e8f0);
+  background: var(--editor-bg, #ffffff);
+  color: var(--editor-text, #1e293b);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color var(--transition-fast, 120ms ease), border-color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease), box-shadow var(--transition-fast, 120ms ease);
+}
+
+.nb-mindmap-layout-card:hover {
+  border-color: var(--editor-border-focus, #93c5fd);
+  background: var(--toolbar-hover, rgba(59, 130, 246, 0.06));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.nb-mindmap-layout-card:active {
+  transform: scale(0.97);
+  background: var(--toolbar-active, rgba(59, 130, 246, 0.14));
+}
+
+.nb-mindmap-layout-card[data-active='true'] {
+  border-color: var(--editor-accent, #3b82f6);
+  box-shadow: 0 0 0 1px var(--editor-accent, #3b82f6);
+  color: var(--editor-accent, #3b82f6);
+  font-weight: 600;
+}
+
+/* 布局面板：连线样式分段按钮 */
+.nb-mindmap-edge-option {
+  /* 按内容分配宽度：长选项（如「跟随主题」）多占一些，空间不足时再省略 */
+  flex: 1 1 auto;
+  /* 宽字体（如等宽字体、加大字间距）下也不撑出容器 */
+  min-width: 0;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 4px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--editor-text-secondary, #64748b);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
+}
+
+.nb-mindmap-edge-option > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nb-mindmap-edge-option > svg {
+  flex-shrink: 0;
+}
+
+.nb-mindmap-edge-option:hover {
+  background: var(--toolbar-hover, rgba(59, 130, 246, 0.08));
+  color: var(--editor-text, #1e293b);
+}
+
+.nb-mindmap-edge-option:active {
+  transform: scale(0.96);
+  background: var(--toolbar-active, rgba(59, 130, 246, 0.16));
+}
+
+.nb-mindmap-edge-option[data-active='true'] {
+  background: var(--editor-surface, #ffffff);
+  color: var(--editor-accent, #3b82f6);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* 节点宽度拉伸手柄：悬停或选中节点时显示 */
+.nb-mindmap-resize-handle {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  width: 8px;
+  cursor: ew-resize;
+  z-index: 6;
+  opacity: 0;
+  transition: opacity var(--transition-fast, 120ms ease);
+}
+
+.nb-mindmap-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: min(18px, 60%);
+  border-radius: 2px;
+  background: var(--editor-accent, #3b82f6);
+  transform: translate(-50%, -50%);
+  transition: height var(--transition-fast, 120ms ease), background-color var(--transition-fast, 120ms ease);
+}
+
+.nb-mindmap-node:hover .nb-mindmap-resize-handle,
+.nb-mindmap-resize-handle[data-visible='true'] {
+  opacity: 0.75;
+}
+
+.nb-mindmap-resize-handle:hover,
+.nb-mindmap-resize-handle[data-dragging='true'] {
+  opacity: 1 !important;
+}
+
+.nb-mindmap-resize-handle:hover::after,
+.nb-mindmap-resize-handle[data-dragging='true']::after {
+  height: min(28px, 80%);
+}
+
+/* 折叠 / 添加按钮在节点上下两侧时改为水平居中 */
+.nb-mindmap-fold-btn[data-side='top']:active,
+.nb-mindmap-fold-btn[data-side='bottom']:active {
+  transform: translateX(-50%) scale(0.90) !important;
+}
+
+.nb-node-add-btn[data-side='top']:hover,
+.nb-node-add-btn[data-side='bottom']:hover {
+  transform: translateX(-50%) scale(1.12) !important;
+}
+
+.nb-node-add-btn[data-side='top']:active,
+.nb-node-add-btn[data-side='bottom']:active {
+  transform: translateX(-50%) scale(0.92) !important;
+}
+
+/* 节点图片放大预览底部工具栏 */
+.nb-image-preview-toolbar {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  border-radius: 10px;
+  background: rgba(24, 24, 27, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  cursor: default;
+}
+
+.nb-image-preview-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
+}
+
+.nb-image-preview-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.nb-image-preview-btn:active {
+  background: rgba(255, 255, 255, 0.24);
+  transform: scale(0.93);
+}
+
+.nb-image-preview-percent {
+  min-width: 52px;
+}
+
+.nb-image-preview-divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* 导图模式左下角撤销 / 重做按钮组 */
+.nb-mindmap-history-bar {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--editor-surface, #ffffff) 88%, transparent);
+  border: 1px solid var(--editor-border, #e2e8f0);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.nb-mindmap-history-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--editor-text-secondary, #64748b);
+  cursor: pointer;
+  transition: background-color var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
+}
+
+.nb-mindmap-history-btn:hover:not(:disabled) {
+  background: var(--toolbar-hover, rgba(59, 130, 246, 0.08));
+  color: var(--editor-accent, #3b82f6);
+}
+
+.nb-mindmap-history-btn:active:not(:disabled) {
+  transform: scale(0.92);
+  background: var(--toolbar-active, rgba(59, 130, 246, 0.16));
+}
+
+.nb-mindmap-history-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* 通用画布缩略图（导图 / 画板右下角） */
+.nb-minimap {
+  position: absolute;
+  z-index: 6;
+  overflow: hidden;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--editor-surface, #ffffff) 92%, transparent);
+  border: 1px solid var(--editor-border, #e2e8f0);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+  transition:
+    border-color var(--transition-fast, 120ms ease),
+    box-shadow var(--transition-fast, 120ms ease),
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+/* 视野已能看到大部分内容时淡出，不响应指针 */
+.nb-minimap[data-idle='true'] {
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  visibility: hidden;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease,
+    visibility 0s linear 160ms;
+}
+
+.nb-minimap:hover {
+  border-color: var(--editor-border-focus, #93c5fd);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+}
+
+.nb-minimap[data-dragging='true'] {
+  cursor: grabbing;
+}
+
+/* 当前可视区域框：只改 transform / 尺寸，不触发内容重绘 */
+.nb-minimap-viewport {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: none;
+  box-sizing: border-box;
+  border: 1.5px solid var(--editor-accent, #3b82f6);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--editor-accent, #3b82f6) 16%, transparent);
+  cursor: grab;
+  pointer-events: none;
+}
+
+.nb-minimap[data-dragging='true'] .nb-minimap-viewport {
+  background: color-mix(in srgb, var(--editor-accent, #3b82f6) 24%, transparent);
+}
+
+.nb-minimap-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--editor-border, #e2e8f0);
+  border-radius: 5px;
+  background: var(--editor-surface, #ffffff);
+  color: var(--editor-text-secondary, #64748b);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition-fast, 120ms ease), background-color var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
+}
+
+.nb-minimap:hover .nb-minimap-close,
+.nb-minimap-close:focus-visible {
+  opacity: 1;
+}
+
+.nb-minimap[data-dragging='true'] .nb-minimap-close {
+  opacity: 0;
+}
+
+.nb-minimap-close:hover {
+  background: var(--toolbar-hover, rgba(59, 130, 246, 0.08));
+  color: var(--editor-accent, #3b82f6);
+}
+
+.nb-minimap-close:active {
+  transform: scale(0.9);
+  background: var(--toolbar-active, rgba(59, 130, 246, 0.16));
+}
+
+/* 收起后的把手：与侧栏把手一致，默认隐藏，靠近半显，悬停全显 */
+.nb-minimap-handle {
+  position: absolute;
+  z-index: 7;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--editor-border, #e2e8f0);
+  border-radius: 7px;
+  background: var(--rail-bg, var(--editor-surface, #ffffff));
+  color: var(--rail-fg, var(--editor-text-secondary, #64748b));
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition-normal, 200ms ease), background-color var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), box-shadow var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
+}
+
+.nb-minimap-handle[data-near='true'] {
+  opacity: 0.75;
+}
+
+.nb-minimap-handle:hover,
+.nb-minimap-handle:focus-visible {
+  opacity: 1;
+  background: var(--rail-hover-bg, var(--toolbar-hover, rgba(59, 130, 246, 0.08)));
+  color: var(--editor-text, #0f172a);
+  border-color: var(--editor-border-focus, #93c5fd);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.16);
+}
+
+.nb-minimap-handle:active {
+  transform: scale(0.92);
+  background: var(--toolbar-active, rgba(59, 130, 246, 0.16));
+}
+
+/* 导图“滚动回到内容”：内容全部移出视野时底部居中出现（同画板） */
+.nb-mindmap-scroll-back {
+  position: absolute;
+  left: 50%;
+  bottom: 52px;
+  z-index: 7;
+  transform: translateX(-50%);
+  padding: 7px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--editor-border, #e2e8f0);
+  background: var(--editor-surface, #ffffff);
+  color: var(--editor-text, #0f172a);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  animation: nb-scroll-back-in 160ms ease;
+  transition:
+    background var(--transition-fast, 120ms ease),
+    border-color var(--transition-fast, 120ms ease),
+    color var(--transition-fast, 120ms ease),
+    transform var(--transition-fast, 120ms ease);
+}
+
+.nb-mindmap-scroll-back:hover {
+  background: color-mix(in srgb, var(--editor-accent, #3b82f6) 8%, var(--editor-surface, #ffffff));
+  border-color: var(--editor-border-focus, #93c5fd);
+  color: var(--editor-accent, #3b82f6);
+}
+
+.nb-mindmap-scroll-back:active {
+  transform: translateX(-50%) scale(0.96);
+  background: color-mix(in srgb, var(--editor-accent, #3b82f6) 16%, var(--editor-surface, #ffffff));
+}
+
+@keyframes nb-scroll-back-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%);
+  }
+}
+
+/* 思维导图标题富文本编辑框 */
+.nb-mindmap-title-editor {
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.nb-mindmap-title-editor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--editor-text-muted, #94a3b8);
+  pointer-events: none;
+}
+
+/* 选中文字后的格式悬浮菜单 */
+.nb-mindmap-format-menu {
+  position: fixed;
+  z-index: 100004;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--editor-surface, #ffffff);
+  border: 1px solid var(--editor-border, #e2e8f0);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  user-select: none;
+}
+
+.nb-mindmap-format-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.nb-mindmap-format-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--editor-text, #1e293b);
+  cursor: pointer;
+  transition: background-color var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
+}
+
+.nb-mindmap-format-btn.is-wide {
+  min-width: 36px;
+}
+
+.nb-mindmap-format-btn:hover {
+  background: var(--toolbar-hover, rgba(59, 130, 246, 0.08));
+  color: var(--editor-accent, #3b82f6);
+}
+
+.nb-mindmap-format-btn:active {
+  transform: scale(0.92);
+  background: var(--toolbar-active, rgba(59, 130, 246, 0.16));
+}
+
+.nb-mindmap-format-btn[data-active='true'] {
+  background: var(--toolbar-active, rgba(59, 130, 246, 0.14));
+  color: var(--editor-accent, #3b82f6);
+}
+
+.nb-mindmap-format-divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  background: var(--editor-border, #e2e8f0);
+}
+
+.nb-mindmap-format-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 4px 2px 2px;
+  border-top: 1px solid var(--editor-border, #e2e8f0);
+}
+
+.nb-mindmap-format-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--editor-text-secondary, #64748b);
+  cursor: pointer;
+  transition: background-color var(--transition-fast, 120ms ease), border-color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
+}
+
+.nb-mindmap-format-swatch:hover {
+  background: var(--toolbar-hover, rgba(59, 130, 246, 0.08));
+  border-color: var(--editor-border, #e2e8f0);
+}
+
+.nb-mindmap-format-swatch:active {
+  transform: scale(0.9);
+}
+
+.nb-mindmap-format-swatch[data-active='true'] {
+  border-color: var(--editor-accent, #3b82f6);
+}
+
+.nb-mindmap-format-chip {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+/* 单个节点样式浮层 */
+.nb-mindmap-node-style-popover {
+  position: fixed;
+  z-index: 100004;
+  width: 240px;
+  box-sizing: border-box;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--editor-surface, #ffffff);
+  border: 1px solid var(--editor-border, #e2e8f0);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.16);
+  color: var(--editor-text, #1e293b);
+  font-size: 12px;
+  user-select: none;
+}
+
+.nb-mindmap-popover-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.nb-mindmap-popover-label {
+  margin: 8px 2px 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--editor-text-muted, #94a3b8);
+}
+
+.nb-mindmap-segment {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--editor-bg, #f1f5f9);
+  border: 1px solid var(--editor-border, #e2e8f0);
+}
+
+/* 思维导图二次确认对话框 */
+.nb-mindmap-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100006;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.4);
+  animation: nbFadeIn 0.15s ease-out;
+}
+
+.nb-mindmap-confirm-card {
+  width: min(380px, 100%);
+  padding: 16px 18px;
+  border-radius: 10px;
+  background: var(--editor-surface, #ffffff);
+  border: 1px solid var(--editor-border, #cbd5e1);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+  color: var(--editor-text, #1e293b);
+}
+
+.nb-mindmap-confirm-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.nb-mindmap-confirm-message {
+  margin: 10px 0 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--editor-text-secondary, #64748b);
+}
+
+.nb-mindmap-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.nb-mindmap-danger-btn {
+  padding: 4px 14px;
+  border: none;
+  border-radius: 6px;
+  background: var(--error-500, #ef4444);
+  color: #ffffff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: filter var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
+}
+
+.nb-mindmap-danger-btn:hover {
+  filter: brightness(1.08);
+}
+
+.nb-mindmap-danger-btn:active {
+  transform: scale(0.96);
+  filter: brightness(0.92);
+}
+
+.nb-mindmap-danger-btn:focus-visible {
+  outline: 2px solid var(--error-500, #ef4444);
+  outline-offset: 2px;
 }
 
 /* ── 多维表格 (Bitable) 按钮与交互元素状态反馈 ── */
@@ -4117,6 +4779,79 @@ button.nb-callout-icon:active {
 
 :root[data-theme="mo-ye"] .nb-bitable-gantt-group-cell:hover {
   background: var(--toolbar-hover);
+}
+
+/* 琥珀主题：冷灰悬浮色在暖纸底上发青，改为暖灰 */
+:root[data-theme="hu-po"] .nb-bitable-gantt-row:hover,
+:root[data-theme="hu-po"] .nb-bitable-gantt-row:hover .nb-bitable-gantt-left-cell,
+:root[data-theme="hu-po"] .nb-bitable-gantt-row:hover .nb-bitable-gantt-num-cell {
+  background: #EFEDE5;
+}
+
+:root[data-theme="hu-po"] .nb-bitable-gantt-group-cell:hover {
+  background: var(--toolbar-hover);
+}
+
+/* 左侧固定列宽度拖拽把手：贴在列头右缘，悬浮 / 拖动时显出强调色竖线 */
+.nb-bitable-gantt-col-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 2;
+  transition: background var(--transition-fast);
+}
+
+.nb-bitable-gantt-col-resizer:hover {
+  background: color-mix(in srgb, var(--editor-accent, #3b82f6) 45%, transparent);
+}
+
+.nb-bitable-gantt-col-resizer:active {
+  background: var(--editor-accent, #3b82f6);
+}
+
+/* 甘特图配置：开关与每周休息日选择 */
+.nb-bitable-gantt-switch:hover {
+  filter: brightness(1.06);
+}
+
+.nb-bitable-gantt-switch:active {
+  transform: scale(0.95);
+}
+
+.nb-bitable-gantt-weekday {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--editor-border, #e2e8f0);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--editor-text-muted, #64748b);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-bitable-gantt-weekday:hover:not(.is-active) {
+  background: var(--toolbar-hover, #f1f5f9);
+  color: var(--editor-text, #1e293b);
+}
+
+.nb-bitable-gantt-weekday:active {
+  transform: scale(0.92);
+}
+
+.nb-bitable-gantt-weekday.is-active {
+  background: var(--editor-accent, #3b82f6);
+  border-color: var(--editor-accent, #3b82f6);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.nb-bitable-gantt-weekday.is-active:hover {
+  filter: brightness(1.06);
 }
 
 /* 时间轴刻度切换（周 / 月 / 季 / 年） */
@@ -4844,4 +5579,157 @@ input[type='number'] {
 
 @keyframes nb-prompt-spin {
   to { transform: rotate(360deg); }
+}
+
+/* ═════════════════════════════════════════════════════════
+ * Markdown 沉浸阅读
+ * 收窄行宽、加大上下留白，隐藏编辑辅助标记；进度条与退出胶囊浮在正文之上
+ * ═════════════════════════════════════════════════════════ */
+
+/* 正文列：约 46 字一行的舒适阅读宽度，内联样式需 !important 覆盖 */
+.nb-md-reading .nb-prose {
+  max-width: min(var(--content-max-width), 46em) !important;
+  padding: 72px 40px 40vh !important;
+  font-size: calc(var(--content-font-size) * 1.06) !important;
+  caret-color: transparent;
+  animation: nb-reading-in 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 标题级别标签属于编辑辅助，阅读时隐藏 */
+.nb-md-reading .ProseMirror h1::before,
+.nb-md-reading .ProseMirror h2::before,
+.nb-md-reading .ProseMirror h3::before,
+.nb-md-reading .ProseMirror h4::before,
+.nb-md-reading .ProseMirror h5::before,
+.nb-md-reading .ProseMirror h6::before {
+  content: none;
+}
+
+.nb-reading-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 40;
+  pointer-events: none;
+}
+
+.nb-reading-progress-bar {
+  height: 100%;
+  background: var(--accent-strong);
+  transform-origin: left center;
+  transition: transform 120ms linear;
+}
+
+.nb-reading-capsule {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--editor-border);
+  background: color-mix(in srgb, var(--editor-surface, var(--editor-bg)) 84%, transparent);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  user-select: none;
+  transition: opacity 240ms ease, transform 240ms ease;
+  animation: nb-reading-capsule-in 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 指针静止时淡出但不完全消失，退出入口始终可被找到 */
+.nb-reading-capsule[data-visible='false'] {
+  opacity: 0.45;
+  transform: translateY(-2px);
+}
+
+.nb-reading-percent {
+  min-width: 30px;
+  text-align: right;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--editor-text-muted);
+}
+
+.nb-reading-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--editor-border);
+}
+
+.nb-reading-exit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--editor-text-secondary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-reading-exit:hover,
+.nb-reading-exit:focus-visible {
+  background: var(--toolbar-hover);
+  color: var(--accent-strong);
+  outline: none;
+}
+
+.nb-reading-exit:active,
+.nb-reading-exit[data-pressed='true'] {
+  background: var(--toolbar-active);
+  transform: scale(0.95);
+}
+
+@keyframes nb-reading-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes nb-reading-capsule-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nb-md-reading .nb-prose,
+  .nb-md-reading .cm-content,
+  .nb-reading-capsule {
+    animation: none !important;
+  }
+}
+
+/* 源码阅读（大文档或需规范化的文档）：隐藏行号与当前行底色，收窄正文列 */
+.nb-md-reading .cm-gutters {
+  display: none !important;
+}
+
+.nb-md-reading .cm-activeLine {
+  background-color: transparent !important;
+}
+
+.nb-md-reading .cm-scroller {
+  padding-inline: max(0px, calc((100% - min(var(--content-max-width), 52em)) / 2)) !important;
+}
+
+.nb-md-reading .cm-content {
+  padding: 72px 24px 40vh !important;
+  animation: nb-reading-in 360ms cubic-bezier(0.22, 1, 0.36, 1);
 }

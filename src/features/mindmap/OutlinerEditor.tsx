@@ -3,6 +3,7 @@
 // 详见 docs/09-开发路线图.md
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
+import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual';
 import {
   ChevronRight,
   ChevronDown,
@@ -16,7 +17,10 @@ import {
 } from 'lucide-react';
 import type { MindNode } from './mindmapTypes';
 import { generateNodeId, moveMindNode, isMindNodeDescendant } from './mindmapConverter';
+import { cloneMindmapTree } from './mindmapTree';
 import { MindmapIconPicker } from './MindmapIconPicker';
+import { MindmapImagePreview } from './MindmapImagePreview';
+import { adjustMarksForTextChange } from './mindmapRichText';
 import { Tooltip } from '../../components/Tooltip';
 import type { MindmapSearchHighlight } from './mindmapSearch';
 
@@ -56,7 +60,9 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadTargetNodeIdRef = useRef<string | null>(null);
   const focusTargetIdRef = useRef<string | null>(null);
+  const selectOnFocusRef = useRef(true);
   const focusNoteTargetIdRef = useRef<string | null>(null);
+  const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
 
   // 图标选择器弹窗状态
   const [iconPickerState, setIconPickerState] = useState<{
@@ -79,13 +85,11 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
   const flatItems = React.useMemo(() => {
     const list: FlatItem[] = [];
 
-    function traverse(
-      node: MindNode,
-      parent: MindNode | null,
-      parentArray: MindNode[],
-      indexInParent: number,
-      depth: number,
-    ) {
+    const stack: Array<{ node: MindNode; parent: MindNode | null; parentArray: MindNode[]; indexInParent: number; depth: number }> = [
+      { node: root, parent: null, parentArray: [], indexInParent: 0, depth: 0 },
+    ];
+    while (stack.length > 0) {
+      const { node, parent, parentArray, indexInParent, depth } = stack.pop()!;
       const hasChildren = Boolean(node.children && node.children.length > 0);
       const isExpanded = node.isExpanded !== false;
 
@@ -100,15 +104,49 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
       });
 
       if (hasChildren && isExpanded && node.children) {
-        node.children.forEach((child, idx) => {
-          traverse(child, node, node.children!, idx, depth + 1);
-        });
+        for (let index = node.children.length - 1; index >= 0; index -= 1) {
+          stack.push({ node: node.children[index], parent: node, parentArray: node.children, indexInParent: index, depth: depth + 1 });
+        }
       }
     }
 
-    traverse(root, null, [], 0, 0);
     return list;
   }, [root]);
+
+  // 小大纲沿用原布局，大大纲按真实行高虚拟化；当前输入和待聚焦行始终保留，不能因滚动丢焦点。
+  const virtualized = flatItems.length > 500;
+  const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
+    count: flatItems.length,
+    enabled: virtualized,
+    getScrollElement: () => containerRef.current,
+    getItemKey: (index) => flatItems[index].node.id,
+    estimateSize: () => 48,
+    overscan: 8,
+    scrollMargin: 36,
+    rangeExtractor: (range) => {
+      const indexes = new Set(defaultRangeExtractor(range));
+      const pinned = new Set([activeNodeId, focusTargetIdRef.current, focusNoteTargetIdRef.current, iconPickerState?.nodeId, dragSessionRef.current?.sourceId]);
+      flatItems.forEach((item, index) => { if (pinned.has(item.node.id)) indexes.add(index); });
+      return [...indexes].sort((left, right) => left - right);
+    },
+  });
+  const virtualRows = virtualizer.getVirtualItems();
+  const renderedItems = virtualized
+    ? virtualRows.map((virtualRow) => ({ item: flatItems[virtualRow.index], idx: virtualRow.index, virtualRow }))
+    : flatItems.map((item, idx) => ({ item, idx, virtualRow: undefined }));
+
+  /** 键盘导航先把目标滚入视口，挂载后的 effect 再恢复输入焦点。 */
+  const focusRow = (index: number) => {
+    const target = flatItems[index];
+    if (!target) return;
+    const input = inputRefs.current.get(target.node.id);
+    if (input) { input.focus(); return; }
+    // 上下方向键只转移焦点，不把整行文字全选；新建节点仍沿用原有全选行为。
+    selectOnFocusRef.current = false;
+    focusTargetIdRef.current = target.node.id;
+    setActiveNodeId(target.node.id);
+    if (virtualized) virtualizer.scrollToIndex(index, { align: 'auto' });
+  };
 
   // 当新增或切换聚焦节点时自动激活对应 input
   useEffect(() => {
@@ -116,11 +154,12 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
       const input = inputRefs.current.get(focusTargetIdRef.current);
       if (input) {
         input.focus();
-        input.select();
+        if (selectOnFocusRef.current) input.select();
+        selectOnFocusRef.current = true;
+        focusTargetIdRef.current = null;
       }
-      focusTargetIdRef.current = null;
     }
-  }, [flatItems]);
+  });
 
   // 自动聚焦备注输入框
   useEffect(() => {
@@ -130,15 +169,15 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
         noteInput.focus();
         noteInput.selectionStart = noteInput.value.length;
         noteInput.selectionEnd = noteInput.value.length;
+        focusNoteTargetIdRef.current = null;
       }
-      focusNoteTargetIdRef.current = null;
     }
   });
 
   // 深度克隆并触发更新
   const updateTree = useCallback(
     (mutator: (clonedRoot: MindNode) => void) => {
-      const cloned = JSON.parse(JSON.stringify(root)) as MindNode;
+      const cloned = cloneMindmapTree(root);
       mutator(cloned);
       onChange(cloned);
     },
@@ -150,6 +189,9 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
     updateTree((cloned) => {
       function findAndSet(n: MindNode) {
         if (n.id === id) {
+          // 大纲模式编辑纯文本时，导图中设置的格式随文字平移
+          n.marks = adjustMarksForTextChange(n.text, text, n.marks);
+          if (!n.marks) delete n.marks;
           n.text = text;
           return true;
         }
@@ -426,12 +468,11 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
     let minDistance = Infinity;
 
     for (const item of flatItems) {
+      const rowEl = rowRefs.current.get(item.node.id);
+      if (!rowEl) continue;
       if (isMindNodeDescendant(root, session.sourceId, item.node.id)) {
         continue;
       }
-
-      const rowEl = rowRefs.current.get(item.node.id);
-      if (!rowEl) continue;
 
       const rect = rowEl.getBoundingClientRect();
       const rowCenterY = rect.top + rect.height / 2;
@@ -492,11 +533,9 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
           currentDropTarget.targetId,
           currentDropTarget.pos,
         );
-        cloned.text = nextRoot.text;
-        cloned.isExpanded = nextRoot.isExpanded;
-        cloned.children = nextRoot.children;
-        cloned.note = nextRoot.note;
-        cloned.color = nextRoot.color;
+        // 整体替换根节点字段，避免图标、图片、格式、宽度等字段在搬移后丢失
+        for (const key of Object.keys(cloned)) delete (cloned as unknown as Record<string, unknown>)[key];
+        Object.assign(cloned, nextRoot);
       });
     }
   };
@@ -506,6 +545,8 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
   const searchFocusSeq = searchHighlight?.focusSeq ?? 0;
   useEffect(() => {
     if (!searchFocusSeq || !searchHighlight?.currentId) return;
+    const index = flatItems.findIndex((item) => item.node.id === searchHighlight.currentId);
+    if (virtualized && index >= 0) virtualizer.scrollToIndex(index, { align: 'center' });
     rowRefs.current.get(searchHighlight.currentId)?.scrollIntoView({ block: 'center' });
     // 仅响应跳转序号变化
   }, [searchFocusSeq]);
@@ -550,8 +591,8 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
         onChange={handleFileSelect}
       />
 
-      <div style={{ maxWidth: 860, margin: '0 auto', position: 'relative' }}>
-        {flatItems.map((item, idx) => {
+      <div style={{ maxWidth: 860, margin: '0 auto', position: 'relative', height: virtualized ? virtualizer.getTotalSize() : undefined }}>
+        {renderedItems.map(({ item, idx, virtualRow }) => {
           const isRoot = item.depth === 0;
           const paddingLeft = item.depth * 28;
           const isTarget = dropTarget?.targetId === item.node.id;
@@ -563,7 +604,7 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
           const isSearchMatch = Boolean(searchHighlight?.ranges.has(item.node.id));
           const isSearchCurrent = searchHighlight?.currentId === item.node.id;
 
-          return (
+          const renderedRow = (
             <div
               key={item.node.id}
               ref={(el) => {
@@ -571,6 +612,7 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
                 else rowRefs.current.delete(item.node.id);
               }}
               className="nb-outliner-row"
+              onFocusCapture={() => setActiveNodeId(item.node.id)}
               style={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -813,10 +855,10 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
                       handleBackspaceKey(item, idx);
                     } else if (e.key === 'ArrowUp' && idx > 0) {
                       e.preventDefault();
-                      inputRefs.current.get(flatItems[idx - 1].node.id)?.focus();
+                      focusRow(idx - 1);
                     } else if (e.key === 'ArrowDown' && idx < flatItems.length - 1) {
                       e.preventDefault();
-                      inputRefs.current.get(flatItems[idx + 1].node.id)?.focus();
+                      focusRow(idx + 1);
                     }
                   }}
                   style={{
@@ -1181,6 +1223,10 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
               )}
             </div>
           );
+          return virtualRow ? <div key={item.node.id} data-index={idx} ref={virtualizer.measureElement}
+            style={{ position: 'absolute', left: 0, top: 0, width: '100%', display: 'flow-root', transform: `translateY(${virtualRow.start - 36}px)` }}>
+            {renderedRow}
+          </div> : renderedRow;
         })}
       </div>
 
@@ -1197,35 +1243,9 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
         />
       )}
 
-      {/* 图片全屏放大预览弹窗 (Lightbox) */}
+      {/* 图片放大预览：Portal 到 body，支持滚轮缩放与拖动 */}
       {previewImage && (
-        <div
-          onClick={() => setPreviewImage(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.75)',
-            zIndex: 100000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 24,
-            cursor: 'zoom-out',
-            animation: 'nbFadeIn 0.15s ease-out',
-          }}
-        >
-          <img
-            src={previewImage}
-            alt="大图预览"
-            style={{
-              maxWidth: '90%',
-              maxHeight: '90%',
-              objectFit: 'contain',
-              borderRadius: 8,
-              boxShadow: '0 12px 32px rgba(0, 0, 0, 0.4)',
-            }}
-          />
-        </div>
+        <MindmapImagePreview src={previewImage} onClose={() => setPreviewImage(null)} />
       )}
 
       {/* 浮动拖拽跟随胶囊 */}

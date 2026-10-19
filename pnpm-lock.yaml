@@ -206,6 +206,9 @@ importers:
       markdown-it:
         specifier: ^14.1.0
         version: 14.3.0
+      marked:
+        specifier: ^17.0.6
+        version: 17.0.6
       mermaid:
         specifier: ^11.12.2
         version: 11.16.1

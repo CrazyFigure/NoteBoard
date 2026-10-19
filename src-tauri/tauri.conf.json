@@ -28,7 +28,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost https://asset.localhost data: blob: https: http:; font-src 'self' asset: http://asset.localhost https://asset.localhost data:; connect-src https://www.plantuml.com/plantuml/svg/; worker-src 'self' blob:; frame-src https://embed.diagrams.net",
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost https://asset.localhost data: blob: https: http:; font-src 'self' asset: http://asset.localhost https://asset.localhost data:; connect-src https://www.plantuml.com/plantuml/svg/ https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master/ https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/; worker-src 'self' blob:; frame-src https://embed.diagrams.net",
       "assetProtocol": {
         "enable": true,
         "scope": [

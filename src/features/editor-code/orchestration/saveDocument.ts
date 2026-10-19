@@ -191,7 +191,6 @@ export async function saveAs(originalKey: string, _content: string): Promise<boo
     defaultExtension = 'mindmap';
     filters = [
       { name: '思维导图文件 (*.mindmap)', extensions: ['mindmap'] },
-      { name: 'XMind 思维导图 (*.xmind)', extensions: ['xmind'] },
       { name: '全部文件 (*.*)', extensions: ['*'] },
     ];
   } else if (doc?.kind === 'drawio' || originalKey.includes('drawio')) {
@@ -263,6 +262,12 @@ export async function saveAs(originalKey: string, _content: string): Promise<boo
         });
 
     if (!selectedPath) return false;
+
+    // 用户确认 XMind 统一从工具栏导出；手工输入原 XMind 路径也不能用原生 JSON 覆盖它。
+    if (doc?.kind === 'mindmap' && /\.xmind$/i.test(selectedPath)) {
+      showToast('请通过思维导图工具栏的“导出 → XMind”生成 .xmind 文件', 'warning');
+      return false;
+    }
 
     // 🔴 N03：目标等于原路径（规范化身份比较）→ 普通保存语义，
     //    避免重复标签与历史串线

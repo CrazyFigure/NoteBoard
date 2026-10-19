@@ -193,6 +193,15 @@ pub struct EditorSettings {
     // 可视化模式中 Enter 与 Shift+Enter 互换：Enter 段内换行、Shift+Enter 换段落（默认 false）
     #[serde(default)]
     pub swap_enter_keys: bool,
+    // 思维导图节点最大宽度（px），超出后自动换行；手动拉伸过的节点不受影响
+    #[serde(default = "default_mindmap_node_max_width")]
+    pub mindmap_node_max_width: u32,
+    // 思维导图节点标题默认对齐：left（左对齐）/ center（居中）
+    #[serde(default = "default_mindmap_text_align")]
+    pub mindmap_text_align: String,
+    // 思维导图节点图片默认显示方式：original（原始比例）/ fill（宽度填充）
+    #[serde(default = "default_mindmap_image_fit")]
+    pub mindmap_image_fit: String,
 }
 
 impl Default for EditorSettings {
@@ -214,6 +223,9 @@ impl Default for EditorSettings {
             code_block_default_expanded: true,
             details_default_expanded: false,
             swap_enter_keys: false,
+            mindmap_node_max_width: default_mindmap_node_max_width(),
+            mindmap_text_align: default_mindmap_text_align(),
+            mindmap_image_fit: default_mindmap_image_fit(),
         }
     }
 }
@@ -303,6 +315,9 @@ fn default_view_mode() -> String { "visual".to_string() }
 fn default_markdown_normalization() -> String { "ask".to_string() }
 fn default_true() -> bool { true }
 fn default_tab_size() -> u32 { 2 }
+fn default_mindmap_node_max_width() -> u32 { 280 }
+fn default_mindmap_text_align() -> String { "left".to_string() }
+fn default_mindmap_image_fit() -> String { "original".to_string() }
 fn default_image_dir() -> String { "img".to_string() }
 fn default_large_file_mb() -> u32 { 50 }
 // 默认暂存目录与设置文件同属应用数据区，避免依赖用户是否存在“文档”库。

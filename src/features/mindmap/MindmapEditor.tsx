@@ -1,8 +1,8 @@
 // NoteBoard 思维导图主编辑器 (Mindmap Editor)
-// 幕布式双模切换 (大纲编辑模式 ⇄ 思维导图展示模式) + XMind 导入导出 + 文件级统一撤销/重做
+// 双模切换 (导图模式 ⇄ 大纲模式) + XMind 导入导出 + 文件级统一撤销/重做
 // 详见 docs/09-开发路线图.md
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   ListTree,
   Network,
@@ -12,33 +12,52 @@ import {
   ZoomOut,
   RotateCcw,
   FileText,
+  ChevronDown,
+  Image as ImageIcon,
+  MoveHorizontal,
+  Undo2,
+  Redo2,
 } from 'lucide-react';
-import type { MindNode, MindmapLayout } from './mindmapTypes';
+import type {
+  MindNode,
+  MindmapLayout,
+  MindmapEdgeStyle,
+  MindmapImageFit,
+  MindmapTextAlign,
+} from './mindmapTypes';
 import {
   parseMindmapDocument,
   parseMindmapDocumentMeta,
   serializeMindmapDocument,
   exportToXmindZip,
-  importFromXmindZip,
+  markdownToMindNode,
   mindNodeToMarkdown,
   DEFAULT_MINDMAP_LAYOUT,
   DEFAULT_MINDMAP_THEME,
 } from './mindmapConverter';
 import { getMindmapTheme } from './mindmapTheme';
-import { MindmapStyleControls } from './MindmapStyleControls';
+import { Dropdown, DropdownItem, MindmapStyleControls } from './MindmapStyleControls';
+import { exportMindmapImageBlob, type MindmapImageFormat } from './mindmapImageExport';
+import { clampNodeMaxWidth, FALLBACK_FONT_FAMILY } from './mindmapTextMeasure';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { OutlinerEditor } from './OutlinerEditor';
 import { MindmapRenderer } from './MindmapRenderer';
+import { createInitialMindmapView } from './mindmapView';
+import { cloneMindmapTree, getMindmapTreeStats, walkMindNodes } from './mindmapTree';
+import { confirmMindmapImport, requestMindmapChoice } from './MindmapImportDialog';
+import { getSessionGeneration } from '../session/documentSession';
 import { Tooltip } from '../../components/Tooltip';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
-import { exportBlobWithDialog } from '../export/chartExport';
+import { buildExportFileName, exportBlobWithDialog } from '../export/chartExport';
 import {
   initializeDocumentHistory,
   registerDocumentHistoryAdapter,
   recordDocumentChange,
   undoDocumentHistory,
   redoDocumentHistory,
+  useDocumentHistory,
   markDocumentHistoryModeBoundary,
 } from '../history/documentHistory';
 // 🔴 S12：回收接入——能力注册表（flush/canSuspend/视图捕获）与挂载恢复
@@ -63,6 +82,19 @@ interface MindmapEditorProps {
 
 type ViewMode = 'outliner' | 'mindmap';
 
+/** 树中是否存在手动拉伸过宽度的节点 */
+function hasCustomNodeWidth(node: MindNode): boolean {
+  for (const current of walkMindNodes(node)) if (typeof current.width === 'number') return true;
+  return false;
+}
+
+/** 返回移除所有手动宽度后的新树（不修改原树） */
+function clearNodeWidths(node: MindNode): MindNode {
+  const cloned = cloneMindmapTree(node);
+  for (const current of walkMindNodes(cloned)) delete current.width;
+  return cloned;
+}
+
 /** TipTap 无关的实例代际序号：同 docKey 重挂载递增（注册表删除保护） */
 let nextMindmapInstanceId = 0;
 
@@ -77,6 +109,14 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
   const [rootNode, setRootNode] = useState<MindNode>(() => {
     return parseMindmapDocument(doc?.content ?? '');
   });
+  // 自动折叠仅作用于显示副本；保存/暂存仍读取 rootNode，打开本身不产生文件修改。
+  const [autoCollapse, setAutoCollapse] = useState(true);
+  const autoCollapseRef = useRef(autoCollapse);
+  autoCollapseRef.current = autoCollapse;
+  const initializedDocKeyRef = useRef(docKey);
+  const displayedRoot = useMemo(() => autoCollapse ? createInitialMindmapView(rootNode) : rootNode, [rootNode, autoCollapse]);
+  const displayedRootRef = useRef(displayedRoot);
+  displayedRootRef.current = displayedRoot;
   // 文档级外观：布局 + 配色主题（持久化在文档 JSON 元信息中）
   const [layout, setLayout] = useState<MindmapLayout>(
     () => parseMindmapDocumentMeta(doc?.content ?? '').layout ?? DEFAULT_MINDMAP_LAYOUT,
@@ -84,7 +124,29 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
   const [themeId, setThemeId] = useState<string>(
     () => parseMindmapDocumentMeta(doc?.content ?? '').theme ?? DEFAULT_MINDMAP_THEME,
   );
+  // 文档显式选择的连线样式；undefined 时跟随配色主题
+  const [edgeStyle, setEdgeStyle] = useState<MindmapEdgeStyle | undefined>(
+    () => parseMindmapDocumentMeta(doc?.content ?? '').edgeStyle,
+  );
   const theme = getMindmapTheme(themeId);
+  const resolvedEdgeStyle = edgeStyle ?? theme.edgeStyle;
+  // 节点最大宽度设置：未手动拉伸的节点随设置实时重新排版
+  const maxNodeWidth = clampNodeMaxWidth(
+    useSettingsStore((s) => s.settings.editor.mindmapNodeMaxWidth),
+  );
+  // 节点未单独设置时的标题对齐与图片显示方式（设置项）
+  const defaultTextAlign: MindmapTextAlign =
+    useSettingsStore((s) => s.settings.editor.mindmapTextAlign) === 'center' ? 'center' : 'left';
+  const defaultImageFit: MindmapImageFit =
+    useSettingsStore((s) => s.settings.editor.mindmapImageFit) === 'fill' ? 'fill' : 'original';
+  const rootElRef = useRef<HTMLDivElement>(null);
+  // 导出默认文件名：已保存的文档用文件名，未保存的新文档统一叫「思维导图」
+  const exportBaseName = docKey.startsWith('untitled:')
+    ? '思维导图'
+    : buildExportFileName(doc?.displayName, '思维导图');
+  // 撤销 / 重做可用状态（画布左下角按钮）
+  const { canUndo, canRedo } = useDocumentHistory(docKey);
+  const [exportOpen, setExportOpen] = useState(false);
   // 🔴 S12：最新状态引用（capabilities flush/captureViewState 同步读取，不依赖渲染闭包）
   const rootNodeRef = useRef<MindNode>(rootNode);
   rootNodeRef.current = rootNode;
@@ -96,6 +158,8 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
   layoutRef.current = layout;
   const themeIdRef = useRef<string>(themeId);
   themeIdRef.current = themeId;
+  const edgeStyleRef = useRef<MindmapEdgeStyle | undefined>(edgeStyle);
+  edgeStyleRef.current = edgeStyle;
   // 全局搜索栏的匹配高亮（导图与大纲两种视图共用）
   const [searchHighlight, setSearchHighlight] = useState<MindmapSearchHighlight>(EMPTY_MINDMAP_SEARCH_HIGHLIGHT);
   // 搜索替换提交新树走与手动编辑相同的落盘/历史链路（函数在下方定义，经 ref 读取最新版本）
@@ -110,10 +174,13 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
       applyEntry: (entry) => {
         const parsed = parseMindmapDocument(entry.content);
         setRootNode(parsed);
+        // 撤销/重做属于显式导航，应准确还原历史中的展开状态。
+        setAutoCollapse(false);
         // 布局与配色随内容一起回滚，避免外观状态与文档不一致
         const meta = parseMindmapDocumentMeta(entry.content);
         setLayout(meta.layout);
         setThemeId(meta.theme);
+        setEdgeStyle(meta.edgeStyle);
         setContent(docKey, entry.content);
         setDirty(docKey, true);
         setTabDirty(docKey, true);
@@ -122,11 +189,12 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
 
     // 🔴 S12：重挂载（回收后）恢复查看模式与缩放（一次性消费）
     const restored = takeViewState(docKey) as
-      | { kind: 'mindmap'; viewMode: ViewMode; zoom: number }
+      | { kind: 'mindmap'; viewMode: ViewMode; zoom: number; autoCollapse?: boolean }
       | null;
     if (restored?.kind === 'mindmap') {
       setViewMode(restored.viewMode);
       setZoom(restored.zoom);
+      setAutoCollapse(restored.autoCollapse ?? true);
     }
 
     return unregister;
@@ -144,6 +212,7 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
         const content = serializeMindmapDocument(rootNodeRef.current, {
           layout: layoutRef.current,
           theme: themeIdRef.current,
+          edgeStyle: edgeStyleRef.current,
         });
         submitCapturedContent(docKey, { instanceId, revision: getDocumentRevision(docKey), content });
         return { docKey, instanceId, revision: getDocumentRevision(docKey), content };
@@ -159,10 +228,11 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
         kind: 'mindmap' as const,
         viewMode: viewModeRef.current,
         zoom: zoomRef.current,
+        autoCollapse: autoCollapseRef.current,
       }),
       // 节点标题文本搜索替换（Ctrl+F / Ctrl+H 打开全局搜索栏）
       search: createMindmapSearchCapabilities({
-        getRoot: () => rootNodeRef.current,
+        getRoot: () => displayedRootRef.current,
         commitRoot: (newRoot) => {
           // 同步更新引用：同一次搜索操作内紧随的匹配计算需读到新树
           rootNodeRef.current = newRoot;
@@ -178,23 +248,34 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
 
   // 当外部文档切换或重新加载时同步状态（含布局与配色元信息）
   useEffect(() => {
+    // 首次正文已在 useState 中读取，不能二次解析并覆盖刚恢复的显示状态。
+    if (initializedDocKeyRef.current === docKey) return;
+    initializedDocKeyRef.current = docKey;
     if (doc?.content != null) {
       const parsed = parseMindmapDocument(doc.content);
       setRootNode(parsed);
+      setAutoCollapse(true);
       const meta = parseMindmapDocumentMeta(doc.content);
       setLayout(meta.layout);
       setThemeId(meta.theme);
+      setEdgeStyle(meta.edgeStyle);
     }
   }, [docKey]);
 
   // 统一的文档落盘：序列化节点树 + 外观元信息，同步 store / 脏标记 / 历史
   const persistDocument = useCallback(
-    (newRoot: MindNode, nextLayout: MindmapLayout, nextTheme: string) => {
+    (
+      newRoot: MindNode,
+      nextLayout: MindmapLayout,
+      nextTheme: string,
+      nextEdgeStyle: MindmapEdgeStyle | undefined,
+    ) => {
       // 🔴 S12：真实修改推进内容版本（会话屏障校验用）
       bumpDocumentRevision(docKey);
       const serialized = serializeMindmapDocument(newRoot, {
         layout: nextLayout,
         theme: nextTheme,
+        edgeStyle: nextEdgeStyle,
       });
       setContent(docKey, serialized);
       setDirty(docKey, true);
@@ -210,24 +291,44 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
   // 节点树更新时同步到 DocumentStore、脏标记并记录文件级历史
   const handleRootChange = useCallback(
     (newRoot: MindNode) => {
+      // 用户实际修改或展开后，把当前显示状态提交为正文；首次自动折叠本身不走这里。
+      setAutoCollapse(false);
+      autoCollapseRef.current = false;
+      rootNodeRef.current = newRoot;
+      displayedRootRef.current = newRoot;
       setRootNode(newRoot);
-      persistDocument(newRoot, layoutRef.current, themeIdRef.current);
+      persistDocument(newRoot, layoutRef.current, themeIdRef.current, edgeStyleRef.current);
     },
     [persistDocument],
   );
   handleRootChangeRef.current = handleRootChange;
 
-  // 切换布局 / 配色主题并即时持久化
+  // 切换布局 / 配色主题 / 连线样式并即时持久化（edgeStyle 传 null 表示改回跟随主题）
   const handleStyleChange = useCallback(
-    (next: { layout?: MindmapLayout; theme?: string }) => {
+    (next: { layout?: MindmapLayout; theme?: string; edgeStyle?: MindmapEdgeStyle | null }) => {
       const nextLayout = next.layout ?? layoutRef.current;
       const nextTheme = next.theme ?? themeIdRef.current;
+      const nextEdgeStyle =
+        next.edgeStyle === undefined ? edgeStyleRef.current : next.edgeStyle ?? undefined;
       setLayout(nextLayout);
       setThemeId(nextTheme);
-      persistDocument(rootNodeRef.current, nextLayout, nextTheme);
+      setEdgeStyle(nextEdgeStyle);
+      setAutoCollapse(false);
+      setRootNode(displayedRootRef.current);
+      autoCollapseRef.current = false;
+      rootNodeRef.current = displayedRootRef.current;
+      persistDocument(displayedRootRef.current, nextLayout, nextTheme, nextEdgeStyle);
     },
     [persistDocument],
   );
+
+  // 重置整个文档的节点宽度为设置值（一个撤销步）
+  const hasCustomWidths = hasCustomNodeWidth(rootNode);
+  const handleResetAllWidths = () => {
+    if (!hasCustomNodeWidth(rootNodeRef.current)) return;
+    handleRootChange(clearNodeWidths(displayedRootRef.current));
+    showToast('已重置全部节点宽度', 'success');
+  };
 
   // 切换查看模式（不记录新历史节点）
   const handleSwitchViewMode = (mode: ViewMode) => {
@@ -260,8 +361,7 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
   const handleExportXmind = async () => {
     try {
       const blob = await exportToXmindZip(rootNode);
-      const baseName = rootNode.text?.trim() || '思维导图';
-      const defaultFilename = `${baseName}.xmind`;
+      const defaultFilename = `${exportBaseName}.xmind`;
       const filters = [
         { name: 'XMind 思维导图 (*.xmind)', extensions: ['xmind'] },
         { name: '全部文件 (*.*)', extensions: ['*'] },
@@ -282,8 +382,7 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
     try {
       const md = mindNodeToMarkdown(rootNode);
       const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
-      const baseName = rootNode.text?.trim() || '大纲';
-      const defaultFilename = `${baseName}.md`;
+      const defaultFilename = `${exportBaseName}.md`;
       const filters = [
         { name: 'Markdown 大纲 (*.md)', extensions: ['md'] },
         { name: '全部文件 (*.*)', extensions: ['*'] },
@@ -299,29 +398,90 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
     }
   };
 
-  // 导入 .xmind 文件
-  const handleImportXmind = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // 导出为 PNG / JPG 图片：按当前布局与配色独立排版绘制，内容自动居中
+  const handleExportImage = async (format: MindmapImageFormat) => {
+    try {
+      const scope = await requestMindmapChoice('选择图片导出范围', [
+        { value: 'current', label: '按当前展开／折叠状态导出' },
+        { value: 'all', label: '临时展开全部节点后导出' },
+      ], '导出图片');
+      if (scope === null) return;
+      // 图片范围独立于视口裁剪；临时展开副本，不改变文件正文与当前画布状态。
+      const imageRoot = scope === 'all' ? cloneMindmapTree(rootNodeRef.current) : displayedRootRef.current;
+      if (scope === 'all') for (const node of walkMindNodes(imageRoot)) node.isExpanded = true;
+      const fontFamily =
+        (rootElRef.current && window.getComputedStyle(rootElRef.current).fontFamily) ||
+        FALLBACK_FONT_FAMILY;
+      const blob = await exportMindmapImageBlob({
+        root: imageRoot,
+        layout,
+        theme,
+        edgeStyle: resolvedEdgeStyle,
+        maxNodeWidth,
+        defaultTextAlign,
+        defaultImageFit,
+        fontFamily,
+        format,
+      });
+      const extension = format === 'jpeg' ? 'jpg' : 'png';
+      const filters = [
+        format === 'jpeg'
+          ? { name: 'JPG 图片 (*.jpg)', extensions: ['jpg', 'jpeg'] }
+          : { name: 'PNG 图片 (*.png)', extensions: ['png'] },
+        { name: '全部文件 (*.*)', extensions: ['*'] },
+      ];
+      const saved = await exportBlobWithDialog(blob, `${exportBaseName}.${extension}`, filters);
+      if (saved) {
+        showToast(`成功导出为 ${extension.toUpperCase()} 图片`, 'success');
+      }
+    } catch (err) {
+      console.error('导出图片失败:', err);
+      showToast('导出图片失败', 'error');
+    }
+  };
+
+  // 导入 .xmind 或 Markdown 大纲文件（替换当前导图，可撤销）
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = ''; // 重置 file input，允许重复导入同一文件
+    const isXmind = /\.xmind$/i.test(file.name);
+    const generation = getSessionGeneration(docKey);
+    if (!isXmind && file.size > 20 * 1024 * 1024
+      && !await confirmMindmapImport(['Markdown 正文超过 20 MB，继续解析可能耗时较长并占用较多内存'])) return;
 
     const reader = new FileReader();
     reader.onload = async () => {
       try {
-        const buffer = reader.result as ArrayBuffer;
-        const importedRoot = await importFromXmindZip(buffer);
+        const importedRoot = isXmind
+          ? await (await import('./xmindImportFlow')).importXmindWithDialogs(reader.result as ArrayBuffer)
+          : markdownToMindNode(String(reader.result ?? ''));
+        if (!importedRoot) return;
+        if (!isXmind) {
+          const stats = getMindmapTreeStats(importedRoot);
+          const risks: string[] = [];
+          if (stats.nodeCount > 50_000) risks.push(`节点数为 ${stats.nodeCount}，超过 50,000 个，继续可能耗时较长`);
+          if (stats.maxDepth > 500) risks.push(`层级深度为 ${stats.maxDepth}，超过 500 层，继续可能耗时较长`);
+          if (!await confirmMindmapImport(risks)) return;
+        }
+        // 对话框期间关闭或重开同一路径时，旧导入结果不得回写新会话。
+        if (!useDocumentStore.getState().hasDocument(docKey) || getSessionGeneration(docKey) !== generation) return;
         handleRootChange(importedRoot);
-        showToast('成功导入 XMind 思维导图');
+        setAutoCollapse(true);
+        showToast(isXmind ? '成功导入 XMind 思维导图' : '成功导入 Markdown 大纲');
       } catch (err) {
-        console.error('导入 XMind 失败:', err);
-        showToast('导入 XMind 失败，文件格式可能不支持');
+        console.error('导入失败:', err);
+        showToast(err instanceof Error ? err.message : '导入失败，文件格式可能不支持', 'error');
       }
     };
-    reader.readAsArrayBuffer(file);
-    e.target.value = ''; // 重置 file input
+    reader.onerror = () => showToast('读取导入文件失败', 'error');
+    if (isXmind) reader.readAsArrayBuffer(file);
+    else reader.readAsText(file);
   };
 
   return (
     <div
+      ref={rootElRef}
       style={{
         width: '100%',
         height: '100%',
@@ -347,7 +507,7 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
           fontSize: 12,
         }}
       >
-        {/* 左侧：幕布式双模切换胶囊 */}
+        {/* 左侧：导图 / 大纲双模切换胶囊 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div
             style={{
@@ -360,8 +520,8 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
               boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)',
             }}
           >
-            {/* 思维导图展示模式 */}
-            <Tooltip content="思维导图展示模式" side="bottom" sideOffset={4}>
+            {/* 导图模式：以图形化思维导图查看与编辑 */}
+            <Tooltip content="以思维导图形式查看与编辑" side="bottom" sideOffset={4}>
               <button
                 type="button"
                 className="nb-editor-pill-btn"
@@ -369,11 +529,11 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
                 onClick={() => handleSwitchViewMode('mindmap')}
               >
                 <Network size={14} />
-                <span>思维导图</span>
+                <span>导图模式</span>
               </button>
             </Tooltip>
-            {/* 幕布式大纲编辑模式 */}
-            <Tooltip content="幕布式大纲编辑模式" side="bottom" sideOffset={4}>
+            {/* 大纲模式：以层级列表快速编辑 */}
+            <Tooltip content="以层级大纲形式快速编辑" side="bottom" sideOffset={4}>
               <button
                 type="button"
                 className="nb-editor-pill-btn"
@@ -424,56 +584,109 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
                   <RotateCcw size={13} />
                 </button>
               </Tooltip>
+              {/* 重置全部节点宽度：恢复为设置中的默认宽度 */}
+              <Tooltip
+                content={hasCustomWidths ? '重置全部节点宽度' : '没有手动调整过宽度的节点'}
+                side="bottom"
+                sideOffset={4}
+              >
+                <button
+                  type="button"
+                  className="nb-editor-icon-btn"
+                  onClick={handleResetAllWidths}
+                  disabled={!hasCustomWidths}
+                  aria-label="重置全部节点宽度"
+                  style={{ opacity: hasCustomWidths ? 1 : 0.4, cursor: hasCustomWidths ? 'pointer' : 'default' }}
+                >
+                  <MoveHorizontal size={13} />
+                </button>
+              </Tooltip>
             </div>
           )}
 
-          {/* 布局与配色主题切换（仅导图模式） */}
+          {/* 布局、连线样式与配色主题切换（仅导图模式） */}
           {viewMode === 'mindmap' && (
             <MindmapStyleControls
               layout={layout}
               themeId={themeId}
+              edgeStyle={edgeStyle}
               onLayoutChange={(nextLayout) => handleStyleChange({ layout: nextLayout })}
               onThemeChange={(nextTheme) => handleStyleChange({ theme: nextTheme })}
+              onEdgeStyleChange={(nextEdgeStyle) => handleStyleChange({ edgeStyle: nextEdgeStyle ?? null })}
             />
           )}
 
-          {/* 导入 XMind 隐藏 input */}
-          <Tooltip content="导入 .xmind 文件" side="bottom" sideOffset={4}>
+          {/* 导入：XMind 或 Markdown 大纲 */}
+          <Tooltip content="导入 XMind 或 Markdown 文件" side="bottom" sideOffset={4}>
             <label className="nb-editor-toolbar-btn">
               <Upload size={13} />
-              <span>导入 XMind</span>
+              <span>导入</span>
               <input
                 type="file"
-                accept=".xmind"
+                accept=".xmind,.md,.markdown"
                 style={{ display: 'none' }}
-                onChange={handleImportXmind}
+                onChange={handleImportFile}
               />
             </label>
           </Tooltip>
 
-          {/* 导出 Markdown */}
-          <Tooltip content="导出为 Markdown 大纲文本" side="bottom" sideOffset={4}>
-            <button
-              type="button"
-              className="nb-editor-toolbar-btn"
-              onClick={handleExportMarkdown}
+          {/* 导出：XMind / Markdown / PNG / JPG */}
+          <Dropdown
+            open={exportOpen}
+            onOpenChange={setExportOpen}
+            menuStyle={{ minWidth: 180 }}
+            trigger={
+              <Tooltip content="导出为其他格式" side="bottom" sideOffset={4}>
+                <span className="nb-editor-primary-btn" role="button" aria-haspopup="menu" aria-expanded={exportOpen}>
+                  <Download size={13} />
+                  <span>导出</span>
+                  <ChevronDown size={12} style={{ opacity: 0.85 }} />
+                </span>
+              </Tooltip>
+            }
+          >
+            <DropdownItem
+              onClick={() => {
+                setExportOpen(false);
+                void handleExportXmind();
+              }}
             >
-              <FileText size={13} />
-              <span>导出 Markdown</span>
-            </button>
-          </Tooltip>
-
-          {/* 导出 XMind */}
-          <Tooltip content="导出为 .xmind 文件" side="bottom" sideOffset={4}>
-            <button
-              type="button"
-              className="nb-editor-primary-btn"
-              onClick={handleExportXmind}
+              <Network size={14} />
+              <span style={{ flex: 1 }}>XMind</span>
+              <span style={{ fontSize: 11, opacity: 0.55 }}>.xmind</span>
+            </DropdownItem>
+            <DropdownItem
+              onClick={() => {
+                setExportOpen(false);
+                void handleExportMarkdown();
+              }}
             >
-              <Download size={13} />
-              <span>导出 XMind</span>
-            </button>
-          </Tooltip>
+              <FileText size={14} />
+              <span style={{ flex: 1 }}>Markdown</span>
+              <span style={{ fontSize: 11, opacity: 0.55 }}>.md</span>
+            </DropdownItem>
+            <div style={{ height: 1, margin: '4px 6px', background: 'var(--editor-border, #e2e8f0)' }} />
+            <DropdownItem
+              onClick={() => {
+                setExportOpen(false);
+                void handleExportImage('png');
+              }}
+            >
+              <ImageIcon size={14} />
+              <span style={{ flex: 1 }}>PNG 图片</span>
+              <span style={{ fontSize: 11, opacity: 0.55 }}>.png</span>
+            </DropdownItem>
+            <DropdownItem
+              onClick={() => {
+                setExportOpen(false);
+                void handleExportImage('jpeg');
+              }}
+            >
+              <ImageIcon size={14} />
+              <span style={{ flex: 1 }}>JPG 图片</span>
+              <span style={{ fontSize: 11, opacity: 0.55 }}>.jpg</span>
+            </DropdownItem>
+          </Dropdown>
         </div>
       </div>
 
@@ -481,20 +694,52 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         {viewMode === 'mindmap' ? (
           <MindmapRenderer
-            root={rootNode}
+            root={displayedRoot}
             onChange={handleRootChange}
             zoom={zoom}
             onZoomChange={setZoom}
             layout={layout}
             theme={theme}
+            edgeStyle={resolvedEdgeStyle}
+            maxNodeWidth={maxNodeWidth}
+            defaultTextAlign={defaultTextAlign}
+            defaultImageFit={defaultImageFit}
             searchHighlight={searchHighlight}
           />
         ) : (
           <OutlinerEditor
-            root={rootNode}
+            root={displayedRoot}
             onChange={handleRootChange}
             searchHighlight={searchHighlight}
           />
+        )}
+
+        {/* 导图模式左下角：撤销 / 重做 */}
+        {viewMode === 'mindmap' && (
+          <div className="nb-mindmap-history-bar">
+            <Tooltip content="撤销" shortcut="Ctrl+Z" side="top" sideOffset={6}>
+              <button
+                type="button"
+                className="nb-mindmap-history-btn"
+                aria-label="撤销"
+                disabled={!canUndo}
+                onClick={() => undoDocumentHistory(docKey)}
+              >
+                <Undo2 size={15} />
+              </button>
+            </Tooltip>
+            <Tooltip content="重做" shortcut="Ctrl+Y" side="top" sideOffset={6}>
+              <button
+                type="button"
+                className="nb-mindmap-history-btn"
+                aria-label="重做"
+                disabled={!canRedo}
+                onClick={() => redoDocumentHistory(docKey)}
+              >
+                <Redo2 size={15} />
+              </button>
+            </Tooltip>
+          </div>
         )}
       </div>
     </div>
