@@ -16,6 +16,11 @@ import {
   groupFlatTreeRows,
   compareRowsBySortRules,
   getSortDirectionLabels,
+  buildGanttTimeBands,
+  buildGanttDayAxis,
+  countWorkdays,
+  createRestDayChecker,
+  dateToDayIndex,
 } from '@/features/bitable/bitableUtils';
 import type { BitableColumn, BitableRow } from '@/features/bitable/bitableTypes';
 
@@ -312,5 +317,61 @@ describe('多维表格通用工具测试', () => {
     expect(areCellValuesEqual(42, '42')).toBe(true);
     expect(areCellValuesEqual('100', 100)).toBe(true);
     expect(areCellValuesEqual(42, '43')).toBe(false);
+  });
+});
+
+describe('甘特图时间轴表头', () => {
+  test('周刻度：上层按周分栏，下层细化到每一天并附星期', () => {
+    // 2026-08-24 为周一，取连续 9 天跨两周
+    const start = dateToDayIndex('2026-08-24')!;
+    const days = Array.from({ length: 9 }, (_, i) => start + i);
+
+    const primary = buildGanttTimeBands(days, 'week', 'primary');
+    expect(primary.map((b) => [b.label, b.span])).toEqual([
+      ['2026年 8/24 – 8/30', 7],
+      ['2026年 8/31 – 9/6', 2],
+    ]);
+
+    const secondary = buildGanttTimeBands(days, 'week', 'secondary');
+    expect(secondary).toHaveLength(9);
+    expect(secondary.every((b) => b.span === 1)).toBe(true);
+    expect(secondary[0].label).toBe('24 一');
+    expect(secondary[6].label).toBe('30 日');
+    expect(secondary[7].label).toBe('31 一');
+  });
+});
+
+describe('甘特图休息日', () => {
+  // 2026-01-01（周四）至 01-04（周日）：元旦放假 1-3 日，1 月 4 日周日调休上班
+  const day = (s: string) => dateToDayIndex(s)!;
+  const holidays = new Map<number, boolean>([
+    [day('2026-01-01'), true],
+    [day('2026-01-02'), true],
+    [day('2026-01-03'), true],
+    [day('2026-01-04'), false],
+  ]);
+
+  test('默认周六、周日休息，可自定义每周休息日', () => {
+    const byDefault = createRestDayChecker();
+    expect(byDefault(day('2026-08-29'))).toBe(true); // 周六
+    expect(byDefault(day('2026-08-30'))).toBe(true); // 周日
+    expect(byDefault(day('2026-08-31'))).toBe(false); // 周一
+
+    const sundayOnly = createRestDayChecker([0]);
+    expect(sundayOnly(day('2026-08-29'))).toBe(false);
+    expect(sundayOnly(day('2026-08-30'))).toBe(true);
+  });
+
+  test('法定节假日优先：放假日休息，调休日即使是周末也上班', () => {
+    const isRest = createRestDayChecker([0, 6], holidays);
+    expect(isRest(day('2026-01-01'))).toBe(true); // 周四放假
+    expect(isRest(day('2026-01-03'))).toBe(true); // 周六放假
+    expect(isRest(day('2026-01-04'))).toBe(false); // 周日调休上班
+    expect(isRest(day('2026-01-10'))).toBe(true); // 普通周六
+
+    // 12-31（周三）至 01-05（周一）：仅 12-31、01-04、01-05 为工作日
+    expect(countWorkdays(day('2025-12-31'), day('2026-01-05'), isRest)).toBe(3);
+    const axis = buildGanttDayAxis(day('2025-12-31'), day('2026-01-05'), isRest);
+    expect(axis.days).toEqual([day('2025-12-31'), day('2026-01-04'), day('2026-01-05')]);
   });
 });

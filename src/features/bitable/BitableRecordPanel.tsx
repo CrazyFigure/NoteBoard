@@ -7,7 +7,13 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { BitableColumn, BitableRow, ColumnOptionAction } from './bitableTypes';
 import { BitableCellEditor } from './BitableCellEditor';
 import { getFieldTypeMeta } from './BitableFieldMeta';
-import { KEYBOARD_SCOPE_ATTR, previewLongText, resolveLongTextConfig, stopReactPropagation } from './bitableUtils';
+import {
+  KEYBOARD_SCOPE_ATTR,
+  formatCellValue,
+  previewLongText,
+  resolveLongTextConfig,
+  stopReactPropagation,
+} from './bitableUtils';
 import { X, Trash2 } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 
@@ -56,9 +62,12 @@ function resolveRecordTitle(row: BitableRow, columns: BitableColumn[]): string {
       return previewLongText(String(val), resolveLongTextConfig(longTextCol)) || '未命名记录';
     }
   }
+  // 兜底取首个有内容的字段：评分 / 进度 / 复选框在新建行时自带默认值（0 / false），不能当标题，
+  // 否则空记录的标题会显示成「0」；单选 / 多选需换成标签文字而非选项 ID
   for (const col of columns) {
-    const val = row[col.id];
-    if (val !== undefined && val !== null && String(val).trim() !== '') return String(val);
+    if (col.type === 'rating' || col.type === 'progress' || col.type === 'checkbox') continue;
+    const text = formatCellValue(col, row[col.id]).trim();
+    if (text !== '') return text;
   }
   return '未命名记录';
 }

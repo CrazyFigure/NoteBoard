@@ -20,6 +20,7 @@ import { OptionBadge } from './BitableOptions';
 import { SortRulesPanel } from './BitableSortPanel';
 import { BITABLE_PALETTE, getOptionColor } from './bitableConverter';
 import { usePointerReorder } from './usePointerReorder';
+import { useCnHolidays } from './holidayCn';
 import { Tooltip } from '../../components/Tooltip';
 import { showToast } from '../../stores/toastStore';
 import {
@@ -40,7 +41,8 @@ import {
   groupFlatTreeRows,
   isInKeyboardScope,
   isSlotNoop,
-  isWeekendDay,
+  createRestDayChecker,
+  DEFAULT_REST_WEEKDAYS,
   releaseScopedFocusOnPointerDown,
   parseClipboardMatrix,
   slotToSpliceIndex,
@@ -96,6 +98,38 @@ const ZOOM_OPTIONS: Array<{ id: GanttZoom; label: string }> = [
   { id: 'year', label: '年' },
 ];
 
+/** 周末底色：由主题弱化文字色混合而来，暖色主题下不会透出冷灰 */
+const WEEKEND_HEADER_BG = 'color-mix(in srgb, var(--editor-text-muted, #94a3b8) 10%, transparent)';
+const WEEKEND_BODY_BG = 'color-mix(in srgb, var(--editor-text-muted, #94a3b8) 8%, transparent)';
+
+/** 「跟随主题」色：条形取当前主题强调色，与色板项同构以便统一取用 */
+const GANTT_THEME_COLOR = {
+  id: 'theme',
+  label: '跟随主题',
+  bg: 'color-mix(in srgb, var(--editor-accent, #3b82f6) 10%, transparent)',
+  text: 'var(--editor-accent, #3b82f6)',
+  border: 'color-mix(in srgb, var(--editor-accent, #3b82f6) 35%, transparent)',
+};
+
+/** 自定义色板：首项为「跟随主题」，其后为固定标签色 */
+const GANTT_COLOR_SWATCHES = [GANTT_THEME_COLOR, ...BITABLE_PALETTE];
+
+/** 解析条形自定义色：缺省或 'theme' 均跟随主题 */
+function resolveGanttColor(color?: GanttViewConfig['color']) {
+  return !color || color === 'theme' ? GANTT_THEME_COLOR : getOptionColor(color);
+}
+
+/** 每周休息日选项：按周一至周日排列，id 同 Date#getUTCDay */
+const WEEKDAY_OPTIONS = [
+  { id: 1, label: '一' },
+  { id: 2, label: '二' },
+  { id: 3, label: '三' },
+  { id: 4, label: '四' },
+  { id: 5, label: '五' },
+  { id: 6, label: '六' },
+  { id: 0, label: '日' },
+];
+
 const COLOR_MODE_OPTIONS: Array<{ id: GanttColorMode; label: string }> = [
   { id: 'auto', label: '跟随标签颜色' },
   { id: 'custom', label: '自定义颜色' },
@@ -129,6 +163,8 @@ export interface GanttViewProps {
   onInsertRowAbove?: (rowId: string) => void;
   onInsertRowBelow?: (rowId: string) => void;
   onDeleteRow: (rowId: string) => void;
+  /** 字段局部更新：用于拖拽调整左侧固定列宽度 */
+  onUpdateColumn?: (colId: string, partial: Partial<BitableColumn>) => void;
   onAddColumn: (direction: 'left' | 'right', referenceColId?: string) => void;
   onDeleteColumn: (colId: string) => void;
   onClearColumn?: (colId: string) => void;
@@ -202,7 +238,7 @@ export function createGanttConfig(columns: BitableColumn[]): GanttViewConfig {
     endColumnId: dateCols[1]?.id ?? dateCols[0]?.id,
     titleColumnId: titleCol?.id,
     colorMode: 'custom',
-    color: 'blue',
+    color: 'theme',
     workdaysOnly: false,
     zoom: 'month',
     leftColumnIds: titleCol ? [titleCol.id] : [],
@@ -229,6 +265,7 @@ export function BitableGanttView({
   onInsertRowAbove,
   onInsertRowBelow,
   onDeleteRow,
+  onUpdateColumn,
   onAddColumn,
   onDeleteColumn,
   onClearColumn,
@@ -958,12 +995,17 @@ export function BitableGanttView({
   const zoom: GanttZoom = config.zoom || 'month';
   const colorMode: GanttColorMode = config.colorMode || 'custom';
   const workdaysOnly = Boolean(config.workdaysOnly);
+  const restWeekdays = config.restWeekdays ?? DEFAULT_REST_WEEKDAYS;
+  const excludeHolidays = Boolean(config.excludeHolidays);
   const dayWidth = GANTT_DAY_WIDTH[zoom];
+  // 周 / 月刻度的表头下层逐日分栏
+  const isDayScale = zoom === 'week' || zoom === 'month';
 
   // ── 时间轴范围与轴 ──
   const padDays = zoom === 'week' ? 7 : zoom === 'month' ? 10 : zoom === 'quarter' ? 31 : 61;
 
-  const { axis, todayX, timelineWidth } = useMemo(() => {
+  // 先求日期范围（不依赖休息日），节假日按范围所跨年份取数，再据此构建时间轴
+  const axisRange = useMemo(() => {
     let min = Number.POSITIVE_INFINITY;
     let max = Number.NEGATIVE_INFINITY;
 
@@ -993,26 +1035,48 @@ export function BitableGanttView({
     const from = min - padDays;
     let to = max + padDays;
     if (to - from > MAX_AXIS_DAYS) to = from + MAX_AXIS_DAYS;
+    return { from, to, today };
+  }, [rows, startCol, endCol, padDays]);
 
-    const builtAxis = buildGanttDayAxis(from, to, workdaysOnly);
+  const holidayState = useCnHolidays(
+    excludeHolidays,
+    new Date(axisRange.from * 86400000).getUTCFullYear(),
+    new Date(axisRange.to * 86400000).getUTCFullYear(),
+  );
+  const { holidays } = holidayState;
+
+  /** 是否休息日：每周休息日 + 法定节假日（调休上班日即便落在周末也计为工作日） */
+  // restWeekdays 为数组，按内容拼键比较，避免每次渲染都重建判断函数
+  const restKey = restWeekdays.join(',');
+  const isRestDay = useMemo(
+    () => createRestDayChecker(
+      restKey ? restKey.split(',').map(Number) : [],
+      excludeHolidays ? holidays : undefined,
+    ),
+    [restKey, excludeHolidays, holidays],
+  );
+
+  const { axis, todayX, timelineWidth } = useMemo(() => {
+    const { from, to, today } = axisRange;
+    const builtAxis = buildGanttDayAxis(from, to, workdaysOnly ? isRestDay : undefined);
     const todayIdx = builtAxis.indexOf.get(today);
     return {
       axis: builtAxis,
       todayX: todayIdx === undefined ? null : todayIdx * dayWidth,
       timelineWidth: builtAxis.days.length * dayWidth,
     };
-  }, [rows, startCol, endCol, workdaysOnly, padDays, dayWidth]);
+  }, [axisRange, workdaysOnly, isRestDay, dayWidth]);
 
   const primaryBands = useMemo(() => buildGanttTimeBands(axis.days, zoom, 'primary'), [axis, zoom]);
   const secondaryBands = useMemo(() => buildGanttTimeBands(axis.days, zoom, 'secondary'), [axis, zoom]);
 
-  /** 周末底色：合并连续周末为一个色块，控制节点数与视觉噪声 */
+  /** 休息日底色：合并连续休息日为一个色块，控制节点数与视觉噪声 */
   const weekendRects = useMemo(() => {
     if (workdaysOnly) return [] as Array<{ left: number; width: number }>;
     const rects: Array<{ left: number; width: number }> = [];
     let runStart: number | null = null;
     axis.days.forEach((day, idx) => {
-      if (isWeekendDay(day)) {
+      if (isRestDay(day)) {
         if (runStart === null) runStart = idx;
       } else if (runStart !== null) {
         rects.push({ left: runStart * dayWidth, width: (idx - runStart) * dayWidth });
@@ -1023,32 +1087,23 @@ export function BitableGanttView({
       rects.push({ left: runStart * dayWidth, width: (axis.days.length - runStart) * dayWidth });
     }
     return rects;
-  }, [axis, dayWidth, workdaysOnly]);
+  }, [axis, dayWidth, workdaysOnly, isRestDay]);
 
   /**
    * 时间轴网格线
    * 用周期渐变代替「逐格 DOM」，避免每行渲染成百上千个节点。
-   * 周视图的周界线与 x=0 不重合时按天偏移对齐，否则线与表头周分栏会错开半周。
+   * 周 / 月刻度表头均细化到日，网格同样逐日画线，与表头日分栏对齐。
    */
   const gridBackground = useMemo(() => {
     const line = 'var(--editor-border, #f1f5f9)';
-    if (zoom === 'month') {
+    if (zoom === 'week' || zoom === 'month') {
       return {
         backgroundImage: `repeating-linear-gradient(to right, ${line} 0 1px, transparent 1px ${dayWidth}px)`,
       };
     }
-    if (zoom === 'week') {
-      const firstDay = axis.days[0];
-      const daysSinceMonday = (new Date(firstDay * 86400000).getUTCDay() + 6) % 7;
-      const period = dayWidth * 7;
-      return {
-        backgroundImage: `repeating-linear-gradient(to right, ${line} 0 1px, transparent 1px ${period}px)`,
-        backgroundPosition: `${-daysSinceMonday * dayWidth}px 0`,
-      };
-    }
     // 季 / 年刻度下逐日线过密，交由表头分栏表达时间粒度
     return {};
-  }, [zoom, dayWidth, axis]);
+  }, [zoom, dayWidth]);
 
   // ── 每行条形数据 ──
   const barsByRow = useMemo(() => {
@@ -1078,11 +1133,11 @@ export function BitableGanttView({
         endDay: eDay,
         aStart: ganttAxisIndexStart(axis, sDay),
         aEnd: ganttAxisIndexEnd(axis, eDay),
-        durationDays: workdaysOnly ? countWorkdays(sDay, eDay) : eDay - sDay + 1,
+        durationDays: workdaysOnly ? countWorkdays(sDay, eDay, isRestDay) : eDay - sDay + 1,
       });
     });
     return map;
-  }, [rows, startCol, endCol, axis, workdaysOnly]);
+  }, [rows, startCol, endCol, axis, workdaysOnly, isRestDay]);
 
   // ── 左侧固定列偏移量 ──
   const leftOffsets = useMemo(() => {
@@ -1098,6 +1153,29 @@ export function BitableGanttView({
     () => NUM_COL_WIDTH + leftColumns.reduce((sum, col) => sum + (col.width || 160), 0),
     [leftColumns],
   );
+
+  // ── 拖拽调整左侧固定列宽度（与表格视图共用字段宽度，最小 90） ──
+  const handleColumnResizeStart = (e: React.MouseEvent, col: BitableColumn) => {
+    if (!onUpdateColumn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startW = col.width || 160;
+    // 拖拽期间锁定全局光标，避免划过其他元素时光标闪回
+    document.body.style.cursor = 'col-resize';
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const newWidth = Math.max(90, startW + moveEvent.clientX - startX);
+      onUpdateColumn(col.id, { width: newWidth });
+    };
+    const handleMouseUp = () => {
+      document.body.style.cursor = '';
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
 
   // ── 条形拖拽 ──
   const commitBarDrag = useCallback(
@@ -1221,7 +1299,30 @@ export function BitableGanttView({
     onUpdateConfig({ leftColumnIds: next });
   };
 
-  const palette = getOptionColor(config.color || 'blue');
+  const palette = resolveGanttColor(config.color);
+
+  /** 切换某个星期是否休息：至少保留一个工作日，否则时间轴无日可排 */
+  const toggleRestWeekday = (weekday: number) => {
+    const next = restWeekdays.includes(weekday)
+      ? restWeekdays.filter((d) => d !== weekday)
+      : [...restWeekdays, weekday].sort((a, b) => a - b);
+    if (next.length >= 7) {
+      showToast('至少保留一个工作日');
+      return;
+    }
+    onUpdateConfig({ restWeekdays: next });
+  };
+
+  /** 节假日加载状态提示 */
+  const holidayHint = !excludeHolidays
+    ? ''
+    : holidayState.status === 'loading'
+      ? '正在获取节假日安排…'
+      : holidayState.status === 'error'
+        ? '获取失败，暂按每周休息日计算'
+        : holidayState.missingYears.length > 0
+          ? `${holidayState.missingYears.join('、')} 年暂无安排，按每周休息日计算`
+          : '';
   const today = todayDayIndex();
 
   /** 单行条形颜色：自定义取固定色，自动模式取该行第一个标签的颜色 */
@@ -1414,7 +1515,9 @@ export function BitableGanttView({
                     style={{
                       gap: 4,
                       padding: '3px 8px',
-                      background: sortRules.length > 0 ? 'rgba(59, 130, 246, 0.08)' : undefined,
+                      background: sortRules.length > 0
+                        ? 'color-mix(in srgb, var(--editor-accent, #3b82f6) 8%, transparent)'
+                        : undefined,
                       color: sortRules.length > 0 ? 'var(--editor-accent, #3b82f6)' : undefined,
                       borderColor: sortRules.length > 0 ? 'var(--editor-accent, #3b82f6)' : undefined,
                     }}
@@ -1610,11 +1713,11 @@ export function BitableGanttView({
                   background: 'var(--editor-bg, #f8fafc)',
                 }}
               >
-                {BITABLE_PALETTE.map((item) => (
+                {GANTT_COLOR_SWATCHES.map((item) => (
                   <Tooltip key={item.id} content={item.label} side="bottom" sideOffset={4}>
                     <div
                       className="nb-bitable-color-swatch"
-                      onClick={() => onUpdateConfig({ color: item.id as SelectOptionColor })}
+                      onClick={() => onUpdateConfig({ color: item.id as GanttViewConfig['color'] })}
                       style={{
                         width: 18,
                         height: 18,
@@ -1622,7 +1725,7 @@ export function BitableGanttView({
                         background: item.text,
                         cursor: 'pointer',
                         border:
-                          (config.color || 'blue') === item.id
+                          palette.id === item.id
                             ? '2px solid var(--editor-text, #0f172a)'
                             : '1px solid rgba(15,23,42,0.12)',
                       }}
@@ -1634,40 +1737,61 @@ export function BitableGanttView({
 
             <div style={{ height: 1, background: 'var(--editor-border, #f1f5f9)' }} />
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12.5, color: 'var(--editor-text, #1e293b)' }}>仅计算工作日</span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={workdaysOnly}
-                onClick={() => onUpdateConfig({ workdaysOnly: !workdaysOnly })}
+            <ConfigRow label="仅计算工作日">
+              <ConfigSwitch
+                checked={workdaysOnly}
+                onChange={() => onUpdateConfig({ workdaysOnly: !workdaysOnly })}
+              />
+            </ConfigRow>
+
+            {/* 每周休息日：时间轴底色与「仅计算工作日」共用此设置 */}
+            <ConfigRow label="每周休息日">
+              <div style={{ display: 'flex', gap: 3 }}>
+                {WEEKDAY_OPTIONS.map((option) => {
+                  const isRest = restWeekdays.includes(option.id);
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={`nb-bitable-gantt-weekday${isRest ? ' is-active' : ''}`}
+                      aria-pressed={isRest}
+                      onClick={() => toggleRestWeekday(option.id)}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </ConfigRow>
+
+            {/* 法定节假日：联网获取放假与调休安排，调休上班日即使是周末也计为工作日 */}
+            <ConfigRow
+              label={
+                <Tooltip content="按国务院放假安排：节假日休息，调休日上班" side="top" sideOffset={4}>
+                  <span style={{ cursor: 'help', borderBottom: '1px dashed var(--editor-text-muted, #94a3b8)' }}>
+                    法定节假日与调休
+                  </span>
+                </Tooltip>
+              }
+            >
+              <ConfigSwitch
+                checked={excludeHolidays}
+                onChange={() => onUpdateConfig({ excludeHolidays: !excludeHolidays })}
+              />
+            </ConfigRow>
+            {holidayHint && (
+              <div
                 style={{
-                  width: 34,
-                  height: 20,
-                  padding: 0,
-                  border: 'none',
-                  borderRadius: 10,
-                  cursor: 'pointer',
-                  position: 'relative',
-                  background: workdaysOnly ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-border, #cbd5e1)',
-                  transition: 'background 0.18s ease',
+                  marginTop: -4,
+                  fontSize: 11.5,
+                  color: holidayState.status === 'error'
+                    ? 'var(--error-600, #dc2626)'
+                    : 'var(--editor-text-muted, #94a3b8)',
                 }}
               >
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: 2,
-                    left: workdaysOnly ? 16 : 2,
-                    width: 16,
-                    height: 16,
-                    borderRadius: '50%',
-                    background: '#ffffff',
-                    boxShadow: '0 1px 2px rgba(15,23,42,0.25)',
-                    transition: 'left 0.18s ease',
-                  }}
-                />
-              </button>
-            </div>
+                {holidayHint}
+              </div>
+            )}
           </FloatingPanel>
         )}
 
@@ -1805,6 +1929,14 @@ export function BitableGanttView({
                       </span>
                       <Lock size={11} color="var(--editor-text-muted, #94a3b8)" style={{ flexShrink: 0 }} />
                     </span>
+
+                    {/* 拖拽列宽调整把手（th 为 sticky 定位，可直接承载绝对定位子元素） */}
+                    {onUpdateColumn && (
+                      <div
+                        className="nb-bitable-gantt-col-resizer"
+                        onMouseDown={(e) => handleColumnResizeStart(e, col)}
+                      />
+                    )}
                   </th>
                 );
               })}
@@ -1834,7 +1966,7 @@ export function BitableGanttView({
                         bottom: 0,
                         left: rect.left,
                         width: rect.width,
-                        background: 'rgba(148, 163, 184, 0.09)',
+                        background: WEEKEND_HEADER_BG,
                         pointerEvents: 'none',
                       }}
                     />
@@ -1878,8 +2010,9 @@ export function BitableGanttView({
                           borderRight: '1px solid var(--editor-border, #f1f5f9)',
                           display: 'flex',
                           alignItems: 'center',
-                          justifyContent: zoom === 'month' ? 'center' : 'flex-start',
-                          paddingLeft: zoom === 'month' ? 0 : 8,
+                          justifyContent: isDayScale ? 'center' : 'flex-start',
+                          gap: 2,
+                          paddingLeft: isDayScale ? 0 : 8,
                           fontSize: 11,
                           color: 'var(--editor-text-muted, #94a3b8)',
                           overflow: 'hidden',
@@ -1887,6 +2020,21 @@ export function BitableGanttView({
                         }}
                       >
                         {band.label}
+                        {/* 法定节假日标「休」，调休上班日标「班」 */}
+                        {excludeHolidays && band.day !== undefined && holidays.has(band.day) && (
+                          <span
+                            style={{
+                              fontSize: 9,
+                              fontWeight: 600,
+                              lineHeight: 1,
+                              color: holidays.get(band.day)
+                                ? 'var(--editor-accent, #3b82f6)'
+                                : 'var(--editor-text-secondary, #64748b)',
+                            }}
+                          >
+                            {holidays.get(band.day) ? '休' : '班'}
+                          </span>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -2423,7 +2571,7 @@ export function BitableGanttView({
                             bottom: 0,
                             left: rect.left,
                             width: rect.width,
-                            background: 'rgba(148, 163, 184, 0.07)',
+                            background: WEEKEND_BODY_BG,
                             pointerEvents: 'none',
                           }}
                         />
@@ -2473,7 +2621,8 @@ export function BitableGanttView({
                                 height: BAR_HEIGHT,
                                 borderRadius: 6,
                                 background: barPalette.text,
-                                boxShadow: `0 1px 3px ${barPalette.text}44`,
+                                // 颜色可能是 CSS 变量（跟随主题），透明度改用 color-mix 而非拼接十六进制
+                                boxShadow: `0 1px 3px color-mix(in srgb, ${barPalette.text} 27%, transparent)`,
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: 6,
@@ -2891,7 +3040,7 @@ export function BitableGanttView({
 }
 
 /** 配置面板「标签 + 控件」单行布局 */
-function ConfigRow({ label, children }: { label: string; children: React.ReactNode }) {
+function ConfigRow({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
       <span style={{ fontSize: 12.5, color: 'var(--editor-text, #1e293b)', flexShrink: 0 }}>{label}</span>
@@ -2900,3 +3049,41 @@ function ConfigRow({ label, children }: { label: string; children: React.ReactNo
   );
 }
 
+/** 配置面板开关 */
+function ConfigSwitch({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={onChange}
+      className="nb-bitable-gantt-switch"
+      style={{
+        width: 34,
+        height: 20,
+        padding: 0,
+        border: 'none',
+        borderRadius: 10,
+        cursor: 'pointer',
+        position: 'relative',
+        flexShrink: 0,
+        background: checked ? 'var(--editor-accent, #3b82f6)' : 'var(--editor-border, #cbd5e1)',
+        transition: 'background 0.18s ease',
+      }}
+    >
+      <span
+        style={{
+          position: 'absolute',
+          top: 2,
+          left: checked ? 16 : 2,
+          width: 16,
+          height: 16,
+          borderRadius: '50%',
+          background: '#ffffff',
+          boxShadow: '0 1px 2px rgba(15,23,42,0.25)',
+          transition: 'left 0.18s ease',
+        }}
+      />
+    </button>
+  );
+}
