@@ -3,14 +3,15 @@
 // 状态由 layoutStore 管理，与文档撤销/重做时间线完全隔离
 
 import React from 'react';
-import { ChevronUp } from 'lucide-react';
+import { BookOpen, ChevronUp } from 'lucide-react';
 import type { Editor } from '@tiptap/core';
 import type { Tab } from '../../stores/windowStore';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { MarkdownToolbar } from './MarkdownToolbar';
 import { CodeToolbar } from './CodeToolbar';
 import { FloatingExpandHandle } from './FloatingExpandHandle';
-import { ToolbarButton } from './ToolbarComponents';
+import { ToolbarButton, ToolbarDivider } from './ToolbarComponents';
+import { requestMarkdownReadingMode } from '../editor-md/readingMode';
 
 interface EditorToolbarProps {
   activeTab: Tab | null;
@@ -70,8 +71,18 @@ export function EditorToolbar({ activeTab, activeEditor }: EditorToolbarProps) {
         />
       ) : null}
 
-      {/* 右侧收起按钮 */}
-      <div style={{ marginLeft: 8, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+      {/* 右侧视图操作：沉浸阅读（仅 Markdown）与收起按钮 */}
+      <div style={{ marginLeft: 8, display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+        {activeTab.kind === 'markdown' && (
+          <>
+            <ToolbarButton
+              icon={<BookOpen size={15} strokeWidth={2.2} />}
+              title="沉浸阅读"
+              onClick={() => requestMarkdownReadingMode(true)}
+            />
+            <ToolbarDivider />
+          </>
+        )}
         <ToolbarButton
           icon={<ChevronUp size={15} strokeWidth={2.2} />}
           title="收起操作栏"

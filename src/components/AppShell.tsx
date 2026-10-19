@@ -55,6 +55,7 @@ import {
 import { useFavoritesStore } from '../features/favorites/favoritesStore';
 import { MissingFileDialog } from '../features/external/MissingFileDialog';
 import { checkActiveDocumentStillExists } from '../features/external/missingFileGuard';
+import { requestMarkdownReadingMode } from '../features/editor-md/readingMode';
 
 // ── 分隔条样式 ──
 
@@ -93,6 +94,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
     outlineWidth,
     statusBarVisible,
     boardPresentationMode,
+    markdownReadingMode,
     toggleExplorer,
     toggleOutline,
   } = useLayoutStore();
@@ -117,6 +119,14 @@ export function AppShell(_props: { children?: React.ReactNode }) {
   const showOutline = activeTab?.kind === 'markdown';
   // 仅活动画板可以接管应用外壳；切到其他格式时立即恢复常规布局
   const isBoardPresentationMode = boardPresentationMode && activeTab?.kind === 'board';
+  // Markdown 沉浸阅读同样接管外壳：隐藏标题栏、侧栏、操作栏与状态栏
+  const isMarkdownReadingMode = markdownReadingMode && activeTab?.kind === 'markdown';
+  const isShellHidden = isBoardPresentationMode || isMarkdownReadingMode;
+
+  // 切换或关闭标签时退出沉浸阅读，避免窗口停留在全屏且外壳不可见
+  useEffect(() => {
+    if (useLayoutStore.getState().markdownReadingMode) requestMarkdownReadingMode(false);
+  }, [activeKey]);
 
   // 🔴 S05：已移除 AppShell 的全局 Drawio 空闲预热（E 节 8：取消无意图的全编辑器空闲
   //    预热；.drawio 首次打开时由编辑器自身按需加载，远程资源耗时单独统计）
@@ -310,7 +320,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
   return (
     <div style={handleStyle}>
       {/* 标题栏 */}
-      {!isBoardPresentationMode && <TitleBar key="app-titlebar" />}
+      {!isShellHidden && <TitleBar key="app-titlebar" />}
 
       {/* 主区域 */}
       <div
@@ -341,7 +351,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
           }}
         >
           {/* 资源管理器 */}
-          {!isBoardPresentationMode && explorerVisible && (
+          {!isShellHidden && explorerVisible && (
             <>
               <Panel
                 id="nb-explorer"
@@ -387,7 +397,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
               }}
             >
               {/* 左折叠把手 */}
-              {!isBoardPresentationMode && (
+              {!isShellHidden && (
                 <RailToggle
                   side="left"
                   visible={explorerVisible}
@@ -407,7 +417,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
                 }}
               >
                 {/* 顶部操作栏（针对 Markdown 与代码/纯文本格式，支持多级菜单与收起/悬浮恢复） */}
-                {!isBoardPresentationMode && tabs.length > 0 && activeTab && (
+                {!isShellHidden && tabs.length > 0 && activeTab && (
                   <EditorToolbar
                     activeTab={activeTab}
                     activeEditor={activeEditor}
@@ -447,7 +457,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
                 />
 
                 {/* 右折叠把手（仅 Markdown） */}
-                {!isBoardPresentationMode && tabs.length > 0 && (
+                {!isShellHidden && tabs.length > 0 && (
                   <RailToggle
                     side="right"
                     visible={outlineVisible}
@@ -464,7 +474,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
           </Panel>
 
           {/* 大纲 */}
-          {!isBoardPresentationMode && outlineVisible && showOutline && (
+          {!isShellHidden && outlineVisible && showOutline && (
             <>
               <ResizeHandle />
               <Panel
@@ -489,7 +499,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
       </div>
 
       {/* 状态栏 */}
-      {!isBoardPresentationMode && statusBarVisible && <StatusBar key="app-statusbar" />}
+      {!isShellHidden && statusBarVisible && <StatusBar key="app-statusbar" />}
       <UnsavedGuardDialog
         dirtyTabs={dirtyPendingTabs}
         visible={dirtyPendingTabs.length > 0}
@@ -509,7 +519,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
       <PromptDialogHost />
 
       {/* 全局文件拖拽释放提示 */}
-      {!isBoardPresentationMode && <FileDropOverlay />}
+      {!isShellHidden && <FileDropOverlay />}
     </div>
   );
 }

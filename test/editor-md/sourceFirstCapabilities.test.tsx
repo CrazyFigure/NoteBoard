@@ -39,6 +39,8 @@ vi.mock('@codemirror/state', () => ({
   },
   Prec: { highest: (ext: unknown) => ext },
   Transaction: { addToHistory: { of: (v: unknown) => v } },
+  // 沉浸阅读只读开关所用的 compartment
+  Compartment: class { of() { return {}; } reconfigure() { return {}; } },
 }));
 vi.mock('@codemirror/commands', () => ({ undoDepth: () => 0 }));
 vi.mock('@codemirror/lang-markdown', () => ({ markdown: () => ({}) }));

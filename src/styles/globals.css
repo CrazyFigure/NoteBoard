@@ -5391,3 +5391,156 @@ input[type='number'] {
 @keyframes nb-prompt-spin {
   to { transform: rotate(360deg); }
 }
+
+/* ═════════════════════════════════════════════════════════
+ * Markdown 沉浸阅读
+ * 收窄行宽、加大上下留白，隐藏编辑辅助标记；进度条与退出胶囊浮在正文之上
+ * ═════════════════════════════════════════════════════════ */
+
+/* 正文列：约 46 字一行的舒适阅读宽度，内联样式需 !important 覆盖 */
+.nb-md-reading .nb-prose {
+  max-width: min(var(--content-max-width), 46em) !important;
+  padding: 72px 40px 40vh !important;
+  font-size: calc(var(--content-font-size) * 1.06) !important;
+  caret-color: transparent;
+  animation: nb-reading-in 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 标题级别标签属于编辑辅助，阅读时隐藏 */
+.nb-md-reading .ProseMirror h1::before,
+.nb-md-reading .ProseMirror h2::before,
+.nb-md-reading .ProseMirror h3::before,
+.nb-md-reading .ProseMirror h4::before,
+.nb-md-reading .ProseMirror h5::before,
+.nb-md-reading .ProseMirror h6::before {
+  content: none;
+}
+
+.nb-reading-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 40;
+  pointer-events: none;
+}
+
+.nb-reading-progress-bar {
+  height: 100%;
+  background: var(--accent-strong);
+  transform-origin: left center;
+  transition: transform 120ms linear;
+}
+
+.nb-reading-capsule {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--editor-border);
+  background: color-mix(in srgb, var(--editor-surface, var(--editor-bg)) 84%, transparent);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  user-select: none;
+  transition: opacity 240ms ease, transform 240ms ease;
+  animation: nb-reading-capsule-in 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 指针静止时淡出但不完全消失，退出入口始终可被找到 */
+.nb-reading-capsule[data-visible='false'] {
+  opacity: 0.45;
+  transform: translateY(-2px);
+}
+
+.nb-reading-percent {
+  min-width: 30px;
+  text-align: right;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--editor-text-muted);
+}
+
+.nb-reading-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--editor-border);
+}
+
+.nb-reading-exit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--editor-text-secondary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-reading-exit:hover,
+.nb-reading-exit:focus-visible {
+  background: var(--toolbar-hover);
+  color: var(--accent-strong);
+  outline: none;
+}
+
+.nb-reading-exit:active,
+.nb-reading-exit[data-pressed='true'] {
+  background: var(--toolbar-active);
+  transform: scale(0.95);
+}
+
+@keyframes nb-reading-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes nb-reading-capsule-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nb-md-reading .nb-prose,
+  .nb-md-reading .cm-content,
+  .nb-reading-capsule {
+    animation: none !important;
+  }
+}
+
+/* 源码阅读（大文档或需规范化的文档）：隐藏行号与当前行底色，收窄正文列 */
+.nb-md-reading .cm-gutters {
+  display: none !important;
+}
+
+.nb-md-reading .cm-activeLine {
+  background-color: transparent !important;
+}
+
+.nb-md-reading .cm-scroller {
+  padding-inline: max(0px, calc((100% - min(var(--content-max-width), 52em)) / 2)) !important;
+}
+
+.nb-md-reading .cm-content {
+  padding: 72px 24px 40vh !important;
+  animation: nb-reading-in 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
