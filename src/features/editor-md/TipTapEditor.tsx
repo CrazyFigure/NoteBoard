@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Editor } from '@tiptap/core';
 import { EditorView, keymap } from '@codemirror/view';
-import { EditorState, Prec, Transaction as CodeMirrorTransaction } from '@codemirror/state';
+import { Compartment, EditorState, Prec, Transaction as CodeMirrorTransaction } from '@codemirror/state';
 import { undoDepth as codeMirrorUndoDepth } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { undoDepth as prosemirrorUndoDepth } from '@tiptap/pm/history';
@@ -41,6 +41,9 @@ import { useWindowStore } from '../../stores/windowStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { on, off, emit } from '../../core/emitter';
 import { MarkdownModeToggle } from './MarkdownModeToggle';
+import { ReadingModeOverlay } from './ReadingModeOverlay';
+import { requestMarkdownReadingMode } from './readingMode';
+import { useLayoutStore } from '../../stores/layoutStore';
 import { ExternalChangeBanner } from './ExternalChangeBanner';
 import { markdownPlainBracketExtension } from './sourcePlainBracket';
 import {
@@ -91,6 +94,39 @@ type RestoredMarkdownViewState = {
   mode: 'visual' | 'source';
 };
 
+/**
+ * 源码模式排版主题
+ * 编辑器占满整列使滚动条贴边；行号与正文作为整体在滚动容器内按内容宽度居中，
+ * 与可视化模式的正文列保持一致（内容宽度为 100% 时两侧留白为 0）
+ */
+function createSourceTypographyTheme() {
+  return EditorView.theme({
+    '&': {
+      fontFamily: 'var(--mono-font-family)',
+      fontSize: 'var(--mono-font-size)',
+      height: '100%',
+    },
+    '.cm-scroller': {
+      lineHeight: 'var(--mono-line-height, 1.5)',
+      fontFamily: 'var(--mono-font-family)',
+      fontSize: 'var(--mono-font-size)',
+      // 百分比按编辑器宽度计算：两侧留白 = (编辑器宽 - 内容宽) / 2
+      paddingInline: 'max(0px, calc((100% - var(--content-max-width)) / 2))',
+    },
+    '.cm-content, .cm-line': {
+      fontFamily: 'var(--mono-font-family)',
+      fontSize: 'var(--mono-font-size)',
+    },
+    '.cm-content': {
+      // 行号槽已有右边线分隔，左内边距收窄，避免正文被挤得过窄
+      padding: '16px 24px 16px 12px',
+    },
+  });
+}
+
+/** 沉浸阅读时源码视图只读（compartment 仅作标识，可在多个实例间共享） */
+const sourceReadOnlyCompartment = new Compartment();
+
 /** TipTap 实例代际序号：同一 docKey 重挂载时递增，用于注册表删除保护 */
 let nextTipTapInstanceId = 0;
 
@@ -122,6 +158,8 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   const visualSyncedRef = useRef(false);
   // 惰性挂载 visual 时待填充的内容（首次切换 visual 的源码内容）
   const pendingVisualContentRef = useRef<string | null>(null);
+  // 沉浸阅读发起的可视化切换：只在无需改写源码时进入，否则静默留在源码阅读
+  const readingVisualEntryRef = useRef(false);
   // TipTap 原生历史仅用来识别连续输入是否属于同一分组，快捷键由文档级历史接管
   const visualUndoDepthRef = useRef(0);
   // 初始化锁：在初次加载和程序化设置内容期间以同步作用域阻止 onUpdate 误标为脏
@@ -131,6 +169,10 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
 
   const settings = useSettingsStore((s) => s.settings);
   const typography = settings.typography;
+  // 沉浸阅读只作用于当前活动文档（保活的后台实例不受影响）
+  const readingModeEnabled = useLayoutStore((s) => s.markdownReadingMode);
+  const isActiveDocument = useWindowStore((s) => s.activeKey === docKey);
+  const isReading = readingModeEnabled && isActiveDocument;
 
   /**
    * 🔴 S12：恢复回收前捕获的视图状态（选区/滚动；裁剪到合法范围，一次性消费）。
@@ -183,25 +225,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   useEffect(() => {
     const view = sourceViewRef.current;
     if (!view) return;
-    const typographyExt = EditorView.theme({
-      '&': {
-        fontFamily: 'var(--mono-font-family)',
-        fontSize: 'var(--mono-font-size)',
-        height: '100%',
-      },
-      '.cm-scroller': {
-        lineHeight: 'var(--mono-line-height, 1.5)',
-        fontFamily: 'var(--mono-font-family)',
-        fontSize: 'var(--mono-font-size)',
-      },
-      '.cm-content, .cm-line': {
-        fontFamily: 'var(--mono-font-family)',
-        fontSize: 'var(--mono-font-size)',
-      },
-      '.cm-content': {
-        padding: '16px 24px',
-      },
-    });
+    const typographyExt = createSourceTypographyTheme();
 
 
     view.dispatch({
@@ -376,6 +400,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
         nbEditorTheme,
         EditorView.lineWrapping,
         updateListener,
+        sourceReadOnlyCompartment.of([]),
       ],
     });
 
@@ -385,25 +410,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     });
 
     // 注入源码模式排版配置
-    const typographyExt = EditorView.theme({
-      '&': {
-        fontFamily: 'var(--mono-font-family)',
-        fontSize: 'var(--mono-font-size)',
-        height: '100%',
-      },
-      '.cm-scroller': {
-        lineHeight: 'var(--mono-line-height, 1.5)',
-        fontFamily: 'var(--mono-font-family)',
-        fontSize: 'var(--mono-font-size)',
-      },
-      '.cm-content, .cm-line': {
-        fontFamily: 'var(--mono-font-family)',
-        fontSize: 'var(--mono-font-size)',
-      },
-      '.cm-content': {
-        padding: '16px 24px',
-      },
-    });
+    const typographyExt = createSourceTypographyTheme();
     view.dispatch({
       effects: typographyCompartment.reconfigure(typographyExt),
     });
@@ -618,6 +625,14 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     content: string,
     outcome: ReturnType<typeof resolveVisualEntry>,
   ) => {
+    // 阅读不得改写文档或弹出询问：需要规范化（或解析失败）时直接留在源码
+    if (readingVisualEntryRef.current) {
+      readingVisualEntryRef.current = false;
+      if (outcome.kind !== 'same') {
+        stayInSourceMode(content);
+        return;
+      }
+    }
     switch (outcome.kind) {
       case 'same':
         commitVisualMode(targetEditor, outcome.serialized, false);
@@ -735,6 +750,42 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     }
   }, [editor, viewMode, docKey, initSourceEditor, requestVisualMode]);
 
+  // 沉浸阅读以可视化排版呈现：源码模式进入时临时切到可视化，退出后恢复源码
+  const toggleViewModeRef = useRef(toggleViewMode);
+  toggleViewModeRef.current = toggleViewMode;
+  const restoreSourceAfterReadingRef = useRef(false);
+  useEffect(() => {
+    if (isReading) {
+      // 大文档保持源码（可视化渲染过重），只隐藏外壳
+      if (viewModeRef.current === 'source' && !largeVerdict?.isLarge) {
+        readingVisualEntryRef.current = true;
+        toggleViewModeRef.current('visual');
+        // 留在源码时无需恢复；可视化内核惰性挂载时由填充 effect 稍后判定
+        restoreSourceAfterReadingRef.current = true;
+      }
+      return;
+    }
+    readingVisualEntryRef.current = false;
+    if (restoreSourceAfterReadingRef.current) {
+      restoreSourceAfterReadingRef.current = false;
+      if (viewModeRef.current === 'visual') toggleViewModeRef.current('source');
+    }
+    // 仅随阅读状态变化执行；largeVerdict 在文档初始化后不再变化
+  }, [isReading]);
+
+  // 留在源码阅读时同样只读，防止误触改动正文
+  useEffect(() => {
+    const view = sourceViewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: sourceReadOnlyCompartment.reconfigure(
+        isReading ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : [],
+      ),
+    });
+  }, [isReading, viewMode]);
+
+  const exitReading = useCallback(() => requestMarkdownReadingMode(false), []);
+
   // 监听来自状态栏或外部的模式切换请求
   useEffect(() => {
     const handleToggle = (payload: { key?: string; mode?: 'visual' | 'source' }) => {
@@ -848,7 +899,6 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
             ref={sourceDivRef}
             style={{
               width: '100%',
-              maxWidth: 'var(--content-max-width)',
               height: '100%',
             }}
           />
@@ -858,7 +908,11 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   }
 
   return (
-    <div style={{ height: '100%', overflow: 'hidden', position: 'relative' }} ref={editorRef}>
+    <div
+      className={isReading ? 'nb-md-reading' : undefined}
+      style={{ height: '100%', overflow: 'hidden', position: 'relative' }}
+      ref={editorRef}
+    >
       <ExternalChangeBanner docKey={docKey} />
       {/* 🔴 S08：visual 运行时（惰性挂载；TipTap 内核随本组件创建/销毁） */}
       {hasVisualKernel && (
@@ -870,6 +924,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
           visualUndoDepthRef={visualUndoDepthRef}
           storeTimerRef={storeTimerRef}
           diskTimerRef={diskTimerRef}
+          readOnly={isReading}
         />
       )}
 
@@ -892,14 +947,16 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
           ref={sourceDivRef}
           style={{
             width: '100%',
-            maxWidth: 'var(--content-max-width)',
             height: '100%',
           }}
         />
       </div>
 
       {/* 底部左侧模式切换器：可视化 / 源码模式，具备热区靠近唤出与 Hover、Active 状态反馈，仅对当前文档生效 */}
-      <MarkdownModeToggle viewMode={viewMode} onToggle={toggleViewMode} />
+      {!isReading && <MarkdownModeToggle viewMode={viewMode} onToggle={toggleViewMode} />}
+
+      {/* 沉浸阅读：进度条与退出按钮 */}
+      {isReading && <ReadingModeOverlay rootRef={editorRef} onExit={exitReading} />}
 
       {/* 格式规范化确认：仅在用户请求进入可视化且会改变源码写法时出现 */}
       {normalizePrompt && (
