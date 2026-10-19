@@ -180,10 +180,14 @@ export interface GanttViewConfig {
   titleColumnId?: string;
   /** 颜色显示：auto 取字段标签颜色自动着色；custom 使用下方自定义色 */
   colorMode?: GanttColorMode;
-  /** 自定义颜色，colorMode === 'custom' 时生效 */
-  color?: SelectOptionColor;
-  /** 仅计算工作日：时间轴跳过周末，条形长度按工作日折算 */
+  /** 自定义颜色，colorMode === 'custom' 时生效；'theme' 跟随当前主题强调色，缺省即为 'theme' */
+  color?: SelectOptionColor | 'theme';
+  /** 仅计算工作日：时间轴跳过休息日，条形长度按工作日折算 */
   workdaysOnly?: boolean;
+  /** 每周休息日（取值同 Date#getUTCDay，周日为 0），缺省为周六、周日 */
+  restWeekdays?: number[];
+  /** 按中国大陆法定节假日调整：放假日计为休息、调休上班日计为工作日（数据联网获取） */
+  excludeHolidays?: boolean;
   /** 左侧列表面板展示并固定的字段（顺序即列顺序） */
   leftColumnIds?: string[];
   /** 时间刻度，默认 month */

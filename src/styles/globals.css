@@ -4592,6 +4592,79 @@ button.nb-callout-icon:active {
   background: var(--toolbar-hover);
 }
 
+/* 琥珀主题：冷灰悬浮色在暖纸底上发青，改为暖灰 */
+:root[data-theme="hu-po"] .nb-bitable-gantt-row:hover,
+:root[data-theme="hu-po"] .nb-bitable-gantt-row:hover .nb-bitable-gantt-left-cell,
+:root[data-theme="hu-po"] .nb-bitable-gantt-row:hover .nb-bitable-gantt-num-cell {
+  background: #EFEDE5;
+}
+
+:root[data-theme="hu-po"] .nb-bitable-gantt-group-cell:hover {
+  background: var(--toolbar-hover);
+}
+
+/* 左侧固定列宽度拖拽把手：贴在列头右缘，悬浮 / 拖动时显出强调色竖线 */
+.nb-bitable-gantt-col-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 2;
+  transition: background var(--transition-fast);
+}
+
+.nb-bitable-gantt-col-resizer:hover {
+  background: color-mix(in srgb, var(--editor-accent, #3b82f6) 45%, transparent);
+}
+
+.nb-bitable-gantt-col-resizer:active {
+  background: var(--editor-accent, #3b82f6);
+}
+
+/* 甘特图配置：开关与每周休息日选择 */
+.nb-bitable-gantt-switch:hover {
+  filter: brightness(1.06);
+}
+
+.nb-bitable-gantt-switch:active {
+  transform: scale(0.95);
+}
+
+.nb-bitable-gantt-weekday {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--editor-border, #e2e8f0);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--editor-text-muted, #64748b);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-bitable-gantt-weekday:hover:not(.is-active) {
+  background: var(--toolbar-hover, #f1f5f9);
+  color: var(--editor-text, #1e293b);
+}
+
+.nb-bitable-gantt-weekday:active {
+  transform: scale(0.92);
+}
+
+.nb-bitable-gantt-weekday.is-active {
+  background: var(--editor-accent, #3b82f6);
+  border-color: var(--editor-accent, #3b82f6);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.nb-bitable-gantt-weekday.is-active:hover {
+  filter: brightness(1.06);
+}
+
 /* 时间轴刻度切换（周 / 月 / 季 / 年） */
 .nb-bitable-gantt-zoom {
   background: transparent;

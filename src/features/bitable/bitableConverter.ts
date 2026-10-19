@@ -226,7 +226,7 @@ export function createDefaultBitableDocument(title = '项目与任务管理多�
         endColumnId: 'col_dueDate',
         titleColumnId: 'col_name',
         colorMode: 'custom',
-        color: 'blue',
+        color: 'theme',
         workdaysOnly: false,
         zoom: 'month',
         leftColumnIds: ['col_name'],

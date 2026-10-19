@@ -1055,6 +1055,25 @@ export function isWeekendDay(dayIndex: number): boolean {
   return dow === 0 || dow === 6;
 }
 
+/** 默认每周休息日：周六、周日（取值同 Date#getUTCDay，周日为 0） */
+export const DEFAULT_REST_WEEKDAYS = [0, 6];
+
+/**
+ * 生成「是否休息日」判断函数
+ * 节假日表优先：放假日一律休息，调休上班日一律上班；其余按每周休息日判断。
+ */
+export function createRestDayChecker(
+  restWeekdays: number[] = DEFAULT_REST_WEEKDAYS,
+  holidays?: Map<number, boolean>,
+): (dayIndex: number) => boolean {
+  const restSet = new Set(restWeekdays);
+  return (dayIndex: number) => {
+    const holiday = holidays?.get(dayIndex);
+    if (holiday !== undefined) return holiday;
+    return restSet.has(new Date(dayIndex * MS_PER_DAY).getUTCDay());
+  };
+}
+
 /** 今天的天序号（按本地日期取，避免 UTC 偏移把当天的甘特线画到前一天） */
 export function todayDayIndex(): number {
   const now = new Date();
@@ -1075,11 +1094,15 @@ export interface GanttDayAxis {
   indexOf: Map<number, number>;
 }
 
-/** 构建时间轴（仅工作日模式下剔除周末；区间内全为周末时退化为完整区间，避免时间轴为空） */
-export function buildGanttDayAxis(startDay: number, endDay: number, workdaysOnly: boolean): GanttDayAxis {
+/** 构建时间轴（传入 isSkipped 时剔除休息日；区间内全为休息日时退化为完整区间，避免时间轴为空） */
+export function buildGanttDayAxis(
+  startDay: number,
+  endDay: number,
+  isSkipped?: (dayIndex: number) => boolean,
+): GanttDayAxis {
   const days: number[] = [];
   for (let d = startDay; d <= endDay; d += 1) {
-    if (workdaysOnly && isWeekendDay(d)) continue;
+    if (isSkipped?.(d)) continue;
     days.push(d);
   }
   if (days.length === 0) {
@@ -1112,10 +1135,14 @@ export function ganttAxisIndexEnd(axis: GanttDayAxis, day: number): number {
 }
 
 /** 统计闭区间内的工作日天数，用于「仅计算工作日」下的条形时长文案 */
-export function countWorkdays(startDay: number, endDay: number): number {
+export function countWorkdays(
+  startDay: number,
+  endDay: number,
+  isRestDay: (dayIndex: number) => boolean = isWeekendDay,
+): number {
   let count = 0;
   for (let d = startDay; d <= endDay; d += 1) {
-    if (!isWeekendDay(d)) count += 1;
+    if (!isRestDay(d)) count += 1;
   }
   return count;
 }
@@ -1125,11 +1152,13 @@ export interface GanttTimeBand {
   key: string;
   label: string;
   span: number;
+  /** 逐日分栏（周 / 月刻度下层）对应的天序号，用于标注节假日 */
+  day?: number;
 }
 
-/** 时间轴刻度对应的每日像素宽度 */
+/** 时间轴刻度对应的每日像素宽度（周刻度最细，需容纳「日期 + 星期」两段文字） */
 export const GANTT_DAY_WIDTH: Record<GanttZoom, number> = {
-  week: 22,
+  week: 56,
   month: 40,
   quarter: 14,
   year: 5,
@@ -1144,6 +1173,9 @@ function weekStartDay(day: number): number {
   return day - ((dow + 6) % 7);
 }
 
+/** 星期简称（下标与 Date#getUTCDay 一致，周日为 0） */
+const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
+
 /** 取某天的分组键与展示文案 */
 function resolveBandKey(
   day: number,
@@ -1156,6 +1188,16 @@ function resolveBandKey(
   const d = date.getUTCDate();
 
   if (bandKind === 'primary') {
+    // 周刻度：上层按周分栏，标注该周起止日期
+    if (zoom === 'week') {
+      const ws = weekStartDay(day);
+      const start = new Date(ws * MS_PER_DAY);
+      const end = new Date((ws + 6) * MS_PER_DAY);
+      return {
+        key: `w${ws}`,
+        label: `${start.getUTCFullYear()}年 ${start.getUTCMonth() + 1}/${start.getUTCDate()} – ${end.getUTCMonth() + 1}/${end.getUTCDate()}`,
+      };
+    }
     if (zoom === 'quarter') {
       const q = Math.floor((m - 1) / 3) + 1;
       return { key: `${y}-Q${q}`, label: `${y}年 Q${q}` };
@@ -1164,11 +1206,9 @@ function resolveBandKey(
     return { key: `${y}-${m}`, label: `${y}年${m}月` };
   }
 
-  // secondary：周 → 周起始日；月视图细化到日；季 / 年视图落到月
+  // secondary：周视图细化到日并附星期；月视图细化到日；季 / 年视图落到月
   if (zoom === 'week') {
-    const ws = weekStartDay(day);
-    const wd = new Date(ws * MS_PER_DAY);
-    return { key: `w${ws}`, label: `${wd.getUTCMonth() + 1}/${wd.getUTCDate()}` };
+    return { key: `d${day}`, label: `${d} ${WEEKDAY_LABELS[date.getUTCDay()]}` };
   }
   if (zoom === 'month') return { key: `d${day}`, label: `${d}` };
   return { key: `${y}-${m}`, label: `${m}月` };
@@ -1185,7 +1225,7 @@ export function buildGanttTimeBands(
     const { key, label } = resolveBandKey(day, zoom, bandKind);
     const last = bands[bands.length - 1];
     if (last && last.key === key) last.span += 1;
-    else bands.push({ key, label, span: 1 });
+    else bands.push({ key, label, span: 1, ...(key === `d${day}` ? { day } : {}) });
   });
   return bands;
 }
