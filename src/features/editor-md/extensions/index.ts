@@ -17,6 +17,7 @@ import { TableRow } from '@tiptap/extension-table';
 import { TableCell } from '@tiptap/extension-table';
 import { TableHeader } from '@tiptap/extension-table';
 import { Markdown } from '@tiptap/markdown';
+import { createIsolatedMarkdownParser } from '../markdownBlockStart';
 import { Link } from '@tiptap/extension-link';
 
 import { CodeBlockView } from '../codeBlockView';
@@ -49,7 +50,7 @@ import { SelectAllBehavior } from '../selectAllBehavior';
 import { useWindowStore } from '../../../stores/windowStore';
 
 import Suggestion from '@tiptap/suggestion';
-import { Extension, type Extensions, type JSONContent, type MarkdownParseHelpers, type MarkdownParseResult, type MarkdownToken } from '@tiptap/core';
+import { Extension, type Extensions, type JSONContent, type MarkdownParseHelpers, type MarkdownParseResult, type MarkdownToken, type MarkdownTokenizer } from '@tiptap/core';
 import { Plugin, TextSelection } from '@tiptap/pm/state';
 import {
   redoDocumentHistory,
@@ -203,6 +204,17 @@ const MarkdownDocumentAttributes = Extension.create({
  * 尾部空白行在任何位置都去掉。
  */
 const MarkdownTable = Table.extend({
+  // 表格起点只依赖前两行；不可为每个普通段落反复拆分剩余全文。
+  markdownTokenizer: {
+    ...(Table.config.markdownTokenizer as MarkdownTokenizer),
+    start: (src: string) => {
+      const firstEnd = src.indexOf('\n');
+      if (firstEnd < 0 || !src.slice(0, firstEnd).includes('|')) return -1;
+      const secondEnd = src.indexOf('\n', firstEnd + 1);
+      const separator = src.slice(firstEnd + 1, secondEnd < 0 ? src.length : secondEnd);
+      return /^[ \t|:]*-[ \t|:-]*$/.test(separator) && separator.includes('|') ? 0 : -1;
+    },
+  },
   // markdownStyle：原文的表格书写风格，仅用于序列化时沿用原写法，不参与渲染
   addAttributes() {
     return {
@@ -481,8 +493,9 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
       },
     }),
 
-    // Markdown 序列化/解析扩展
-    Markdown,
+    // 每个编辑器独占解析器，避免回收重建和多文档不断向全局 marked 追加相同规则。
+    // TipTap 的注入类型沿用可调用的全局 marked；实际只使用 Marked 同样提供的解析/词法 API。
+    Markdown.configure({ marked: createIsolatedMarkdownParser() }),
 
     // 粘贴格式检测：放在最后，其它扩展的粘贴处理优先
     ...(options?.pasteFormatDetect ? [PasteFormatDetect] : []),

@@ -13,6 +13,7 @@ import type {
   XMindSheet,
 } from './mindmapTypes';
 import { normalizeMarks } from './mindmapRichText';
+import { cloneMindmapTree, findMindNode, findMindNodeParent, getMindmapTreeStats, mapMindmapTree, stringifyMindmapJson } from './mindmapTree';
 
 /** 合法布局枚举（用于反序列化时的防御性校验） */
 const VALID_LAYOUTS: MindmapLayout[] = [
@@ -120,25 +121,25 @@ export function parseMindmapDocument(content: string): MindNode {
  * 确保节点属性完整
  */
 function normalizeNode(node: Partial<MindNode>): MindNode {
-  return {
-    id: node.id || generateNodeId(),
-    text: node.text || '',
-    icon: node.icon,
-    note: node.note,
-    image: node.image,
-    color: node.color,
+  return mapMindmapTree(node, (source) => Array.isArray(source.children) ? source.children : [], (source) => ({
+    id: source.id || generateNodeId(),
+    text: source.text || '',
+    icon: source.icon,
+    note: source.note,
+    image: source.image,
+    color: source.color,
     // 仅保留合法的手动宽度
     width:
-      typeof node.width === 'number' && Number.isFinite(node.width) && node.width > 0
-        ? node.width
+      typeof source.width === 'number' && Number.isFinite(source.width) && source.width > 0
+        ? source.width
         : undefined,
     // 富文本标记按文本长度裁剪校验；对齐与图片显示方式只接受合法枚举
-    marks: normalizeMarks(node.marks, (node.text || '').length),
-    textAlign: node.textAlign === 'left' || node.textAlign === 'center' ? node.textAlign : undefined,
-    imageFit: node.imageFit === 'original' || node.imageFit === 'fill' ? node.imageFit : undefined,
-    isExpanded: node.isExpanded !== false,
-    children: Array.isArray(node.children) ? node.children.map(normalizeNode) : [],
-  };
+    marks: normalizeMarks(source.marks, (source.text || '').length),
+    textAlign: source.textAlign === 'left' || source.textAlign === 'center' ? source.textAlign : undefined,
+    imageFit: source.imageFit === 'original' || source.imageFit === 'fill' ? source.imageFit : undefined,
+    isExpanded: source.isExpanded !== false,
+    children: [],
+  }));
 }
 
 /**
@@ -157,7 +158,10 @@ export function serializeMindmapDocument(
   };
   // 连线样式只在显式选择时写入，缺省跟随主题
   if (meta?.edgeStyle) doc.edgeStyle = meta.edgeStyle;
-  return JSON.stringify(doc, null, 2);
+  // 大图/深图使用用户确认的紧凑格式；显式栈同时避免合法深层树触发原生 stringify 栈溢出。
+  const stats = getMindmapTreeStats(root);
+  return stats.maxDepth > 100 ? stringifyMindmapJson(doc, false)
+    : JSON.stringify(doc, null, stats.nodeCount <= 500 ? 2 : undefined);
 }
 
 /**
@@ -198,25 +202,16 @@ export function parseMindmapDocumentMeta(content: string): MindmapDocumentMeta {
  * XMind Topic 转换为 NoteBoard MindNode
  */
 export function xmindTopicToMindNode(topic: XMindTopic): MindNode {
-  const children: MindNode[] = [];
-  if (topic.children?.attached && Array.isArray(topic.children.attached)) {
-    for (const child of topic.children.attached) {
-      children.push(xmindTopicToMindNode(child));
-    }
-  }
-
-  // 提取 XMind 标记作为图标
-  const icon = topic.markers && topic.markers.length > 0 ? topic.markers[0].markerId : undefined;
-
-  return {
-    id: topic.id || generateNodeId(),
-    text: typeof topic.title === 'string' ? topic.title : '分支',
-    icon,
-    note: topic.note?.plain?.content,
-    image: topic.image?.src,
-    isExpanded: true,
-    children,
-  };
+  // 显式栈保留全部层级，不再因单链主题过深而在转换阶段溢出。
+  return mapMindmapTree(topic, (source) => source.children?.attached ?? [], (source) => ({
+    id: source.id || generateNodeId(),
+    text: typeof source.title === 'string' ? source.title : '分支',
+    icon: source.markers?.[0]?.markerId,
+    note: source.notes?.plain?.content ?? source.note?.plain?.content,
+    image: source.image?.src,
+    isExpanded: source.branch !== 'folded',
+    children: [],
+  }));
 }
 
 /**
@@ -233,29 +228,32 @@ export function xmindJsonToMindNode(sheets: XMindSheet[]): MindNode {
  * NoteBoard MindNode 转换为 XMind Topic
  */
 export function mindNodeToXmindTopic(node: MindNode): XMindTopic {
-  const attached: XMindTopic[] = node.children.map(mindNodeToXmindTopic);
-  const topic: XMindTopic = {
-    id: node.id,
-    title: node.text,
+  const create = (source: MindNode): XMindTopic => {
+    const topic: XMindTopic = { id: source.id, title: source.text };
+    if (source.icon) topic.markers = [{ markerId: source.icon }];
+    if (source.image) topic.image = { src: source.image };
+    if (source.note) {
+      topic.notes = { plain: { content: source.note } };
+      // 旧版 NoteBoard 读取 note，官方 XMind 读取 notes，同时写入以保留双方兼容。
+      topic.note = { plain: { content: source.note } };
+    }
+    if (source.isExpanded === false) topic.branch = 'folded';
+    return topic;
   };
-
-  if (node.icon) {
-    topic.markers = [{ markerId: node.icon }];
+  const result = create(node);
+  const stack = [{ source: node, target: result }];
+  while (stack.length > 0) {
+    const { source, target } = stack.pop()!;
+    if (source.children.length === 0) continue;
+    const attached: XMindTopic[] = [];
+    target.children = { attached };
+    for (const child of source.children) {
+      const next = create(child);
+      attached.push(next);
+      stack.push({ source: child, target: next });
+    }
   }
-
-  if (node.image) {
-    topic.image = { src: node.image };
-  }
-
-  if (node.note) {
-    topic.note = { plain: { content: node.note } };
-  }
-
-  if (attached.length > 0) {
-    topic.children = { attached };
-  }
-
-  return topic;
+  return result;
 }
 
 /**
@@ -438,7 +436,26 @@ export async function exportToXmindZip(root: MindNode): Promise<Blob> {
   const zip = new JSZip();
 
   const contentJson = mindNodeToXmindJson(root);
-  zip.file('content.json', JSON.stringify(contentJson, null, 2));
+  // 内嵌图片按标准 XMind 资源路径打包，不能只把 Data URL 留在 image.src 中。
+  const topics = [contentJson[0].rootTopic];
+  let imageIndex = 0;
+  const imagePaths = new Map<string, string>();
+  while (topics.length > 0) {
+    const topic = topics.pop()!;
+    for (const child of topic.children?.attached ?? []) topics.push(child);
+    const src = topic.image?.src;
+    const embedded = src?.match(/^data:(image\/[\w.+-]+);base64,([\s\S]+)$/);
+    if (!src || !embedded) continue;
+    let path = imagePaths.get(src);
+    if (!path) {
+      const extension = embedded[1] === 'image/svg+xml' ? 'svg' : embedded[1].split('/')[1].replace('jpeg', 'jpg');
+      path = `resources/image-${++imageIndex}.${extension}`;
+      zip.file(path, embedded[2], { base64: true });
+      imagePaths.set(src, path);
+    }
+    topic.image = { ...topic.image, src: `xap:${path}` };
+  }
+  zip.file('content.json', stringifyMindmapJson(contentJson, false));
 
   const manifestJson = {
     'file-entries': {
@@ -446,6 +463,7 @@ export async function exportToXmindZip(root: MindNode): Promise<Blob> {
       'metadata.json': {},
     },
   };
+  for (const path of imagePaths.values()) (manifestJson['file-entries'] as Record<string, object>)[path] = {};
   zip.file('manifest.json', JSON.stringify(manifestJson, null, 2));
 
   const metadataJson = {
@@ -459,36 +477,15 @@ export async function exportToXmindZip(root: MindNode): Promise<Blob> {
 /**
  * 动态加载 JSZip 并从 .xmind 压缩包解析出 MindNode 根节点
  */
-export async function importFromXmindZip(buffer: ArrayBuffer): Promise<MindNode> {
-  const JSZip = (await import('jszip')).default;
-  const zip = await JSZip.loadAsync(buffer);
-
-  // 1. 优先读取 content.json (XMind Zen / 2020+)
-  const contentFile = zip.file('content.json');
-  if (contentFile) {
-    const contentText = await contentFile.async('text');
-    const json = JSON.parse(contentText) as XMindContentJson;
-    if (Array.isArray(json) && json[0]?.rootTopic) {
-      return xmindTopicToMindNode(json[0].rootTopic);
-    }
-  }
-
-  // 2. 兼容读取 content.xml (经典版 XMind)
-  const xmlFile = zip.file('content.xml');
-  if (xmlFile) {
-    const xmlText = await xmlFile.async('text');
-    // 简易从 xml 提取 title 节点
-    const titleMatch = xmlText.match(/<title[^>]*>(.*?)<\/title>/);
-    const rootText = titleMatch ? titleMatch[1] : '导入的 XMind';
-    return {
-      id: generateNodeId(),
-      text: rootText,
-      isExpanded: true,
-      children: [],
-    };
-  }
-
-  throw new Error('未在 .xmind 文件中找到有效的思维导图内容');
+export async function importFromXmindZip(buffer: ArrayBuffer, sheetId?: string): Promise<MindNode> {
+  const { inspectXmindArchive, readXmindSheets, prepareXmindSheet, resolveXmindImages } = await import('./xmindImport');
+  const archive = await inspectXmindArchive(buffer);
+  const sheets = await readXmindSheets(archive);
+  // 纯转换入口不能静默选第一张多画布内容；交互入口负责展示选择列表后传入确定的画布。
+  if (sheets.length > 1 && sheetId === undefined) throw new Error('XMind 包含多个画布，请先选择要导入的画布');
+  const sheet = sheets.find((entry) => entry.id === (sheetId ?? sheets[0].id));
+  if (!sheet) throw new Error('所选 XMind 画布不存在');
+  return resolveXmindImages(archive, prepareXmindSheet(archive, sheet).root);
 }
 
 /**
@@ -496,25 +493,8 @@ export async function importFromXmindZip(buffer: ArrayBuffer): Promise<MindNode>
  */
 export function isMindNodeDescendant(root: MindNode, sourceId: string, targetId: string): boolean {
   if (sourceId === targetId) return true;
-  function searchNode(n: MindNode): MindNode | null {
-    if (n.id === sourceId) return n;
-    for (const child of n.children || []) {
-      const found = searchNode(child);
-      if (found) return found;
-    }
-    return null;
-  }
-  const sourceNode = searchNode(root);
-  if (!sourceNode) return false;
-
-  function hasTarget(n: MindNode): boolean {
-    if (n.id === targetId) return true;
-    for (const child of n.children || []) {
-      if (hasTarget(child)) return true;
-    }
-    return false;
-  }
-  return hasTarget(sourceNode);
+  const sourceNode = findMindNode(root, sourceId);
+  return sourceNode !== null && findMindNode(sourceNode, targetId) !== null;
 }
 
 /**
@@ -530,63 +510,28 @@ export function moveMindNode(
     return root;
   }
 
-  const cloned: MindNode = JSON.parse(JSON.stringify(root));
+  const cloned = cloneMindmapTree(root);
 
   // 1. 查找并抽离 source 节点
-  let extracted: MindNode | null = null;
-  function removeSource(n: MindNode): boolean {
-    if (n.children && n.children.length > 0) {
-      const idx = n.children.findIndex((c) => c.id === sourceId);
-      if (idx !== -1) {
-        [extracted] = n.children.splice(idx, 1);
-        return true;
-      }
-      for (const child of n.children) {
-        if (removeSource(child)) return true;
-      }
-    }
-    return false;
-  }
-
-  removeSource(cloned);
-  if (!extracted) return root;
+  const sourceParent = findMindNodeParent(cloned, sourceId);
+  if (!sourceParent) return root;
+  const [extracted] = sourceParent.parent.children.splice(sourceParent.index, 1);
 
   // 2. 如果目标是根节点或者 position === 'inside'
   if (targetId === cloned.id || position === 'inside') {
-    function insertInside(n: MindNode): boolean {
-      if (n.id === targetId) {
-        if (!n.children) n.children = [];
-        n.children.push(extracted!);
-        n.isExpanded = true;
-        return true;
-      }
-      for (const child of n.children || []) {
-        if (insertInside(child)) return true;
-      }
-      return false;
-    }
-    insertInside(cloned);
+    const target = findMindNode(cloned, targetId);
+    if (!target) return root;
+    target.children.push(extracted);
+    target.isExpanded = true;
     return cloned;
   }
 
   // 3. 作为兄弟节点插入 (before / after)
-  function insertSibling(n: MindNode): boolean {
-    if (n.children && n.children.length > 0) {
-      const idx = n.children.findIndex((c) => c.id === targetId);
-      if (idx !== -1) {
-        const insertIdx = position === 'before' ? idx : idx + 1;
-        n.children.splice(insertIdx, 0, extracted!);
-        return true;
-      }
-      for (const child of n.children) {
-        if (insertSibling(child)) return true;
-      }
-    }
-    return false;
-  }
-
-  const inserted = insertSibling(cloned);
-  if (!inserted) {
+  const targetParent = findMindNodeParent(cloned, targetId);
+  if (targetParent) {
+    const insertIndex = position === 'before' ? targetParent.index : targetParent.index + 1;
+    targetParent.parent.children.splice(insertIndex, 0, extracted);
+  } else {
     // 兜底：若未找到兄弟，追加到根节点
     if (!cloned.children) cloned.children = [];
     cloned.children.push(extracted);

@@ -6,6 +6,7 @@
 // > [!NOTE] / > [!TIP] / > [!IMPORTANT] / > [!WARNING] / > [!CAUTION]
 
 import { Node, mergeAttributes, type JSONContent } from '@tiptap/core';
+import { createIndexedBlockStart } from './markdownBlockStart';
 import { useEffect, useRef, useState } from 'react';
 import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react';
 import { contentReactNodeViewRenderer } from './contentNodeView';
@@ -158,12 +159,8 @@ export const GitHubAlert = Node.create({
   markdownTokenizer: {
     name: 'githubAlert',
     level: 'block',
-    start: (src: string) => {
-      const match = ALERT_START_PATTERN.exec(src);
-      if (!match) return -1;
-      // 匹配可能以换行开头，起始位置需跳过该换行符
-      return match.index + (match[0].startsWith('\n') ? 1 : 0);
-    },
+    // 匹配可能以换行开头，起始位置需跳过该换行符；共用索引按同样规则还原。
+    start: createIndexedBlockStart(ALERT_START_PATTERN),
     tokenize: (src, _tokens, lexer) => {
       const head = ALERT_HEAD_PATTERN.exec(src);
       if (!head) return undefined;

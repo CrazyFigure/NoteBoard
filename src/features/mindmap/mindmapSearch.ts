@@ -7,6 +7,7 @@ import type { MindNode } from './mindmapTypes';
 import type { MatchStats, ReplaceOutcome, SearchCapabilities, TextSearchOptions } from '../../core/editor/editorTypes';
 import { buildSearchRegExp } from '../search/searchController';
 import { adjustMarksForTextChange } from './mindmapRichText';
+import { cloneMindmapTree, updateMindmapNode, walkMindNodes } from './mindmapTree';
 
 /** 单个匹配项：节点 + 标题文本内区间 + 节点前序序号（用于定位"上一个/下一个"） */
 export interface MindmapMatch {
@@ -36,7 +37,7 @@ export const EMPTY_MINDMAP_SEARCH_HIGHLIGHT: MindmapSearchHighlight = {
 export function findMindmapMatches(root: MindNode, regex: RegExp): MindmapMatch[] {
   const matches: MindmapMatch[] = [];
   let order = 0;
-  const walk = (node: MindNode) => {
+  for (const node of walkMindNodes(root)) {
     const nodeOrder = order++;
     const text = node.text ?? '';
     regex.lastIndex = 0;
@@ -49,9 +50,7 @@ export function findMindmapMatches(root: MindNode, regex: RegExp): MindmapMatch[
       }
       matches.push({ nodeId: node.id, order: nodeOrder, from: m.index, to: m.index + m[0].length });
     }
-    for (const child of node.children ?? []) walk(child);
-  };
-  walk(root);
+  }
   return matches;
 }
 
@@ -65,37 +64,12 @@ function comparePosition(a: { order: number; from: number }, b: { order: number;
  * 目标不存在时返回原树。
  */
 function updateNodeById(root: MindNode, nodeId: string, update: (node: MindNode) => MindNode): MindNode {
-  if (root.id === nodeId) return update(root);
-  let changed = false;
-  const children = (root.children ?? []).map((child) => {
-    const next = updateNodeById(child, nodeId, update);
-    if (next !== child) changed = true;
-    return next;
-  });
-  return changed ? { ...root, children } : root;
+  return updateMindmapNode(root, nodeId, update);
 }
 
 /** 展开目标节点的所有折叠祖先；无需展开时返回原树 */
 export function expandMindmapAncestors(root: MindNode, nodeId: string): MindNode {
-  const path: MindNode[] = [];
-  const find = (node: MindNode): boolean => {
-    if (node.id === nodeId) return true;
-    for (const child of node.children ?? []) {
-      if (find(child)) {
-        path.unshift(node);
-        return true;
-      }
-    }
-    return false;
-  };
-  if (!find(root)) return root;
-  let next = root;
-  for (const ancestor of path) {
-    if (ancestor.isExpanded === false) {
-      next = updateNodeById(next, ancestor.id, (node) => ({ ...node, isExpanded: true }));
-    }
-  }
-  return next;
+  return updateMindmapNode(root, nodeId, (node) => node, true);
 }
 
 /** 计算单个匹配片段的替换文本（正则模式支持 $1 / $& 等引用，普通模式按字面插入） */
@@ -229,15 +203,17 @@ export function createMindmapSearchCapabilities(host: MindmapSearchHost): Search
       if (error) return { success: false, replacedCount: 0, ...emptyStats, error };
       if (matches.length === 0) return { success: false, replacedCount: 0, ...emptyStats };
       // 同节点内从后往前替换，避免偏移错位；一次提交成单条历史记录
-      let next = host.getRoot();
+      const next = cloneMindmapTree(host.getRoot());
       const byNode = new Map<string, MindmapMatch[]>();
       for (const m of matches) {
         const list = byNode.get(m.nodeId);
         if (list) list.push(m);
         else byNode.set(m.nodeId, [m]);
       }
-      for (const [nodeId, list] of byNode) {
-        next = updateNodeById(next, nodeId, (node) => {
+      // 所有匹配节点只走一遍，避免每个节点替换都重新扫描并复制整棵树。
+      for (const node of walkMindNodes(next)) {
+        const list = byNode.get(node.id);
+        if (list) {
           let text = node.text ?? '';
           let marks = node.marks;
           for (let i = list.length - 1; i >= 0; i--) {
@@ -247,8 +223,9 @@ export function createMindmapSearchCapabilities(host: MindmapSearchHost): Search
             marks = adjustMarksForTextChange(text, nextText, marks);
             text = nextText;
           }
-          return { ...node, text, marks };
-        });
+          node.text = text;
+          node.marks = marks;
+        }
       }
       host.commitRoot(next);
       current = null;

@@ -5,6 +5,13 @@
 
 @import "tailwindcss";
 
+/* 导图导入画布与图片导出范围的选择列表，保持现有确认弹窗样式和操作反馈。 */
+.nb-mindmap-import-options { display: flex; flex-direction: column; gap: 6px; max-height: 45vh; overflow-y: auto; }
+.nb-mindmap-import-option { padding: 8px 12px; text-align: left; color: inherit; background: transparent; border: 1px solid var(--control-border); border-radius: 4px; cursor: pointer; overflow-wrap: anywhere; }
+.nb-mindmap-import-option:hover { background: var(--editor-surface); border-color: var(--editor-accent); }
+.nb-mindmap-import-option:active { background: color-mix(in srgb, var(--editor-accent) 18%, transparent); }
+.nb-mindmap-import-option[aria-selected="true"] { border-color: var(--editor-accent); background: color-mix(in srgb, var(--editor-accent) 10%, transparent); }
+
 /* ═════════════════════════════════════════════════════════
  * 重置
  * ═════════════════════════════════════════════════════════ */

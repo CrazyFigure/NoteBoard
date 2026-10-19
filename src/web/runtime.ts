@@ -170,6 +170,14 @@ export async function invoke<T>(command: string, rawArgs: Record<string, unknown
     }
     case 'create_window': window.open(location.pathname, '_blank', 'noopener,noreferrer'); result = { label }; break;
     case 'close_window': window.close(); break;
+    case 'read_xmind_file': {
+      // 网页端继续使用受服务器工作区约束的二进制端点，与桌面返回相同的原始 ArrayBuffer。
+      const path = String(args.path);
+      if (!/\.xmind$/i.test(path)) throw new Error('此读取入口仅支持 .xmind 文件');
+      const bytes = await readFile(path);
+      result = bytes.buffer;
+      break;
+    }
     case 'load_settings': {
       const saved = await request<Partial<Settings> | null>(command);
       result = { ...DEFAULT_SETTINGS, ...saved, appearance: { ...DEFAULT_SETTINGS.appearance, ...saved?.appearance }, typography: { ...DEFAULT_SETTINGS.typography, ...saved?.typography }, editor: { ...DEFAULT_SETTINGS.editor, ...saved?.editor }, file: { ...DEFAULT_SETTINGS.file, stagingDirectory: `${ROOT}/.staging`, ...saved?.file }, layout: { ...DEFAULT_SETTINGS.layout, ...saved?.layout } };

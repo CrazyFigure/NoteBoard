@@ -29,6 +29,7 @@ import { handleTransformCase } from '../toolbar/textOps';
 import type { LanguageId } from '../../core/ipc/types';
 import { getDocumentRevision } from '../../core/editor/editorRegistry';
 import { getSessionGeneration, submitCapturedContent } from '../session/documentSession';
+import { flushPendingSourceSnapshot } from '../editor-md/visualSnapshot';
 
 /**
  * 构造 code 编辑器的能力对象。
@@ -71,6 +72,7 @@ export function createCodeEditorCapabilities(
     instanceId,
     getRevision: () => getDocumentRevision(docKey),
     flush: async () => {
+      if (getSessionGeneration(docKey) === sessionGeneration) flushPendingSourceSnapshot(docKey);
       // CodeMirror 的 doc 是不可变结构，toString 即为权威快照；
       // 🔴 R03：镜像写入经统一提交屏障（旧实例/旧 revision 快照不得覆盖新内容）
       // 🔴 N04：提交携带会话代际（同路径已重开的旧会话迟到 flush 丢弃）

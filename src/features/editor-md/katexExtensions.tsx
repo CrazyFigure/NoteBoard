@@ -18,6 +18,7 @@ import 'katex/dist/katex.min.css';
 import { observe } from './viewportActivation';
 import { cancelTask, scheduleTask } from './viewportWorkScheduler';
 import { findInlineMathStart, matchInlineMath } from './mathSyntax';
+import { createIndexedBlockStart } from './markdownBlockStart';
 
 // ── Markdown 公式语法 ──
 
@@ -41,10 +42,7 @@ const inlineMathTokenizer: MarkdownTokenizer = {
 };
 
 /** 查找独占一行或单行闭合的 `$$...$$` 块公式起点。 */
-function findBlockMathStart(source: string): number {
-  const match = /^ {0,3}\$\$(?=[ \t]*(?:\r?\n|[^\r\n]*\$\$[ \t]*(?:\r?\n|$)))/m.exec(source);
-  return match?.index ?? -1;
-}
+const findBlockMathStart = createIndexedBlockStart(/^ {0,3}\$\$(?=[ \t]*(?:\r?\n|[^\r\n]*\$\$[ \t]*(?:\r?\n|$)))/m);
 
 /** 块级 `$$...$$` tokenizer：同时支持标准多行形式与单行形式。 */
 const blockMathTokenizer: MarkdownTokenizer = {

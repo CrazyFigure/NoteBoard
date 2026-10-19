@@ -190,6 +190,11 @@ export function readDocument(path: string): Promise<DocumentPayload> {
   return invoke<DocumentPayload>('read_document', { path });
 }
 
+/** XMind 直接打开复用应用文件层，不依赖文件选择器临时授予的插件路径权限。 */
+export async function readXmindFile(path: string): Promise<Uint8Array> {
+  return new Uint8Array(await invoke<ArrayBuffer>('read_xmind_file', { path }));
+}
+
 export function probeDocument(path: string): Promise<ProbeResult> {
   return invoke<ProbeResult>('probe_document', { path });
 }

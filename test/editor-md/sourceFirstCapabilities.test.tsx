@@ -2,26 +2,29 @@
 // 覆盖：source 首开（无 TipTap 实例）即注册 Markdown 能力；flush 物化 source pending；
 //       source 模式下搜索目标/代码操作能力可用（CM 视图分派）。
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import { Text } from '@codemirror/state';
 
 // CM 视图创建 mock（记录实例；EditorView 真实类不可在 jsdom 轻量构造）
-const sourceViewInstances: Array<{ state: { doc: Text; selection: { main: { anchor: number; head: number } } }; destroy(): void; dispatch(update: unknown): void; focus(): void; requestMeasure(): void; scrollDOM: { scrollTop: number }; }> = [];
+const sourceViewInstances: Array<{ dom: HTMLDivElement; state: { doc: Text; selection: { main: { anchor: number; head: number } } }; destroy(): void; dispatch(update: unknown): void; focus(): void; requestMeasure(): void; scrollDOM: { scrollTop: number }; }> = [];
 vi.mock('@codemirror/view', async (original) => {
   const actual = await original<typeof import('@codemirror/view')>();
   class FakeView {
     state: { doc: Text; selection: { main: { anchor: number; head: number } } };
     scrollDOM = { scrollTop: 0 };
-    constructor(config: { state: { doc: Text } }) {
+    dom = document.createElement('div');
+    constructor(config: { state: { doc: Text }; parent: HTMLElement }) {
       this.state = {
         doc: config.state.doc,
         selection: { main: { anchor: 0, head: 0 } },
       };
+      // 真实附着到传入容器，回归“大文件横幅替换源码挂载点”的问题。
+      config.parent.appendChild(this.dom);
       sourceViewInstances.push(this as never);
     }
-    destroy() { /* 测试替身 */ }
+    destroy() { this.dom.remove(); }
     dispatch() { /* no-op */ }
     focus() { /* no-op */ }
     requestMeasure() { /* no-op */ }
@@ -51,7 +54,6 @@ vi.mock('@/features/editor-code/setup', () => ({
 }));
 vi.mock('@/features/editor-code/theme', () => ({ nbEditorTheme: {} }));
 vi.mock('@/features/editor-code/highlightStyle', () => ({ nbSyntaxHighlighting: {} }));
-vi.mock('@/features/editor-md/largeDoc', () => ({ judgeLargeDoc: () => ({ isLarge: false, charCount: 0, threshold: 0, suggestedMode: 'source' }) }));
 vi.mock('@/features/editor-md/serialize', async (original) => ({
   ...await original<typeof import('@/features/editor-md/serialize')>(),
   serializeMarkdown: () => 'serialized-visual',
@@ -99,6 +101,26 @@ describe('🔴 R3-02 Markdown source 首开能力注册（宿主级）', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.useRealTimers();
+  });
+
+  it('大文档自动切源码后，源码视图始终挂在可见页面的容器中', async () => {
+    const content = '大'.repeat(200_001);
+    useDocumentStore.getState().setContent(KEY, content);
+    useWindowStore.getState().setTabViewMode(KEY, 'visual');
+    vi.useFakeTimers();
+    await act(async () => root.render(<TipTapEditor docKey={KEY} />));
+    await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+    expect(container.textContent).toContain('已切换到源码模式');
+    const view = sourceViewInstances.at(-1);
+    expect(view).toBeDefined();
+    expect(view!.dom.isConnected).toBe(true);
+    expect(container.contains(view!.dom)).toBe(true);
   });
 
   it('source 首开（无 TipTap 实例）：能力注册完成 + flush 物化 source pending', async () => {

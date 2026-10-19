@@ -13,6 +13,7 @@
 // 展开/收起只是显示状态，不写回文件；源码中的 `<details open>` 原样保留，并使该块初始展开。
 
 import { Node, mergeAttributes } from '@tiptap/core';
+import { createIndexedBlockStart } from './markdownBlockStart';
 import { useEffect, useRef, useState } from 'react';
 import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react';
 import { contentReactNodeViewRenderer } from './contentNodeView';
@@ -298,11 +299,7 @@ export const DetailsBlock = Node.create({
   markdownTokenizer: {
     name: 'detailsBlock',
     level: 'block',
-    start: (src: string) => {
-      const match = DETAILS_START_PATTERN.exec(src);
-      if (!match) return -1;
-      return match.index + (match[0].startsWith('\n') ? 1 : 0);
-    },
+    start: createIndexedBlockStart(DETAILS_START_PATTERN),
     tokenize: (src, _tokens, lexer) => {
       const match = matchDetailsBlock(src);
       if (!match) return undefined;

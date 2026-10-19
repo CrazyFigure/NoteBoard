@@ -43,6 +43,15 @@ pub fn read_document(path: String) -> Result<DocumentPayload, String> {
     })
 }
 
+/// 从应用文件层读取 XMind；阻塞磁盘操作放入工作线程，二进制响应避免逐字节 JSON 序列化。
+#[tauri::command]
+pub async fn read_xmind_file(path: String) -> Result<tauri::ipc::Response, String> {
+    let bytes = tauri::async_runtime::spawn_blocking(move || read::read_xmind_bytes(Path::new(&path)))
+        .await
+        .map_err(|error| format!("读取 XMind 的任务失败: {}", error))??;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 /// 探测文件（读盘前）
 #[tauri::command]
 pub fn probe_document(path: String) -> Result<ProbeResult, String> {
