@@ -6,6 +6,7 @@
 import type { MindNode } from './mindmapTypes';
 import type { MatchStats, ReplaceOutcome, SearchCapabilities, TextSearchOptions } from '../../core/editor/editorTypes';
 import { buildSearchRegExp } from '../search/searchController';
+import { adjustMarksForTextChange } from './mindmapRichText';
 
 /** 单个匹配项：节点 + 标题文本内区间 + 节点前序序号（用于定位"上一个/下一个"） */
 export interface MindmapMatch {
@@ -206,7 +207,9 @@ export function createMindmapSearchCapabilities(host: MindmapSearchHost): Search
         const text = node.text ?? '';
         const insert = computeReplacement(text.slice(target.from, target.to), options);
         insertedLength = insert.length;
-        return { ...node, text: text.slice(0, target.from) + insert + text.slice(target.to) };
+        const nextText = text.slice(0, target.from) + insert + text.slice(target.to);
+        // 富文本格式随文字平移，替换进来的文字继承原位置的格式
+        return { ...node, text: nextText, marks: adjustMarksForTextChange(text, nextText, node.marks) };
       });
       host.commitRoot(next);
       // 光标落在替换文本之后（-0.5 使紧随其后的匹配项严格位于其后，且不回头匹配替换文本自身），
@@ -236,11 +239,15 @@ export function createMindmapSearchCapabilities(host: MindmapSearchHost): Search
       for (const [nodeId, list] of byNode) {
         next = updateNodeById(next, nodeId, (node) => {
           let text = node.text ?? '';
+          let marks = node.marks;
           for (let i = list.length - 1; i >= 0; i--) {
             const m = list[i];
-            text = text.slice(0, m.from) + computeReplacement(text.slice(m.from, m.to), options) + text.slice(m.to);
+            const nextText = text.slice(0, m.from) + computeReplacement(text.slice(m.from, m.to), options) + text.slice(m.to);
+            // 逐处平移格式，保证多处替换之间的格式区间各自正确
+            marks = adjustMarksForTextChange(text, nextText, marks);
+            text = nextText;
           }
-          return { ...node, text };
+          return { ...node, text, marks };
         });
       }
       host.commitRoot(next);

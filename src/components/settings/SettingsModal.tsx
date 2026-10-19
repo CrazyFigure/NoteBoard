@@ -1092,6 +1092,63 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     />
                   </label>
                 </div>
+
+                {/* ── 3.4 思维导图 ── */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--accent-strong)' }}>
+                    思维导图
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13, padding: '2px 0' }}>
+                    <div>
+                      <div>节点默认宽度</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>超出后自动换行；手动拉伸的节点不受影响</div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <SettingsRange
+                        min="160"
+                        max="600"
+                        step="10"
+                        value={settings.editor.mindmapNodeMaxWidth ?? 280}
+                        onChange={(e) => setEditor({ mindmapNodeMaxWidth: parseInt(e.target.value, 10) })}
+                        style={{ flex: 1, cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: 12, color: 'var(--editor-text-muted)', minWidth: 44, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                        {settings.editor.mindmapNodeMaxWidth ?? 280}px
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                    <div>
+                      <div>节点文字对齐</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>节点可在「节点样式」中单独设置</div>
+                    </div>
+                    <select
+                      value={settings.editor.mindmapTextAlign ?? 'left'}
+                      onChange={(e) => setEditor({ mindmapTextAlign: e.target.value === 'center' ? 'center' : 'left' })}
+                      style={{ ...inputStyle, width: 110 }}
+                    >
+                      <option value="left">左对齐</option>
+                      <option value="center">居中</option>
+                    </select>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                    <div>
+                      <div>节点图片显示</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>原始比例完整显示；宽度填充为固定高度裁切</div>
+                    </div>
+                    <select
+                      value={settings.editor.mindmapImageFit ?? 'original'}
+                      onChange={(e) => setEditor({ mindmapImageFit: e.target.value === 'fill' ? 'fill' : 'original' })}
+                      style={{ ...inputStyle, width: 110 }}
+                    >
+                      <option value="original">原始比例</option>
+                      <option value="fill">宽度填充</option>
+                    </select>
+                  </div>
+                </div>
               </div>
             )}
 

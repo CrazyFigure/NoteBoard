@@ -2,22 +2,59 @@
 // 轻量自研 SVG 矢量渲染 + 紧凑树自适应无重叠布局 (Tidy Right-Tree) + 贝塞尔平滑连接 + 节点就地编辑
 // 详见 docs/09-开发路线图.md
 
-import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useCallback, useEffect, useLayoutEffect } from 'react';
 import {
   Smile,
   FileText,
   Image as ImageIcon,
+  MoveHorizontal,
   Plus,
+  Settings2,
   Trash2,
   X,
   GripVertical,
 } from 'lucide-react';
-import type { MindNode, MindmapLayout } from './mindmapTypes';
+import type {
+  MindNode,
+  MindmapLayout,
+  MindmapEdgeStyle,
+  MindmapImageFit,
+  MindmapTextAlign,
+} from './mindmapTypes';
 import { generateNodeId, moveMindNode, isMindNodeDescendant } from './mindmapConverter';
-import { computeMindmapLayout, buildLinkPath, type LayoutNode } from './mindmapLayout';
+import {
+  computeMindmapLayout,
+  clampManualWidth,
+  titleBlockHeight,
+  type LayoutNode,
+  type NodeSide,
+  type TextDraft,
+} from './mindmapLayout';
 import type { MindmapTheme } from './mindmapTheme';
 import { MindmapIconPicker } from './MindmapIconPicker';
+import { MindmapImagePreview } from './MindmapImagePreview';
+import { MindmapTitleEditor, type MindmapTitleEditorHandle, type TitleSelectionInfo } from './MindmapTitleEditor';
+import { MindmapTextFormatMenu, type FormatState } from './MindmapTextFormatMenu';
+import { MindmapNodeStylePopover } from './MindmapNodeStylePopover';
+import { MindmapConfirmDialog } from './MindmapConfirmDialog';
+import {
+  adjustMarksForTextChange,
+  commonColor,
+  isStyleActive,
+  splitStyledRuns,
+  styleToCss,
+  type MindTextMark,
+  type StylePatch,
+} from './mindmapRichText';
+import { getImageSize, subscribeImageSizes } from './mindmapImageSize';
+import {
+  FALLBACK_FONT_FAMILY,
+  NOTE_LINE_HEIGHT,
+  getNodeTextStyle,
+  getSharedTextMeasurer,
+} from './mindmapTextMeasure';
 import { Tooltip } from '../../components/Tooltip';
+import { useSettingsStore } from '../../stores/settingsStore';
 import type { MindmapSearchHighlight } from './mindmapSearch';
 
 interface MindmapRendererProps {
@@ -29,6 +66,14 @@ interface MindmapRendererProps {
   layout: MindmapLayout;
   /** 配色主题 */
   theme: MindmapTheme;
+  /** 连线样式（已合并文档设置与主题默认值） */
+  edgeStyle: MindmapEdgeStyle;
+  /** 未手动拉伸的节点最大宽度（设置项） */
+  maxNodeWidth: number;
+  /** 节点未单独设置时的标题对齐（设置项） */
+  defaultTextAlign: MindmapTextAlign;
+  /** 节点未单独设置时的图片显示方式（设置项） */
+  defaultImageFit: MindmapImageFit;
   /** 搜索匹配高亮与当前项定位 */
   searchHighlight?: MindmapSearchHighlight;
 }
@@ -47,6 +92,18 @@ interface DropTargetState {
   targetId: string;
   pos: DropPosition;
   targetLayout: LayoutNode;
+}
+
+/** 节点宽度拉伸会话 */
+interface ResizeSession {
+  nodeId: string;
+  pointerId: number;
+  startX: number;
+  startWidth: number;
+  /** 拖动的是哪条边：右边向右拉变宽，左边向左拉变宽 */
+  edge: 'left' | 'right';
+  hasImage: boolean;
+  moved: boolean;
 }
 
 // 递归统计某节点下的所有子孙节点总数
@@ -90,16 +147,135 @@ function renderHighlightedText(
   return parts;
 }
 
-/** 在树中定位节点并改写其文本 */
-function setNodeTextById(n: MindNode, id: string, text: string): boolean {
+/** 把全文匹配区间裁剪并平移到某一行内 */
+function sliceRangesForLine(
+  ranges: ReadonlyArray<readonly [number, number]> | undefined,
+  start: number,
+  length: number,
+): Array<[number, number]> | undefined {
+  if (!ranges || ranges.length === 0) return undefined;
+  const end = start + length;
+  const result: Array<[number, number]> = [];
+  for (const [from, to] of ranges) {
+    const a = Math.max(from, start);
+    const b = Math.min(to, end);
+    if (b > a) result.push([a - start, b - start]);
+  }
+  return result.length > 0 ? result : undefined;
+}
+
+/** 折叠 / 添加按钮在节点某一侧的定位样式 */
+function sideButtonStyle(side: NodeSide, offset: number): React.CSSProperties {
+  switch (side) {
+    case 'left':
+      return { left: offset, top: '50%', transform: 'translateY(-50%)' };
+    case 'top':
+      return { top: offset, left: '50%', transform: 'translateX(-50%)' };
+    case 'bottom':
+      return { bottom: offset, left: '50%', transform: 'translateX(-50%)' };
+    default:
+      return { right: offset, top: '50%', transform: 'translateY(-50%)' };
+  }
+}
+
+/** 计算拖放前后插入指示线的位置（随同级排列走向切换横线 / 竖线） */
+function getDropIndicatorRect(
+  target: LayoutNode,
+  pos: 'before' | 'after',
+): { left: number; top: number; width: number; height: number; vertical: boolean } {
+  if (target.siblingFlow === 'down') {
+    return {
+      left: target.x - 4,
+      top: pos === 'before' ? target.y - 6 : target.y + target.height + 3,
+      width: target.width + 8,
+      height: 3,
+      vertical: false,
+    };
+  }
+  // 横向排列：向右流动时 before 在左侧，向左流动时 before 在右侧
+  const onLeft = (target.siblingFlow === 'right') === (pos === 'before');
+  return {
+    left: onLeft ? target.x - 6 : target.x + target.width + 3,
+    top: target.y - 4,
+    width: 3,
+    height: target.height + 8,
+    vertical: true,
+  };
+}
+
+/** 在树中定位节点并按回调改写 */
+function updateNodeById(n: MindNode, id: string, mutate: (node: MindNode) => void): boolean {
   if (n.id === id) {
-    n.text = text;
+    mutate(n);
     return true;
   }
   for (const c of n.children || []) {
-    if (setNodeTextById(c, id, text)) return true;
+    if (updateNodeById(c, id, mutate)) return true;
   }
   return false;
+}
+
+/** 在树中定位节点并改写其标题文本与格式 */
+function setNodeTextById(n: MindNode, id: string, text: string, marks?: MindTextMark[]): boolean {
+  if (n.id === id) {
+    n.text = text;
+    if (marks && marks.length > 0) n.marks = marks;
+    else delete n.marks;
+    return true;
+  }
+  for (const c of n.children || []) {
+    if (setNodeTextById(c, id, text, marks)) return true;
+  }
+  return false;
+}
+
+/** 在树中查找父节点 */
+function findParentNode(n: MindNode, id: string): MindNode | null {
+  for (const c of n.children || []) {
+    if (c.id === id) return n;
+    const found = findParentNode(c, id);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** 在树中查找节点 */
+function findNodeById(n: MindNode, id: string): MindNode | null {
+  if (n.id === id) return n;
+  for (const c of n.children || []) {
+    const found = findNodeById(c, id);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** 草稿去除首尾空白，并同步平移格式区间 */
+function trimDraft(draft: TextDraft): TextDraft {
+  const text = draft.text.trim();
+  return { text, marks: adjustMarksForTextChange(draft.text, text, draft.marks) };
+}
+
+/**
+ * 渲染一行标题：按富文本格式切分片段，片段内再叠加搜索命中高亮
+ */
+function renderStyledLine(
+  lineText: string,
+  lineStart: number,
+  marks: readonly MindTextMark[] | undefined,
+  searchRanges: ReadonlyArray<readonly [number, number]> | undefined,
+  baseWeight: number,
+): React.ReactNode {
+  if (!marks || marks.length === 0) {
+    return renderHighlightedText(lineText, sliceRangesForLine(searchRanges, lineStart, lineText.length));
+  }
+  return splitStyledRuns(marks, lineStart, lineStart + lineText.length).map((run) => {
+    const text = lineText.slice(run.start - lineStart, run.end - lineStart);
+    return (
+      <span key={run.start} style={styleToCss(run.style, baseWeight)}>
+        {renderHighlightedText(text, sliceRangesForLine(searchRanges, run.start, text.length))}
+      </span>
+    );
+  });
 }
 
 /** 在树中定位父节点并追加一个子节点 */
@@ -155,6 +331,10 @@ export function MindmapRenderer({
   onZoomChange,
   layout,
   theme,
+  edgeStyle,
+  maxNodeWidth,
+  defaultTextAlign,
+  defaultImageFit,
   searchHighlight,
 }: MindmapRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -191,9 +371,19 @@ export function MindmapRenderer({
   } | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTargetState | null>(null);
 
-  // 正在就地编辑标题的节点
+  // 正在就地编辑标题的节点与草稿（文本 + 富文本格式）
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
-  const [editText, setEditText] = useState('');
+  const [editDraft, setEditDraft] = useState<TextDraft>({ text: '' });
+  // 标题编辑框句柄（格式菜单通过它对选区应用格式）与当前选区
+  const titleEditorRef = useRef<MindmapTitleEditorHandle>(null);
+  const [formatSelection, setFormatSelection] = useState<TitleSelectionInfo | null>(null);
+
+  // 单个节点样式浮层（对齐 / 图片显示方式）
+  const [nodeStylePopover, setNodeStylePopover] = useState<{ nodeId: string; x: number; y: number } | null>(null);
+  // 删除含子节点的节点前的二次确认
+  const [deleteConfirm, setDeleteConfirm] = useState<{ nodeId: string; descendantCount: number } | null>(null);
+  const deleteConfirmRef = useRef(deleteConfirm);
+  deleteConfirmRef.current = deleteConfirm;
 
   // 正在编辑备注的节点
   const [editingNoteNodeId, setEditingNoteNodeId] = useState<string | null>(null);
@@ -213,20 +403,92 @@ export function MindmapRenderer({
   // 图片大图预览
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
+  // 节点宽度拉伸：会话记录在 ref，实时预览宽度放在 state 参与排版
+  const resizeSessionRef = useRef<ResizeSession | null>(null);
+  const [resizePreview, setResizePreview] = useState<{ id: string; width: number } | null>(null);
+
+  // 图片固有尺寸测得后重新排版（原始比例显示依赖图片宽高）
+  const [imageSizeVersion, setImageSizeVersion] = useState(0);
+  useEffect(() => subscribeImageSizes(() => setImageSizeVersion((v) => v + 1)), []);
+
+  // 节点字体族：取画布实际继承的字体，保证测量与渲染一致；字体加载完成后重新排版
+  const typography = useSettingsStore((s) => s.settings.typography);
+  const [fontFamily, setFontFamily] = useState(FALLBACK_FONT_FAMILY);
+  const [fontVersion, setFontVersion] = useState(0);
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const family = window.getComputedStyle(el).fontFamily;
+    if (family) setFontFamily(family);
+  }, [typography]);
+  useEffect(() => {
+    const fonts = typeof document !== 'undefined' ? document.fonts : undefined;
+    if (!fonts) return;
+    let disposed = false;
+    const bump = () => {
+      if (!disposed) setFontVersion((v) => v + 1);
+    };
+    fonts.ready.then(bump).catch(() => {});
+    fonts.addEventListener?.('loadingdone', bump);
+    return () => {
+      disposed = true;
+      fonts.removeEventListener?.('loadingdone', bump);
+    };
+  }, []);
+
   // 最新状态引用：供全局快捷键监听在稳定闭包中读取，避免反复重绑事件
   const selectedNodeIdRef = useRef<string | null>(null);
   selectedNodeIdRef.current = selectedNodeId;
   const editingNodeIdRef = useRef<string | null>(null);
   editingNodeIdRef.current = editingNodeId;
-  const editTextRef = useRef('');
-  editTextRef.current = editText;
-  // 新建节点后聚焦时需要全选占位文本（便于直接输入覆盖）
+  const editDraftRef = useRef<TextDraft>({ text: '' });
+  editDraftRef.current = editDraft;
+  // 新建节点后聚焦时需要全选占位文本（便于直接输入覆盖）；编辑框挂载时读取后清空
   const pendingSelectAllRef = useRef<string | null>(null);
+  useEffect(() => {
+    pendingSelectAllRef.current = null;
+    setFormatSelection(null);
+  }, [editingNodeId]);
 
-  // 计算无重叠思维导图绝对坐标（布局 + 主题共同决定节点位置与配色数量）
-  const { nodes, links } = useMemo(
-    () => computeMindmapLayout(root, layout, theme.branchColors.length),
-    [root, layout, theme.branchColors.length],
+  // 编辑中的草稿与拉伸中的宽度实时参与排版
+  const textOverrides = useMemo(
+    () => (editingNodeId ? new Map([[editingNodeId, editDraft]]) : undefined),
+    [editingNodeId, editDraft],
+  );
+  const widthOverrides = useMemo(
+    () => (resizePreview ? new Map([[resizePreview.id, resizePreview.width]]) : undefined),
+    [resizePreview],
+  );
+
+  // 计算无重叠思维导图绝对坐标（布局 + 主题 + 宽度设置共同决定节点位置、尺寸与配色）
+  const { nodes, links, decorations } = useMemo(
+    () =>
+      computeMindmapLayout(root, layout, theme.branchColors.length, {
+        maxNodeWidth,
+        measure: getSharedTextMeasurer(),
+        fontFamily,
+        textOverrides,
+        widthOverrides,
+        edgeStyle,
+        defaultTextAlign,
+        defaultImageFit,
+        imageSize: getImageSize,
+      }),
+    // fontVersion / imageSizeVersion 不参与计算：字体加载完成、图片尺寸测得后仅用于强制重新排版
+    [
+      root,
+      layout,
+      theme.branchColors.length,
+      maxNodeWidth,
+      fontFamily,
+      fontVersion,
+      imageSizeVersion,
+      textOverrides,
+      widthOverrides,
+      edgeStyle,
+      defaultTextAlign,
+      defaultImageFit,
+    ],
   );
 
   // 搜索跳转：把当前匹配节点平移到画布中央（focusSeq 每次显式跳转递增；
@@ -292,13 +554,14 @@ export function MindmapRenderer({
       children: [],
     };
     const editingTarget = editingNodeIdRef.current;
-    const committedText = editTextRef.current.trim() || '无标题';
+    // 空标题直接保存为空字符串，不写入占位文字
+    const committed = trimDraft(editDraftRef.current);
 
     let inserted = false;
     updateTree((cloned) => {
       // 先提交正在编辑的标题，保证文本不丢失（单次更新，避免历史被拆成两条）
       if (commitCurrent && editingTarget) {
-        setNodeTextById(cloned, editingTarget, committedText);
+        setNodeTextById(cloned, editingTarget, committed.text, committed.marks);
       }
       inserted =
         effectiveMode === 'child'
@@ -310,7 +573,7 @@ export function MindmapRenderer({
 
     pendingSelectAllRef.current = newNode.id;
     setSelectedNodeId(newNode.id);
-    setEditText('');
+    setEditDraft({ text: '' });
     setEditingNodeId(newNode.id);
   };
 
@@ -346,6 +609,40 @@ export function MindmapRenderer({
   };
 
   /**
+   * 请求删除节点：含子节点时先弹二次确认；删除后选中其父节点，便于连续操作
+   */
+  const requestDeleteNode = (id: string) => {
+    if (id === root.id) return;
+    const target = findNodeById(root, id);
+    if (!target) return;
+    const descendantCount = countSubtreeDescendants(target);
+    if (descendantCount > 0) {
+      setDeleteConfirm({ nodeId: id, descendantCount });
+      return;
+    }
+    const parent = findParentNode(root, id);
+    handleDeleteNode(id);
+    if (parent) setSelectedNodeId(parent.id);
+  };
+  const requestDeleteNodeRef = useRef(requestDeleteNode);
+  requestDeleteNodeRef.current = requestDeleteNode;
+
+  /** 设置单个节点的对齐 / 图片显示方式；传 undefined 表示恢复跟随设置 */
+  const setNodeStyleField = (id: string, field: 'textAlign' | 'imageFit', value: string | undefined) => {
+    updateTree((cloned) => {
+      updateNodeById(cloned, id, (node) => {
+        if (value === undefined) delete node[field];
+        else (node as unknown as Record<string, unknown>)[field] = value;
+      });
+    });
+  };
+
+  /** 格式菜单：对编辑框当前选区应用格式 */
+  const handleFormatPatch = (patch: StylePatch) => {
+    titleEditorRef.current?.applyPatch(patch);
+  };
+
+  /**
    * 完成就地标题编辑
    * @param targetId 触发提交的输入框所属节点；当编辑目标已切换到新节点时自动忽略
    *   （避免「新增节点导致旧输入框失焦」把新节点的编辑态误关闭）
@@ -353,14 +650,15 @@ export function MindmapRenderer({
   const handleFinishEdit = (targetId?: string) => {
     const id = targetId ?? editingNodeIdRef.current;
     if (!id || id !== editingNodeIdRef.current) return;
-    const newText = editTextRef.current.trim() || '无标题';
+    // 空标题直接保存为空字符串，不写入占位文字
+    const committed = trimDraft(editDraftRef.current);
 
     updateTree((cloned) => {
-      setNodeTextById(cloned, id, newText);
+      setNodeTextById(cloned, id, committed.text, committed.marks);
     });
 
     setEditingNodeId(null);
-    setEditText('');
+    setEditDraft({ text: '' });
   };
 
   // 更新节点图标
@@ -450,6 +748,73 @@ export function MindmapRenderer({
     });
   };
 
+  /** 写入节点手动宽度；传 undefined 表示重置为跟随设置 */
+  const setNodeWidth = (id: string, width: number | undefined) => {
+    updateTree((cloned) => {
+      updateNodeById(cloned, id, (node) => {
+        if (width === undefined) delete node.width;
+        else node.width = width;
+      });
+    });
+  };
+
+  // ── 节点宽度拉伸 ──
+
+  const handleResizePointerDown = (e: React.PointerEvent<HTMLDivElement>, layoutNode: LayoutNode) => {
+    if (e.button !== 0) return;
+    // 阻止冒泡到节点拖拽与画布平移
+    e.stopPropagation();
+    e.preventDefault();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+    resizeSessionRef.current = {
+      nodeId: layoutNode.node.id,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startWidth: layoutNode.width,
+      edge: layoutNode.freeEdge,
+      hasImage: Boolean(layoutNode.node.image),
+      moved: false,
+    };
+    document.body.style.cursor = 'ew-resize';
+  };
+
+  const handleResizePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const session = resizeSessionRef.current;
+    if (!session || session.pointerId !== e.pointerId) return;
+    e.stopPropagation();
+    // 屏幕位移换算到导图坐标，左侧手柄向左拉为变宽
+    const delta = ((e.clientX - session.startX) / zoom) * (session.edge === 'right' ? 1 : -1);
+    if (!session.moved && Math.abs(delta) < 1) return;
+    session.moved = true;
+    setResizePreview({
+      id: session.nodeId,
+      width: clampManualWidth(session.startWidth + delta, session.hasImage),
+    });
+  };
+
+  const handleResizePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    const session = resizeSessionRef.current;
+    if (!session || session.pointerId !== e.pointerId) return;
+    e.stopPropagation();
+    resizeSessionRef.current = null;
+    document.body.style.cursor = 'default';
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+    const preview = resizePreview;
+    setResizePreview(null);
+    // 松手时一次性写入，作为一个撤销步
+    if (session.moved && preview && preview.id === session.nodeId) {
+      setNodeWidth(session.nodeId, preview.width);
+    }
+  };
+
   // ── 节点拖拽核心逻辑 (Pointer Events 丝滑整树拖拽) ──
 
   // 节点按下准备拖拽
@@ -457,9 +822,16 @@ export function MindmapRenderer({
     // 仅允许左键且非根节点参与拖拽
     if (e.button !== 0 || layoutNode.level === 0) return;
 
-    // 排除点击输入框、按钮等交互子元素
+    // 排除点击输入框、按钮、图片缩略图与拉伸手柄等交互子元素
+    // （图片若被节点捕获指针，click 会派发给节点而不是图片，导致需要连点多次才能打开预览）
     const target = e.target as HTMLElement;
-    if (target.closest('button') || target.closest('input') || target.closest('textarea')) {
+    if (
+      target.closest('button') ||
+      target.closest('input') ||
+      target.closest('textarea') ||
+      target.closest('[data-mindmap-image]') ||
+      target.closest('[data-resize-handle]')
+    ) {
       return;
     }
     if (editingNodeId === layoutNode.node.id || editingNoteNodeId === layoutNode.node.id) {
@@ -588,6 +960,16 @@ export function MindmapRenderer({
           if (nLevel === 0) {
             // 根节点仅允许作为子分支挂载
             pos = 'inside';
+          } else if (lNode.siblingFlow !== 'down') {
+            // 同级横向排列（组织图 / 时间轴 / 鱼骨图）：按水平位置判定前后
+            const ratio = (worldX - nx) / Math.max(1, nw);
+            const nearStart = ratio < 0.25;
+            const nearEnd = ratio > 0.75;
+            if (lNode.siblingFlow === 'right') {
+              pos = nearStart ? 'before' : nearEnd ? 'after' : 'inside';
+            } else {
+              pos = nearEnd ? 'before' : nearStart ? 'after' : 'inside';
+            }
           } else {
             // 顶部 32% 范围或上方边界 -> 作为前置同级兄弟节点
             if (worldY < ny + nh * 0.32) {
@@ -653,13 +1035,9 @@ export function MindmapRenderer({
           currentDropTarget.targetId,
           currentDropTarget.pos,
         );
-        cloned.text = nextRoot.text;
-        cloned.isExpanded = nextRoot.isExpanded;
-        cloned.children = nextRoot.children;
-        cloned.note = nextRoot.note;
-        cloned.icon = nextRoot.icon;
-        cloned.image = nextRoot.image;
-        cloned.color = nextRoot.color;
+        // 整体替换根节点字段，避免新增字段（格式、宽度等）在搬移后丢失
+        for (const key of Object.keys(cloned)) delete (cloned as unknown as Record<string, unknown>)[key];
+        Object.assign(cloned, nextRoot);
       });
       setSelectedNodeId(sourceId);
     }
@@ -769,13 +1147,19 @@ export function MindmapRenderer({
       ) {
         return;
       }
-      // 正在就地编辑标题时，快捷键由输入框自身接管
-      if (editingNodeIdRef.current) return;
+      // 正在就地编辑标题或确认删除时，快捷键由输入框 / 对话框自身接管
+      if (editingNodeIdRef.current || deleteConfirmRef.current) return;
 
       const selected = selectedNodeIdRef.current;
       if (!selected) return;
 
-      if (e.key === 'Tab') {
+      if (e.key === 'Delete') {
+        // 焦点在画布之外（如文件树、其他面板）时不响应，避免误删节点
+        const container = containerRef.current;
+        if (el && el !== document.body && container && !container.contains(el) && !el.contains(container)) return;
+        e.preventDefault();
+        requestDeleteNodeRef.current(selected);
+      } else if (e.key === 'Tab') {
         e.preventDefault();
         createLinkedNodeRef.current('child', selected, false);
       } else if (e.key === 'Enter') {
@@ -788,20 +1172,33 @@ export function MindmapRenderer({
     return () => window.removeEventListener('keydown', handleShortcut);
   }, []);
 
-  // 滚轮缩放与平移
-  const handleWheel = (e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
+  // 滚轮缩放与平移：React 的 onWheel 是 passive 监听，preventDefault 无效，
+  // Ctrl+滚轮会同时触发 WebView 页面缩放，因此改为原生非 passive 绑定
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const onZoomChangeRef = useRef(onZoomChange);
+  onZoomChangeRef.current = onZoomChange;
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const handleWheel = (e: WheelEvent) => {
+      // 画布内的浮层（备注对话框、图标选择器）保留原生滚动
+      if ((e.target as HTMLElement | null)?.closest?.('[data-mindmap-overlay]')) return;
       e.preventDefault();
-      const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      const nextZoom = Math.min(3, Math.max(0.2, zoom + delta));
-      onZoomChange(nextZoom);
-    } else {
-      setPan((p) => ({
-        x: p.x - e.deltaX * 0.8,
-        y: p.y - e.deltaY * 0.8,
-      }));
-    }
-  };
+      if (e.ctrlKey || e.metaKey) {
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        const nextZoom = Math.min(3, Math.max(0.2, zoomRef.current + delta));
+        onZoomChangeRef.current(nextZoom);
+      } else {
+        setPan((p) => ({
+          x: p.x - e.deltaX * 0.8,
+          y: p.y - e.deltaY * 0.8,
+        }));
+      }
+    };
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, []);
 
   return (
     <div
@@ -826,7 +1223,6 @@ export function MindmapRenderer({
           document.body.style.cursor = 'default';
         }
       }}
-      onWheel={handleWheel}
       style={{
         width: '100%',
         height: '100%',
@@ -869,8 +1265,20 @@ export function MindmapRenderer({
             overflow: 'visible',
           }}
         >
+          {/* 装饰线：时间轴主轴、鱼骨脊柱 */}
+          {decorations.map((deco, idx) => (
+            <path
+              key={`deco-${idx}`}
+              d={deco.path}
+              fill={deco.filled ? 'var(--editor-text-secondary, #64748b)' : 'none'}
+              stroke="var(--editor-text-secondary, #64748b)"
+              strokeWidth={deco.strokeWidth}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity={0.55}
+            />
+          ))}
           {links.map((link, idx) => {
-            const d = buildLinkPath(link.from, link.to, layout, theme.edgeStyle);
             const color =
               theme.branchColors[link.to.branchIndex % theme.branchColors.length] ??
               theme.branchColors[0];
@@ -878,7 +1286,7 @@ export function MindmapRenderer({
             return (
               <path
                 key={idx}
-                d={d}
+                d={link.path}
                 fill="none"
                 stroke={color}
                 strokeWidth={link.from.level === 0 ? 2.5 : 1.8}
@@ -890,66 +1298,40 @@ export function MindmapRenderer({
           })}
         </svg>
 
-        {/* 拖拽重排序落位高亮指示线 (Drop Indicator Line - 前置 before / 后置 after) */}
-        {isDraggingNode && dropTarget && dropTarget.pos === 'before' && (
-          <div
-            style={{
-              position: 'absolute',
-              left: dropTarget.targetLayout.x - 4,
-              top: dropTarget.targetLayout.y - 6,
-              width: dropTarget.targetLayout.width + 8,
-              height: 3,
-              background: 'var(--editor-accent, #3b82f6)',
-              borderRadius: 2,
-              boxShadow: '0 0 8px rgba(59, 130, 246, 0.85), 0 0 2px #3b82f6',
-              zIndex: 60,
-              pointerEvents: 'none',
-            }}
-          >
+        {/* 拖拽重排序落位高亮指示线 (Drop Indicator Line - 前置 before / 后置 after)：
+            同级纵向排列时为横线，横向排列（组织图 / 时间轴 / 鱼骨图）时为竖线 */}
+        {isDraggingNode && dropTarget && dropTarget.pos !== 'inside' && (() => {
+          const rect = getDropIndicatorRect(dropTarget.targetLayout, dropTarget.pos);
+          return (
             <div
               style={{
                 position: 'absolute',
-                left: -4,
-                top: -3.5,
-                width: 10,
-                height: 10,
-                borderRadius: '50%',
+                left: rect.left,
+                top: rect.top,
+                width: rect.width,
+                height: rect.height,
                 background: 'var(--editor-accent, #3b82f6)',
-                boxShadow: '0 0 6px rgba(59, 130, 246, 0.9)',
+                borderRadius: 2,
+                boxShadow: '0 0 8px rgba(59, 130, 246, 0.85), 0 0 2px #3b82f6',
+                zIndex: 60,
+                pointerEvents: 'none',
               }}
-            />
-          </div>
-        )}
-
-        {isDraggingNode && dropTarget && dropTarget.pos === 'after' && (
-          <div
-            style={{
-              position: 'absolute',
-              left: dropTarget.targetLayout.x - 4,
-              top: dropTarget.targetLayout.y + dropTarget.targetLayout.height + 3,
-              width: dropTarget.targetLayout.width + 8,
-              height: 3,
-              background: 'var(--editor-accent, #3b82f6)',
-              borderRadius: 2,
-              boxShadow: '0 0 8px rgba(59, 130, 246, 0.85), 0 0 2px #3b82f6',
-              zIndex: 60,
-              pointerEvents: 'none',
-            }}
-          >
-            <div
-              style={{
-                position: 'absolute',
-                left: -4,
-                top: -3.5,
-                width: 10,
-                height: 10,
-                borderRadius: '50%',
-                background: 'var(--editor-accent, #3b82f6)',
-                boxShadow: '0 0 6px rgba(59, 130, 246, 0.9)',
-              }}
-            />
-          </div>
-        )}
+            >
+              <div
+                style={{
+                  position: 'absolute',
+                  left: rect.vertical ? -3.5 : -4,
+                  top: rect.vertical ? -4 : -3.5,
+                  width: 10,
+                  height: 10,
+                  borderRadius: '50%',
+                  background: 'var(--editor-accent, #3b82f6)',
+                  boxShadow: '0 0 6px rgba(59, 130, 246, 0.9)',
+                }}
+              />
+            </div>
+          );
+        })()}
 
         {/* 节点卡片 DOM 图层 */}
         {nodes.map((n) => {
@@ -970,6 +1352,13 @@ export function MindmapRenderer({
           const hasIcon = Boolean(n.node.icon);
           const hasNote = Boolean(n.node.note);
           const hasImage = Boolean(n.node.image);
+          // 标题排版参数与布局引擎共用，保证换行位置一致
+          const textStyle = getNodeTextStyle(n.level);
+          const titleHeight = titleBlockHeight(n.level, n.titleLines.length);
+          // 对齐方式由布局引擎合并节点设置与全局设置
+          const textAlign = n.textAlign;
+          const hasCustomWidth = typeof n.node.width === 'number';
+          const isResizing = resizePreview?.id === n.node.id;
 
           // 拖拽相关状态计算
           const isBeingDragged = isDraggingNode && draggedNodeId === n.node.id;
@@ -994,9 +1383,12 @@ export function MindmapRenderer({
               }}
               onDoubleClick={(e) => {
                 e.stopPropagation();
+                // 双击图片或拉伸手柄不进入标题编辑
+                const target = e.target as HTMLElement;
+                if (target.closest('[data-mindmap-image]') || target.closest('[data-resize-handle]')) return;
                 if (!isDraggingNode) {
                   setEditingNodeId(n.node.id);
-                  setEditText(n.node.text);
+                  setEditDraft({ text: n.node.text, marks: n.node.marks });
                 }
               }}
               style={{
@@ -1035,7 +1427,7 @@ export function MindmapRenderer({
                     : isRoot
                       ? theme.rootShadow
                       : '0 2px 6px rgba(0, 0, 0, 0.05)',
-                padding: isRoot ? '6px 12px' : '5px 10px',
+                padding: `${textStyle.paddingY}px ${textStyle.paddingX}px`,
                 cursor: isEditing ? 'text' : isDraggingNode ? 'grabbing' : isRoot ? 'default' : 'grab',
                 opacity: isSourceOrDescendant ? 0.35 : 1,
                 transform: isSourceOrDescendant ? 'scale(0.97)' : isDropTargetInside ? 'scale(1.02)' : 'none',
@@ -1055,9 +1447,7 @@ export function MindmapRenderer({
                 <div
                   style={{
                     position: 'absolute',
-                    right: -8,
-                    top: '50%',
-                    transform: 'translateY(-50%)',
+                    ...sideButtonStyle(n.childSide, -8),
                     width: 16,
                     height: 16,
                     borderRadius: '50%',
@@ -1082,7 +1472,8 @@ export function MindmapRenderer({
                   display: 'flex',
                   alignItems: 'center',
                   width: '100%',
-                  minHeight: isRoot ? 28 : 22,
+                  height: titleHeight,
+                  flexShrink: 0,
                 }}
               >
                 {/* 节点前置图标 */}
@@ -1105,8 +1496,12 @@ export function MindmapRenderer({
                         background: 'transparent',
                         border: 'none',
                         cursor: 'pointer',
-                        fontSize: isRoot ? 18 : 14,
+                        fontSize: textStyle.iconSize,
                         lineHeight: 1,
+                        width: textStyle.iconWidth - 4,
+                        boxSizing: 'border-box',
+                        display: 'flex',
+                        justifyContent: 'center',
                         padding: '0 2px',
                         marginRight: 4,
                         flexShrink: 0,
@@ -1122,61 +1517,45 @@ export function MindmapRenderer({
 
                 {/* 标题文本 / 输入框 */}
                 {isEditing ? (
-                  <input
-                    type="text"
-                    autoFocus
-                    value={editText}
-                    placeholder="输入要点…"
-                    onChange={(e) => setEditText(e.target.value)}
-                    onFocus={(e) => {
-                      // 新建节点时全选占位内容，直接输入即可覆盖
-                      if (pendingSelectAllRef.current === n.node.id) {
-                        pendingSelectAllRef.current = null;
-                        e.currentTarget.select();
-                      }
-                    }}
+                  // 所见即所得富文本编辑：选中文字后弹出格式菜单
+                  <MindmapTitleEditor
+                    key={n.node.id}
+                    ref={titleEditorRef}
+                    initialText={editDraft.text}
+                    initialMarks={editDraft.marks}
+                    selectAll={pendingSelectAllRef.current === n.node.id}
+                    fontSize={textStyle.fontSize}
+                    fontWeight={textStyle.fontWeight}
+                    lineHeight={textStyle.lineHeight}
+                    color={isRoot ? theme.rootText : 'inherit'}
+                    textAlign={textAlign}
+                    minHeight={n.titleLines.length * textStyle.lineHeight}
+                    onDraftChange={setEditDraft}
+                    // 编辑状态下继续用 Tab / Enter 连续新增，光标自动转移到新节点
+                    onTab={() => createLinkedNode('child', n.node.id, true)}
+                    onEnter={() => createLinkedNode('sibling', n.node.id, true)}
+                    onEscape={() => handleFinishEdit(n.node.id)}
                     onBlur={() => handleFinishEdit(n.node.id)}
-                    onKeyDown={(e) => {
-                      // 编辑状态下继续用 Tab / Enter 连续新增，光标自动转移到新节点
-                      if (e.key === 'Tab') {
-                        e.preventDefault();
-                        createLinkedNode('child', n.node.id, true);
-                      } else if (e.key === 'Enter') {
-                        e.preventDefault();
-                        createLinkedNode('sibling', n.node.id, true);
-                      } else if (e.key === 'Escape') {
-                        e.preventDefault();
-                        handleFinishEdit(n.node.id);
-                      }
-                    }}
-                    style={{
-                      flex: 1,
-                      width: '100%',
-                      border: 'none',
-                      outline: 'none',
-                      background: 'transparent',
-                      color: isRoot ? theme.rootText : 'inherit',
-                      fontSize: isRoot ? 14 : isLevel1 ? 13 : 12,
-                      fontWeight: isRoot ? 600 : isLevel1 ? 500 : 400,
-                      textAlign: hasNote || hasImage ? 'left' : 'center',
-                    }}
+                    onSelectionChange={setFormatSelection}
                   />
                 ) : (
-                  <Tooltip content={n.node.text || '未命名'} side="top" sideOffset={4}>
-                    <span
-                      style={{
-                        flex: 1,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        fontSize: isRoot ? 14 : isLevel1 ? 13 : 12,
-                        fontWeight: isRoot ? 600 : isLevel1 ? 500 : 400,
-                        textAlign: hasNote || hasImage ? 'left' : 'center',
-                      }}
-                    >
-                      {n.node.text ? renderHighlightedText(n.node.text, searchRanges) : '未命名'}
-                    </span>
-                  </Tooltip>
+                  // 标题按布局引擎断好的行逐行渲染（超出宽度自动换行，不再省略截断），并套用富文本格式
+                  <div
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      fontSize: textStyle.fontSize,
+                      fontWeight: textStyle.fontWeight,
+                      lineHeight: `${textStyle.lineHeight}px`,
+                      textAlign,
+                    }}
+                  >
+                    {n.titleLines.map((line, idx) => (
+                      <div key={idx} className="nb-mindmap-title-line" style={{ height: textStyle.lineHeight }}>
+                        {renderStyledLine(line.text, line.start, n.marks, searchRanges, textStyle.fontWeight)}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
 
@@ -1191,10 +1570,8 @@ export function MindmapRenderer({
                     }}
                     style={{
                       fontSize: 11,
-                      lineHeight: 1.45,
+                      lineHeight: `${NOTE_LINE_HEIGHT}px`,
                       color: isRoot ? 'rgba(255, 255, 255, 0.85)' : 'var(--editor-text-secondary, #64748b)',
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word',
                       textAlign: 'left',
                       width: '100%',
                       marginTop: 3,
@@ -1202,27 +1579,39 @@ export function MindmapRenderer({
                       borderTop: isRoot ? '1px solid rgba(255, 255, 255, 0.2)' : '1px solid var(--editor-border, #f1f5f9)',
                       opacity: 0.9,
                       cursor: 'pointer',
+                      flexShrink: 0,
                     }}
                   >
-                    {n.node.note}
+                    {/* 备注同样按布局引擎的断行逐行渲染，超出最大行数已在末行补省略号 */}
+                    {n.noteLines.map((line, idx) => (
+                      <div key={idx} className="nb-mindmap-title-line" style={{ height: NOTE_LINE_HEIGHT }}>
+                        {line}
+                      </div>
+                    ))}
                   </div>
                 </Tooltip>
               )}
 
-              {/* 挂载图片缩略图 */}
-              {hasImage && n.node.image && (
+              {/* 挂载图片：原始比例按固有宽高等比显示；宽度填充为固定高度裁切 */}
+              {hasImage && n.node.image && n.imageBox && (
                 <div
                   style={{
                     marginTop: 4,
                     borderRadius: 4,
                     overflow: 'hidden',
-                    maxHeight: 56,
+                    width: n.imageBox.width + 2,
+                    height: n.imageBox.height + 2,
+                    flexShrink: 0,
+                    boxSizing: 'border-box',
+                    alignSelf: textAlign === 'center' ? 'center' : 'flex-start',
                     position: 'relative',
                     border: '1px solid var(--editor-border, rgba(0,0,0,0.08))',
                   }}
                 >
                   <Tooltip content="点击放大查看大图" side="top" sideOffset={4}>
                     <img
+                      data-mindmap-image
+                      draggable={false}
                       src={n.node.image}
                       alt="节点缩略图"
                       onClick={(e) => {
@@ -1230,9 +1619,9 @@ export function MindmapRenderer({
                         setPreviewImage(n.node.image!);
                       }}
                       style={{
-                        width: '100%',
-                        height: 54,
-                        objectFit: 'cover',
+                        width: n.imageBox.width,
+                        height: n.imageBox.height,
+                        objectFit: n.imageBox.fit === 'fill' ? 'cover' : 'contain',
                         display: 'block',
                         cursor: 'zoom-in',
                       }}
@@ -1276,7 +1665,8 @@ export function MindmapRenderer({
                 className="nb-mindmap-node-toolbar"
                 style={{
                   position: 'absolute',
-                  top: -28,
+                  // 子节点向上展开时工具栏移到下方，避免与折叠按钮重叠
+                  ...(n.childSide === 'top' ? { bottom: -28 } : { top: -28 }),
                   left: '50%',
                   transform: 'translateX(-50%)',
                   display: isSelected ? 'flex' : 'none',
@@ -1343,6 +1733,41 @@ export function MindmapRenderer({
                   </button>
                 </Tooltip>
 
+                {/* 重置手动拉伸的宽度（仅自定义过宽度时显示） */}
+                {hasCustomWidth && (
+                  <Tooltip content="重置宽度" side="top" sideOffset={4}>
+                    <button
+                      type="button"
+                      className="nb-mindmap-toolbar-btn is-active-accent"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setNodeWidth(n.node.id, undefined);
+                      }}
+                      aria-label="重置宽度"
+                    >
+                      <MoveHorizontal size={12} />
+                    </button>
+                  </Tooltip>
+                )}
+
+                {/* 节点样式：单独设置标题对齐与图片显示方式 */}
+                <Tooltip content="节点样式" side="top" sideOffset={4}>
+                  <button
+                    type="button"
+                    className={`nb-mindmap-toolbar-btn${n.node.textAlign || n.node.imageFit ? ' is-active-accent' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                      setNodeStylePopover((cur) =>
+                        cur?.nodeId === n.node.id ? null : { nodeId: n.node.id, x: rect.left - 120, y: rect.bottom + 6 },
+                      );
+                    }}
+                    aria-label="节点样式"
+                  >
+                    <Settings2 size={12} />
+                  </button>
+                </Tooltip>
+
                 {/* 添加子分支 */}
                 <Tooltip content="添加子分支" side="top" sideOffset={4}>
                   <button
@@ -1366,7 +1791,7 @@ export function MindmapRenderer({
                       className="nb-mindmap-toolbar-btn is-danger"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDeleteNode(n.node.id);
+                        requestDeleteNode(n.node.id);
                       }}
                       aria-label="删除节点"
                     >
@@ -1382,6 +1807,7 @@ export function MindmapRenderer({
                   <button
                     type="button"
                     className="nb-mindmap-fold-btn"
+                    data-side={n.childSide}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleToggleExpand(n.node.id);
@@ -1389,9 +1815,8 @@ export function MindmapRenderer({
                     aria-label={isExpanded ? '收起子分支' : '展开子分支'}
                     style={{
                       position: 'absolute',
-                      right: -9,
-                      top: '50%',
-                      transform: 'translateY(-50%)',
+                      // 折叠按钮位于子节点展开的一侧
+                      ...sideButtonStyle(n.childSide, -9),
                       width: 16,
                       height: 16,
                       borderRadius: '50%',
@@ -1419,6 +1844,7 @@ export function MindmapRenderer({
                 <button
                   type="button"
                   className="nb-node-add-btn"
+                  data-side={n.childSide}
                   onClick={(e) => {
                     e.stopPropagation();
                     handleAddChild(n.node.id);
@@ -1426,9 +1852,7 @@ export function MindmapRenderer({
                   aria-label="添加子分支"
                   style={{
                     position: 'absolute',
-                    right: hasChildren ? -28 : -14,
-                    top: '50%',
-                    transform: 'translateY(-50%)',
+                    ...sideButtonStyle(n.childSide, hasChildren ? -28 : -14),
                     width: 16,
                     height: 16,
                     borderRadius: '50%',
@@ -1448,16 +1872,38 @@ export function MindmapRenderer({
                   +
                 </button>
               </Tooltip>
+
+              {/* 宽度拉伸手柄：位于远离父节点的一侧，双击恢复默认宽度 */}
+              {!isEditing && (
+                <Tooltip content={hasCustomWidth ? '拖动调整宽度，双击重置' : '拖动调整宽度'} side="top" sideOffset={4} followCursor disabled={isResizing}>
+                  <div
+                    data-resize-handle
+                    className="nb-mindmap-resize-handle"
+                    data-visible={isSelected || isResizing}
+                    data-dragging={isResizing}
+                    onPointerDown={(e) => handleResizePointerDown(e, n)}
+                    onPointerMove={handleResizePointerMove}
+                    onPointerUp={handleResizePointerUp}
+                    onPointerCancel={handleResizePointerUp}
+                    onClick={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      if (hasCustomWidth) setNodeWidth(n.node.id, undefined);
+                    }}
+                    style={n.freeEdge === 'right' ? { right: -5 } : { left: -5 }}
+                  />
+                </Tooltip>
+              )}
             </div>
           );
         })}
       </div>
 
-      {/* 底部快捷键提示（仅展示，不拦截画布交互） */}
+      {/* 右下角快捷键提示（仅展示，不拦截画布交互；左下角留给撤销 / 重做） */}
       <div
         style={{
           position: 'absolute',
-          left: 12,
+          right: 12,
           bottom: 10,
           display: 'flex',
           alignItems: 'center',
@@ -1472,7 +1918,7 @@ export function MindmapRenderer({
           pointerEvents: 'none',
           userSelect: 'none',
           backdropFilter: 'blur(6px)',
-          maxWidth: 'calc(100% - 24px)',
+          maxWidth: 'calc(100% - 120px)',
           flexWrap: 'wrap',
         }}
       >
@@ -1482,25 +1928,31 @@ export function MindmapRenderer({
         <kbd style={HINT_KBD_STYLE}>Enter</kbd>
         <span>添加同级节点</span>
         <span style={{ opacity: 0.5 }}>·</span>
+        <kbd style={HINT_KBD_STYLE}>Delete</kbd>
+        <span>删除</span>
+        <span style={{ opacity: 0.5 }}>·</span>
         <span>双击编辑</span>
       </div>
 
       {/* 节点图标选择器浮层 */}
       {iconPickerState && (
-        <MindmapIconPicker
-          currentIcon={iconPickerState.currentIcon}
-          position={{ x: iconPickerState.x, y: iconPickerState.y }}
-          onSelect={(icon) => {
-            handleIconChange(iconPickerState.nodeId, icon);
-            setIconPickerState(null);
-          }}
-          onClose={() => setIconPickerState(null)}
-        />
+        <div data-mindmap-overlay>
+          <MindmapIconPicker
+            currentIcon={iconPickerState.currentIcon}
+            position={{ x: iconPickerState.x, y: iconPickerState.y }}
+            onSelect={(icon) => {
+              handleIconChange(iconPickerState.nodeId, icon);
+              setIconPickerState(null);
+            }}
+            onClose={() => setIconPickerState(null)}
+          />
+        </div>
       )}
 
       {/* 备注编辑对话框 (在导图模式下快速编辑多行备注) */}
       {editingNoteNodeId && (
         <div
+          data-mindmap-overlay
           onClick={() => handleFinishNoteEdit()}
           style={{
             position: 'fixed',
@@ -1602,34 +2054,59 @@ export function MindmapRenderer({
         </div>
       )}
 
-      {/* 图片全屏放大预览弹窗 (Lightbox) */}
+      {/* 图片放大预览：Portal 到 body，滚轮缩放图片而不是导图 */}
       {previewImage && (
-        <div
-          onClick={() => setPreviewImage(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.75)',
-            zIndex: 100000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 24,
-            cursor: 'zoom-out',
-          }}
-        >
-          <img
-            src={previewImage}
-            alt="大图预览"
-            style={{
-              maxWidth: '90%',
-              maxHeight: '90%',
-              objectFit: 'contain',
-              borderRadius: 8,
-              boxShadow: '0 12px 32px rgba(0, 0, 0, 0.4)',
-            }}
+        <MindmapImagePreview src={previewImage} onClose={() => setPreviewImage(null)} />
+      )}
+
+      {/* 选中标题文字后的格式悬浮菜单 */}
+      {editingNodeId && formatSelection && (() => {
+        const { draft, from, to } = formatSelection;
+        const length = draft.text.length;
+        const state: FormatState = {
+          bold: isStyleActive(length, draft.marks, from, to, 'bold'),
+          italic: isStyleActive(length, draft.marks, from, to, 'italic'),
+          underline: isStyleActive(length, draft.marks, from, to, 'underline'),
+          strike: isStyleActive(length, draft.marks, from, to, 'strike'),
+          color: commonColor(length, draft.marks, from, to, 'color'),
+          highlight: commonColor(length, draft.marks, from, to, 'highlight'),
+        };
+        return <MindmapTextFormatMenu rect={formatSelection.rect} state={state} onPatch={handleFormatPatch} />;
+      })()}
+
+      {/* 单个节点样式浮层 */}
+      {nodeStylePopover && (() => {
+        const target = findNodeById(root, nodeStylePopover.nodeId);
+        if (!target) return null;
+        return (
+          <MindmapNodeStylePopover
+            position={{ x: nodeStylePopover.x, y: nodeStylePopover.y }}
+            textAlign={target.textAlign}
+            imageFit={target.imageFit}
+            hasImage={Boolean(target.image)}
+            defaultTextAlign={defaultTextAlign}
+            defaultImageFit={defaultImageFit}
+            onTextAlignChange={(value) => setNodeStyleField(target.id, 'textAlign', value)}
+            onImageFitChange={(value) => setNodeStyleField(target.id, 'imageFit', value)}
+            onClose={() => setNodeStylePopover(null)}
           />
-        </div>
+        );
+      })()}
+
+      {/* 删除含子节点的节点前二次确认 */}
+      {deleteConfirm && (
+        <MindmapConfirmDialog
+          title="删除节点"
+          message={`该节点下还有 ${deleteConfirm.descendantCount} 个子节点，将一并删除。删除后可用 Ctrl+Z 撤销。`}
+          confirmLabel="删除"
+          onCancel={() => setDeleteConfirm(null)}
+          onConfirm={() => {
+            const parent = findParentNode(root, deleteConfirm.nodeId);
+            handleDeleteNode(deleteConfirm.nodeId);
+            if (parent) setSelectedNodeId(parent.id);
+            setDeleteConfirm(null);
+          }}
+        />
       )}
 
       {/* 跟随光标的半透明悬浮拖拽预览卡片 (Drag Ghost Preview) */}
