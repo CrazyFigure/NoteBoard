@@ -237,3 +237,60 @@ describe('mindmapConverter 转换器测试', () => {
     expect(movedToRoot.children.some((c) => c.id === 'node-to-move')).toBe(true);
   });
 });
+
+describe('节点手动宽度与空标题', () => {
+  test('手动宽度随文档读写保留，非法宽度被丢弃', () => {
+    const tree: MindNode = {
+      id: 'root',
+      text: '根',
+      width: 320,
+      children: [
+        { id: 'a', text: '分支', width: 180, children: [] },
+        { id: 'b', text: '非法', width: -5, children: [] },
+      ],
+    };
+    const parsed = parseMindmapDocument(serializeMindmapDocument(tree));
+    expect(parsed.width).toBe(320);
+    expect(parsed.children[0].width).toBe(180);
+    expect(parsed.children[1].width).toBeUndefined();
+  });
+
+  test('空标题（含根节点）保存后仍为空，不被当作 Markdown 重新解析', () => {
+    const tree: MindNode = {
+      id: 'root',
+      text: '',
+      children: [{ id: 'a', text: '', children: [] }],
+    };
+    const parsed = parseMindmapDocument(serializeMindmapDocument(tree));
+    expect(parsed.id).toBe('root');
+    expect(parsed.text).toBe('');
+    expect(parsed.children).toHaveLength(1);
+    expect(parsed.children[0].text).toBe('');
+  });
+});
+
+describe('节点富文本格式与样式字段', () => {
+  test('格式、对齐与图片显示方式随文档读写保留，非法值被丢弃', () => {
+    const tree: MindNode = {
+      id: 'root',
+      text: '根节点',
+      children: [
+        {
+          id: 'a',
+          text: 'hello',
+          marks: [{ start: 0, end: 2, bold: true, color: '#ef4444' }],
+          textAlign: 'center',
+          imageFit: 'fill',
+          children: [],
+        },
+        { id: 'b', text: 'x', textAlign: 'right' as never, imageFit: 'stretch' as never, children: [] },
+      ],
+    };
+    const parsed = parseMindmapDocument(serializeMindmapDocument(tree));
+    expect(parsed.children[0].marks).toEqual([{ start: 0, end: 2, bold: true, color: '#ef4444' }]);
+    expect(parsed.children[0].textAlign).toBe('center');
+    expect(parsed.children[0].imageFit).toBe('fill');
+    expect(parsed.children[1].textAlign).toBeUndefined();
+    expect(parsed.children[1].imageFit).toBeUndefined();
+  });
+});

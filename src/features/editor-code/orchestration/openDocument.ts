@@ -91,6 +91,21 @@ async function openDocumentInternal(path: string, retryDepth: number): Promise<O
     if (loaderKind !== 'unsupported') prefetchEditor(loaderKind);
   }
 
+  // XMind 是二进制压缩包，先走转换入口，不能送入文本解码或把源路径当作 JSON 的写回目标。
+  if (/\.xmind$/i.test(path)) {
+    try {
+      const { openXmindAsMindmap } = await import('../../mindmap/xmindImportFlow');
+      const convertedKey = await openXmindAsMindmap(path);
+      if (!convertedKey) return 'failed';
+      scheduleRecentRecord(path, false);
+      return 'opened';
+    } catch (error) {
+      console.error('导入 XMind 失败:', error);
+      showToast(error instanceof Error ? error.message : '无法导入 XMind 文件', 'error');
+      return 'failed';
+    }
+  }
+
   // 1. 🔴 S07：统一文件准备（归属查询在读盘前；已打开/在途直接返回）
   let prepared: Awaited<ReturnType<typeof ipc.prepareDocument>>;
   try {

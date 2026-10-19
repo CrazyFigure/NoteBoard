@@ -110,6 +110,15 @@ describe('思维导图搜索', () => {
     expect(state.root.children[0].children[0].text).toBe('oof oof');
   });
 
+  test('替换后富文本格式随文字平移', () => {
+    // "ab foo cd"：cd 加粗，foo 替换为更长的文字后 cd 的格式应同步后移
+    const root: MindNode = { id: 'r', text: 'ab foo cd', marks: [{ start: 7, end: 9, bold: true }], children: [] };
+    const { state, search } = setup(root);
+    search.replaceAll(opts('foo', { replaceText: 'hello' }));
+    expect(state.root.text).toBe('ab hello cd');
+    expect(state.root.marks).toEqual([{ start: 9, end: 11, bold: true }]);
+  });
+
   test('非法正则返回错误且不改树', () => {
     const { state, search } = setup(tree());
     const result = search.replaceAll(opts('(', { isRegex: true }));

@@ -826,20 +826,20 @@ export function MarkdownToolbar({
 
       <ToolbarDivider />
 
-      {/* ── 列表组 ── */}
-      <ToolbarButton
-        icon={<List size={15} strokeWidth={2.2} />}
-        title="无序列表"
-        shortcut="Ctrl+Shift+8"
-        active={!isSourceMode && Boolean(editor?.isActive('bulletList'))}
-        onClick={() => toggleList('bullet')}
-      />
+      {/* ── 列表组（按快捷键数字 7 / 8 / 9 排列） ── */}
       <ToolbarButton
         icon={<ListOrdered size={15} strokeWidth={2.2} />}
         title="有序列表"
         shortcut="Ctrl+Shift+7"
         active={!isSourceMode && Boolean(editor?.isActive('orderedList'))}
         onClick={() => toggleList('ordered')}
+      />
+      <ToolbarButton
+        icon={<List size={15} strokeWidth={2.2} />}
+        title="无序列表"
+        shortcut="Ctrl+Shift+8"
+        active={!isSourceMode && Boolean(editor?.isActive('bulletList'))}
+        onClick={() => toggleList('bullet')}
       />
       <ToolbarButton
         icon={<CheckSquare size={15} strokeWidth={2.2} />}
@@ -1075,20 +1075,7 @@ export function MarkdownToolbar({
         />
       </ToolbarDropdown>
 
-      {/* ── 媒体与超链接 ── */}
-      <ToolbarButton
-        icon={<Link2 size={15} />}
-        title="插入/编辑超链接"
-        shortcut="Ctrl+K"
-        active={!isSourceMode && Boolean(editor?.isActive('link'))}
-        onClick={handleOpenLink}
-      />
-      <ToolbarButton
-        icon={<ImageIcon size={15} />}
-        title="插入本地图片"
-        onClick={handleInsertLocalImage}
-      />
-
+      {/* 超链接与图片入口统一收在「插入」菜单内 */}
       <ToolbarDivider />
 
       {/* ── 清除格式 ── */}

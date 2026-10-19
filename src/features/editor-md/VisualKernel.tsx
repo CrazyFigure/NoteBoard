@@ -6,7 +6,7 @@
 //      在同步作用域内加锁/解锁，不再用 50ms 时间窗忽略真实输入。
 //   3. 超链接弹窗、右键菜单、气泡菜单等 visual 专属 UI 全部内聚在本组件。
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEditorActive } from '../../core/editor/EditorActivityContext';
 import { EditorContent, useEditor } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
@@ -48,6 +48,8 @@ interface VisualKernelProps {
   storeTimerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>;
   /** 自动保存防抖定时器（与 source 模式共享） */
   diskTimerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>;
+  /** 沉浸阅读：编辑器只读，并隐藏气泡菜单、拖拽把手等编辑辅助浮层 */
+  readOnly?: boolean;
 }
 
 // 🔴 P0-2（用户真机 4GB 内存泄漏根因）：链接点击回调必须在**模块级工厂**创建。
@@ -74,8 +76,11 @@ export function VisualKernel({
   visualUndoDepthRef,
   storeTimerRef,
   diskTimerRef,
+  readOnly = false,
 }: VisualKernelProps) {
   const active = useEditorActive();
+  // 编辑辅助浮层仅在可编辑时出现
+  const showEditingUi = active && visible && !readOnly;
   // 扩展只随文档身份构建一次；输入、焦点、菜单和标签激活都不重新分配整套扩展。
   // 链接回调继续由模块级工厂创建，不能重新引入持有 editor 的组件闭包。
   const extensions = useMemo(() => buildExtensions(docKey, {
@@ -366,6 +371,20 @@ export function VisualKernel({
     [editor, linkModalState]
   );
 
+  // 沉浸阅读切换只读：不派发更新事件，避免被当作编辑触发保存或历史记录
+  // 按实例记录已应用的状态，新建实例默认可编辑，只在状态真正变化时调用
+  const appliedReadOnlyRef = useRef<{ editor: Editor | null; readOnly: boolean }>({ editor: null, readOnly: false });
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    if (appliedReadOnlyRef.current.editor !== editor) {
+      appliedReadOnlyRef.current = { editor, readOnly: false };
+    }
+    if (appliedReadOnlyRef.current.readOnly === readOnly) return;
+    appliedReadOnlyRef.current = { editor, readOnly };
+    editor.setEditable(!readOnly, false);
+    if (readOnly) setContextMenu(null);
+  }, [editor, readOnly]);
+
   // 移除超链接
   const handleRemoveLink = useCallback(() => {
     if (!editor || !linkModalState) return;
@@ -376,6 +395,7 @@ export function VisualKernel({
 
   return (
     <div
+      className="nb-md-visual-scroller"
       style={{
         height: '100%',
         overflow: 'auto',
@@ -383,7 +403,7 @@ export function VisualKernel({
         display: visible ? 'block' : 'none',
       }}
       onContextMenu={(e) => {
-        if (!editor) return;
+        if (!editor || readOnly) return;
         e.preventDefault();
         e.stopPropagation();
 
@@ -401,11 +421,11 @@ export function VisualKernel({
         });
       }}
     >
-      {active && visible && editor && <EditorBubbleMenu editor={editor} onOpenLinkModal={handleOpenLinkModal} />}
-      {active && visible && editor && <TableToolbar editor={editor} />}
-      {active && visible && editor && <BlockDragHandle editor={editor} />}
-      {active && visible && editor && <PasteFormatPrompt editor={editor} />}
-      {active && visible && contextMenu && editor && (
+      {showEditingUi && editor && <EditorBubbleMenu editor={editor} onOpenLinkModal={handleOpenLinkModal} />}
+      {showEditingUi && editor && <TableToolbar editor={editor} />}
+      {showEditingUi && editor && <BlockDragHandle editor={editor} />}
+      {showEditingUi && editor && <PasteFormatPrompt editor={editor} />}
+      {showEditingUi && contextMenu && editor && (
         <EditorContextMenu
           editor={editor}
           position={{ x: contextMenu.x, y: contextMenu.y }}

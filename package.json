@@ -90,6 +90,7 @@
     "lowlight": "^3.3.0",
     "lucide-react": "^0.460.0",
     "markdown-it": "^14.1.0",
+    "marked": "^17.0.6",
     "mermaid": "^11.12.2",
     "mitt": "^3.0.1",
     "plantuml-encoder": "^1.4.0",

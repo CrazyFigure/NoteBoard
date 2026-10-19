@@ -308,6 +308,12 @@ export interface EditorSettings {
   detailsDefaultExpanded?: boolean;
   // 可视化模式中 Enter 与 Shift+Enter 互换：Enter 段内换行、Shift+Enter 换段落（缺省视为 false）
   swapEnterKeys?: boolean;
+  // 思维导图节点最大宽度（px），超出后自动换行；缺省视为 280
+  mindmapNodeMaxWidth?: number;
+  // 思维导图节点标题默认对齐（缺省视为 left）
+  mindmapTextAlign?: 'left' | 'center';
+  // 思维导图节点图片默认显示方式：原始比例 / 宽度填充（缺省视为 original）
+  mindmapImageFit?: 'original' | 'fill';
 }
 
 /** Markdown 规范化策略：每次询问 / 总是规范化 / 保持源码模式 */

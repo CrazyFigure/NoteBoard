@@ -15,6 +15,7 @@
 // 其余手写变体不识别，继续由 RawHtmlBlock 原样保留，绝不静默改写。
 
 import { Node, mergeAttributes, type Editor, type Range } from '@tiptap/core';
+import { createIndexedBlockStart } from './markdownBlockStart';
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react';
 import { contentReactNodeViewRenderer } from './contentNodeView';
@@ -399,11 +400,7 @@ export const CalloutBlock = Node.create({
   markdownTokenizer: {
     name: 'calloutBlock',
     level: 'block',
-    start: (src: string) => {
-      const match = CALLOUT_START_PATTERN.exec(src);
-      if (!match) return -1;
-      return match.index + (match[0].startsWith('\n') ? 1 : 0);
-    },
+    start: createIndexedBlockStart(CALLOUT_START_PATTERN),
     tokenize: (src, _tokens, lexer) => {
       const match = matchCalloutBlock(src);
       if (!match) return undefined;

@@ -17,6 +17,19 @@ pub struct FileReadResult {
     pub readonly: bool,
 }
 
+/// XMind 按原始二进制读取，不经过文本编码探测；后续格式校验与风险确认由导入流程统一执行。
+pub fn read_xmind_bytes(path: &Path) -> Result<Vec<u8>, String> {
+    // 此入口只服务 XMind，避免为了资源管理器打开而扩大文件插件的全局路径权限。
+    if !path
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("xmind"))
+    {
+        return Err("此读取入口仅支持 .xmind 文件".to_string());
+    }
+    fs::read(path).map_err(|error| format!("读取 XMind 文件失败: {}", error))
+}
+
 /// 读取文件并探测编码与行尾符
 pub fn read_file(path: &Path) -> Result<FileReadResult, String> {
     let metadata = fs::metadata(path).map_err(|e| format!("无法读取文件信息: {}", e))?;
@@ -115,6 +128,18 @@ pub fn is_text_file(path: &Path) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_read_xmind_preserves_binary_and_source() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("导图.XMIND");
+        let bytes = [b'P', b'K', 0, 255, 128, b'\n'];
+        fs::write(&path, bytes).unwrap();
+        assert_eq!(read_xmind_bytes(&path).unwrap(), bytes);
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        assert!(read_xmind_bytes(&directory.path().join("other.txt")).is_err());
+        assert!(read_xmind_bytes(&directory.path().join("missing.xmind")).is_err());
+    }
 
     #[test]
     fn test_decode_utf8_bom() {

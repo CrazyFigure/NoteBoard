@@ -1608,6 +1608,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             onInsertRowAbove={handleInsertRowAbove}
             onInsertRowBelow={handleInsertRowBelow}
             onDeleteRow={handleDeleteRow}
+            onUpdateColumn={handleUpdateColumn}
             onAddColumn={handleAddColumn}
             onDeleteColumn={handleDeleteColumn}
             onClearColumn={handleClearColumn}

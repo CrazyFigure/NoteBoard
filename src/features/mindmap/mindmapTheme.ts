@@ -122,9 +122,21 @@ export const MINDMAP_LAYOUTS: MindmapLayoutMeta[] = [
   { id: 'left', name: '向左逻辑图', description: '所有子节点统一向左展开' },
   { id: 'balanced', name: '双向平衡图', description: '一级分支左右交替分布，更紧凑' },
   { id: 'tree', name: '向下组织图', description: '自顶向下的层级组织结构' },
+  { id: 'tree-up', name: '向上组织图', description: '自底向上的层级组织结构' },
+  { id: 'indent-right', name: '右侧树状图', description: '子节点在下方向右缩进排列' },
+  { id: 'indent-left', name: '左侧树状图', description: '子节点在下方向左缩进排列' },
+  { id: 'timeline', name: '时间轴', description: '一级分支沿主轴依次排开' },
+  { id: 'fishbone', name: '鱼骨图', description: '分支沿脊柱上下交替展开' },
 ];
 
 export const DEFAULT_MINDMAP_LAYOUT: MindmapLayout = 'right';
+
+/** 连线样式选项（undefined 表示跟随配色主题） */
+export const MINDMAP_EDGE_STYLES: Array<{ id: MindmapEdgeStyle; name: string }> = [
+  { id: 'curve', name: '曲线' },
+  { id: 'straight', name: '直线' },
+  { id: 'elbow', name: '折线' },
+];
 
 /** 按 id 取布局描述，未命中时回退首个布局 */
 export function getMindmapLayoutMeta(id: MindmapLayout): MindmapLayoutMeta {
