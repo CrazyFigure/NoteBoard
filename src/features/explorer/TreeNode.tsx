@@ -13,6 +13,7 @@ import {
   FilePlus,
   FolderPlus,
   Download,
+  AppWindow,
 } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 import type { FileTreeNode } from '../../core/ipc/types';
@@ -313,7 +314,7 @@ const TreeNodeImpl = memo(function TreeNodeImpl({
     e.stopPropagation();
     setRevealed(node.path, false);
     const menuWidth = 180;
-    const menuHeight = node.isDir ? 230 : 190;
+    const menuHeight = node.isDir ? 230 : 225;
     const x = e.clientX + menuWidth > window.innerWidth ? Math.max(8, e.clientX - menuWidth) : e.clientX;
     const y = e.clientY + menuHeight > window.innerHeight ? Math.max(8, e.clientY - menuHeight) : e.clientY;
     setMenuPos({ x, y });
@@ -547,6 +548,23 @@ const TreeNodeImpl = memo(function TreeNodeImpl({
               onClick={() => {
                 setMenuPos(null);
                 openDocument(node.path);
+              }}
+            />
+          )}
+
+          {/* 桌面端文件：交给系统默认程序打开（网页端走下方“下载到本机”） */}
+          {!IS_WEB && !node.isDir && (
+            <ContextMenuItem
+              icon={AppWindow}
+              label="用系统默认程序打开"
+              onClick={async () => {
+                setMenuPos(null);
+                try {
+                  await ipc.openWithDefaultApp(node.path);
+                } catch (error: unknown) {
+                  console.error('用系统默认程序打开失败:', error);
+                  showToast(typeof error === 'string' ? error : error instanceof Error ? error.message : '打开失败', 'error');
+                }
               }}
             />
           )}
