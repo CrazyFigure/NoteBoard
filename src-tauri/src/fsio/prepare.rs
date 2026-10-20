@@ -167,6 +167,12 @@ fn prepare_on_worker(path: &str, key: &str) -> Result<PreparedDocument, String> 
         .unwrap_or(0);
 
     match kind {
+        // 插件查看器只接收元信息；二进制在查看器真正挂载后按需读取。
+        DocumentKind::Preview => Ok(PreparedDocument::Text { payload: DocumentPayload {
+            key: key.to_string(), display_name, dir_path, kind, language,
+            content: None, encoding: crate::dto::Encoding::Utf8, eol: crate::dto::Eol::Lf,
+            size, mtime, readonly: true,
+        }}),
         // 图片走资源协议按路径解码，不读正文
         DocumentKind::Image => Ok(PreparedDocument::Image {
             key: key.to_string(),
@@ -211,6 +217,27 @@ fn prepare_on_worker(path: &str, key: &str) -> Result<PreparedDocument, String> 
                     missing: false,
                 }),
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod plugin_preview_tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn binary_preview_never_produces_writable_text() {
+        let mut file = tempfile::Builder::new().suffix(".pdf").tempfile().unwrap();
+        file.write_all(b"%PDF-1.7\0binary").unwrap();
+        let path = file.path().to_str().unwrap();
+        match prepare_on_worker(path, path).unwrap() {
+            PreparedDocument::Text { payload } => {
+                assert_eq!(payload.kind, DocumentKind::Preview);
+                assert!(payload.readonly);
+                assert!(payload.content.is_none());
+            }
+            _ => panic!("预览文件应返回只读元信息"),
         }
     }
 }

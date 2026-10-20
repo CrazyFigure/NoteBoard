@@ -20,6 +20,7 @@ import { openDocument } from '../editor-code/orchestration/openDocument';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useLayoutStore } from '../../stores/layoutStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { kindFromPath, languageFromPath } from '../../core/docKind';
 import { dirnameOf } from '../explorer/pathUtils';
 import { stashPendingDocuments } from '../staging/stagingManager';
@@ -403,6 +404,18 @@ export function stopEventListeners(): void {
 // ── 窗口关闭流程 ──
 
 /**
+ * 标题栏关闭按钮：开启“最小化到托盘”时仅隐藏窗口（内容留在内存中，无需确认）；
+ * 否则走统一关闭流程。系统关闭事件的同类判断在 Rust CloseRequested 中完成。
+ */
+export async function requestCloseButton(): Promise<void> {
+  if (useSettingsStore.getState().settings.system.closeToTray) {
+    await getCurrentWindow().hide();
+    return;
+  }
+  await requestCurrentWindowClose();
+}
+
+/**
  * 请求关闭当前窗口：统一承接标题栏按钮与系统关闭事件。
  * 若存在未保存文档则保留窗口关闭意图并弹出确认框；否则立即执行实际关闭流程。
  * 迁移保护中的文档不进入关闭确认（迁移未提交前不能销毁源内容）。
@@ -417,6 +430,15 @@ export async function requestCurrentWindowClose(): Promise<void> {
   );
 
   if (dirtyTabs.length > 0) {
+    // 从托盘退出时窗口可能处于隐藏状态，确认框弹出前先显示窗口
+    const win = getCurrentWindow();
+    try {
+      await win.show();
+      await win.unminimize();
+      await win.setFocus();
+    } catch {
+      // 显示失败不影响后续保护流程
+    }
     // 系统关闭请求到达时先立即刷新副本；即使用户尚未在确认框中选择，内容也已受保护。
     try {
       await stashPendingDocuments({ keys: dirtyTabs.map((tab) => tab.key) });

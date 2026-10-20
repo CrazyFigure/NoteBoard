@@ -15,6 +15,7 @@ import { useWindowStore } from '../../stores/windowStore';
 import { useExplorerStore } from '../explorer/explorerStore';
 import { handleRenderedHtmlLinkClick, isAbsoluteLocalPath, resolveRelativeDocPath } from './linkHandler';
 import { renderRawHtmlPreview } from './rawHtmlRender';
+import { formatShortcut } from '../../core/shortcuts';
 
 /** 可视化模式插入的空 HTML 块 */
 export function insertRawHtmlContent() {
@@ -25,7 +26,7 @@ export function insertRawHtmlContent() {
 export const RAW_HTML_SOURCE_SNIPPET = '\n<p align="center">\n  HTML 内容\n</p>\n\n';
 
 // 新建空块时编辑框的输入提示
-const EDITOR_PLACEHOLDER = '输入 HTML，例如：\n<p align="center"><b>标题</b><br>副标题</p>\n\n块内不要留空行；Ctrl+Enter 完成，Esc 取消';
+const EDITOR_PLACEHOLDER = formatShortcut('输入 HTML，例如：\n<p align="center"><b>标题</b><br>副标题</p>\n\n块内不要留空行；Ctrl+Enter 完成，Esc 取消');
 
 // 网络地址、内联数据与已转换的 asset 地址无需解析
 const PASSTHROUGH_SRC_PATTERN = /^(?:https?:|data:|blob:|asset:)/i;

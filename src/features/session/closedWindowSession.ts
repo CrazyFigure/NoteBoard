@@ -424,7 +424,7 @@ export async function loadRestoredTab(key: string): Promise<LazyLoadResult> {
       if (!doc) return 'stale';
       // 图片/不支持格式本就不读正文（content 恒为 null）：本窗口打开链建立了会话
       // （result=opened）即视为加载完成，否则恢复标签会永远停在"正在加载"
-      const isContentless = doc.kind === 'image' || doc.kind === 'unsupported';
+      const isContentless = doc.kind === 'image' || doc.kind === 'preview' || doc.kind === 'unsupported';
       if (doc.content == null && !(isContentless && result === 'opened')) {
         return 'stale';
       }

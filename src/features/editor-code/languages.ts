@@ -39,9 +39,12 @@ export async function loadLanguageExtension(lang: LanguageId): Promise<Extension
     case 'xml':
       promise = import('@codemirror/lang-xml').then((m) => m.xml());
       break;
+    // 纯文本：识别文中 JSON 块并按 JSON 配色高亮键/值
+    case 'plaintext':
+      promise = import('./plainJsonHighlight').then((m) => m.plainJsonHighlight());
+      break;
     case 'mermaid':
     case 'plantuml':
-    case 'plaintext':
     default:
       // 纯文本/图表脚本基础扩展
       promise = Promise.resolve<Extension>([]);

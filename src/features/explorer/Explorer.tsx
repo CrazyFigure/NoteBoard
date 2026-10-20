@@ -100,9 +100,9 @@ export function Explorer() {
     setCreatingName('');
   };
 
-  // 支持在文件树区域按住 Ctrl + 鼠标滚轮 实时缩放字号与行高
+  // 支持在文件树区域按住 Ctrl + 鼠标滚轮 实时缩放字号与行高（Mac 为 Cmd + 滚轮）
   const handleTreeWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    if (!e.ctrlKey) return;
+    if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
     const delta = e.deltaY < 0 ? 1 : -1;
     const curTypography = useSettingsStore.getState().settings.typography;

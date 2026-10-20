@@ -8,6 +8,7 @@ import { saveDocument } from '../../features/editor-code/orchestration/saveDocum
 import { emit } from '../../core/emitter';
 import { Eye, Code } from 'lucide-react';
 import { Tooltip } from '../Tooltip';
+import { formatShortcut } from '../../core/shortcuts';
 
 export function StatusBar() {
   const activeKey = useWindowStore((s) => s.activeKey);
@@ -46,6 +47,11 @@ export function StatusBar() {
     whiteSpace: 'nowrap',
   };
 
+  // 二进制查看不展示虚构的文本编码、行列和字数，状态栏明确标识只读。
+  if (doc.kind === 'preview') return <div role="status" style={{ height:24,display:'flex',alignItems:'center',gap:14,padding:'0 12px',background:'var(--statusbar-bg)',borderTop:'1px solid var(--editor-border)',color:'var(--statusbar-text)',fontFamily:'var(--ui-font-family,inherit)',fontSize:'calc(var(--ui-font-size,13px) - 1px)',flexShrink:0 }}>
+    <span>{doc.displayName.split('.').pop()?.toUpperCase()} · 只读预览</span><span>{(doc.size/1024).toLocaleString('zh-CN',{maximumFractionDigits:1})} KB</span>
+  </div>;
+
   const dividerStyle: React.CSSProperties = {
     width: 1,
     height: 14,
@@ -65,7 +71,7 @@ export function StatusBar() {
     } else {
       saveStatus = '未保存';
       saveStatusColor = 'var(--accent-strong)';
-      saveStatusTitle = '有未保存的修改，点击或按 Ctrl+S 保存';
+      saveStatusTitle = formatShortcut('有未保存的修改，点击或按 Ctrl+S 保存');
     }
   }
 

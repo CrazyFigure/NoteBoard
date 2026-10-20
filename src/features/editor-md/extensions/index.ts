@@ -170,6 +170,7 @@ const UnifiedDocumentHistoryKeys = Extension.create<{ docKey: string }>({
 });
 
 import { EnhancedImageBlock, parseLinkedImageToken } from '../imageNodeView';
+import { formatShortcut } from '../../../core/shortcuts';
 
 /**
  * 文档级属性：记录源文件末尾的换行（Markdown 解析会丢弃它）、不可见空白的书写方式（实体或字符）。
@@ -380,7 +381,7 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
       HTMLAttributes: {
         rel: 'noopener noreferrer',
         target: null, // 🔴 必须为 null，绝不能设置 _blank，避免 WebView2 底层触发系统新窗口
-        title: 'Ctrl + 单击以访问链接',
+        title: formatShortcut('Ctrl + 单击以访问链接'),
       },
     }),
 

@@ -19,6 +19,13 @@ interface ShortcutEntry {
 
 const registry: ShortcutEntry[] = [];
 let activeScope: ShortcutScope = 'global';
+// 录制快捷键期间暂停应用内快捷键，避免录制 Ctrl+S 等组合时误触发保存
+let suspended = false;
+
+/** 暂停 / 恢复应用内快捷键分发（浏览器默认行为仍照常屏蔽） */
+export function setShortcutsSuspended(value: boolean): void {
+  suspended = value;
+}
 
 /** 设置当前快捷键作用域（编辑器聚焦时切换为 'editor'） */
 export function setShortcutScope(scope: ShortcutScope): void {
@@ -46,10 +53,26 @@ function eventToKey(e: KeyboardEvent): string {
   // 处理特定物理按键码（如 Slash/NumpadDivide，防止输入法等环境干扰导致 e.key 非预期）
   if (e.code === 'Slash' || e.code === 'NumpadDivide') {
     parts.push('/');
+  } else if (USES_COMMAND_KEY && e.altKey && /^(Key[A-Z]|Digit[0-9])$/.test(e.code)) {
+    // Mac 上 Option + 字母 / 数字会输入特殊字符（如 Option+F → ƒ），按物理键位取字母才能匹配注册表
+    parts.push(e.code.slice(-1));
   } else {
     parts.push(e.key.length === 1 ? e.key.toUpperCase() : e.key);
   }
   return parts.join('+');
+}
+
+/**
+ * 快捷键显示文本按平台转换：界面文案统一按 Windows 书写（Ctrl / Alt），
+ * Mac 上主修饰键显示为 Cmd、Alt 显示为 Option；重做在 Mac 上为 Cmd + Shift + Z（Cmd + Y 不通用）。
+ * 可传入整句文案（如 "按 Ctrl+S 保存"），只替换其中的按键名。
+ */
+export function formatShortcut(text: string): string {
+  if (!USES_COMMAND_KEY) return text;
+  return text
+    .replace(/\bCtrl(\s*\+\s*)Y\b/g, 'Cmd$1Shift$1Z')
+    .replace(/\bCtrl\b/g, 'Cmd')
+    .replace(/\bAlt\b/g, 'Option');
 }
 
 /** 判定是否为应屏蔽的浏览器默认系统/导航/刷新快捷键 */
@@ -122,6 +145,7 @@ export function initShortcuts(): () => void {
     if (shouldPreventBrowserDefault(e)) {
       e.preventDefault();
     }
+    if (suspended) return;
 
     const key = eventToKey(e);
     // 按作用域优先级查找：当前作用域 > global

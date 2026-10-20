@@ -5,6 +5,7 @@ import type { FileTreeNode, Settings, OpenRequestItemDto } from '../core/ipc/typ
 import { useDocumentStore } from '../stores/documentStore';
 import { installWebClipboardFallback } from './clipboard';
 import './web.css';
+import { browserSystemFonts } from './fonts';
 
 const ROOT = '/workspace';
 /** 普通 HTTP 部署也可生成随机标识；randomUUID 只在安全上下文中可用。 */
@@ -70,8 +71,8 @@ export async function listen<T>(name: string, callback: (event: { payload: T }) 
   return () => events.removeEventListener(name, handler);
 }
 
-/** 派发本页业务事件。 */
-function emit(name: string, payload: unknown): void {
+/** 派发本页业务事件，供平台无关的插件状态广播复用。 */
+export function emit(name: string, payload?: unknown): void {
   events.dispatchEvent(new CustomEvent(name, { detail: payload }));
 }
 
@@ -146,9 +147,10 @@ export async function invoke<T>(command: string, rawArgs: Record<string, unknown
     case 'set_document_dirty': case 'record_web_spans': case 'focus_window': break;
     case 'is_perf_spans_enabled': result = false; break;
     case 'dump_perf_spans': result = ''; break;
-    case 'list_system_fonts': result = []; break;
-    case 'get_font_pack_status': case 'refresh_font_pack_status':
-      result = { id: 'web', version: '0', state: 'missing', installedSizeBytes: 0, downloadSizeBytes: 0, downloadUrl: '', faces: [] };
+    case 'list_system_fonts': result = await browserSystemFonts(args.allowBrowserPrompt === true); break;
+    case 'download_font_pack':
+      result = await request(command, args);
+      emit('noteboard-font-pack-changed', result);
       break;
     case 'get_platform_info': result = { platform: 'web', isMobile: false, defaultWorkspace: ROOT, externalRoot: ROOT, allFilesAccess: false }; break;
     case 'ensure_default_workspace': result = ROOT; break;
@@ -178,9 +180,13 @@ export async function invoke<T>(command: string, rawArgs: Record<string, unknown
       result = bytes.buffer;
       break;
     }
+    case 'read_preview_file': {
+      // 二进制端点继续受到服务器工作区与 50 MB 上限约束。
+      const bytes = await readFile(String(args.path)); result = bytes.buffer; break;
+    }
     case 'load_settings': {
       const saved = await request<Partial<Settings> | null>(command);
-      result = { ...DEFAULT_SETTINGS, ...saved, appearance: { ...DEFAULT_SETTINGS.appearance, ...saved?.appearance }, typography: { ...DEFAULT_SETTINGS.typography, ...saved?.typography }, editor: { ...DEFAULT_SETTINGS.editor, ...saved?.editor }, file: { ...DEFAULT_SETTINGS.file, stagingDirectory: `${ROOT}/.staging`, ...saved?.file }, layout: { ...DEFAULT_SETTINGS.layout, ...saved?.layout } };
+      result = { ...DEFAULT_SETTINGS, ...saved, appearance: { ...DEFAULT_SETTINGS.appearance, ...saved?.appearance }, typography: { ...DEFAULT_SETTINGS.typography, ...saved?.typography }, editor: { ...DEFAULT_SETTINGS.editor, ...saved?.editor }, file: { ...DEFAULT_SETTINGS.file, stagingDirectory: `${ROOT}/.staging`, ...saved?.file }, layout: { ...DEFAULT_SETTINGS.layout, ...saved?.layout }, system: { ...DEFAULT_SETTINGS.system, ...saved?.system } };
       break;
     }
     case 'save_settings': result = await request(command, args); emit('nb://settings-changed', { ...args.settings as Settings, revision: result }); break;

@@ -25,7 +25,7 @@ vi.mock('@/features/editor-md/MarkdownModeToggle', () => ({ MarkdownModeToggle: 
 vi.mock('@/features/editor-md/ExternalChangeBanner', () => ({ ExternalChangeBanner: () => null }));
 vi.mock('@/features/editor-md/imagePaste', () => ({ handlePastedImageFile: vi.fn() }));
 vi.mock('@/features/editor-md/markdownAutoSave', () => ({ autoSaveDocument: vi.fn() }));
-vi.mock('@/core/shortcuts', () => ({ registerShortcut: () => () => {} }));
+vi.mock('@/core/shortcuts', () => ({ registerShortcut: () => () => {}, formatShortcut: (text: string) => text }));
 
 beforeEach(() => {
   (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;

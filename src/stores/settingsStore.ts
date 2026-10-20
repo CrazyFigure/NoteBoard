@@ -11,6 +11,7 @@ import type {
   EditorSettings,
   FileSettings,
   LayoutSettings,
+  SystemSettings,
 } from '../core/ipc/types';
 import * as ipc from '../core/ipc/commands';
 import { onSettingsChanged } from '../core/ipc/events';
@@ -79,6 +80,9 @@ export const DEFAULT_SETTINGS: Settings = {
     autoSaveMarkdown: false,
     autoSaveBoard: false,
     autoSaveOther: false,
+    autoSaveMindmap: false,
+    autoSaveDrawio: false,
+    autoSaveBitable: false,
     forceManualSave: false,
     showHiddenFiles: false,
     restoreSession: true,
@@ -90,6 +94,10 @@ export const DEFAULT_SETTINGS: Settings = {
   layout: {
     statusBarVisible: true,
     uiScale: 100,
+  },
+  system: {
+    closeToTray: false,
+    showWindowShortcut: '',
   },
 };
 
@@ -122,6 +130,9 @@ interface SettingsStore {
 
   // ── 布局 ──
   setLayout: (patch: Partial<LayoutSettings>) => Promise<void>;
+
+  // ── 系统集成（托盘 / 全局快捷键）──
+  setSystem: (patch: Partial<SystemSettings>) => Promise<void>;
 
   // ── 内部：从广播更新 ──
   _applyRemoteUpdate: (s: Settings) => void;
@@ -303,6 +314,20 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const updated: Settings = {
       ...current,
       layout: { ...current.layout, ...patch },
+    };
+    set({ settings: updated });
+    try {
+      await ipc.saveSettings(updated);
+    } catch (e) {
+      console.error('保存设置失败:', e);
+    }
+  },
+
+  setSystem: async (patch) => {
+    const current = get().settings;
+    const updated: Settings = {
+      ...current,
+      system: { ...current.system, ...patch },
     };
     set({ settings: updated });
     try {

@@ -125,10 +125,16 @@ pub fn create_window(app: &tauri::AppHandle, label: String) -> Result<(), String
         .title("NoteBoard")
         .inner_size(1200.0, 800.0)
         .min_inner_size(680.0, 480.0)
-        // macOS / Linux 交给窗口管理器提供原生控制，Windows 继续使用现有自绘标题栏。
-        .decorations(cfg!(any(target_os = "macos", target_os = "linux")))
+        // 仅 macOS 保留原生装饰以使用红绿灯按钮；Windows / Linux 使用自绘标题栏。
+        .decorations(cfg!(target_os = "macos"))
         .visible(false)
         .shadow(true);
+        // macOS 标题栏透明叠加到 WebView 上，标签栏与红绿灯同处一行（与 tauri.macos.conf.json 保持一致）。
+        #[cfg(target_os = "macos")]
+        let builder = builder
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true)
+            .traffic_light_position(tauri::LogicalPosition::new(14.0, 16.0));
         // 窗口层拖拽开关是 Windows 专有 API；其他系统保留默认启用的 WebView 文件拖拽处理。
         #[cfg(target_os = "windows")]
         let builder = builder.drag_and_drop(true);
@@ -203,6 +209,14 @@ pub fn on_window_event(window: &Window, event: &WindowEvent) {
 
             // 阻止默认关闭，让前端处理未保存拦截
             api.prevent_close();
+
+            // 开启关闭到托盘时仅隐藏窗口：内容仍在内存中，无需未保存确认
+            #[cfg(desktop)]
+            if crate::window::tray::close_to_tray_enabled() {
+                let _ = window.hide();
+                return;
+            }
+
             // 🔴 Tauri v2 陷阱：window.emit() 也是广播！
             // close-requested 只发给本窗口，必须用 emit_to
             let _ = window.app_handle().emit_to(&label, "nb://close-requested", &label);

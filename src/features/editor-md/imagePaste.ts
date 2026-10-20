@@ -11,6 +11,7 @@ import { joinPath } from '../explorer/pathUtils';
 import { showToast } from '../../stores/toastStore';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readFile } from '@tauri-apps/plugin-fs';
+import { formatShortcut } from '../../core/shortcuts';
 
 // Windows 文件名禁止字符与 ASCII 控制字符上限，用于生成可安全落盘的图片文件名。
 const WINDOWS_INVALID_FILENAME_CHARS = new Set('<>:"/\\|?*');
@@ -100,7 +101,7 @@ export async function handlePastedImageFile(
     try {
       const base64Url = await fileToBase64(file);
       editor.chain().focus().setImage({ src: base64Url, alt: safeName }).run();
-      showToast(`图片已插入。当前文档尚未保存，建议按 Ctrl+S 保存文档以自动管理 /${imageDirName} 目录`, 'info');
+      showToast(formatShortcut(`图片已插入。当前文档尚未保存，建议按 Ctrl+S 保存文档以自动管理 /${imageDirName} 目录`), 'info');
     } catch (e) {
       console.error('Base64 转换失败:', e);
       showToast('插入图片失败', 'error');
@@ -159,7 +160,7 @@ export async function pickAndSaveLocalImage(
     } else {
       // 未保存文档直接使用选择的文件路径
       const fileName = filePath.split(/[\\/]/).pop() || 'image';
-      showToast('图片已选择。建议按 Ctrl+S 保存文档', 'info');
+      showToast(formatShortcut('图片已选择。建议按 Ctrl+S 保存文档'), 'info');
       return { src: filePath, alt: fileName };
     }
   } catch (err) {

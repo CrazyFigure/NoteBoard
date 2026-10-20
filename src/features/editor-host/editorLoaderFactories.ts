@@ -3,6 +3,8 @@ import type { EditorLoaderKind, LazyEditorComponent } from './editorLoaders';
 
 /** 动态 import 工厂表：调用时才加载对应编辑器 chunk */
 export const loaderFactories: Record<EditorLoaderKind, () => Promise<{ default: LazyEditorComponent }>> = {
+  // 只加载轻量宿主，文档渲染库由独立插件包提供。
+  preview: () => import('../plugins/PluginPreview').then((m) => ({ default: m.PluginPreview as unknown as LazyEditorComponent })),
   code: () =>
     import('../editor-code/CodeEditor').then(
       (m) => ({ default: m.CodeEditor as unknown as LazyEditorComponent }),

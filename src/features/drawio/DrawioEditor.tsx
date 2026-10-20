@@ -16,7 +16,7 @@ import {
   getDocumentRevision,
   bumpDocumentRevision,
 } from '../../core/editor/editorRegistry';
-import { submitCapturedContent } from '../session/documentSession';
+import { scheduleAutoSave, submitCapturedContent } from '../session/documentSession';
 import type { EditorCapabilities, FlushReason } from '../../core/editor/editorTypes';
 import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
 
@@ -225,6 +225,8 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
             setContent(docKey, msg.xml);
             setDirty(docKey, true);
             setTabDirty(docKey, true);
+            // 引擎每次内容变化都会推送 autosave 事件；auto 策略下停止编辑 800ms 后写盘
+            if (msg.event === 'autosave') scheduleAutoSave(docKey);
           }
           if (msg.event === 'save') {
             await saveDocument(docKey);

@@ -20,8 +20,10 @@ import {
 import { useFavoritesStore } from './favoritesStore';
 import {
   findFolderById,
+  findParentFolder,
   searchFavorites,
   isDescendantOrSelf,
+  getFolderCommonDir,
 } from './favoritesUtils';
 import { Tooltip } from '../../components/Tooltip';
 import type {
@@ -34,6 +36,25 @@ import { openDocument } from '../editor-code/orchestration/openDocument';
 import * as ipc from '../../core/ipc/commands';
 import { showToast } from '../../stores/toastStore';
 import { open } from '@tauri-apps/plugin-dialog';
+
+// 指针移动超过该距离才视为拖拽，避免点击时轻微抖动误触发
+const DRAG_THRESHOLD = 4;
+
+// 拖拽落点：放入某文件夹，或插到某个节点的前/后
+type DropTarget =
+  | { kind: 'into'; folderId: string }
+  | { kind: 'before' | 'after'; refId: string };
+
+type DropIndicator = 'before' | 'after' | null;
+
+// 跟随指针的拖拽预览
+interface DragVisual {
+  sourceId: string;
+  name: string;
+  isFolder: boolean;
+  x: number;
+  y: number;
+}
 
 export function FavoritesManagerModal() {
   const {
@@ -52,6 +73,8 @@ export function FavoritesManagerModal() {
     renameFolder,
     renameFavorite,
     moveItem,
+    moveItemRelative,
+    setFolderExpanded,
     openAddModal,
   } = useFavoritesStore();
 
@@ -64,10 +87,20 @@ export function FavoritesManagerModal() {
   const [newFolderName, setNewFolderName] = useState('');
   const newFolderInputRef = useRef<HTMLInputElement>(null);
 
-  // 正在拖拽的节点 ID
-  const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null);
+  // 拖拽预览与当前落点（Tauri 开启了 dragDropEnabled，WebView 内原生 HTML5 拖放收不到 drop，改用指针事件实现）
+  const [dragVisual, setDragVisual] = useState<DragVisual | null>(null);
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
+  const dropTargetRef = useRef<DropTarget | null>(null);
+  // 取消进行中拖拽的回调（Esc 或卸载时调用）
+  const cancelDragRef = useRef<(() => void) | null>(null);
+  // 供 window 级指针监听读取最新数据
+  const rootsRef = useRef(data.roots);
+  rootsRef.current = data.roots;
+  const searchingRef = useRef(false);
+  searchingRef.current = Boolean(searchQuery.trim());
+
   // 拖拽悬停的目标文件夹 ID
-  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
+  const dragOverFolderId = dropTarget?.kind === 'into' ? dropTarget.folderId : null;
 
   // 文件存在性探测缓存 (path -> boolean)
   const [fileExistenceMap, setFileExistenceMap] = useState<Record<string, boolean>>({});
@@ -85,7 +118,10 @@ export function FavoritesManagerModal() {
     if (!managerModalOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (folderContextMenu) {
+        if (cancelDragRef.current) {
+          // 拖拽中按 Esc 只取消拖拽
+          cancelDragRef.current();
+        } else if (folderContextMenu) {
           setFolderContextMenu(null);
         } else if (editingNodeId) {
           setEditingNodeId(null);
@@ -230,26 +266,129 @@ export function FavoritesManagerModal() {
     setEditingName('');
   };
 
-  // 拖拽放置处理
-  const handleDropOnFolder = async (targetFolderId: string) => {
-    if (!draggedNodeId || draggedNodeId === targetFolderId) {
-      setDraggedNodeId(null);
-      setDragOverFolderId(null);
-      return;
+  // 弹窗关闭或组件卸载时结束进行中的拖拽，避免残留 window 监听
+  useEffect(() => {
+    if (!managerModalOpen) cancelDragRef.current?.();
+  }, [managerModalOpen]);
+  useEffect(() => () => cancelDragRef.current?.(), []);
+
+  // 根据指针位置计算落点：左侧目录树节点 = 放入；右侧行 = 上/下半插入，文件夹行中部 = 放入
+  const resolveDropTarget = (sourceId: string, x: number, y: number): DropTarget | null => {
+    const el = document.elementFromPoint(x, y) as HTMLElement | null;
+    if (!el) return null;
+    const roots = rootsRef.current;
+    const sourceParentId = findParentFolder(roots, sourceId)?.id ?? 'root';
+    // 放回原所在文件夹没有意义；文件夹不能放进自身或子孙
+    const canDropInto = (folderId: string) =>
+      folderId !== sourceParentId && !isDescendantOrSelf(roots, sourceId, folderId);
+
+    const treeEl = el.closest<HTMLElement>('[data-fav-tree-folder]');
+    if (treeEl) {
+      const folderId = treeEl.dataset.favTreeFolder || 'root';
+      return canDropInto(folderId) ? { kind: 'into', folderId } : null;
     }
 
-    // 循环防死锁校验
-    if (isDescendantOrSelf(data.roots, draggedNodeId, targetFolderId)) {
-      showToast('不能将文件夹移动到自身或其子目录中', 'warning');
-      setDraggedNodeId(null);
-      setDragOverFolderId(null);
-      return;
+    // 搜索结果是跨层级的扁平列表，不支持排序
+    const rowEl = el.closest<HTMLElement>('[data-fav-row-id]');
+    if (!rowEl || searchingRef.current) return null;
+    const refId = rowEl.dataset.favRowId!;
+    if (refId === sourceId) return null;
+
+    const rect = rowEl.getBoundingClientRect();
+    const ratio = (y - rect.top) / rect.height;
+    if (rowEl.dataset.favRowFolder === '1' && ratio > 0.25 && ratio < 0.75) {
+      return canDropInto(refId) ? { kind: 'into', folderId: refId } : null;
     }
 
-    await moveItem(draggedNodeId, targetFolderId);
-    setDraggedNodeId(null);
-    setDragOverFolderId(null);
+    const position = ratio < 0.5 ? 'before' : 'after';
+    // 紧邻源节点的插入位置等于原地不动，不显示指示线
+    const siblings = sourceParentId === 'root'
+      ? roots
+      : findFolderById(roots, sourceParentId)?.children ?? [];
+    const srcIndex = siblings.findIndex((n) => n.id === sourceId);
+    const refIndex = siblings.findIndex((n) => n.id === refId);
+    if (srcIndex >= 0 && refIndex >= 0) {
+      if (position === 'before' && refIndex === srcIndex + 1) return null;
+      if (position === 'after' && refIndex === srcIndex - 1) return null;
+    }
+    return { kind: position, refId };
   };
+
+  // 执行拖拽落点对应的移动
+  const applyDrop = async (sourceId: string, target: DropTarget) => {
+    if (target.kind === 'into') {
+      await moveItem(sourceId, target.folderId);
+      // 展开目标文件夹，让移入的子文件夹在目录树中可见
+      if (target.folderId !== 'root') setFolderExpanded(target.folderId, true);
+    } else {
+      await moveItemRelative(sourceId, target.refId, target.kind);
+    }
+  };
+
+  // 右侧行按下指针：超过阈值后进入拖拽，松开时按落点移动
+  const handleRowPointerDown = (e: React.PointerEvent, node: FavoriteNode) => {
+    if (e.button !== 0 || cancelDragRef.current) return;
+    // 按钮与输入框保留各自的交互
+    if ((e.target as HTMLElement).closest('button, input')) return;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let started = false;
+
+    const onMove = (ev: PointerEvent) => {
+      if (!started) {
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_THRESHOLD) return;
+        started = true;
+      }
+      const next = resolveDropTarget(node.id, ev.clientX, ev.clientY);
+      dropTargetRef.current = next;
+      setDropTarget(next);
+      setDragVisual({
+        sourceId: node.id,
+        name: node.name,
+        isFolder: node.type === 'folder',
+        x: ev.clientX,
+        y: ev.clientY,
+      });
+    };
+
+    const finish = (commit: boolean) => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+      cancelDragRef.current = null;
+      const target = dropTargetRef.current;
+      dropTargetRef.current = null;
+      setDropTarget(null);
+      setDragVisual(null);
+      if (!started) return;
+
+      // 拖拽松开后浏览器仍会派发一次 click，拦截掉以免误打开文件或切换文件夹
+      const swallowClick = (ce: MouseEvent) => {
+        ce.stopPropagation();
+        ce.preventDefault();
+      };
+      window.addEventListener('click', swallowClick, { capture: true, once: true });
+      setTimeout(() => window.removeEventListener('click', swallowClick, { capture: true }), 0);
+
+      if (commit && target) void applyDrop(node.id, target);
+    };
+    const onUp = () => finish(true);
+    const onCancel = () => finish(false);
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+    cancelDragRef.current = () => finish(false);
+  };
+
+  // 右侧行的插入指示线位置
+  const getDropIndicator = (id: string): DropIndicator =>
+    dropTarget && dropTarget.kind !== 'into' && dropTarget.refId === id ? dropTarget.kind : null;
+
+  // 右键菜单对应文件夹的磁盘目录（其下文件的公共父目录）
+  const contextMenuFolder = folderContextMenu ? findFolderById(data.roots, folderContextMenu.folderId) : null;
+  const contextMenuRevealDir = contextMenuFolder ? getFolderCommonDir(contextMenuFolder) : null;
 
   if (!managerModalOpen) return null;
 
@@ -436,19 +575,10 @@ export function FavoritesManagerModal() {
                   transition: 'all var(--transition-fast)',
                   userSelect: 'none',
                 }}
+                data-fav-tree-folder="root"
                 onClick={() => {
                   setSearchQuery('');
                   setActiveFolder('root');
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setDragOverFolderId('root');
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleDropOnFolder('root');
                 }}
                 onMouseEnter={(e) => {
                   if (!isRootActive && dragOverFolderId !== 'root') {
@@ -503,9 +633,6 @@ export function FavoritesManagerModal() {
                       e.stopPropagation();
                       setFolderContextMenu({ x: e.clientX, y: e.clientY, folderId });
                     }}
-                    onDragOver={(folderId) => setDragOverFolderId(folderId)}
-                    onDragLeave={() => setDragOverFolderId(null)}
-                    onDrop={(folderId) => handleDropOnFolder(folderId)}
                   />
                 ))}
             </div>
@@ -730,7 +857,6 @@ export function FavoritesManagerModal() {
                 flexDirection: 'column',
                 gap: 4,
               }}
-              onDragOver={(e) => e.preventDefault()}
             >
               {searchQuery ? (
                 // 搜索结果列表
@@ -765,7 +891,9 @@ export function FavoritesManagerModal() {
                         setEditingNodeId(item.id);
                         setEditingName(item.name);
                       }}
-                      onDragStart={() => setDraggedNodeId(item.id)}
+                      dropIndicator={null}
+                      isDragSource={dragVisual?.sourceId === item.id}
+                      onPointerDown={(e) => handleRowPointerDown(e, item)}
                     />
                   ))
                 )
@@ -813,6 +941,7 @@ export function FavoritesManagerModal() {
                         isEditing={editingNodeId === child.id}
                         editingName={editingName}
                         isDragOver={dragOverFolderId === child.id}
+                        revealDir={getFolderCommonDir(child)}
                         onEditingNameChange={setEditingName}
                         onConfirmRename={handleConfirmRename}
                         onCancelRename={() => setEditingNodeId(null)}
@@ -822,10 +951,9 @@ export function FavoritesManagerModal() {
                           setEditingNodeId(child.id);
                           setEditingName(child.name);
                         }}
-                        onDragStart={() => setDraggedNodeId(child.id)}
-                        onDragOver={() => setDragOverFolderId(child.id)}
-                        onDragLeave={() => setDragOverFolderId(null)}
-                        onDrop={() => handleDropOnFolder(child.id)}
+                        dropIndicator={getDropIndicator(child.id)}
+                        isDragSource={dragVisual?.sourceId === child.id}
+                        onPointerDown={(e) => handleRowPointerDown(e, child)}
                       />
                     );
                   }
@@ -846,7 +974,9 @@ export function FavoritesManagerModal() {
                         setEditingNodeId(child.id);
                         setEditingName(child.name);
                       }}
-                      onDragStart={() => setDraggedNodeId(child.id)}
+                      dropIndicator={getDropIndicator(child.id)}
+                      isDragSource={dragVisual?.sourceId === child.id}
+                      onPointerDown={(e) => handleRowPointerDown(e, child)}
                     />
                   );
                 })
@@ -911,6 +1041,22 @@ export function FavoritesManagerModal() {
                   <span>重命名</span>
                 </button>
 
+                {contextMenuRevealDir && (
+                  <button
+                    type="button"
+                    style={menuItemStyle}
+                    onClick={() => {
+                      setFolderContextMenu(null);
+                      void ipc.revealInExplorer(contextMenuRevealDir);
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--toolbar-hover)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <FolderOpen size={13} />
+                    <span>在文件管理器中定位</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   style={{ ...menuItemStyle, color: 'var(--error-500)' }}
@@ -929,6 +1075,37 @@ export function FavoritesManagerModal() {
             )}
           </div>
         )}
+
+        {/* 跟随指针的拖拽预览 */}
+        {dragVisual && (
+          <div
+            style={{
+              position: 'fixed',
+              left: dragVisual.x + 12,
+              top: dragVisual.y + 10,
+              zIndex: 9999,
+              pointerEvents: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              maxWidth: 240,
+              padding: '4px 10px',
+              borderRadius: 'var(--radius-md, 6px)',
+              border: '1px solid var(--editor-border)',
+              background: 'var(--editor-surface)',
+              boxShadow: 'var(--shadow-md)',
+              fontSize: 12,
+              opacity: 0.92,
+            }}
+          >
+            {dragVisual.isFolder
+              ? <Folder size={14} style={{ color: '#eab308', flexShrink: 0 }} />
+              : getExplorerFileIcon(dragVisual.name, { size: 14 })}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {dragVisual.name}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -945,9 +1122,6 @@ interface FolderTreeNodeProps {
   onSelectFolder: (id: string) => void;
   onToggleExpand: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, id: string) => void;
-  onDragOver: (id: string) => void;
-  onDragLeave: () => void;
-  onDrop: (id: string) => void;
 }
 
 function FolderTreeNode({
@@ -959,8 +1133,6 @@ function FolderTreeNode({
   onSelectFolder,
   onToggleExpand,
   onContextMenu,
-  onDragOver,
-  onDrop,
 }: FolderTreeNodeProps) {
   if (node.type !== 'folder') return null;
 
@@ -991,18 +1163,9 @@ function FolderTreeNode({
           fontWeight: isActive ? 600 : 400,
           transition: 'all var(--transition-fast)',
         }}
+        data-fav-tree-folder={node.id}
         onClick={() => onSelectFolder(node.id)}
         onContextMenu={(e) => onContextMenu(e, node.id)}
-        onDragOver={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          onDragOver(node.id);
-        }}
-        onDrop={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          onDrop(node.id);
-        }}
         onMouseEnter={(e) => {
           if (!isActive && !isDragOver) {
             e.currentTarget.style.background = 'var(--toolbar-hover, rgba(0, 0, 0, 0.04))';
@@ -1068,9 +1231,6 @@ function FolderTreeNode({
               onSelectFolder={onSelectFolder}
               onToggleExpand={onToggleExpand}
               onContextMenu={onContextMenu}
-              onDragOver={onDragOver}
-              onDragLeave={() => {}}
-              onDrop={onDrop}
             />
           ))}
         </div>
@@ -1086,16 +1246,17 @@ interface FavoriteFolderRowProps {
   isEditing: boolean;
   editingName: string;
   isDragOver: boolean;
+  /** 收藏文件夹对应的磁盘目录（其下文件的公共父目录），无则不显示定位按钮 */
+  revealDir: string | null;
   onEditingNameChange: (val: string) => void;
   onConfirmRename: () => void;
   onCancelRename: () => void;
   onOpenFolder: () => void;
   onRemove: () => void;
   onStartRename: () => void;
-  onDragStart: () => void;
-  onDragOver: () => void;
-  onDragLeave: () => void;
-  onDrop: () => void;
+  dropIndicator: DropIndicator;
+  isDragSource: boolean;
+  onPointerDown: (e: React.PointerEvent) => void;
 }
 
 function FavoriteFolderRow({
@@ -1103,30 +1264,26 @@ function FavoriteFolderRow({
   isEditing,
   editingName,
   isDragOver,
+  revealDir,
   onEditingNameChange,
   onConfirmRename,
   onCancelRename,
   onOpenFolder,
   onRemove,
   onStartRename,
-  onDragStart,
-  onDragOver,
-  onDrop,
+  dropIndicator,
+  isDragSource,
+  onPointerDown,
 }: FavoriteFolderRowProps) {
   return (
     <div
-      draggable={!isEditing}
-      onDragStart={onDragStart}
-      onDragOver={(e) => {
-        e.preventDefault();
-        onDragOver();
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        onDrop();
-      }}
+      data-fav-row-id={folder.id}
+      data-fav-row-folder="1"
+      onPointerDown={isEditing ? undefined : onPointerDown}
       onClick={onOpenFolder}
       style={{
+        position: 'relative',
+        opacity: isDragSource ? 0.45 : 1,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -1155,6 +1312,7 @@ function FavoriteFolderRow({
         }
       }}
     >
+      <DropIndicatorLine position={dropIndicator} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
         <Folder size={18} style={{ color: '#eab308', flexShrink: 0 }} />
 
@@ -1192,6 +1350,20 @@ function FavoriteFolderRow({
 
       {!isEditing && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={(e) => e.stopPropagation()}>
+          {revealDir && (
+            <Tooltip content="在文件管理器中定位" side="top" sideOffset={4}>
+              <button
+                type="button"
+                aria-label="在文件管理器中定位"
+                onClick={() => void ipc.revealInExplorer(revealDir)}
+                style={iconBtnStyle}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--toolbar-hover)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <FolderOpen size={13} />
+              </button>
+            </Tooltip>
+          )}
           <Tooltip content="重命名" side="top" sideOffset={4}>
             <button
               type="button"
@@ -1236,7 +1408,9 @@ interface FavoriteFileRowProps {
   onEdit: () => void;
   onRemove: () => void;
   onStartRename: () => void;
-  onDragStart: () => void;
+  dropIndicator: DropIndicator;
+  isDragSource: boolean;
+  onPointerDown: (e: React.PointerEvent) => void;
 }
 
 function FavoriteFileRow({
@@ -1251,14 +1425,17 @@ function FavoriteFileRow({
   onEdit,
   onRemove,
   onStartRename,
-  onDragStart,
+  dropIndicator,
+  isDragSource,
+  onPointerDown,
 }: FavoriteFileRowProps) {
   return (
     <div
-      draggable={!isEditing}
-      onDragStart={onDragStart}
+      data-fav-row-id={item.id}
+      onPointerDown={isEditing ? undefined : onPointerDown}
       onClick={onOpen}
       style={{
+        position: 'relative',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -1269,7 +1446,7 @@ function FavoriteFileRow({
         cursor: 'pointer',
         transition: 'all var(--transition-fast)',
         userSelect: 'none',
-        opacity: exists ? 1 : 0.75,
+        opacity: isDragSource ? 0.45 : exists ? 1 : 0.75,
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.background = 'var(--toolbar-hover, rgba(0, 0, 0, 0.03))';
@@ -1280,6 +1457,7 @@ function FavoriteFileRow({
         e.currentTarget.style.borderColor = 'var(--editor-border, rgba(0, 0, 0, 0.06))';
       }}
     >
+      <DropIndicatorLine position={dropIndicator} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
         {/* 文件类型图标 */}
         {getExplorerFileIcon(item.path || item.name, { size: 16 })}
@@ -1415,6 +1593,26 @@ function FavoriteFileRow({
         </div>
       )}
     </div>
+  );
+}
+
+// ── 拖拽排序插入指示线（画在行间 4px 间隙的中线上） ──
+
+function DropIndicatorLine({ position }: { position: DropIndicator }) {
+  if (!position) return null;
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: 4,
+        right: 4,
+        height: 2,
+        borderRadius: 1,
+        background: 'var(--editor-accent, #3b82f6)',
+        pointerEvents: 'none',
+        ...(position === 'before' ? { top: -4 } : { bottom: -4 }),
+      }}
+    />
   );
 }
 

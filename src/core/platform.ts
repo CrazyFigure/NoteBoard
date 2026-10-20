@@ -17,8 +17,11 @@ export const IS_NATIVE_MOBILE = TARGET_PLATFORM === 'android' || TARGET_PLATFORM
 /** 网页部署使用服务器工作区和浏览器能力，不调用本机桌面窗口。 */
 export const IS_WEB = TARGET_PLATFORM === 'web';
 
-/** macOS / Linux 使用系统标题栏，避免重复显示 Windows 风格窗口控制。 */
-export const USES_NATIVE_WINDOW_CHROME = TARGET_PLATFORM === 'macos' || TARGET_PLATFORM === 'linux';
+/** macOS 标题栏透明叠加在页面上，保留原生红绿灯按钮；标题栏需为其左侧留白，且不再绘制自定义窗口控制。 */
+export const USES_MAC_TRAFFIC_LIGHTS = TARGET_PLATFORM === 'macos';
+
+/** macOS / Linux 更新时只下载安装包，由用户手动安装。 */
+export const USES_MANUAL_UPDATE_INSTALL = TARGET_PLATFORM === 'macos' || TARGET_PLATFORM === 'linux';
 
 /** Mac 的主修饰键为 Command；网页端根据访问设备判断，不受服务器系统影响。 */
 export const USES_COMMAND_KEY = TARGET_PLATFORM === 'macos' || IS_WEB && typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);

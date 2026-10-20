@@ -630,12 +630,11 @@ label.nb-sync-row {
 [data-platform='mobile'] .nb-sync-segment-btn {
   flex: 1 1 auto;
 }
-
+/* 开关行：说明文字在左（仅点击复选框切换开关），数值输入与复选框统一在行末 */
 /* 开关行：说明文字在左（点击切换开关），数值输入与复选框统一在行末 */
 .nb-sync-row-label {
   flex: 1;
   min-width: 0;
-  cursor: pointer;
 }
 
 .nb-sync-row-inline input[type='checkbox'] {

@@ -6,7 +6,7 @@ import type {
   FavoriteFolderItem,
   FavoriteFileItem,
 } from '../../core/ipc/types';
-import { pathKey } from '../explorer/pathUtils';
+import { pathKey, dirnameOf, isSubPath } from '../explorer/pathUtils';
 
 /**
  * 递归深拷贝节点树，避免意外的状态共享与就地修改
@@ -224,6 +224,72 @@ export function moveNode(
 
   // 2. 插入到新目标文件夹（若 targetFolderId 为 'root' 则插入到顶层）
   return addNodeToFolder(newRoots, targetFolderId, removedNode, targetIndex);
+}
+
+/**
+ * 把节点移动到参照节点的前面或后面（参照节点所在层级即目标层级），用于列表拖拽排序
+ */
+export function moveNodeRelative(
+  roots: FavoriteNode[],
+  sourceId: string,
+  referenceId: string,
+  position: 'before' | 'after',
+): FavoriteNode[] {
+  if (sourceId === referenceId) return roots;
+  const parent = findParentFolder(roots, referenceId);
+  const targetFolderId = parent ? parent.id : 'root';
+  // 校验循环嵌套：参照节点不能位于被拖动文件夹的内部
+  if (isDescendantOrSelf(roots, sourceId, targetFolderId)) {
+    return roots;
+  }
+
+  const { newRoots, removedNode } = removeNodeById(roots, sourceId);
+  if (!removedNode) return roots;
+
+  // 必须在移除源节点之后再取参照索引，同层后移时索引才不会偏移
+  const siblings = targetFolderId === 'root'
+    ? newRoots
+    : findFolderById(newRoots, targetFolderId)?.children;
+  if (!siblings) return roots;
+  const refIndex = siblings.findIndex((n) => n.id === referenceId);
+  if (refIndex < 0) return roots;
+  siblings.splice(position === 'before' ? refIndex : refIndex + 1, 0, removedNode);
+  return newRoots;
+}
+
+/**
+ * 收集文件夹内（含子孙）所有收藏文件的路径
+ */
+function collectFilePaths(nodes: FavoriteNode[], out: string[] = []): string[] {
+  for (const node of nodes) {
+    if (node.type === 'file') {
+      if (node.path) out.push(node.path);
+    } else if (node.children) {
+      collectFilePaths(node.children, out);
+    }
+  }
+  return out;
+}
+
+/**
+ * 计算收藏文件夹对应的磁盘目录：其下所有文件的最近公共父目录；无文件或跨盘符时返回 null
+ */
+export function getFolderCommonDir(folder: FavoriteFolderItem): string | null {
+  const paths = collectFilePaths(folder.children || []);
+  if (paths.length === 0) return null;
+
+  let common = dirnameOf(paths[0]);
+  for (const p of paths.slice(1)) {
+    // 逐级向上收缩，直到公共目录包含当前文件
+    while (common && !isSubPath(common, p)) {
+      const parent = dirnameOf(common);
+      // 已到根目录仍不包含（如跨盘符），视为没有公共目录
+      if (!parent || parent === common) return null;
+      common = parent;
+    }
+    if (!common) return null;
+  }
+  return common || null;
 }
 
 /**

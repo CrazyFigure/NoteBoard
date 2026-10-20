@@ -1,0 +1,24 @@
+{
+  "name": "noteboard-official-plugins",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@flyfish-dev/cad-viewer": "0.8.3",
+    "@web-ppt/core": "0.4.5",
+    "@web-ppt/viewer-core": "0.4.5",
+    "docx-preview": "0.3.7",
+    "dompurify": "3.4.13",
+    "jszip": "3.10.1",
+    "marked": "17.0.6",
+    "msdoc-viewer": "0.2.12",
+    "pdfjs-dist": "5.4.624",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}

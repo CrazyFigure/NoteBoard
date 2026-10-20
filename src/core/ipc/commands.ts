@@ -156,6 +156,11 @@ export function closeWindow(label: string): Promise<void> {
   return invoke<void>('close_window', { label });
 }
 
+/** 注册全局唤起窗口快捷键（空字符串取消）；被占用或无法识别时抛出原因 */
+export function setShowWindowShortcut(shortcut: string): Promise<void> {
+  return invoke<void>('set_show_window_shortcut', { shortcut });
+}
+
 // ── 文档注册表 ──
 
 export function registerDocument(
@@ -193,6 +198,11 @@ export function readDocument(path: string): Promise<DocumentPayload> {
 /** XMind 直接打开复用应用文件层，不依赖文件选择器临时授予的插件路径权限。 */
 export async function readXmindFile(path: string): Promise<Uint8Array> {
   return new Uint8Array(await invoke<ArrayBuffer>('read_xmind_file', { path }));
+}
+
+/** 插件查看器按需读取二进制，不进入文本编码和保存路径。 */
+export async function readPreviewFile(path: string): Promise<Uint8Array> {
+  return new Uint8Array(await invoke<ArrayBuffer>('read_preview_file', { path }));
 }
 
 export function probeDocument(path: string): Promise<ProbeResult> {
@@ -300,8 +310,9 @@ export function deleteStagedFile(path: string): Promise<void> {
   return invoke<void>('delete_staged_file', { path });
 }
 
-export function listSystemFonts(forceRefresh?: boolean): Promise<FontFamily[]> {
-  return invoke<FontFamily[]>('list_system_fonts', { forceRefresh: forceRefresh ?? null });
+export function listSystemFonts(forceRefresh?: boolean, allowBrowserPrompt = false): Promise<FontFamily[]> {
+  // 浏览器权限仅由字体下拉的明确操作请求，插件页后台检测不得弹出权限对话框。
+  return invoke<FontFamily[]>('list_system_fonts', { forceRefresh: forceRefresh ?? null, allowBrowserPrompt });
 }
 
 /** 查询字体包状态；验证未完成时返回 verifying（SHA 在后台 worker 执行） */

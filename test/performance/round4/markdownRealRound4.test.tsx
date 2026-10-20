@@ -22,7 +22,7 @@ vi.mock('@/features/editor-md/MarkdownModeToggle', () => ({ MarkdownModeToggle: 
 vi.mock('@/features/editor-md/ExternalChangeBanner', () => ({ ExternalChangeBanner: () => null }));
 vi.mock('@/features/editor-md/imagePaste', () => ({ handlePastedImageFile: vi.fn() }));
 vi.mock('@/features/editor-md/markdownAutoSave', () => ({ autoSaveDocument: vi.fn() }));
-vi.mock('@/core/shortcuts', () => ({ registerShortcut: () => () => {} }));
+vi.mock('@/core/shortcuts', () => ({ registerShortcut: () => () => {}, formatShortcut: (text: string) => text }));
 
 // jsdom 不实现文本 Range 的布局 API；提供空矩形以覆盖真实编辑器的聚焦滚动流程。
 const originalRangeRect = Range.prototype.getBoundingClientRect;

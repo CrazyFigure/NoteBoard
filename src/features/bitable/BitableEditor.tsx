@@ -22,6 +22,9 @@ import { BitableGridView } from './BitableGridView';
 import { BitableKanbanView } from './BitableKanbanView';
 import { BitableGanttView, createGanttConfig } from './BitableGanttView';
 import { BitableRecordPanel } from './BitableRecordPanel';
+// 工作台只加载轻量宿主，实际界面由独立安装的插件提供。
+import { WorkbenchView } from '../plugins/WorkbenchView';
+import { takeBitableRecordRequest } from './recordOpenRequests';
 import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
 import { usePointerReorder } from './usePointerReorder';
 import { Tooltip } from '../../components/Tooltip';
@@ -55,7 +58,7 @@ import {
   getDocumentRevision,
   bumpDocumentRevision,
 } from '../../core/editor/editorRegistry';
-import { submitCapturedContent } from '../session/documentSession';
+import { scheduleAutoSave, submitCapturedContent } from '../session/documentSession';
 import { takeViewState } from '../session/editorSuspension';
 import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
 import { useEditorActive } from '../../core/editor/EditorActivityContext';
@@ -64,6 +67,7 @@ import {
   Table as TableIcon,
   Kanban,
   ChartGantt,
+  LayoutDashboard,
   Search,
   Plus,
   X,
@@ -115,6 +119,12 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
 
   // 右侧记录详情侧边栏：以「收集单」形式编辑单条记录
   const [recordPanelRowId, setRecordPanelRowId] = useState<string | null>(null);
+  // 兼容从工作台跳转到尚未加载的外部表格，记录请求只消费一次。
+  useEffect(() => {
+    const consume = () => { const id = takeBitableRecordRequest(docKey); if (id) setRecordPanelRowId(id); };
+    window.addEventListener('nb-bitable-open-record', consume); consume();
+    return () => window.removeEventListener('nb-bitable-open-record', consume);
+  }, [docKey]);
 
   /**
    * 文档数据的最新快照
@@ -138,6 +148,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
         setContent(docKey, entry.content);
         setDirty(docKey, true);
         setTabDirty(docKey, true);
+        scheduleAutoSave(docKey);
       },
     });
 
@@ -191,6 +202,8 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
       setContent(docKey, serialized);
       setDirty(docKey, true);
       setTabDirty(docKey, true);
+      // auto 策略下停止编辑 800ms 后自动写盘
+      scheduleAutoSave(docKey);
 
       // 延迟到本轮事件结束再记录历史：把一次交互产生的多步提交合并为单条撤销记录
       const pending = pendingHistoryRef.current;
@@ -318,7 +331,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
 
   const handleCreateView = (type: BitableViewType) => {
     setAddViewMenu(null);
-    const baseName = type === 'grid' ? '表格视图' : type === 'kanban' ? '看板视图' : '甘特图';
+    const baseName = type === 'grid' ? '表格视图' : type === 'kanban' ? '看板视图' : type === 'workbench' ? '工作台' : '甘特图';
     let createdName = baseName;
     const newViewId = createId('view');
     commitChange((prev) => {
@@ -1181,6 +1194,8 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                     <TableIcon size={13} />
                   ) : v.type === 'kanban' ? (
                     <Kanban size={13} />
+                  ) : v.type === 'workbench' ? (
+                    <LayoutDashboard size={13} />
                   ) : (
                     <ChartGantt size={13} />
                   )}
@@ -1350,6 +1365,9 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                   <ChartGantt size={13} color="#0ea5e9" />
                   <span>新建甘特图视图</span>
                 </button>
+                <button type="button" className="nb-bitable-menu-item" onClick={() => handleCreateView('workbench')}>
+                  <LayoutDashboard size={13} /><span>新建工作台视图</span>
+                </button>
               </FloatingPanel>
             )}
           </div>
@@ -1375,7 +1393,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             <input
               ref={searchInputRef}
               type="text"
-              placeholder="搜索表格记录"
+              placeholder={activeView.type === 'workbench' ? '搜索工作台记录' : '搜索表格记录'}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{
@@ -1404,6 +1422,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             <button
               type="button"
               className="nb-bitable-btn-secondary nb-bitable-export"
+              style={{ display: activeView.type === 'workbench' ? 'none' : undefined }}
               onClick={handleExportCsv}
             >
               <FileSpreadsheet size={13} />
@@ -1587,6 +1606,12 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             onOpenRecord={setRecordPanelRowId}
             onDeleteRow={handleDeleteRow}
           />
+        ) : activeView.type === 'workbench' ? (
+          <WorkbenchView docKey={docKey} data={data} config={activeView.workbench} searchQuery={searchQuery}
+            onChange={(config) => handleUpdateViewConfig({ workbench: config })}
+            onOpenRecord={setRecordPanelRowId}
+            // 工作台补丁按字段 ID 提交，复用现有单元格更新与历史记录流程。
+            onUpdateRow={(rowId, patch) => { for (const [key, value] of Object.entries(patch)) handleUpdateRow(rowId, key, value); }} />
         ) : (
           <BitableGanttView
             columns={data.columns}
