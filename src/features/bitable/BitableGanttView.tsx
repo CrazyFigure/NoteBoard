@@ -1745,25 +1745,27 @@ export function BitableGanttView({
               />
             </ConfigRow>
 
-            {/* 每周休息日：时间轴底色与「仅计算工作日」共用此设置 */}
-            <ConfigRow label="每周休息日">
-              <div style={{ display: 'flex', gap: 3 }}>
-                {WEEKDAY_OPTIONS.map((option) => {
-                  const isRest = restWeekdays.includes(option.id);
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      className={`nb-bitable-gantt-weekday${isRest ? ' is-active' : ''}`}
-                      aria-pressed={isRest}
-                      onClick={() => toggleRestWeekday(option.id)}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </ConfigRow>
+            {/* 每周休息日：时间轴底色与「仅计算工作日」共用此设置；仅在开启工作日模式时展示，关闭时沿用已保存的设置 */}
+            {workdaysOnly && (
+              <ConfigRow label="每周休息日">
+                <div style={{ display: 'flex', gap: 3 }}>
+                  {WEEKDAY_OPTIONS.map((option) => {
+                    const isRest = restWeekdays.includes(option.id);
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className={`nb-bitable-gantt-weekday${isRest ? ' is-active' : ''}`}
+                        aria-pressed={isRest}
+                        onClick={() => toggleRestWeekday(option.id)}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </ConfigRow>
+            )}
 
             {/* 法定节假日：联网获取放假与调休安排，调休上班日即使是周末也计为工作日 */}
             <ConfigRow
