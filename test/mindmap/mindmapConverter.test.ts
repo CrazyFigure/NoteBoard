@@ -236,6 +236,21 @@ describe('mindmapConverter 转换器测试', () => {
     const movedToRoot = moveMindNode(movedTree, 'node-to-move', 'root-complex', 'inside');
     expect(movedToRoot.children.some((c) => c.id === 'node-to-move')).toBe(true);
   });
+
+  test('标题中的节点内换行以 <br> 写入 Markdown 并可还原', () => {
+    const root: MindNode = {
+      id: 'root',
+      text: '主题\n副标题',
+      children: [{ id: 'c1', text: '第一行\n第二行', children: [{ id: 'c2', text: '子节点', children: [] }] }],
+    };
+    const md = mindNodeToMarkdown(root);
+    expect(md).toContain('# 主题<br>副标题');
+    expect(md).toContain('- 第一行<br>第二行');
+    const parsed = markdownToMindNode(md);
+    expect(parsed.text).toBe('主题\n副标题');
+    expect(parsed.children[0].text).toBe('第一行\n第二行');
+    expect(parsed.children[0].children[0].text).toBe('子节点');
+  });
 });
 
 describe('节点手动宽度与空标题', () => {

@@ -223,7 +223,8 @@ function tokenize(text: string): Token[] {
 /**
  * 按最大宽度把文本断成多行
  * 中日韩字符逐字可断，拉丁单词整体换行，单个单词超宽时再按字符拆分；
- * 行首空白被吞掉，行尾空白保留在原行（不计入换行判定）
+ * 行首空白被吞掉，行尾空白保留在原行（不计入换行判定）；
+ * 文本中的 \n 为硬换行（节点内手动换行），空段落保留为空行
  */
 export function wrapText(
   text: string,
@@ -236,8 +237,26 @@ export function wrapText(
   const limit = Math.max(1, maxWidth);
   const measureAt = createRangeMeasure(text, measure, font, rich);
   const lines: TextLine[] = [];
+  // 按硬换行切段，各段独立断行，行起点仍为原文下标
+  let segStart = 0;
+  for (const seg of text.split('\n')) {
+    wrapSegment(seg, segStart, limit, measureAt, lines);
+    segStart += seg.length + 1;
+  }
+  return lines;
+}
+
+/** 对不含硬换行的一段文本断行，结果追加到 lines；offset 为该段在原文中的起点 */
+function wrapSegment(
+  segment: string,
+  offset: number,
+  limit: number,
+  measureAt: (start: number, end: number) => number,
+  lines: TextLine[],
+) {
+  const firstIndex = lines.length;
   let lineText = '';
-  let lineStart = 0;
+  let lineStart = offset;
   let lineWidth = 0;
 
   const pushLine = () => {
@@ -246,7 +265,8 @@ export function wrapText(
     lineWidth = 0;
   };
 
-  for (const token of tokenize(text)) {
+  for (const rawToken of tokenize(segment)) {
+    const token = { ...rawToken, start: rawToken.start + offset };
     if (token.isSpace) {
       // 行首空白直接丢弃
       if (!lineText) continue;
@@ -268,19 +288,19 @@ export function wrapText(
     }
 
     // 超长单词：逐字符填充
-    let offset = token.start;
+    let cursor = token.start;
     for (const ch of token.text) {
-      const chWidth = measureAt(offset, offset + ch.length);
+      const chWidth = measureAt(cursor, cursor + ch.length);
       if (lineText && lineWidth + chWidth > limit) pushLine();
-      if (!lineText) lineStart = offset;
+      if (!lineText) lineStart = cursor;
       lineText += ch;
       lineWidth += chWidth;
-      offset += ch.length;
+      cursor += ch.length;
     }
   }
 
-  if (lineText || lines.length === 0) pushLine();
-  return lines;
+  // 空段落（连续或末尾换行）也占一行
+  if (lineText || lines.length === firstIndex) pushLine();
 }
 
 /**

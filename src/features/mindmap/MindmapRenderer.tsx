@@ -841,7 +841,12 @@ export function MindmapRenderer({
     const file = e.target.files?.[0];
     const targetNodeId = uploadTargetNodeIdRef.current;
     if (!file || !targetNodeId) return;
+    setNodeImageFromFile(targetNodeId, file);
+    e.target.value = '';
+  };
 
+  /** 读取图片文件并设为节点图片（文件选择与编辑时粘贴共用） */
+  const setNodeImageFromFile = (targetNodeId: string, file: File) => {
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === 'string') {
@@ -862,7 +867,6 @@ export function MindmapRenderer({
       }
     };
     reader.readAsDataURL(file);
-    e.target.value = '';
   };
 
   // 删除图片
@@ -1674,6 +1678,8 @@ export function MindmapRenderer({
                     // 编辑状态下继续用 Tab / Enter 连续新增，光标自动转移到新节点
                     onTab={() => createLinkedNode('child', n.node.id, true)}
                     onEnter={() => createLinkedNode('sibling', n.node.id, true)}
+                    onConfirm={() => handleFinishEdit(n.node.id)}
+                    onPasteImage={(file) => setNodeImageFromFile(n.node.id, file)}
                     onEscape={() => handleFinishEdit(n.node.id)}
                     onBlur={() => handleFinishEdit(n.node.id)}
                     onSelectionChange={setFormatSelection}

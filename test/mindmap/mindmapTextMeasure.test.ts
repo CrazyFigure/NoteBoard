@@ -46,6 +46,17 @@ describe('wrapText 断行', () => {
   test('空文本返回一个空行', () => {
     expect(wrapText('', 100, mono, FONT)).toEqual([{ text: '', start: 0 }]);
   });
+
+  test('手动换行为硬换行，空段落保留为空行，行偏移指向原文', () => {
+    const lines = wrapText('ab\n\ncdefgh\n', 40, mono, FONT);
+    expect(lines).toEqual([
+      { text: 'ab', start: 0 },
+      { text: '', start: 3 },
+      { text: 'cdef', start: 4 },
+      { text: 'gh', start: 8 },
+      { text: '', start: 11 },
+    ]);
+  });
 });
 
 describe('辅助函数', () => {

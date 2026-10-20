@@ -9,7 +9,9 @@ import {
   commonColor,
   isStyleActive,
   normalizeMarks,
+  restoreLineBreaks,
   splitStyledRuns,
+  toSingleLineText,
   type MindTextMark,
 } from '@/features/mindmap/mindmapRichText';
 
@@ -88,5 +90,22 @@ describe('片段切分与校验', () => {
     expect(normalizeMarks(raw, 4)).toEqual([{ start: 1, end: 4, bold: true }]);
     expect(normalizeMarks([], 4)).toBeUndefined();
     expect(normalizeMarks([{ start: 0, end: 2, bold: true }], 0)).toBeUndefined();
+  });
+});
+
+describe('单行输入框中的节点内换行', () => {
+  test('换行显示为空格，未改动处的换行原样保留', () => {
+    const original = 'ab\ncd\nef';
+    expect(toSingleLineText(original)).toBe('ab cd ef');
+    // 在末尾追加文字
+    expect(restoreLineBreaks(original, 'ab cd efg')).toBe('ab\ncd\nefg');
+    // 修改中间文字
+    expect(restoreLineBreaks(original, 'ab cX ef')).toBe('ab\ncX\nef');
+    // 删除换行处的空格即合并两行
+    expect(restoreLineBreaks(original, 'abcd ef')).toBe('abcd\nef');
+  });
+
+  test('原文无换行时直接取新值', () => {
+    expect(restoreLineBreaks('abc', 'abcd')).toBe('abcd');
   });
 });

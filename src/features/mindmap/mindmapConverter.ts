@@ -283,6 +283,16 @@ function extractLeadingIcon(rawText: string): { icon?: string; text: string } {
   return { text: rawText };
 }
 
+/** 标题中的节点内换行在 Markdown 大纲中写为 <br>，避免打断标题 / 列表结构 */
+function toMarkdownTitle(text: string): string {
+  return text.replace(/\n/g, '<br>');
+}
+
+/** Markdown 标题 / 列表项中的 <br> 还原为节点内换行 */
+function fromMarkdownTitle(text: string): string {
+  return text.replace(/\s*<br\s*\/?>\s*/gi, '\n');
+}
+
 /**
  * Markdown 大纲转换为 MindNode 树
  */
@@ -335,7 +345,7 @@ export function markdownToMindNode(md: string): MindNode {
       const { icon, text: cleanText } = extractLeadingIcon(text);
 
       if (!hasSetRoot && level === 1) {
-        root.text = cleanText || text;
+        root.text = fromMarkdownTitle(cleanText || text);
         root.icon = icon;
         hasSetRoot = true;
         continue;
@@ -364,7 +374,7 @@ export function markdownToMindNode(md: string): MindNode {
 
     const newNode: MindNode = {
       id: generateNodeId(),
-      text: cleanText || text,
+      text: fromMarkdownTitle(cleanText || text),
       icon,
       isExpanded: true,
       children: [],
@@ -395,7 +405,7 @@ export function mindNodeToMarkdown(root: MindNode, depth = 0): string {
   const iconPrefix = root.icon ? `${root.icon} ` : '';
 
   if (depth === 0) {
-    res += `# ${iconPrefix}${root.text}\n\n`;
+    res += `# ${iconPrefix}${toMarkdownTitle(root.text)}\n\n`;
     if (root.note) {
       const noteLines = root.note.split('\n');
       for (const nl of noteLines) {
@@ -411,7 +421,7 @@ export function mindNodeToMarkdown(root: MindNode, depth = 0): string {
     }
   } else {
     const indent = '  '.repeat(depth - 1);
-    res += `${indent}- ${iconPrefix}${root.text}\n`;
+    res += `${indent}- ${iconPrefix}${toMarkdownTitle(root.text)}\n`;
     if (root.note) {
       const noteLines = root.note.split('\n');
       for (const nl of noteLines) {

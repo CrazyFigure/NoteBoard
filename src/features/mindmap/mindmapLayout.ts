@@ -191,9 +191,17 @@ export function measureNodeBox(
     width = clampManualWidth(manual, hasImage);
   } else {
     const minWidth = style.minWidth + (hasIcon ? 24 : 0);
+    // 标题含手动换行时，自然宽度取最长一段
+    const measureTitle = createRangeMeasure(text, measure, titleFont, rich);
+    let titleNatural = 0;
+    let segStart = 0;
+    for (const seg of text.split('\n')) {
+      titleNatural = Math.max(titleNatural, measureTitle(segStart, segStart + seg.length));
+      segStart += seg.length + 1;
+    }
     let natural = Math.max(
       minWidth,
-      Math.ceil(createRangeMeasure(text, measure, titleFont, rich)(0, text.length)) +
+      Math.ceil(titleNatural) +
         style.insetX * 2 +
         iconWidth +
         WIDTH_SLACK,

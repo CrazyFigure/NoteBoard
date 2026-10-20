@@ -205,6 +205,34 @@ export function adjustMarksForTextChange(
   return result.length > 0 ? result : undefined;
 }
 
+/** 单行输入框（大纲模式）中展示的标题：手动换行显示为空格 */
+export function toSingleLineText(text: string): string {
+  return text.replace(/\n/g, ' ');
+}
+
+/**
+ * 单行输入框编辑后还原手动换行：只有被改动的区间取新内容，其余部分保留原文（含换行）
+ * @param original 编辑前的原标题（可含 \n）
+ * @param edited 输入框中的新值（不含 \n）
+ */
+export function restoreLineBreaks(original: string, edited: string): string {
+  if (!original.includes('\n')) return edited;
+  const shown = toSingleLineText(original);
+  let prefix = 0;
+  const maxPrefix = Math.min(shown.length, edited.length);
+  while (prefix < maxPrefix && shown[prefix] === edited[prefix]) prefix += 1;
+  let suffix = 0;
+  const maxSuffix = Math.min(shown.length, edited.length) - prefix;
+  while (suffix < maxSuffix && shown[shown.length - 1 - suffix] === edited[edited.length - 1 - suffix]) {
+    suffix += 1;
+  }
+  return (
+    original.slice(0, prefix) +
+    edited.slice(prefix, edited.length - suffix) +
+    original.slice(original.length - suffix)
+  );
+}
+
 /** 把 [start, end) 按格式切分为片段（无标记时为单个无格式片段） */
 export function splitStyledRuns(
   marks: readonly MindTextMark[] | undefined,

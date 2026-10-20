@@ -5,6 +5,7 @@
 
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef } from 'react';
 import {
+  adjustMarksForTextChange,
   applyStylePatch,
   cleanStyle,
   fromStyleArray,
@@ -42,6 +43,10 @@ interface MindmapTitleEditorProps {
   minHeight: number;
   onDraftChange: (draft: TextDraft) => void;
   onEnter: () => void;
+  /** Ctrl / Cmd + Enter：确认输入并退出编辑 */
+  onConfirm: () => void;
+  /** 粘贴图片：上传 / 替换节点图片 */
+  onPasteImage: (file: File) => void;
   onTab: () => void;
   onEscape: () => void;
   onBlur: () => void;
@@ -59,20 +64,33 @@ function renderRuns(root: HTMLElement, text: string, marks: MindTextMark[] | und
     span.textContent = text.slice(run.start, run.end);
     root.appendChild(span);
   }
+  // 末尾换行在 pre-wrap 下不产生空行，补一个占位 <br> 让光标能落到新行（读回时忽略）
+  if (text.endsWith('\n')) {
+    const placeholder = document.createElement('br');
+    placeholder.dataset.placeholder = 'true';
+    root.appendChild(placeholder);
+  }
 }
 
-/** 从编辑框 DOM 读回纯文本与格式（换行一律视为空格，标题不含换行） */
+/** 从编辑框 DOM 读回纯文本与格式（\n 为节点内手动换行） */
 function readDom(root: HTMLElement): TextDraft {
   let text = '';
   const styles: MindTextStyle[] = [];
   const walk = (node: Node, inherited: MindTextStyle) => {
     if (node.nodeType === Node.TEXT_NODE) {
-      const data = (node.nodeValue ?? '').replace(/\r?\n/g, ' ');
+      const data = (node.nodeValue ?? '').replace(/\r\n?/g, '\n');
       text += data;
       for (let i = 0; i < data.length; i += 1) styles.push(inherited);
       return;
     }
-    if (!(node instanceof HTMLElement) || node.tagName === 'BR') return;
+    if (!(node instanceof HTMLElement)) return;
+    // 浏览器自行插入的 <br> 视为换行，渲染时补的占位 <br> 忽略
+    if (node.tagName === 'BR') {
+      if (node.dataset.placeholder) return;
+      text += '\n';
+      styles.push(inherited);
+      return;
+    }
     let style = inherited;
     if (node.dataset.style) {
       try {
@@ -210,6 +228,28 @@ export const MindmapTitleEditor = forwardRef<MindmapTitleEditorHandle, MindmapTi
 
     useImperativeHandle(ref, () => ({ applyPatch }), [applyPatch]);
 
+    /** 以纯文本替换当前选区：含换行时自行拼接并重建 DOM（浏览器原生插入换行的结构各端不一致） */
+    const insertPlainText = useCallback(
+      (insert: string) => {
+        const root = rootRef.current;
+        if (!root || !insert) return;
+        if (!insert.includes('\n')) {
+          document.execCommand('insertText', false, insert);
+          return;
+        }
+        const sel = readSelection();
+        if (!sel) return;
+        const draft = readDom(root);
+        const text = draft.text.slice(0, sel.from) + insert + draft.text.slice(sel.to);
+        const next: TextDraft = { text, marks: adjustMarksForTextChange(draft.text, text, draft.marks) };
+        renderRuns(root, next.text, next.marks, propsRef.current.fontWeight);
+        const caret = sel.from + insert.length;
+        selectRange(root, caret, caret);
+        propsRef.current.onDraftChange(next);
+      },
+      [readSelection],
+    );
+
     const handleInput = () => {
       const root = rootRef.current;
       if (!root) return;
@@ -221,7 +261,15 @@ export const MindmapTitleEditor = forwardRef<MindmapTitleEditorHandle, MindmapTi
       if (e.nativeEvent.isComposing || composingRef.current) return;
       if (e.key === 'Enter') {
         e.preventDefault();
-        propsRef.current.onEnter();
+        if (e.ctrlKey || e.metaKey) {
+          // Ctrl / Cmd + Enter：确认输入
+          propsRef.current.onConfirm();
+        } else if (e.shiftKey || e.altKey) {
+          // Shift / Alt(Option) + Enter：节点内换行
+          insertPlainText('\n');
+        } else {
+          propsRef.current.onEnter();
+        }
       } else if (e.key === 'Tab') {
         e.preventDefault();
         propsRef.current.onTab();
@@ -239,11 +287,15 @@ export const MindmapTitleEditor = forwardRef<MindmapTitleEditorHandle, MindmapTi
       }
     };
 
-    // 粘贴只取纯文本，并把换行合并为空格
+    // 粘贴图片：交给外部上传 / 替换节点图片；否则只取纯文本（保留换行）
     const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
       e.preventDefault();
-      const text = e.clipboardData.getData('text/plain').replace(/\r?\n/g, ' ');
-      if (text) document.execCommand('insertText', false, text);
+      const image = Array.from(e.clipboardData.files).find((file) => file.type.startsWith('image/'));
+      if (image) {
+        propsRef.current.onPasteImage(image);
+        return;
+      }
+      insertPlainText(e.clipboardData.getData('text/plain').replace(/\r\n?/g, '\n'));
     };
 
     return (

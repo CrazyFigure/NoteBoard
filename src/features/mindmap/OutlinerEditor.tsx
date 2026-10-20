@@ -20,7 +20,7 @@ import { generateNodeId, moveMindNode, isMindNodeDescendant } from './mindmapCon
 import { cloneMindmapTree } from './mindmapTree';
 import { MindmapIconPicker } from './MindmapIconPicker';
 import { MindmapImagePreview } from './MindmapImagePreview';
-import { adjustMarksForTextChange } from './mindmapRichText';
+import { adjustMarksForTextChange, restoreLineBreaks, toSingleLineText } from './mindmapRichText';
 import { Tooltip } from '../../components/Tooltip';
 import type { MindmapSearchHighlight } from './mindmapSearch';
 import { formatShortcut } from '../../core/shortcuts';
@@ -829,9 +829,10 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
                     else inputRefs.current.delete(item.node.id);
                   }}
                   type="text"
-                  value={item.node.text}
+                  // 单行输入框：导图中的节点内换行显示为空格，编辑时未改动处的换行保留
+                  value={toSingleLineText(item.node.text)}
                   placeholder={isRoot ? '输入中心主题' : '输入大纲要点 (按 Enter 换行，Shift+Enter 添加备注)'}
-                  onChange={(e) => handleTextChange(item.node.id, e.target.value)}
+                  onChange={(e) => handleTextChange(item.node.id, restoreLineBreaks(item.node.text, e.target.value))}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
