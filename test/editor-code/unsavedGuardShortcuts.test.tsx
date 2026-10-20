@@ -87,12 +87,14 @@ describe('关闭拦截对话框快捷键', () => {
     document.removeEventListener('keydown', editorListener);
   });
 
-  it('焦点在弹窗按钮上时 Enter 执行该按钮', () => {
+  it('焦点在其他按钮上时 Enter 仍然保存', async () => {
     const discardButton = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === '不保存')!;
     // 聚焦会打开按钮 Tooltip，需包在 act 中
     act(() => discardButton.focus());
-    press('Enter');
-    expect(handlers.onDiscard).toHaveBeenCalledTimes(1);
-    expect(handlers.onSave).not.toHaveBeenCalled();
+    await act(async () => {
+      press('Enter');
+    });
+    expect(handlers.onSave).toHaveBeenCalledWith(['a']);
+    expect(handlers.onDiscard).not.toHaveBeenCalled();
   });
 });

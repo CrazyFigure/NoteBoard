@@ -36,7 +36,6 @@ export function UnsavedGuardDialog({
 }: UnsavedGuardDialogProps) {
   const [saving, setSaving] = useState(false);
   const [staging, setStaging] = useState(false);
-  const panelRef = useRef<HTMLDivElement>(null);
   // 快捷键处理器只注册一次，通过 ref 读取最新的回调与忙碌状态
   const actionsRef = useRef({ save: () => {}, stash: () => {}, discard: () => {}, cancel: onCancel, busy: false });
 
@@ -57,12 +56,8 @@ export function UnsavedGuardDialog({
       if (key === 'Escape') actions.cancel();
       else if (key === 'n') actions.discard();
       else if (key === 's') actions.stash();
-      else {
-        // Enter：焦点在弹窗内某个按钮上时执行该按钮，否则默认保存
-        const active = document.activeElement;
-        if (active instanceof HTMLButtonElement && panelRef.current?.contains(active)) active.click();
-        else actions.save();
-      }
+      // Enter 一律保存，不受弹窗内按钮焦点影响
+      else actions.save();
     };
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
@@ -135,7 +130,7 @@ export function UnsavedGuardDialog({
 
   return (
     <div style={overlayStyle} role="dialog" aria-modal="true">
-      <div ref={panelRef} style={dialogStyle}>
+      <div style={dialogStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           {/* 警告图标：使用 warning-500 语义变量，在亮色和墨夜深色主题下均清晰明亮 */}
           <AlertTriangle size={24} color="var(--warning-500)" />
