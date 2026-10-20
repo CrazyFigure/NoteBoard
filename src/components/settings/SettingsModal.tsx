@@ -1498,17 +1498,22 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <ShortcutItem keyCombo="Ctrl + Enter / Esc" label="多维表格长文本保存 / 取消" />
                 </div>
 
-                {/* 思维导图：导图与大纲两种模式合并展示（实现见 features/mindmap：MindmapRenderer / MindmapTitleEditor / OutlinerEditor） */}
+                {/* 思维导图：导图模式在上、大纲模式在下，同一模式内相近的按键相邻
+                    （实现见 features/mindmap：MindmapRenderer / MindmapTitleEditor / OutlinerEditor） */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-strong)', marginBottom: 4 }}>
                     思维导图
                   </div>
-                  <ShortcutItem keyCombo="Tab" label="添加子节点" tip="大纲模式中为降级" />
-                  <ShortcutItem keyCombo="Shift + Tab" label="大纲模式中升级" />
+                  <div style={shortcutSubheadingStyle}>导图模式</div>
+                  <ShortcutItem keyCombo="Tab" label="添加子节点" />
                   <ShortcutItem keyCombo="Enter" label="添加同级节点" />
-                  <ShortcutItem keyCombo="Shift + Enter" label="大纲模式中添加备注" />
                   <ShortcutItem keyCombo="Delete" label="删除选中节点" />
                   <ShortcutItem keyCombo="Ctrl + Enter" label="完成备注编辑" />
+                  <div style={{ ...shortcutSubheadingStyle, marginTop: 8 }}>大纲模式</div>
+                  <ShortcutItem keyCombo="Enter" label="添加同级要点" />
+                  <ShortcutItem keyCombo="Shift + Enter" label="添加备注" />
+                  <ShortcutItem keyCombo="Tab" label="降级" />
+                  <ShortcutItem keyCombo="Shift + Tab" label="升级" />
                 </div>
               </div>
             )}
@@ -1857,6 +1862,14 @@ const formRowStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: 6,
+};
+
+/** 快捷键分组内的子标题（如思维导图的导图模式 / 大纲模式） */
+const shortcutSubheadingStyle: React.CSSProperties = {
+  fontSize: 11.5,
+  fontWeight: 500,
+  color: 'var(--editor-text-muted)',
+  paddingLeft: 2,
 };
 
 const labelStyle: React.CSSProperties = {
