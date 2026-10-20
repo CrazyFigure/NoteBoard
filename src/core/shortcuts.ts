@@ -19,6 +19,13 @@ interface ShortcutEntry {
 
 const registry: ShortcutEntry[] = [];
 let activeScope: ShortcutScope = 'global';
+// 录制快捷键期间暂停应用内快捷键，避免录制 Ctrl+S 等组合时误触发保存
+let suspended = false;
+
+/** 暂停 / 恢复应用内快捷键分发（浏览器默认行为仍照常屏蔽） */
+export function setShortcutsSuspended(value: boolean): void {
+  suspended = value;
+}
 
 /** 设置当前快捷键作用域（编辑器聚焦时切换为 'editor'） */
 export function setShortcutScope(scope: ShortcutScope): void {
@@ -122,6 +129,7 @@ export function initShortcuts(): () => void {
     if (shouldPreventBrowserDefault(e)) {
       e.preventDefault();
     }
+    if (suspended) return;
 
     const key = eventToKey(e);
     // 按作用域优先级查找：当前作用域 > global

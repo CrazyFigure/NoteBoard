@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Minus, Square, Copy, X } from 'lucide-react';
 import { Tooltip } from '../Tooltip';
-import { requestCurrentWindowClose } from '../../features/window/windowManager';
+import { requestCloseButton } from '../../features/window/windowManager';
 
 export function WindowControls() {
   const [isMaximized, setIsMaximized] = useState(false);
@@ -29,8 +29,12 @@ export function WindowControls() {
     return getCurrentWindow().minimize();
   };
   const handleMaximize = () => getCurrentWindow().toggleMaximize();
-  // 标题栏关闭与系统关闭事件共用同一入口，确保确认保存或丢弃后继续关闭软件。
-  const handleClose = () => requestCurrentWindowClose();
+  // 标题栏关闭与系统关闭事件共用同一入口，确保确认保存或丢弃后继续关闭软件；
+  // 隐藏到托盘前同样释放按钮焦点，避免窗口恢复时 Tooltip 再次弹出。
+  const handleClose = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.currentTarget.blur();
+    return requestCloseButton();
+  };
 
   // 窗口控制按钮统一样式：尺寸 36x36，与左侧功能按钮保持完全一致
   const btnStyle: React.CSSProperties = {

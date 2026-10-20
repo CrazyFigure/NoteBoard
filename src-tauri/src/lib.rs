@@ -60,6 +60,10 @@ pub fn run() {
             .build(),
     );
 
+    // 全局唤起窗口快捷键（仅桌面端；具体按键由设置决定，启动时在 bootstrap 中注册）
+    #[cfg(desktop)]
+    let builder = builder.plugin(window::global_shortcut::plugin());
+
     // Android 原生桥接（所有文件访问权限、外部文件收件、系统分享）
     #[cfg(target_os = "android")]
     let builder = builder.plugin(mobile_bridge::plugin());
@@ -89,6 +93,7 @@ pub fn run() {
             window::commands::query_transfer,
             window::commands::focus_window,
             window::commands::close_window,
+            window::commands::set_show_window_shortcut,
             // registry
             registry::commands::register_document,
             registry::commands::unregister_document,
@@ -184,6 +189,12 @@ pub fn run() {
                 let mut argv = vec!["NoteBoard".to_string()];
                 argv.extend(urls.into_iter().filter_map(|url| url.to_file_path().ok()).map(|path| path.to_string_lossy().to_string()));
                 if argv.len() > 1 { bootstrap::single_instance::handle_second_instance(_app, argv); }
+            }
+            // 窗口全部隐藏到托盘后点击 Dock 图标，恢复窗口
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { has_visible_windows: false, .. } = _event {
+                let handle = _app.clone();
+                std::thread::spawn(move || window::tray::restore_hidden_windows(&handle));
             }
         });
 }

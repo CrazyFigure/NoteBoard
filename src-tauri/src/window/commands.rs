@@ -389,6 +389,18 @@ pub fn focus_window(app: tauri::AppHandle, label: String) -> Result<(), String> 
     Ok(())
 }
 
+/// 设置全局唤起窗口快捷键（空字符串表示取消）；注册失败时返回原因，前端据此决定是否保存设置
+#[tauri::command]
+pub fn set_show_window_shortcut(app: tauri::AppHandle, shortcut: String) -> Result<(), String> {
+    #[cfg(desktop)]
+    return crate::window::global_shortcut::apply(&app, &shortcut);
+    #[cfg(mobile)]
+    {
+        let _ = (app, shortcut);
+        Err("移动端不支持全局快捷键".to_string())
+    }
+}
+
 /// 关闭单个窗口
 /// Windows 先隐藏再关闭，避免 WebView2 销毁过程的白屏残留；
 /// macOS / Linux 直接关闭：window-state 在 CloseRequested 时读取窗口尺寸与位置，

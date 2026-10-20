@@ -32,6 +32,10 @@ pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         let _ = window.set_title("NoteBoard Dev");
     }
 
+    // 按设置启用关闭到托盘与全局唤起快捷键（数据目录已初始化，可读取设置）
+    #[cfg(desktop)]
+    crate::window::apply_system_settings(app.handle(), &crate::settings::model::load());
+
     // 多端同步后台调度线程（进程唯一；启动后延迟数秒在后台同步，不阻塞窗口显示）
     crate::sync::scheduler::init(app.handle().clone());
 

@@ -32,6 +32,9 @@ pub struct Settings {
     pub file: FileSettings,
     #[serde(default)]
     pub layout: LayoutSettings,
+    // 系统集成：关闭到托盘、全局唤起快捷键（仅桌面端生效）
+    #[serde(default)]
+    pub system: SystemSettings,
 }
 
 impl Default for Settings {
@@ -44,6 +47,7 @@ impl Default for Settings {
             editor: EditorSettings::default(),
             file: FileSettings::default(),
             layout: LayoutSettings::default(),
+            system: SystemSettings::default(),
         }
     }
 }
@@ -289,6 +293,17 @@ impl Default for LayoutSettings {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemSettings {
+    // 关闭按钮最小化到托盘（默认 false）：开启后关闭仅隐藏窗口，不再弹出未保存确认
+    #[serde(default)]
+    pub close_to_tray: bool,
+    // 全局唤起窗口快捷键（默认留空不注册），格式如 Ctrl+Alt+N
+    #[serde(default)]
+    pub show_window_shortcut: String,
+}
+
 // 默认值函数
 fn default_schema_version() -> u32 { 1 }
 fn default_theme_mode() -> String { "system".to_string() }
@@ -388,5 +403,14 @@ mod tests {
             .expect("旧版设置应能补全新字段");
         assert_eq!(settings.file.image_dir_name, "images");
         assert_eq!(settings.file.staging_directory, default_staging_directory());
+    }
+
+    /// 旧版设置不含 system 分组时，托盘与全局快捷键均保持关闭
+    #[test]
+    fn old_settings_default_system_integration_off() {
+        let settings: Settings = serde_json::from_str(r#"{"layout":{"uiScale":110}}"#)
+            .expect("旧版设置应能补全 system 分组");
+        assert!(!settings.system.close_to_tray);
+        assert!(settings.system.show_window_shortcut.is_empty());
     }
 }

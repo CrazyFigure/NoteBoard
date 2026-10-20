@@ -17,7 +17,8 @@ import { FontPackSettingsCard } from './FontPackSettingsCard';
 import { SettingsRange } from './SettingsRange';
 import { Tooltip } from '../Tooltip';
 import type { MarkdownNormalizationPolicy } from '../../core/ipc/types';
-import { IS_MOBILE_UI } from '../../core/platform';
+import { IS_MOBILE_UI, IS_NATIVE_MOBILE, IS_WEB } from '../../core/platform';
+import { GlobalShortcutRecorder } from './GlobalShortcutRecorder';
 // 设置窗口已在 App 中按需加载；同步面板及样式随窗口就绪，避免首次切换先显示加载占位。
 import { SyncPanel } from '../../features/sync/SyncPanel';
 
@@ -28,9 +29,12 @@ interface SettingsModalProps {
 
 type TabType = 'appearance' | 'typography' | 'editor' | 'file' | 'sync' | 'shortcuts' | 'about';
 
+// 托盘与全局快捷键仅原生桌面端可用（网页与移动端没有系统托盘）
+const SUPPORTS_SYSTEM_INTEGRATION = !IS_NATIVE_MOBILE && !IS_WEB;
+
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('appearance');
-  const { settings, resolvedTheme, setThemeMode, setTypography, setEditor, setFile } = useSettingsStore();
+  const { settings, resolvedTheme, setThemeMode, setTypography, setEditor, setFile, setSystem } = useSettingsStore();
 
   // 使用全局更新状态 Store
   const { checking: checkingUpdate, checkForUpdates } = useUpdateStore();
@@ -1245,6 +1249,21 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     />
                   </label>
 
+                  {/* 关闭到托盘：开启后关闭按钮仅隐藏窗口，内容留在内存中，因此不弹未保存确认 */}
+                  {SUPPORTS_SYSTEM_INTEGRATION && (
+                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
+                      <div>
+                        <div>关闭按钮最小化到托盘</div>
+                        <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>关闭时隐藏到托盘，不弹保存确认；从托盘菜单退出</div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={settings.system.closeToTray ?? false}
+                        onChange={(e) => setSystem({ closeToTray: e.target.checked })}
+                      />
+                    </label>
+                  )}
+
                   {/* 大文件确认阈值 */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <div>
@@ -1366,6 +1385,25 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <ShortcutItem keyCombo="Ctrl + S" label="保存当前文档" />
                   <ShortcutItem keyCombo="Ctrl + Shift + S" label="文档另存为" />
                   <ShortcutItem keyCombo="Ctrl + W" label="关闭当前标签页" />
+                  {/* 全局唤起：无默认值，由用户录制；与快捷键条目同高，录制按钮占据右侧按键位 */}
+                  {SUPPORTS_SYSTEM_INTEGRATION && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 12,
+                        padding: '6px 12px',
+                        background: 'var(--editor-surface)',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--editor-border)',
+                        fontSize: 12,
+                      }}
+                    >
+                      <ShortcutLabel label="全局唤起窗口" tip="任意程序中唤起最近使用的窗口，含托盘中的窗口" />
+                      <GlobalShortcutRecorder />
+                    </div>
+                  )}
                 </div>
 
                 {/* Markdown 编辑 */}

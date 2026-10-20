@@ -156,6 +156,11 @@ export function closeWindow(label: string): Promise<void> {
   return invoke<void>('close_window', { label });
 }
 
+/** 注册全局唤起窗口快捷键（空字符串取消）；被占用或无法识别时抛出原因 */
+export function setShowWindowShortcut(shortcut: string): Promise<void> {
+  return invoke<void>('set_show_window_shortcut', { shortcut });
+}
+
 // ── 文档注册表 ──
 
 export function registerDocument(

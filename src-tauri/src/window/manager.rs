@@ -209,6 +209,14 @@ pub fn on_window_event(window: &Window, event: &WindowEvent) {
 
             // 阻止默认关闭，让前端处理未保存拦截
             api.prevent_close();
+
+            // 开启关闭到托盘时仅隐藏窗口：内容仍在内存中，无需未保存确认
+            #[cfg(desktop)]
+            if crate::window::tray::close_to_tray_enabled() {
+                let _ = window.hide();
+                return;
+            }
+
             // 🔴 Tauri v2 陷阱：window.emit() 也是广播！
             // close-requested 只发给本窗口，必须用 emit_to
             let _ = window.app_handle().emit_to(&label, "nb://close-requested", &label);

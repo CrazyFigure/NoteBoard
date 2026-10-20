@@ -241,6 +241,7 @@ export interface Settings {
   editor: EditorSettings;
   file: FileSettings;
   layout: LayoutSettings;
+  system: SystemSettings;
 }
 
 export interface AppearanceSettings {
@@ -383,6 +384,14 @@ export interface SessionSnapshot {
 export interface LayoutSettings {
   statusBarVisible: boolean;
   uiScale: number;
+}
+
+/** 系统集成设置（仅桌面端生效） */
+export interface SystemSettings {
+  /** 关闭按钮最小化到托盘（默认 false）：开启后关闭仅隐藏窗口，不弹未保存确认 */
+  closeToTray: boolean;
+  /** 全局唤起窗口快捷键（默认留空不注册），格式如 Ctrl+Alt+N */
+  showWindowShortcut: string;
 }
 
 // ── 事件载荷 ──

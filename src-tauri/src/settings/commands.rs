@@ -27,6 +27,10 @@ pub fn save_settings(
         app_state.settings_revision = revision;
     }
 
+    // 托盘开关与全局快捷键随设置即时生效
+    #[cfg(desktop)]
+    crate::window::apply_system_settings(&app, &s);
+
     // 🔴 emit 在 v2 里是广播 —— 这里是故意的（FR-1004 所有窗口同步）
     // 不需要 emit_to(label, ...)
     let _ = app.emit("nb://settings-changed", &s);
