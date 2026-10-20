@@ -58,8 +58,9 @@ import {
 import { Tooltip } from '../../components/Tooltip';
 import { CanvasMinimap, type CanvasMinimapHandle, type MinimapScene } from '../../components/minimap/CanvasMinimap';
 import { useSettingsStore } from '../../stores/settingsStore';
-import { IS_MOBILE_UI } from '../../core/platform';
+import { IS_MOBILE_UI, USES_COMMAND_KEY } from '../../core/platform';
 import type { MindmapSearchHighlight } from './mindmapSearch';
+import { formatShortcut } from '../../core/shortcuts';
 
 interface MindmapRendererProps {
   root: MindNode;
@@ -1292,7 +1293,8 @@ export function MindmapRenderer({
       const selected = selectedNodeIdRef.current;
       if (!selected) return;
 
-      if (e.key === 'Delete') {
+      // Mac 键盘的 delete 键对应 Backspace，同样用于删除节点
+      if (e.key === 'Delete' || (USES_COMMAND_KEY && e.key === 'Backspace')) {
         // 焦点在画布之外（如文件树、其他面板）时不响应，避免误删节点
         const container = containerRef.current;
         if (el && el !== document.body && container && !container.contains(el) && !el.contains(container)) return;
@@ -2222,7 +2224,7 @@ export function MindmapRenderer({
       {deleteConfirm && (
         <MindmapConfirmDialog
           title="删除节点"
-          message={`该节点下还有 ${deleteConfirm.descendantCount} 个子节点，将一并删除。删除后可用 Ctrl+Z 撤销。`}
+          message={formatShortcut(`该节点下还有 ${deleteConfirm.descendantCount} 个子节点，将一并删除。删除后可用 Ctrl+Z 撤销。`)}
           confirmLabel="删除"
           onCancel={() => setDeleteConfirm(null)}
           onConfirm={() => {

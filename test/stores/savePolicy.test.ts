@@ -39,4 +39,18 @@ describe('resolveSavePolicy', () => {
     setFileSettings({ autoSaveBoard: true, autoSaveOther: false });
     expect(resolveSavePolicy('board', 'plaintext')).toBe('auto');
   });
+
+  it('思维导图、Draw.io、多维表格各有独立开关', () => {
+    setFileSettings({ autoSaveMindmap: true, autoSaveDrawio: false, autoSaveBitable: true });
+    expect(resolveSavePolicy('mindmap', 'json')).toBe('auto');
+    expect(resolveSavePolicy('drawio', 'xml')).toBe('manual');
+    expect(resolveSavePolicy('bitable', 'json')).toBe('auto');
+  });
+
+  it('旧版设置缺少新开关时视为手动保存', () => {
+    setFileSettings({ autoSaveMindmap: undefined, autoSaveDrawio: undefined, autoSaveBitable: undefined, autoSaveOther: true });
+    expect(resolveSavePolicy('mindmap', 'json')).toBe('manual');
+    expect(resolveSavePolicy('drawio', 'xml')).toBe('manual');
+    expect(resolveSavePolicy('bitable', 'json')).toBe('manual');
+  });
 });

@@ -417,9 +417,9 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
       });
     });
 
-    // 监听 Ctrl + 鼠标滚轮 实时缩放代码字号
+    // 监听 Ctrl + 鼠标滚轮 实时缩放代码字号（Mac 为 Cmd + 滚轮）
     const handleWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey) return;
+      if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
       const delta = e.deltaY < 0 ? 1 : -1;
       const curTypography = useSettingsStore.getState().settings.typography;

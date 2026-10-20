@@ -74,6 +74,7 @@ import {
   Pin,
   PinOff,
 } from 'lucide-react';
+import { formatShortcut } from '../../core/shortcuts';
 
 export interface CellRange {
   startRowId: string;
@@ -3311,7 +3312,7 @@ export function BitableGridView({
           >
             <Copy size={13} color="var(--editor-text-muted, #64748b)" />
             <span style={{ flex: 1 }}>复制</span>
-            <span style={{ fontSize: 10, opacity: 0.5 }}>Ctrl+C</span>
+            <span style={{ fontSize: 10, opacity: 0.5 }}>{formatShortcut('Ctrl+C')}</span>
           </button>
 
           <button
@@ -3330,7 +3331,7 @@ export function BitableGridView({
           >
             <Scissors size={13} color="var(--editor-text-muted, #64748b)" />
             <span style={{ flex: 1 }}>剪切</span>
-            <span style={{ fontSize: 10, opacity: 0.5 }}>Ctrl+X</span>
+            <span style={{ fontSize: 10, opacity: 0.5 }}>{formatShortcut('Ctrl+X')}</span>
           </button>
 
           <button
@@ -3349,12 +3350,12 @@ export function BitableGridView({
               } catch {
                 // fallback
               }
-              showToast('请使用快捷键 Ctrl+V 粘贴');
+              showToast(formatShortcut('请使用快捷键 Ctrl+V 粘贴'));
             }}
           >
             <Clipboard size={13} color="var(--editor-text-muted, #64748b)" />
             <span style={{ flex: 1 }}>粘贴</span>
-            <span style={{ fontSize: 10, opacity: 0.5 }}>Ctrl+V</span>
+            <span style={{ fontSize: 10, opacity: 0.5 }}>{formatShortcut('Ctrl+V')}</span>
           </button>
 
           <button

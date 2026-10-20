@@ -8,6 +8,7 @@ import { X, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 import { ChartExportMenu } from '../export/ChartExportMenu';
 import type { ChartImageSource } from '../export/chartExport';
+import { formatShortcut } from '../../core/shortcuts';
 
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 4;
@@ -188,7 +189,7 @@ export function DiagramFullscreenModal({
         <span style={{ fontWeight: 600, color: 'var(--editor-text, #1e293b)' }}>{title}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Tooltip content="缩小（Ctrl+滚轮）" side="bottom" sideOffset={4}>
+            <Tooltip content={formatShortcut('缩小（Ctrl+滚轮）')} side="bottom" sideOffset={4}>
               <button
                 type="button"
                 className="nb-editor-icon-btn"
@@ -210,7 +211,7 @@ export function DiagramFullscreenModal({
             >
               {Math.round(zoom * 100)}%
             </span>
-            <Tooltip content="放大（Ctrl+滚轮）" side="bottom" sideOffset={4}>
+            <Tooltip content={formatShortcut('放大（Ctrl+滚轮）')} side="bottom" sideOffset={4}>
               <button
                 type="button"
                 className="nb-editor-icon-btn"
@@ -301,7 +302,7 @@ export function DiagramFullscreenModal({
           userSelect: 'none',
         }}
       >
-        拖动平移 · Ctrl + 滚轮缩放 · 双击复位
+        {formatShortcut('拖动平移 · Ctrl + 滚轮缩放 · 双击复位')}
       </div>
     </div>,
     document.body,

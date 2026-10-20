@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { useSyncStore } from '../stores/syncStore';
 import { formatRelative } from '../features/sync/syncFormat';
+import { formatShortcut } from '../core/shortcuts';
 
 interface WelcomeScreenProps {
   onOpenFile?: () => void;
@@ -404,7 +405,7 @@ export function WelcomeScreen({
                   flexShrink: 0,
                 }}
               >
-                {action.shortcut}
+                {formatShortcut(action.shortcut)}
               </span>
             ) : null}
           </button>
@@ -624,7 +625,7 @@ export function WelcomeScreen({
                   flexShrink: 0,
                 }}
               >
-                {action.shortcut}
+                {formatShortcut(action.shortcut)}
               </span>
             ) : null}
           </button>

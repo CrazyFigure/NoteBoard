@@ -428,7 +428,7 @@ export function SearchReplaceBar({
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
-                if (e.ctrlKey || e.altKey) {
+                if (e.ctrlKey || e.metaKey || e.altKey) {
                   handleReplaceAll();
                 } else {
                   handleReplace();

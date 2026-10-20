@@ -102,6 +102,15 @@ export function resolveSavePolicy(
   if (kind === 'board') {
     return fileSettings.autoSaveBoard ? 'auto' : 'manual';
   }
+  if (kind === 'mindmap') {
+    return fileSettings.autoSaveMindmap ? 'auto' : 'manual';
+  }
+  if (kind === 'drawio') {
+    return fileSettings.autoSaveDrawio ? 'auto' : 'manual';
+  }
+  if (kind === 'bitable') {
+    return fileSettings.autoSaveBitable ? 'auto' : 'manual';
+  }
   if (kind === 'code' && language === 'infographic') {
     // 未单独设置过时沿用「代码与文本」开关，保持升级前的行为
     return (fileSettings.autoSaveInfographic ?? fileSettings.autoSaveOther) ? 'auto' : 'manual';
