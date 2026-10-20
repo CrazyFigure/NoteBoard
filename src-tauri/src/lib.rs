@@ -188,10 +188,11 @@ pub fn run() {
         .expect("error while building NoteBoard application")
         .run(|_app, _event| {
             // Finder 的“打开方式”通过 Opened 事件传入文件，不能仅依赖命令行 argv。
+            // 借用 URL 列表，保留事件供下方 Dock 恢复逻辑继续匹配，避免 macOS 编译时部分移动。
             #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Opened { urls } = _event {
+            if let tauri::RunEvent::Opened { ref urls } = _event {
                 let mut argv = vec!["NoteBoard".to_string()];
-                argv.extend(urls.into_iter().filter_map(|url| url.to_file_path().ok()).map(|path| path.to_string_lossy().to_string()));
+                argv.extend(urls.iter().filter_map(|url| url.to_file_path().ok()).map(|path| path.to_string_lossy().to_string()));
                 if argv.len() > 1 { bootstrap::single_instance::handle_second_instance(_app, argv); }
             }
             // 窗口全部隐藏到托盘后点击 Dock 图标，恢复窗口
