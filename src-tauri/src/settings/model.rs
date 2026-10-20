@@ -247,6 +247,13 @@ pub struct FileSettings {
     // 信息图（.infographic / .ig）单独的自动保存开关；缺省时沿用 auto_save_other
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auto_save_infographic: Option<bool>,
+    // 思维导图 / Draw.io / 多维表格自动保存（默认关闭）
+    #[serde(default)]
+    pub auto_save_mindmap: bool,
+    #[serde(default)]
+    pub auto_save_drawio: bool,
+    #[serde(default)]
+    pub auto_save_bitable: bool,
     #[serde(default)]
     pub force_manual_save: bool,
     #[serde(default)]
@@ -269,6 +276,9 @@ impl Default for FileSettings {
             auto_save_board: false,
             auto_save_other: false,
             auto_save_infographic: None,
+            auto_save_mindmap: false,
+            auto_save_drawio: false,
+            auto_save_bitable: false,
             force_manual_save: false,
             show_hidden_files: false,
             restore_session: true,

@@ -327,6 +327,10 @@ export interface FileSettings {
   autoSaveOther: boolean;
   // 信息图（.infographic / .ig）单独的自动保存开关；缺省时沿用 autoSaveOther
   autoSaveInfographic?: boolean;
+  // 思维导图 / Draw.io / 多维表格自动保存（旧版设置缺失时视为关闭）
+  autoSaveMindmap?: boolean;
+  autoSaveDrawio?: boolean;
+  autoSaveBitable?: boolean;
   forceManualSave: boolean;
   showHiddenFiles: boolean;
   restoreSession: boolean;

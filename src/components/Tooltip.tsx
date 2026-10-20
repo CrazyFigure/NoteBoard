@@ -5,11 +5,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import * as RadixTooltip from '@radix-ui/react-tooltip';
+import { formatShortcut } from '../core/shortcuts';
 
 export interface TooltipProps {
   /** 提示文本或节点 */
   content: React.ReactNode;
-  /** 可选：快捷键文本，以微型按键徽标形式在右侧展示 */
+  /** 可选：快捷键文本（按 Windows 书写，Mac 上自动显示为 Cmd / Option），以微型按键徽标形式在右侧展示 */
   shortcut?: string;
   /** 触发元素 */
   children: React.ReactNode;
@@ -160,7 +161,7 @@ function FollowCursorTooltip({
               }}
             >
               {typeof content === 'string' ? <span>{content}</span> : content}
-              {shortcut && <kbd className="nb-tooltip-kbd">{shortcut}</kbd>}
+              {shortcut && <kbd className="nb-tooltip-kbd">{formatShortcut(shortcut)}</kbd>}
               <span
                 style={{
                   position: 'absolute',
@@ -231,7 +232,7 @@ export function Tooltip({
           {typeof content === 'string' ? <span>{content}</span> : content}
           {shortcut && (
             <kbd className="nb-tooltip-kbd">
-              {shortcut}
+              {formatShortcut(shortcut)}
             </kbd>
           )}
           <RadixTooltip.Arrow className="nb-tooltip-arrow" width={8} height={4} />

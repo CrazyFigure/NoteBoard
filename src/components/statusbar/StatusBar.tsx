@@ -8,6 +8,7 @@ import { saveDocument } from '../../features/editor-code/orchestration/saveDocum
 import { emit } from '../../core/emitter';
 import { Eye, Code } from 'lucide-react';
 import { Tooltip } from '../Tooltip';
+import { formatShortcut } from '../../core/shortcuts';
 
 export function StatusBar() {
   const activeKey = useWindowStore((s) => s.activeKey);
@@ -65,7 +66,7 @@ export function StatusBar() {
     } else {
       saveStatus = '未保存';
       saveStatusColor = 'var(--accent-strong)';
-      saveStatusTitle = '有未保存的修改，点击或按 Ctrl+S 保存';
+      saveStatusTitle = formatShortcut('有未保存的修改，点击或按 Ctrl+S 保存');
     }
   }
 

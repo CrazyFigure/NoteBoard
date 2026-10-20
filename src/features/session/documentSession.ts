@@ -368,7 +368,8 @@ async function refreshDirtyAfterWrite(docKey: string): Promise<boolean> {
 /**
  * 排队自动保存：策略/外部状态检查 → 每文档写队列内写盘 →
  * 成功后基线更新为实际写入内容 + 脏态精确重算 + 带证明的暂存清理。
- * CodeEditor / Markdown visual / Markdown source / BoardEditor 的 autosave 统一走这里。
+ * CodeEditor / Markdown visual / Markdown source / BoardEditor 的 autosave 统一走这里，
+ * 其余编辑器经 scheduleAutoSave 防抖后进入。
  */
 export async function queuedAutoSave(docKey: string, content: string): Promise<void> {
   const store = useDocumentStore.getState();
@@ -421,6 +422,37 @@ export async function queuedAutoSave(docKey: string, content: string): Promise<v
   }).catch((e) => {
     console.error('自动保存失败:', e);
   });
+}
+
+// ── 编辑器通用的防抖自动保存入口 ──
+
+/** 每文档的自动保存防抖定时器 */
+const autoSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/**
+ * 编辑器把新内容写入 store 后调用：auto 策略下停止编辑 delay 毫秒后，
+ * 以 store 中的最新内容走 queuedAutoSave 写盘。
+ * 定时器读取 store 而非编辑器实例，编辑器卸载（切换标签 / 回收）后仍能完成保存；
+ * 文档已关闭时 queuedAutoSave 自行放弃。
+ * 用于分屏图表（信息图 / Mermaid / PlantUML）、思维导图、Draw.io 与多维表格。
+ */
+export function scheduleAutoSave(docKey: string, delay = 800): void {
+  // 新建 / 导入的未命名文档还没有磁盘路径，需先另存为
+  if (docKey.startsWith('untitled:')) return;
+  if (useDocumentStore.getState().getDocument(docKey)?.savePolicy !== 'auto') return;
+  const pending = autoSaveTimers.get(docKey);
+  if (pending) clearTimeout(pending);
+  autoSaveTimers.set(
+    docKey,
+    setTimeout(() => {
+      autoSaveTimers.delete(docKey);
+      const content = useDocumentStore.getState().getDocument(docKey)?.content;
+      if (content == null) return;
+      queuedAutoSave(docKey, content).catch((e) => {
+        console.error('自动保存失败:', e);
+      });
+    }, delay),
+  );
 }
 
 // ── 手动保存的共享写盘路径 ──

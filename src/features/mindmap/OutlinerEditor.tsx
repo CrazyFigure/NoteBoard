@@ -23,6 +23,7 @@ import { MindmapImagePreview } from './MindmapImagePreview';
 import { adjustMarksForTextChange } from './mindmapRichText';
 import { Tooltip } from '../../components/Tooltip';
 import type { MindmapSearchHighlight } from './mindmapSearch';
+import { formatShortcut } from '../../core/shortcuts';
 
 interface OutlinerEditorProps {
   root: MindNode;
@@ -1104,7 +1105,7 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
                         }}
                         rows={Math.min(6, (item.node.note?.split('\n').length || 1))}
                         value={item.node.note || ''}
-                        placeholder="添加备注 (支持多行文字，直接按 Ctrl+V 粘贴图片)"
+                        placeholder={formatShortcut('添加备注 (支持多行文字，直接按 Ctrl+V 粘贴图片)')}
                         onChange={(e) => handleNoteChange(item.node.id, e.target.value)}
                         onPaste={(e) => handlePasteInNote(e, item.node.id)}
                         onKeyDown={(e) => {

@@ -26,6 +26,7 @@ import { handleLinkClick } from './linkHandler';
 import { useWindowStore } from '../../stores/windowStore';
 import { Tooltip } from '../../components/Tooltip';
 import { promptLinkUrl } from '../../components/promptPresets';
+import { formatShortcut } from '../../core/shortcuts';
 
 interface BubbleButtonProps {
   icon: ReactNode;
@@ -361,25 +362,25 @@ export function EditorBubbleMenu({
         }}
       >
         <BubbleButton
-          title="粗体 (Ctrl+B)"
+          title={formatShortcut('粗体 (Ctrl+B)')}
           icon={<Bold size={16} />}
           onClick={() => editor.chain().focus().toggleBold().run()}
           active={editor.isActive('bold')}
         />
         <BubbleButton
-          title="斜体 (Ctrl+I)"
+          title={formatShortcut('斜体 (Ctrl+I)')}
           icon={<Italic size={16} />}
           onClick={() => editor.chain().focus().toggleItalic().run()}
           active={editor.isActive('italic')}
         />
         <BubbleButton
-          title="下划线 (Ctrl+U)"
+          title={formatShortcut('下划线 (Ctrl+U)')}
           icon={<Underline size={16} />}
           onClick={() => editor.chain().focus().toggleUnderline().run()}
           active={editor.isActive('underline')}
         />
         <BubbleButton
-          title="删除线 (Ctrl+Shift+X)"
+          title={formatShortcut('删除线 (Ctrl+Shift+X)')}
           icon={<Strikethrough size={16} />}
           onClick={() => editor.chain().focus().toggleStrike().run()}
           active={editor.isActive('strike')}
@@ -434,7 +435,7 @@ export function EditorBubbleMenu({
 
         {/* 超链接设置按钮：优先打开定制美观弹窗 */}
         <BubbleButton
-          title="设置/修改超链接 (Ctrl+K)"
+          title={formatShortcut('设置/修改超链接 (Ctrl+K)')}
           icon={<Link2 size={16} />}
           onClick={() => {
             if (onOpenLinkModal) {

@@ -66,7 +66,7 @@ vi.mock('@/features/editor-md/bubbleMenu', () => ({ EditorBubbleMenu: () => null
 vi.mock('@/features/editor-md/blockDragHandle', () => ({ BlockDragHandle: () => null }));
 vi.mock('@/features/editor-md/markdownAutoSave', () => ({ autoSaveDocument: vi.fn() }));
 vi.mock('@/core/emitter', () => ({ on: () => {}, off: () => {}, emit: () => {} }));
-vi.mock('@/core/shortcuts', () => ({ registerShortcut: () => () => {} }));
+vi.mock('@/core/shortcuts', () => ({ registerShortcut: () => () => {}, formatShortcut: (text: string) => text }));
 
 import { TipTapEditor } from '@/features/editor-md/TipTapEditor';
 import { getEditorCapabilities, resetEditorRegistryForTest } from '@/core/editor/editorRegistry';

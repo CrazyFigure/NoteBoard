@@ -19,6 +19,7 @@ import { Tooltip } from '../Tooltip';
 import type { MarkdownNormalizationPolicy } from '../../core/ipc/types';
 import { IS_MOBILE_UI, IS_NATIVE_MOBILE, IS_WEB } from '../../core/platform';
 import { GlobalShortcutRecorder } from './GlobalShortcutRecorder';
+import { formatShortcut } from '../../core/shortcuts';
 // 设置窗口已在 App 中按需加载；同步面板及样式随窗口就绪，避免首次切换先显示加载占位。
 import { SyncPanel } from '../../features/sync/SyncPanel';
 
@@ -1140,7 +1141,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <Save size={15} color="var(--accent-strong)" />
                       <span>自动保存设置 (分类型独立配置)</span>
                     </div>
-                    <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>默认关闭：使用 Ctrl+S 手动保存，关闭时自动拦截确认</span>
+                    <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>{formatShortcut('默认关闭：使用 Ctrl+S 手动保存，关闭时自动拦截确认')}</span>
                   </div>
 
                   {/* Markdown 笔记自动保存 */}
@@ -1169,6 +1170,45 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     />
                   </label>
 
+                  {/* 思维导图自动保存（.xmind 打开时转换为未保存副本，另存后才参与自动保存） */}
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
+                    <div>
+                      <div>思维导图 (.mindmap / .mm)</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>编辑停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.file.autoSaveMindmap ?? false}
+                      onChange={(e) => setFile({ autoSaveMindmap: e.target.checked })}
+                    />
+                  </label>
+
+                  {/* Draw.io 图表自动保存 */}
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
+                    <div>
+                      <div>Draw.io 图表 (.drawio / .dio)</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>绘制操作停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.file.autoSaveDrawio ?? false}
+                      onChange={(e) => setFile({ autoSaveDrawio: e.target.checked })}
+                    />
+                  </label>
+
+                  {/* 多维表格自动保存 */}
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
+                    <div>
+                      <div>多维表格 (.bitable / .table)</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>编辑停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.file.autoSaveBitable ?? false}
+                      onChange={(e) => setFile({ autoSaveBitable: e.target.checked })}
+                    />
+                  </label>
+
                   {/* 信息图自动保存：未单独设置过时沿用「代码与文本」开关 */}
                   <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
                     <div>
@@ -1194,10 +1234,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       onChange={(e) => setFile({ autoSaveOther: e.target.checked })}
                     />
                   </label>
-
-                  <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>
-                    思维导图、Draw.io 与多维表格暂仅支持手动保存
-                  </div>
                 </div>
 
                 {/* ── 4.2 文件与目录管理 ── */}
@@ -1369,6 +1405,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <ShortcutItem keyCombo="Ctrl + S" label="保存当前文档" />
                   <ShortcutItem keyCombo="Ctrl + Shift + S" label="文档另存为" />
                   <ShortcutItem keyCombo="Ctrl + W" label="关闭当前标签页" />
+                  {/* 撤销 / 重做在各编辑器中通用（Markdown、代码、画板、思维导图、多维表格） */}
+                  <ShortcutItem keyCombo="Ctrl + Z" label="撤销" />
+                  <ShortcutItem keyCombo="Ctrl + Y" label="重做" />
                   {/* 全局唤起：无默认值，由用户录制；与快捷键条目同高，录制按钮占据右侧按键位 */}
                   {SUPPORTS_SYSTEM_INTEGRATION && (
                     <div
@@ -1459,34 +1498,17 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <ShortcutItem keyCombo="Ctrl + Enter / Esc" label="多维表格长文本保存 / 取消" />
                 </div>
 
-                {/* 思维导图（实现见 features/mindmap：MindmapRenderer / MindmapTitleEditor / OutlinerEditor） */}
+                {/* 思维导图：导图与大纲两种模式合并展示（实现见 features/mindmap：MindmapRenderer / MindmapTitleEditor / OutlinerEditor） */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-strong)', marginBottom: 4 }}>
                     思维导图
                   </div>
-                  <ShortcutItem keyCombo="Tab" label="添加子节点" tip="选中节点或编辑标题时均可用，光标自动移到新节点" />
-                  <ShortcutItem keyCombo="Enter" label="添加同级节点" tip="选中节点或编辑标题时均可用，光标自动移到新节点" />
+                  <ShortcutItem keyCombo="Tab" label="添加子节点" tip="大纲模式中为降级" />
+                  <ShortcutItem keyCombo="Shift + Tab" label="大纲模式中升级" />
+                  <ShortcutItem keyCombo="Enter" label="添加同级节点" />
+                  <ShortcutItem keyCombo="Shift + Enter" label="大纲模式中添加备注" />
                   <ShortcutItem keyCombo="Delete" label="删除选中节点" />
-                  <ShortcutItem keyCombo="双击节点" label="编辑节点标题" />
-                  <ShortcutItem keyCombo="Esc" label="完成标题编辑 / 取消拖拽" />
-                  <ShortcutItem keyCombo="Ctrl + B / I / U" label="标题加粗 / 斜体 / 下划线" />
                   <ShortcutItem keyCombo="Ctrl + Enter" label="完成备注编辑" />
-                  <ShortcutItem keyCombo="Ctrl + Z" label="撤销" />
-                  <ShortcutItem keyCombo="Ctrl + Y / Ctrl + Shift + Z" label="重做" />
-                  <ShortcutItem keyCombo="滚轮 / Ctrl + 滚轮" label="平移 / 缩放画布" />
-                  <ShortcutItem keyCombo="双击宽度手柄" label="恢复节点默认宽度" />
-                </div>
-
-                {/* 思维导图大纲模式（实现见 features/mindmap/OutlinerEditor.tsx） */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-strong)', marginBottom: 4 }}>
-                    思维导图大纲模式
-                  </div>
-                  <ShortcutItem keyCombo="Enter" label="新建同级要点" />
-                  <ShortcutItem keyCombo="Shift + Enter" label="添加 / 编辑备注" />
-                  <ShortcutItem keyCombo="Tab / Shift + Tab" label="降级 / 升级" />
-                  <ShortcutItem keyCombo="Backspace" label="删除空要点" tip="仅当前要点为空时生效，光标回到上一行" />
-                  <ShortcutItem keyCombo="↑ / ↓" label="切换到上 / 下一行" />
                 </div>
               </div>
             )}
@@ -1825,7 +1847,7 @@ function ShortcutItem({ keyCombo, label, tip }: { keyCombo: string; label: strin
           color: 'var(--editor-text-secondary)',
         }}
       >
-        {keyCombo}
+        {formatShortcut(keyCombo)}
       </kbd>
     </div>
   );

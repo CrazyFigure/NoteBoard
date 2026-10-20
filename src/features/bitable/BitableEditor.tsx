@@ -55,7 +55,7 @@ import {
   getDocumentRevision,
   bumpDocumentRevision,
 } from '../../core/editor/editorRegistry';
-import { submitCapturedContent } from '../session/documentSession';
+import { scheduleAutoSave, submitCapturedContent } from '../session/documentSession';
 import { takeViewState } from '../session/editorSuspension';
 import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
 import { useEditorActive } from '../../core/editor/EditorActivityContext';
@@ -138,6 +138,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
         setContent(docKey, entry.content);
         setDirty(docKey, true);
         setTabDirty(docKey, true);
+        scheduleAutoSave(docKey);
       },
     });
 
@@ -191,6 +192,8 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
       setContent(docKey, serialized);
       setDirty(docKey, true);
       setTabDirty(docKey, true);
+      // auto 策略下停止编辑 800ms 后自动写盘
+      scheduleAutoSave(docKey);
 
       // 延迟到本轮事件结束再记录历史：把一次交互产生的多步提交合并为单条撤销记录
       const pending = pendingHistoryRef.current;
