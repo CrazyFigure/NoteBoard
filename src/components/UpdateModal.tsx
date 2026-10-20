@@ -18,7 +18,7 @@ import { Tooltip } from './Tooltip';
 import { UpdateReleaseNotes } from './UpdateReleaseNotes';
 import type { UpdateCheckResult, UpdateDownloadProgress, UpdateReleaseNote } from '../core/ipc/types';
 import * as ipc from '../core/ipc/commands';
-import { IS_MOBILE_UI, IS_NATIVE_MOBILE, USES_NATIVE_WINDOW_CHROME } from '../core/platform';
+import { IS_MOBILE_UI, IS_NATIVE_MOBILE, USES_MANUAL_UPDATE_INSTALL } from '../core/platform';
 import { useBackDismiss } from '../mobile/components';
 import { resumeSnapshotTracking, saveCurrentWindowSnapshot } from '../features/session/closedWindowSession';
 import './update-modal.css';
@@ -550,7 +550,7 @@ export function UpdateModal({
             >
               <Download size={14} />
               {/* 移动端同样在应用内下载 APK，完成后由系统安装器完成升级 */}
-              <span>{downloading ? '正在下载' : USES_NATIVE_WINDOW_CHROME ? '下载安装包' : '下载并安装'}</span>
+              <span>{downloading ? '正在下载' : USES_MANUAL_UPDATE_INSTALL ? '下载安装包' : '下载并安装'}</span>
             </button>
           )}
         </div>

@@ -389,6 +389,16 @@ pub fn focus_window(app: tauri::AppHandle, label: String) -> Result<(), String> 
     Ok(())
 }
 
+/// 关闭单个窗口
+/// Windows 先隐藏再关闭，避免 WebView2 销毁过程的白屏残留；
+/// macOS / Linux 直接关闭：window-state 在 CloseRequested 时读取窗口尺寸与位置，
+/// 隐藏后的窗口在这些平台上读数不可靠（macOS 可能被误判为缩放态而跳过保存）
+fn hide_and_close(win: &tauri::WebviewWindow) {
+    #[cfg(target_os = "windows")]
+    let _ = win.hide();
+    let _ = win.close();
+}
+
 /// 关闭窗口
 /// 1. 标记窗口为 closing，使 on_window_event 放行 CloseRequested
 /// 2. 使用 win.close() 走系统标准关闭管线（触发 window-state 保存并安全销毁 HWND 与 WebView2）
@@ -412,8 +422,7 @@ pub fn close_window(
     // 2. 如果还有其他独立窗口，仅关闭本窗口
     if has_other_windows {
         if let Some(win) = app.get_webview_window(&label) {
-            let _ = win.hide();
-            let _ = win.close();
+            hide_and_close(&win);
         }
         return Ok(());
     }
@@ -447,16 +456,14 @@ pub fn close_window(
         // 先建新窗，再关旧窗，保证请求有归属
         let _ = manager::create_window(&app, new_label);
         if let Some(win) = app.get_webview_window(&label) {
-            let _ = win.hide();
-            let _ = win.close();
+            hide_and_close(&win);
         }
         return Ok(());
     }
 
     // 4. 正常退出：关闭并优雅退出应用
     if let Some(win) = app.get_webview_window(&label) {
-        let _ = win.hide();
-        let _ = win.close();
+        hide_and_close(&win);
     }
     // 🔴 诊断 span：最后一个窗口退出前批量落盘，避免进程结束丢失采集数据
     let _ = crate::perf::flush_to_disk("last-window-close");

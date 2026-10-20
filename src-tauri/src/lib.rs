@@ -47,8 +47,18 @@ pub fn run() {
         .plugin(tauri_plugin_os::init());
 
     // 窗口尺寸/位置记忆仅桌面端有意义
+    // 不记忆窗口装饰：装饰由各平台配置决定，避免旧版本保存的系统标题栏状态被恢复
+    // 不记忆可见性：窗口统一在前端壳就绪后由 window_shell_ready 显示，避免插件提前显示出白屏
     #[cfg(desktop)]
-    let builder = builder.plugin(tauri_plugin_window_state::Builder::new().build());
+    let builder = builder.plugin(
+        tauri_plugin_window_state::Builder::new()
+            .with_state_flags(
+                tauri_plugin_window_state::StateFlags::all()
+                    & !tauri_plugin_window_state::StateFlags::DECORATIONS
+                    & !tauri_plugin_window_state::StateFlags::VISIBLE,
+            )
+            .build(),
+    );
 
     // Android 原生桥接（所有文件访问权限、外部文件收件、系统分享）
     #[cfg(target_os = "android")]
