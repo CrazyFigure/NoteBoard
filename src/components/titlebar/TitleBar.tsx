@@ -2,6 +2,7 @@
 // 自绘标题栏：应用图标 + tab 栏 + 拖拽区 + 窗口控制 + 设置入口
 // 详见 docs/07-UI布局与交互规范.md §2
 
+import { useEffect, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Settings as SettingsIcon, RefreshCw } from 'lucide-react';
 import { TabBar } from './TabBar';
@@ -11,10 +12,107 @@ import { Tooltip } from '../Tooltip';
 import { emit } from '../../core/emitter';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { useUpdateStore } from '../../stores/updateStore';
-import { IS_WEB, USES_NATIVE_WINDOW_CHROME } from '../../core/platform';
+import { IS_WEB, USES_MAC_TRAFFIC_LIGHTS } from '../../core/platform';
+
+// macOS 红绿灯按钮占位宽度：左边距 14 + 三个按钮及间距约 54 + 右侧留白
+const MAC_TRAFFIC_LIGHTS_WIDTH = 76;
+
+/** macOS 红绿灯占位区：可拖拽窗口；全屏时系统隐藏红绿灯，占位随之收起 */
+function MacTrafficLightsSpacer() {
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const win = getCurrentWindow();
+    const sync = () => {
+      win.isFullscreen().then(setIsFullscreen).catch(() => {});
+    };
+    sync();
+    // 进入/退出全屏都会触发尺寸变化，借此同步全屏状态
+    const unlisten = win.onResized(sync);
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
+
+  if (isFullscreen) return null;
+  return (
+    <div
+      data-tauri-drag-region=""
+      style={{ width: MAC_TRAFFIC_LIGHTS_WIDTH, height: '100%', flexShrink: 0 }}
+    />
+  );
+}
+
+// 应用图标长按判定时长与拖动判定位移
+const ICON_LONG_PRESS_MS = 250;
+const ICON_DRAG_THRESHOLD_PX = 4;
+
+/** 恢复应用图标的常态样式（拖动窗口后不会收到 mouseup/mouseleave，需主动复位） */
+function resetIconStyle(el: HTMLElement) {
+  el.style.background = 'transparent';
+  el.style.transform = 'scale(1)';
+  el.style.cursor = 'pointer';
+}
 
 export function TitleBar() {
   const toggleSettingsModal = useLayoutStore((s) => s.toggleSettingsModal);
+  const toggleExplorer = useLayoutStore((s) => s.toggleExplorer);
+  const explorerVisible = useLayoutStore((s) => s.explorerVisible);
+  // 应用图标按压状态：长按或按住移动即拖动窗口，此时不再触发点击切换侧栏
+  const iconPressRef = useRef<{ x: number; y: number; timer: number; longPressed: boolean } | null>(null);
+  const suppressIconClickRef = useRef(false);
+
+  // 卸载时清理未触发的长按计时器
+  useEffect(() => () => {
+    if (iconPressRef.current) window.clearTimeout(iconPressRef.current.timer);
+  }, []);
+
+  const endIconPress = () => {
+    if (iconPressRef.current) window.clearTimeout(iconPressRef.current.timer);
+    iconPressRef.current = null;
+  };
+
+  const handleIconPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    endIconPress();
+    suppressIconClickRef.current = false;
+    const el = e.currentTarget;
+    el.style.background = 'var(--toolbar-active)';
+    el.style.transform = 'scale(0.92)';
+    const press = {
+      x: e.clientX,
+      y: e.clientY,
+      longPressed: false,
+      // 长按达到阈值：切换为抓手光标提示可拖动，松开时不再切换侧栏
+      timer: window.setTimeout(() => {
+        press.longPressed = true;
+        suppressIconClickRef.current = true;
+        el.style.cursor = 'grabbing';
+      }, ICON_LONG_PRESS_MS),
+    };
+    iconPressRef.current = press;
+  };
+
+  const handleIconPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const press = iconPressRef.current;
+    if (!press || (e.buttons & 1) === 0) return;
+    const moved = Math.hypot(e.clientX - press.x, e.clientY - press.y) >= ICON_DRAG_THRESHOLD_PX;
+    if (!press.longPressed && !moved) return;
+    // 在鼠标移动事件内启动原生拖动，macOS 需依赖当前鼠标事件才能开始拖动窗口
+    endIconPress();
+    suppressIconClickRef.current = true;
+    resetIconStyle(e.currentTarget);
+    if (!IS_WEB) getCurrentWindow().startDragging().catch(() => {});
+  };
+
+  const handleIconClick = () => {
+    // 长按或拖动窗口后的点击不切换侧栏
+    if (suppressIconClickRef.current) {
+      suppressIconClickRef.current = false;
+      return;
+    }
+    toggleExplorer();
+  };
   // 当前是否有打开的标题栏/标签页菜单
   const hasActiveMenu = useLayoutStore((s) => s.activeMenuCount > 0);
 
@@ -34,8 +132,15 @@ export function TitleBar() {
 
   return (
     <div style={titleBarStyle} role="banner">
-      {/* 应用图标 16px，点击可打开设置中心 */}
-      <Tooltip content="NoteBoard (点击打开设置)" side="bottom" sideOffset={6}>
+      {/* macOS 原生红绿灯叠加在标题栏左侧，需预留位置 */}
+      {USES_MAC_TRAFFIC_LIGHTS && <MacTrafficLightsSpacer />}
+
+      {/* 应用图标 16px，点击收起/展开左侧栏；长按或按住移动可拖动窗口（标签页占满标题栏时仍可移动窗口） */}
+      <Tooltip
+        content={`${explorerVisible ? '收起侧栏' : '展开侧栏'}${IS_WEB ? '' : '，按住可拖动窗口'}`}
+        side="bottom"
+        sideOffset={6}
+      >
         <div
           style={{
             width: 36,
@@ -47,24 +152,34 @@ export function TitleBar() {
             cursor: 'pointer',
             transition: 'all var(--transition-fast)',
           }}
-          onClick={toggleSettingsModal}
+          onClick={handleIconClick}
           onMouseEnter={(e) => {
             e.currentTarget.style.background = 'var(--toolbar-hover)';
             e.currentTarget.style.transform = 'scale(1.05)';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.transform = 'scale(1)';
+            // 移出图标区域时取消未完成的长按
+            if (!iconPressRef.current?.longPressed) endIconPress();
+            resetIconStyle(e.currentTarget);
           }}
-          onMouseDown={(e) => {
+          onPointerDown={IS_WEB ? (e) => {
             e.currentTarget.style.background = 'var(--toolbar-active)';
             e.currentTarget.style.transform = 'scale(0.92)';
-          }}
-          onMouseUp={(e) => {
+          } : handleIconPointerDown}
+          onPointerMove={IS_WEB ? undefined : handleIconPointerMove}
+          onPointerUp={(e) => {
+            endIconPress();
             e.currentTarget.style.background = 'var(--toolbar-hover)';
             e.currentTarget.style.transform = 'scale(1.05)';
+            e.currentTarget.style.cursor = 'pointer';
           }}
-          aria-label="NoteBoard"
+          onPointerCancel={(e) => {
+            endIconPress();
+            resetIconStyle(e.currentTarget);
+          }}
+          role="button"
+          aria-label={explorerVisible ? '收起侧栏' : '展开侧栏'}
+          aria-pressed={explorerVisible}
         >
           <img
             src="/logo.ico"
@@ -218,7 +333,7 @@ export function TitleBar() {
       </Tooltip>
 
       {/* 窗口控制按钮 */}
-      {!IS_WEB && !USES_NATIVE_WINDOW_CHROME && <WindowControls />}
+      {!IS_WEB && !USES_MAC_TRAFFIC_LIGHTS && <WindowControls />}
     </div>
   );
 }

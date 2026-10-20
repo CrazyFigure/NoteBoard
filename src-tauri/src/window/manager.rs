@@ -125,10 +125,16 @@ pub fn create_window(app: &tauri::AppHandle, label: String) -> Result<(), String
         .title("NoteBoard")
         .inner_size(1200.0, 800.0)
         .min_inner_size(680.0, 480.0)
-        // macOS / Linux 交给窗口管理器提供原生控制，Windows 继续使用现有自绘标题栏。
-        .decorations(cfg!(any(target_os = "macos", target_os = "linux")))
+        // 仅 macOS 保留原生装饰以使用红绿灯按钮；Windows / Linux 使用自绘标题栏。
+        .decorations(cfg!(target_os = "macos"))
         .visible(false)
         .shadow(true);
+        // macOS 标题栏透明叠加到 WebView 上，标签栏与红绿灯同处一行（与 tauri.macos.conf.json 保持一致）。
+        #[cfg(target_os = "macos")]
+        let builder = builder
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true)
+            .traffic_light_position(tauri::LogicalPosition::new(14.0, 16.0));
         // 窗口层拖拽开关是 Windows 专有 API；其他系统保留默认启用的 WebView 文件拖拽处理。
         #[cfg(target_os = "windows")]
         let builder = builder.drag_and_drop(true);
