@@ -673,7 +673,7 @@ dependencies = [
 
 [[package]]
 name = "noteboard-sync-server"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "base64",
  "chrono",
