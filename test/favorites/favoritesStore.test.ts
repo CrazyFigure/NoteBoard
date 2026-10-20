@@ -7,6 +7,8 @@ import {
   isDescendantOrSelf,
   removeNodeById,
   moveNode,
+  moveNodeRelative,
+  getFolderCommonDir,
   searchFavorites,
 } from '../../src/features/favorites/favoritesUtils';
 import { useFavoritesStore } from '../../src/features/favorites/favoritesStore';
@@ -140,6 +142,37 @@ describe('favoritesUtils 纯函数测试', () => {
 
     const res3 = searchFavorites(sampleRoots, 'nonexistent');
     expect(res3.length).toBe(0);
+  });
+
+  it('moveNodeRelative 同层前后排序与跨层插入', () => {
+    const ids = (list: FavoriteNode[]) => list.map((n) => n.id);
+
+    // 同层后移：移除源节点后再取参照索引，不会错位
+    expect(ids(moveNodeRelative(sampleRoots, 'folder_tool', 'fav_2', 'after'))).toEqual(['fav_2', 'folder_tool', 'folder_other']);
+    expect(ids(moveNodeRelative(sampleRoots, 'folder_other', 'folder_tool', 'before'))).toEqual(['folder_other', 'folder_tool', 'fav_2']);
+
+    // 跨层：插到子文件夹内的参照节点之前
+    const crossed = moveNodeRelative(sampleRoots, 'fav_2', 'fav_1', 'before');
+    expect(ids(crossed)).toEqual(['folder_tool', 'folder_other']);
+    expect(ids(findFolderById(crossed, 'folder_tool')!.children)).toEqual(['folder_sub', 'fav_2', 'fav_1']);
+
+    // 文件夹不能插到自身子孙层级中
+    expect(moveNodeRelative(sampleRoots, 'folder_tool', 'fav_1', 'after')).toBe(sampleRoots);
+  });
+
+  it('getFolderCommonDir 取文件夹内文件的公共父目录', () => {
+    const folder = (children: FavoriteNode[]) => ({ id: 'f', type: 'folder' as const, name: 'f', createdAt: 0, children });
+    const file = (id: string, path: string) => ({ id, type: 'file' as const, name: id, path, createdAt: 0 });
+
+    expect(getFolderCommonDir(folder([]))).toBeNull();
+    expect(getFolderCommonDir(folder([file('a', 'C:\\guides\\a.md'), file('b', 'C:\\Guides\\b.md')]))).toBe('C:\\guides');
+    // 子文件夹内的文件也参与计算，且不把 C:\foo 误判为 C:\foobar 的父目录
+    expect(getFolderCommonDir(folder([
+      file('a', 'C:\\work\\foo\\a.md'),
+      folder([file('b', 'C:\\work\\foobar\\b.md')]),
+    ]))).toBe('C:\\work');
+    // 跨盘符没有公共目录
+    expect(getFolderCommonDir(folder([file('a', 'C:\\a.md'), file('b', 'D:\\b.md')]))).toBeNull();
   });
 });
 
