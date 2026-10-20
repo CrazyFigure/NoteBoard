@@ -73,7 +73,8 @@ fn enumerate_and_classify() -> Result<Vec<FontFamily>, String> {
                 || lower.contains("jetbrains mono")
                 || lower.contains("maple mono")
                 || lower.contains("cascadia");
-            let has_cjk = name.chars().any(|c| (c as u32) >= 0x4E00 && (c as u32) <= 0x9FFF)
+            let has_cjk = matches!(name.as_str(), "sans-serif" | "serif" | "monospace" | "system-ui")
+                || name.chars().any(|c| (c as u32) >= 0x4E00 && (c as u32) <= 0x9FFF)
                 || lower.contains("yahei")
                 || lower.contains("simsun")
                 || lower.contains("simhei")
@@ -223,7 +224,8 @@ fn enumerate_system_fonts() -> Vec<String> {
 /// 中文显示由系统 Noto Sans CJK 兜底；更多字体可通过应用内字体资源包获得。
 #[cfg(mobile)]
 fn enumerate_system_fonts() -> Vec<String> {
-    ["sans-serif", "serif", "monospace", "Noto Sans CJK SC", "Noto Serif CJK SC", "Roboto"]
+    // iOS 与 Android 的具体字体名不同，只列 WebView 保证提供的通用族，避免虚假可用项。
+    ["sans-serif", "serif", "monospace", "system-ui"]
         .iter()
         .map(|name| name.to_string())
         .collect()

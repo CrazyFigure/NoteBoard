@@ -1,0 +1,39 @@
+/* 插件界面只使用现有语义颜色和排版变量，避免覆盖其它设置与编辑器。 */
+.nb-plugins { color:var(--editor-text); font:inherit; max-width:960px; width:100%; }
+.nb-plugin-fonts>.nb-plugin-empty{text-align:left;padding:0 0 18px;line-height:1.8}
+.nb-plugin-enable{display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;padding:7px 9px;border-radius:6px;white-space:nowrap}.nb-plugin-enable:hover{background:var(--toolbar-hover)}.nb-plugin-enable:active{background:var(--toolbar-active)}.nb-plugin-enable input{accent-color:var(--editor-accent);width:16px;height:16px}
+.nb-plugin-fonts{margin-top:32px;padding-top:12px;border-top:1px solid var(--editor-border);scroll-margin-top:12px}.nb-plugin-fonts h3{font-size:16px}.nb-plugin-font-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.nb-font-sample{font-size:16px!important;line-height:1.8!important;padding:14px 0}.nb-plugin-font-card .nb-plugin-button{margin-top:15px}.nb-plugin-font-card{align-items:flex-start!important}
+@media(max-width:760px){.nb-plugin-font-grid{grid-template-columns:1fr}}
+.nb-plugins-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:20px; }
+.nb-plugins-heading h2 { font-size:18px; font-weight:600; }
+.nb-plugins-tabs { display:flex; gap:16px; border-bottom:1px solid var(--editor-border); margin-bottom:16px; }
+.nb-plugins-tabs button { border:0; border-bottom:2px solid transparent; background:transparent; color:var(--editor-text-muted); padding:8px 1px; font:inherit; cursor:pointer; }
+.nb-plugins-tabs button[aria-selected="true"] { border-bottom-color:var(--editor-accent); color:var(--editor-accent); }
+.nb-plugins-tabs button:hover { color:var(--editor-text); background:var(--toolbar-hover); }
+.nb-plugins-tabs button:active { background:var(--toolbar-active); }
+.nb-plugin-list { display:flex; flex-direction:column; gap:12px; }
+.nb-plugin-card { display:flex; align-items:flex-start; gap:16px; padding:20px; border:1px solid var(--editor-border); border-radius:12px; background:var(--editor-bg); }
+.nb-plugin-icon { display:grid; place-items:center; width:44px; height:44px; flex-shrink:0; border-radius:10px; background:color-mix(in srgb,var(--editor-accent) 9%,var(--editor-bg)); color:var(--editor-accent); }
+.nb-plugin-info { flex:1; min-width:0; }
+.nb-plugin-name { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; font-weight:600; }
+.nb-plugin-name span,.nb-plugin-formats { color:var(--editor-text-muted); font-size:12px; font-weight:400; }
+.nb-plugin-info p { margin:4px 0 8px; color:var(--editor-text-muted); }
+.nb-plugin-info .nb-plugin-update { color:var(--editor-accent); }
+.nb-plugin-info details { margin-top:10px; color:var(--editor-text-muted); font-size:12px; }
+.nb-plugin-info summary { cursor:pointer; }
+.nb-plugin-info pre { white-space:pre-wrap; word-break:break-word; max-height:240px; overflow:auto; margin-top:8px; user-select:text; font:inherit; }
+.nb-plugin-actions { display:flex; align-items:center; flex-wrap:wrap; gap:6px; flex-shrink:0; }
+.nb-plugin-button { display:inline-flex; gap:6px; align-items:center; justify-content:center; border:1px solid var(--control-border); border-radius:6px; padding:6px 10px; background:var(--editor-bg); color:var(--editor-text); font:inherit; cursor:pointer; transition:background 120ms,transform 120ms; }
+.nb-plugin-button:hover { background:var(--toolbar-hover); }
+.nb-plugin-button:active { background:var(--toolbar-active); transform:translateY(1px); }
+.nb-plugin-button:disabled { opacity:.5; cursor:wait; transform:none; }
+.nb-plugin-button.primary { background:var(--editor-accent); border-color:var(--editor-accent); color:var(--accent-fg,#fff); }
+.nb-plugin-button.primary:hover { filter:brightness(1.08); }
+.nb-plugin-button.icon { padding:7px; }
+.nb-plugin-error { padding:12px; margin-bottom:16px; border:1px solid var(--error-500); border-radius:6px; color:var(--error-500); overflow-wrap:anywhere; user-select:text; }
+.nb-plugin-empty { padding:32px 0; text-align:center; color:var(--editor-text-muted); }
+.nb-plugin-confirm { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; margin-top:16px; padding:16px; border:1px solid var(--control-border); border-radius:8px; }
+.nb-plugin-confirm>div { display:flex; gap:8px; }
+.nb-plugin-host { width:100%; height:100%; overflow:auto; color:var(--editor-text); background:var(--editor-bg); font:var(--ui-font-size) var(--ui-font-family); user-select:text; }
+.nb-plugin-host .nb-plugin-placeholder { max-width:820px; padding:32px; margin:auto; }
+@media(max-width:760px) { .nb-plugin-card { padding:14px; gap:12px; flex-wrap:wrap; } .nb-plugin-actions { margin-left:56px; } .nb-plugin-button { min-height:40px; } .nb-plugin-host .nb-plugin-placeholder { padding:16px; } }

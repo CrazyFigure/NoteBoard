@@ -2,7 +2,8 @@
 // 与 src-tauri/src/dto.rs 手工同步
 // 序列化约定：结构体字段 camelCase，枚举变体 kebab-case
 
-export type DocumentKind = 'markdown' | 'code' | 'board' | 'image' | 'mindmap' | 'drawio' | 'bitable' | 'unsupported';
+// preview 为插件提供的二进制只读查看，禁止混入文本保存链路。
+export type DocumentKind = 'markdown' | 'code' | 'board' | 'image' | 'mindmap' | 'drawio' | 'bitable' | 'preview' | 'unsupported';
 // infographic：NoteBoard 自研信息图声明式源码（YAML/JSON），与 md 内嵌 ```infographic 块同源
 export type LanguageId = 'markdown' | 'sql' | 'json' | 'yaml' | 'xml' | 'mermaid' | 'plantuml' | 'infographic' | 'plaintext';
 export type SavePolicy = 'auto' | 'manual';
@@ -16,7 +17,7 @@ export type ContentWidth = 'narrow' | 'standard' | 'wide' | 'full' | (string & {
 
 // ── 枚举清单（与 Rust build.rs 生成的 contract-enums.json 一致）──
 
-export const ALL_DOCUMENT_KINDS: DocumentKind[] = ['markdown', 'code', 'board', 'image', 'mindmap', 'drawio', 'bitable', 'unsupported'];
+export const ALL_DOCUMENT_KINDS: DocumentKind[] = ['markdown', 'code', 'board', 'image', 'mindmap', 'drawio', 'bitable', 'preview', 'unsupported'];
 export const ALL_ENCODINGS: Encoding[] = ['utf8', 'utf8-bom', 'gbk'];
 export const ALL_EOLS: Eol[] = ['crlf', 'lf'];
 export const ALL_LANGUAGE_IDS: LanguageId[] = ['markdown', 'sql', 'json', 'yaml', 'xml', 'mermaid', 'plantuml', 'infographic', 'plaintext'];

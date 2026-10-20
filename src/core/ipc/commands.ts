@@ -200,6 +200,11 @@ export async function readXmindFile(path: string): Promise<Uint8Array> {
   return new Uint8Array(await invoke<ArrayBuffer>('read_xmind_file', { path }));
 }
 
+/** 插件查看器按需读取二进制，不进入文本编码和保存路径。 */
+export async function readPreviewFile(path: string): Promise<Uint8Array> {
+  return new Uint8Array(await invoke<ArrayBuffer>('read_preview_file', { path }));
+}
+
 export function probeDocument(path: string): Promise<ProbeResult> {
   return invoke<ProbeResult>('probe_document', { path });
 }
@@ -305,8 +310,9 @@ export function deleteStagedFile(path: string): Promise<void> {
   return invoke<void>('delete_staged_file', { path });
 }
 
-export function listSystemFonts(forceRefresh?: boolean): Promise<FontFamily[]> {
-  return invoke<FontFamily[]>('list_system_fonts', { forceRefresh: forceRefresh ?? null });
+export function listSystemFonts(forceRefresh?: boolean, allowBrowserPrompt = false): Promise<FontFamily[]> {
+  // 浏览器权限仅由字体下拉的明确操作请求，插件页后台检测不得弹出权限对话框。
+  return invoke<FontFamily[]>('list_system_fonts', { forceRefresh: forceRefresh ?? null, allowBrowserPrompt });
 }
 
 /** 查询字体包状态；验证未完成时返回 verifying（SHA 在后台 worker 执行） */

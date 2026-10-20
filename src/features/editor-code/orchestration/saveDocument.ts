@@ -74,6 +74,8 @@ export async function saveDocument(docKey: string): Promise<boolean> {
     console.warn('saveDocument: 文档不存在', docKey);
     return false;
   }
+  // 只读查看不请求文本快照，避免误触保存时产生解码或覆盖操作。
+  if (doc.kind === 'preview') return false;
 
   // 🔴 N02：正文出口统一前置屏障——未加载的恢复标签正文未知（content=null），
   //    先按需加载；失败/未知一律中止，绝不用空占位镜像或 '' 补成合法空文件写盘
@@ -144,6 +146,8 @@ export async function saveDocument(docKey: string): Promise<boolean> {
  * @param _content 兼容保留的旧参数——快照统一在取得目标授权后从编辑器捕获
  */
 export async function saveAs(originalKey: string, _content: string): Promise<boolean> {
+  // Office/PDF 的编辑与格式转换交由专业软件，不进入文本另存为事务。
+  if (useDocumentStore.getState().getDocument(originalKey)?.kind === 'preview') return false;
   // 🔴 R3-04：会话身份必须在任何 await 之前捕获（含 ensureWritableContent 的
   //    按需加载）——对话框/加载期间源关闭重开（会话换代）时中止旧另存为（C06）
   const originalGeneration = getSessionGeneration(originalKey);

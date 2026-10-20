@@ -24,8 +24,11 @@ WORKDIR /app/server
 COPY server/package.json server/package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && mkdir -p /data/workspace /data/state && chown -R node:node /data
 COPY server/*.mjs ./
+COPY server/font-files.json ./
 COPY --from=sync-engine /build/server/native/target/release/noteboard-sync-server ./noteboard-sync-server
 COPY LICENSE /app/LICENSE
+# 插件兼容性读取部署中的真实主程序版本，与桌面端采用同一版本来源。
+COPY package.json /app/package.json
 COPY --from=frontend /build/dist-web /app/dist-web
 USER node
 VOLUME ["/data"]

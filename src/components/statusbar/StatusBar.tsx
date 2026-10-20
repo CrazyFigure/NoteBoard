@@ -47,6 +47,11 @@ export function StatusBar() {
     whiteSpace: 'nowrap',
   };
 
+  // 二进制查看不展示虚构的文本编码、行列和字数，状态栏明确标识只读。
+  if (doc.kind === 'preview') return <div role="status" style={{ height:24,display:'flex',alignItems:'center',gap:14,padding:'0 12px',background:'var(--statusbar-bg)',borderTop:'1px solid var(--editor-border)',color:'var(--statusbar-text)',fontFamily:'var(--ui-font-family,inherit)',fontSize:'calc(var(--ui-font-size,13px) - 1px)',flexShrink:0 }}>
+    <span>{doc.displayName.split('.').pop()?.toUpperCase()} · 只读预览</span><span>{(doc.size/1024).toLocaleString('zh-CN',{maximumFractionDigits:1})} KB</span>
+  </div>;
+
   const dividerStyle: React.CSSProperties = {
     width: 1,
     height: 14,

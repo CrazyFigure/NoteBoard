@@ -33,6 +33,8 @@ chrono = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "system-proxy", "stream"] }
 # 字体资源包使用 SHA-256 固定清单校验，拒绝被替换或损坏的远程资产。
 sha2 = "0.10"
+# 官方插件安装跨窗口串行执行，锁等待不占用界面线程。
+tokio = { version = "1", features = ["sync"] }
 # 字体包安装过程使用随机临时目录，避免多窗口同时触发操作时互相覆盖。
 uuid = { version = "1", features = ["v4"] }
 # 字体资源包使用标准 ZIP 分发；只启用 Deflate 解压，避免引入无关压缩算法。

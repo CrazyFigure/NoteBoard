@@ -64,7 +64,7 @@ async function fetchSystemFonts(): Promise<FontFamily[]> {
   }
   if (!fontFetchPromise) {
     fontFetchPromise = ipc
-      .listSystemFonts()
+      .listSystemFonts(false, true)
       .then((fonts) => {
         cachedSystemFonts = fonts;
         const merged = mergeFonts(fonts, getApplicationFontFamilies());
@@ -87,10 +87,7 @@ subscribeApplicationFontFamilies((families) => {
   notifyFontListeners(mergeFonts(cachedSystemFonts ?? [], families));
 });
 
-// 模块加载时自动在后台预加载系统字体
-if (typeof window !== 'undefined') {
-  fetchSystemFonts();
-}
+// 仅在用户打开字体下拉后枚举；减少启动工作，也让浏览器有明确的权限交互来源。
 
 /** 辅助判断是否包含中文字符集 */
 function isCjkFont(font: FontFamily): boolean {

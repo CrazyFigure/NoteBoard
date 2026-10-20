@@ -1,0 +1,32 @@
+[
+  {
+    "name": "JetBrainsMono-Bold.woff2",
+    "size": 94588,
+    "sha256": "c503cc5ec5f8b2c7666b7ecda1adf44bd45f2e6579b2eba0fc292150416588a2"
+  },
+  {
+    "name": "JetBrainsMono-BoldItalic.woff2",
+    "size": 98152,
+    "sha256": "3a013466c0eee979fb9d42c2d7a8887cd3645dc8b897cfc5b71781cf982efc5a"
+  },
+  {
+    "name": "JetBrainsMono-Italic.woff2",
+    "size": 95864,
+    "sha256": "cb6a1b246318ed3885d7dffa14a2609297fe80e9b8e500bea33b52fa312a36a4"
+  },
+  {
+    "name": "JetBrainsMono-Regular.woff2",
+    "size": 92164,
+    "sha256": "a9cb1cd82332b23a47e3a1239d25d13c86d16c4220695e34b243effa999f45f2"
+  },
+  {
+    "name": "MapleMonoNormal-NF-CN-Bold.ttf",
+    "size": 17957868,
+    "sha256": "ab69a5e2abc5de7c031d2409f674e7a5957ae88f50c5d4ecb07c8e84f79ece07"
+  },
+  {
+    "name": "MapleMonoNormal-NF-CN-Regular.ttf",
+    "size": 18102808,
+    "sha256": "0a02d131cf514418c560b516fe53094a1b2ac94a54771cd817b44d61a924ed9b"
+  }
+]

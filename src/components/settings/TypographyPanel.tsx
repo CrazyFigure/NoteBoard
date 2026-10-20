@@ -9,7 +9,7 @@ import { FontSelect } from './FontSelect';
 import { FontPackSettingsCard } from './FontPackSettingsCard';
 import { SettingsRange } from './SettingsRange';
 
-export function TypographyPanel() {
+export function TypographyPanel({ onOpenFonts }: { onOpenFonts?: () => void } = {}) {
   const settings = useSettingsStore((s) => s.settings);
 
   const rowStyle: React.CSSProperties = {
@@ -28,7 +28,7 @@ export function TypographyPanel() {
       <h2 style={{ fontSize: 16, marginTop: 0, marginBottom: 16 }}>排版设置</h2>
 
       {/* 独立设置窗口与主设置弹窗复用同一份字体包运行态和管理操作。 */}
-      <FontPackSettingsCard />
+      <FontPackSettingsCard onOpen={onOpenFonts} />
 
       {/* ── 1. 软件界面 UI 排版 ── */}
       <div style={sectionTitleStyle}>1. 软件界面 UI 排版 (全局界面 / 弹窗 / 提示 / 菜单)</div>

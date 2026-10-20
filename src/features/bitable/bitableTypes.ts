@@ -159,7 +159,7 @@ export interface BitableRow {
 }
 
 /** 视图类型 */
-export type BitableViewType = 'grid' | 'kanban' | 'gantt';
+export type BitableViewType = 'grid' | 'kanban' | 'gantt' | 'workbench';
 
 /** 甘特图时间刻度：周 / 月 / 季 / 年 */
 export type GanttZoom = 'week' | 'month' | 'quarter' | 'year';
@@ -234,6 +234,8 @@ export interface BitableViewConfig {
   frozenColumnCount?: number;
   /** 甘特图专属配置 */
   gantt?: GanttViewConfig;
+  /** 工作台配置随原始文件同步，插件停用或卸载时不得移除。 */
+  workbench?: import('../plugins/workbenchTypes').WorkbenchConfig;
 }
 
 /**

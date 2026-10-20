@@ -244,6 +244,8 @@ async function openDocumentInternal(path: string, retryDepth: number): Promise<O
       // 建 Document 与 Tab 并激活（关键路径：到此即可编辑）
       useDocumentStore.getState().upsertFromPayload(payload);
       useWindowStore.getState().openTab(buildTab(payload.key, payload.displayName, payload.kind, payload.language));
+      // 查看文件合法地没有文本正文；成功准备后立即结束恢复占位，避免并发激活把 null 当作未加载。
+      if (payload.kind === 'preview') useWindowStore.getState().clearLazy(payload.key, {kind:payload.kind,language:payload.language});
 
       // 目录展开与最近记录延后（不阻塞打开链路返回，不阻塞队列下一条）
       if (payload.dirPath && payload.key) {
