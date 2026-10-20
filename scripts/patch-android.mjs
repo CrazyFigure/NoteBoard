@@ -130,6 +130,7 @@ manifest = insertAfter(
                 <data android:mimeType="image/vnd.dwg" />
                 <data android:mimeType="image/vnd.dxf" />
                 <data android:mimeType="application/acad" />
+                <data android:mimeType="application/epub+zip" />
                 <data android:mimeType="application/octet-stream" />
             </intent-filter>
             <!-- ${PATCH_MARKER}: 从其它应用分享文本或文件到 NoteBoard -->
@@ -148,6 +149,7 @@ manifest = insertAfter(
                 <data android:mimeType="image/vnd.dwg" />
                 <data android:mimeType="image/vnd.dxf" />
                 <data android:mimeType="application/acad" />
+                <data android:mimeType="application/epub+zip" />
                 <data android:mimeType="application/octet-stream" />
             </intent-filter>
             <intent-filter>
@@ -164,6 +166,7 @@ manifest = insertAfter(
                 <data android:mimeType="image/vnd.dwg" />
                 <data android:mimeType="image/vnd.dxf" />
                 <data android:mimeType="application/acad" />
+                <data android:mimeType="application/epub+zip" />
             </intent-filter>`,
   'Intent 过滤器',
 );

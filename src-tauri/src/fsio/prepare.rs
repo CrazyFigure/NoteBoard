@@ -227,6 +227,12 @@ mod plugin_preview_tests {
     use std::io::Write;
 
     #[test]
+    fn cad_and_epub_open_in_plugin_viewers() {
+        // 与前端 docKind.json 一致，桌面端 CAD 与电子书不能落回纯文本编辑器。
+        for ext in ["dwg", "dxf", "epub"] { assert_eq!(crate::dto::kind_by_ext(ext).0, DocumentKind::Preview); }
+    }
+
+    #[test]
     fn binary_preview_never_produces_writable_text() {
         let mut file = tempfile::Builder::new().suffix(".pdf").tempfile().unwrap();
         file.write_all(b"%PDF-1.7\0binary").unwrap();

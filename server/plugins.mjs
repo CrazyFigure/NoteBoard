@@ -4,7 +4,7 @@ import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { fail } from './files.mjs';
 
-const IDS = new Set(['word', 'excel', 'powerpoint', 'pdf', 'cad', 'workbench']);
+const IDS = new Set(['word', 'excel', 'powerpoint', 'pdf', 'cad', 'epub', 'workbench']);
 const BASE = 'https://github.com/CrazyFigure/NoteBoard/releases/download/plugins/';
 const MAX_BYTES = 32 * 1024 * 1024;
 const semver = /^\d{1,5}\.\d{1,5}\.\d{1,5}$/;
@@ -66,9 +66,10 @@ export async function createPlugins(dataDir, appVersion, { downloadBytes = downl
     return validatePackage(JSON.parse(await fs.readFile(packagePath(id, version), 'utf8')), id, appVersion);
   }
   async function catalog() {
-    const c = JSON.parse((await downloadBytes(`${BASE}catalog.json`, 1024 * 1024)).toString('utf8'));
-    if (c.schemaVersion !== 1 || !Array.isArray(c.plugins) || c.plugins.length > IDS.size) throw fail('插件目录格式无效');
-    return c;
+    // catalog.json 留给旧版本；新目录可能包含本版本未知的插件，忽略而不是整体拒绝。
+    const c = JSON.parse((await downloadBytes(`${BASE}catalog-v2.json`, 1024 * 1024)).toString('utf8'));
+    if (c.schemaVersion !== 1 || !Array.isArray(c.plugins) || c.plugins.length > 64) throw fail('插件目录格式无效');
+    return { ...c, plugins: c.plugins.filter((p) => IDS.has(p?.id)) };
   }
   async function command(name, args) {
     if (name === 'plugin_catalog') return catalog();

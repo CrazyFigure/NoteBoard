@@ -1,5 +1,5 @@
 // 官方插件协议独立于 React 和编辑器内核，插件更新不要求重新构建主程序。
-export type PluginId = 'word' | 'excel' | 'powerpoint' | 'pdf' | 'cad' | 'workbench';
+export type PluginId = 'word' | 'excel' | 'powerpoint' | 'pdf' | 'cad' | 'epub' | 'workbench';
 
 export interface PluginManifest {
   id: PluginId;
@@ -42,6 +42,7 @@ export const OFFICIAL_PLUGINS: Array<{ id: PluginId; name: string; description: 
   { id: 'powerpoint', name: 'PowerPoint 查看', description: '浏览幻灯片、选择与复制文字', formats: 'PPT · PPTX' },
   { id: 'pdf', name: 'PDF 查看', description: '分页阅读、缩放与文字选择', formats: 'PDF' },
   { id: 'cad', name: 'CAD 查看', description: '本地图纸阅读、平移缩放与文字复制', formats: 'DWG · DXF' },
+  { id: 'epub', name: 'EPUB 阅读', description: '目录跳转、字号调节与阅读进度', formats: 'EPUB' },
   { id: 'workbench', name: '多维表格工作台', description: '自由组合数据、任务、日程与笔记', formats: '多维表格视图' },
 ];
 
@@ -52,6 +53,7 @@ export function previewPluginFor(path: string): PluginId | null {
   if (ext === 'xls' || ext === 'xlsx') return 'excel';
   if (ext === 'ppt' || ext === 'pptx') return 'powerpoint';
   if (ext === 'dwg' || ext === 'dxf') return 'cad';
+  if (ext === 'epub') return 'epub';
   return ext === 'pdf' ? 'pdf' : null;
 }
 

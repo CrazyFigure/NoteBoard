@@ -31,7 +31,7 @@ test('新装默认禁用，升级保留开关并删除旧版，失败保留可�
   let value=pkg(),badHash=false;
   const command=await createPlugins(dir,'0.5.8',{downloadBytes:async(url)=>{
     const bytes=Buffer.from(JSON.stringify(value));
-    if(url.endsWith('catalog.json'))return Buffer.from(JSON.stringify({schemaVersion:1,plugins:[{...value.manifest,url:'https://github.com/CrazyFigure/NoteBoard/releases/download/plugins/pdf.nbplugin',sha256:badHash?'0'.repeat(64):hash(bytes)}]}));
+    if(url.endsWith('catalog-v2.json'))return Buffer.from(JSON.stringify({schemaVersion:1,plugins:[{...value.manifest,url:'https://github.com/CrazyFigure/NoteBoard/releases/download/plugins/pdf.nbplugin',sha256:badHash?'0'.repeat(64):hash(bytes)}]}));
     return bytes;
   }});
   await command('plugin_install',{id:'pdf'});

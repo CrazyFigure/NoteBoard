@@ -29,6 +29,7 @@ import {
   GitMerge,
   Layout,
   ChartColumn,
+  BookOpen,
 } from 'lucide-react';
 import { extFromPath } from '../../core/docKind';
 
@@ -73,6 +74,8 @@ export function getExplorerFileIcon(
     case 'dwg':
     case 'dxf':
       return <FileText {...iconProps} color="var(--editor-accent)" />;
+    case 'epub':
+      return <BookOpen {...iconProps} color="var(--editor-accent)" />;
     case 'xls':
     case 'xlsx':
       return <Table {...iconProps} color="var(--success-500)" />;

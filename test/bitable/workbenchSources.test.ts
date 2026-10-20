@@ -25,7 +25,7 @@ describe('工作台跨文件引用与配置边界',()=>{
     expect(()=>validateWorkbenchConfig({...config,widgets:[{...config.widgets[0],sourceId:'unknown'}]})).toThrow();
   });
   it('新旧 Office 与 PDF 均进入只读查看，插件版本按数值更新',()=>{
-    for(const ext of ['doc','docx','xls','xlsx','ppt','pptx','pdf','dwg','dxf'])expect(kindFromPath(`document.${ext}`)).toBe('preview');
+    for(const ext of ['doc','docx','xls','xlsx','ppt','pptx','pdf','dwg','dxf','epub'])expect(kindFromPath(`document.${ext}`)).toBe('preview');
     expect(isEditable('preview')).toBe(false);
     expect(isNewerPluginVersion('1.10.0','1.9.0')).toBe(true);
     expect(isNewerPluginVersion('1.9.0','1.10.0')).toBe(false);

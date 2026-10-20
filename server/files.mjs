@@ -22,7 +22,7 @@ export function classify(name) {
   if (['mindmap', 'xmind', 'mm'].includes(ext)) return ['mindmap', 'plaintext'];
   if (['drawio', 'dio'].includes(ext)) return ['drawio', 'plaintext'];
   if (['bitable', 'table'].includes(ext)) return ['bitable', 'plaintext'];
-  if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pdf', 'dwg', 'dxf'].includes(ext)) return ['preview', 'plaintext'];
+  if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pdf', 'dwg', 'dxf', 'epub'].includes(ext)) return ['preview', 'plaintext'];
   if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'svg', 'bmp', 'avif'].includes(ext)) return ['image', 'plaintext'];
   const language = { sql: 'sql', json: 'json', yaml: 'yaml', yml: 'yaml', xml: 'xml', mmd: 'mermaid', mermaid: 'mermaid', puml: 'plantuml', plantuml: 'plantuml', infographic: 'infographic', ig: 'infographic' }[ext] ?? 'plaintext';
   return ['code', language];

@@ -75,4 +75,7 @@ for(const item of metadata) {
   const pkg=JSON.parse(bytes.toString('utf8'));
   entries.push({...pkg.manifest,licenses:undefined,url:`https://github.com/CrazyFigure/NoteBoard/releases/download/plugins/${name}`,sha256:createHash('sha256').update(bytes).digest('hex'),size:bytes.length});
 }
-await fs.writeFile(path.join(out,'catalog.json'),JSON.stringify({schemaVersion:1,plugins:entries},null,2));
+// 0.5.9 及更早版本拒绝条目数超过已知插件数的目录，旧目录只保留最初六个插件；新版本读取 catalog-v2.json。
+const LEGACY=['word','excel','powerpoint','pdf','cad','workbench'];
+await fs.writeFile(path.join(out,'catalog.json'),JSON.stringify({schemaVersion:1,plugins:entries.filter((entry)=>LEGACY.includes(entry.id))},null,2));
+await fs.writeFile(path.join(out,'catalog-v2.json'),JSON.stringify({schemaVersion:1,plugins:entries},null,2));

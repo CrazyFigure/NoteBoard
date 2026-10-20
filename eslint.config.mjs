@@ -36,7 +36,7 @@ export default [
   },
   {
     // 官方查看器和工作台模块运行于浏览器，构建脚本继续使用 Node 全局。
-    files: ['plugins/{shared,word,excel,powerpoint,pdf,cad,workbench}/**/*.mjs'],
+    files: ['plugins/{shared,word,excel,powerpoint,pdf,cad,epub,workbench}/**/*.mjs'],
     languageOptions: { globals: globals.browser },
   },
   {

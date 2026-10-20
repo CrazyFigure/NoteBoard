@@ -1,6 +1,6 @@
 // 设置中的插件目录与已安装管理，安装操作立即生效，不与外观设置的临时预览混用。
 import { useEffect, useState } from 'react';
-import { Download, RefreshCw, FileText, FileSpreadsheet, Presentation, FileType, LayoutDashboard, DraftingCompass, Trash2 } from 'lucide-react';
+import { Download, RefreshCw, FileText, FileSpreadsheet, Presentation, FileType, LayoutDashboard, DraftingCompass, BookOpen, Trash2 } from 'lucide-react';
 import { initializePlugins, usePluginStore } from '../../stores/pluginStore';
 import { OFFICIAL_PLUGINS, isNewerPluginVersion, type PluginId } from './pluginTypes';
 import { Tooltip } from '../../components/Tooltip';
@@ -8,7 +8,7 @@ import { PluginFonts } from './PluginFonts';
 import { ProgressRing } from './ProgressRing';
 import './plugins.css';
 
-export const PLUGIN_ICONS = { word: FileText, excel: FileSpreadsheet, powerpoint: Presentation, pdf: FileType, cad: DraftingCompass, workbench: LayoutDashboard };
+export const PLUGIN_ICONS = { word: FileText, excel: FileSpreadsheet, powerpoint: Presentation, pdf: FileType, cad: DraftingCompass, epub: BookOpen, workbench: LayoutDashboard };
 
 /** target 来自一次性跳转：字体区或某个插件卡片，定位后短暂高亮。 */
 export function PluginsPanel({ target }: { target?: string | null }) {

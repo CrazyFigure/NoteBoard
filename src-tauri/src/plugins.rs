@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 use sha2::{Digest, Sha256};
 
-const IDS: &[&str] = &["word", "excel", "powerpoint", "pdf", "cad", "workbench"];
+const IDS: &[&str] = &["word", "excel", "powerpoint", "pdf", "cad", "epub", "workbench"];
 const BASE: &str = "https://github.com/CrazyFigure/NoteBoard/releases/download/plugins/";
 const MAX_BYTES: usize = 32 * 1024 * 1024;
 static OPERATIONS: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
@@ -166,8 +166,10 @@ pub async fn plugin_command(app: AppHandle, operation: String, id: Option<String
     let id = id.unwrap_or_default();
     let mut package = None;
     if operation == "catalog" || operation == "install" {
-        let catalog: Value = serde_json::from_slice(&download(&format!("{BASE}catalog.json"), 1024 * 1024, |_, _| {}).await?).map_err(|e| e.to_string())?;
-        if catalog["schemaVersion"] != 1 || catalog["plugins"].as_array().map_or(true, |p| p.len() > IDS.len()) { return Err("插件目录格式无效".into()); }
+        // catalog.json 留给旧版本；新目录可能包含本版本未知的插件，忽略而不是整体拒绝。
+        let mut catalog: Value = serde_json::from_slice(&download(&format!("{BASE}catalog-v2.json"), 1024 * 1024, |_, _| {}).await?).map_err(|e| e.to_string())?;
+        if catalog["schemaVersion"] != 1 || catalog["plugins"].as_array().map_or(true, |p| p.len() > 64) { return Err("插件目录格式无效".into()); }
+        if let Some(plugins) = catalog["plugins"].as_array_mut() { plugins.retain(|p| p["id"].as_str().is_some_and(|id| IDS.contains(&id))); }
         if operation == "catalog" { return Ok(catalog); }
         let entry = catalog["plugins"].as_array().unwrap().iter().find(|p| p["id"].as_str() == Some(&id)).ok_or("插件暂不可下载")?;
         // 只广播插件包下载进度；目录体积很小，不单独显示。

@@ -3,7 +3,7 @@ import type { InstalledPlugin, PluginCatalog, PluginId, PluginPackage } from '..
 const installed=new Map<string,InstalledPlugin>();
 
 export async function mockPluginCommand(args:Record<string,unknown>):Promise<unknown>{
-  const catalog=await fetch('/plugins/dist/catalog.json').then((r)=>{if(!r.ok)throw new Error('请先运行 pnpm --dir plugins build');return r.json() as Promise<PluginCatalog>;});
+  const catalog=await fetch('/plugins/dist/catalog-v2.json').then((r)=>{if(!r.ok)throw new Error('请先运行 pnpm --dir plugins build');return r.json() as Promise<PluginCatalog>;});
   const id=args.id as PluginId;
   if(args.operation==='catalog')return catalog;
   if(args.operation==='list')return [...installed.values()];

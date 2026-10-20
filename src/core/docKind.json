@@ -49,6 +49,7 @@
   "pdf": "preview",
   "dwg": "preview",
   "dxf": "preview",
+  "epub": "preview",
   "infographic": "code",
   "ig": "code"
 }

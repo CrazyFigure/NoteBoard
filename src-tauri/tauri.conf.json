@@ -50,7 +50,7 @@
     ],
     "fileAssociations": [
       {
-        "ext": ["doc", "docx", "xls", "xlsx", "ppt", "pptx", "pdf", "dwg", "dxf"],
+        "ext": ["doc", "docx", "xls", "xlsx", "ppt", "pptx", "pdf", "dwg", "dxf", "epub"],
         "name": "NoteBoard.DocumentPreview",
         "description": "NoteBoard 只读文档预览"
       },

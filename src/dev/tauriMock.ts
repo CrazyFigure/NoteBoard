@@ -30,7 +30,7 @@ seed(`${WORKSPACE}/读书/摘录.md`, '# 摘录\n', 2000);
 seed(`${WORKSPACE}/任务看板.bitable`, serializeBitableDocument(createDefaultBitableDocument('任务看板')), 30);
 // 预览插件和跨文件工作台的开发样例，二进制由测试目录按需提供。
 seed(`${WORKSPACE}/快捷笔记.bitable`, serializeBitableDocument(createDefaultBitableDocument('快捷笔记')), 15);
-for(const name of ['sample.doc','sample.docx','sample.xls','sample.xlsx','sample.ppt','sample.pptx','sample.pdf','sample.dwg','sample.dxf'])seed(`${WORKSPACE}/${name}`,'',10);
+for(const name of ['sample.doc','sample.docx','sample.xls','sample.xlsx','sample.ppt','sample.pptx','sample.pdf','sample.dwg','sample.dxf','sample.epub'])seed(`${WORKSPACE}/${name}`,'',10);
 
 let mockFontPackState: 'ready' | 'missing' = 'ready';
 
@@ -113,7 +113,7 @@ function kindOf(name: string): string | null {
   if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) return 'image';
   if (['mindmap', 'xmind'].includes(ext)) return 'mindmap';
   if (['bitable', 'table'].includes(ext)) return 'bitable';
-  if (['doc','docx','xls','xlsx','ppt','pptx','pdf','dwg','dxf'].includes(ext))return 'preview';
+  if (['doc','docx','xls','xlsx','ppt','pptx','pdf','dwg','dxf','epub'].includes(ext))return 'preview';
   if (['drawio', 'dio'].includes(ext)) return 'drawio';
   return 'code';
 }
