@@ -18,6 +18,7 @@ import {
   addNodeToFolder,
   removeNodeById,
   moveNode,
+  moveNodeRelative,
 } from './favoritesUtils';
 import { showToast } from '../../stores/toastStore';
 
@@ -52,6 +53,7 @@ interface FavoritesState {
   renameFolder: (id: string, newName: string) => Promise<void>;
   renameFavorite: (id: string, newName: string) => Promise<void>;
   moveItem: (sourceId: string, targetFolderId: string, targetIndex?: number) => Promise<void>;
+  moveItemRelative: (sourceId: string, referenceId: string, position: 'before' | 'after') => Promise<void>;
 
   // 辅助状态切换
   setActiveFolder: (folderId: string) => void;
@@ -220,6 +222,17 @@ export const useFavoritesStore = create<FavoritesState>((set, get) => ({
   moveItem: async (sourceId: string, targetFolderId: string, targetIndex?: number) => {
     const { data, saveFavoritesData } = get();
     const nextRoots = moveNode(data.roots, sourceId, targetFolderId, targetIndex);
+    await saveFavoritesData({ ...data, roots: nextRoots });
+  },
+
+  /**
+   * 移动节点到参照节点的前面或后面（拖拽排序）
+   */
+  moveItemRelative: async (sourceId: string, referenceId: string, position: 'before' | 'after') => {
+    const { data, saveFavoritesData } = get();
+    const nextRoots = moveNodeRelative(data.roots, sourceId, referenceId, position);
+    // 位置未变化时不落盘
+    if (nextRoots === data.roots) return;
     await saveFavoritesData({ ...data, roots: nextRoots });
   },
 
