@@ -1,6 +1,7 @@
 // NoteBoard 应用级字体资源包注册与首次启动决策。
 
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { IS_WEB } from '../core/platform';
 
 import type { FontPackStatus, Settings, TypographySettings } from '../core/ipc/types';
 
@@ -61,7 +62,7 @@ export const activateFontPack = async (
   }
 
   const pendingFaces = status.faces.map((descriptor) => {
-    const assetUrl = convertFileSrc(descriptor.path);
+    const assetUrl = IS_WEB ? descriptor.path : convertFileSrc(descriptor.path);
     return new FontFace(
       descriptor.family,
       `url(${JSON.stringify(assetUrl)})`,

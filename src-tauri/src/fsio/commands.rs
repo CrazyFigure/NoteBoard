@@ -21,6 +21,18 @@ pub fn read_document(path: String) -> Result<DocumentPayload, String> {
         return Err(format!("文件不存在: {}", path));
     }
 
+    // 只读二进制不做编码探测，防止恢复或外部变更核对时把 Office 内容解码为文本。
+    if crate::dto::kind_from_path(&path).0 == crate::dto::DocumentKind::Preview {
+        let metadata = std::fs::metadata(p).map_err(|e| e.to_string())?;
+        return Ok(DocumentPayload {
+            key: nbpath::normalize_key(&path), display_name: nbpath::basename(&path),
+            dir_path: nbpath::parent_dir(&path).unwrap_or_default(), kind: crate::dto::DocumentKind::Preview,
+            language: crate::dto::LanguageId::Plaintext, content: None,
+            encoding: crate::dto::Encoding::Utf8, eol: crate::dto::Eol::Lf,
+            size: metadata.len(), mtime: metadata.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|t| t.as_millis() as i64).unwrap_or(0), readonly: true,
+        });
+    }
+
     let result = read::read_file(p).map_err(|e| e.to_string())?;
 
     let (kind, language) = crate::dto::kind_from_path(&path);
@@ -49,6 +61,18 @@ pub async fn read_xmind_file(path: String) -> Result<tauri::ipc::Response, Strin
     let bytes = tauri::async_runtime::spawn_blocking(move || read::read_xmind_bytes(Path::new(&path)))
         .await
         .map_err(|error| format!("读取 XMind 的任务失败: {}", error))??;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// 插件查看仅允许七种明确格式和 50 MiB 普通文件，原始字节走二进制 IPC。
+#[tauri::command]
+pub async fn read_preview_file(path: String) -> Result<tauri::ipc::Response, String> {
+    let bytes = tauri::async_runtime::spawn_blocking(move || {
+        if crate::dto::kind_from_path(&path).0 != crate::dto::DocumentKind::Preview { return Err("此入口仅用于 Office 和 PDF 查看".to_string()); }
+        let metadata = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+        if !metadata.is_file() || metadata.len() > 50 * 1024 * 1024 { return Err("查看文件须为 50 MB 以内的普通文件".into()); }
+        std::fs::read(path).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())??;
     Ok(tauri::ipc::Response::new(bytes))
 }
 
@@ -94,6 +118,8 @@ pub fn write_document(
     eol: crate::dto::Eol,
 ) -> Result<WriteResult, String> {
     let p = Path::new(&path);
+    // 查看器文件禁止通过文本写入接口覆盖，二进制导入仍由专用接口处理。
+    if crate::dto::kind_from_path(&path).0 == crate::dto::DocumentKind::Preview { return Err("Office 和 PDF 仅支持只读查看".into()); }
     crate::sync::hooks::prepare_write(p);
 
     match write::write_with_encoding(p, &content, encoding, eol) {

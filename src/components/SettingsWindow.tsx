@@ -8,15 +8,17 @@ import { TypographyPanel } from './settings/TypographyPanel';
 import { EditorPanel } from './settings/EditorPanel';
 import { FilePanel } from './settings/FilePanel';
 import { AboutPanel } from './settings/AboutPanel';
+import { PluginsPanel } from '../features/plugins/PluginsPanel';
 import * as ipc from '../core/ipc/commands';
 
-type PanelKey = 'appearance' | 'typography' | 'editor' | 'file' | 'about';
+type PanelKey = 'appearance' | 'typography' | 'editor' | 'file' | 'plugins' | 'about';
 
 const PANELS: { key: PanelKey; label: string }[] = [
   { key: 'appearance', label: '外观' },
   { key: 'typography', label: '排版' },
   { key: 'editor', label: '编辑器' },
   { key: 'file', label: '文件' },
+  { key: 'plugins', label: '插件' },
   { key: 'about', label: '关于' },
 ];
 
@@ -99,9 +101,10 @@ export function SettingsWindow() {
       {/* 主内容区 */}
       <div ref={contentRef} style={{ flex: 1, overflow: 'auto', padding: '16px 24px' }}>
         {activePanel === 'appearance' && <AppearancePanel />}
-        {activePanel === 'typography' && <TypographyPanel />}
+        {activePanel === 'typography' && <TypographyPanel onOpenFonts={() => setActivePanel('plugins')} />}
         {activePanel === 'editor' && <EditorPanel />}
         {activePanel === 'file' && <FilePanel />}
+        {activePanel === 'plugins' && <PluginsPanel />}
         {activePanel === 'about' && <AboutPanel />}
       </div>
     </div>

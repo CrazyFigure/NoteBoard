@@ -23,19 +23,27 @@ import { GlobalShortcutRecorder } from './GlobalShortcutRecorder';
 import { formatShortcut } from '../../core/shortcuts';
 // 设置窗口已在 App 中按需加载；同步面板及样式随窗口就绪，避免首次切换先显示加载占位。
 import { SyncPanel } from '../../features/sync/SyncPanel';
+// 插件管理随设置窗口加载，查看器重库仍由已安装包按需提供。
+import { PluginsPanel } from '../../features/plugins/PluginsPanel';
+import { useLayoutStore } from '../../stores/layoutStore';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-type TabType = 'appearance' | 'typography' | 'editor' | 'file' | 'sync' | 'shortcuts' | 'about';
+type TabType = 'appearance' | 'typography' | 'editor' | 'file' | 'sync' | 'plugins' | 'shortcuts' | 'about';
 
 // 托盘与全局快捷键仅原生桌面端可用（网页与移动端没有系统托盘）
 const SUPPORTS_SYSTEM_INTEGRATION = !IS_NATIVE_MOBILE && !IS_WEB;
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('appearance');
+  const settingsTarget = useLayoutStore((state) => state.settingsTarget);
+  // 打开入口携带目标，字体按钮与缺少查看器的文件页均能直达安装区域。
+  useEffect(() => { if (isOpen && settingsTarget) setActiveTab('plugins'); }, [isOpen, settingsTarget]);
+  // 关闭后清除一次性定位，普通设置入口沿用上次查看的栏目。
+  useEffect(() => { if (!isOpen && settingsTarget) useLayoutStore.setState({settingsTarget:null}); }, [isOpen, settingsTarget]);
   const { settings, resolvedTheme, setThemeMode, setTypography, setEditor, setFile, setSystem } = useSettingsStore();
 
   // 使用全局更新状态 Store
@@ -241,6 +249,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               onClick={() => setActiveTab('sync')}
             />
             {/* 移动端没有物理键盘快捷键，隐藏该分组 */}
+            <NavBtn active={activeTab === 'plugins'} icon={<LayoutTemplate size={15} />} label="插件" onClick={() => setActiveTab('plugins')} />
+            {/* 插件管理在桌面、移动与网页端使用相同入口。 */}
             {!IS_MOBILE_UI && (
               <NavBtn
                 active={activeTab === 'shortcuts'}
@@ -329,7 +339,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
 
                 {/* 应用字体包独立于安装包，设置页提供下载、修复、导入和删除的长期入口。 */}
-                <FontPackSettingsCard />
+                <FontPackSettingsCard onOpen={() => { useLayoutStore.setState({settingsTarget:'fonts'}); setActiveTab('plugins'); }} />
 
                 {/* ── 2.1 软件界面 UI 排版 ── */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
@@ -1365,6 +1375,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
             {/* 5. 同步与备份：与其他页签一样直接渲染，配置未就绪的提示由面板自身处理。 */}
             {activeTab === 'sync' && <SyncPanel />}
+            {activeTab === 'plugins' && <PluginsPanel section={settingsTarget === 'fonts' ? 'fonts' : undefined} />}
 
             {/* 6. 快捷键指南 */}
             {activeTab === 'shortcuts' && (

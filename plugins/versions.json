@@ -1,0 +1,8 @@
+[
+  {"id":"word","name":"Word 查看","description":"DOC / DOCX 只读阅读","version":"1.0.0","changelog":"支持新旧 Word 文档查看、缩放和文字选择。"},
+  {"id":"excel","name":"Excel 查看","description":"XLS / XLSX 只读表格","version":"1.0.0","changelog":"支持工作表切换、虚拟滚动与单元格选区复制。"},
+  {"id":"powerpoint","name":"PowerPoint 查看","description":"PPT / PPTX 幻灯片阅读","version":"1.0.0","changelog":"支持新旧演示文稿翻页、文字查看与复制。"},
+  {"id":"pdf","name":"PDF 查看","description":"PDF 分页阅读","version":"1.0.0","changelog":"支持文字层选择、缩放与离线中文字体映射。"},
+  {"id":"cad","name":"CAD 查看","description":"DWG / DXF 本地图纸阅读","version":"1.0.0","changelog":"支持二维图纸、平移缩放与文字复制；解析由后台线程执行。"},
+  {"id":"workbench","name":"多维表格工作台","description":"自由组合多表格数据","version":"1.0.0","changelog":"支持多数据源、模板与可定制工作台组件，不含 AI 功能。"}
+]

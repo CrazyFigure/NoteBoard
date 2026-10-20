@@ -40,6 +40,15 @@
   "uml": "code",
   "bitable": "bitable",
   "table": "bitable",
+  "doc": "preview",
+  "docx": "preview",
+  "xls": "preview",
+  "xlsx": "preview",
+  "ppt": "preview",
+  "pptx": "preview",
+  "pdf": "preview",
+  "dwg": "preview",
+  "dxf": "preview",
   "infographic": "code",
   "ig": "code"
 }

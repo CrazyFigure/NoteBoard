@@ -119,6 +119,17 @@ manifest = insertAfter(
                 <data android:mimeType="application/json" />
                 <data android:mimeType="application/xml" />
                 <data android:mimeType="application/x-yaml" />
+                <!-- 官方插件只读查看 Office 和 PDF，允许从文件管理器选择 NoteBoard 打开。 -->
+                <data android:mimeType="application/msword" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                <data android:mimeType="application/vnd.ms-excel" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                <data android:mimeType="application/vnd.ms-powerpoint" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="image/vnd.dwg" />
+                <data android:mimeType="image/vnd.dxf" />
+                <data android:mimeType="application/acad" />
                 <data android:mimeType="application/octet-stream" />
             </intent-filter>
             <!-- ${PATCH_MARKER}: 从其它应用分享文本或文件到 NoteBoard -->
@@ -127,12 +138,32 @@ manifest = insertAfter(
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/*" />
                 <data android:mimeType="application/json" />
+                <data android:mimeType="application/msword" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                <data android:mimeType="application/vnd.ms-excel" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                <data android:mimeType="application/vnd.ms-powerpoint" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="image/vnd.dwg" />
+                <data android:mimeType="image/vnd.dxf" />
+                <data android:mimeType="application/acad" />
                 <data android:mimeType="application/octet-stream" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/*" />
+                <data android:mimeType="application/msword" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                <data android:mimeType="application/vnd.ms-excel" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                <data android:mimeType="application/vnd.ms-powerpoint" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="image/vnd.dwg" />
+                <data android:mimeType="image/vnd.dxf" />
+                <data android:mimeType="application/acad" />
             </intent-filter>`,
   'Intent 过滤器',
 );

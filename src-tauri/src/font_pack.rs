@@ -105,7 +105,7 @@ fn font_pack_error(code: &str, detail: impl AsRef<str>) -> String {
 
 /// 发布版把可重新下载的大体积资源放入 LOCALAPPDATA，普通卸载和覆盖升级均可保留；
 /// 开发版继续使用 NoteBoard 配置目录，避免调试构建误用已安装应用的正式字体缓存。
-fn font_packs_root_dir() -> PathBuf {
+pub(crate) fn font_packs_root_dir() -> PathBuf {
     if !cfg!(debug_assertions) && cfg!(windows) {
         if let Ok(local_appdata) = std::env::var("LOCALAPPDATA") {
             let trimmed = local_appdata.trim();

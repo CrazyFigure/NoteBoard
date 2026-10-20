@@ -22,6 +22,8 @@ interface LayoutStore {
   outlineWidth: number;
   statusBarVisible: boolean;
   settingsModalVisible: boolean;
+  /** 文件缺少查看器或字体入口指定打开设置的位置，不持久化。 */
+  settingsTarget: 'plugins' | 'fonts' | null;
   /** 编辑器顶部操作栏是否可见 */
   editorToolbarVisible: boolean;
   /** 画板是否处于纯净全屏演示模式；仅为当前窗口临时 UI 状态，不参与布局持久化 */
@@ -82,6 +84,7 @@ export const useLayoutStore = create<LayoutStore>((set, get) => ({
   outlineWidth: OUTLINE_DEFAULT,
   statusBarVisible: true,
   settingsModalVisible: false,
+  settingsTarget: null,
   editorToolbarVisible: true,
   boardPresentationMode: false,
   markdownReadingMode: false,

@@ -13,6 +13,8 @@ pub mod settings;
 pub mod session;
 pub mod sysfont;
 pub mod font_pack;
+// 可独立更新的官方查看器与工作台插件。
+pub mod plugins;
 pub mod bootstrap;
 pub mod updater;
 pub mod staging;
@@ -104,6 +106,7 @@ pub fn run() {
             fsio::commands::read_document,
             // XMind 直接打开保留二进制正文，不能走普通文本解码。
             fsio::commands::read_xmind_file,
+            fsio::commands::read_preview_file,
             fsio::commands::probe_document,
             // 🔴 S07：统一文件准备（读盘前归属查询 + 在途去重 + blocking 读取）
             fsio::prepare::prepare_document,
@@ -146,6 +149,7 @@ pub fn run() {
             font_pack::download_font_pack,
             font_pack::import_font_pack,
             font_pack::remove_font_pack,
+            plugins::plugin_command,
             // updater
             updater::commands::check_for_updates,
             updater::commands::download_and_install_update,
