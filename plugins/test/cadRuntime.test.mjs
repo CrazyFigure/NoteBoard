@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
+import { TextEncoder } from 'node:util';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {cspCompatibleRuntime} from '../cad/cspRuntime.mjs';
@@ -20,4 +21,16 @@ test('无动态代码执行的 CAD 绑定层仍可解析真实 DWG，依赖变�
   const result=module.dwg_read_file('sample.dwg');
   try {assert.ok(result.data>0);assert.ok(module.dwg_get_num_entities(result.data)>0);}
   finally {module.dwg_free(result.data);module.FS.unlink('sample.dwg');}
+});
+
+test('UTF-8 DXF 忽略旧代码页按 UTF-8 解码，GBK 图纸保持原样', async () => {
+  const { normalizeDxfEncoding } = await import('../cad/dxfEncoding.mjs');
+  const utf8 = new TextEncoder().encode('  9\n$DWGCODEPAGE\n  3\nANSI_936\n  1\n中文标注\n');
+  const fixed = normalizeDxfEncoding(utf8);
+  assert.deepEqual([...fixed.subarray(0, 3)], [0xef, 0xbb, 0xbf]);
+  assert.equal(normalizeDxfEncoding(fixed), fixed);
+  const gbk = Uint8Array.from([0x31, 0x0a, 0xd6, 0xd0, 0xce, 0xc4]);
+  assert.equal(normalizeDxfEncoding(gbk), gbk);
+  const ascii = new TextEncoder().encode('0\nEOF\n');
+  assert.equal(normalizeDxfEncoding(ascii), ascii);
 });

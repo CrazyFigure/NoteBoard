@@ -1,18 +1,20 @@
 // 多维表格工作台轻量宿主：文件选择、数据读取和记录入口由主程序控制。
 import { useEffect, useRef, useState } from 'react';
+import { Download, LayoutDashboard, Power } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { initializePlugins, usePluginStore } from '../../stores/pluginStore';
 import { useDocumentStore } from '../../stores/documentStore';
 import * as ipc from '../../core/ipc/commands';
 import { loadPlugin } from './pluginService';
-import { PluginsPanel } from './PluginsPanel';
+import { openPluginSettings } from './openPluginSettings';
+import { ProgressRing } from './ProgressRing';
 import { showToast } from '../../stores/toastStore';
 import { flushDocument } from '../session/documentSession';
 import { requestBitableRecord } from '../bitable/recordOpenRequests';
 import type { BitableDocument } from '../bitable/bitableTypes';
 import type { WorkbenchConfig, WorkbenchDataset, WorkbenchSource } from './workbenchTypes';
-import { relativeSourcePath, resolveSourcePath, validateWorkbenchConfig } from './workbenchSources';
+import { relativeSourcePath, resolveSourcePath, sourceDisplayName, validateWorkbenchConfig } from './workbenchSources';
 import './plugins.css';
 
 interface Props {
@@ -29,6 +31,10 @@ export function WorkbenchView(props: Props) {
   const {docKey,data,config,searchQuery}=props;
   const ref=useRef<HTMLDivElement>(null), latest=useRef(props);latest.current=props;
   const installed=usePluginStore((s)=>s.installed), current=installed.find((p)=>p.manifest.id==='workbench');
+  const busy=usePluginStore((s)=>s.busy);
+  // 当前表格以文件名作为数据源名称，避免多个文件都显示默认标题。
+  const displayName=useDocumentStore((s)=>s.documents.get(docKey)?.displayName);
+  const nameRef=useRef('');nameRef.current=sourceDisplayName(displayName??docKey)||data.title;
   const [error,setError]=useState('');
   const refreshRef=useRef<(() => void)|null>(null);
   useEffect(()=>{void initializePlugins();},[]);
@@ -41,7 +47,7 @@ export function WorkbenchView(props: Props) {
     const target=document.createElement('div');target.style.height='100%';ref.current.replaceChildren(target);
     const authorized=new Map<string,WorkbenchSource>();
     const readConfig=()=>latest.current.config;
-    const currentData=():WorkbenchDataset=>({id:'current',name:latest.current.data.title,columns:latest.current.data.columns,rows:latest.current.data.rows});
+    const currentData=():WorkbenchDataset=>({id:'current',name:nameRef.current,columns:latest.current.data.columns,rows:latest.current.data.rows});
     /** 外部数据源只读取用户在此工作台明确选择的文件，并保留已打开文件的权威未保存内容。 */
     const loadSource=async(source:WorkbenchSource):Promise<WorkbenchDataset>=>{
       const allowed=authorized.get(source.id)??readConfig()?.sources.find((s)=>s.id===source.id);
@@ -61,7 +67,7 @@ export function WorkbenchView(props: Props) {
       try {
         const module=await loadPlugin('workbench',current.manifest.version);if(controller.signal.aborted)return;
         // 工作台接口通过显式回调提供，Office 的只读上下文不包含这些文档操作。
-        const context={container:target,name:data.title,signal:controller.signal,notify:(text:string)=>showToast(text),
+        const context={container:target,name:nameRef.current,signal:controller.signal,notify:(text:string)=>showToast(text),
           getConfig:readConfig,getCurrentData:currentData,getSearchQuery:()=>latest.current.searchQuery,loadSource,
           onChange:(next:unknown)=>latest.current.onChange(validateWorkbenchConfig(next)),
           chooseSource:async()=>{
@@ -69,7 +75,7 @@ export function WorkbenchView(props: Props) {
             const chosen=await open({multiple:false,filters:[{name:'多维表格',extensions:['bitable','table']}]});
             if(!chosen||Array.isArray(chosen))return null;
             if(chosen===docKey)throw new Error('当前表格已经是数据源');
-            const source={id:`source_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,name:chosen.split(/[/\\]/).pop()??'多维表格',path:relativeSourcePath(docKey,chosen)};
+            const source={id:`source_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,name:sourceDisplayName(chosen)||'多维表格',path:relativeSourcePath(docKey,chosen)};
             authorized.set(source.id,source);await loadSource(source);return source;
           },
           openRecord:async(sourceId:string,rowId:string)=>{
@@ -96,8 +102,17 @@ export function WorkbenchView(props: Props) {
     return()=>{controller.abort();dispose?.();target.remove();refreshRef.current=null;};
   },[docKey,current?.enabled,current?.manifest.version]);
 
+  // 未安装时跳转设置中的插件卡片；已安装未启用时就地启用。
+  const canEnable=current&&!current.invalid&&!current.enabled;
   return <div className="nb-plugin-host">
-    {!current?.enabled&&<div className="nb-plugin-placeholder"><PluginsPanel only="workbench"/></div>}
+    {!current?.enabled&&<div className="nb-plugin-required"><div>
+      <div className="nb-plugin-icon"><LayoutDashboard size={26}/></div>
+      <h2>多维表格工作台</h2>
+      <p>{canEnable?'插件已安装但未启用，启用后即可自由组合任务、日程与笔记。':'安装「多维表格工作台」插件后，即可自由组合任务、日程与笔记。'}</p>
+      {canEnable
+        ?<button type="button" className="nb-plugin-button primary" disabled={!!busy} onClick={()=>void usePluginStore.getState().act('toggle','workbench',true)}>{busy?<ProgressRing percent={null}/>:<Power size={15}/>}启用插件</button>
+        :<button type="button" className="nb-plugin-button primary" onClick={()=>openPluginSettings('plugin:workbench')}><Download size={15}/>前往下载插件</button>}
+    </div></div>}
     {error&&<div className="nb-plugin-error" role="alert">{error}</div>}
     <div ref={ref} hidden={!current?.enabled} style={{height:'100%'}}/>
   </div>;

@@ -82,6 +82,12 @@ export async function createFonts(dataDir, { download = fetch } = {}) {
   return {
     status,
     download:() => installation ?? (installation = install().finally(() => { installation = undefined; })),
+    // 卸载只删除本实例下载的字体目录；下载进行中拒绝，避免删掉刚激活的文件。
+    remove:async () => {
+      if (installation) throw fail('字体正在下载，请稍后再卸载');
+      await fs.rm(root, { recursive:true, force:true });
+      cachedIdentity = ''; return status();
+    },
     asset:async (name) => {
       if (!specs.some((s) => s.name === name) || !(await status()).faces.length) throw fail('字体不存在', 404);
       return fs.readFile(path.join(root, 'fonts', name));

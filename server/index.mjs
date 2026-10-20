@@ -85,6 +85,7 @@ export async function createWebServer(options = {}) {
     if (cmd === 'plugin_command') return pluginCommand(`plugin_${args.operation}`, args);
     if (cmd === 'get_font_pack_status' || cmd === 'refresh_font_pack_status') return fonts.status();
     if (cmd === 'download_font_pack') return fonts.download();
+    if (cmd === 'remove_font_pack') return fonts.remove();
     const key = () => clientKey(req);
     if (cmd === 'web_capabilities') return { syncAvailable: !!sync, authEnabled: !!username };
     if (cmd.startsWith('sync_') || cmd.startsWith('backup_')) {

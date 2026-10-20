@@ -1,39 +1,88 @@
 /* 插件界面只使用现有语义颜色和排版变量，避免覆盖其它设置与编辑器。 */
 .nb-plugins { color:var(--editor-text); font:inherit; max-width:960px; width:100%; }
-.nb-plugin-fonts>.nb-plugin-empty{text-align:left;padding:0 0 18px;line-height:1.8}
-.nb-plugin-enable{display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;padding:7px 9px;border-radius:6px;white-space:nowrap}.nb-plugin-enable:hover{background:var(--toolbar-hover)}.nb-plugin-enable:active{background:var(--toolbar-active)}.nb-plugin-enable input{accent-color:var(--editor-accent);width:16px;height:16px}
-.nb-plugin-fonts{margin-top:32px;padding-top:12px;border-top:1px solid var(--editor-border);scroll-margin-top:12px}.nb-plugin-fonts h3{font-size:16px}.nb-plugin-font-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.nb-font-sample{font-size:16px!important;line-height:1.8!important;padding:14px 0}.nb-plugin-font-card .nb-plugin-button{margin-top:15px}.nb-plugin-font-card{align-items:flex-start!important}
-@media(max-width:760px){.nb-plugin-font-grid{grid-template-columns:1fr}}
-.nb-plugins-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:20px; }
+.nb-plugins-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; }
 .nb-plugins-heading h2 { font-size:18px; font-weight:600; }
-.nb-plugins-tabs { display:flex; gap:16px; border-bottom:1px solid var(--editor-border); margin-bottom:16px; }
-.nb-plugins-tabs button { border:0; border-bottom:2px solid transparent; background:transparent; color:var(--editor-text-muted); padding:8px 1px; font:inherit; cursor:pointer; }
+.nb-plugins-tabs { display:flex; gap:16px; border-bottom:1px solid var(--editor-border); margin-bottom:14px; }
+.nb-plugins-tabs button { border:0; border-bottom:2px solid transparent; background:transparent; color:var(--editor-text-muted); padding:8px 2px; font:inherit; cursor:pointer; border-radius:4px 4px 0 0; transition:color 120ms,background 120ms; }
 .nb-plugins-tabs button[aria-selected="true"] { border-bottom-color:var(--editor-accent); color:var(--editor-accent); }
 .nb-plugins-tabs button:hover { color:var(--editor-text); background:var(--toolbar-hover); }
 .nb-plugins-tabs button:active { background:var(--toolbar-active); }
-.nb-plugin-list { display:flex; flex-direction:column; gap:12px; }
-.nb-plugin-card { display:flex; align-items:flex-start; gap:16px; padding:20px; border:1px solid var(--editor-border); border-radius:12px; background:var(--editor-bg); }
-.nb-plugin-icon { display:grid; place-items:center; width:44px; height:44px; flex-shrink:0; border-radius:10px; background:color-mix(in srgb,var(--editor-accent) 9%,var(--editor-bg)); color:var(--editor-accent); }
-.nb-plugin-info { flex:1; min-width:0; }
-.nb-plugin-name { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; font-weight:600; }
-.nb-plugin-name span,.nb-plugin-formats { color:var(--editor-text-muted); font-size:12px; font-weight:400; }
-.nb-plugin-info p { margin:4px 0 8px; color:var(--editor-text-muted); }
-.nb-plugin-info .nb-plugin-update { color:var(--editor-accent); }
-.nb-plugin-info details { margin-top:10px; color:var(--editor-text-muted); font-size:12px; }
-.nb-plugin-info summary { cursor:pointer; }
-.nb-plugin-info pre { white-space:pre-wrap; word-break:break-word; max-height:240px; overflow:auto; margin-top:8px; user-select:text; font:inherit; }
-.nb-plugin-actions { display:flex; align-items:center; flex-wrap:wrap; gap:6px; flex-shrink:0; }
-.nb-plugin-button { display:inline-flex; gap:6px; align-items:center; justify-content:center; border:1px solid var(--control-border); border-radius:6px; padding:6px 10px; background:var(--editor-bg); color:var(--editor-text); font:inherit; cursor:pointer; transition:background 120ms,transform 120ms; }
+
+/* 卡片：图标 | 信息 | 操作，许可详情作为第二行横跨整宽 */
+.nb-plugin-list { display:flex; flex-direction:column; gap:10px; }
+.nb-plugin-card { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; column-gap:14px; padding:14px 16px; border:1px solid var(--editor-border); border-radius:10px; background:var(--editor-bg); transition:border-color 160ms,box-shadow 160ms; }
+.nb-plugin-card:hover { border-color:var(--control-border); }
+.nb-plugin-card.is-highlight { border-color:var(--editor-accent); box-shadow:0 0 0 3px color-mix(in srgb,var(--editor-accent) 18%,transparent); }
+.nb-plugin-icon { display:grid; place-items:center; width:36px; height:36px; flex-shrink:0; border-radius:9px; background:color-mix(in srgb,var(--editor-accent) 10%,var(--editor-bg)); color:var(--editor-accent); }
+.nb-plugin-info { min-width:0; display:flex; flex-direction:column; gap:4px; }
+.nb-plugin-name { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; font-weight:600; line-height:1.4; }
+.nb-plugin-name>span:not(.nb-plugin-chip) { color:var(--editor-text-muted); font-size:12px; font-weight:400; }
+.nb-plugin-meta { display:flex; align-items:center; gap:6px; flex-wrap:wrap; color:var(--editor-text-muted); font-size:12px; line-height:1.5; }
+.nb-plugin-meta>span:first-child { margin-right:4px; }
+.nb-plugin-chip { display:inline-flex; align-items:center; padding:0 6px; height:18px; border-radius:4px; background:var(--editor-surface); border:1px solid var(--editor-border); color:var(--editor-text-muted); font-size:11px; font-weight:400; letter-spacing:.02em; }
+.nb-plugin-chip.is-ready { color:var(--editor-accent); border-color:color-mix(in srgb,var(--editor-accent) 35%,transparent); background:color-mix(in srgb,var(--editor-accent) 8%,var(--editor-bg)); }
+.nb-plugin-update { margin:2px 0 0; color:var(--editor-accent); font-size:12px; }
+.nb-plugin-inline-error { margin:2px 0 0; color:var(--error-500); font-size:12px; overflow-wrap:anywhere; }
+.nb-plugin-actions { display:flex; align-items:center; flex-wrap:wrap; justify-content:flex-end; gap:6px; }
+.nb-plugin-confirm-text { font-size:12px; color:var(--editor-text-muted); margin-right:2px; }
+.nb-plugin-license { grid-column:1 / -1; margin:10px 0 0 50px; color:var(--editor-text-muted); font-size:12px; }
+.nb-plugin-license summary { cursor:pointer; width:max-content; padding:2px 6px; margin-left:-6px; border-radius:4px; user-select:none; }
+.nb-plugin-license summary:hover { background:var(--toolbar-hover); color:var(--editor-text); }
+.nb-plugin-license summary:active { background:var(--toolbar-active); }
+.nb-plugin-license p { margin:8px 0 6px; }
+.nb-plugin-license pre { white-space:pre-wrap; word-break:break-word; max-height:260px; overflow:auto; margin:6px 0 0; padding:10px 12px; border:1px solid var(--editor-border); border-radius:8px; background:var(--editor-surface); user-select:text; font:11px/1.6 var(--mono-font-family,var(--ui-font-family)); }
+.nb-plugin-enable { display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; padding:5px 8px; border-radius:6px; white-space:nowrap; }
+.nb-plugin-enable:hover { background:var(--toolbar-hover); }
+.nb-plugin-enable:active { background:var(--toolbar-active); }
+.nb-plugin-enable input { accent-color:var(--editor-accent); width:15px; height:15px; }
+
+/* 按钮 */
+.nb-plugin-button { display:inline-flex; gap:6px; align-items:center; justify-content:center; height:30px; border:1px solid var(--control-border); border-radius:6px; padding:0 11px; background:var(--editor-bg); color:var(--editor-text); font:inherit; font-size:13px; white-space:nowrap; cursor:pointer; transition:background 120ms,transform 120ms,filter 120ms; }
 .nb-plugin-button:hover { background:var(--toolbar-hover); }
 .nb-plugin-button:active { background:var(--toolbar-active); transform:translateY(1px); }
-.nb-plugin-button:disabled { opacity:.5; cursor:wait; transform:none; }
-.nb-plugin-button.primary { background:var(--editor-accent); border-color:var(--editor-accent); color:var(--accent-fg,#fff); }
+.nb-plugin-button:disabled { opacity:.55; cursor:default; transform:none; }
+.nb-plugin-button.primary { background:var(--editor-accent); border-color:var(--editor-accent); color:var(--accent-fg,#fff); min-width:96px; }
 .nb-plugin-button.primary:hover { filter:brightness(1.08); }
-.nb-plugin-button.icon { padding:7px; }
-.nb-plugin-error { padding:12px; margin-bottom:16px; border:1px solid var(--error-500); border-radius:6px; color:var(--error-500); overflow-wrap:anywhere; user-select:text; }
+.nb-plugin-button.primary:active { filter:brightness(.95); }
+.nb-plugin-button.primary:disabled { opacity:.85; }
+.nb-plugin-button.danger { color:var(--error-500); border-color:color-mix(in srgb,var(--error-500) 45%,transparent); }
+.nb-plugin-button.danger:hover { background:color-mix(in srgb,var(--error-500) 10%,var(--editor-bg)); }
+.nb-plugin-button.icon { width:30px; padding:0; }
+.nb-plugin-error { padding:10px 12px; margin-bottom:14px; border:1px solid var(--error-500); border-radius:6px; color:var(--error-500); overflow-wrap:anywhere; user-select:text; }
 .nb-plugin-empty { padding:32px 0; text-align:center; color:var(--editor-text-muted); }
-.nb-plugin-confirm { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; margin-top:16px; padding:16px; border:1px solid var(--control-border); border-radius:8px; }
-.nb-plugin-confirm>div { display:flex; gap:8px; }
-.nb-plugin-host { width:100%; height:100%; overflow:auto; color:var(--editor-text); background:var(--editor-bg); font:var(--ui-font-size) var(--ui-font-family); user-select:text; }
-.nb-plugin-host .nb-plugin-placeholder { max-width:820px; padding:32px; margin:auto; }
-@media(max-width:760px) { .nb-plugin-card { padding:14px; gap:12px; flex-wrap:wrap; } .nb-plugin-actions { margin-left:56px; } .nb-plugin-button { min-height:40px; } .nb-plugin-host .nb-plugin-placeholder { padding:16px; } }
+
+/* 进度圈与旋转图标 */
+.nb-progress-ring { flex-shrink:0; }
+.nb-progress-ring circle { transition:stroke-dasharray 200ms ease; }
+.nb-progress-ring.is-indeterminate, .nb-spin { animation:nb-plugin-spin .9s linear infinite; }
+@keyframes nb-plugin-spin { to { transform:rotate(360deg); } }
+
+/* 字体区 */
+.nb-plugin-fonts { margin-top:28px; padding-top:18px; border-top:1px solid var(--editor-border); scroll-margin-top:12px; }
+.nb-plugin-fonts-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.nb-plugin-fonts-heading h3 { font-size:16px; font-weight:600; margin:0; }
+.nb-plugin-fonts-heading p { margin:4px 0 0; color:var(--editor-text-muted); font-size:12px; }
+.nb-plugin-font-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.nb-plugin-font-card { align-items:start; }
+.nb-font-sample { margin:8px 0 0; font-size:15px; line-height:1.7; color:var(--editor-text); }
+
+/* 文档查看宿主 */
+.nb-plugin-host { position:relative; width:100%; height:100%; overflow:auto; color:var(--editor-text); background:var(--editor-bg); font:var(--ui-font-size) var(--ui-font-family); user-select:text; }
+.nb-plugin-loading { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; color:var(--editor-text-muted); font-size:13px; pointer-events:none; }
+.nb-plugin-loading .nb-progress-ring { color:var(--editor-accent); }
+.nb-plugin-required { height:100%; display:flex; align-items:center; justify-content:center; padding:32px 24px; box-sizing:border-box; }
+.nb-plugin-required>div { max-width:420px; width:100%; display:flex; flex-direction:column; align-items:center; text-align:center; gap:14px; padding:32px 28px; background:var(--editor-surface); border:1px solid var(--editor-border); border-radius:12px; box-shadow:var(--shadow-md); }
+.nb-plugin-required h2 { margin:0; font-size:17px; font-weight:600; color:var(--editor-heading); }
+.nb-plugin-required p { margin:0; font-size:13px; line-height:1.6; color:var(--editor-text-secondary,var(--editor-text-muted)); }
+.nb-plugin-required .nb-plugin-icon { width:56px; height:56px; border-radius:14px; }
+.nb-plugin-required .nb-plugin-button { height:36px; padding:0 18px; }
+
+@media(max-width:760px) {
+  .nb-plugin-card { grid-template-columns:auto minmax(0,1fr); row-gap:10px; padding:12px; }
+  .nb-plugin-actions { grid-column:1 / -1; justify-content:flex-start; margin-left:50px; }
+  .nb-plugin-license { margin-left:0; }
+  .nb-plugin-button { height:40px; }
+  .nb-plugin-button.icon { width:40px; }
+  .nb-plugin-font-grid { grid-template-columns:1fr; }
+  .nb-plugin-fonts-heading { align-items:flex-start; }
+}

@@ -32,6 +32,8 @@ seed(`${WORKSPACE}/任务看板.bitable`, serializeBitableDocument(createDefault
 seed(`${WORKSPACE}/快捷笔记.bitable`, serializeBitableDocument(createDefaultBitableDocument('快捷笔记')), 15);
 for(const name of ['sample.doc','sample.docx','sample.xls','sample.xlsx','sample.ppt','sample.pptx','sample.pdf','sample.dwg','sample.dxf'])seed(`${WORKSPACE}/${name}`,'',10);
 
+let mockFontPackState: 'ready' | 'missing' = 'ready';
+
 /** 更新样例模式：URL 参数 mockUpdate=1（多个版本）/ single（单个版本），未设置时为 null */
 function mockUpdateMode(): 'multi' | 'single' | null {
   const value = new URLSearchParams(window.location.search).get('mockUpdate');
@@ -211,7 +213,12 @@ export function installTauriMock(): void {
         return false;
       case 'get_font_pack_status':
       case 'refresh_font_pack_status':
-        return { id: 'mock', version: '0', state: 'ready', installedSizeBytes: 0, downloadSizeBytes: 0, downloadUrl: '', faces: [] };
+        return { id: 'mock', version: '0', state: mockFontPackState, installedSizeBytes: 0, downloadSizeBytes: 0, downloadUrl: '', faces: [] };
+      case 'remove_font_pack':
+      case 'download_font_pack':
+        // 字体包卸载与下载只切换样例状态，供设置页验证按钮与确认流程。
+        mockFontPackState = cmd === 'remove_font_pack' ? 'missing' : 'ready';
+        return { id: 'mock', version: '0', state: mockFontPackState, installedSizeBytes: 0, downloadSizeBytes: 0, downloadUrl: '', faces: [] };
       case 'check_for_updates':
         // URL 带 mockUpdate=1 时返回跨多个版本的更新样例（mockUpdate=single 为单个版本），否则模拟离线
         if (mockUpdateMode()) return mockUpdateResult();

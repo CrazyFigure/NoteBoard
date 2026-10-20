@@ -1,12 +1,15 @@
 //! 官方插件服务：固定 GitHub 来源、版本协议、摘要校验与原子激活。
-use std::{fs, io::Write, path::{Path, PathBuf}, sync::OnceLock, time::Duration};
+use std::{fs, io::Write, path::{Path, PathBuf}, sync::OnceLock, time::{Duration, Instant}};
 use serde_json::{json, Value};
+use tauri::{AppHandle, Emitter};
 use sha2::{Digest, Sha256};
 
 const IDS: &[&str] = &["word", "excel", "powerpoint", "pdf", "cad", "workbench"];
 const BASE: &str = "https://github.com/CrazyFigure/NoteBoard/releases/download/plugins/";
 const MAX_BYTES: usize = 32 * 1024 * 1024;
 static OPERATIONS: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+const PROGRESS_EVENT: &str = "nb://plugin-download-progress";
+const PROGRESS_THROTTLE: Duration = Duration::from_millis(100);
 
 /// 插件版本只接受三段非负整数，所有版本路径均由校验后的数字构成。
 fn version(value: &str) -> Result<[u32; 3], String> {
@@ -31,18 +34,22 @@ fn validate(pkg: &Value, id: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// 每次下载均限制响应总量，错误和中断不改变已安装版本。
-async fn download(url: &str, limit: usize) -> Result<Vec<u8>, String> {
+/// 每次下载均限制响应总量，错误和中断不改变已安装版本；进度回调按固定间隔节流。
+async fn download(url: &str, limit: usize, mut progress: impl FnMut(u64, Option<u64>)) -> Result<Vec<u8>, String> {
     if !url.starts_with(BASE) || url[BASE.len()..].contains('/') { return Err("插件下载来源无效".into()); }
     let client = crate::updater::commands::build_update_http_client(Duration::from_secs(180))?;
     let mut response = client.get(url).send().await.map_err(|e| format!("插件下载失败：{e}"))?;
     if response.status() == reqwest::StatusCode::NOT_FOUND { return Err("官方插件尚未发布，请稍后检查更新".into()); }
     if !response.status().is_success() || response.content_length().unwrap_or(0) > limit as u64 { return Err("插件下载失败或文件过大".into()); }
+    let total = response.content_length();
     let mut bytes = Vec::new();
+    let mut last = Instant::now();
     while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
         if bytes.len() + chunk.len() > limit { return Err("插件文件超过大小上限".into()); }
         bytes.extend_from_slice(&chunk);
+        if last.elapsed() >= PROGRESS_THROTTLE { progress(bytes.len() as u64, total); last = Instant::now(); }
     }
+    progress(bytes.len() as u64, total.or(Some(bytes.len() as u64)));
     Ok(bytes)
 }
 
@@ -154,16 +161,19 @@ fn apply_at(root: &Path, operation: &str, id: &str, enabled: bool, package: Opti
 
 /// 主程序只开放固定官方操作，网络与文件任务均不阻塞界面线程。
 #[tauri::command]
-pub async fn plugin_command(operation: String, id: Option<String>, enabled: Option<bool>) -> Result<Value, String> {
+pub async fn plugin_command(app: AppHandle, operation: String, id: Option<String>, enabled: Option<bool>) -> Result<Value, String> {
     let _guard = OPERATIONS.get_or_init(|| tokio::sync::Mutex::new(())).lock().await;
     let id = id.unwrap_or_default();
     let mut package = None;
     if operation == "catalog" || operation == "install" {
-        let catalog: Value = serde_json::from_slice(&download(&format!("{BASE}catalog.json"), 1024 * 1024).await?).map_err(|e| e.to_string())?;
+        let catalog: Value = serde_json::from_slice(&download(&format!("{BASE}catalog.json"), 1024 * 1024, |_, _| {}).await?).map_err(|e| e.to_string())?;
         if catalog["schemaVersion"] != 1 || catalog["plugins"].as_array().map_or(true, |p| p.len() > IDS.len()) { return Err("插件目录格式无效".into()); }
         if operation == "catalog" { return Ok(catalog); }
         let entry = catalog["plugins"].as_array().unwrap().iter().find(|p| p["id"].as_str() == Some(&id)).ok_or("插件暂不可下载")?;
-        let bytes = download(entry["url"].as_str().ok_or("插件地址缺失")?, MAX_BYTES).await?;
+        // 只广播插件包下载进度；目录体积很小，不单独显示。
+        let bytes = download(entry["url"].as_str().ok_or("插件地址缺失")?, MAX_BYTES, |downloaded, total| {
+            let _ = app.emit(PROGRESS_EVENT, json!({"id":id,"downloaded":downloaded,"total":total}));
+        }).await?;
         if entry["sha256"].as_str() != Some(format!("{:x}", Sha256::digest(&bytes)).as_str()) { return Err("插件下载校验失败".into()); }
         let parsed: Value = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
         if parsed["manifest"]["version"] != entry["version"] { return Err("插件版本与目录不一致".into()); }

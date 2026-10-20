@@ -1,12 +1,14 @@
 // Office / PDF 只读宿主：安装状态、异步任务代际和卸载清理由宿主管理。
 import { useEffect, useRef, useState } from 'react';
+import { Download, Power } from 'lucide-react';
 import { useDocumentStore } from '../../stores/documentStore';
 import { initializePlugins, usePluginStore } from '../../stores/pluginStore';
 import { readPreviewFile } from '../../core/ipc/commands';
 import { loadPlugin } from './pluginService';
-import { previewPluginFor } from './pluginTypes';
-import { PluginsPanel } from './PluginsPanel';
+import { OFFICIAL_PLUGINS, previewPluginFor } from './pluginTypes';
 import { openPluginSettings } from './openPluginSettings';
+import { ProgressRing } from './ProgressRing';
+import { UnsupportedView, type UnsupportedPluginAction } from '../../components/UnsupportedView';
 import { showToast } from '../../stores/toastStore';
 import { getDocumentRevision, registerEditorCapabilities } from '../../core/editor/editorRegistry';
 import './plugins.css';
@@ -15,6 +17,7 @@ export function PluginPreview({ docKey }: { docKey: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const doc = useDocumentStore((state) => state.documents.get(docKey));
   const installed = usePluginStore((state) => state.installed);
+  const busy = usePluginStore((state) => state.busy);
   const id = previewPluginFor(docKey);
   const current = installed.find((p) => p.manifest.id === id);
   const [error, setError] = useState('');
@@ -51,10 +54,21 @@ export function PluginPreview({ docKey }: { docKey: string }) {
     });
   }, [docKey]);
 
+  const pluginName = OFFICIAL_PLUGINS.find((item) => item.id === id)?.name ?? '查看';
+  // 未安装或损坏时跳转到设置中的对应插件卡片；已安装仅未启用时就地启用。
+  const action: UnsupportedPluginAction | undefined = !id ? undefined : current && !current.invalid && !current.enabled
+    ? { label: '启用插件', icon: busy ? <ProgressRing percent={null} /> : <Power size={15} />, disabled: !!busy, onClick: () => void usePluginStore.getState().act('toggle', id, true) }
+    : !current?.enabled ? { label: '前往下载插件', icon: <Download size={15} />, onClick: () => openPluginSettings(`plugin:${id}`) } : undefined;
+  const fallback = !current?.enabled || error;
+
   return <div className="nb-plugin-host">
-    {!current?.enabled && id && <div className="nb-plugin-placeholder"><PluginsPanel only={id} /><button type="button" className="nb-plugin-button" onClick={() => openPluginSettings()}>前往设置 · 插件</button><p className="nb-plugin-empty">安装后请勾选启用，即可阅读文件。</p></div>}
-    {loading && <p style={{ padding:20 }}>正在打开文档…</p>}
-    {error && <div className="nb-plugin-error" role="alert">{error}</div>}
-    <div ref={ref} hidden={!current?.enabled} style={{ height:'100%', minHeight:0 }} />
+    {fallback && <UnsupportedView filePath={docKey} fileName={doc?.displayName}
+      pluginAction={error ? undefined : action}
+      description={error ? `文档无法打开：${error.replace(/^Error:\s*/, '')}`
+        : current?.invalid ? `「${pluginName}」插件文件已损坏，重新下载后即可阅读。`
+        : current ? `「${pluginName}」插件未启用，启用后即可直接阅读。`
+        : `安装「${pluginName}」插件后即可直接阅读此文件。`} />}
+    {loading && !error && <div className="nb-plugin-loading" role="status"><ProgressRing percent={null} size={22} />正在打开文档…</div>}
+    <div ref={ref} hidden={!current?.enabled || !!error} style={{ height:'100%', minHeight:0 }} />
   </div>;
 }

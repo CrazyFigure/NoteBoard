@@ -2173,6 +2173,11 @@ button:not(:disabled) {
   background: var(--editor-surface);
 }
 
+/* 跳转按钮按内容收缩，不占满整行 */
+.nb-font-pack-settings-card > button {
+  align-self: flex-start;
+}
+
 /* 设置页滑块：替换 WebView2 原生粗轨道，改为 4px 细轨道 + 14px 圆形拇指 */
 .nb-settings-range {
   -webkit-appearance: none;
@@ -5902,4 +5907,12 @@ input[type='number'] {
 .nb-md-reading .cm-content {
   padding: 72px 24px 40vh !important;
   animation: nb-reading-in 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 不支持文件页：插件主按钮与降级后的系统打开按钮保持原主按钮尺寸 */
+.nb-unsupported-plugin-action,
+.nb-unsupported-open-default {
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px;
 }

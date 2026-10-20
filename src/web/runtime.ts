@@ -148,7 +148,7 @@ export async function invoke<T>(command: string, rawArgs: Record<string, unknown
     case 'is_perf_spans_enabled': result = false; break;
     case 'dump_perf_spans': result = ''; break;
     case 'list_system_fonts': result = await browserSystemFonts(args.allowBrowserPrompt === true); break;
-    case 'download_font_pack':
+    case 'download_font_pack': case 'remove_font_pack':
       result = await request(command, args);
       emit('noteboard-font-pack-changed', result);
       break;

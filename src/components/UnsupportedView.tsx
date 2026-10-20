@@ -2,16 +2,28 @@
 // 当打开非文本或未适配格式文件时在右侧主区域展示
 // 提供系统默认打开与文件定位等快捷操作
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { FileQuestion, ExternalLink, FolderOpen, Copy, Check } from 'lucide-react';
 import * as ipc from '../core/ipc/commands';
 import { extFromPath } from '../core/docKind';
 import { useDocumentStore } from '../stores/documentStore';
 
+/** 对应查看插件可用时的主操作，例如前往下载或直接启用插件。 */
+export interface UnsupportedPluginAction {
+  label: string;
+  icon: ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}
+
 interface UnsupportedViewProps {
   filePath: string;
   fileName?: string;
   fileSize?: number;
+  /** 替换默认的不支持说明 */
+  description?: ReactNode;
+  /** 存在时作为主按钮，系统默认打开降为次要按钮 */
+  pluginAction?: UnsupportedPluginAction;
 }
 
 // 格式化文件大小辅助函数
@@ -22,7 +34,7 @@ function formatFileSize(bytes?: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-export function UnsupportedView({ filePath, fileName }: Omit<UnsupportedViewProps, 'fileSize'>) {
+export function UnsupportedView({ filePath, fileName, description, pluginAction }: Omit<UnsupportedViewProps, 'fileSize'>) {
   const [copied, setCopied] = useState(false);
   // 🔴 S14：size 由本组件按 key 订阅（壳不再订阅整个 documents Map）
   const fileSize = useDocumentStore((s) => s.documents.get(filePath)?.size);
@@ -156,9 +168,11 @@ export function UnsupportedView({ filePath, fileName }: Omit<UnsupportedViewProp
             boxSizing: 'border-box',
           }}
         >
-          NoteBoard 专为 Markdown 笔记、自由画板及轻量纯文本设计。
-          <br />
-          当前文件格式暂不支持直接在软件内查看或编辑。
+          {description ?? <>
+            NoteBoard 专为 Markdown 笔记、自由画板及轻量纯文本设计。
+            <br />
+            当前文件格式暂不支持直接在软件内查看或编辑。
+          </>}
         </div>
 
         {/* 快捷操作按钮组 */}
@@ -170,12 +184,25 @@ export function UnsupportedView({ filePath, fileName }: Omit<UnsupportedViewProp
             width: '100%',
           }}
         >
-          {/* 主动作：用系统默认应用打开 */}
+          {/* 插件主动作：前往下载或启用对应查看插件 */}
+          {pluginAction && (
+            <button
+              type="button"
+              className="nb-btn-primary nb-unsupported-plugin-action"
+              onClick={pluginAction.onClick}
+              disabled={pluginAction.disabled}
+            >
+              {pluginAction.icon}
+              <span>{pluginAction.label}</span>
+            </button>
+          )}
+
+          {/* 用系统默认应用打开：有插件动作时降为次要按钮 */}
           <button
             type="button"
-            className="nb-btn-primary"
+            className={pluginAction ? 'nb-btn-secondary nb-unsupported-open-default' : 'nb-btn-primary'}
             onClick={handleOpenDefault}
-            style={{
+            style={pluginAction ? undefined : {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -192,20 +219,28 @@ export function UnsupportedView({ filePath, fileName }: Omit<UnsupportedViewProp
               transition: 'all var(--transition-fast)',
             }}
             onMouseEnter={(e) => {
+              // 次要按钮样式由全局类负责悬浮与按下反馈
+              if (pluginAction) return;
               e.currentTarget.style.filter = 'brightness(1.08)';
               e.currentTarget.style.transform = 'translateY(-1px)';
               e.currentTarget.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.25)';
             }}
             onMouseLeave={(e) => {
+              // 次要按钮样式由全局类负责悬浮与按下反馈
+              if (pluginAction) return;
               e.currentTarget.style.filter = 'brightness(1)';
               e.currentTarget.style.transform = 'translateY(0)';
               e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
             }}
             onMouseDown={(e) => {
+              // 次要按钮样式由全局类负责悬浮与按下反馈
+              if (pluginAction) return;
               e.currentTarget.style.transform = 'translateY(0) scale(0.98)';
               e.currentTarget.style.filter = 'brightness(0.95)';
             }}
             onMouseUp={(e) => {
+              // 次要按钮样式由全局类负责悬浮与按下反馈
+              if (pluginAction) return;
               e.currentTarget.style.transform = 'translateY(-1px)';
               e.currentTarget.style.filter = 'brightness(1.08)';
             }}

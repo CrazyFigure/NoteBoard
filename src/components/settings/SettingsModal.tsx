@@ -1375,7 +1375,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
             {/* 5. 同步与备份：与其他页签一样直接渲染，配置未就绪的提示由面板自身处理。 */}
             {activeTab === 'sync' && <SyncPanel />}
-            {activeTab === 'plugins' && <PluginsPanel section={settingsTarget === 'fonts' ? 'fonts' : undefined} />}
+            {activeTab === 'plugins' && <PluginsPanel target={settingsTarget} />}
 
             {/* 6. 快捷键指南 */}
             {activeTab === 'shortcuts' && (

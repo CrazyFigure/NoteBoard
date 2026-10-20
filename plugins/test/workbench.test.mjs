@@ -1,7 +1,7 @@
 // 字段的业务 key 不一定等于存储 ID；测试使用不同值，防止空名称和错误统计回归。
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {widget,display,presetWidget,PRESETS} from '../workbench/index.mjs';
+import {widget,display,presetWidget,PRESETS,sourceLabel} from '../workbench/index.mjs';
 
 test('组件绑定真实字段 ID，选择项显示业务标签',()=>{
   const dataset={id:'current',name:'任务',columns:[{id:'col_title',key:'title',name:'任务名称',type:'text'},{id:'col_status',key:'status',name:'当前状态',type:'select',options:[{id:'opt_done',label:'已完成'}]}],rows:[]};
@@ -17,4 +17,10 @@ test('预设模块绑定所选外部表字段，日期筛选可继续修改，�
   assert.equal(config.sourceId,'external_tasks');assert.equal(config.dateField,'due');assert.equal(config.period,'overdue');assert.equal(config.onlyIncomplete,true);
   for(const preset of PRESETS)assert.equal(presetWidget(preset.key,dataset).sourceId,'external_tasks');
   assert.deepEqual(dataset.rows,[]);
+});
+
+test('数据源名称去掉多维表格扩展名，兼容旧配置',()=>{
+  assert.equal(sourceLabel('每日工作记录.bitable'),'每日工作记录');
+  assert.equal(sourceLabel('项目.TABLE'),'项目');
+  assert.equal(sourceLabel('报告.bitable.md'),'报告.bitable.md');
 });

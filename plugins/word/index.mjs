@@ -2,7 +2,7 @@
 import { renderAsync } from 'docx-preview';
 import { parseMsDocToHtml } from 'msdoc-viewer';
 import DOMPurify from 'dompurify';
-import { createView, button, guardLinks, applyFontFallback } from '../shared/view.mjs';
+import { createView, button, iconButton, separator, zoomControl, guardLinks, applyFontFallback } from '../shared/view.mjs';
 import { cleanOpenXml } from '../shared/openXml.mjs';
 
 export async function mount({ container, name, bytes, signal, notify }) {
@@ -12,17 +12,30 @@ export async function mount({ container, name, bytes, signal, notify }) {
   const page = document.createElement('div'); page.className = 'np-word';
   view.viewport.append(page);
   view.style.textContent += `
-    .np-scroll{background:var(--editor-surface)}.np-word{padding:24px;transform-origin:top left;font-family:var(--content-font-family,var(--ui-font-family));overflow:auto;min-height:100%}.np-word>div.docx-wrapper{padding:0;background:transparent}.np-word section.docx{box-shadow:var(--shadow-sm);margin:0 auto 24px}.np-word.reading,.np-word.reading *{font-family:var(--content-font-family,var(--ui-font-family))!important;color:var(--editor-text)!important;background-color:var(--editor-bg)!important}.np-word.reading section{max-width:100%;width:auto!important;min-height:0!important}.np-word img{max-width:100%}@media(max-width:760px){.np-word{padding:10px}.np-word section.docx{margin-bottom:10px}}
+    .np-scroll{background:var(--np-backdrop)}.np-word{padding:24px;transform-origin:top left;font-family:var(--content-font-family,var(--ui-font-family));overflow:auto;min-height:100%}.np-word>div.docx-wrapper{padding:0;background:transparent}.np-word section.docx{box-shadow:var(--np-paper-shadow);margin:0 auto 24px}.np-word.reading,.np-word.reading *{font-family:var(--content-font-family,var(--ui-font-family))!important;color:var(--editor-text)!important;background-color:var(--editor-bg)!important}.np-word.reading section{max-width:100%;width:auto!important;min-height:0!important}.np-word img{max-width:100%}@media(max-width:760px){.np-word{padding:10px}.np-word section.docx{margin-bottom:10px}}
   `;
-  const zoomLabel = document.createElement('span'); zoomLabel.textContent = '100%';
-  const applyZoom = (delta) => { zoom = Math.min(2, Math.max(.4, zoom + delta)); page.style.zoom = String(zoom); zoomLabel.textContent = `${Math.round(zoom * 100)}%`; };
+  /** 以指针位置为锚点缩放；CSS zoom 同时缩放内边距，内容坐标按比例换算即可。 */
+  const setZoom = (next, anchor) => {
+    const vp = view.viewport, rect = vp.getBoundingClientRect();
+    const ax = anchor ? anchor.x - rect.left : vp.clientWidth / 2, ay = anchor ? anchor.y - rect.top : 0;
+    const x = (vp.scrollLeft + ax) / zoom, y = (vp.scrollTop + ay) / zoom;
+    zoom = next; page.style.zoom = String(zoom);
+    vp.scrollLeft = x * zoom - ax; vp.scrollTop = y * zoom - ay; zoomer.update();
+  };
+  const zoomer = zoomControl({ min:.25, max:3, step:.1, target:view.viewport, get:() => zoom, set:setZoom });
   // 以未缩放的页面和容器内边距计算比例，重复点击不会越缩越小。
   const fitWidth=()=>{
     const paper=page.querySelector('section.docx,table');let width=paper?.offsetWidth??view.viewport.clientWidth-24;
     if(paper)for(let parent=paper.parentElement;parent;parent=parent.parentElement){const css=getComputedStyle(parent);width+=(parseFloat(css.paddingLeft)||0)+(parseFloat(css.paddingRight)||0);if(parent===page)break;}
-    zoom=Math.min(1,Math.max(.25,(view.viewport.clientWidth-24)/Math.max(1,width)));page.style.zoom=String(zoom);zoomLabel.textContent=`${Math.round(zoom*100)}%`;
+    zoom=Math.min(1,Math.max(.25,(view.viewport.clientWidth-24)/Math.max(1,width)));page.style.zoom=String(zoom);zoomer.update();
   };
-  view.toolbar.append(button('−', () => applyZoom(-.1)), zoomLabel, button('＋', () => applyZoom(.1)), button('适合宽度',fitWidth),button('阅读排版', () => {page.classList.toggle('reading');if(page.classList.contains('reading')){zoom=1;applyZoom(0);}else fitWidth();}));
+  // 阅读排版忽略原版式，按应用正文字体与主题重排，便于长时间阅读。
+  const reading = button('阅读排版', () => {
+    const on = page.classList.toggle('reading'); reading.setAttribute('aria-pressed', String(on));
+    if (on) setZoom(1); else fitWidth();
+  }, { icon:'book', tip:'按应用字体与主题重排正文' });
+  reading.setAttribute('aria-pressed', 'false');
+  view.toolbar.append(zoomer.element, iconButton('fit-width', '适合宽度', fitWidth), separator(), reading);
   try {
     if (/\.docx$/i.test(name)) {
       // 禁止嵌入 HTML 内容块，修订和批注按静态文档呈现，不启用编辑器。

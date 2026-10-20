@@ -1,7 +1,7 @@
 // 只读 CAD 插件：解析线程、图形上下文和所有 Blob URL 均随文档关闭释放。
 import { CadViewer } from '@flyfish-dev/cad-viewer';
 import assets from 'noteboard:cad-assets';
-import {createView,el,button,copyText} from '../shared/view.mjs';
+import {createView,el,button,iconButton,separator,copyText} from '../shared/view.mjs';
 
 /** 给解析结果设置预算，避免几何展开导致主线程明显卡顿；复杂图纸交由专业工具。 */
 export function validateScene(doc) {
@@ -22,11 +22,12 @@ export async function mount({container,name,bytes,signal,notify}) {
   const view=createView(container,name),urls=[];let viewer,worker,stopped=false;
   const blob=(value,type)=>{const url=URL.createObjectURL(new Blob([value],{type}));urls.push(url);return url;};
   const status=el('span','np-muted','正在后台解析图纸…'),canvasHost=el('div','cad-canvas'),text=el('div','cad-text');
-  view.style.textContent+=`.np-scroll{overflow:hidden;display:flex;flex-direction:column}.cad-canvas{flex:1;min-height:0;position:relative;touch-action:none}.cad-canvas canvas{width:100%;height:100%;display:block;touch-action:none}.cad-text{display:none;flex:1;min-height:0;overflow:auto;padding:18px;font-family:var(--content-font-family,var(--ui-font-family));line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere}.cad-text.show{display:block}.cad-hint{padding:6px 12px;border-top:1px solid var(--editor-border);font-size:11px;color:var(--editor-text-muted)}.cad-source{color:inherit;margin-left:auto}`;
+  view.style.textContent+=`.np-scroll{overflow:hidden;display:flex;flex-direction:column}.cad-canvas{flex:1;min-height:0;position:relative;touch-action:none}.cad-canvas canvas{width:100%;height:100%;display:block;touch-action:none}.cad-text{display:none;flex:1;min-height:0;overflow:auto;padding:18px;font-family:var(--content-font-family,var(--ui-font-family));line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere}.cad-text.show{display:block}.cad-hint{padding:6px 12px;border-top:1px solid var(--editor-border);font-size:11px;color:var(--editor-text-muted)}.cad-source{color:var(--editor-text-muted);font-size:12px;text-decoration:none;padding:0 6px;border-radius:4px}.cad-source:hover{color:var(--editor-accent);background:var(--toolbar-hover)}`;
   view.viewport.append(canvasHost,text,el('div','cad-hint','滚轮缩放 · 拖动平移 · 图纸只读，外部参照与缺失 SHX 字体可能影响显示'));
   const source=el('a','cad-source','开源代码');source.href='https://github.com/flyfish-dev/cad-viewer';source.target='_blank';source.rel='noopener noreferrer';
   let allText='';
-  view.toolbar.append(button('适合窗口',()=>viewer?.fit()),button('−',()=>viewer?.zoomOut()),button('+',()=>viewer?.zoomIn()),button('图纸 / 文字',()=>{const show=text.classList.toggle('show');canvasHost.hidden=show;canvasHost.style.display=show?'none':'';if(!show)viewer?.resize();}),button('复制图中文字',()=>void copyText(allText,notify)),status,source);
+  const textToggle=button('文字',()=>{const show=text.classList.toggle('show');textToggle.setAttribute('aria-pressed',String(show));canvasHost.hidden=show;canvasHost.style.display=show?'none':'';if(!show)viewer?.resize();},{icon:'text',tip:'切换图纸与文字列表'});textToggle.setAttribute('aria-pressed','false');
+  view.toolbar.append(status,separator(),iconButton('minus','缩小',()=>viewer?.zoomOut(),'np-ghost'),iconButton('plus','放大',()=>viewer?.zoomIn(),'np-ghost'),iconButton('scan','适合窗口',()=>viewer?.fit(),'np-ghost'),separator(),textToggle,button('复制文字',()=>void copyText(allText,notify),{icon:'copy',tip:'复制图中全部文字'}),source);
   // 线程中先限制实体数量，再把解析结果传回主线程；避免超大结构化克隆。
   const guard=`const send=self.postMessage.bind(self);self.postMessage=(m,...rest)=>{if(m.type==='result'){try{(${validateScene.toString()})(m.result.document)}catch(e){send({type:'error',requestId:m.requestId,error:{message:e.message}});return}}send(m,...rest)};\n`;
   const isDwg=/\.dwg$/i.test(name);

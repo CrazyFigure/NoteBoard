@@ -11,7 +11,8 @@ export async function mockPluginCommand(args:Record<string,unknown>):Promise<unk
   if(args.operation==='toggle'){const item=installed.get(id);if(item)item.enabled=args.enabled===true;return null;}
   const entry=catalog.plugins.find((p)=>p.id===id);if(!entry)throw new Error('未知插件');
   const pkg=await fetch(`/plugins/dist/${id}-${entry.version}.nbplugin`).then((r)=>r.json() as Promise<PluginPackage>);
-  if(args.operation==='install'){installed.set(id,{manifest:pkg.manifest,enabled:installed.get(id)?.enabled??false});return null;}
+  // 模拟网络耗时，便于查看安装中的进度圈。
+  if(args.operation==='install'){await new Promise((resolve)=>setTimeout(resolve,1200));installed.set(id,{manifest:pkg.manifest,enabled:installed.get(id)?.enabled??false});return null;}
   if(args.operation==='load'&&installed.get(id)?.enabled)return pkg;
   throw new Error('请先安装并启用插件');
 }

@@ -2,6 +2,11 @@
 import type { WorkbenchConfig } from './workbenchTypes';
 import { USES_WINDOWS_PATHS } from '../../core/platform';
 
+/** 数据源显示名使用文件名，多维表格内部默认标题（如「未命名多维表格」）对用户没有区分度。 */
+export function sourceDisplayName(path: string): string {
+  return (path.split(/[/\\]/).pop() ?? path).replace(/\.(bitable|table)$/i, '');
+}
+
 /** 将显式选择的同盘文件转换为相对路径，跨盘引用无法保证跨端可移植。 */
 export function relativeSourcePath(documentPath: string, sourcePath: string): string {
   const base=documentPath.replaceAll('\\','/').split('/'); base.pop();

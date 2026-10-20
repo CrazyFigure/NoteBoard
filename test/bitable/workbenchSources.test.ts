@@ -1,6 +1,6 @@
 // 工作台配置必须可跨设备移动，并在插件缺失时保持文档数据完整。
 import { describe,it,expect } from 'vitest';
-import { relativeSourcePath,resolveSourcePath,validateWorkbenchConfig } from '../../src/features/plugins/workbenchSources';
+import { relativeSourcePath,resolveSourcePath,sourceDisplayName,validateWorkbenchConfig } from '../../src/features/plugins/workbenchSources';
 import { createDefaultBitableDocument,parseBitableDocument,serializeBitableDocument } from '../../src/features/bitable/bitableConverter';
 import { isEditable,kindFromPath } from '../../src/core/docKind';
 import { isNewerPluginVersion } from '../../src/features/plugins/pluginTypes';
@@ -29,5 +29,9 @@ describe('工作台跨文件引用与配置边界',()=>{
     expect(isEditable('preview')).toBe(false);
     expect(isNewerPluginVersion('1.10.0','1.9.0')).toBe(true);
     expect(isNewerPluginVersion('1.9.0','1.10.0')).toBe(false);
+  });
+  it('数据源显示文件名而非表格内部默认标题',()=>{
+    expect(sourceDisplayName('C:\\notes\\每日工作记录.bitable')).toBe('每日工作记录');
+    expect(sourceDisplayName('/workspace/data/tasks.table')).toBe('tasks');
   });
 });
