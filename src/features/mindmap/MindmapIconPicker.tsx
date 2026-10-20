@@ -1,5 +1,5 @@
 // NoteBoard 思维导图与大纲节点前置图标选择器
-// 提供优先级标记 (1~5)、状态徽标与常用 Emoji 选择，全主题自适应
+// 提供优先级标记 (1~10)、状态徽标与常用 Emoji 选择，全主题自适应
 // 详见 docs/09-开发路线图.md
 
 import React, { useEffect, useRef } from 'react';
@@ -17,7 +17,9 @@ interface MindmapIconPickerProps {
 const ICON_GROUPS = [
   {
     name: '优先级',
-    icons: ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'],
+    icons: ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'],
+    // 十个优先级分两行，每行 5 个
+    columns: 5,
   },
   {
     name: '状态标记',
@@ -147,7 +149,7 @@ export function MindmapIconPicker({
           >
             {group.name}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${group.columns ?? 6}, 1fr)`, gap: 4 }}>
             {group.icons.map((icon) => {
               const isSelected = currentIcon === icon;
               return (

@@ -11,6 +11,27 @@ export function* walkMindNodes(root: MindNode): Generator<MindNode> {
   }
 }
 
+/**
+ * 多选节点的「顶层」id：按先序（文档）顺序返回，排除根节点与祖先也被选中的节点。
+ * 批量移动 / 删除时只需处理顶层节点，子孙随之一起。
+ */
+export function getTopLevelMindNodeIds(root: MindNode, ids: Iterable<string>): string[] {
+  const selected = new Set(ids);
+  const result: string[] = [];
+  const stack: Array<{ node: MindNode; covered: boolean }> = root.children
+    .map((node) => ({ node, covered: false }))
+    .reverse();
+  while (stack.length > 0) {
+    const { node, covered } = stack.pop()!;
+    const hit = !covered && selected.has(node.id);
+    if (hit) result.push(node.id);
+    for (let index = node.children.length - 1; index >= 0; index -= 1) {
+      stack.push({ node: node.children[index], covered: covered || hit });
+    }
+  }
+  return result;
+}
+
 /** 获取节点数与层级深度；根节点计为第一层，遍历不依赖展开状态。 */
 export function getMindmapTreeStats(root: MindNode): { nodeCount: number; maxDepth: number } {
   let nodeCount = 0;

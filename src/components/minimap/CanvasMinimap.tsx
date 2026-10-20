@@ -1,5 +1,6 @@
 // NoteBoard 通用画布缩略图（导图 / 画板等大画布共用）
-// 内容用 Canvas 一次性绘制，视口框为 DOM 叠层：平移只移动视口框，不重绘内容。
+// 内容用 Canvas 一次性绘制，视口框为 DOM 叠层：平移只移动视口框，不重绘内容；
+// 面板按内容真实宽高比显示，视野移出内容时缩略图随之缩放，视口框始终留在面板内。
 // 只有当画面里看得到的内容不足面积 1/3、或宽高任一方向不足 1/2 时才出现（内容不大时缩略图没有意义）；
 // 未出现或被收起时只算边界不绘制，大文件几乎零额外开销；收起状态按 storageKey 记在本地。
 
@@ -45,10 +46,13 @@ interface CanvasMinimapProps {
   defaultVisible?: boolean;
 }
 
-/** 缩略图面板尺寸与内容留白：固定宽度的竖向面板，高度随内容在范围内伸缩，细高导图不再缩成一条线 */
-const MINIMAP_WIDTH = 120;
-const MINIMAP_MIN_HEIGHT = 150;
-const MINIMAP_MAX_HEIGHT = 180;
+/**
+ * 缩略图面板尺寸与内容留白：按内容真实宽高比等比放进上限框；
+ * 短边不小于下限，细长内容不会缩成一条线（此时内容在短边方向居中）
+ */
+const MINIMAP_MAX_WIDTH = 200;
+const MINIMAP_MAX_HEIGHT = 150;
+const MINIMAP_MIN_SIDE = 48;
 const MINIMAP_PADDING = 8;
 
 /**
@@ -79,14 +83,36 @@ interface MinimapSize {
   height: number;
 }
 
-/** 无内容时的默认面板尺寸（3:4 竖向） */
-const DEFAULT_SIZE: MinimapSize = { width: MINIMAP_WIDTH, height: 160 };
+/** 无内容时的默认面板尺寸（4:3 横向） */
+const DEFAULT_SIZE: MinimapSize = { width: 160, height: 120 };
 
-/** 宽度固定，高度按内容占满宽度时所需高度取值，并夹在竖向范围内 */
-function computePanelSize(bounds: MinimapRect): MinimapSize {
-  const innerW = MINIMAP_WIDTH - MINIMAP_PADDING * 2;
-  const fitHeight = (innerW * Math.max(1, bounds.height)) / Math.max(1, bounds.width) + MINIMAP_PADDING * 2;
-  return { width: MINIMAP_WIDTH, height: Math.round(Math.min(MINIMAP_MAX_HEIGHT, Math.max(MINIMAP_MIN_HEIGHT, fitHeight))) };
+/** 按内容宽高比等比缩放到上限框内，短边夹到下限 */
+export function computePanelSize(bounds: MinimapRect): MinimapSize {
+  const innerMaxW = MINIMAP_MAX_WIDTH - MINIMAP_PADDING * 2;
+  const innerMaxH = MINIMAP_MAX_HEIGHT - MINIMAP_PADDING * 2;
+  const w = Math.max(1, bounds.width);
+  const h = Math.max(1, bounds.height);
+  const scale = Math.min(innerMaxW / w, innerMaxH / h);
+  return {
+    width: Math.round(Math.max(MINIMAP_MIN_SIDE, w * scale + MINIMAP_PADDING * 2)),
+    height: Math.round(Math.max(MINIMAP_MIN_SIDE, h * scale + MINIMAP_PADDING * 2)),
+  };
+}
+
+/** 两矩形的外接矩形 */
+function unionRect(a: MinimapRect, b: MinimapRect): MinimapRect {
+  const left = Math.min(a.left, b.left);
+  const top = Math.min(a.top, b.top);
+  return {
+    left,
+    top,
+    width: Math.max(a.left + a.width, b.left + b.width) - left,
+    height: Math.max(a.top + a.height, b.top + b.height) - top,
+  };
+}
+
+function sameRect(a: MinimapRect | null, b: MinimapRect | null): boolean {
+  return Boolean(a && b && a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height);
 }
 
 /**
@@ -108,7 +134,7 @@ interface MinimapTransform {
   offsetY: number;
 }
 
-/** 按内容边界等比适配面板，内容居中 */
+/** 按显示范围（内容边界 ∪ 视口）等比适配面板，居中 */
 function computeTransform(bounds: MinimapRect, size: MinimapSize): MinimapTransform {
   const innerW = size.width - MINIMAP_PADDING * 2;
   const innerH = size.height - MINIMAP_PADDING * 2;
@@ -135,6 +161,10 @@ export const CanvasMinimap = forwardRef<CanvasMinimapHandle, CanvasMinimapProps>
   const viewportBoxRef = useRef<HTMLDivElement>(null);
   const transformRef = useRef<MinimapTransform | null>(null);
   const boundsRef = useRef<MinimapRect | null>(null);
+  /** 当前变换所适配的显示范围（内容边界 ∪ 视口），视口移出内容时随之扩大 */
+  const displayBoundsRef = useRef<MinimapRect | null>(null);
+  /** 重场景下视口引起的重新适配延迟执行，避免平移时逐帧重画 */
+  const refitTimerRef = useRef<number | null>(null);
   const sceneRef = useRef<MinimapScene | null>(null);
   /** 场景已更新但还没画到画布上（未出现期间积压，出现时补画） */
   const dirtyRef = useRef(true);
@@ -189,11 +219,42 @@ export const CanvasMinimap = forwardRef<CanvasMinimapHandle, CanvasMinimapProps>
     heavyRef.current = performance.now() - started > HEAVY_PAINT_MS;
   }, []);
 
+  /** 按「内容边界 ∪ 视口」重新计算变换；范围变化时标记需要重画 */
+  const refit = useCallback((vp: MinimapRect) => {
+    const b = boundsRef.current;
+    if (!b) {
+      displayBoundsRef.current = null;
+      transformRef.current = null;
+      return;
+    }
+    const display = unionRect(b, vp);
+    if (sameRect(display, displayBoundsRef.current) && transformRef.current) return;
+    displayBoundsRef.current = display;
+    transformRef.current = computeTransform(display, sizeRef.current);
+    dirtyRef.current = true;
+  }, []);
+
   /** 判断是否需要出现，并把当前视口框定位到缩略图上（纯 DOM 写入，可在每帧平移时调用） */
   const syncViewport = useCallback(() => {
-    const t = transformRef.current;
     const b = boundsRef.current;
     const vp = getViewportRef.current();
+    // 视口移出内容时扩大显示范围，让视口框留在面板内；
+    // 在缩略图上拖动时冻结（导航中心本就限制在内容内），重场景下合并为延迟适配
+    if (b && !dragRef.current) {
+      const display = unionRect(b, vp);
+      if (!sameRect(display, displayBoundsRef.current)) {
+        if (!heavyRef.current) {
+          refit(vp);
+        } else if (refitTimerRef.current === null) {
+          refitTimerRef.current = window.setTimeout(() => {
+            refitTimerRef.current = null;
+            if (!dragRef.current) refit(getViewportRef.current());
+            syncViewportRef.current();
+          }, HEAVY_PAINT_DELAY);
+        }
+      }
+    }
+    const t = transformRef.current;
     // 带回差的占比判断，只在状态翻转时触发 React 渲染；
     // 正在缩略图上拖动时冻结显隐，避免拖到内容中央时面板在手下消失
     const coverage = b ? computeCoverage(vp, b) : { area: 1, side: 1 };
@@ -214,11 +275,20 @@ export const CanvasMinimap = forwardRef<CanvasMinimapHandle, CanvasMinimapProps>
       box.style.display = 'none';
       return;
     }
+    // 夹在面板内（重场景延迟适配期间视口可能暂时超出显示范围）
+    const size = sizeRef.current;
+    const x1 = Math.max(0, vp.left * t.scale + t.offsetX);
+    const y1 = Math.max(0, vp.top * t.scale + t.offsetY);
+    const x2 = Math.min(size.width, (vp.left + vp.width) * t.scale + t.offsetX);
+    const y2 = Math.min(size.height, (vp.top + vp.height) * t.scale + t.offsetY);
     box.style.display = 'block';
-    box.style.transform = `translate(${vp.left * t.scale + t.offsetX}px, ${vp.top * t.scale + t.offsetY}px)`;
-    box.style.width = `${Math.max(4, vp.width * t.scale)}px`;
-    box.style.height = `${Math.max(4, vp.height * t.scale)}px`;
-  }, [drawScene]);
+    box.style.transform = `translate(${Math.min(x1, size.width - 4)}px, ${Math.min(y1, size.height - 4)}px)`;
+    box.style.width = `${Math.max(4, x2 - x1)}px`;
+    box.style.height = `${Math.max(4, y2 - y1)}px`;
+  }, [drawScene, refit]);
+  // 延迟适配回调读取最新的 syncViewport
+  const syncViewportRef = useRef(syncViewport);
+  syncViewportRef.current = syncViewport;
 
   useImperativeHandle(ref, () => ({ syncViewport }), [syncViewport]);
 
@@ -238,7 +308,9 @@ export const CanvasMinimap = forwardRef<CanvasMinimapHandle, CanvasMinimapProps>
       sizeRef.current = nextSize;
       // 尺寸不变时保留原对象避免多余渲染；画布像素尺寸在绘制时立即跟上
       setSize((prev) => (prev.width === nextSize.width && prev.height === nextSize.height ? prev : nextSize));
-      transformRef.current = scene.bounds ? computeTransform(scene.bounds, nextSize) : null;
+      // 内容或面板尺寸变化：按当前视口重新适配
+      displayBoundsRef.current = null;
+      refit(getViewportRef.current());
       dirtyRef.current = true;
       syncViewport();
     };
@@ -248,15 +320,17 @@ export const CanvasMinimap = forwardRef<CanvasMinimapHandle, CanvasMinimapProps>
     } else if (paintFrameRef.current === null) {
       paintFrameRef.current = requestAnimationFrame(refresh);
     }
-  }, [enabled, getScene, syncViewport]);
+  }, [enabled, getScene, syncViewport, refit]);
 
   // 卸载时取消尚未执行的绘制
   // 句柄必须清空：StrictMode 的模拟卸载后组件会复用同一组 ref，残留句柄会阻止再次调度
   useEffect(() => () => {
     if (paintTimerRef.current !== null) window.clearTimeout(paintTimerRef.current);
     if (paintFrameRef.current !== null) cancelAnimationFrame(paintFrameRef.current);
+    if (refitTimerRef.current !== null) window.clearTimeout(refitTimerRef.current);
     paintTimerRef.current = null;
     paintFrameRef.current = null;
+    refitTimerRef.current = null;
   }, []);
 
   // 宿主通过渲染改变视口（缩放、窗口尺寸）时重新判断是否出现并同步视口框

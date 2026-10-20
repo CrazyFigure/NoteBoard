@@ -1526,6 +1526,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div style={shortcutSubheadingStyle}>导图模式</div>
                   <ShortcutItem keyCombo="Tab" label="添加子节点" />
                   <ShortcutItem keyCombo="Enter" label="添加同级节点" />
+                  <ShortcutItem keyCombo="Ctrl + 单击" label="多选节点" tip="拖动其中一个可一起移动，Delete 批量删除" />
                   <ShortcutItem keyCombo="Delete" label="删除选中节点" />
                   {/* 以下为编辑节点文字时（MindmapTitleEditor） */}
                   <ShortcutItem keyCombo="Shift + Enter / Alt + Enter" label="节点内换行" tip="编辑节点文字时" />

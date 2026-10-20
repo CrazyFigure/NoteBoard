@@ -13,7 +13,7 @@ import type {
   XMindSheet,
 } from './mindmapTypes';
 import { normalizeMarks } from './mindmapRichText';
-import { cloneMindmapTree, findMindNode, findMindNodeParent, getMindmapTreeStats, mapMindmapTree, stringifyMindmapJson } from './mindmapTree';
+import { cloneMindmapTree, findMindNode, findMindNodeParent, getMindmapTreeStats, getTopLevelMindNodeIds, mapMindmapTree, stringifyMindmapJson } from './mindmapTree';
 
 /** 合法布局枚举（用于反序列化时的防御性校验） */
 const VALID_LAYOUTS: MindmapLayout[] = [
@@ -505,6 +505,48 @@ export function isMindNodeDescendant(root: MindNode, sourceId: string, targetId:
   if (sourceId === targetId) return true;
   const sourceNode = findMindNode(root, sourceId);
   return sourceNode !== null && findMindNode(sourceNode, targetId) !== null;
+}
+
+/**
+ * 纯函数：批量移动多个节点（各自整树搬移），返回新的树对象
+ * 只搬顶层节点（祖先也在其中的忽略），保持原文档顺序整体插入到目标处；
+ * 目标落在任一源子树内（含源节点本身）时原样返回。
+ */
+export function moveMindNodes(
+  root: MindNode,
+  sourceIds: Iterable<string>,
+  targetId: string,
+  position: 'before' | 'inside' | 'after' = 'after',
+): MindNode {
+  const ids = getTopLevelMindNodeIds(root, sourceIds);
+  if (ids.length === 0 || ids.some((id) => isMindNodeDescendant(root, id, targetId))) {
+    return root;
+  }
+
+  const cloned = cloneMindmapTree(root);
+  // 1. 按文档顺序抽离全部源节点（顶层节点之间互不包含，抽离互不影响）
+  const extracted: MindNode[] = [];
+  for (const id of ids) {
+    const parentInfo = findMindNodeParent(cloned, id);
+    if (!parentInfo) return root;
+    extracted.push(...parentInfo.parent.children.splice(parentInfo.index, 1));
+  }
+
+  // 2. 挂为目标的子节点（根节点只能挂入）
+  if (targetId === cloned.id || position === 'inside') {
+    const target = findMindNode(cloned, targetId);
+    if (!target) return root;
+    target.children.push(...extracted);
+    target.isExpanded = true;
+    return cloned;
+  }
+
+  // 3. 作为兄弟节点整体插入到目标前 / 后
+  const targetParent = findMindNodeParent(cloned, targetId);
+  if (!targetParent) return root;
+  const insertIndex = position === 'before' ? targetParent.index : targetParent.index + 1;
+  targetParent.parent.children.splice(insertIndex, 0, ...extracted);
+  return cloned;
 }
 
 /**

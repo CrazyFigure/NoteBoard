@@ -3688,6 +3688,14 @@ button.nb-callout-icon:active {
   transform: scale(0.92);
 }
 
+/* 多选时工具栏前的选中数量 */
+.nb-mindmap-toolbar-count {
+  padding: 0 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--editor-accent, #3b82f6);
+}
+
 /* 节点工具栏高亮激活态（如已配置备注、已有图片或添加按钮） */
 .nb-mindmap-toolbar-btn.is-active-accent {
   color: var(--editor-accent, #3b82f6);

@@ -1,15 +1,16 @@
 // NoteBoard 画布缩略图回归测试
-// 验证显隐记忆、按视野占比自动出现、隐藏时不作画，以及点选缩略图时导航中心被限制在内容范围内。
+// 验证显隐记忆、按视野占比自动出现、隐藏时不作画、面板按内容真实比例、视口框不出面板，
+// 以及点选缩略图时导航中心被限制在内容范围内。
 
 import { act, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '../../src/components/Tooltip';
-import { CanvasMinimap, type MinimapScene } from '../../src/components/minimap/CanvasMinimap';
+import { CanvasMinimap, computePanelSize, type MinimapScene } from '../../src/components/minimap/CanvasMinimap';
 
 const STORAGE_KEY = 'nb-minimap-visible:test';
 
-/** 内容为 1000×500 的场景：面板 120×150，内容缩放 0.104、偏移 (8, 49) */
+/** 内容为 1000×500 的场景：面板 200×108（2:1），内容缩放 0.184、偏移 (8, 8) */
 const scene: MinimapScene = {
   bounds: { left: 0, top: 0, width: 1000, height: 500 },
   paint: () => undefined,
@@ -122,15 +123,35 @@ describe('CanvasMinimap', () => {
     const onNavigate = vi.fn();
     await render({ onNavigate });
     const panel = host.querySelector<HTMLDivElement>('.nb-minimap')!;
-    panel.getBoundingClientRect = () => ({ left: 0, top: 0, right: 120, bottom: 150, width: 120, height: 150, x: 0, y: 0, toJSON: () => ({}) });
+    panel.getBoundingClientRect = () => ({ left: 0, top: 0, right: 200, bottom: 108, width: 200, height: 108, x: 0, y: 0, toJSON: () => ({}) });
     panel.setPointerCapture = () => undefined;
 
-    // 面板右下角像素 (119, 149) 落在内容外，应被夹到内容右下角
+    // 面板右下角像素 (199, 107) 落在内容外的留白里，应被夹到内容右下角
     await act(async () => {
-      const event = new MouseEvent('pointerdown', { bubbles: true, clientX: 119, clientY: 149, button: 0 });
+      const event = new MouseEvent('pointerdown', { bubbles: true, clientX: 199, clientY: 107, button: 0 });
       Object.defineProperty(event, 'pointerId', { value: 1 });
       panel.dispatchEvent(event);
     });
     expect(onNavigate).toHaveBeenCalledWith(1000, 500);
+  });
+
+  it('面板按内容真实宽高比显示，细长内容短边不小于下限', () => {
+    expect(computePanelSize({ left: 0, top: 0, width: 1000, height: 500 })).toEqual({ width: 200, height: 108 });
+    expect(computePanelSize({ left: 0, top: 0, width: 500, height: 1000 })).toEqual({ width: 83, height: 150 });
+    expect(computePanelSize({ left: 0, top: 0, width: 5000, height: 10 })).toEqual({ width: 200, height: 48 });
+  });
+
+  it('视野移出内容时视口框仍完整留在面板内', async () => {
+    // 视野 200×100 位于内容右下角之外
+    await render({ getViewport: () => ({ left: 1100, top: 600, width: 200, height: 100 }) });
+    const panel = host.querySelector<HTMLDivElement>('.nb-minimap')!;
+    const box = host.querySelector<HTMLDivElement>('.nb-minimap-viewport')!;
+    const width = parseFloat(panel.style.width);
+    const height = parseFloat(panel.style.height);
+    const [x, y] = (box.style.transform.match(/-?\d+(\.\d+)?/g) ?? []).map(Number);
+    expect(x + parseFloat(box.style.width)).toBeLessThanOrEqual(width);
+    expect(y + parseFloat(box.style.height)).toBeLessThanOrEqual(height);
+    // 视口框按真实比例缩放，没有被裁成 4px 的兜底尺寸
+    expect(parseFloat(box.style.width)).toBeGreaterThan(4);
   });
 });

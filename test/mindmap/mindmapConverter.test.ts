@@ -13,6 +13,7 @@ import {
   exportToXmindZip,
   importFromXmindZip,
   moveMindNode,
+  moveMindNodes,
   isMindNodeDescendant,
 } from '@/features/mindmap/mindmapConverter';
 import type { MindNode } from '@/features/mindmap/mindmapTypes';
@@ -307,5 +308,50 @@ describe('节点富文本格式与样式字段', () => {
     expect(parsed.children[0].imageFit).toBe('fill');
     expect(parsed.children[1].textAlign).toBeUndefined();
     expect(parsed.children[1].imageFit).toBeUndefined();
+  });
+});
+
+describe('多选节点批量移动 moveMindNodes', () => {
+  /** root → a(a1, a2), b(b1), c */
+  const makeTree = (): MindNode => ({
+    id: 'root',
+    text: '根',
+    children: [
+      { id: 'a', text: 'A', children: [{ id: 'a1', text: 'A1', children: [] }, { id: 'a2', text: 'A2', children: [] }] },
+      { id: 'b', text: 'B', children: [{ id: 'b1', text: 'B1', children: [] }] },
+      { id: 'c', text: 'C', children: [] },
+    ],
+  });
+  const childIds = (node: MindNode | undefined) => node?.children.map((child) => child.id);
+
+  test('挂为子节点时按文档顺序追加并展开目标', () => {
+    const tree = makeTree();
+    tree.children[2].isExpanded = false;
+    const moved = moveMindNodes(tree, ['b1', 'a1'], 'c', 'inside');
+    const c = moved.children.find((n) => n.id === 'c');
+    expect(childIds(c)).toEqual(['a1', 'b1']);
+    expect(c?.isExpanded).toBe(true);
+    expect(childIds(moved.children[0])).toEqual(['a2']);
+    // 原树不变
+    expect(childIds(tree.children[0])).toEqual(['a1', 'a2']);
+  });
+
+  test('插到目标前 / 后时整体相邻且保持原顺序', () => {
+    expect(childIds(moveMindNodes(makeTree(), ['c', 'a1'], 'b1', 'before').children[1])).toEqual(['a1', 'c', 'b1']);
+    expect(childIds(moveMindNodes(makeTree(), ['c', 'a1'], 'b1', 'after').children[1])).toEqual(['b1', 'a1', 'c']);
+  });
+
+  test('祖先与子孙同时选中时只搬祖先，子孙随之移动', () => {
+    const moved = moveMindNodes(makeTree(), ['a', 'a1'], 'c', 'inside');
+    const c = moved.children.find((n) => n.id === 'c');
+    expect(childIds(c)).toEqual(['a']);
+    expect(childIds(c?.children[0])).toEqual(['a1', 'a2']);
+  });
+
+  test('目标落在任一源子树内或为源节点本身时原样返回', () => {
+    const tree = makeTree();
+    expect(moveMindNodes(tree, ['a', 'b'], 'a2', 'inside')).toBe(tree);
+    expect(moveMindNodes(tree, ['a', 'b'], 'b', 'after')).toBe(tree);
+    expect(moveMindNodes(tree, ['root'], 'c', 'inside')).toBe(tree);
   });
 });

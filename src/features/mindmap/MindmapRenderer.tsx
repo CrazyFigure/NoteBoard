@@ -21,8 +21,8 @@ import type {
   MindmapImageFit,
   MindmapTextAlign,
 } from './mindmapTypes';
-import { generateNodeId, moveMindNode } from './mindmapConverter';
-import { cloneMindmapTree, findMindNode, findMindNodeParent, walkMindNodes } from './mindmapTree';
+import { generateNodeId, moveMindNodes } from './mindmapConverter';
+import { cloneMindmapTree, findMindNode, findMindNodeParent, getTopLevelMindNodeIds, walkMindNodes } from './mindmapTree';
 import { getMindmapViewport, isMindmapNodeVisible, isMindmapLinkVisible } from './mindmapViewport';
 import {
   computeMindmapLayout,
@@ -93,6 +93,16 @@ interface DragSession {
   isDragging: boolean;
   /** 一次拖拽共用后代集合，避免首次移动仍重复遍历或误选自己的子树。 */
   descendantIds?: Set<string>;
+  /** 实际搬移的节点：按住多选中的节点拖动时为多选的顶层节点，否则只有源节点 */
+  sourceIds?: string[];
+}
+
+/** 空 id 集合（多选 / 拖拽状态的初始值，保持引用稳定） */
+const NO_IDS: readonly string[] = [];
+
+/** 多选修饰键：Mac 用 Cmd（Ctrl + 单击是右键菜单），其余平台用 Ctrl */
+function isMultiSelectModifier(e: { ctrlKey: boolean; metaKey: boolean }): boolean {
+  return USES_COMMAND_KEY ? e.metaKey : e.ctrlKey;
 }
 
 interface DropTargetState {
@@ -372,12 +382,15 @@ export function MindmapRenderer({
   // 节点拖拽状态 (Pointer Events 丝滑整树拖拽)
   const dragSessionRef = useRef<DragSession | null>(null);
   const [isDraggingNode, setIsDraggingNode] = useState(false);
-  const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null);
+  // 正在被拖动的节点（多选拖动时为多个）
+  const [draggedIds, setDraggedIds] = useState<readonly string[]>(NO_IDS);
   const [dragPreview, setDragPreview] = useState<{
     x: number;
     y: number;
     node: MindNode;
     descendantCount: number;
+    /** 一起拖动的节点数（多选拖动时 > 1） */
+    count: number;
   } | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTargetState | null>(null);
 
@@ -391,7 +404,7 @@ export function MindmapRenderer({
   // 单个节点样式浮层（对齐 / 图片显示方式）
   const [nodeStylePopover, setNodeStylePopover] = useState<{ nodeId: string; x: number; y: number } | null>(null);
   // 删除含子节点的节点前的二次确认
-  const [deleteConfirm, setDeleteConfirm] = useState<{ nodeId: string; descendantCount: number } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ nodeIds: readonly string[]; descendantCount: number } | null>(null);
   const deleteConfirmRef = useRef(deleteConfirm);
   deleteConfirmRef.current = deleteConfirm;
 
@@ -399,8 +412,16 @@ export function MindmapRenderer({
   const [editingNoteNodeId, setEditingNoteNodeId] = useState<string | null>(null);
   const [editNoteText, setEditNoteText] = useState('');
 
-  // 选中的节点与悬浮工具栏状态
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  // 选中的节点与悬浮工具栏状态：selectedNodeId 为主选中（工具栏挂在它上面），
+  // multiSelectedIds 为 Ctrl / Cmd + 单击多选的全部节点（至少 2 个时才非空，含主选中）
+  const [selectedNodeId, setPrimarySelectedId] = useState<string | null>(null);
+  const [multiSelectedIds, setMultiSelectedIds] = useState<readonly string[]>(NO_IDS);
+  /** 单选（或取消选中）：同时退出多选，既有的单选入口都经由它 */
+  const setSelectedNodeId = useCallback((id: string | null) => {
+    setPrimarySelectedId(id);
+    setMultiSelectedIds(NO_IDS);
+  }, []);
+  const isMultiSelecting = multiSelectedIds.length > 1;
 
   // 图标选择器弹窗状态
   const [iconPickerState, setIconPickerState] = useState<{
@@ -416,6 +437,8 @@ export function MindmapRenderer({
   // 节点宽度拉伸：会话记录在 ref，实时预览宽度放在 state 参与排版
   const resizeSessionRef = useRef<ResizeSession | null>(null);
   const [resizePreview, setResizePreview] = useState<{ id: string; width: number } | null>(null);
+  // 从折叠按钮上拖动调宽后，紧随松手的 click 不再触发折叠（记录截止时间）
+  const suppressFoldClickUntilRef = useRef(0);
 
   // 图片固有尺寸测得后重新排版（原始比例显示依赖图片宽高）
   const [imageSizeVersion, setImageSizeVersion] = useState(0);
@@ -449,6 +472,8 @@ export function MindmapRenderer({
   // 最新状态引用：供全局快捷键监听在稳定闭包中读取，避免反复重绑事件
   const selectedNodeIdRef = useRef<string | null>(null);
   selectedNodeIdRef.current = selectedNodeId;
+  const multiSelectedIdsRef = useRef(multiSelectedIds);
+  multiSelectedIdsRef.current = multiSelectedIds;
   const editingNodeIdRef = useRef<string | null>(null);
   editingNodeIdRef.current = editingNodeId;
   const editDraftRef = useRef<TextDraft>({ text: '' });
@@ -503,15 +528,24 @@ export function MindmapRenderer({
 
   // 布局仍覆盖全部已展开节点，只有真正的节点和连线 DOM 按视口裁剪。
   const viewport = useMemo(() => getMindmapViewport(panRef.current, zoom, viewportSize.width, viewportSize.height), [pan, zoom, viewportSize]);
+  // 多选集合（查找用）
+  const multiSelectedSet = useMemo(() => new Set(multiSelectedIds), [multiSelectedIds]);
   const visibleNodes = useMemo(() => nodes.filter((node) =>
-    isMindmapNodeVisible(node, viewport) || [selectedNodeId, editingNodeId, editingNoteNodeId, draggedNodeId, resizePreview?.id].includes(node.node.id)),
-  [nodes, viewport, selectedNodeId, editingNodeId, editingNoteNodeId, draggedNodeId, resizePreview?.id]);
+    isMindmapNodeVisible(node, viewport) ||
+    multiSelectedSet.has(node.node.id) ||
+    draggedIds.includes(node.node.id) ||
+    [selectedNodeId, editingNodeId, editingNoteNodeId, resizePreview?.id].includes(node.node.id)),
+  [nodes, viewport, multiSelectedSet, draggedIds, selectedNodeId, editingNodeId, editingNoteNodeId, resizePreview?.id]);
   const visibleLinks = useMemo(() => links.filter((link) => isMindmapLinkVisible(link, viewport)), [links, viewport]);
-  // 拖动一次只生成一次后代集合，落点扫描和节点样式不再对每个节点重复遍历整树。
+  // 拖动一次只生成一次后代集合（含被拖节点自身），落点扫描和节点样式不再对每个节点重复遍历整树。
   const draggedDescendantIds = useMemo(() => {
-    const source = draggedNodeId ? findMindNode(root, draggedNodeId) : null;
-    return new Set(source ? Array.from(walkMindNodes(source), (node) => node.id) : []);
-  }, [root, draggedNodeId]);
+    const ids = new Set<string>();
+    for (const id of draggedIds) {
+      const source = findMindNode(root, id);
+      if (source) for (const node of walkMindNodes(source)) ids.add(node.id);
+    }
+    return ids;
+  }, [root, draggedIds]);
 
   // 全部已展开节点的外接矩形（世界坐标），缩略图与“回到内容”共用
   const contentBounds = useMemo(() => {
@@ -720,54 +754,77 @@ export function MindmapRenderer({
     createLinkedNode('child', parentId, false);
   };
 
-  // 删除节点
-  const handleDeleteNode = (id: string) => {
-    if (id === root.id) return;
+  /**
+   * 删除节点（可多个，一次树更新即一个撤销步），随后选中第一个被删节点的父节点，便于连续操作
+   * @param ids 顶层节点 id（由 getTopLevelMindNodeIds 过滤，不含根节点）
+   */
+  const deleteNodesAndSelectParent = (ids: readonly string[]) => {
+    if (ids.length === 0) return;
+    const parent = findParentNode(root, ids[0]);
     updateTree((cloned) => {
-      function removeChild(n: MindNode): boolean {
-        if (n.children && n.children.length > 0) {
-          const idx = n.children.findIndex((c) => c.id === id);
-          if (idx !== -1) {
-            n.children.splice(idx, 1);
-            return true;
-          }
-          for (const c of n.children) {
-            if (removeChild(c)) return true;
-          }
-        }
-        return false;
+      for (const id of ids) {
+        const parentInfo = findMindNodeParent(cloned, id);
+        if (parentInfo) parentInfo.parent.children.splice(parentInfo.index, 1);
       }
-      removeChild(cloned);
     });
-    if (selectedNodeId === id) setSelectedNodeId(null);
+    setSelectedNodeId(parent?.id ?? null);
   };
 
   /**
-   * 请求删除节点：含子节点时先弹二次确认；删除后选中其父节点，便于连续操作
+   * 请求删除节点（单个或多选）：含子节点时先弹二次确认
    */
-  const requestDeleteNode = (id: string) => {
-    if (id === root.id) return;
-    const target = findNodeById(root, id);
-    if (!target) return;
-    const descendantCount = countSubtreeDescendants(target);
+  const requestDeleteNodes = (ids: readonly string[]) => {
+    const topIds = getTopLevelMindNodeIds(root, ids);
+    if (topIds.length === 0) return;
+    let descendantCount = 0;
+    for (const id of topIds) {
+      const target = findNodeById(root, id);
+      if (target) descendantCount += countSubtreeDescendants(target);
+    }
     if (descendantCount > 0) {
-      setDeleteConfirm({ nodeId: id, descendantCount });
+      setDeleteConfirm({ nodeIds: topIds, descendantCount });
       return;
     }
-    const parent = findParentNode(root, id);
-    handleDeleteNode(id);
-    if (parent) setSelectedNodeId(parent.id);
+    deleteNodesAndSelectParent(topIds);
   };
-  const requestDeleteNodeRef = useRef(requestDeleteNode);
-  requestDeleteNodeRef.current = requestDeleteNode;
+  const requestDeleteNodesRef = useRef(requestDeleteNodes);
+  requestDeleteNodesRef.current = requestDeleteNodes;
 
-  /** 设置单个节点的对齐 / 图片显示方式；传 undefined 表示恢复跟随设置 */
-  const setNodeStyleField = (id: string, field: 'textAlign' | 'imageFit', value: string | undefined) => {
+  /**
+   * 操作目标：节点属于当前多选时作用于全部多选节点，否则只作用于该节点
+   * （工具栏只挂在主选中节点上，多选时它的按钮即为批量操作）
+   */
+  const getActionTargetIds = (id: string): readonly string[] =>
+    isMultiSelecting && multiSelectedSet.has(id) ? multiSelectedIds : [id];
+
+  /** Ctrl / Cmd + 单击：切换节点是否在多选中（根节点不参与），只剩一个时退回单选 */
+  const toggleMultiSelect = (id: string) => {
+    if (id === root.id) return;
+    const base = isMultiSelecting
+      ? multiSelectedIds
+      : selectedNodeId && selectedNodeId !== root.id
+        ? [selectedNodeId]
+        : NO_IDS;
+    const next = base.includes(id) ? base.filter((x) => x !== id) : [...base, id];
+    if (next.length <= 1) {
+      setSelectedNodeId(next[0] ?? null);
+      return;
+    }
+    // 新加入的节点成为主选中；移出的恰是主选中时改由最后一个接替
+    const primary = next.includes(id) ? id : selectedNodeId && next.includes(selectedNodeId) ? selectedNodeId : next[next.length - 1];
+    setPrimarySelectedId(primary);
+    setMultiSelectedIds(next);
+  };
+
+  /** 设置节点的对齐 / 图片显示方式（可多个，一次撤销步）；传 undefined 表示恢复跟随设置 */
+  const setNodeStyleField = (ids: readonly string[], field: 'textAlign' | 'imageFit', value: string | undefined) => {
     updateTree((cloned) => {
-      updateNodeById(cloned, id, (node) => {
-        if (value === undefined) delete node[field];
-        else (node as unknown as Record<string, unknown>)[field] = value;
-      });
+      for (const id of ids) {
+        updateNodeById(cloned, id, (node) => {
+          if (value === undefined) delete node[field];
+          else (node as unknown as Record<string, unknown>)[field] = value;
+        });
+      }
     });
   };
 
@@ -796,19 +853,14 @@ export function MindmapRenderer({
   };
 
   // 更新节点图标
-  const handleIconChange = (id: string, icon?: string) => {
+  const handleIconChange = (ids: readonly string[], icon?: string) => {
     updateTree((cloned) => {
-      function findAndSet(n: MindNode) {
-        if (n.id === id) {
-          n.icon = icon;
-          return true;
-        }
-        for (const c of n.children || []) {
-          if (findAndSet(c)) return true;
-        }
-        return false;
+      // 多选时批量设置，一次树更新即一个撤销步
+      for (const id of ids) {
+        updateNodeById(cloned, id, (node) => {
+          node.icon = icon;
+        });
       }
-      findAndSet(cloned);
     });
   };
 
@@ -898,7 +950,7 @@ export function MindmapRenderer({
 
   // ── 节点宽度拉伸 ──
 
-  const handleResizePointerDown = (e: React.PointerEvent<HTMLDivElement>, layoutNode: LayoutNode) => {
+  const handleResizePointerDown = (e: React.PointerEvent<HTMLElement>, layoutNode: LayoutNode) => {
     if (e.button !== 0) return;
     // 阻止冒泡到节点拖拽与画布平移
     e.stopPropagation();
@@ -920,7 +972,7 @@ export function MindmapRenderer({
     document.body.style.cursor = 'ew-resize';
   };
 
-  const handleResizePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+  const handleResizePointerMove = (e: React.PointerEvent<HTMLElement>) => {
     const session = resizeSessionRef.current;
     if (!session || session.pointerId !== e.pointerId) return;
     e.stopPropagation();
@@ -934,7 +986,7 @@ export function MindmapRenderer({
     });
   };
 
-  const handleResizePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+  const handleResizePointerUp = (e: React.PointerEvent<HTMLElement>) => {
     const session = resizeSessionRef.current;
     if (!session || session.pointerId !== e.pointerId) return;
     e.stopPropagation();
@@ -951,6 +1003,7 @@ export function MindmapRenderer({
     if (session.moved && preview && preview.id === session.nodeId) {
       setNodeWidth(session.nodeId, preview.width);
     }
+    if (session.moved) suppressFoldClickUntilRef.current = Date.now() + 300;
   };
 
   // ── 节点拖拽核心逻辑 (Pointer Events 丝滑整树拖拽) ──
@@ -1034,8 +1087,14 @@ export function MindmapRenderer({
     if (!session.isDragging) {
       if (deltaX > 4 || deltaY > 4) {
         session.isDragging = true;
+        // 按住多选中的节点拖动：多选的顶层节点一起搬移
+        const multi = multiSelectedIdsRef.current;
+        session.sourceIds =
+          multi.length > 1 && multi.includes(session.sourceNode.id)
+            ? getTopLevelMindNodeIds(root, multi)
+            : [session.sourceNode.id];
         setIsDraggingNode(true);
-        setDraggedNodeId(session.sourceNode.id);
+        setDraggedIds(session.sourceIds);
         document.body.style.cursor = 'grabbing';
       } else {
         return;
@@ -1043,13 +1102,23 @@ export function MindmapRenderer({
     }
 
     // 更新跟随光标的半透明悬浮卡片
-    session.descendantIds ??= new Set(Array.from(walkMindNodes(session.sourceNode), (node) => node.id));
-    const descendantCount = session.descendantIds.size - 1;
+    const sourceIds = session.sourceIds ?? [session.sourceNode.id];
+    if (!session.descendantIds) {
+      // 全部被拖子树的并集：落点不能落在其中任何一处（防止成环）
+      const ids = new Set<string>();
+      for (const id of sourceIds) {
+        const source = id === session.sourceNode.id ? session.sourceNode : findMindNode(root, id);
+        if (source) for (const node of walkMindNodes(source)) ids.add(node.id);
+      }
+      session.descendantIds = ids;
+    }
+    const descendantCount = session.descendantIds.size - sourceIds.length;
     setDragPreview({
       x: e.clientX,
       y: e.clientY,
       node: session.sourceNode,
       descendantCount,
+      count: sourceIds.length,
     });
 
     // 屏幕视口坐标转导图世界坐标系
@@ -1156,11 +1225,12 @@ export function MindmapRenderer({
 
     const currentDropTarget = dropTarget;
     const sourceId = session.sourceNode.id;
+    const sourceIds = session.sourceIds ?? [sourceId];
     const wasDragging = session.isDragging;
 
     dragSessionRef.current = null;
     setIsDraggingNode(false);
-    setDraggedNodeId(null);
+    setDraggedIds(NO_IDS);
     setDragPreview(null);
     setDropTarget(null);
     document.body.style.cursor = 'default';
@@ -1168,9 +1238,9 @@ export function MindmapRenderer({
     // 若处于真实拖拽态且存在有效落点，执行整树转移
     if (wasDragging && currentDropTarget) {
       updateTree((cloned) => {
-        const nextRoot = moveMindNode(
+        const nextRoot = moveMindNodes(
           cloned,
-          sourceId,
+          sourceIds,
           currentDropTarget.targetId,
           currentDropTarget.pos,
         );
@@ -1178,7 +1248,8 @@ export function MindmapRenderer({
         for (const key of Object.keys(cloned)) delete (cloned as unknown as Record<string, unknown>)[key];
         Object.assign(cloned, nextRoot);
       });
-      setSelectedNodeId(sourceId);
+      // 多选拖动后保持多选，单个拖动后选中被拖节点
+      if (sourceIds.length <= 1) setSelectedNodeId(sourceId);
     }
   };
 
@@ -1222,7 +1293,7 @@ export function MindmapRenderer({
     if (dragSessionRef.current) {
       dragSessionRef.current = null;
       setIsDraggingNode(false);
-      setDraggedNodeId(null);
+      setDraggedIds(NO_IDS);
       setDragPreview(null);
       setDropTarget(null);
       document.body.style.cursor = 'default';
@@ -1264,7 +1335,7 @@ export function MindmapRenderer({
       if (e.key === 'Escape' && dragSessionRef.current) {
         dragSessionRef.current = null;
         setIsDraggingNode(false);
-        setDraggedNodeId(null);
+        setDraggedIds(NO_IDS);
         setDragPreview(null);
         setDropTarget(null);
         document.body.style.cursor = 'default';
@@ -1296,14 +1367,18 @@ export function MindmapRenderer({
 
       const selected = selectedNodeIdRef.current;
       if (!selected) return;
+      const multi = multiSelectedIdsRef.current;
 
-      // Mac 键盘的 delete 键对应 Backspace，同样用于删除节点
+      // Mac 键盘的 delete 键对应 Backspace，同样用于删除节点（多选时批量删除）
       if (e.key === 'Delete' || (USES_COMMAND_KEY && e.key === 'Backspace')) {
         // 焦点在画布之外（如文件树、其他面板）时不响应，避免误删节点
         const container = containerRef.current;
         if (el && el !== document.body && container && !container.contains(el) && !el.contains(container)) return;
         e.preventDefault();
-        requestDeleteNodeRef.current(selected);
+        requestDeleteNodesRef.current(multi.length > 1 ? multi : [selected]);
+      } else if (e.key === 'Escape' && multi.length > 1) {
+        // Esc 退出多选，保留主选中节点
+        setSelectedNodeId(selected);
       } else if (e.key === 'Tab') {
         e.preventDefault();
         createLinkedNodeRef.current('child', selected, false);
@@ -1360,7 +1435,7 @@ export function MindmapRenderer({
         if (dragSessionRef.current) {
           dragSessionRef.current = null;
           setIsDraggingNode(false);
-          setDraggedNodeId(null);
+          setDraggedIds(NO_IDS);
           setDragPreview(null);
           setDropTarget(null);
           document.body.style.cursor = 'default';
@@ -1482,7 +1557,9 @@ export function MindmapRenderer({
           const isRoot = n.level === 0;
           const isLevel1 = n.level === 1;
           const isEditing = editingNodeId === n.node.id;
-          const isSelected = selectedNodeId === n.node.id;
+          // 主选中节点挂工具栏；多选中的其余节点只显示选中描边
+          const isPrimarySelected = selectedNodeId === n.node.id;
+          const isSelected = isPrimarySelected || multiSelectedSet.has(n.node.id);
           const searchRanges = searchHighlight?.ranges.get(n.node.id);
           const isSearchCurrent = searchHighlight?.currentId === n.node.id;
           const hasChildren = Boolean(n.node.children && n.node.children.length > 0);
@@ -1502,15 +1579,14 @@ export function MindmapRenderer({
           // 对齐方式由布局引擎合并节点设置与全局设置
           const textAlign = n.textAlign;
           const hasCustomWidth = typeof n.node.width === 'number';
+          // 折叠按钮与拉伸手柄在同一侧时会重叠：按钮叠在手柄之上，单击折叠、按住拖动调宽
+          const foldDoublesAsResize = n.childSide === n.freeEdge && !isEditing;
+          const foldLabel = isExpanded ? '收起子分支' : '展开子分支';
           const isResizing = resizePreview?.id === n.node.id;
 
           // 拖拽相关状态计算
-          const isBeingDragged = isDraggingNode && draggedNodeId === n.node.id;
-          const isDescendantOfDragged =
-            isDraggingNode &&
-            draggedNodeId !== null &&
-            draggedDescendantIds.has(n.node.id);
-          const isSourceOrDescendant = isBeingDragged || isDescendantOfDragged;
+          // 被拖节点集合已含其自身与全部子孙
+          const isSourceOrDescendant = isDraggingNode && draggedDescendantIds.has(n.node.id);
           const isDropTargetInside =
             isDraggingNode && dropTarget?.targetId === n.node.id && dropTarget.pos === 'inside';
 
@@ -1521,9 +1597,10 @@ export function MindmapRenderer({
               onPointerDown={(e) => handleNodePointerDown(e, n)}
               onClick={(e) => {
                 e.stopPropagation();
-                if (!isDraggingNode) {
-                  setSelectedNodeId(n.node.id);
-                }
+                if (isDraggingNode) return;
+                // Ctrl / Cmd + 单击：加入或移出多选
+                if (isMultiSelectModifier(e)) toggleMultiSelect(n.node.id);
+                else setSelectedNodeId(n.node.id);
               }}
               onDoubleClick={(e) => {
                 e.stopPropagation();
@@ -1815,7 +1892,7 @@ export function MindmapRenderer({
                   ...(n.childSide === 'top' ? { bottom: -28 } : { top: -28 }),
                   left: '50%',
                   transform: 'translateX(-50%)',
-                  display: isSelected ? 'flex' : 'none',
+                  display: isPrimarySelected ? 'flex' : 'none',
                   alignItems: 'center',
                   gap: 3,
                   padding: '2px 5px',
@@ -1826,6 +1903,9 @@ export function MindmapRenderer({
                   zIndex: 20,
                 }}
               >
+                {/* 多选时只保留可批量的操作（图标、样式、删除），并提示选中数量 */}
+                {isMultiSelecting && <span className="nb-mindmap-toolbar-count">已选 {multiSelectedIds.length} 个</span>}
+
                 {/* 设置图标 */}
                 <Tooltip content="设置图标" side="top" sideOffset={4}>
                   <button
@@ -1847,40 +1927,45 @@ export function MindmapRenderer({
                   </button>
                 </Tooltip>
 
-                {/* 添加/编辑备注 */}
-                <Tooltip content="添加/编辑备注" side="top" sideOffset={4}>
-                  <button
-                    type="button"
-                    className={`nb-mindmap-toolbar-btn${hasNote ? ' is-active-accent' : ''}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingNoteNodeId(n.node.id);
-                      setEditNoteText(n.node.note || '');
-                    }}
-                    aria-label="添加/编辑备注"
-                  >
-                    <FileText size={12} />
-                  </button>
-                </Tooltip>
+                {/* 备注与图片只针对单个节点，多选时隐藏 */}
+                {!isMultiSelecting && (
+                  <>
+                    {/* 添加/编辑备注 */}
+                    <Tooltip content="添加/编辑备注" side="top" sideOffset={4}>
+                      <button
+                        type="button"
+                        className={`nb-mindmap-toolbar-btn${hasNote ? ' is-active-accent' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingNoteNodeId(n.node.id);
+                          setEditNoteText(n.node.note || '');
+                        }}
+                        aria-label="添加/编辑备注"
+                      >
+                        <FileText size={12} />
+                      </button>
+                    </Tooltip>
 
-                {/* 上传/替换图片 */}
-                <Tooltip content="上传/替换图片" side="top" sideOffset={4}>
-                  <button
-                    type="button"
-                    className={`nb-mindmap-toolbar-btn${hasImage ? ' is-active-accent' : ''}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      uploadTargetNodeIdRef.current = n.node.id;
-                      fileInputRef.current?.click();
-                    }}
-                    aria-label="上传/替换图片"
-                  >
-                    <ImageIcon size={12} />
-                  </button>
-                </Tooltip>
+                    {/* 上传/替换图片 */}
+                    <Tooltip content="上传/替换图片" side="top" sideOffset={4}>
+                      <button
+                        type="button"
+                        className={`nb-mindmap-toolbar-btn${hasImage ? ' is-active-accent' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          uploadTargetNodeIdRef.current = n.node.id;
+                          fileInputRef.current?.click();
+                        }}
+                        aria-label="上传/替换图片"
+                      >
+                        <ImageIcon size={12} />
+                      </button>
+                    </Tooltip>
+                  </>
+                )}
 
                 {/* 重置手动拉伸的宽度（仅自定义过宽度时显示） */}
-                {hasCustomWidth && (
+                {hasCustomWidth && !isMultiSelecting && (
                   <Tooltip content="重置宽度" side="top" sideOffset={4}>
                     <button
                       type="button"
@@ -1915,29 +2000,31 @@ export function MindmapRenderer({
                 </Tooltip>
 
                 {/* 添加子分支 */}
-                <Tooltip content="添加子分支" side="top" sideOffset={4}>
-                  <button
-                    type="button"
-                    className="nb-mindmap-toolbar-btn is-active-accent"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleAddChild(n.node.id);
-                    }}
-                    aria-label="添加子分支"
-                  >
-                    <Plus size={12} />
-                  </button>
-                </Tooltip>
+                {!isMultiSelecting && (
+                  <Tooltip content="添加子分支" side="top" sideOffset={4}>
+                    <button
+                      type="button"
+                      className="nb-mindmap-toolbar-btn is-active-accent"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleAddChild(n.node.id);
+                      }}
+                      aria-label="添加子分支"
+                    >
+                      <Plus size={12} />
+                    </button>
+                  </Tooltip>
+                )}
 
-                {/* 删除节点（根节点不可删除） */}
+                {/* 删除节点（根节点不可删除；多选时删除全部选中节点） */}
                 {!isRoot && (
-                  <Tooltip content="删除节点" side="top" sideOffset={4}>
+                  <Tooltip content={isMultiSelecting ? '删除选中节点' : '删除节点'} side="top" sideOffset={4}>
                     <button
                       type="button"
                       className="nb-mindmap-toolbar-btn is-danger"
                       onClick={(e) => {
                         e.stopPropagation();
-                        requestDeleteNode(n.node.id);
+                        requestDeleteNodes(getActionTargetIds(n.node.id));
                       }}
                       aria-label="删除节点"
                     >
@@ -1949,16 +2036,28 @@ export function MindmapRenderer({
 
               {/* 折叠/展开徽标 */}
               {hasChildren && (
-                <Tooltip content={isExpanded ? '收起子分支' : '展开子分支'} side="right" sideOffset={4}>
+                <Tooltip
+                  content={foldDoublesAsResize ? `${foldLabel}，拖动调整宽度` : foldLabel}
+                  side="right"
+                  sideOffset={4}
+                  disabled={isResizing}
+                >
                   <button
                     type="button"
                     className="nb-mindmap-fold-btn"
                     data-side={n.childSide}
+                    onPointerDown={foldDoublesAsResize ? (e) => handleResizePointerDown(e, n) : undefined}
+                    onPointerMove={foldDoublesAsResize ? handleResizePointerMove : undefined}
+                    onPointerUp={foldDoublesAsResize ? handleResizePointerUp : undefined}
+                    onPointerCancel={foldDoublesAsResize ? handleResizePointerUp : undefined}
                     onClick={(e) => {
                       e.stopPropagation();
+                      // 刚从按钮上拖动调宽：松手后的 click 不算折叠
+                      if (Date.now() < suppressFoldClickUntilRef.current) return;
                       handleToggleExpand(n.node.id);
                     }}
-                    aria-label={isExpanded ? '收起子分支' : '展开子分支'}
+                    onDoubleClick={(e) => e.stopPropagation()}
+                    aria-label={foldLabel}
                     style={{
                       position: 'absolute',
                       // 折叠按钮位于子节点展开的一侧
@@ -1977,7 +2076,8 @@ export function MindmapRenderer({
                       cursor: 'pointer',
                       boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
                       padding: 0,
-                      zIndex: 5,
+                      // 高于拉伸手柄（z-index 6），重叠处点击始终命中按钮
+                      zIndex: 7,
                     }}
                   >
                     {isExpanded ? '-' : n.node.children.length}
@@ -2074,7 +2174,7 @@ export function MindmapRenderer({
             currentIcon={iconPickerState.currentIcon}
             position={{ x: iconPickerState.x, y: iconPickerState.y }}
             onSelect={(icon) => {
-              handleIconChange(iconPickerState.nodeId, icon);
+              handleIconChange(getActionTargetIds(iconPickerState.nodeId), icon);
               setIconPickerState(null);
             }}
             onClose={() => setIconPickerState(null)}
@@ -2219,8 +2319,8 @@ export function MindmapRenderer({
             hasImage={Boolean(target.image)}
             defaultTextAlign={defaultTextAlign}
             defaultImageFit={defaultImageFit}
-            onTextAlignChange={(value) => setNodeStyleField(target.id, 'textAlign', value)}
-            onImageFitChange={(value) => setNodeStyleField(target.id, 'imageFit', value)}
+            onTextAlignChange={(value) => setNodeStyleField(getActionTargetIds(target.id), 'textAlign', value)}
+            onImageFitChange={(value) => setNodeStyleField(getActionTargetIds(target.id), 'imageFit', value)}
             onClose={() => setNodeStylePopover(null)}
           />
         );
@@ -2230,13 +2330,15 @@ export function MindmapRenderer({
       {deleteConfirm && (
         <MindmapConfirmDialog
           title="删除节点"
-          message={formatShortcut(`该节点下还有 ${deleteConfirm.descendantCount} 个子节点，将一并删除。删除后可用 Ctrl+Z 撤销。`)}
+          message={formatShortcut(
+            deleteConfirm.nodeIds.length > 1
+              ? `将删除 ${deleteConfirm.nodeIds.length} 个节点及其下 ${deleteConfirm.descendantCount} 个子节点。删除后可用 Ctrl+Z 撤销。`
+              : `该节点下还有 ${deleteConfirm.descendantCount} 个子节点，将一并删除。删除后可用 Ctrl+Z 撤销。`,
+          )}
           confirmLabel="删除"
           onCancel={() => setDeleteConfirm(null)}
           onConfirm={() => {
-            const parent = findParentNode(root, deleteConfirm.nodeId);
-            handleDeleteNode(deleteConfirm.nodeId);
-            if (parent) setSelectedNodeId(parent.id);
+            deleteNodesAndSelectParent(deleteConfirm.nodeIds);
             setDeleteConfirm(null);
           }}
         />
@@ -2268,7 +2370,7 @@ export function MindmapRenderer({
           }}
         >
           <GripVertical size={13} style={{ color: 'var(--editor-accent, #3b82f6)', flexShrink: 0, opacity: 0.8 }} />
-          {dragPreview.node.icon && (
+          {dragPreview.count <= 1 && dragPreview.node.icon && (
             <span style={{ fontSize: 14, flexShrink: 0 }}>{dragPreview.node.icon}</span>
           )}
           <span
@@ -2281,7 +2383,8 @@ export function MindmapRenderer({
               flex: 1,
             }}
           >
-            {dragPreview.node.text || '要点'}
+            {/* 多选拖动时显示节点数 */}
+            {dragPreview.count > 1 ? `${dragPreview.count} 个节点` : dragPreview.node.text || '要点'}
           </span>
           {dragPreview.descendantCount > 0 && (
             <span
