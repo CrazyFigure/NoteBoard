@@ -4,7 +4,8 @@
     "windows": [{
       "label": "nb-main", "title": "NoteBoard", "width": 1200, "height": 800,
       "minWidth": 680, "minHeight": 480, "resizable": true,
-      "decorations": true, "shadow": true, "visible": false, "dragDropEnabled": true
+      "decorations": true, "shadow": true, "visible": false, "dragDropEnabled": true,
+      "titleBarStyle": "Overlay", "hiddenTitle": true, "trafficLightPosition": { "x": 14, "y": 16 }
     }]
   },
   "bundle": {

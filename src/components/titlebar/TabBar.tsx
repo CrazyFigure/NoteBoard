@@ -80,6 +80,7 @@ import { getExplorerFileIcon } from '../../features/explorer/fileIcons';
 import { checkOpenDocumentStillExists } from '../../features/external/missingFileGuard';
 import { useSyncStore } from '../../stores/syncStore';
 import { IS_WEB } from '../../core/platform';
+import { formatShortcut } from '../../core/shortcuts';
 
 // ── 类型图标映射 ──
 
@@ -1379,7 +1380,7 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <File size={13} color="#3b82f6" />
-            <span>打开文件 (Ctrl+O)</span>
+            <span>{formatShortcut('打开文件 (Ctrl+O)')}</span>
           </button>
 
           {/* 打开文件夹 */}
@@ -1397,7 +1398,7 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <FolderOpen size={13} color="#eab308" />
-            <span>打开文件夹 (Ctrl+Shift+O)</span>
+            <span>{formatShortcut('打开文件夹 (Ctrl+Shift+O)')}</span>
           </button>
 
           {/* 收藏夹：打开收藏夹管理弹窗 */}
@@ -1493,7 +1494,7 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <Save size={13} color={activeKey ? 'var(--editor-accent)' : undefined} />
-            <span>保存 (Ctrl+S)</span>
+            <span>{formatShortcut('保存 (Ctrl+S)')}</span>
           </button>
 
           {/* 另存为 */}
@@ -1513,7 +1514,7 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <SaveAll size={13} color={activeKey ? '#06b6d4' : undefined} />
-            <span>另存为 (Ctrl+Shift+S)</span>
+            <span>{formatShortcut('另存为 (Ctrl+Shift+S)')}</span>
           </button>
         </div>
       )}

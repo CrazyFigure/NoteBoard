@@ -9,6 +9,8 @@ src-tauri/**
 **/target
 dist
 dist-web
+# 插件源码独立发布，网页主程序镜像不复制本机构建的插件包。
+plugins/dist
 .web-data
 .env
 .env.*

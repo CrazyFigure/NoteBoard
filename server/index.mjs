@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { createHash, timingSafeEqual, randomUUID } from 'node:crypto';
 import { createFiles, fail, ROOT, MAX_FILE_BYTES, classify } from './files.mjs';
 import { startSyncWorker } from './sync.mjs';
+import { createPlugins } from './plugins.mjs';
+import { createFonts } from './fonts.mjs';
 
 const projectDir = fileURLToPath(new URL('../', import.meta.url));
 
@@ -18,6 +20,9 @@ export async function createWebServer(options = {}) {
   if (Boolean(username) !== Boolean(password)) throw new Error('NOTEBOARD_USERNAME 和 NOTEBOARD_PASSWORD 必须同时设置或同时留空');
   if (username.includes(':')) throw new Error('访问账号不能包含冒号');
   const files = await createFiles(dataDir);
+  const fonts = await createFonts(dataDir);
+  // 插件程序按部署实例共享；用户文档与工作台布局继续由文件服务管理。
+  const pluginCommand = await createPlugins(dataDir, JSON.parse(await fs.readFile(path.join(projectDir, 'package.json'), 'utf8')).version);
   // 同步管理包含云端凭证，只在部署访问认证已启用时启动服务和开放接口。
   const sync = username ? await startSyncWorker(files, dataDir) : null;
   const streams = new Set();
@@ -77,6 +82,9 @@ export async function createWebServer(options = {}) {
 
   /** 明确列出网页支持的业务命令；未知原生命令拒绝执行，避免暴露服务器系统能力。 */
   async function command(cmd, args, req) {
+    if (cmd === 'plugin_command') return pluginCommand(`plugin_${args.operation}`, args);
+    if (cmd === 'get_font_pack_status' || cmd === 'refresh_font_pack_status') return fonts.status();
+    if (cmd === 'download_font_pack') return fonts.download();
     const key = () => clientKey(req);
     if (cmd === 'web_capabilities') return { syncAvailable: !!sync, authEnabled: !!username };
     if (cmd.startsWith('sync_') || cmd.startsWith('backup_')) {
@@ -104,11 +112,12 @@ export async function createWebServer(options = {}) {
         if (stat.isDirectory()) return { type: 'directory', path: args.path };
         if (classify(args.path)[0] === 'image') return { type: 'image', key: args.path, displayName: path.posix.basename(args.path), dirPath: path.posix.dirname(args.path), language: 'plaintext', size: stat.size, mtime: Math.trunc(stat.mtimeMs) };
         const payload = await files.read(args.path);
-        if (payload.content.includes('\0')) return { type: 'unsupported', ...payload, content: undefined };
+        if (payload.content?.includes('\0')) return { type: 'unsupported', ...payload, content: undefined };
         return { type: 'text', payload };
       }
       case 'write_document':
       case 'save_binary_file': {
+        if (cmd === 'write_document' && classify(args.path)[0] === 'preview') throw fail('此文件仅支持只读查看');
         await sync?.hook('prepare_write', { path: args.path });
         const bytes = cmd === 'write_document' ? files.encode(args.content, args.encoding, args.eol) : Buffer.from(args.base64, 'base64');
         const result = await files.write(args.path, bytes, args.expectedRevision);
@@ -217,6 +226,12 @@ export async function createWebServer(options = {}) {
       const url = new URL(req.url, 'http://noteboard.local');
       if (url.pathname === '/api/health' && req.method === 'GET') return json(res, 200, { ok: true });
       if (!authorize(req, res)) return;
+      if (url.pathname.startsWith('/api/font-pack/') && req.method === 'GET') {
+        const name = decodeURIComponent(url.pathname.slice('/api/font-pack/'.length));
+        const bytes = await fonts.asset(name);
+        res.writeHead(200, {'Content-Type':name.endsWith('.ttf') ? 'font/ttf' : 'font/woff2','Cache-Control':'private, max-age=3600'});
+        return res.end(bytes);
+      }
       if (url.pathname === '/api/events' && req.method === 'GET') {
         if (!sync) throw fail('同步事件不可用', 403);
         if (streams.size >= 100) throw fail('连接数过多', 429);
@@ -268,7 +283,7 @@ export async function createWebServer(options = {}) {
       const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.woff': 'font/woff' }[ext] ?? 'application/octet-stream';
       // Vite 入口保留了两段固定引导脚本，按实际内容生成哈希，而不全局放开内联脚本。
       const scriptHashes = ext === '.html' ? [...bytes.toString().matchAll(/<script>([\s\S]*?)<\/script>/g)].map((match) => `'sha256-${createHash('sha256').update(match[1]).digest('base64')}'`).join(' ') : '';
-      res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': ext === '.html' ? 'no-store' : 'private, max-age=3600', 'Content-Security-Policy': `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' ${scriptHashes}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; font-src 'self' data: https:; connect-src 'self' https:; worker-src 'self' blob:; frame-src https://embed.diagrams.net; object-src 'none'; base-uri 'self'; frame-ancestors 'self'` });
+      res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': ext === '.html' ? 'no-store' : 'private, max-age=3600', 'Content-Security-Policy': `default-src 'self'; script-src 'self' blob: 'wasm-unsafe-eval' ${scriptHashes}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; font-src 'self' blob: data: https:; connect-src 'self' blob: https:; worker-src 'self' blob:; frame-src https://embed.diagrams.net; object-src 'none'; base-uri 'self'; frame-ancestors 'self'` });
       res.end(req.method === 'HEAD' ? undefined : bytes);
     } catch (error) {
       const status = error.status ?? (error.code === 'ENOENT' ? 404 : error instanceof SyntaxError ? 400 : 500);

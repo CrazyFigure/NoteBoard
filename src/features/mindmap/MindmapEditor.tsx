@@ -66,7 +66,7 @@ import {
   getDocumentRevision,
   bumpDocumentRevision,
 } from '../../core/editor/editorRegistry';
-import { submitCapturedContent } from '../session/documentSession';
+import { scheduleAutoSave, submitCapturedContent } from '../session/documentSession';
 import { takeViewState } from '../session/editorSuspension';
 import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
 import type { EditorCapabilities } from '../../core/editor/editorTypes';
@@ -184,6 +184,7 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
         setContent(docKey, entry.content);
         setDirty(docKey, true);
         setTabDirty(docKey, true);
+        scheduleAutoSave(docKey);
       },
     });
 
@@ -280,6 +281,8 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
       setContent(docKey, serialized);
       setDirty(docKey, true);
       setTabDirty(docKey, true);
+      // auto 策略下停止编辑 800ms 后自动写盘
+      scheduleAutoSave(docKey);
       recordDocumentChange(docKey, serialized, {
         mode: 'mindmap',
         startsNewGroup: true,

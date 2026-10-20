@@ -28,6 +28,9 @@ seed(`${WORKSPACE}/架构草图.excalidraw`, '', 60 * 5);
 seed(`${WORKSPACE}/项目笔记/需求.md`, '# 需求\n\n## 背景\n\n## 目标\n', 90);
 seed(`${WORKSPACE}/读书/摘录.md`, '# 摘录\n', 2000);
 seed(`${WORKSPACE}/任务看板.bitable`, serializeBitableDocument(createDefaultBitableDocument('任务看板')), 30);
+// 预览插件和跨文件工作台的开发样例，二进制由测试目录按需提供。
+seed(`${WORKSPACE}/快捷笔记.bitable`, serializeBitableDocument(createDefaultBitableDocument('快捷笔记')), 15);
+for(const name of ['sample.doc','sample.docx','sample.xls','sample.xlsx','sample.ppt','sample.pptx','sample.pdf','sample.dwg','sample.dxf'])seed(`${WORKSPACE}/${name}`,'',10);
 
 /** 更新样例模式：URL 参数 mockUpdate=1（多个版本）/ single（单个版本），未设置时为 null */
 function mockUpdateMode(): 'multi' | 'single' | null {
@@ -108,6 +111,7 @@ function kindOf(name: string): string | null {
   if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) return 'image';
   if (['mindmap', 'xmind'].includes(ext)) return 'mindmap';
   if (['bitable', 'table'].includes(ext)) return 'bitable';
+  if (['doc','docx','xls','xlsx','ppt','pptx','pdf','dwg','dxf'].includes(ext))return 'preview';
   if (['drawio', 'dio'].includes(ext)) return 'drawio';
   return 'code';
 }
@@ -162,6 +166,10 @@ export function installTauriMock(): void {
   mockIPC((cmd, rawArgs) => {
     const args = (rawArgs ?? {}) as Record<string, unknown>;
     switch (cmd) {
+      // 插件调试采用真实构建模块，模拟的仅为安装存储与本机文件选择。
+      case 'plugin_command': return import('./pluginMock').then((m)=>m.mockPluginCommand(args));
+      case 'read_preview_file': return fetch(`/test-results/plugin-fixtures/${nameOf(String(args.path))}`).then((r)=>{if(!r.ok)throw new Error('请先准备插件查看测试文件');return r.arrayBuffer();});
+      case 'plugin:dialog|open': return `${WORKSPACE}/快捷笔记.bitable`;
       // ── 事件与插件 ──
       case 'plugin:event|listen':
       case 'plugin:app|register_listener':
@@ -282,7 +290,7 @@ export function installTauriMock(): void {
         return new TextEncoder().encode(payloadOf(String(args.path)).content ?? '').buffer;
       case 'probe_document': {
         const path = String(args.path);
-        return { exists: files.has(path), mtime: Math.floor((files.get(path)?.mtime ?? now) / 1000), size: files.get(path)?.content.length ?? 0 };
+        return { exists: files.has(path), isDir:dirs.has(path), kind:kindOf(nameOf(path)), mtime: Math.floor((files.get(path)?.mtime ?? now) / 1000), size: files.get(path)?.content.length ?? 0 };
       }
       case 'path_exists': {
         const path = String(args.path);

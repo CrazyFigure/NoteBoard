@@ -88,8 +88,12 @@ function normalizeEol(text: string | null | undefined): string {
 
 /**
  * 根据文件设置判定指定文档类型的保存策略（auto / manual）
+ * 信息图属于 code 类型，但有独立开关，需结合 language 区分
  */
-export function resolveSavePolicy(kind: DocumentPayload['kind']): 'auto' | 'manual' {
+export function resolveSavePolicy(
+  kind: DocumentPayload['kind'],
+  language?: DocumentPayload['language'],
+): 'auto' | 'manual' {
   const fileSettings = useSettingsStore.getState().settings.file;
   if (!fileSettings) return 'manual';
   if (kind === 'markdown') {
@@ -97,6 +101,19 @@ export function resolveSavePolicy(kind: DocumentPayload['kind']): 'auto' | 'manu
   }
   if (kind === 'board') {
     return fileSettings.autoSaveBoard ? 'auto' : 'manual';
+  }
+  if (kind === 'mindmap') {
+    return fileSettings.autoSaveMindmap ? 'auto' : 'manual';
+  }
+  if (kind === 'drawio') {
+    return fileSettings.autoSaveDrawio ? 'auto' : 'manual';
+  }
+  if (kind === 'bitable') {
+    return fileSettings.autoSaveBitable ? 'auto' : 'manual';
+  }
+  if (kind === 'code' && language === 'infographic') {
+    // 未单独设置过时沿用「代码与文本」开关，保持升级前的行为
+    return (fileSettings.autoSaveInfographic ?? fileSettings.autoSaveOther) ? 'auto' : 'manual';
   }
   if (kind === 'code') {
     return fileSettings.autoSaveOther ? 'auto' : 'manual';
@@ -125,7 +142,7 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
       mtime: payload.mtime,
       readonly: payload.readonly,
       isDirty: existing?.isDirty ?? false,
-      savePolicy: existing?.savePolicy ?? resolveSavePolicy(payload.kind),
+      savePolicy: existing?.savePolicy ?? resolveSavePolicy(payload.kind, payload.language),
       baselineContent: existing?.baselineContent ?? payload.content,
       externalStatus: 'clean',
       largeDocVerdict: existing?.largeDocVerdict ?? null,
@@ -196,7 +213,7 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
       let changed = false;
       const newMap = new Map(state.documents);
       newMap.forEach((doc, key) => {
-        const expected = resolveSavePolicy(doc.kind);
+        const expected = resolveSavePolicy(doc.kind, doc.language);
         if (doc.savePolicy !== expected) {
           newMap.set(key, { ...doc, savePolicy: expected });
           changed = true;

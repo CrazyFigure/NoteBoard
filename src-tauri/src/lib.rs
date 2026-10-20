@@ -13,6 +13,8 @@ pub mod settings;
 pub mod session;
 pub mod sysfont;
 pub mod font_pack;
+// 可独立更新的官方查看器与工作台插件。
+pub mod plugins;
 pub mod bootstrap;
 pub mod updater;
 pub mod staging;
@@ -47,8 +49,22 @@ pub fn run() {
         .plugin(tauri_plugin_os::init());
 
     // 窗口尺寸/位置记忆仅桌面端有意义
+    // 不记忆窗口装饰：装饰由各平台配置决定，避免旧版本保存的系统标题栏状态被恢复
+    // 不记忆可见性：窗口统一在前端壳就绪后由 window_shell_ready 显示，避免插件提前显示出白屏
     #[cfg(desktop)]
-    let builder = builder.plugin(tauri_plugin_window_state::Builder::new().build());
+    let builder = builder.plugin(
+        tauri_plugin_window_state::Builder::new()
+            .with_state_flags(
+                tauri_plugin_window_state::StateFlags::all()
+                    & !tauri_plugin_window_state::StateFlags::DECORATIONS
+                    & !tauri_plugin_window_state::StateFlags::VISIBLE,
+            )
+            .build(),
+    );
+
+    // 全局唤起窗口快捷键（仅桌面端；具体按键由设置决定，启动时在 bootstrap 中注册）
+    #[cfg(desktop)]
+    let builder = builder.plugin(window::global_shortcut::plugin());
 
     // Android 原生桥接（所有文件访问权限、外部文件收件、系统分享）
     #[cfg(target_os = "android")]
@@ -79,6 +95,7 @@ pub fn run() {
             window::commands::query_transfer,
             window::commands::focus_window,
             window::commands::close_window,
+            window::commands::set_show_window_shortcut,
             // registry
             registry::commands::register_document,
             registry::commands::unregister_document,
@@ -89,6 +106,7 @@ pub fn run() {
             fsio::commands::read_document,
             // XMind 直接打开保留二进制正文，不能走普通文本解码。
             fsio::commands::read_xmind_file,
+            fsio::commands::read_preview_file,
             fsio::commands::probe_document,
             // 🔴 S07：统一文件准备（读盘前归属查询 + 在途去重 + blocking 读取）
             fsio::prepare::prepare_document,
@@ -131,6 +149,7 @@ pub fn run() {
             font_pack::download_font_pack,
             font_pack::import_font_pack,
             font_pack::remove_font_pack,
+            plugins::plugin_command,
             // updater
             updater::commands::check_for_updates,
             updater::commands::download_and_install_update,
@@ -174,6 +193,12 @@ pub fn run() {
                 let mut argv = vec!["NoteBoard".to_string()];
                 argv.extend(urls.into_iter().filter_map(|url| url.to_file_path().ok()).map(|path| path.to_string_lossy().to_string()));
                 if argv.len() > 1 { bootstrap::single_instance::handle_second_instance(_app, argv); }
+            }
+            // 窗口全部隐藏到托盘后点击 Dock 图标，恢复窗口
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { has_visible_windows: false, .. } = _event {
+                let handle = _app.clone();
+                std::thread::spawn(move || window::tray::restore_hidden_windows(&handle));
             }
         });
 }

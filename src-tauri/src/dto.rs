@@ -19,6 +19,8 @@ pub enum DocumentKind {
     Drawio,
     // 多维表格格式 (.bitable / .table)
     Bitable,
+    /// Office / PDF 插件只读查看，不读取或保存文本正文。
+    Preview,
     Unsupported,
 }
 
@@ -376,6 +378,7 @@ pub fn kind_by_ext(ext: &str) -> (DocumentKind, LanguageId) {
         "mindmap" | "xmind" | "mm" => (DocumentKind::Mindmap, LanguageId::Json),
         "drawio" | "dio" => (DocumentKind::Drawio, LanguageId::Xml),
         "bitable" | "table" => (DocumentKind::Bitable, LanguageId::Json),
+        "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "pdf" => (DocumentKind::Preview, LanguageId::Plaintext),
         "mmd" | "mermaid" => (DocumentKind::Code, LanguageId::Mermaid),
         "puml" | "plantuml" | "iuml" | "uml" => (DocumentKind::Code, LanguageId::Plantuml),
         "infographic" | "ig" => (DocumentKind::Code, LanguageId::Infographic),
@@ -414,7 +417,7 @@ pub fn kind_from_path(path: &str) -> (DocumentKind, LanguageId) {
 pub fn save_policy_of(kind: DocumentKind) -> SavePolicy {
     match kind {
         DocumentKind::Markdown | DocumentKind::Board | DocumentKind::Mindmap | DocumentKind::Drawio | DocumentKind::Bitable => SavePolicy::Auto,
-        DocumentKind::Code | DocumentKind::Image | DocumentKind::Unsupported => SavePolicy::Manual,
+        DocumentKind::Code | DocumentKind::Image | DocumentKind::Preview | DocumentKind::Unsupported => SavePolicy::Manual,
     }
 }
 

@@ -51,6 +51,19 @@ test('过期写入及同名上传被拒绝，原内容不被覆盖', async (t) =
   assert.equal((await (await call('read_document', { path: payload.key })).json()).result.content, '第一次保存');
 });
 
+// Office/PDF 只读属性同时覆盖准备、读取与写入接口，不能仅依赖按钮隐藏。
+test('二进制插件查看不解码正文，文本保存被拒绝且原始字节保留', async (t) => {
+  const {dataDir,call}=await fixture(t);
+  const original=Buffer.from('%PDF-1.7\0binary');
+  const disk=path.join(dataDir,'workspace','document.pdf');await fs.writeFile(disk,original);
+  const prepared=(await (await call('prepare_document',{path:'/workspace/document.pdf'})).json()).result;
+  assert.equal(prepared.type,'text');assert.equal(prepared.payload.kind,'preview');assert.equal(prepared.payload.content,null);assert.equal(prepared.payload.readonly,true);
+  const read=(await (await call('read_document',{path:'/workspace/document.pdf'})).json()).result;
+  assert.equal(read.content,null);assert.equal(read.readonly,true);
+  const write=await call('write_document',{path:'/workspace/document.pdf',content:'',encoding:'utf8',eol:'lf',expectedRevision:read.webRevision});
+  assert.equal(write.status,400);assert.deepEqual(await fs.readFile(disk),original);
+});
+
 test('拒绝路径穿越、Windows 路径、根目录修改和符号链接', async (t) => {
   const { call, dataDir, temp } = await fixture(t);
   for (const key of ['/etc/passwd', '/workspace/../secret', '/workspace\\secret', '/workspace/NUL.txt']) {

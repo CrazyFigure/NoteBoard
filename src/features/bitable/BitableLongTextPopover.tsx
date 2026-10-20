@@ -9,6 +9,7 @@ import { BitableRichTextEditor, type RichTextMode } from './BitableRichTextEdito
 import { X, Check } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 import { KEYBOARD_SCOPE_ATTR, stopReactPropagation } from './bitableUtils';
+import { formatShortcut } from '../../core/shortcuts';
 
 interface LongTextPopoverProps {
   /** 所属列，用于取字段名与 Markdown 配置 */
@@ -166,7 +167,7 @@ export function BitableLongTextPopover({
               {column.name}
             </div>
             <div style={{ fontSize: 11, color: 'var(--editor-text-muted, #94a3b8)', marginTop: 1 }}>
-              多行文本{config.markdown ? ' · Markdown 富文本' : ''} · Esc 取消 · Ctrl+Enter 保存
+              多行文本{config.markdown ? ' · Markdown 富文本' : ''} · Esc 取消 · {formatShortcut('Ctrl+Enter')} 保存
             </div>
           </div>
           <Tooltip content="取消编辑" side="bottom" sideOffset={4}>

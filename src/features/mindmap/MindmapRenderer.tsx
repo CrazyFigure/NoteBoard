@@ -58,8 +58,9 @@ import {
 import { Tooltip } from '../../components/Tooltip';
 import { CanvasMinimap, type CanvasMinimapHandle, type MinimapScene } from '../../components/minimap/CanvasMinimap';
 import { useSettingsStore } from '../../stores/settingsStore';
-import { IS_MOBILE_UI } from '../../core/platform';
+import { IS_MOBILE_UI, USES_COMMAND_KEY } from '../../core/platform';
 import type { MindmapSearchHighlight } from './mindmapSearch';
+import { formatShortcut } from '../../core/shortcuts';
 
 interface MindmapRendererProps {
   root: MindNode;
@@ -294,20 +295,6 @@ function insertSiblingNode(n: MindNode, anchorId: string, sibling: MindNode): bo
 
 /** 缩略图节点的最小像素尺寸，缩得很小时仍能看出分支走向 */
 const MINIMAP_MIN_NODE_PX = 1.5;
-
-/** 底部快捷键提示中的按键样式 */
-const HINT_KBD_STYLE: React.CSSProperties = {
-  display: 'inline-block',
-  padding: '0 5px',
-  borderRadius: 4,
-  border: '1px solid var(--editor-border, #cbd5e1)',
-  background: 'var(--editor-bg, #ffffff)',
-  color: 'var(--editor-text-secondary, #64748b)',
-  fontFamily: 'inherit',
-  fontSize: 10,
-  fontWeight: 600,
-  lineHeight: '16px',
-};
 
 export function MindmapRenderer({
   root,
@@ -636,7 +623,7 @@ export function MindmapRenderer({
   };
 
   // 画布容器虽是 overflow:hidden，编辑节点时浏览器仍会滚动它把光标露出来，
-  // 导致缩略图、快捷键提示等绝对定位控件整体上移；视图位置只由 pan 决定，滚动一律复位
+  // 导致缩略图等绝对定位控件整体上移；视图位置只由 pan 决定，滚动一律复位
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -1306,7 +1293,8 @@ export function MindmapRenderer({
       const selected = selectedNodeIdRef.current;
       if (!selected) return;
 
-      if (e.key === 'Delete') {
+      // Mac 键盘的 delete 键对应 Backspace，同样用于删除节点
+      if (e.key === 'Delete' || (USES_COMMAND_KEY && e.key === 'Backspace')) {
         // 焦点在画布之外（如文件树、其他面板）时不响应，避免误删节点
         const container = containerRef.current;
         if (el && el !== document.body && container && !container.contains(el) && !el.contains(container)) return;
@@ -2051,42 +2039,7 @@ export function MindmapRenderer({
         })}
       </div>
 
-      {/* 左下角快捷键提示（紧挨撤销 / 重做，仅展示不拦截画布交互；右下角留给缩略图） */}
-      <div
-        style={{
-          position: 'absolute',
-          left: 86,
-          bottom: 13,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '4px 10px',
-          borderRadius: 6,
-          background: 'color-mix(in srgb, var(--editor-surface, #ffffff) 82%, transparent)',
-          border: '1px solid var(--editor-border, #e2e8f0)',
-          color: 'var(--editor-text-muted, #94a3b8)',
-          fontSize: 11,
-          lineHeight: 1.4,
-          pointerEvents: 'none',
-          userSelect: 'none',
-          backdropFilter: 'blur(6px)',
-          maxWidth: 'calc(100% - 330px)',
-          flexWrap: 'wrap',
-        }}
-      >
-        <kbd style={HINT_KBD_STYLE}>Tab</kbd>
-        <span>添加子节点</span>
-        <span style={{ opacity: 0.5 }}>·</span>
-        <kbd style={HINT_KBD_STYLE}>Enter</kbd>
-        <span>添加同级节点</span>
-        <span style={{ opacity: 0.5 }}>·</span>
-        <kbd style={HINT_KBD_STYLE}>Delete</kbd>
-        <span>删除</span>
-        <span style={{ opacity: 0.5 }}>·</span>
-        <span>双击编辑</span>
-      </div>
-
-      {/* 内容全部移出视野时的回位按钮（底部居中，位于快捷键提示上方） */}
+      {/* 内容全部移出视野时的回位按钮（底部居中） */}
       {contentOffscreen && (
         <button
           type="button"
@@ -2271,7 +2224,7 @@ export function MindmapRenderer({
       {deleteConfirm && (
         <MindmapConfirmDialog
           title="删除节点"
-          message={`该节点下还有 ${deleteConfirm.descendantCount} 个子节点，将一并删除。删除后可用 Ctrl+Z 撤销。`}
+          message={formatShortcut(`该节点下还有 ${deleteConfirm.descendantCount} 个子节点，将一并删除。删除后可用 Ctrl+Z 撤销。`)}
           confirmLabel="删除"
           onCancel={() => setDeleteConfirm(null)}
           onConfirm={() => {

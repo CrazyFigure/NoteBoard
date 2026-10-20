@@ -1581,6 +1581,176 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   font-family: inherit;
 }
 
+/* 设置页排版分组底部的「效果预览」折叠块 */
+.nb-settings-preview {
+  border-top: 1px dashed var(--editor-border);
+  padding-top: 10px;
+}
+
+.nb-settings-preview-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px 3px 4px;
+  margin-left: -4px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--editor-text-muted);
+  font-family: var(--ui-font-family);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-settings-preview-toggle:hover {
+  background: var(--toolbar-hover);
+  color: var(--editor-text);
+}
+
+.nb-settings-preview-toggle:active {
+  background: var(--toolbar-active);
+  transform: scale(0.97);
+}
+
+.nb-settings-preview-chevron {
+  transition: transform var(--transition-fast);
+}
+
+.nb-settings-preview-toggle[aria-expanded='true'] .nb-settings-preview-chevron {
+  transform: rotate(90deg);
+}
+
+.nb-settings-preview-body {
+  margin-top: 10px;
+}
+
+/* 设置页下拉框：自绘触发按钮与弹出列表，替代原生 select（原生列表在 WebView2 下为系统深色块） */
+.nb-settings-select {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-shrink: 0;
+  min-width: 110px;
+  padding: 6px 9px 6px 10px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--editor-text);
+  background: var(--editor-surface);
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-sm);
+  outline: none;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: border-color var(--transition-fast), background-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.nb-settings-select-value {
+  white-space: nowrap;
+}
+
+.nb-settings-select-arrow {
+  flex-shrink: 0;
+  color: var(--editor-text-muted);
+  transition: color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-settings-select:hover {
+  border-color: var(--editor-border-focus);
+  background: var(--toolbar-hover);
+}
+
+.nb-settings-select:hover .nb-settings-select-arrow {
+  color: var(--editor-text);
+}
+
+.nb-settings-select:active {
+  background: var(--toolbar-active);
+}
+
+/* 展开或键盘聚焦：强调色描边 + 柔和外环 */
+.nb-settings-select:focus-visible,
+.nb-settings-select[aria-expanded='true'] {
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 3px var(--editor-selection);
+}
+
+.nb-settings-select[aria-expanded='true'] .nb-settings-select-arrow {
+  color: var(--accent-strong);
+  transform: rotate(180deg);
+}
+
+/* 弹出列表：挂在 body 下 fixed 定位，层级高于设置弹窗（9990）、低于 Tooltip */
+.nb-settings-select-menu {
+  position: fixed;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--editor-bg);
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  box-sizing: border-box;
+  font-family: var(--ui-font-family);
+  animation: nb-settings-select-in 120ms ease-out;
+}
+
+.nb-settings-select-menu.is-top {
+  animation-name: nb-settings-select-in-top;
+}
+
+@keyframes nb-settings-select-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes nb-settings-select-in-top {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.nb-settings-select-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 8px 6px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--editor-text);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+/* 悬浮与键盘高亮共用 is-active */
+.nb-settings-select-option.is-active {
+  background: var(--toolbar-hover);
+}
+
+.nb-settings-select-option:active {
+  background: var(--toolbar-active);
+}
+
+.nb-settings-select-option.is-selected {
+  color: var(--accent-strong);
+  font-weight: 500;
+  background: var(--editor-selection);
+}
+
+.nb-settings-select-check {
+  flex-shrink: 0;
+  color: var(--accent-strong);
+}
+
 /* 语法高亮 token */
 .ProseMirror .hljs-comment, .ProseMirror .hljs-quote { color: var(--hljs-comment); font-style: italic; }
 .ProseMirror .hljs-keyword, .ProseMirror .hljs-selector-tag { color: var(--hljs-keyword); }

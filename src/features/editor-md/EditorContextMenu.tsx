@@ -60,6 +60,7 @@ import {
   Smile,
   X,
 } from 'lucide-react';
+import { formatShortcut } from '../../core/shortcuts';
 
 interface EditorContextMenuProps {
   editor: Editor;
@@ -236,7 +237,7 @@ export function EditorContextMenu({
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Scissors size={15} color="var(--accent-500, #3b82f6)" />
-                <span>剪切 (Ctrl+X)</span>
+                <span>{formatShortcut('剪切 (Ctrl+X)')}</span>
               </div>
             </button>
 
@@ -255,7 +256,7 @@ export function EditorContextMenu({
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Copy size={15} color="var(--accent-500, #3b82f6)" />
-                <span>复制 (Ctrl+C)</span>
+                <span>{formatShortcut('复制 (Ctrl+C)')}</span>
               </div>
             </button>
 
@@ -284,7 +285,7 @@ export function EditorContextMenu({
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Clipboard size={15} color="var(--accent-500, #3b82f6)" />
-                <span>粘贴 (Ctrl+V)</span>
+                <span>{formatShortcut('粘贴 (Ctrl+V)')}</span>
               </div>
             </button>
 
@@ -306,7 +307,7 @@ export function EditorContextMenu({
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Bold size={15} color="var(--accent-500, #3b82f6)" />
-                <span>加粗 (Ctrl+B)</span>
+                <span>{formatShortcut('加粗 (Ctrl+B)')}</span>
               </div>
             </button>
 
@@ -325,7 +326,7 @@ export function EditorContextMenu({
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Italic size={15} />
-                <span>斜体 (Ctrl+I)</span>
+                <span>{formatShortcut('斜体 (Ctrl+I)')}</span>
               </div>
             </button>
 
@@ -344,7 +345,7 @@ export function EditorContextMenu({
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Underline size={15} />
-                <span>下划线 (Ctrl+U)</span>
+                <span>{formatShortcut('下划线 (Ctrl+U)')}</span>
               </div>
             </button>
 
@@ -558,7 +559,7 @@ export function EditorContextMenu({
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Link size={15} />
-                <span>超链接 (Ctrl+K)</span>
+                <span>{formatShortcut('超链接 (Ctrl+K)')}</span>
               </div>
             </button>
 
@@ -610,7 +611,7 @@ export function EditorContextMenu({
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Clipboard size={15} color="var(--accent-500, #3b82f6)" />
-                <span>粘贴 (Ctrl+V)</span>
+                <span>{formatShortcut('粘贴 (Ctrl+V)')}</span>
               </div>
             </button>
 
@@ -639,7 +640,7 @@ export function EditorContextMenu({
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <ClipboardType size={15} color="var(--accent-500, #3b82f6)" />
-                <span>纯文本粘贴 (Ctrl+Shift+V)</span>
+                <span>{formatShortcut('纯文本粘贴 (Ctrl+Shift+V)')}</span>
               </div>
             </button>
 

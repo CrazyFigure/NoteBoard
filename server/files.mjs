@@ -22,6 +22,7 @@ export function classify(name) {
   if (['mindmap', 'xmind', 'mm'].includes(ext)) return ['mindmap', 'plaintext'];
   if (['drawio', 'dio'].includes(ext)) return ['drawio', 'plaintext'];
   if (['bitable', 'table'].includes(ext)) return ['bitable', 'plaintext'];
+  if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pdf', 'dwg', 'dxf'].includes(ext)) return ['preview', 'plaintext'];
   if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'svg', 'bmp', 'avif'].includes(ext)) return ['image', 'plaintext'];
   const language = { sql: 'sql', json: 'json', yaml: 'yaml', yml: 'yaml', xml: 'xml', mmd: 'mermaid', mermaid: 'mermaid', puml: 'plantuml', plantuml: 'plantuml', infographic: 'infographic', ig: 'infographic' }[ext] ?? 'plaintext';
   return ['code', language];
@@ -86,6 +87,8 @@ export async function createFiles(dataDir) {
   /** 保留 UTF-8 BOM / GBK 与原有换行风格，内容模型统一使用 LF。 */
   async function read(key) {
     const { bytes, stat } = await readBytes(key);
+    // Office 和 PDF 返回空正文，查看器单独读取原始字节。
+    if (classify(key)[0] === 'preview') return { key, displayName:path.posix.basename(key), dirPath:path.posix.dirname(key), kind:'preview', language:'plaintext', content:null, encoding:'utf8', eol:'lf', size:stat.size, mtime:Math.trunc(stat.mtimeMs), readonly:true, webRevision:revision(bytes) };
     let encoding = 'utf8';
     let content;
     if (bytes.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf]))) {

@@ -66,6 +66,19 @@ export function getExplorerFileIcon(
 
   // 2. 根据文件扩展名返回专属图标与调优配色
   switch (ext) {
+    // 官方查看插件沿用应用文件图标，主题色由现有语义变量提供。
+    case 'doc':
+    case 'docx':
+    case 'pdf':
+    case 'dwg':
+    case 'dxf':
+      return <FileText {...iconProps} color="var(--editor-accent)" />;
+    case 'xls':
+    case 'xlsx':
+      return <Table {...iconProps} color="var(--success-500)" />;
+    case 'ppt':
+    case 'pptx':
+      return <Layout {...iconProps} color="var(--warning-500)" />;
     // ── Markdown 笔记（NoteBoard 核心，品牌蓝）──
     case 'md':
     case 'markdown':
@@ -216,8 +229,6 @@ export function getExplorerFileIcon(
     // ── 表格与数据表 ──
     case 'csv':
     case 'tsv':
-    case 'xlsx':
-    case 'xls':
       return <Table {...iconProps} color="#10b981" />;
 
     // ── 配置文件与系统环境（控制滑块，石板灰）──

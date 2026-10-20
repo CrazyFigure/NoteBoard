@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useWindowStore } from '../../src/stores/windowStore';
 import { useDocumentStore } from '../../src/stores/documentStore';
 import { useExplorerStore } from '../../src/features/explorer/explorerStore';
-import { openDocument } from '../../src/features/editor-code/orchestration/openDocument';
+import { openDocument, buildTabFromPath } from '../../src/features/editor-code/orchestration/openDocument';
 import * as ipc from '../../src/core/ipc/commands';
 
 // Mock ipc 接口
@@ -28,6 +28,18 @@ describe('S07 打开链路（统一文件准备）', () => {
     useWindowStore.setState({ tabs: [], activeKey: null, transferringKeys: [] });
     useDocumentStore.setState({ documents: new Map() });
     useExplorerStore.setState({ root: null, expanded: new Map(), revealed: null });
+  });
+
+  it('恢复的查看标签拿到合法 null 正文后立即退出懒加载，不等待文本内容',async()=>{
+    const path='C:/notes/drawing.dwg';
+    useWindowStore.setState({tabs:[{...buildTabFromPath(path),lazySource:path}],activeKey:null});
+    vi.mocked(ipc.prepareDocument).mockResolvedValue({type:'text',payload:{key:path,displayName:'drawing.dwg',dirPath:'C:/notes',kind:'preview',language:'plaintext',content:null,encoding:'utf8',eol:'lf',size:100,mtime:1,readonly:true}});
+    vi.mocked(ipc.registerDocument).mockResolvedValue({type:'ok'});
+    vi.mocked(ipc.readDir).mockResolvedValue([]);
+    expect(await openDocument(path)).toBe('opened');
+    expect(useWindowStore.getState().getTab(path)?.lazySource).toBeUndefined();
+    expect(useDocumentStore.getState().getDocument(path)?.content).toBeNull();
+    expect(useWindowStore.getState().getTab(path)?.kind).toBe('preview');
   });
 
   it('本窗口已打开的文件再次打开：只激活原标签，不重复读正文不建新标签', async () => {

@@ -23,6 +23,7 @@ import { takeViewState } from '../session/editorSuspension';
 import { registerEditorCapabilities } from '../../core/editor/editorRegistry';
 import { createSplitEditorCapabilities } from './splitEditorCapabilities';
 import { useWindowStore } from '../../stores/windowStore';
+import { scheduleAutoSave } from '../session/documentSession';
 import { renderPlantUmlToSvg } from '../plantuml/plantumlEncoder';
 import { extFromPath } from '../../core/docKind';
 import { ChartExportMenu } from '../export/ChartExportMenu';
@@ -221,6 +222,8 @@ export function DiagramSplitEditor({ docKey }: DiagramSplitEditorProps) {
             setDirty(docKey, true);
             setTabDirty(docKey, true);
             renderDiagram(newText);
+            // auto 策略下停止编辑 800ms 后自动写盘
+            scheduleAutoSave(docKey);
           }
         }),
         EditorView.theme({

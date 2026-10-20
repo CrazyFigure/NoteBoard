@@ -1,0 +1,32 @@
+name: Official plugins
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: official-plugin-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install plugin build tools
+        run: npm install -g pnpm@12.11.2
+      - name: Build independently versioned packages
+        working-directory: plugins
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm test
+          pnpm build
+      - name: Preserve published versions and upload packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node plugins/publish.mjs
