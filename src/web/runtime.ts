@@ -180,7 +180,7 @@ export async function invoke<T>(command: string, rawArgs: Record<string, unknown
     }
     case 'load_settings': {
       const saved = await request<Partial<Settings> | null>(command);
-      result = { ...DEFAULT_SETTINGS, ...saved, appearance: { ...DEFAULT_SETTINGS.appearance, ...saved?.appearance }, typography: { ...DEFAULT_SETTINGS.typography, ...saved?.typography }, editor: { ...DEFAULT_SETTINGS.editor, ...saved?.editor }, file: { ...DEFAULT_SETTINGS.file, stagingDirectory: `${ROOT}/.staging`, ...saved?.file }, layout: { ...DEFAULT_SETTINGS.layout, ...saved?.layout } };
+      result = { ...DEFAULT_SETTINGS, ...saved, appearance: { ...DEFAULT_SETTINGS.appearance, ...saved?.appearance }, typography: { ...DEFAULT_SETTINGS.typography, ...saved?.typography }, editor: { ...DEFAULT_SETTINGS.editor, ...saved?.editor }, file: { ...DEFAULT_SETTINGS.file, stagingDirectory: `${ROOT}/.staging`, ...saved?.file }, layout: { ...DEFAULT_SETTINGS.layout, ...saved?.layout }, system: { ...DEFAULT_SETTINGS.system, ...saved?.system } };
       break;
     }
     case 'save_settings': result = await request(command, args); emit('nb://settings-changed', { ...args.settings as Settings, revision: result }); break;
