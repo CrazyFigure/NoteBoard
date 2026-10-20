@@ -295,20 +295,6 @@ function insertSiblingNode(n: MindNode, anchorId: string, sibling: MindNode): bo
 /** 缩略图节点的最小像素尺寸，缩得很小时仍能看出分支走向 */
 const MINIMAP_MIN_NODE_PX = 1.5;
 
-/** 底部快捷键提示中的按键样式 */
-const HINT_KBD_STYLE: React.CSSProperties = {
-  display: 'inline-block',
-  padding: '0 5px',
-  borderRadius: 4,
-  border: '1px solid var(--editor-border, #cbd5e1)',
-  background: 'var(--editor-bg, #ffffff)',
-  color: 'var(--editor-text-secondary, #64748b)',
-  fontFamily: 'inherit',
-  fontSize: 10,
-  fontWeight: 600,
-  lineHeight: '16px',
-};
-
 export function MindmapRenderer({
   root,
   onChange,
@@ -636,7 +622,7 @@ export function MindmapRenderer({
   };
 
   // 画布容器虽是 overflow:hidden，编辑节点时浏览器仍会滚动它把光标露出来，
-  // 导致缩略图、快捷键提示等绝对定位控件整体上移；视图位置只由 pan 决定，滚动一律复位
+  // 导致缩略图等绝对定位控件整体上移；视图位置只由 pan 决定，滚动一律复位
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -2051,42 +2037,7 @@ export function MindmapRenderer({
         })}
       </div>
 
-      {/* 左下角快捷键提示（紧挨撤销 / 重做，仅展示不拦截画布交互；右下角留给缩略图） */}
-      <div
-        style={{
-          position: 'absolute',
-          left: 86,
-          bottom: 13,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '4px 10px',
-          borderRadius: 6,
-          background: 'color-mix(in srgb, var(--editor-surface, #ffffff) 82%, transparent)',
-          border: '1px solid var(--editor-border, #e2e8f0)',
-          color: 'var(--editor-text-muted, #94a3b8)',
-          fontSize: 11,
-          lineHeight: 1.4,
-          pointerEvents: 'none',
-          userSelect: 'none',
-          backdropFilter: 'blur(6px)',
-          maxWidth: 'calc(100% - 330px)',
-          flexWrap: 'wrap',
-        }}
-      >
-        <kbd style={HINT_KBD_STYLE}>Tab</kbd>
-        <span>添加子节点</span>
-        <span style={{ opacity: 0.5 }}>·</span>
-        <kbd style={HINT_KBD_STYLE}>Enter</kbd>
-        <span>添加同级节点</span>
-        <span style={{ opacity: 0.5 }}>·</span>
-        <kbd style={HINT_KBD_STYLE}>Delete</kbd>
-        <span>删除</span>
-        <span style={{ opacity: 0.5 }}>·</span>
-        <span>双击编辑</span>
-      </div>
-
-      {/* 内容全部移出视野时的回位按钮（底部居中，位于快捷键提示上方） */}
+      {/* 内容全部移出视野时的回位按钮（底部居中） */}
       {contentOffscreen && (
         <button
           type="button"

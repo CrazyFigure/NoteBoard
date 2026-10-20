@@ -23,6 +23,7 @@ import { takeViewState } from '../session/editorSuspension';
 import { registerEditorCapabilities } from '../../core/editor/editorRegistry';
 import { createSplitEditorCapabilities } from './splitEditorCapabilities';
 import { useWindowStore } from '../../stores/windowStore';
+import { queuedAutoSave } from '../session/documentSession';
 import { renderPlantUmlToSvg } from '../plantuml/plantumlEncoder';
 import { extFromPath } from '../../core/docKind';
 import { ChartExportMenu } from '../export/ChartExportMenu';
@@ -194,6 +195,24 @@ export function DiagramSplitEditor({ docKey }: DiagramSplitEditorProps) {
     [diagramType],
   );
 
+  // 自动保存：auto 策略下停止编辑 800ms 后写盘（与代码编辑器一致，统一走每文档写队列）
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleAutoSave = useCallback(() => {
+    if (useDocumentStore.getState().getDocument(docKey)?.savePolicy !== 'auto') return;
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      autoSaveTimerRef.current = null;
+      queuedAutoSave(docKey, useDocumentStore.getState().getDocument(docKey)?.content ?? '').catch((e) => {
+        console.error('图表源码自动保存失败:', e);
+      });
+    }, 800);
+  }, [docKey]);
+  // 切换文档或卸载时取消未触发的自动保存
+  useEffect(() => () => {
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = null;
+  }, [docKey]);
+
   // 初始化 CodeMirror 6 编辑器
   useEffect(() => {
     if (!editorContainerRef.current) return;
@@ -221,6 +240,7 @@ export function DiagramSplitEditor({ docKey }: DiagramSplitEditorProps) {
             setDirty(docKey, true);
             setTabDirty(docKey, true);
             renderDiagram(newText);
+            scheduleAutoSave();
           }
         }),
         EditorView.theme({

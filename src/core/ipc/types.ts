@@ -325,6 +325,8 @@ export interface FileSettings {
   autoSaveMarkdown: boolean;
   autoSaveBoard: boolean;
   autoSaveOther: boolean;
+  // 信息图（.infographic / .ig）单独的自动保存开关；缺省时沿用 autoSaveOther
+  autoSaveInfographic?: boolean;
   forceManualSave: boolean;
   showHiddenFiles: boolean;
   restoreSession: boolean;

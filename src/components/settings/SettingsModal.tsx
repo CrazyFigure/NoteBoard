@@ -3,7 +3,7 @@
 // 详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud } from 'lucide-react';
+import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud, ChevronRight, ChevronDown } from 'lucide-react';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { THEMES } from '../../core/theme/themes';
 import { contentWidthToPercent, CONTENT_WIDTH_PERCENT_MAP } from '../../core/theme/applyTheme';
@@ -378,6 +378,37 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       </span>
                     </div>
                   </div>
+
+                  {/* 软件界面 UI 效果预览 */}
+                  <PreviewCollapse>
+                    <div
+                      style={{
+                        fontFamily: 'var(--ui-font-family)',
+                        fontSize: settings.typography.uiFontSize ?? 13,
+                        padding: '12px 16px',
+                        background: 'var(--editor-bg)',
+                        border: '1px solid var(--editor-border)',
+                        borderRadius: 'var(--radius-sm)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 12,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontWeight: 600 }}>NoteBoard 界面</span>
+                        <span style={{ fontSize: '0.88em', color: 'var(--editor-text-muted)' }}>提示信息：文档已就绪 (File Ready)</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <span style={{ padding: '3px 8px', background: 'var(--editor-selection)', color: 'var(--accent-strong)', borderRadius: 'var(--radius-sm)', fontSize: '0.88em', fontWeight: 500 }}>
+                          Active Tab 标签
+                        </span>
+                        <span style={{ padding: '3px 8px', background: 'var(--editor-surface)', border: '1px solid var(--editor-border)', borderRadius: 'var(--radius-sm)', fontSize: '0.88em' }}>
+                          Action 按钮
+                        </span>
+                      </div>
+                    </div>
+                  </PreviewCollapse>
                 </div>
 
                 {/* ── 2.2 Markdown 正文排版 ── */}
@@ -535,6 +566,33 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       </div>
                     </div>
                   </div>
+
+                  {/* Markdown 正文效果预览 */}
+                  <PreviewCollapse>
+                    <div
+                      style={{
+                        fontFamily: 'var(--content-font-family)',
+                        fontSize: settings.typography.contentFontSize,
+                        lineHeight: settings.typography.contentLineHeight,
+                      }}
+                    >
+                      <p style={{ margin: 0 }}>
+                        这是中英文正文排版效果（Typography Test: Quick Brown Fox 123），包含 <strong>加粗文本 Bold</strong>、<em>斜体 Italic</em> 与 <code style={{
+                          background: 'var(--code-inline-bg)',
+                          color: 'var(--code-inline-text)',
+                          padding: '2px 6px',
+                          borderRadius: 'var(--radius-sm)',
+                          fontFamily: 'var(--mono-font-family)',
+                          fontSize: '0.88em',
+                          border: '1px solid var(--editor-border)',
+                        }}>const note = "NoteBoard 2026";</code> 行内代码。
+                      </p>
+                      {/* 第二段：体现段落间距设置 */}
+                      <p style={{ margin: `${settings.typography.contentParagraphSpacing ?? 14}px 0 0` }}>
+                        这是第二个段落，与上一段之间的空白即「正文段落间距」。
+                      </p>
+                    </div>
+                  </PreviewCollapse>
                 </div>
 
                 {/* ── 2.3 代码与纯文本排版 ── */}
@@ -675,6 +733,23 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       </div>
                     </div>
                   </div>
+
+                  {/* 代码文件效果预览 */}
+                  <PreviewCollapse>
+                    <pre className="nb-typography-code-preview" style={{
+                      margin: 0,
+                      padding: '10px 14px',
+                      background: 'var(--code-block-bg)',
+                      border: '1px solid var(--editor-border)',
+                      borderRadius: 'var(--radius-sm)',
+                      fontFamily: 'var(--mono-font-family)',
+                      fontSize: settings.typography.monoFontSize ?? 14,
+                      lineHeight: settings.typography.monoLineHeight ?? 1.5,
+                      color: 'var(--code-block-text)',
+                    }}>
+                      <code>{`-- 查询笔记表（中西文代码混排测试）\nSELECT id, title, created_at\nFROM notes\nWHERE status = 'active' -- 仅查询有效笔记;`}</code>
+                    </pre>
+                  </PreviewCollapse>
                 </div>
 
                 {/* ── 2.5 文件树排版（资源管理器） ── */}
@@ -733,157 +808,53 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       />
                     </div>
                   </div>
-                </div>
 
-                {/* ── 2.6 实时排版效果预览 ── */}
-                <div>
-                  <label style={{ ...labelStyle, marginBottom: 8, display: 'block' }}>实时排版预览</label>
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      // 各预览分组之间留出足够间距，小标题与上一组内容区分清楚
-                      gap: 24,
-                      padding: '18px 20px',
-                      background: 'var(--editor-surface)',
-                      border: '1px solid var(--editor-border)',
-                      borderRadius: 'var(--radius-md)',
-                    }}
-                  >
-                    {/* 软件界面 UI 效果预览 */}
-                    <div>
-                      <p style={previewCaptionStyle}>
-                        软件界面 UI 与提示效果 (中英文混合测试: NoteBoard 2026 Ready)：
-                      </p>
-                      <div
-                        style={{
-                          fontFamily: 'var(--ui-font-family)',
-                          fontSize: settings.typography.uiFontSize ?? 13,
-                          padding: '12px 16px',
-                          background: 'var(--editor-bg)',
-                          border: '1px solid var(--editor-border)',
-                          borderRadius: 'var(--radius-sm)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: 12,
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontWeight: 600 }}>NoteBoard 界面</span>
-                          <span style={{ fontSize: '0.88em', color: 'var(--editor-text-muted)' }}>提示信息：文档已就绪 (File Ready)</span>
-                        </div>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <span style={{ padding: '3px 8px', background: 'var(--editor-selection)', color: 'var(--accent-strong)', borderRadius: 'var(--radius-sm)', fontSize: '0.88em', fontWeight: 500 }}>
-                            Active Tab 标签
-                          </span>
-                          <span style={{ padding: '3px 8px', background: 'var(--editor-surface)', border: '1px solid var(--editor-border)', borderRadius: 'var(--radius-sm)', fontSize: '0.88em' }}>
-                            Action 按钮
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Markdown 正文预览：小标题放在正文字体容器之外，与其他分组的小标题字体一致 */}
-                    <div>
-                      <p style={previewCaptionStyle}>
-                        Markdown 正文效果：
-                      </p>
-                      <div
-                        style={{
-                          fontFamily: 'var(--content-font-family)',
-                          fontSize: settings.typography.contentFontSize,
-                          lineHeight: settings.typography.contentLineHeight,
-                        }}
-                      >
-                        <p style={{ margin: 0 }}>
-                          这是中英文正文排版效果（Typography Test: Quick Brown Fox 123），包含 <strong>加粗文本 Bold</strong>、<em>斜体 Italic</em> 与 <code style={{
-                            background: 'var(--code-inline-bg)',
-                            color: 'var(--code-inline-text)',
-                            padding: '2px 6px',
-                            borderRadius: 'var(--radius-sm)',
-                            fontFamily: 'var(--mono-font-family)',
-                            fontSize: '0.88em',
-                            border: '1px solid var(--editor-border)',
-                          }}>const note = "NoteBoard 2026";</code> 行内代码。
-                        </p>
-                        {/* 第二段：体现段落间距设置 */}
-                        <p style={{ margin: `${settings.typography.contentParagraphSpacing ?? 14}px 0 0` }}>
-                          这是第二个段落，与上一段之间的空白即「正文段落间距」。
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* 代码文件预览 */}
-                    <div>
-                      <p style={previewCaptionStyle}>
-                        SQL / 代码 / 纯文本效果：
-                      </p>
-                      <pre className="nb-typography-code-preview" style={{
-                        margin: 0,
-                        padding: '10px 14px',
-                        background: 'var(--code-block-bg)',
+                  {/* 文件树条目效果预览 */}
+                  <PreviewCollapse>
+                    <div
+                      style={{
+                        background: 'var(--explorer-bg)',
                         border: '1px solid var(--editor-border)',
                         borderRadius: 'var(--radius-sm)',
-                        fontFamily: 'var(--mono-font-family)',
-                        fontSize: settings.typography.monoFontSize ?? 14,
-                        lineHeight: settings.typography.monoLineHeight ?? 1.5,
-                        color: 'var(--code-block-text)',
-                      }}>
-                        <code>{`-- 查询笔记表（中西文代码混排测试）\nSELECT id, title, created_at\nFROM notes\nWHERE status = 'active' -- 仅查询有效笔记;`}</code>
-                      </pre>
-                    </div>
-
-                    {/* 文件树条目预览 */}
-                    <div>
-                      <p style={previewCaptionStyle}>
-                        文件树目录条目效果：
-                      </p>
+                        overflow: 'hidden',
+                      }}
+                    >
                       <div
                         style={{
-                          background: 'var(--explorer-bg)',
-                          border: '1px solid var(--editor-border)',
-                          borderRadius: 'var(--radius-sm)',
-                          overflow: 'hidden',
+                          height: settings.typography.explorerLineHeight ?? 24,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          paddingLeft: 12,
+                          paddingRight: 8,
+                          background: 'var(--explorer-active)',
+                          borderLeft: '2px solid var(--accent-strong)',
+                          color: 'var(--explorer-text)',
+                          fontSize: settings.typography.explorerFontSize ?? 13,
+                          fontFamily: 'var(--explorer-font-family)',
                         }}
                       >
-                        <div
-                          style={{
-                            height: settings.typography.explorerLineHeight ?? 24,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            paddingLeft: 12,
-                            paddingRight: 8,
-                            background: 'var(--explorer-active)',
-                            borderLeft: '2px solid var(--accent-strong)',
-                            color: 'var(--explorer-text)',
-                            fontSize: settings.typography.explorerFontSize ?? 13,
-                            fontFamily: 'var(--explorer-font-family)',
-                          }}
-                        >
-                          <FileText size={14} color="var(--editor-accent)" />
-                          <span>01_快速入门指南 (Guide.md)</span>
-                        </div>
-                        <div
-                          style={{
-                            height: settings.typography.explorerLineHeight ?? 24,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            paddingLeft: 12,
-                            paddingRight: 8,
-                            color: 'var(--explorer-text)',
-                            fontSize: settings.typography.explorerFontSize ?? 13,
-                            fontFamily: 'var(--explorer-font-family)',
-                          }}
-                        >
-                          <FileCode size={14} color="var(--editor-accent)" />
-                          <span>query_report.sql</span>
-                        </div>
+                        <FileText size={14} color="var(--editor-accent)" />
+                        <span>01_快速入门指南 (Guide.md)</span>
+                      </div>
+                      <div
+                        style={{
+                          height: settings.typography.explorerLineHeight ?? 24,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          paddingLeft: 12,
+                          paddingRight: 8,
+                          color: 'var(--explorer-text)',
+                          fontSize: settings.typography.explorerFontSize ?? 13,
+                          fontFamily: 'var(--explorer-font-family)',
+                        }}
+                      >
+                        <FileCode size={14} color="var(--editor-accent)" />
+                        <span>query_report.sql</span>
                       </div>
                     </div>
-                  </div>
+                  </PreviewCollapse>
                 </div>
               </div>
             )}
@@ -1010,14 +981,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <div>Markdown 默认视图模式</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>新打开 Markdown 文档时的初始模式</div>
                     </div>
-                    <select
+                    <SettingsSelect
                       value={settings.editor.defaultViewMode}
                       onChange={(e) => setEditor({ defaultViewMode: e.target.value as 'visual' | 'source' })}
-                      style={{ ...inputStyle, width: 110 }}
                     >
                       <option value="visual">可视化模式</option>
                       <option value="source">源码模式</option>
-                    </select>
+                    </SettingsSelect>
                   </div>
 
                   {/* 进入可视化模式时，若源码写法会被统一格式调整，按此策略处理（默认每次询问） */}
@@ -1026,15 +996,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <div>Markdown 格式规范化</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>可视化模式会以统一写法保存源码（如列表符号统一为 -）</div>
                     </div>
-                    <select
+                    <SettingsSelect
                       value={settings.editor.markdownNormalization ?? 'ask'}
                       onChange={(e) => setEditor({ markdownNormalization: e.target.value as MarkdownNormalizationPolicy })}
-                      style={{ ...inputStyle, width: 110 }}
                     >
                       <option value="ask">每次询问</option>
                       <option value="always">总是规范化</option>
                       <option value="never">保持源码模式</option>
-                    </select>
+                    </SettingsSelect>
                   </div>
 
                   {/* 可视化模式中代码块 / 折叠块的初始展开状态（仅影响显示，不写入文件） */}
@@ -1128,14 +1097,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <div>节点文字对齐</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>节点可在「节点样式」中单独设置</div>
                     </div>
-                    <select
+                    <SettingsSelect
                       value={settings.editor.mindmapTextAlign ?? 'left'}
                       onChange={(e) => setEditor({ mindmapTextAlign: e.target.value === 'center' ? 'center' : 'left' })}
-                      style={{ ...inputStyle, width: 110 }}
                     >
                       <option value="left">左对齐</option>
                       <option value="center">居中</option>
-                    </select>
+                    </SettingsSelect>
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
@@ -1143,14 +1111,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <div>节点图片显示</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>原始比例完整显示；宽度填充为固定高度裁切</div>
                     </div>
-                    <select
+                    <SettingsSelect
                       value={settings.editor.mindmapImageFit ?? 'original'}
                       onChange={(e) => setEditor({ mindmapImageFit: e.target.value === 'fill' ? 'fill' : 'original' })}
-                      style={{ ...inputStyle, width: 110 }}
                     >
                       <option value="original">原始比例</option>
                       <option value="fill">宽度填充</option>
-                    </select>
+                    </SettingsSelect>
                   </div>
                 </div>
               </div>
@@ -1162,7 +1129,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <div>
                   <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>文件与保存设置</h3>
                   <p style={{ fontSize: 12, color: 'var(--editor-text-muted)', margin: 0 }}>
-                    独立配置 Markdown、自由画板与代码文本的自动保存策略，以及本地文件管理选项。
+                    按文件类型独立配置自动保存策略，以及本地文件管理选项。
                   </p>
                 </div>
 
@@ -1179,7 +1146,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   {/* Markdown 笔记自动保存 */}
                   <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
                     <div>
-                      <div>Markdown 笔记自动保存</div>
+                      <div>Markdown 笔记 (.md / .markdown)</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>停止输入 800ms 后自动写入磁盘；未开启时需手动保存</div>
                     </div>
                     <input
@@ -1189,10 +1156,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     />
                   </label>
 
-                  {/* 自由画板自动保存 */}
+                  {/* 自由画板自动保存：新建画板默认 .excalidraw，.board / .canvas 同为 Excalidraw 场景 */}
                   <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
                     <div>
-                      <div>自由画板 (.board) 自动保存</div>
+                      <div>自由画板 (.excalidraw / .board / .canvas)</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>绘制操作停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
                     </div>
                     <input
@@ -1202,10 +1169,23 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     />
                   </label>
 
+                  {/* 信息图自动保存：未单独设置过时沿用「代码与文本」开关 */}
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
+                    <div>
+                      <div>信息图 (.infographic / .ig)</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>编辑停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.file.autoSaveInfographic ?? settings.file.autoSaveOther ?? false}
+                      onChange={(e) => setFile({ autoSaveInfographic: e.target.checked })}
+                    />
+                  </label>
+
                   {/* 代码与文本自动保存 */}
                   <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
                     <div>
-                      <div>代码与文本 (.sql / .json / .txt 等) 自动保存</div>
+                      <div>代码与文本 (.txt / .sql / .json / .yaml 等)</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>编辑停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
                     </div>
                     <input
@@ -1214,6 +1194,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       onChange={(e) => setFile({ autoSaveOther: e.target.checked })}
                     />
                   </label>
+
+                  <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>
+                    思维导图、Draw.io 与多维表格暂仅支持手动保存
+                  </div>
                 </div>
 
                 {/* ── 4.2 文件与目录管理 ── */}
@@ -1473,6 +1457,36 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     tip="公式、Mermaid、信息图、HTML 块的源码编辑框；行内公式按 Enter 即完成"
                   />
                   <ShortcutItem keyCombo="Ctrl + Enter / Esc" label="多维表格长文本保存 / 取消" />
+                </div>
+
+                {/* 思维导图（实现见 features/mindmap：MindmapRenderer / MindmapTitleEditor / OutlinerEditor） */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-strong)', marginBottom: 4 }}>
+                    思维导图
+                  </div>
+                  <ShortcutItem keyCombo="Tab" label="添加子节点" tip="选中节点或编辑标题时均可用，光标自动移到新节点" />
+                  <ShortcutItem keyCombo="Enter" label="添加同级节点" tip="选中节点或编辑标题时均可用，光标自动移到新节点" />
+                  <ShortcutItem keyCombo="Delete" label="删除选中节点" />
+                  <ShortcutItem keyCombo="双击节点" label="编辑节点标题" />
+                  <ShortcutItem keyCombo="Esc" label="完成标题编辑 / 取消拖拽" />
+                  <ShortcutItem keyCombo="Ctrl + B / I / U" label="标题加粗 / 斜体 / 下划线" />
+                  <ShortcutItem keyCombo="Ctrl + Enter" label="完成备注编辑" />
+                  <ShortcutItem keyCombo="Ctrl + Z" label="撤销" />
+                  <ShortcutItem keyCombo="Ctrl + Y / Ctrl + Shift + Z" label="重做" />
+                  <ShortcutItem keyCombo="滚轮 / Ctrl + 滚轮" label="平移 / 缩放画布" />
+                  <ShortcutItem keyCombo="双击宽度手柄" label="恢复节点默认宽度" />
+                </div>
+
+                {/* 思维导图大纲模式（实现见 features/mindmap/OutlinerEditor.tsx） */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-strong)', marginBottom: 4 }}>
+                    思维导图大纲模式
+                  </div>
+                  <ShortcutItem keyCombo="Enter" label="新建同级要点" />
+                  <ShortcutItem keyCombo="Shift + Enter" label="添加 / 编辑备注" />
+                  <ShortcutItem keyCombo="Tab / Shift + Tab" label="降级 / 升级" />
+                  <ShortcutItem keyCombo="Backspace" label="删除空要点" tip="仅当前要点为空时生效，光标回到上一行" />
+                  <ShortcutItem keyCombo="↑ / ↓" label="切换到上 / 下一行" />
                 </div>
               </div>
             )}
@@ -1746,6 +1760,41 @@ function ShortcutLabel({ label, tip }: { label: string; tip?: string }) {
   );
 }
 
+/** 排版分组底部的效果预览：折叠块，默认收起，展开后随本分组参数实时变化 */
+function PreviewCollapse({ children }: { children: React.ReactNode }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="nb-settings-preview">
+      <button
+        type="button"
+        className="nb-settings-preview-toggle"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <ChevronRight size={14} className="nb-settings-preview-chevron" />
+        <span>效果预览</span>
+      </button>
+      {expanded && <div className="nb-settings-preview-body">{children}</div>}
+    </div>
+  );
+}
+
+/** 设置页下拉框：去掉原生箭头，右侧叠加与字体选择器一致的折线箭头 */
+function SettingsSelect({ value, onChange, children }: {
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className="nb-settings-select-wrap">
+      <select className="nb-settings-select" style={selectStyle} value={value} onChange={onChange}>
+        {children}
+      </select>
+      <ChevronDown size={14} className="nb-settings-select-arrow" />
+    </span>
+  );
+}
+
 function ShortcutItem({ keyCombo, label, tip }: { keyCombo: string; label: string; tip?: string }) {
   return (
     <div
@@ -1788,16 +1837,6 @@ const formRowStyle: React.CSSProperties = {
   gap: 6,
 };
 
-/** 实时排版预览中各分组的小标题：统一使用界面字体，不随所预览的正文 / 代码字体变化 */
-const previewCaptionStyle: React.CSSProperties = {
-  margin: '0 0 8px',
-  fontFamily: 'var(--ui-font-family)',
-  fontSize: 12,
-  fontWeight: 600,
-  lineHeight: 1.5,
-  color: 'var(--editor-text-muted)',
-};
-
 const labelStyle: React.CSSProperties = {
   fontSize: 12.5,
   fontWeight: 500,
@@ -1814,4 +1853,18 @@ const inputStyle: React.CSSProperties = {
   outline: 'none',
   width: '100%',
   boxSizing: 'border-box',
+};
+
+/** 下拉框：宽度随最长选项，右侧为叠加的箭头图标留出空间 */
+const selectStyle: React.CSSProperties = {
+  padding: '6px 30px 6px 10px',
+  fontSize: 12,
+  border: '1px solid var(--editor-border)',
+  borderRadius: 'var(--radius-sm)',
+  background: 'var(--editor-surface)',
+  color: 'var(--editor-text)',
+  outline: 'none',
+  minWidth: 110,
+  boxSizing: 'border-box',
+  cursor: 'pointer',
 };

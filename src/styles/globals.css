@@ -1581,6 +1581,90 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   font-family: inherit;
 }
 
+/* 设置页排版分组底部的「效果预览」折叠块 */
+.nb-settings-preview {
+  border-top: 1px dashed var(--editor-border);
+  padding-top: 10px;
+}
+
+.nb-settings-preview-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px 3px 4px;
+  margin-left: -4px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--editor-text-muted);
+  font-family: var(--ui-font-family);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-settings-preview-toggle:hover {
+  background: var(--toolbar-hover);
+  color: var(--editor-text);
+}
+
+.nb-settings-preview-toggle:active {
+  background: var(--toolbar-active);
+  transform: scale(0.97);
+}
+
+.nb-settings-preview-chevron {
+  transition: transform var(--transition-fast);
+}
+
+.nb-settings-preview-toggle[aria-expanded='true'] .nb-settings-preview-chevron {
+  transform: rotate(90deg);
+}
+
+.nb-settings-preview-body {
+  margin-top: 10px;
+}
+
+/* 设置页下拉框：去掉原生箭头，改为右侧叠加的折线图标，文字与箭头互不遮挡 */
+.nb-settings-select-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.nb-settings-select {
+  appearance: none;
+  -webkit-appearance: none;
+  transition: border-color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.nb-settings-select-arrow {
+  position: absolute;
+  right: 9px;
+  color: var(--editor-text-muted);
+  pointer-events: none;
+  transition: color var(--transition-fast);
+}
+
+.nb-settings-select:hover {
+  border-color: var(--editor-border-focus) !important;
+  background: var(--toolbar-hover) !important;
+}
+
+.nb-settings-select:hover + .nb-settings-select-arrow {
+  color: var(--editor-text);
+}
+
+.nb-settings-select:focus-visible {
+  border-color: var(--accent-strong) !important;
+}
+
+.nb-settings-select:active {
+  background: var(--toolbar-active) !important;
+}
+
 /* 语法高亮 token */
 .ProseMirror .hljs-comment, .ProseMirror .hljs-quote { color: var(--hljs-comment); font-style: italic; }
 .ProseMirror .hljs-keyword, .ProseMirror .hljs-selector-tag { color: var(--hljs-keyword); }
