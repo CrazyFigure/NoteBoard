@@ -668,7 +668,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                   {/* 代码与纯文本编辑区最大宽度 */}
                   <div style={formRowStyle}>
-                    <label style={labelStyle}>代码 / 纯文本编辑区最大宽度 (默认全宽 100%)</label>
+                    <label style={labelStyle}>代码 / 纯文本 / MD 源码编辑区最大宽度 (默认全宽 100%)</label>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
                       {/* 预设档位按钮 */}
                       <div style={{ display: 'flex', gap: 10 }}>

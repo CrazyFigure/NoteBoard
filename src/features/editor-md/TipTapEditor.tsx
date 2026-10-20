@@ -96,8 +96,9 @@ type RestoredMarkdownViewState = {
 
 /**
  * 源码模式排版主题
- * 编辑器占满整列使滚动条贴边；行号与正文作为整体在滚动容器内按内容宽度居中，
- * 与可视化模式的正文列保持一致（内容宽度为 100% 时两侧留白为 0）
+ * 编辑器占满整列使滚动条贴边；行号与正文作为整体在滚动容器内按内容宽度居中。
+ * 源码是等宽文本，宽度跟随「代码 / 纯文本编辑区最大宽度」（默认全宽，两侧留白为 0），
+ * 不再沿用可视化正文列宽，避免行号槽 + 两侧留白把编辑区挤窄
  */
 function createSourceTypographyTheme() {
   return EditorView.theme({
@@ -111,7 +112,7 @@ function createSourceTypographyTheme() {
       fontFamily: 'var(--mono-font-family)',
       fontSize: 'var(--mono-font-size)',
       // 百分比按编辑器宽度计算：两侧留白 = (编辑器宽 - 内容宽) / 2
-      paddingInline: 'max(0px, calc((100% - var(--content-max-width)) / 2))',
+      paddingInline: 'max(0px, calc((100% - var(--mono-max-width, 100%)) / 2))',
     },
     '.cm-content, .cm-line': {
       fontFamily: 'var(--mono-font-family)',

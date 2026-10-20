@@ -269,7 +269,7 @@ export interface TypographySettings {
   monoLineHeight?: number;
   // Markdown / 正文编辑区最大宽度（预设 wide/standard 等或百分比，默认 wide）
   contentWidth: ContentWidth;
-  // 代码 / 纯文本编辑区最大宽度（预设 full/wide 等或百分比，默认 full）
+  // 代码 / 纯文本 / Markdown 源码编辑区最大宽度（预设 full/wide 等或百分比，默认 full）
   monoContentWidth?: ContentWidth;
   // 文件树西文字体（留空跟随系统）
   explorerFontFamily?: string;
