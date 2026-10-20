@@ -244,6 +244,9 @@ pub struct FileSettings {
     pub auto_save_board: bool,
     #[serde(default)]
     pub auto_save_other: bool,
+    // 信息图（.infographic / .ig）单独的自动保存开关；缺省时沿用 auto_save_other
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_save_infographic: Option<bool>,
     #[serde(default)]
     pub force_manual_save: bool,
     #[serde(default)]
@@ -265,6 +268,7 @@ impl Default for FileSettings {
             auto_save_markdown: false,
             auto_save_board: false,
             auto_save_other: false,
+            auto_save_infographic: None,
             force_manual_save: false,
             show_hidden_files: false,
             restore_session: true,

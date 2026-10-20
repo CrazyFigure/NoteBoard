@@ -26,6 +26,7 @@ import { takeViewState } from '../session/editorSuspension';
 import { registerEditorCapabilities } from '../../core/editor/editorRegistry';
 import { createSplitEditorCapabilities } from '../diagram-preview/splitEditorCapabilities';
 import { useWindowStore } from '../../stores/windowStore';
+import { queuedAutoSave } from '../session/documentSession';
 import { parseInfographicCode } from './infographicParser';
 import { InfographicRenderer } from './infographicRenderer';
 import { INFOGRAPHIC_TEMPLATES } from './infographicTemplates';
@@ -102,6 +103,24 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
   }, [docKey]);
   const languageCompartmentRef = useRef<Compartment>(new Compartment());
 
+  // 自动保存：auto 策略下停止编辑 800ms 后写盘（与代码编辑器一致，统一走每文档写队列）
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleAutoSave = useCallback(() => {
+    if (useDocumentStore.getState().getDocument(docKey)?.savePolicy !== 'auto') return;
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      autoSaveTimerRef.current = null;
+      queuedAutoSave(docKey, useDocumentStore.getState().getDocument(docKey)?.content ?? '').catch((e) => {
+        console.error('信息图自动保存失败:', e);
+      });
+    }, 800);
+  }, [docKey]);
+  // 切换文档或卸载时取消未触发的自动保存
+  useEffect(() => () => {
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = null;
+  }, [docKey]);
+
   // 预览画布根节点：信息图是纯 DOM 渲染，复制/导出时抓取这里的实时快照。
   // 用 state 而非 ref 保存，节点挂载/卸载能触发重渲染，按钮禁用态才跟得上。
   const [previewEl, setPreviewEl] = useState<HTMLDivElement | null>(null);
@@ -167,6 +186,7 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
             setContent(docKey, newText);
             setDirty(docKey, true);
             setTabDirty(docKey, true);
+            scheduleAutoSave();
           }
         }),
         EditorView.theme({
