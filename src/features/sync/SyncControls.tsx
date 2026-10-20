@@ -84,14 +84,6 @@ export function Collapsible({
 
 // ── 开关行（说明文字在左，数值输入与复选框统一放在行末） ──
 
-/** 拖选说明文字时不触发勾选（label 点击默认会切换复选框） */
-function guardTextSelection(e: React.MouseEvent<HTMLLabelElement>): void {
-  const selection = window.getSelection();
-  if (selection && !selection.isCollapsed && selection.anchorNode && e.currentTarget.contains(selection.anchorNode)) {
-    e.preventDefault();
-  }
-}
-
 export function ToggleRow({
   title,
   desc,
@@ -109,14 +101,14 @@ export function ToggleRow({
   const id = useId();
   return (
     <div className="nb-sync-row">
-      {/* htmlFor 显式绑定复选框：点击行末数值输入框不会误切换开关 */}
-      <label htmlFor={id} className="nb-sync-row-label" onClick={guardTextSelection}>
+      {/* 说明文字不绑定复选框：只有点击复选框本身才切换开关，aria-labelledby 保留无障碍名称 */}
+      <div id={id} className="nb-sync-row-label">
         <div>{title}</div>
         {desc && <div className="nb-sync-muted">{desc}</div>}
-      </label>
+      </div>
       <div className="nb-sync-row-inline">
         {extra}
-        <input id={id} type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+        <input type="checkbox" aria-labelledby={id} checked={checked} onChange={(e) => onChange(e.target.checked)} />
       </div>
     </div>
   );

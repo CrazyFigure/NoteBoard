@@ -3,7 +3,7 @@
 // 详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud, ChevronRight, ChevronDown } from 'lucide-react';
+import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud, ChevronRight } from 'lucide-react';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { THEMES } from '../../core/theme/themes';
 import { contentWidthToPercent, CONTENT_WIDTH_PERCENT_MAP } from '../../core/theme/applyTheme';
@@ -15,6 +15,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { showToast } from '../../stores/toastStore';
 import { FontPackSettingsCard } from './FontPackSettingsCard';
 import { SettingsRange } from './SettingsRange';
+import { SettingsSelect } from './SettingsSelect';
 import { Tooltip } from '../Tooltip';
 import type { MarkdownNormalizationPolicy } from '../../core/ipc/types';
 import { IS_MOBILE_UI, IS_NATIVE_MOBILE, IS_WEB } from '../../core/platform';
@@ -878,7 +879,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
 
                   {/* 显示空格（显示为点） */}
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>显示空格（点）</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>将文本中的空格显示为轻柔圆点标记，制表符显示为箭头</div>
@@ -888,10 +889,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       checked={settings.editor.showWhitespace ?? false}
                       onChange={(e) => setEditor({ showWhitespace: e.target.checked })}
                     />
-                  </label>
+                  </div>
 
                   {/* 显示换行符（↵） */}
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>显示换行符号 (↵)</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>在各行末尾显示 ↵ 换行指示符号</div>
@@ -901,10 +902,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       checked={settings.editor.showLineEndings ?? false}
                       onChange={(e) => setEditor({ showLineEndings: e.target.checked })}
                     />
-                  </label>
+                  </div>
 
                   {/* 显示行号 */}
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>显示行号</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>在左侧边栏展示代码行号及活动行高亮</div>
@@ -914,10 +915,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       checked={settings.editor.showLineNumbers}
                       onChange={(e) => setEditor({ showLineNumbers: e.target.checked })}
                     />
-                  </label>
+                  </div>
 
                   {/* 软换行 */}
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>软换行 (自动折行)</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>超出编辑器可视宽度时自动折行，避免横向滚动</div>
@@ -927,10 +928,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       checked={settings.editor.softWrap}
                       onChange={(e) => setEditor({ softWrap: e.target.checked })}
                     />
-                  </label>
+                  </div>
 
                   {/* 缩进导线 */}
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>缩进参考导线</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>在代码层级之间显示垂直虚线导线</div>
@@ -940,7 +941,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       checked={settings.editor.showIndentGuides}
                       onChange={(e) => setEditor({ showIndentGuides: e.target.checked })}
                     />
-                  </label>
+                  </div>
                 </div>
 
                 {/* ── 3.2 缩进与编辑参数 ── */}
@@ -965,7 +966,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     />
                   </div>
 
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '2px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <div>
                       <div>空格代替 Tab</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>按下 Tab 键时插入对应数量的空格</div>
@@ -975,7 +976,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       checked={settings.editor.insertSpaces}
                       onChange={(e) => setEditor({ insertSpaces: e.target.checked })}
                     />
-                  </label>
+                  </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <div>
@@ -983,12 +984,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>新打开 Markdown 文档时的初始模式</div>
                     </div>
                     <SettingsSelect
+                      ariaLabel="Markdown 默认视图模式"
                       value={settings.editor.defaultViewMode}
-                      onChange={(e) => setEditor({ defaultViewMode: e.target.value as 'visual' | 'source' })}
-                    >
-                      <option value="visual">可视化模式</option>
-                      <option value="source">源码模式</option>
-                    </SettingsSelect>
+                      options={[
+                        { value: 'visual', label: '可视化模式' },
+                        { value: 'source', label: '源码模式' },
+                      ]}
+                      onChange={(v) => setEditor({ defaultViewMode: v })}
+                    />
                   </div>
 
                   {/* 进入可视化模式时，若源码写法会被统一格式调整，按此策略处理（默认每次询问） */}
@@ -997,18 +1000,20 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <div>Markdown 格式规范化</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>可视化模式会以统一写法保存源码（如列表符号统一为 -）</div>
                     </div>
-                    <SettingsSelect
+                    <SettingsSelect<MarkdownNormalizationPolicy>
+                      ariaLabel="Markdown 格式规范化"
                       value={settings.editor.markdownNormalization ?? 'ask'}
-                      onChange={(e) => setEditor({ markdownNormalization: e.target.value as MarkdownNormalizationPolicy })}
-                    >
-                      <option value="ask">每次询问</option>
-                      <option value="always">总是规范化</option>
-                      <option value="never">保持源码模式</option>
-                    </SettingsSelect>
+                      options={[
+                        { value: 'ask', label: '每次询问' },
+                        { value: 'always', label: '总是规范化' },
+                        { value: 'never', label: '保持源码模式' },
+                      ]}
+                      onChange={(v) => setEditor({ markdownNormalization: v })}
+                    />
                   </div>
 
                   {/* 可视化模式中代码块 / 折叠块的初始展开状态（仅影响显示，不写入文件） */}
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '2px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <div>
                       <div>代码块默认展开</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>关闭后可视化模式中的代码块默认收起，只显示语言与行数</div>
@@ -1018,9 +1023,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       checked={settings.editor.codeBlockDefaultExpanded ?? true}
                       onChange={(e) => setEditor({ codeBlockDefaultExpanded: e.target.checked })}
                     />
-                  </label>
+                  </div>
 
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '2px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <div>
                       <div>折叠块默认展开</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>{'<details> 折叠块的初始状态；源码带 open 属性的始终展开'}</div>
@@ -1030,7 +1035,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       checked={settings.editor.detailsDefaultExpanded ?? false}
                       onChange={(e) => setEditor({ detailsDefaultExpanded: e.target.checked })}
                     />
-                  </label>
+                  </div>
                 </div>
 
                 {/* ── 3.3 Markdown 渲染增强 ── */}
@@ -1039,32 +1044,32 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     Markdown 增强功能
                   </div>
 
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '2px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <span>LaTeX 数学公式渲染 (KaTeX)</span>
                     <input
                       type="checkbox"
                       checked={settings.editor.enableMath}
                       onChange={(e) => setEditor({ enableMath: e.target.checked })}
                     />
-                  </label>
+                  </div>
 
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '2px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <span>Mermaid 图表实时渲染</span>
                     <input
                       type="checkbox"
                       checked={settings.editor.enableMermaid}
                       onChange={(e) => setEditor({ enableMermaid: e.target.checked })}
                     />
-                  </label>
+                  </div>
 
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '2px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <span>悬浮块把手 (拖拽与菜单)</span>
                     <input
                       type="checkbox"
                       checked={settings.editor.enableBlockHandle}
                       onChange={(e) => setEditor({ enableBlockHandle: e.target.checked })}
                     />
-                  </label>
+                  </div>
                 </div>
 
                 {/* ── 3.4 思维导图 ── */}
@@ -1099,12 +1104,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>节点可在「节点样式」中单独设置</div>
                     </div>
                     <SettingsSelect
+                      ariaLabel="节点文字对齐"
                       value={settings.editor.mindmapTextAlign ?? 'left'}
-                      onChange={(e) => setEditor({ mindmapTextAlign: e.target.value === 'center' ? 'center' : 'left' })}
-                    >
-                      <option value="left">左对齐</option>
-                      <option value="center">居中</option>
-                    </SettingsSelect>
+                      options={[
+                        { value: 'left', label: '左对齐' },
+                        { value: 'center', label: '居中' },
+                      ]}
+                      onChange={(v) => setEditor({ mindmapTextAlign: v })}
+                    />
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
@@ -1113,12 +1120,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>原始比例完整显示；宽度填充为固定高度裁切</div>
                     </div>
                     <SettingsSelect
+                      ariaLabel="节点图片显示"
                       value={settings.editor.mindmapImageFit ?? 'original'}
-                      onChange={(e) => setEditor({ mindmapImageFit: e.target.value === 'fill' ? 'fill' : 'original' })}
-                    >
-                      <option value="original">原始比例</option>
-                      <option value="fill">宽度填充</option>
-                    </SettingsSelect>
+                      options={[
+                        { value: 'original', label: '原始比例' },
+                        { value: 'fill', label: '宽度填充' },
+                      ]}
+                      onChange={(v) => setEditor({ mindmapImageFit: v })}
+                    />
                   </div>
                 </div>
               </div>
@@ -1145,7 +1154,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
 
                   {/* Markdown 笔记自动保存 */}
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>Markdown 笔记 (.md / .markdown)</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>停止输入 800ms 后自动写入磁盘；未开启时需手动保存</div>
@@ -1155,10 +1164,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       checked={settings.file.autoSaveMarkdown ?? false}
                       onChange={(e) => setFile({ autoSaveMarkdown: e.target.checked })}
                     />
-                  </label>
+                  </div>
 
                   {/* 自由画板自动保存：新建画板默认 .excalidraw，.board / .canvas 同为 Excalidraw 场景 */}
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>自由画板 (.excalidraw / .board / .canvas)</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>绘制操作停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
@@ -1168,10 +1177,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       checked={settings.file.autoSaveBoard ?? false}
                       onChange={(e) => setFile({ autoSaveBoard: e.target.checked })}
                     />
-                  </label>
+                  </div>
 
                   {/* 思维导图自动保存（.xmind 打开时转换为未保存副本，另存后才参与自动保存） */}
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>思维导图 (.mindmap / .mm)</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>编辑停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
@@ -1181,10 +1190,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       checked={settings.file.autoSaveMindmap ?? false}
                       onChange={(e) => setFile({ autoSaveMindmap: e.target.checked })}
                     />
-                  </label>
+                  </div>
 
                   {/* Draw.io 图表自动保存 */}
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>Draw.io 图表 (.drawio / .dio)</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>绘制操作停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
@@ -1194,10 +1203,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       checked={settings.file.autoSaveDrawio ?? false}
                       onChange={(e) => setFile({ autoSaveDrawio: e.target.checked })}
                     />
-                  </label>
+                  </div>
 
                   {/* 多维表格自动保存 */}
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>多维表格 (.bitable / .table)</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>编辑停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
@@ -1207,10 +1216,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       checked={settings.file.autoSaveBitable ?? false}
                       onChange={(e) => setFile({ autoSaveBitable: e.target.checked })}
                     />
-                  </label>
+                  </div>
 
                   {/* 信息图自动保存：未单独设置过时沿用「代码与文本」开关 */}
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>信息图 (.infographic / .ig)</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>编辑停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
@@ -1220,10 +1229,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       checked={settings.file.autoSaveInfographic ?? settings.file.autoSaveOther ?? false}
                       onChange={(e) => setFile({ autoSaveInfographic: e.target.checked })}
                     />
-                  </label>
+                  </div>
 
                   {/* 代码与文本自动保存 */}
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>代码与文本 (.txt / .sql / .json / .yaml 等)</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>编辑停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
@@ -1233,7 +1242,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       checked={settings.file.autoSaveOther ?? false}
                       onChange={(e) => setFile({ autoSaveOther: e.target.checked })}
                     />
-                  </label>
+                  </div>
                 </div>
 
                 {/* ── 4.2 文件与目录管理 ── */}
@@ -1244,7 +1253,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
 
                   {/* 显示隐藏文件 */}
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>显示隐藏文件 / 文件夹</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>在左侧文件树中显示以点（.）开头的隐藏文件或系统文件</div>
@@ -1254,10 +1263,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       checked={settings.file.showHiddenFiles ?? false}
                       onChange={(e) => setFile({ showHiddenFiles: e.target.checked })}
                     />
-                  </label>
+                  </div>
 
                   {/* 保留最近文件：启动时恢复到 Tab 栏，但当前页面仍停留 Home。 */}
-                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>保留最近文件</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>默认开启；启动时自动恢复到 Tab 栏，当前页面仍显示 Home</div>
@@ -1267,11 +1276,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       checked={settings.file.restoreSession ?? true}
                       onChange={(e) => setFile({ restoreSession: e.target.checked })}
                     />
-                  </label>
+                  </div>
 
                   {/* 关闭到托盘：开启后关闭按钮仅隐藏窗口，内容留在内存中，因此不弹未保存确认 */}
                   {SUPPORTS_SYSTEM_INTEGRATION && (
-                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, cursor: 'pointer', padding: '4px 0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                       <div>
                         <div>关闭按钮最小化到托盘</div>
                         <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>关闭时隐藏到托盘，不弹保存确认；从托盘菜单退出</div>
@@ -1281,7 +1290,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         checked={settings.system.closeToTray ?? false}
                         onChange={(e) => setSystem({ closeToTray: e.target.checked })}
                       />
-                    </label>
+                    </div>
                   )}
 
                   {/* 大文件确认阈值 */}
@@ -1444,7 +1453,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     Markdown 回车类按键
                   </div>
                   {/* Enter 与 Shift+Enter 互换开关：与快捷键条目同高，复选框占据右侧按键位 */}
-                  <label
+                  <div
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -1455,7 +1464,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       borderRadius: 'var(--radius-sm)',
                       border: '1px solid var(--editor-border)',
                       fontSize: 12,
-                      cursor: 'pointer',
                     }}
                   >
                     <ShortcutLabel
@@ -1467,7 +1475,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       checked={settings.editor.swapEnterKeys ?? false}
                       onChange={(e) => setEditor({ swapEnterKeys: e.target.checked })}
                     />
-                  </label>
+                  </div>
                   <ShortcutItem
                     keyCombo={settings.editor.swapEnterKeys ? 'Shift + Enter' : 'Enter'}
                     label="换段落"
@@ -1806,21 +1814,6 @@ function PreviewCollapse({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** 设置页下拉框：去掉原生箭头，右侧叠加与字体选择器一致的折线箭头 */
-function SettingsSelect({ value, onChange, children }: {
-  value: string;
-  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <span className="nb-settings-select-wrap">
-      <select className="nb-settings-select" style={selectStyle} value={value} onChange={onChange}>
-        {children}
-      </select>
-      <ChevronDown size={14} className="nb-settings-select-arrow" />
-    </span>
-  );
-}
 
 function ShortcutItem({ keyCombo, label, tip }: { keyCombo: string; label: string; tip?: string }) {
   return (
@@ -1890,16 +1883,4 @@ const inputStyle: React.CSSProperties = {
   boxSizing: 'border-box',
 };
 
-/** 下拉框：宽度随最长选项，右侧为叠加的箭头图标留出空间 */
-const selectStyle: React.CSSProperties = {
-  padding: '6px 30px 6px 10px',
-  fontSize: 12,
-  border: '1px solid var(--editor-border)',
-  borderRadius: 'var(--radius-sm)',
-  background: 'var(--editor-surface)',
-  color: 'var(--editor-text)',
-  outline: 'none',
-  minWidth: 110,
-  boxSizing: 'border-box',
-  cursor: 'pointer',
-};
+
