@@ -3650,6 +3650,11 @@ button.nb-callout-icon:active {
   pointer-events: auto;
 }
 
+/* 大纲空行占位提示仅在光标所在行显示 */
+.nb-outliner-title:not(:focus)::placeholder {
+  color: transparent;
+}
+
 /* 大纲中的概要 / 外框 / 联系线小标签 */
 .nb-outliner-structure-chip {
   display: inline-flex;

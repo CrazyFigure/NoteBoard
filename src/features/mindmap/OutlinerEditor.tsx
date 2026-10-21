@@ -947,6 +947,7 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
                     else inputRefs.current.delete(item.node.id);
                   }}
                   type="text"
+                  className="nb-outliner-title"
                   // 单行输入框：导图中的节点内换行显示为空格，编辑时未改动处的换行保留
                   value={toSingleLineText(item.node.text)}
                   placeholder={isRoot ? '输入中心主题' : '输入大纲要点 (按 Enter 换行，Shift+Enter 添加备注)'}
