@@ -2991,7 +2991,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
         {editingStructure && (() => {
           const box = getStructureEditBox(editingStructure.ref);
           if (!box) return null;
-          const placeholder = editingStructure.ref.kind === 'summary' ? '输入概要' : editingStructure.ref.kind === 'boundary' ? '外框标题（可留空）' : '联系线文字（可留空）';
+          const placeholder = editingStructure.ref.kind === 'summary' ? '输入概要' : editingStructure.ref.kind === 'boundary' ? '外框标题' : '联系线文字';
           return (
             <input
               data-mindmap-structure

@@ -306,7 +306,6 @@ export const MindmapTitleEditor = forwardRef<MindmapTitleEditorHandle, MindmapTi
         suppressContentEditableWarning
         role="textbox"
         aria-label="编辑节点标题"
-        data-placeholder="输入要点…"
         spellCheck={false}
         onInput={handleInput}
         onKeyDown={handleKeyDown}

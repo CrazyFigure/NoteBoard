@@ -4609,12 +4609,6 @@ button.nb-callout-icon:active {
   -webkit-user-select: text;
 }
 
-.nb-mindmap-title-editor:empty::before {
-  content: attr(data-placeholder);
-  color: var(--editor-text-muted, #94a3b8);
-  pointer-events: none;
-}
-
 /* 选中文字后的格式悬浮菜单 */
 .nb-mindmap-format-menu {
   position: fixed;
