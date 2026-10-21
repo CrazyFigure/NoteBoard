@@ -97,4 +97,26 @@ describe('关闭拦截对话框快捷键', () => {
     expect(handlers.onSave).toHaveBeenCalledWith(['a']);
     expect(handlers.onDiscard).not.toHaveBeenCalled();
   });
+
+  it('打开时焦点移出编辑器，关闭后还原', async () => {
+    // 先关闭弹窗，再在编辑器聚焦状态下重新打开
+    const editor = document.createElement('div');
+    editor.contentEditable = 'true';
+    editor.tabIndex = 0;
+    document.body.appendChild(editor);
+    const renderDialog = (visible: boolean) => root.render(
+      <TooltipProvider>
+        <UnsavedGuardDialog visible={visible} dirtyTabs={[dirtyTab]} {...handlers} />
+      </TooltipProvider>,
+    );
+    await act(async () => renderDialog(false));
+    editor.focus();
+    await act(async () => renderDialog(true));
+    // 焦点不在可编辑元素上，输入法不会接管 N/S 进入组合输入
+    expect(document.activeElement).not.toBe(editor);
+    expect(host.contains(document.activeElement)).toBe(true);
+    await act(async () => renderDialog(false));
+    expect(document.activeElement).toBe(editor);
+    editor.remove();
+  });
 });

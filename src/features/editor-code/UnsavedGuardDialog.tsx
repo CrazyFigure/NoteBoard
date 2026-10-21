@@ -38,8 +38,23 @@ export function UnsavedGuardDialog({
   const [staging, setStaging] = useState(false);
   // 快捷键处理器只注册一次，通过 ref 读取最新的回调与忙碌状态
   const actionsRef = useRef({ save: () => {}, stash: () => {}, discard: () => {}, cancel: onCancel, busy: false });
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   const open = visible && dirtyTabs.length > 0;
+
+  useEffect(() => {
+    if (!open) return;
+    // 打开时把焦点从编辑器移到弹窗：macOS WebKit 点击按钮不转移焦点，
+    // 编辑器仍聚焦时中文输入法会接管按键进入组合输入，N/S 快捷键随之失效
+    const previousFocus = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus({ preventScroll: true });
+    return () => {
+      // 关闭后（如取消）若焦点仍停在弹窗或已丢失，还原到原位置继续编辑
+      const active = document.activeElement;
+      const focusLost = !active || active === document.body || !active.isConnected;
+      if (previousFocus?.isConnected && focusLost) previousFocus.focus({ preventScroll: true });
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -126,11 +141,13 @@ export function UnsavedGuardDialog({
     boxShadow: 'var(--shadow-lg)',
     color: 'var(--editor-text)',
     fontFamily: 'var(--content-font-family)',
+    outline: 'none',
   };
 
   return (
     <div style={overlayStyle} role="dialog" aria-modal="true">
-      <div style={dialogStyle}>
+      {/* 可编程聚焦但不进入 Tab 序列，承接打开时从编辑器移出的焦点 */}
+      <div ref={dialogRef} tabIndex={-1} style={dialogStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           {/* 警告图标：使用 warning-500 语义变量，在亮色和墨夜深色主题下均清晰明亮 */}
           <AlertTriangle size={24} color="var(--warning-500)" />
