@@ -3,7 +3,7 @@
 // 详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud, ChevronRight } from 'lucide-react';
+import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud, ChevronRight, Monitor } from 'lucide-react';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { THEMES } from '../../core/theme/themes';
 import { contentWidthToPercent, CONTENT_WIDTH_PERCENT_MAP } from '../../core/theme/applyTheme';
@@ -32,7 +32,7 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type TabType = 'appearance' | 'typography' | 'editor' | 'file' | 'sync' | 'plugins' | 'shortcuts' | 'about';
+type TabType = 'appearance' | 'typography' | 'editor' | 'file' | 'sync' | 'plugins' | 'shortcuts' | 'general' | 'about';
 
 // 托盘与全局快捷键仅原生桌面端可用（网页与移动端没有系统托盘）
 const SUPPORTS_SYSTEM_INTEGRATION = !IS_NATIVE_MOBILE && !IS_WEB;
@@ -224,6 +224,15 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               label="外观主题"
               onClick={() => setActiveTab('appearance')}
             />
+            {/* 全局：窗口行为等系统集成选项，网页与移动端没有托盘，隐藏该分组 */}
+            {SUPPORTS_SYSTEM_INTEGRATION && (
+              <NavBtn
+                active={activeTab === 'general'}
+                icon={<Monitor size={15} />}
+                label="全局"
+                onClick={() => setActiveTab('general')}
+              />
+            )}
             <NavBtn
               active={activeTab === 'typography'}
               icon={<Type size={15} />}
@@ -1340,21 +1349,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     />
                   </div>
 
-                  {/* 关闭到托盘：开启后关闭按钮仅隐藏窗口，内容留在内存中，因此不弹未保存确认 */}
-                  {SUPPORTS_SYSTEM_INTEGRATION && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                      <div>
-                        <div>关闭按钮最小化到托盘</div>
-                        <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>关闭时隐藏到托盘，不弹保存确认；从托盘菜单退出</div>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={settings.system.closeToTray ?? false}
-                        onChange={(e) => setSystem({ closeToTray: e.target.checked })}
-                      />
-                    </div>
-                  )}
-
                   {/* 大文件确认阈值 */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <div>
@@ -1428,6 +1422,38 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             {/* 5. 同步与备份：与其他页签一样直接渲染，配置未就绪的提示由面板自身处理。 */}
             {activeTab === 'sync' && <SyncPanel />}
             {activeTab === 'plugins' && <PluginsPanel target={settingsTarget} />}
+
+            {/* 全局：窗口与托盘等系统集成选项（仅原生桌面端） */}
+            {activeTab === 'general' && SUPPORTS_SYSTEM_INTEGRATION && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                <div>
+                  <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>全局设置</h3>
+                  <p style={{ fontSize: 12, color: 'var(--editor-text-muted)', margin: 0 }}>
+                    窗口行为与系统托盘等应用级选项。
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
+                    <Monitor size={15} color="var(--accent-strong)" />
+                    <span>窗口与托盘</span>
+                  </div>
+
+                  {/* 关闭到托盘：开启后关闭按钮仅隐藏窗口，内容留在内存中，因此不弹未保存确认 */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
+                    <div>
+                      <div>关闭按钮最小化到托盘</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>关闭时隐藏到托盘，不弹保存确认；从托盘菜单退出</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.system.closeToTray ?? false}
+                      onChange={(e) => setSystem({ closeToTray: e.target.checked })}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* 6. 快捷键指南 */}
             {activeTab === 'shortcuts' && (
