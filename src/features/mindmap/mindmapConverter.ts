@@ -248,7 +248,7 @@ export function mindNodeToXmindTopic(node: MindNode): XMindTopic {
       topic.note = { plain: { content: source.note } };
     }
     if (source.isExpanded === false) topic.branch = 'folded';
-    // 外框：XMind 以子主题下标区间 "(起,止)" 表示范围
+    // 外框：XMind 以子主题下标区间 "(起,止)" 表示范围；跨父范围不受支持，提升为包含首尾的子主题区间
     const boundaries = (source.boundaries ?? []).flatMap((boundary) => {
       const indexes = resolveRangeIndexes(source, boundary);
       if (!indexes) return [];

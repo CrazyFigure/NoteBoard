@@ -627,25 +627,25 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
           {/* 插入概要 / 外框 / 联系线（仅导图模式，作用于选中的节点） */}
           {viewMode === 'mindmap' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Tooltip content="为选中节点添加概要（Shift / Ctrl 多选同级节点可跨多个）" side="bottom" sideOffset={4}>
+              <Tooltip content="为选中节点添加概要（Shift / Ctrl 多选同层节点，可跨父节点）" side="bottom" sideOffset={4}>
                 <button
                   type="button"
                   className="nb-editor-toolbar-btn"
                   aria-disabled={!canAddRange}
                   style={{ opacity: canAddRange ? 1 : 0.5 }}
-                  onClick={() => runInsert(canAddRange, '先选中一个或多个同级节点（中心主题除外）', () => rendererRef.current?.addSummary())}
+                  onClick={() => runInsert(canAddRange, '先选中一个或多个同层节点（中心主题除外）', () => rendererRef.current?.addSummary())}
                 >
                   <Braces size={13} />
                   <span>概要</span>
                 </button>
               </Tooltip>
-              <Tooltip content="为选中节点添加外框（Shift / Ctrl 多选同级节点可跨多个）" side="bottom" sideOffset={4}>
+              <Tooltip content="为选中节点添加外框（Shift / Ctrl 多选同层节点，可跨父节点）" side="bottom" sideOffset={4}>
                 <button
                   type="button"
                   className="nb-editor-toolbar-btn"
                   aria-disabled={!canAddRange}
                   style={{ opacity: canAddRange ? 1 : 0.5 }}
-                  onClick={() => runInsert(canAddRange, '先选中一个或多个同级节点（中心主题除外）', () => rendererRef.current?.addBoundary())}
+                  onClick={() => runInsert(canAddRange, '先选中一个或多个同层节点（中心主题除外）', () => rendererRef.current?.addBoundary())}
                 >
                   <SquareDashed size={13} />
                   <span>外框</span>

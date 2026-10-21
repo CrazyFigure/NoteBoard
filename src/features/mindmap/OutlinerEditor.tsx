@@ -23,7 +23,7 @@ import { generateNodeId, moveMindNode, isMindNodeDescendant } from './mindmapCon
 import { cloneMindmapTree, findMindNode, walkMindNodes } from './mindmapTree';
 import {
   removeStructure,
-  resolveRangeIndexes,
+  resolveRangeNodes,
   setStructureText,
   SUMMARY_PLACEHOLDER,
   type MindStructureKind,
@@ -186,17 +186,18 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
     const textOf = new Map<string, string>();
     for (const node of walkMindNodes(root)) {
       textOf.set(node.id, node.text);
+      // 范围可能跨父节点（同层后代），按覆盖节点列表取首尾
       for (const summary of node.summaries ?? []) {
-        const range = resolveRangeIndexes(node, summary);
-        if (!range) continue;
-        const count = range[1] - range[0] + 1;
-        push(node.children[range[1]].id, { kind: 'summary', ownerId: node.id, id: summary.id, text: summary.text, caption: count > 1 ? `概要 ${count} 项` : '概要' });
+        const covered = resolveRangeNodes(node, summary);
+        if (!covered) continue;
+        const count = covered.length;
+        push(covered[count - 1].id, { kind: 'summary', ownerId: node.id, id: summary.id, text: summary.text, caption: count > 1 ? `概要 ${count} 项` : '概要' });
       }
       for (const boundary of node.boundaries ?? []) {
-        const range = resolveRangeIndexes(node, boundary);
-        if (!range) continue;
-        const count = range[1] - range[0] + 1;
-        push(node.children[range[0]].id, { kind: 'boundary', ownerId: node.id, id: boundary.id, text: boundary.title ?? '', caption: count > 1 ? `外框 ${count} 项` : '外框' });
+        const covered = resolveRangeNodes(node, boundary);
+        if (!covered) continue;
+        const count = covered.length;
+        push(covered[0].id, { kind: 'boundary', ownerId: node.id, id: boundary.id, text: boundary.title ?? '', caption: count > 1 ? `外框 ${count} 项` : '外框' });
       }
       for (const relation of node.relations ?? []) relations.push({ owner: node, relation });
     }

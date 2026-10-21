@@ -83,6 +83,7 @@ import {
   SUMMARY_FONT_SIZE,
   SUMMARY_LINE_HEIGHT,
   SUMMARY_PLACEHOLDER,
+  type LayoutBoundary,
   type MindStructureRef,
 } from './mindmapStructures';
 import type { MindNodeRange, MindPoint } from './mindmapTypes';
@@ -351,6 +352,13 @@ const MINIMAP_MIN_NODE_PX = 1.5;
 /** 联系线颜色：未选中为次级文字色，选中为强调色 */
 const RELATION_COLOR = 'var(--editor-text-secondary, #64748b)';
 const ACCENT_COLOR = 'var(--editor-accent, #3b82f6)';
+
+/** 外框图形：有阶梯形轮廓时画 path，否则画圆角矩形；其余 SVG 属性原样透传 */
+function BoundaryShape({ boundary, ...props }: { boundary: LayoutBoundary } & React.SVGProps<SVGPathElement> & React.SVGProps<SVGRectElement>) {
+  if (boundary.path) return <path d={boundary.path} {...(props as React.SVGProps<SVGPathElement>)} />;
+  const { rect } = boundary;
+  return <rect x={rect.x} y={rect.y} width={rect.width} height={rect.height} rx={12} {...(props as React.SVGProps<SVGRectElement>)} />;
+}
 
 /** 结构元素是否为同一个 */
 function isSameStructure(a: MindStructureRef | null, b: MindStructureRef | null): boolean {
@@ -962,7 +970,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
 
   // ── 概要 / 外框 / 联系线 ──
 
-  /** 为选中节点添加概要或外框（多选时覆盖首尾之间的全部同级节点），随后选中新元素 */
+  /** 为选中节点添加概要或外框（多选时覆盖首尾之间的全部同层节点，可跨父节点），随后选中新元素 */
   const addRangeStructure = (kind: 'summary' | 'boundary', ids: readonly string[]) => {
     const range = getSiblingRangeForSelection(root, ids);
     if (!range.ok) {
@@ -1230,7 +1238,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     }
     if (ref.kind === 'boundary') {
       const b = structures.boundaries.find((item) => item.id === ref.id && item.ownerId === ref.ownerId);
-      return b ? { x: b.rect.x + 10, y: b.rect.y - 13, width: Math.max(160, b.titleBox?.width ?? 0) } : null;
+      return b ? { x: b.titleAnchor.x, y: b.titleAnchor.y - 13, width: Math.max(160, b.titleBox?.width ?? 0) } : null;
     }
     const r = structures.relations.find((item) => item.id === ref.id && item.ownerId === ref.ownerId);
     return r ? { x: r.mid.x - 80, y: r.mid.y - 13, width: 160 } : null;
@@ -1941,13 +1949,10 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
             const color = theme.branchColors[b.branchIndex % theme.branchColors.length] ?? theme.branchColors[0];
             return (
               <g key={`boundary-${b.id}`} className="nb-mindmap-boundary" data-selected={selected}>
-                <rect
+                {/* 跨父范围画阶梯形轮廓，同父范围仍为圆角矩形 */}
+                <BoundaryShape
+                  boundary={b}
                   className="nb-mindmap-boundary-frame"
-                  x={b.rect.x}
-                  y={b.rect.y}
-                  width={b.rect.width}
-                  height={b.rect.height}
-                  rx={12}
                   fill={color}
                   fillOpacity={0.06}
                   stroke={selected ? ACCENT_COLOR : color}
@@ -1955,13 +1960,9 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                   strokeDasharray="6 4"
                   strokeOpacity={selected ? 1 : 0.75}
                 />
-                <rect
+                <BoundaryShape
+                  boundary={b}
                   data-mindmap-structure
-                  x={b.rect.x}
-                  y={b.rect.y}
-                  width={b.rect.width}
-                  height={b.rect.height}
-                  rx={12}
                   fill="none"
                   stroke="transparent"
                   strokeWidth={12}

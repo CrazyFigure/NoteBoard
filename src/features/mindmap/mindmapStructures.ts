@@ -6,7 +6,7 @@
 import type { MindBoundary, MindNode, MindNodeRange, MindPoint, MindRelation, MindSummary } from './mindmapTypes';
 import type { LayoutNode } from './layouts/layoutTypes';
 import { buildFont, ellipsizeLine, estimateTextWidth, wrapText, type TextMeasure } from './mindmapTextMeasure';
-import { findMindNodeParent, getTopLevelMindNodeIds, walkMindNodes } from './mindmapTree';
+import { getTopLevelMindNodeIds, walkMindNodes } from './mindmapTree';
 
 // ── 数据操作 ──
 
@@ -77,17 +77,89 @@ export function normalizeNodeStructures(source: Partial<MindNode>): Pick<MindNod
   return result;
 }
 
+/** 树访问方式：数据树（MindNode）与排版树（LayoutNode）共用范围解析 */
+interface TreeAccess<T> {
+  children: (node: T) => readonly T[];
+  id: (node: T) => string;
+}
+
+const MIND_ACCESS: TreeAccess<MindNode> = { children: (node) => node.children, id: (node) => node.id };
+const LAYOUT_ACCESS: TreeAccess<LayoutNode> = { children: (node) => node.children, id: (node) => node.node.id };
+
+/** 后代相对 owner 的层级（直接子节点为 1）；不在子树内返回 -1 */
+function depthBelow<T>(owner: T, id: string, access: TreeAccess<T>): number {
+  const stack: Array<{ node: T; depth: number }> = [{ node: owner, depth: 0 }];
+  while (stack.length > 0) {
+    const { node, depth } = stack.pop()!;
+    if (depth > 0 && access.id(node) === id) return depth;
+    for (const child of access.children(node)) stack.push({ node: child, depth: depth + 1 });
+  }
+  return -1;
+}
+
+/** owner 下第 depth 层的全部后代及其父节点，按先序排列（即画布上的同层排列顺序） */
+function nodesAtDepth<T>(owner: T, depth: number, access: TreeAccess<T>): Array<{ node: T; parent: T }> {
+  const result: Array<{ node: T; parent: T }> = [];
+  const stack: Array<{ node: T; parent: T; depth: number }> = [];
+  const children = access.children(owner);
+  for (let i = children.length - 1; i >= 0; i -= 1) stack.push({ node: children[i], parent: owner, depth: 1 });
+  while (stack.length > 0) {
+    const item = stack.pop()!;
+    if (item.depth === depth) {
+      result.push({ node: item.node, parent: item.parent });
+      continue;
+    }
+    const next = access.children(item.node);
+    for (let i = next.length - 1; i >= 0; i -= 1) stack.push({ node: next[i], parent: item.node, depth: item.depth + 1 });
+  }
+  return result;
+}
+
+/**
+ * 解析范围覆盖的节点（含父节点）：首尾可以是同父子节点，也可以是 owner 下同一层级、父节点不同的后代，
+ * 此时覆盖两者之间（先序）的全部同层节点。首尾之一失效或层级不再一致时退化为仍有效的一端；都失效返回 null
+ */
+function resolveRangeEntries<T>(owner: T, range: Pick<MindNodeRange, 'startId' | 'endId'>, access: TreeAccess<T>): Array<{ node: T; parent: T }> | null {
+  // 同父范围（最常见）直接按子节点下标截取，免去整棵子树遍历
+  const children = access.children(owner);
+  const start = children.findIndex((child) => access.id(child) === range.startId);
+  const end = children.findIndex((child) => access.id(child) === range.endId);
+  if (start >= 0 && end >= 0) {
+    const [lo, hi] = start <= end ? [start, end] : [end, start];
+    return children.slice(lo, hi + 1).map((node) => ({ node, parent: owner }));
+  }
+  const startDepth = depthBelow(owner, range.startId, access);
+  const endDepth = depthBelow(owner, range.endId, access);
+  if (startDepth < 0 && endDepth < 0) return null;
+  const depth = startDepth >= 0 ? startDepth : endDepth;
+  const level = nodesAtDepth(owner, depth, access);
+  const startIndex = level.findIndex((item) => access.id(item.node) === range.startId);
+  const endIndex = endDepth === depth ? level.findIndex((item) => access.id(item.node) === range.endId) : -1;
+  if (startIndex < 0) return [level[endIndex]];
+  if (endIndex < 0) return [level[startIndex]];
+  const [lo, hi] = startIndex <= endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
+  return level.slice(lo, hi + 1);
+}
+
+/** 范围覆盖的节点（先序）；全部失效时返回 null */
+export function resolveRangeNodes(owner: MindNode, range: Pick<MindNodeRange, 'startId' | 'endId'>): MindNode[] | null {
+  return resolveRangeEntries(owner, range, MIND_ACCESS)?.map((item) => item.node) ?? null;
+}
+
+/** 后代所在的 owner 直接子节点下标（自身为直接子节点时即其下标） */
+function topChildIndex(owner: MindNode, id: string): number {
+  return owner.children.findIndex((child) => child.id === id || depthBelow(child, id, MIND_ACCESS) > 0);
+}
+
 /**
  * 解析范围在父节点子数组中的下标区间
- * 首尾节点之一被移走时退化为仅剩的一端；两端都不在时返回 null（视为失效）
+ * 首尾节点之一被移走时退化为仅剩的一端；两端都不在时返回 null（视为失效）。
+ * 跨父节点的同层范围提升为包含首尾节点的子节点区间（XMind 只支持同父范围，导出时据此降级）
  */
 export function resolveRangeIndexes(parent: MindNode, range: Pick<MindNodeRange, 'startId' | 'endId'>): [number, number] | null {
-  const start = parent.children.findIndex((child) => child.id === range.startId);
-  const end = parent.children.findIndex((child) => child.id === range.endId);
-  if (start < 0 && end < 0) return null;
-  if (start < 0) return [end, end];
-  if (end < 0) return [start, start];
-  return start <= end ? [start, end] : [end, start];
+  const covered = resolveRangeNodes(parent, range);
+  if (!covered) return null;
+  return [topChildIndex(parent, covered[0].id), topChildIndex(parent, covered[covered.length - 1].id)];
 }
 
 /**
@@ -103,11 +175,11 @@ export function pruneMindmapStructures(root: MindNode): void {
   }
   for (const node of walkMindNodes(root)) {
     if (node.summaries) {
-      node.summaries = node.summaries.filter((item) => resolveRangeIndexes(node, item));
+      node.summaries = node.summaries.filter((item) => resolveRangeNodes(node, item));
       if (node.summaries.length === 0) delete node.summaries;
     }
     if (node.boundaries) {
-      node.boundaries = node.boundaries.filter((item) => resolveRangeIndexes(node, item));
+      node.boundaries = node.boundaries.filter((item) => resolveRangeNodes(node, item));
       if (node.boundaries.length === 0) delete node.boundaries;
     }
     if (hasRelations && node.relations) {
@@ -123,23 +195,31 @@ export type SiblingRangeResult =
   | { ok: false; reason: string };
 
 /**
- * 由选中节点求出连续的同级范围（中间未选中的同级节点一并纳入，与 XMind 一致）
+ * 由选中节点求出连续的同层范围（中间未选中的同层节点一并纳入，与 XMind 一致）。
+ * 同父时挂在父节点上；父节点不同但层级相同时挂在最近共同祖先上，只覆盖选中层级，不含中间的父节点
  */
 export function getSiblingRangeForSelection(root: MindNode, ids: Iterable<string>): SiblingRangeResult {
+  // 顶层 id 已按先序排列，首尾即范围两端
   const topIds = getTopLevelMindNodeIds(root, ids);
   if (topIds.length === 0) return { ok: false, reason: '中心主题不能添加' };
-  let parent: MindNode | null = null;
-  let min = Infinity;
-  let max = -Infinity;
-  for (const id of topIds) {
-    const info = findMindNodeParent(root, id);
-    if (!info) return { ok: false, reason: '节点不存在' };
-    if (parent && info.parent !== parent) return { ok: false, reason: '请选择同一父节点下的节点' };
-    parent = info.parent;
-    min = Math.min(min, info.index);
-    max = Math.max(max, info.index);
+  const parentOf = new Map<string, MindNode>();
+  const depthOf = new Map<string, number>();
+  const stack: Array<{ node: MindNode; depth: number }> = [{ node: root, depth: 0 }];
+  while (stack.length > 0) {
+    const { node, depth } = stack.pop()!;
+    depthOf.set(node.id, depth);
+    for (const child of node.children) {
+      parentOf.set(child.id, node);
+      stack.push({ node: child, depth: depth + 1 });
+    }
   }
-  return { ok: true, parentId: parent!.id, startId: parent!.children[min].id, endId: parent!.children[max].id };
+  if (topIds.some((id) => !parentOf.has(id))) return { ok: false, reason: '节点不存在' };
+  const depth = depthOf.get(topIds[0]);
+  if (topIds.some((id) => depthOf.get(id) !== depth)) return { ok: false, reason: '请选择同一层级的节点' };
+  // 同层节点逐级上溯直到汇合：同父时第一步即汇合于父节点
+  let ancestors = topIds.map((id) => parentOf.get(id)!);
+  while (ancestors.some((node) => node !== ancestors[0])) ancestors = ancestors.map((node) => parentOf.get(node.id)!);
+  return { ok: true, parentId: ancestors[0].id, startId: topIds[0], endId: topIds[topIds.length - 1] };
 }
 
 /** 读取结构元素（找不到返回 null） */
@@ -239,7 +319,12 @@ export interface LayoutBoundary {
   id: string;
   title?: string;
   branchIndex: number;
+  /** 外框外接矩形；同父范围即外框本身 */
   rect: Rect;
+  /** 跨父范围的阶梯形轮廓（可能含多段子路径）；为空时按 rect 画圆角矩形 */
+  path?: string;
+  /** 标题与标题输入框的左上锚点（首段外框左上角内缩处） */
+  titleAnchor: Point;
   /** 标题标签（无标题时为空） */
   titleBox?: Rect;
   titleText?: string;
@@ -419,6 +504,61 @@ function pickAutoBend(
   return best;
 }
 
+/**
+ * 圆角多边形路径：去掉重合与共线顶点后，每个拐角以二次曲线倒圆（凹角同样适用），
+ * 半径不超过相邻边长的一半
+ */
+function roundedPolygonPath(points: readonly Point[], radius: number): string {
+  const pts: Point[] = [];
+  for (const p of points) {
+    const last = pts[pts.length - 1];
+    if (!last || Math.abs(last.x - p.x) > 0.01 || Math.abs(last.y - p.y) > 0.01) pts.push(p);
+  }
+  if (pts.length > 1 && Math.abs(pts[0].x - pts[pts.length - 1].x) <= 0.01 && Math.abs(pts[0].y - pts[pts.length - 1].y) <= 0.01) pts.pop();
+  // 共线点（同一直线上的中间点）不形成拐角
+  const corners = pts.filter((p, i) => {
+    const prev = pts[(i - 1 + pts.length) % pts.length];
+    const next = pts[(i + 1) % pts.length];
+    return Math.abs((p.x - prev.x) * (next.y - p.y) - (p.y - prev.y) * (next.x - p.x)) > 0.01;
+  });
+  const n = corners.length;
+  let d = '';
+  corners.forEach((cur, i) => {
+    const prev = corners[(i - 1 + n) % n];
+    const next = corners[(i + 1) % n];
+    const lp = Math.hypot(prev.x - cur.x, prev.y - cur.y);
+    const ln = Math.hypot(next.x - cur.x, next.y - cur.y);
+    const r = Math.min(radius, lp / 2, ln / 2);
+    const a = { x: cur.x + ((prev.x - cur.x) / lp) * r, y: cur.y + ((prev.y - cur.y) / lp) * r };
+    const b = { x: cur.x + ((next.x - cur.x) / ln) * r, y: cur.y + ((next.y - cur.y) / ln) * r };
+    d += `${i === 0 ? 'M' : ' L'} ${fmt(a.x)} ${fmt(a.y)} Q ${fmt(cur.x)} ${fmt(cur.y)} ${fmt(b.x)} ${fmt(b.y)}`;
+  });
+  return `${d} Z`;
+}
+
+/**
+ * 一组沿同级排列方向相接的外框段 → 阶梯形轮廓顶点：相邻两段在间隙中点处衔接，
+ * 两侧边按各段自身的横向范围形成台阶
+ * @param vertical 同级纵排（段沿 y 方向排列）
+ */
+function steppedOutline(pieces: readonly Rect[], vertical: boolean): Point[] {
+  // 统一到 (u 沿排列方向, v 横向) 坐标计算，最后换回世界坐标
+  const spans = pieces.map((r) => vertical
+    ? { u0: r.y, u1: r.y + r.height, v0: r.x, v1: r.x + r.width }
+    : { u0: r.x, u1: r.x + r.width, v0: r.y, v1: r.y + r.height });
+  const cuts = spans.slice(0, -1).map((s, i) => (s.u1 + spans[i + 1].u0) / 2);
+  const uv: Array<[number, number]> = [[spans[0].u0, spans[0].v0], [spans[0].u0, spans[0].v1]];
+  cuts.forEach((cut, i) => uv.push([cut, spans[i].v1], [cut, spans[i + 1].v1]));
+  const last = spans[spans.length - 1];
+  uv.push([last.u1, last.v1], [last.u1, last.v0]);
+  for (let i = cuts.length - 1; i >= 0; i -= 1) uv.push([cuts[i], spans[i + 1].v0], [cuts[i], spans[i].v0]);
+  return uv.map(([u, v]) => (vertical ? { x: v, y: u } : { x: u, y: v }));
+}
+
+function intersects(a: Rect, b: Rect): boolean {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
 /** 子树（含自身）沿同级排列方向的覆盖区间 */
 function subtreeSpan(root: LayoutNode, vertical: boolean): [number, number] {
   let lo = Infinity;
@@ -438,37 +578,41 @@ function subtreeSpan(root: LayoutNode, vertical: boolean): [number, number] {
  * （与布局方向无关，鱼骨图等反向排列时同样成立）
  */
 export function rangeFixedEndId(owner: LayoutNode, range: Pick<MindNodeRange, 'startId' | 'endId'>, handle: Point): string {
-  const start = owner.children.find((child) => child.node.id === range.startId);
-  const end = owner.children.find((child) => child.node.id === range.endId);
+  // 首尾可能是跨父节点的同层后代，按范围解析结果取两端
+  const covered = resolveRangeEntries(owner, range, LAYOUT_ACCESS);
+  const start = covered?.find((item) => item.node.node.id === range.startId)?.node;
+  const end = covered?.find((item) => item.node.node.id === range.endId)?.node;
   if (!start || !end) return (start ?? end)?.node.id ?? range.startId;
   const distance = (n: LayoutNode) => Math.hypot(n.x + n.width / 2 - handle.x, n.y + n.height / 2 - handle.y);
   return distance(start) >= distance(end) ? start.node.id : end.node.id;
 }
 
 /**
- * 拖动概要 / 外框端点：在与固定端同侧的子节点中，沿同级排列方向找指针所在（或最近）的子树，
- * 返回固定端与它之间的新范围
+ * 拖动概要 / 外框端点：在 owner 下与固定端同层、同侧的节点中，沿同级排列方向找指针所在（或最近）的子树，
+ * 返回固定端与它之间的新范围（跨父范围同样只在该层内伸缩）
  */
 export function dragRangeEnd(owner: LayoutNode, fixedId: string, point: Point): Pick<MindNodeRange, 'startId' | 'endId'> | null {
-  const fixed = owner.children.find((child) => child.node.id === fixedId);
-  if (!fixed) return null;
-  const side = sideOf(owner, fixed);
+  const depth = depthBelow(owner, fixedId, LAYOUT_ACCESS);
+  if (depth < 0) return null;
+  const level = nodesAtDepth(owner, depth, LAYOUT_ACCESS);
+  const a = level.findIndex((item) => item.node.node.id === fixedId);
+  const fixed = level[a];
+  const side = sideOf(fixed.parent, fixed.node);
   const vertical = side === 'left' || side === 'right';
   const value = vertical ? point.y : point.x;
-  let best = fixed;
+  let b = a;
   let bestDistance = Infinity;
-  for (const child of owner.children) {
-    if (sideOf(owner, child) !== side) continue;
-    const [lo, hi] = subtreeSpan(child, vertical);
+  level.forEach((item, index) => {
+    if (sideOf(item.parent, item.node) !== side) return;
+    const [lo, hi] = subtreeSpan(item.node, vertical);
     const distance = value < lo ? lo - value : value > hi ? value - hi : 0;
     if (distance < bestDistance) {
-      best = child;
+      b = index;
       bestDistance = distance;
     }
-  }
-  const a = owner.children.indexOf(fixed);
-  const b = owner.children.indexOf(best);
-  return a <= b ? { startId: fixed.node.id, endId: best.node.id } : { startId: best.node.id, endId: fixed.node.id };
+  });
+  const best = level[b].node;
+  return a <= b ? { startId: fixed.node.node.id, endId: best.node.id } : { startId: best.node.id, endId: fixed.node.node.id };
 }
 
 /**
@@ -487,81 +631,141 @@ export function computeMindmapStructures(nodes: readonly LayoutNode[], options: 
 
   // 显式栈先序遍历，逆序即为子节点先于父节点的后序
   const order: LayoutNode[] = [];
+  const parentOf = new Map<LayoutNode, LayoutNode>();
   const stack = [root];
   while (stack.length > 0) {
     const n = stack.pop()!;
     order.push(n);
-    for (let i = n.children.length - 1; i >= 0; i -= 1) stack.push(n.children[i]);
+    for (let i = n.children.length - 1; i >= 0; i -= 1) {
+      parentOf.set(n.children[i], n);
+      stack.push(n.children[i]);
+    }
   }
+
+  /** 节点及其全部子孙（跨父外框判定间隙中是否夹着其他节点时排除） */
+  const collectSubtrees = (tops: readonly LayoutNode[]): Set<LayoutNode> => {
+    const set = new Set<LayoutNode>();
+    const pending = [...tops];
+    while (pending.length > 0) {
+      const n = pending.pop()!;
+      set.add(n);
+      pending.push(...n.children);
+    }
+    return set;
+  };
 
   // 每个节点「含子树与其上结构元素」的外接矩形
   const extent = new Map<LayoutNode, Rect>();
+  // 已排好的外框（含标题）及其覆盖节点：外层外框 / 概要据此让出内层外框（后序保证内层先算）
+  const boundaryRects: Array<{ owner: LayoutNode; children: Set<LayoutNode>; rect: Rect }> = [];
   for (let oi = order.length - 1; oi >= 0; oi -= 1) {
     const n = order[oi];
     let rect = nodeRect(n);
     for (const child of n.children) rect = union(rect, extent.get(child)!);
     const node = n.node;
     if (n.children.length > 0 && (node.boundaries || node.summaries)) {
-      /** 范围内与首个子节点同侧的子节点（双向图根节点两侧分开） */
-      const covered = (range: MindNodeRange): { side: StructureSide; children: LayoutNode[] } | null => {
-        const indexes = resolveRangeIndexes(node, options.rangeOverrides?.get(range.id) ?? range);
-        if (!indexes) return null;
-        const list = n.children.slice(indexes[0], indexes[1] + 1);
-        if (list.length === 0) return null;
-        const side = sideOf(n, list[0]);
-        return { side, children: list.filter((child) => sideOf(n, child) === side) };
+      /** 范围内与首个节点同侧的节点（双向图根节点两侧分开），按父节点分成连续的段 */
+      const covered = (range: MindNodeRange): { side: StructureSide; children: LayoutNode[]; runs: LayoutNode[][] } | null => {
+        const entries = resolveRangeEntries(n, options.rangeOverrides?.get(range.id) ?? range, LAYOUT_ACCESS);
+        if (!entries || entries.length === 0) return null;
+        const side = sideOf(entries[0].parent, entries[0].node);
+        const runs: LayoutNode[][] = [];
+        let lastParent: LayoutNode | null = null;
+        for (const entry of entries) {
+          if (sideOf(entry.parent, entry.node) !== side) continue;
+          if (entry.parent !== lastParent) runs.push([]);
+          runs[runs.length - 1].push(entry.node);
+          lastParent = entry.parent;
+        }
+        return { side, children: runs.flat(), runs };
       };
-      // 1. 外框：圈住范围内子树，记录到按子节点索引的「已占用」矩形，供同父概要避让
-      const boundaryRects: Array<{ children: Set<LayoutNode>; rect: Rect }> = [];
+      /** 范围内容的外接矩形：子树 + 中间层级上与之重叠的外框（让出内层外框） */
+      const contentRect = (children: readonly LayoutNode[], withSameOwner: boolean): Rect => {
+        let inner: Rect | null = null;
+        for (const child of children) inner = union(inner, extent.get(child)!);
+        for (const item of boundaryRects) {
+          if (!withSameOwner && item.owner === n) continue;
+          if (children.some((child) => item.children.has(child))) inner = union(inner, item.rect);
+        }
+        return inner!;
+      };
+      // 1. 外框：圈住范围内子树，记录「已占用」矩形，供概要与外层外框避让
       for (const boundary of node.boundaries ?? []) {
         const info = covered(boundary);
         if (!info) continue;
-        let inner: Rect | null = null;
-        for (const child of info.children) inner = union(inner, extent.get(child)!);
-        const box: Rect = {
-          x: inner!.x - BOUNDARY_PADDING,
-          y: inner!.y - BOUNDARY_PADDING,
-          width: inner!.width + BOUNDARY_PADDING * 2,
-          height: inner!.height + BOUNDARY_PADDING * 2,
-        };
+        const vertical = info.side === 'left' || info.side === 'right';
+        // 每个父节点下的连续段各自外扩，沿同级排列方向排序
+        const pieces = info.runs.map((run): Rect => {
+          const inner = contentRect(run, false);
+          return {
+            x: inner.x - BOUNDARY_PADDING,
+            y: inner.y - BOUNDARY_PADDING,
+            width: inner.width + BOUNDARY_PADDING * 2,
+            height: inner.height + BOUNDARY_PADDING * 2,
+          };
+        }).sort((a, b) => (vertical ? a.y - b.y : a.x - b.x));
+        let box = pieces[0];
+        for (const piece of pieces) box = union(box, piece);
+        let path: string | undefined;
+        if (pieces.length > 1) {
+          // 相邻两段之间若夹着范围外的节点（如缩进图中的父节点）或横向不重叠，则断开分段绘制
+          const inside = collectSubtrees(info.children);
+          const others = nodes.filter((item) => !inside.has(item));
+          const groups: Rect[][] = [[pieces[0]]];
+          for (let i = 1; i < pieces.length; i += 1) {
+            const prev = pieces[i - 1];
+            const cur = pieces[i];
+            const overlap = vertical
+              ? Math.min(prev.x + prev.width, cur.x + cur.width) > Math.max(prev.x, cur.x)
+              : Math.min(prev.y + prev.height, cur.y + cur.height) > Math.max(prev.y, cur.y);
+            // 两段在间隙中点衔接，衔接区域即两段各自延伸到中点的部分
+            const gap: Rect = vertical
+              ? { x: Math.min(prev.x, cur.x), y: prev.y + prev.height, width: Math.max(prev.x + prev.width, cur.x + cur.width) - Math.min(prev.x, cur.x), height: cur.y - prev.y - prev.height }
+              : { x: prev.x + prev.width, y: Math.min(prev.y, cur.y), width: cur.x - prev.x - prev.width, height: Math.max(prev.y + prev.height, cur.y + cur.height) - Math.min(prev.y, cur.y) };
+            const blocked = (gap.width > 0 && gap.height > 0) && others.some((item) => intersects(nodeRect(item), gap));
+            if (overlap && !blocked) groups[groups.length - 1].push(cur);
+            else groups.push([cur]);
+          }
+          path = groups.map((group) => roundedPolygonPath(steppedOutline(group, vertical), 12)).join(' ');
+        }
+        const first = pieces[0];
+        const lastPiece = pieces[pieces.length - 1];
         const layoutBoundary: LayoutBoundary = {
           ownerId: node.id,
           id: boundary.id,
           title: boundary.title,
           branchIndex: info.children[0].branchIndex,
           rect: box,
+          path,
+          titleAnchor: { x: first.x + 10, y: first.y },
           side: info.side,
-          // 同级纵排时手柄在上下边，横排时在左右边
-          handles: info.side === 'left' || info.side === 'right'
-            ? [{ x: box.x + box.width / 2, y: box.y }, { x: box.x + box.width / 2, y: box.y + box.height }]
-            : [{ x: box.x, y: box.y + box.height / 2 }, { x: box.x + box.width, y: box.y + box.height / 2 }],
+          // 同级纵排时手柄在首段上边与末段下边，横排时在首段左边与末段右边
+          handles: vertical
+            ? [{ x: first.x + first.width / 2, y: first.y }, { x: lastPiece.x + lastPiece.width / 2, y: lastPiece.y + lastPiece.height }]
+            : [{ x: first.x, y: first.y + first.height / 2 }, { x: lastPiece.x + lastPiece.width, y: lastPiece.y + lastPiece.height / 2 }],
         };
         let occupied = box;
         if (boundary.title) {
-          // 标题标签压在框的左上边线上，过长时按框宽省略
-          const maxText = Math.max(24, box.width - 20 - BOUNDARY_TITLE_PAD_X * 2);
+          // 标题标签压在首段框的左上边线上，过长时按框宽省略
+          const maxText = Math.max(24, first.width - 20 - BOUNDARY_TITLE_PAD_X * 2);
           // ellipsizeLine 总会补省略号，只在确实超宽时调用
           const text = measure(boundary.title, titleFont) <= maxText
             ? boundary.title
             : ellipsizeLine(boundary.title, maxText, measure, titleFont);
           const width = Math.ceil(measure(text, titleFont)) + BOUNDARY_TITLE_PAD_X * 2;
           layoutBoundary.titleText = text;
-          layoutBoundary.titleBox = { x: box.x + 10, y: box.y - BOUNDARY_TITLE_HEIGHT / 2, width, height: BOUNDARY_TITLE_HEIGHT };
+          layoutBoundary.titleBox = { x: first.x + 10, y: first.y - BOUNDARY_TITLE_HEIGHT / 2, width, height: BOUNDARY_TITLE_HEIGHT };
           occupied = union(occupied, layoutBoundary.titleBox);
         }
         result.boundaries.push(layoutBoundary);
-        boundaryRects.push({ children: new Set(info.children), rect: occupied });
+        boundaryRects.push({ owner: n, children: new Set(info.children), rect: occupied });
         rect = union(rect, occupied);
       }
       // 2. 概要：大括号放在范围内子树（及重叠外框）最外侧之外
       for (const summary of node.summaries ?? []) {
         const info = covered(summary);
         if (!info) continue;
-        let inner: Rect | null = null;
-        for (const child of info.children) inner = union(inner, extent.get(child)!);
-        for (const item of boundaryRects) {
-          if (info.children.some((child) => item.children.has(child))) inner = union(inner, item.rect);
-        }
+        const inner = contentRect(info.children, true);
         const area = inner!;
         const text = summary.text || SUMMARY_PLACEHOLDER;
         const wrapped = wrapLabel(text, SUMMARY_MAX_TEXT_WIDTH, measure, summaryFont);

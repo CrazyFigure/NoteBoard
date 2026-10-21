@@ -499,15 +499,19 @@ function drawStructures(
     // 外框：浅色底 + 虚线边
     for (const b of structures.boundaries) {
       const color = branchColor(b.branchIndex);
-      roundRectPath(ctx, b.rect.x, b.rect.y, b.rect.width, b.rect.height, 12);
+      // 跨父范围为阶梯形轮廓，同父范围为圆角矩形
+      const shape = b.path ? new Path2D(b.path) : null;
+      if (!shape) roundRectPath(ctx, b.rect.x, b.rect.y, b.rect.width, b.rect.height, 12);
       ctx.globalAlpha = 0.06;
       ctx.fillStyle = color;
-      ctx.fill();
+      if (shape) ctx.fill(shape);
+      else ctx.fill();
       ctx.globalAlpha = 0.75;
       ctx.setLineDash([6, 4]);
       ctx.lineWidth = 1.5;
       ctx.strokeStyle = color;
-      ctx.stroke();
+      if (shape) ctx.stroke(shape);
+      else ctx.stroke();
       ctx.setLineDash([]);
       ctx.globalAlpha = 1;
     }

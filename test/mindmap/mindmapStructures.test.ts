@@ -13,6 +13,7 @@ import {
   pruneMindmapStructures,
   removeStructure,
   resolveRangeIndexes,
+  resolveRangeNodes,
   setStructureText,
 } from '@/features/mindmap/mindmapStructures';
 import { computeMindmapLayout } from '@/features/mindmap/mindmapLayout';
@@ -80,7 +81,7 @@ describe('范围与数据操作', () => {
     expect(root.boundaries).toBeUndefined();
   });
 
-  test('选中同级节点得到首尾范围，跨父节点或选中根节点给出原因', () => {
+  test('选中同级节点得到首尾范围，层级不同或选中根节点给出原因', () => {
     const root = sample();
     expect(getSiblingRangeForSelection(root, ['c', 'a'])).toEqual({ ok: true, parentId: 'root', startId: 'a', endId: 'c' });
     expect(getSiblingRangeForSelection(root, ['a1'])).toEqual({ ok: true, parentId: 'a', startId: 'a1', endId: 'a1' });
@@ -253,5 +254,109 @@ describe('XMind 双向转换', () => {
     expect(prepared.root.boundaries).toBeUndefined();
     expect(prepared.warnings).toContain('部分外框范围无效，未转换');
     expect(prepared.warnings).toContain('部分关联线端点缺失，未转换');
+  });
+});
+
+describe('跨父节点的同层范围', () => {
+  /** 根 + 分支 A（a1 a2 a3）、分支 B（b1 b2）、分支 C；外框与概要都覆盖 a2..b1 */
+  function cousins(): MindNode {
+    return {
+      id: 'root',
+      text: '中心',
+      boundaries: [{ id: 'x1', startId: 'a2', endId: 'b1', title: '跨父' }],
+      summaries: [{ id: 'x2', startId: 'a2', endId: 'b1', text: '跨父概要' }],
+      children: [
+        {
+          id: 'a',
+          text: '分支 A',
+          children: [
+            { id: 'a1', text: 'A1', children: [] },
+            { id: 'a2', text: 'A2', children: [] },
+            { id: 'a3', text: 'A3', children: [] },
+          ],
+        },
+        {
+          id: 'b',
+          text: '分支 B',
+          children: [
+            { id: 'b1', text: 'B1', children: [] },
+            { id: 'b2', text: 'B2', children: [] },
+          ],
+        },
+        { id: 'c', text: '分支 C', children: [] },
+      ],
+    };
+  }
+
+  const rectOf = (n: { x: number; y: number; width: number; height: number }) => ({ x: n.x, y: n.y, width: n.width, height: n.height });
+  const overlaps = (a: ReturnType<typeof rectOf>, b: ReturnType<typeof rectOf>) =>
+    a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+
+  test('同层不同父的选中挂在共同祖先上，层级不同时给出原因', () => {
+    const root = cousins();
+    expect(getSiblingRangeForSelection(root, ['b1', 'a2'])).toEqual({ ok: true, parentId: 'root', startId: 'a2', endId: 'b1' });
+    expect(getSiblingRangeForSelection(root, ['a1', 'b'])).toEqual({ ok: false, reason: '请选择同一层级的节点' });
+  });
+
+  test('范围覆盖首尾之间的全部同层节点，不含中间的父节点；XMind 导出提升为子主题区间', () => {
+    const root = cousins();
+    expect(resolveRangeNodes(root, root.boundaries![0])!.map((n) => n.id)).toEqual(['a2', 'a3', 'b1']);
+    expect(resolveRangeIndexes(root, root.boundaries![0])).toEqual([0, 1]);
+    // 末端被移到其他层级时退化为仍有效的一端，清理时保留
+    const moved = moveMindNode(root, 'b1', 'c', 'after');
+    expect(resolveRangeNodes(moved, moved.boundaries![0])!.map((n) => n.id)).toEqual(['a2']);
+    pruneMindmapStructures(moved);
+    expect(moved.boundaries).toHaveLength(1);
+  });
+
+  test.each(ALL_LAYOUTS)('%s 布局下跨父外框包住覆盖节点且不圈住其父节点', (layout) => {
+    const { nodes } = computeMindmapLayout(cousins(), layout, 6);
+    const result = computeMindmapStructures(nodes);
+    expect(result.boundaries).toHaveLength(1);
+    expect(result.summaries).toHaveLength(1);
+    const boundary = result.boundaries[0];
+    const box = boundary.rect;
+    // 双向图中 A、B 分处根节点两侧时，范围只取首个节点所在一侧
+    const center = nodes.find((n) => n.level === 0)!;
+    const a2 = nodes.find((n) => n.node.id === 'a2')!;
+    const sameSide = (n: typeof a2) => (n.x > center.x) === (a2.x > center.x);
+    for (const id of ['a2', 'a3', 'b1']) {
+      const n = nodes.find((item) => item.node.id === id)!;
+      if (!sameSide(n)) continue;
+      expect(box.x).toBeLessThan(n.x);
+      expect(box.x + box.width).toBeGreaterThan(n.x + n.width);
+    }
+    // 概要文字框不压住任何节点
+    for (const n of nodes) expect(overlaps(result.summaries[0].label, rectOf(n))).toBe(false);
+  });
+
+  test('逻辑图中阶梯外框不与父节点重叠；缩进图中被父节点隔开时分段绘制', () => {
+    const right = computeMindmapLayout(cousins(), 'right', 6).nodes;
+    const boundary = computeMindmapStructures(right).boundaries[0];
+    expect(boundary.path).toBeDefined();
+    expect(boundary.path!.match(/M/g)).toHaveLength(1);
+    for (const id of ['root', 'a', 'b']) {
+      expect(overlaps(boundary.rect, rectOf(right.find((n) => n.node.id === id)!))).toBe(false);
+    }
+    const indent = computeMindmapLayout(cousins(), 'indent-right', 6).nodes;
+    expect(computeMindmapStructures(indent).boundaries[0].path!.match(/M/g)).toHaveLength(2);
+    // 同父范围仍画圆角矩形
+    const sibling = cousins();
+    sibling.boundaries = [{ id: 'x1', startId: 'a1', endId: 'a2' }];
+    sibling.summaries = undefined;
+    const siblingNodes = computeMindmapLayout(sibling, 'right', 6).nodes;
+    expect(computeMindmapStructures(siblingNodes).boundaries[0].path).toBeUndefined();
+  });
+
+  test('拖动跨父范围端点在同层内伸缩', () => {
+    const { nodes } = computeMindmapLayout(cousins(), 'right', 6);
+    const owner = nodes.find((n) => n.level === 0)!;
+    const b2 = nodes.find((n) => n.node.id === 'b2')!;
+    const a1 = nodes.find((n) => n.node.id === 'a1')!;
+    expect(dragRangeEnd(owner, 'a2', { x: b2.x, y: b2.y + b2.height / 2 })).toEqual({ startId: 'a2', endId: 'b2' });
+    expect(dragRangeEnd(owner, 'b1', { x: a1.x, y: a1.y + a1.height / 2 })).toEqual({ startId: 'a1', endId: 'b1' });
+    const [top, bottom] = computeMindmapStructures(nodes).boundaries[0].handles;
+    expect(rangeFixedEndId(owner, { startId: 'a2', endId: 'b1' }, bottom)).toBe('a2');
+    expect(rangeFixedEndId(owner, { startId: 'a2', endId: 'b1' }, top)).toBe('b1');
   });
 });

@@ -29,9 +29,9 @@ export interface MindNode {
   textAlign?: MindmapTextAlign;
   // 图片显示方式；未设置时跟随设置
   imageFit?: MindmapImageFit;
-  // 概要（大括号）：挂在父节点上，覆盖一段连续子节点
+  // 概要（大括号）：挂在父节点上覆盖一段连续子节点；跨父时挂在共同祖先上覆盖同层后代
   summaries?: MindSummary[];
-  // 外框：挂在父节点上，圈住一段连续子节点及其子树
+  // 外框：挂在父节点上圈住一段连续子节点及其子树；跨父时挂在共同祖先上圈住同层后代
   boundaries?: MindBoundary[];
   // 联系线：从本节点指向任意其他节点
   relations?: MindRelation[];
