@@ -1475,26 +1475,29 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     };
   };
 
+  // 触屏双指捏合（捕获阶段）：手柄捕获指针后会阻止 move 冒泡，必须在捕获阶段更新触点，
+  // 否则一指按在概要端点 / 控制点上时捏合只能读到另一指的坐标
+  const handleTouchPointerMoveCapture = (e: React.PointerEvent) => {
+    if (e.pointerType !== 'touch' || !touchPointsRef.current.has(e.pointerId)) return;
+    touchPointsRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const pinch = pinchRef.current;
+    const containerEl = containerRef.current;
+    if (!pinch || !containerEl || touchPointsRef.current.size < 2) return;
+    // 捏合期间的移动只用于缩放，不再交给节点拖拽、手柄或画布平移
+    e.stopPropagation();
+    // 按两指距离比例缩放，并让捏合中心跟随手指移动
+    const [p1, p2] = Array.from(touchPointsRef.current.values());
+    const rect = containerEl.getBoundingClientRect();
+    const dist = Math.max(1, Math.hypot(p2.x - p1.x, p2.y - p1.y));
+    const midX = (p1.x + p2.x) / 2 - rect.left;
+    const midY = (p1.y + p2.y) / 2 - rect.top;
+    const nextZoom = Math.min(3, Math.max(0.2, pinch.startZoom * (dist / pinch.startDist)));
+    setPan({ x: midX - pinch.worldX * nextZoom, y: midY - pinch.worldY * nextZoom });
+    onZoomChange(nextZoom);
+  };
+
   // 全局指针移动：处理拖拽中位移计算与最近有效落点判定，或画布平移
   const handlePointerMove = (e: React.PointerEvent) => {
-    // 0. 触屏双指捏合：按两指距离比例缩放，并让捏合中心跟随手指移动
-    if (e.pointerType === 'touch' && touchPointsRef.current.has(e.pointerId)) {
-      touchPointsRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      const pinch = pinchRef.current;
-      const containerEl = containerRef.current;
-      if (pinch && containerEl && touchPointsRef.current.size >= 2) {
-        const [p1, p2] = Array.from(touchPointsRef.current.values());
-        const rect = containerEl.getBoundingClientRect();
-        const dist = Math.max(1, Math.hypot(p2.x - p1.x, p2.y - p1.y));
-        const midX = (p1.x + p2.x) / 2 - rect.left;
-        const midY = (p1.y + p2.y) / 2 - rect.top;
-        const nextZoom = Math.min(3, Math.max(0.2, pinch.startZoom * (dist / pinch.startDist)));
-        setPan({ x: midX - pinch.worldX * nextZoom, y: midY - pinch.worldY * nextZoom });
-        onZoomChange(nextZoom);
-        return;
-      }
-    }
-
     // 连接模式：预览线跟随指针
     if (connectFromRef.current) {
       const point = clientToWorld(e.clientX, e.clientY);
@@ -1687,10 +1690,31 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     }
   };
 
+  /** 中止概要 / 外框端点、联系线控制点、节点宽度手柄的拖动会话（不提交，丢弃预览） */
+  const abortHandleSessions = () => {
+    const hadSession = Boolean(rangeSessionRef.current || controlSessionRef.current || resizeSessionRef.current);
+    rangeSessionRef.current = null;
+    controlSessionRef.current = null;
+    resizeSessionRef.current = null;
+    if (!hadSession) return;
+    setRangePreview(null);
+    setControlPreview(null);
+    setResizePreview(null);
+    document.body.style.cursor = 'default';
+  };
+
   // 触屏按下（捕获阶段，节点自身的 pointerdown 会阻止冒泡）：单指空白处平移，第二指落下进入捏合
   const handleTouchPointerDownCapture = (e: React.PointerEvent) => {
     if (e.pointerType !== 'touch') return;
+    // 经 Portal 渲染的浮层（图片预览等）在 React 树上仍是画布子孙，其触点不属于画布手势
+    if (!containerRef.current?.contains(e.target as Node)) return;
     lastTouchAtRef.current = Date.now();
+    // 主触点按下意味着此前所有手指都已抬起：清掉可能残留的旧触点，避免把幽灵触点算进捏合
+    if (e.isPrimary && touchPointsRef.current.size > 0) {
+      touchPointsRef.current.clear();
+      pinchRef.current = null;
+      setIsPinching(false);
+    }
     touchPointsRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const points = Array.from(touchPointsRef.current.values());
 
@@ -1702,7 +1726,12 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
         touchPointsRef.current.delete(e.pointerId);
         return;
       }
-      if (!target.closest('.nb-mindmap-node') && !target.closest('[data-mindmap-structure]') && !target.closest('button, input, textarea')) {
+      if (
+        !target.closest('.nb-mindmap-node') &&
+        !target.closest('[data-mindmap-structure]') &&
+        !target.closest('[data-mindmap-overlay]') &&
+        !target.closest('button, input, textarea')
+      ) {
         setIsPanning(true);
         panStartRef.current = { x: e.clientX - panRef.current.x, y: e.clientY - panRef.current.y };
       }
@@ -1732,10 +1761,14 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       setDropTarget(null);
       document.body.style.cursor = 'default';
     }
+    // 第一指按在手柄上时同样让位给捏合
+    abortHandleSessions();
+    // 后落下的手指只参与捏合，不再让节点 / 手柄开启新的拖动会话
+    e.stopPropagation();
   };
 
   // 触点抬起 / 被系统取消：移出触点表；捏合结束后若仍剩一指，则从该指位置无缝续接平移
-  const handleTouchPointerEnd = (e: React.PointerEvent) => {
+  const handleTouchPointerEnd = (e: { pointerType: string; pointerId: number }) => {
     if (e.pointerType !== 'touch' || !touchPointsRef.current.has(e.pointerId)) return;
     lastTouchAtRef.current = Date.now();
     touchPointsRef.current.delete(e.pointerId);
@@ -1749,6 +1782,20 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       }
     }
   };
+  const handleTouchPointerEndRef = useRef(handleTouchPointerEnd);
+  handleTouchPointerEndRef.current = handleTouchPointerEnd;
+
+  // 触点抬起改在 window 捕获阶段统一登记：概要端点、控制点、宽度手柄在 pointerup 时会阻止冒泡，
+  // 画布自身的 onPointerUp 收不到，触点表里会残留"幽灵手指"，导致之后双指捏合失效
+  useEffect(() => {
+    const handleEnd = (e: PointerEvent) => handleTouchPointerEndRef.current(e);
+    window.addEventListener('pointerup', handleEnd, true);
+    window.addEventListener('pointercancel', handleEnd, true);
+    return () => {
+      window.removeEventListener('pointerup', handleEnd, true);
+      window.removeEventListener('pointercancel', handleEnd, true);
+    };
+  }, []);
 
   // 画布鼠标按下平移
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -1881,14 +1928,11 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       ref={containerRef}
       onMouseDown={handleMouseDown}
       onPointerDownCapture={handleTouchPointerDownCapture}
+      onPointerMoveCapture={handleTouchPointerMoveCapture}
       onPointerMove={handlePointerMove}
-      onPointerUp={(e) => {
-        handleTouchPointerEnd(e);
-        handlePointerUp(e);
-      }}
-      onPointerCancel={(e) => {
-        // 系统取消触点（如来电、手势被接管）：只复位状态，不提交拖拽落点
-        handleTouchPointerEnd(e);
+      onPointerUp={handlePointerUp}
+      onPointerCancel={() => {
+        // 系统取消触点（如来电、手势被接管）：只复位状态，不提交拖拽落点（触点表由 window 监听移除）
         setIsPanning(false);
         if (dragSessionRef.current) {
           dragSessionRef.current = null;
