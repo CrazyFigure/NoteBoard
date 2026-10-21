@@ -17,6 +17,9 @@ import {
   MoveHorizontal,
   Undo2,
   Redo2,
+  Braces,
+  SquareDashed,
+  Spline,
 } from 'lucide-react';
 import type {
   MindNode,
@@ -41,7 +44,7 @@ import { exportMindmapImageBlob, type MindmapImageFormat } from './mindmapImageE
 import { clampNodeMaxWidth, FALLBACK_FONT_FAMILY } from './mindmapTextMeasure';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { OutlinerEditor } from './OutlinerEditor';
-import { MindmapRenderer } from './MindmapRenderer';
+import { MindmapRenderer, type MindmapRendererHandle, type MindmapSelectionInfo } from './MindmapRenderer';
 import { createInitialMindmapView } from './mindmapView';
 import { cloneMindmapTree, getMindmapTreeStats, walkMindNodes } from './mindmapTree';
 import { confirmMindmapImport, requestMindmapChoice } from './MindmapImportDialog';
@@ -147,6 +150,20 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
   // 撤销 / 重做可用状态（画布左下角按钮）
   const { canUndo, canRedo } = useDocumentHistory(docKey);
   const [exportOpen, setExportOpen] = useState(false);
+  // 画布命令句柄与当前选中节点（顶部「概要 / 外框 / 联系线」按钮使用）
+  const rendererRef = useRef<MindmapRendererHandle>(null);
+  const [selection, setSelection] = useState<MindmapSelectionInfo>({ nodeIds: [], includesRoot: false });
+  // 概要 / 外框需选中非中心主题的节点；联系线需恰好选中一个节点
+  const canAddRange = selection.nodeIds.length > 0 && !selection.includesRoot;
+  const canConnect = selection.nodeIds.length === 1;
+  /** 顶部插入按钮：条件不满足时提示怎么选，而不是静默无反应 */
+  const runInsert = (enabled: boolean, hint: string, action: () => void) => {
+    if (!enabled) {
+      showToast(hint, 'info');
+      return;
+    }
+    action();
+  };
   // 🔴 S12：最新状态引用（capabilities flush/captureViewState 同步读取，不依赖渲染闭包）
   const rootNodeRef = useRef<MindNode>(rootNode);
   rootNodeRef.current = rootNode;
@@ -607,6 +624,48 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
             </div>
           )}
 
+          {/* 插入概要 / 外框 / 联系线（仅导图模式，作用于选中的节点） */}
+          {viewMode === 'mindmap' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Tooltip content="为选中节点添加概要（Shift / Ctrl 多选同级节点可跨多个）" side="bottom" sideOffset={4}>
+                <button
+                  type="button"
+                  className="nb-editor-toolbar-btn"
+                  aria-disabled={!canAddRange}
+                  style={{ opacity: canAddRange ? 1 : 0.5 }}
+                  onClick={() => runInsert(canAddRange, '先选中一个或多个同级节点（中心主题除外）', () => rendererRef.current?.addSummary())}
+                >
+                  <Braces size={13} />
+                  <span>概要</span>
+                </button>
+              </Tooltip>
+              <Tooltip content="为选中节点添加外框（Shift / Ctrl 多选同级节点可跨多个）" side="bottom" sideOffset={4}>
+                <button
+                  type="button"
+                  className="nb-editor-toolbar-btn"
+                  aria-disabled={!canAddRange}
+                  style={{ opacity: canAddRange ? 1 : 0.5 }}
+                  onClick={() => runInsert(canAddRange, '先选中一个或多个同级节点（中心主题除外）', () => rendererRef.current?.addBoundary())}
+                >
+                  <SquareDashed size={13} />
+                  <span>外框</span>
+                </button>
+              </Tooltip>
+              <Tooltip content="从选中节点拉一条联系线，再点击目标节点" side="bottom" sideOffset={4}>
+                <button
+                  type="button"
+                  className="nb-editor-toolbar-btn"
+                  aria-disabled={!canConnect}
+                  style={{ opacity: canConnect ? 1 : 0.5 }}
+                  onClick={() => runInsert(canConnect, '先选中一个起点节点', () => rendererRef.current?.startConnect())}
+                >
+                  <Spline size={13} />
+                  <span>联系线</span>
+                </button>
+              </Tooltip>
+            </div>
+          )}
+
           {/* 布局、连线样式与配色主题切换（仅导图模式） */}
           {viewMode === 'mindmap' && (
             <MindmapStyleControls
@@ -697,6 +756,8 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         {viewMode === 'mindmap' ? (
           <MindmapRenderer
+            ref={rendererRef}
+            onSelectionChange={setSelection}
             root={displayedRoot}
             onChange={handleRootChange}
             zoom={zoom}

@@ -2,7 +2,7 @@
 // 轻量自研 SVG 矢量渲染 + 紧凑树自适应无重叠布局 (Tidy Right-Tree) + 贝塞尔平滑连接 + 节点就地编辑
 // 详见 docs/09-开发路线图.md
 
-import React, { useState, useRef, useMemo, useCallback, useEffect, useLayoutEffect } from 'react';
+import React, { forwardRef, useState, useRef, useMemo, useCallback, useEffect, useImperativeHandle, useLayoutEffect } from 'react';
 import {
   Smile,
   FileText,
@@ -67,8 +67,9 @@ import type { MindmapSearchHighlight } from './mindmapSearch';
 import { formatShortcut } from '../../core/shortcuts';
 import { showToast } from '../../stores/toastStore';
 import {
-  bendFromPoint,
   computeMindmapStructures,
+  dragRangeEnd,
+  rangeFixedEndId,
   findStructure,
   generateStructureId,
   getSiblingRangeForSelection,
@@ -82,9 +83,9 @@ import {
   SUMMARY_FONT_SIZE,
   SUMMARY_LINE_HEIGHT,
   SUMMARY_PLACEHOLDER,
-  type LayoutRelation,
   type MindStructureRef,
 } from './mindmapStructures';
+import type { MindNodeRange, MindPoint } from './mindmapTypes';
 
 interface MindmapRendererProps {
   root: MindNode;
@@ -105,6 +106,23 @@ interface MindmapRendererProps {
   defaultImageFit: MindmapImageFit;
   /** 搜索匹配高亮与当前项定位 */
   searchHighlight?: MindmapSearchHighlight;
+  /** 选中节点变化（顶部操作栏据此决定概要 / 外框 / 联系线按钮是否可用） */
+  onSelectionChange?: (selection: MindmapSelectionInfo) => void;
+}
+
+/** 当前选中节点概况 */
+export interface MindmapSelectionInfo {
+  /** 选中的节点 id（多选时为全部） */
+  nodeIds: readonly string[];
+  /** 是否包含中心主题 */
+  includesRoot: boolean;
+}
+
+/** 顶部操作栏调用的画布命令 */
+export interface MindmapRendererHandle {
+  addSummary: () => void;
+  addBoundary: () => void;
+  startConnect: () => void;
 }
 
 type DropPosition = 'before' | 'inside' | 'after';
@@ -339,16 +357,30 @@ function isSameStructure(a: MindStructureRef | null, b: MindStructureRef | null)
   return Boolean(a && b && a.kind === b.kind && a.id === b.id && a.ownerId === b.ownerId);
 }
 
-/** 联系线拖动弯曲手柄的会话 */
-interface BendSession {
+/** 拖动联系线控制点的会话 */
+interface ControlSession {
   pointerId: number;
   ownerId: string;
   id: string;
-  relation: Pick<LayoutRelation, 'chordMid' | 'normal'>;
+  /** 拖的是起点侧（0）还是终点侧（1）的控制点 */
+  index: 0 | 1;
+  /** 两个控制点相对两端节点中心的偏移（拖动开始时的值） */
+  controls: [MindPoint, MindPoint];
+  /** 被拖控制点所属端的节点中心 */
+  center: MindPoint;
   moved: boolean;
 }
 
-export function MindmapRenderer({
+/** 拖动概要 / 外框端点调整范围的会话 */
+interface RangeSession {
+  pointerId: number;
+  ref: MindStructureRef;
+  /** 不动的一端子节点 */
+  fixedId: string;
+  original: Pick<MindNodeRange, 'startId' | 'endId'>;
+}
+
+export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRendererProps>(function MindmapRenderer({
   root,
   onChange,
   zoom,
@@ -360,7 +392,8 @@ export function MindmapRenderer({
   defaultTextAlign,
   defaultImageFit,
   searchHighlight,
-}: MindmapRendererProps) {
+  onSelectionChange,
+}, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadTargetNodeIdRef = useRef<string | null>(null);
@@ -469,9 +502,12 @@ export function MindmapRenderer({
   const connectFromRef = useRef(connectFrom);
   connectFromRef.current = connectFrom;
   const [connectPointer, setConnectPointer] = useState<{ x: number; y: number } | null>(null);
-  // 拖动联系线弯曲手柄：会话 + 实时预览
-  const bendSessionRef = useRef<BendSession | null>(null);
-  const [bendPreview, setBendPreview] = useState<{ id: string; bend: number } | null>(null);
+  // 拖动联系线控制点：会话 + 实时预览
+  const controlSessionRef = useRef<ControlSession | null>(null);
+  const [controlPreview, setControlPreview] = useState<{ id: string; controls: [MindPoint, MindPoint] } | null>(null);
+  // 拖动概要 / 外框端点：会话 + 实时预览
+  const rangeSessionRef = useRef<RangeSession | null>(null);
+  const [rangePreview, setRangePreview] = useState<{ id: string; startId: string; endId: string } | null>(null);
   /** 单选（或取消选中）：同时退出多选，既有的单选入口都经由它 */
   const setSelectedNodeId = useCallback((id: string | null) => {
     setPrimarySelectedId(id);
@@ -590,14 +626,18 @@ export function MindmapRenderer({
   );
 
   // 概要 / 外框 / 联系线几何：排版之后按节点实际坐标计算，始终跟随节点位置
-  const bendOverrides = useMemo(
-    () => (bendPreview ? new Map([[bendPreview.id, bendPreview.bend]]) : undefined),
-    [bendPreview],
+  const controlOverrides = useMemo(
+    () => (controlPreview ? new Map([[controlPreview.id, controlPreview.controls]]) : undefined),
+    [controlPreview],
+  );
+  const rangeOverrides = useMemo(
+    () => (rangePreview ? new Map([[rangePreview.id, rangePreview]]) : undefined),
+    [rangePreview],
   );
   const structures = useMemo(
-    () => computeMindmapStructures(nodes, { measure: getSharedTextMeasurer(), fontFamily, bendOverrides }),
+    () => computeMindmapStructures(nodes, { measure: getSharedTextMeasurer(), fontFamily, controlOverrides, rangeOverrides }),
     // fontVersion 仅用于字体加载完成后强制重新测量
-    [nodes, fontFamily, fontVersion, bendOverrides],
+    [nodes, fontFamily, fontVersion, controlOverrides, rangeOverrides],
   );
 
   // 布局仍覆盖全部已展开节点，只有真正的节点和连线 DOM 按视口裁剪。
@@ -899,6 +939,27 @@ export function MindmapRenderer({
     setSelectedStructure(null);
   };
 
+  /** Shift + 单击：与当前选中节点同级时，连选两者之间的全部同级节点；否则按多选切换处理 */
+  const selectSiblingRange = (id: string) => {
+    const anchorId = selectedNodeId;
+    const anchor = anchorId ? findMindNodeParent(root, anchorId) : null;
+    const target = findMindNodeParent(root, id);
+    if (!anchor || !target || anchor.parent !== target.parent || anchorId === id) {
+      toggleMultiSelect(id);
+      return;
+    }
+    const [from, to] = anchor.index <= target.index ? [anchor.index, target.index] : [target.index, anchor.index];
+    const ids = anchor.parent.children.slice(from, to + 1).map((child) => child.id);
+    // 锚点保持为主选中，便于继续 Shift 调整范围
+    setPrimarySelectedId(anchorId);
+    setMultiSelectedIds(ids);
+    setSelectedStructure(null);
+  };
+
+  /** 当前选中的节点（多选时为全部，否则为单选节点） */
+  const currentSelectionIds = (): readonly string[] =>
+    isMultiSelecting ? multiSelectedIds : selectedNodeId ? [selectedNodeId] : NO_IDS;
+
   // ── 概要 / 外框 / 联系线 ──
 
   /** 为选中节点添加概要或外框（多选时覆盖首尾之间的全部同级节点），随后选中新元素 */
@@ -1004,9 +1065,8 @@ export function MindmapRenderer({
     };
   };
 
-  // 拖动联系线中点手柄调整弯曲：实时预览，松手一次写入（一个撤销步）
-  const handleBendPointerDown = (e: React.PointerEvent<HTMLElement>, relation: LayoutRelation) => {
-    if (e.button !== 0) return;
+  /** 捕获指针（拖动手柄期间指针移出手柄也持续收到事件） */
+  const capturePointer = (e: React.PointerEvent<HTMLElement>) => {
     e.stopPropagation();
     e.preventDefault();
     try {
@@ -1014,37 +1074,139 @@ export function MindmapRenderer({
     } catch {
       // ignore
     }
-    bendSessionRef.current = { pointerId: e.pointerId, ownerId: relation.ownerId, id: relation.id, relation, moved: false };
   };
 
-  const handleBendPointerMove = (e: React.PointerEvent<HTMLElement>) => {
-    const session = bendSessionRef.current;
-    if (!session || session.pointerId !== e.pointerId) return;
+  const releasePointer = (e: React.PointerEvent<HTMLElement>) => {
     e.stopPropagation();
-    const point = clientToWorld(e.clientX, e.clientY);
-    if (!point) return;
-    session.moved = true;
-    setBendPreview({ id: session.id, bend: bendFromPoint(session.relation, point) });
-  };
-
-  const handleBendPointerUp = (e: React.PointerEvent<HTMLElement>) => {
-    const session = bendSessionRef.current;
-    if (!session || session.pointerId !== e.pointerId) return;
-    e.stopPropagation();
-    bendSessionRef.current = null;
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {
       // ignore
     }
-    const preview = bendPreview;
-    setBendPreview(null);
-    if (!session.moved || preview?.id !== session.id) return;
+  };
+
+  // 拖动联系线控制点：控制点直接跟随指针，曲线从节点朝控制点的一侧出线；松手一次写入（一个撤销步）
+  const handleControlPointerDown = (e: React.PointerEvent<HTMLElement>, relation: (typeof structures.relations)[number], index: 0 | 1) => {
+    if (e.button !== 0) return;
+    capturePointer(e);
+    controlSessionRef.current = {
+      pointerId: e.pointerId,
+      ownerId: relation.ownerId,
+      id: relation.id,
+      index,
+      controls: [
+        { x: relation.cp1.x - relation.c1.x, y: relation.cp1.y - relation.c1.y },
+        { x: relation.cp2.x - relation.c2.x, y: relation.cp2.y - relation.c2.y },
+      ],
+      center: index === 0 ? relation.c1 : relation.c2,
+      moved: false,
+    };
+  };
+
+  const handleControlPointerMove = (e: React.PointerEvent<HTMLElement>) => {
+    const session = controlSessionRef.current;
+    if (!session || session.pointerId !== e.pointerId) return;
+    e.stopPropagation();
+    const point = clientToWorld(e.clientX, e.clientY);
+    if (!point) return;
+    session.moved = true;
+    const controls: [MindPoint, MindPoint] = [...session.controls];
+    controls[session.index] = { x: Math.round(point.x - session.center.x), y: Math.round(point.y - session.center.y) };
+    session.controls = controls;
+    setControlPreview({ id: session.id, controls });
+  };
+
+  const handleControlPointerUp = (e: React.PointerEvent<HTMLElement>) => {
+    const session = controlSessionRef.current;
+    if (!session || session.pointerId !== e.pointerId) return;
+    releasePointer(e);
+    controlSessionRef.current = null;
+    setControlPreview(null);
+    if (!session.moved) return;
     updateTree((cloned) => {
       const relation = findMindNode(cloned, session.ownerId)?.relations?.find((item) => item.id === session.id);
-      if (relation) relation.bend = preview.bend;
+      if (!relation) return;
+      relation.controls = session.controls;
+      delete relation.bend;
     });
   };
+
+  /** 恢复联系线自动走线 */
+  const resetRelationShape = (ref: MindStructureRef) => {
+    updateTree((cloned) => {
+      const relation = findMindNode(cloned, ref.ownerId)?.relations?.find((item) => item.id === ref.id);
+      if (!relation) return;
+      delete relation.controls;
+      delete relation.bend;
+    });
+  };
+
+  // 拖动概要 / 外框端点：沿同级排列方向扩大或缩小覆盖的节点
+  const handleRangePointerDown = (e: React.PointerEvent<HTMLElement>, structureRef: MindStructureRef, handle: MindPoint) => {
+    if (e.button !== 0) return;
+    const owner = nodes.find((n) => n.node.id === structureRef.ownerId);
+    const item = findStructure(owner?.node ?? null, structureRef) as MindNodeRange | null;
+    if (!owner || !item) return;
+    capturePointer(e);
+    rangeSessionRef.current = {
+      pointerId: e.pointerId,
+      ref: structureRef,
+      fixedId: rangeFixedEndId(owner, item, handle),
+      original: { startId: item.startId, endId: item.endId },
+    };
+  };
+
+  const handleRangePointerMove = (e: React.PointerEvent<HTMLElement>) => {
+    const session = rangeSessionRef.current;
+    if (!session || session.pointerId !== e.pointerId) return;
+    e.stopPropagation();
+    const point = clientToWorld(e.clientX, e.clientY);
+    const owner = nodes.find((n) => n.node.id === session.ref.ownerId);
+    if (!point || !owner) return;
+    const next = dragRangeEnd(owner, session.fixedId, point);
+    // 只在范围真正变化时更新预览，避免每帧重算
+    if (next && (next.startId !== rangePreview?.startId || next.endId !== rangePreview?.endId)) {
+      setRangePreview({ id: session.ref.id, ...next });
+    }
+  };
+
+  const handleRangePointerUp = (e: React.PointerEvent<HTMLElement>) => {
+    const session = rangeSessionRef.current;
+    if (!session || session.pointerId !== e.pointerId) return;
+    releasePointer(e);
+    rangeSessionRef.current = null;
+    const preview = rangePreview;
+    setRangePreview(null);
+    if (!preview || (preview.startId === session.original.startId && preview.endId === session.original.endId)) return;
+    updateTree((cloned) => {
+      const item = findStructure(findMindNode(cloned, session.ref.ownerId), session.ref) as MindNodeRange | null;
+      if (!item) return;
+      item.startId = preview.startId;
+      item.endId = preview.endId;
+    });
+  };
+
+  // 顶部操作栏命令：作用于当前选中的节点（闭包每次渲染更新，句柄经 ref 读取最新版本）
+  const commandsRef = useRef<MindmapRendererHandle | null>(null);
+  commandsRef.current = {
+    addSummary: () => addRangeStructure('summary', currentSelectionIds()),
+    addBoundary: () => addRangeStructure('boundary', currentSelectionIds()),
+    startConnect: () => {
+      const ids = currentSelectionIds();
+      if (ids.length === 1) startConnect(ids[0]);
+    },
+  };
+  useImperativeHandle(ref, () => ({
+    addSummary: () => commandsRef.current?.addSummary(),
+    addBoundary: () => commandsRef.current?.addBoundary(),
+    startConnect: () => commandsRef.current?.startConnect(),
+  }), []);
+
+  // 选中变化通知顶部操作栏
+  useEffect(() => {
+    const nodeIds = isMultiSelecting ? multiSelectedIds : selectedNodeId ? [selectedNodeId] : NO_IDS;
+    onSelectionChange?.({ nodeIds, includesRoot: nodeIds.includes(root.id) });
+  }, [selectedNodeId, multiSelectedIds, isMultiSelecting, root.id, onSelectionChange]);
 
   /** 结构元素工具栏锚点（导图坐标，工具栏显示在其正上方） */
   const getStructureAnchor = (ref: MindStructureRef): { x: number; y: number } | null => {
@@ -1057,8 +1219,7 @@ export function MindmapRenderer({
       return b ? { x: b.rect.x + b.rect.width / 2, y: b.rect.y } : null;
     }
     const r = structures.relations.find((item) => item.id === ref.id && item.ownerId === ref.ownerId);
-    // 工具栏让出中点的弯曲手柄
-    return r ? { x: r.mid.x, y: (r.labelBox ? r.labelBox.y - 10 : r.mid.y) - 6 } : null;
+    return r ? { x: r.mid.x, y: r.labelBox ? r.labelBox.y - 4 : r.mid.y - 8 } : null;
   };
 
   /** 结构元素文字输入框位置（导图坐标） */
@@ -1073,14 +1234,6 @@ export function MindmapRenderer({
     }
     const r = structures.relations.find((item) => item.id === ref.id && item.ownerId === ref.ownerId);
     return r ? { x: r.mid.x - 80, y: r.mid.y - 13, width: 160 } : null;
-  };
-
-  /** 恢复联系线自动弯曲 */
-  const resetRelationBend = (ref: MindStructureRef) => {
-    updateTree((cloned) => {
-      const relation = findMindNode(cloned, ref.ownerId)?.relations?.find((item) => item.id === ref.id);
-      if (relation) delete relation.bend;
-    });
   };
 
   /** 设置节点的对齐 / 图片显示方式（可多个，一次撤销步）；传 undefined 表示恢复跟随设置 */
@@ -2061,7 +2214,8 @@ export function MindmapRenderer({
                   return;
                 }
                 // Ctrl / Cmd + 单击：加入或移出多选
-                if (isMultiSelectModifier(e)) toggleMultiSelect(n.node.id);
+                if (e.shiftKey) selectSiblingRange(n.node.id);
+                else if (isMultiSelectModifier(e)) toggleMultiSelect(n.node.id);
                 else setSelectedNodeId(n.node.id);
               }}
               onDoubleClick={(e) => {
@@ -2461,55 +2615,6 @@ export function MindmapRenderer({
                   </button>
                 </Tooltip>
 
-                {/* 概要与外框：作用于选中节点（多选时覆盖首尾之间的同级节点） */}
-                {!isRoot && (
-                  <>
-                    <Tooltip content="添加概要" side="top" sideOffset={4}>
-                      <button
-                        type="button"
-                        className="nb-mindmap-toolbar-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          addRangeStructure('summary', getActionTargetIds(n.node.id));
-                        }}
-                        aria-label="添加概要"
-                      >
-                        <Braces size={12} />
-                      </button>
-                    </Tooltip>
-                    <Tooltip content="添加外框" side="top" sideOffset={4}>
-                      <button
-                        type="button"
-                        className="nb-mindmap-toolbar-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          addRangeStructure('boundary', getActionTargetIds(n.node.id));
-                        }}
-                        aria-label="添加外框"
-                      >
-                        <SquareDashed size={12} />
-                      </button>
-                    </Tooltip>
-                  </>
-                )}
-
-                {/* 联系线：点击后再点目标节点 */}
-                {!isMultiSelecting && (
-                  <Tooltip content="添加联系线" side="top" sideOffset={4}>
-                    <button
-                      type="button"
-                      className="nb-mindmap-toolbar-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        startConnect(n.node.id);
-                      }}
-                      aria-label="添加联系线"
-                    >
-                      <Spline size={12} />
-                    </button>
-                  </Tooltip>
-                )}
-
                 {/* 添加子分支 */}
                 {!isMultiSelecting && (
                   <Tooltip content="添加子分支" side="top" sideOffset={4}>
@@ -2769,31 +2874,65 @@ export function MindmapRenderer({
           );
         })}
 
-        {/* 选中联系线：中点弯曲手柄 */}
+        {/* 选中联系线：两个控制点手柄（与两端的虚线引导线），直接拖到想要的位置 */}
         {selectedStructure?.kind === 'relation' && !editingStructure && (() => {
           const r = structures.relations.find((item) => item.id === selectedStructure.id && item.ownerId === selectedStructure.ownerId);
           if (!r) return null;
-          // 有说明文字时手柄挪到文字上方，避免挡住文字
-          const handleY = r.labelBox ? r.labelBox.y - 10 : r.mid.y;
           return (
-            <Tooltip content="拖动调整弯曲，双击恢复" side="bottom" sideOffset={6} disabled={Boolean(bendPreview)}>
+            <>
+              <svg style={{ position: 'absolute', left: 0, top: 0, width: 1, height: 1, overflow: 'visible', pointerEvents: 'none' }}>
+                {([[r.p1, r.cp1], [r.p2, r.cp2]] as const).map(([from, to], idx) => (
+                  <line key={idx} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={ACCENT_COLOR} strokeWidth={1} strokeDasharray="3 3" opacity={0.7} />
+                ))}
+              </svg>
+              {([r.cp1, r.cp2] as const).map((point, idx) => (
+                <Tooltip key={idx} content="拖动调整走线，双击恢复自动" followCursor>
+                  <div
+                    data-mindmap-structure
+                    className="nb-mindmap-bend-handle"
+                    onPointerDown={(e) => handleControlPointerDown(e, r, idx as 0 | 1)}
+                    onPointerMove={handleControlPointerMove}
+                    onPointerUp={handleControlPointerUp}
+                    onPointerCancel={handleControlPointerUp}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      resetRelationShape(selectedStructure);
+                    }}
+                    style={{ left: point.x - 6, top: point.y - 6 }}
+                  />
+                </Tooltip>
+              ))}
+            </>
+          );
+        })()}
+
+        {/* 选中概要 / 外框：两端手柄，拖动扩大或缩小覆盖的节点 */}
+        {selectedStructure && selectedStructure.kind !== 'relation' && !editingStructure && (() => {
+          const item = selectedStructure.kind === 'summary'
+            ? structures.summaries.find((s) => s.id === selectedStructure.id && s.ownerId === selectedStructure.ownerId)
+            : structures.boundaries.find((b) => b.id === selectedStructure.id && b.ownerId === selectedStructure.ownerId);
+          if (!item) return null;
+          const vertical = item.side === 'left' || item.side === 'right';
+          return item.handles.map((point, idx) => (
+            <Tooltip key={idx} content="拖动调整覆盖范围" followCursor>
               <div
                 data-mindmap-structure
-                className="nb-mindmap-bend-handle"
-                onPointerDown={(e) => handleBendPointerDown(e, r)}
-                onPointerMove={handleBendPointerMove}
-                onPointerUp={handleBendPointerUp}
-                onPointerCancel={handleBendPointerUp}
+                className="nb-mindmap-range-handle"
+                data-axis={vertical ? 'y' : 'x'}
+                onPointerDown={(e) => handleRangePointerDown(e, selectedStructure, point)}
+                onPointerMove={handleRangePointerMove}
+                onPointerUp={handleRangePointerUp}
+                onPointerCancel={handleRangePointerUp}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  resetRelationBend(selectedStructure);
-                }}
-                style={{ left: r.mid.x - 6, top: handleY - 6 }}
+                style={vertical
+                  ? { left: point.x - 8, top: point.y - 4, width: 16, height: 8 }
+                  : { left: point.x - 4, top: point.y - 8, width: 8, height: 16 }}
               />
             </Tooltip>
-          );
+          ));
         })()}
 
         {/* 选中结构元素的快捷工具栏：编辑文字 / 删除 */}
@@ -3150,4 +3289,4 @@ export function MindmapRenderer({
       )}
     </div>
   );
-}
+});

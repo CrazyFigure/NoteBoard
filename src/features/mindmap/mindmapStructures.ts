@@ -3,7 +3,7 @@
 // 几何在排版之后按节点实际坐标计算，因此始终跟随节点位置，不随布局切换错位。
 // 详见 docs/09-开发路线图.md
 
-import type { MindBoundary, MindNode, MindNodeRange, MindRelation, MindSummary } from './mindmapTypes';
+import type { MindBoundary, MindNode, MindNodeRange, MindPoint, MindRelation, MindSummary } from './mindmapTypes';
 import type { LayoutNode } from './layouts/layoutTypes';
 import { buildFont, ellipsizeLine, estimateTextWidth, wrapText, type TextMeasure } from './mindmapTextMeasure';
 import { findMindNodeParent, getTopLevelMindNodeIds, walkMindNodes } from './mindmapTree';
@@ -66,6 +66,10 @@ export function normalizeNodeStructures(source: Partial<MindNode>): Pick<MindNod
         const relation: MindRelation = { id: item.id, targetId: item.targetId };
         if (isText(item.title)) relation.title = item.title;
         if (typeof item.bend === 'number' && Number.isFinite(item.bend)) relation.bend = item.bend;
+        const finite = (point: unknown): point is MindPoint => Boolean(point) && Number.isFinite((point as MindPoint).x) && Number.isFinite((point as MindPoint).y);
+        if (Array.isArray(item.controls) && item.controls.length === 2 && item.controls.every(finite)) {
+          relation.controls = [{ x: item.controls[0].x, y: item.controls[0].y }, { x: item.controls[1].x, y: item.controls[1].y }];
+        }
         return relation;
       });
     if (list.length > 0) result.relations = list;
@@ -202,6 +206,8 @@ const ARROW_HALF_WIDTH = 5;
 /** 概要占位文字（空文字时显示） */
 export const SUMMARY_PLACEHOLDER = '概要';
 
+type Point = MindPoint;
+
 export interface Rect {
   x: number;
   y: number;
@@ -224,6 +230,8 @@ export interface LayoutSummary {
   /** 概要文字框 */
   label: Rect;
   lines: string[];
+  /** 大括号两端（拖动可扩大 / 缩小覆盖范围） */
+  handles: [Point, Point];
 }
 
 export interface LayoutBoundary {
@@ -235,6 +243,9 @@ export interface LayoutBoundary {
   /** 标题标签（无标题时为空） */
   titleBox?: Rect;
   titleText?: string;
+  side: StructureSide;
+  /** 外框沿同级排列方向的两端（拖动可扩大 / 缩小覆盖范围） */
+  handles: [Point, Point];
 }
 
 export interface LayoutRelation {
@@ -243,11 +254,16 @@ export interface LayoutRelation {
   title?: string;
   path: string;
   arrowPath: string;
-  /** 曲线中点（文字与调整手柄位置） */
-  mid: { x: number; y: number };
-  /** 两端中心连线的中点与左法向（拖动手柄换算弯曲量用） */
-  chordMid: { x: number; y: number };
-  normal: { x: number; y: number };
+  /** 曲线中点（说明文字位置） */
+  mid: Point;
+  /** 起点 / 终点节点中心 */
+  c1: Point;
+  c2: Point;
+  /** 曲线两端（节点边框上）与两个控制点 */
+  p1: Point;
+  p2: Point;
+  cp1: Point;
+  cp2: Point;
   labelBox?: Rect;
   lines: string[];
   /** 包围盒（含控制点，用于视口与导出范围） */
@@ -265,8 +281,10 @@ export interface MindmapStructureLayout {
 export interface StructureLayoutOptions {
   measure?: TextMeasure;
   fontFamily?: string;
-  /** 临时弯曲量覆盖（拖动联系线手柄时的实时预览） */
-  bendOverrides?: ReadonlyMap<string, number>;
+  /** 临时控制点覆盖（拖动联系线控制点时的实时预览，偏移相对两端节点中心） */
+  controlOverrides?: ReadonlyMap<string, [Point, Point]>;
+  /** 临时范围覆盖（拖动概要 / 外框端点时的实时预览） */
+  rangeOverrides?: ReadonlyMap<string, Pick<MindNodeRange, 'startId' | 'endId'>>;
 }
 
 /** 保留两位小数 */
@@ -314,7 +332,7 @@ export function bracePath(u0: number, u1: number, depth: number, toWorld: (u: nu
 }
 
 /** 子节点相对父节点的延伸侧：同级纵排时看自由边，横排时看上下 */
-function sideOf(parent: LayoutNode, child: LayoutNode): StructureSide {
+export function sideOf(parent: LayoutNode, child: LayoutNode): StructureSide {
   if (child.siblingFlow === 'down') return child.freeEdge;
   return child.y + child.height / 2 >= parent.y + parent.height / 2 ? 'bottom' : 'top';
 }
@@ -344,8 +362,6 @@ function boxExit(n: LayoutNode, toward: { x: number; y: number }, pad = 3): { x:
 export function defaultRelationBend(distance: number): number {
   return Math.min(140, Math.max(30, distance * 0.25));
 }
-
-type Point = { x: number; y: number };
 
 /**
  * 自动弯曲：依次尝试两侧、逐级加大的弯曲量，选第一条不穿过其他节点的曲线；
@@ -403,12 +419,56 @@ function pickAutoBend(
   return best;
 }
 
+/** 子树（含自身）沿同级排列方向的覆盖区间 */
+function subtreeSpan(root: LayoutNode, vertical: boolean): [number, number] {
+  let lo = Infinity;
+  let hi = -Infinity;
+  const stack = [root];
+  while (stack.length > 0) {
+    const n = stack.pop()!;
+    lo = Math.min(lo, vertical ? n.y : n.x);
+    hi = Math.max(hi, vertical ? n.y + n.height : n.x + n.width);
+    for (const child of n.children) stack.push(child);
+  }
+  return [lo, hi];
+}
+
 /**
- * 拖动手柄时换算弯曲量：曲线中点 ≈ 弦中点 + 法向 × 弯曲量 × 0.75
+ * 拖动概要 / 外框某一端时的固定端：首尾两个子节点中离被拖手柄较远的那个
+ * （与布局方向无关，鱼骨图等反向排列时同样成立）
  */
-export function bendFromPoint(relation: Pick<LayoutRelation, 'chordMid' | 'normal'>, point: { x: number; y: number }): number {
-  const dot = (point.x - relation.chordMid.x) * relation.normal.x + (point.y - relation.chordMid.y) * relation.normal.y;
-  return Math.round(dot / 0.75);
+export function rangeFixedEndId(owner: LayoutNode, range: Pick<MindNodeRange, 'startId' | 'endId'>, handle: Point): string {
+  const start = owner.children.find((child) => child.node.id === range.startId);
+  const end = owner.children.find((child) => child.node.id === range.endId);
+  if (!start || !end) return (start ?? end)?.node.id ?? range.startId;
+  const distance = (n: LayoutNode) => Math.hypot(n.x + n.width / 2 - handle.x, n.y + n.height / 2 - handle.y);
+  return distance(start) >= distance(end) ? start.node.id : end.node.id;
+}
+
+/**
+ * 拖动概要 / 外框端点：在与固定端同侧的子节点中，沿同级排列方向找指针所在（或最近）的子树，
+ * 返回固定端与它之间的新范围
+ */
+export function dragRangeEnd(owner: LayoutNode, fixedId: string, point: Point): Pick<MindNodeRange, 'startId' | 'endId'> | null {
+  const fixed = owner.children.find((child) => child.node.id === fixedId);
+  if (!fixed) return null;
+  const side = sideOf(owner, fixed);
+  const vertical = side === 'left' || side === 'right';
+  const value = vertical ? point.y : point.x;
+  let best = fixed;
+  let bestDistance = Infinity;
+  for (const child of owner.children) {
+    if (sideOf(owner, child) !== side) continue;
+    const [lo, hi] = subtreeSpan(child, vertical);
+    const distance = value < lo ? lo - value : value > hi ? value - hi : 0;
+    if (distance < bestDistance) {
+      best = child;
+      bestDistance = distance;
+    }
+  }
+  const a = owner.children.indexOf(fixed);
+  const b = owner.children.indexOf(best);
+  return a <= b ? { startId: fixed.node.id, endId: best.node.id } : { startId: best.node.id, endId: fixed.node.id };
 }
 
 /**
@@ -444,7 +504,7 @@ export function computeMindmapStructures(nodes: readonly LayoutNode[], options: 
     if (n.children.length > 0 && (node.boundaries || node.summaries)) {
       /** 范围内与首个子节点同侧的子节点（双向图根节点两侧分开） */
       const covered = (range: MindNodeRange): { side: StructureSide; children: LayoutNode[] } | null => {
-        const indexes = resolveRangeIndexes(node, range);
+        const indexes = resolveRangeIndexes(node, options.rangeOverrides?.get(range.id) ?? range);
         if (!indexes) return null;
         const list = n.children.slice(indexes[0], indexes[1] + 1);
         if (list.length === 0) return null;
@@ -470,6 +530,11 @@ export function computeMindmapStructures(nodes: readonly LayoutNode[], options: 
           title: boundary.title,
           branchIndex: info.children[0].branchIndex,
           rect: box,
+          side: info.side,
+          // 同级纵排时手柄在上下边，横排时在左右边
+          handles: info.side === 'left' || info.side === 'right'
+            ? [{ x: box.x + box.width / 2, y: box.y }, { x: box.x + box.width / 2, y: box.y + box.height }]
+            : [{ x: box.x, y: box.y + box.height / 2 }, { x: box.x + box.width, y: box.y + box.height / 2 }],
         };
         let occupied = box;
         if (boundary.title) {
@@ -506,10 +571,12 @@ export function computeMindmapStructures(nodes: readonly LayoutNode[], options: 
         const { side } = info;
         let path: string;
         let label: Rect;
+        let handles: [Point, Point];
         if (side === 'left' || side === 'right') {
           const sign = side === 'right' ? 1 : -1;
           const base = side === 'right' ? area.x + area.width + SUMMARY_GAP : area.x - SUMMARY_GAP;
           path = bracePath(area.y, area.y + area.height, BRACE_DEPTH, (u, v) => [base + v * sign, u]);
+          handles = [{ x: base, y: area.y }, { x: base, y: area.y + area.height }];
           const tip = base + BRACE_DEPTH * sign;
           const midY = area.y + area.height / 2;
           label = {
@@ -522,6 +589,7 @@ export function computeMindmapStructures(nodes: readonly LayoutNode[], options: 
           const sign = side === 'bottom' ? 1 : -1;
           const base = side === 'bottom' ? area.y + area.height + SUMMARY_GAP : area.y - SUMMARY_GAP;
           path = bracePath(area.x, area.x + area.width, BRACE_DEPTH, (u, v) => [u, base + v * sign]);
+          handles = [{ x: area.x, y: base }, { x: area.x + area.width, y: base }];
           const tip = base + BRACE_DEPTH * sign;
           const midX = area.x + area.width / 2;
           label = {
@@ -540,6 +608,7 @@ export function computeMindmapStructures(nodes: readonly LayoutNode[], options: 
           bracePath: path,
           label,
           lines: wrapped.lines,
+          handles,
         });
         rect = union(union(rect, area), label);
       }
@@ -561,10 +630,8 @@ export function computeMindmapStructures(nodes: readonly LayoutNode[], options: 
       const length = Math.hypot(dx, dy);
       if (length < 1) continue;
       const normal = { x: -dy / length, y: dx / length };
-      /** 给定弯曲量的控制点、端点与 t = 0.5 处的曲线中点 */
-      const geometry = (bend: number) => {
-        const cp1 = { x: c1.x + dx * 0.3 + normal.x * bend, y: c1.y + dy * 0.3 + normal.y * bend };
-        const cp2 = { x: c1.x + dx * 0.7 + normal.x * bend, y: c1.y + dy * 0.7 + normal.y * bend };
+      /** 给定控制点时的端点（从节点边框朝控制点方向出线）与 t = 0.5 处的曲线中点 */
+      const geometry = (cp1: Point, cp2: Point) => {
         const p1 = boxExit(source, cp1);
         const p2 = boxExit(target, cp2, 4);
         const mid = {
@@ -573,13 +640,20 @@ export function computeMindmapStructures(nodes: readonly LayoutNode[], options: 
         };
         return { cp1, cp2, p1, p2, mid };
       };
+      /** 自动 / 旧版弯曲量：两个控制点沿两端连线的法向同侧偏移 */
+      const bendGeometry = (bend: number) => geometry(
+        { x: c1.x + dx * 0.3 + normal.x * bend, y: c1.y + dy * 0.3 + normal.y * bend },
+        { x: c1.x + dx * 0.7 + normal.x * bend, y: c1.y + dy * 0.7 + normal.y * bend },
+      );
       const wrapped = relation.title ? wrapLabel(relation.title, RELATION_MAX_TEXT_WIDTH, measure, relationFont) : null;
       const labelSize = wrapped
         ? { width: wrapped.width + RELATION_PAD_X * 2, height: wrapped.lines.length * RELATION_LINE_HEIGHT + RELATION_PAD_Y * 2 }
         : { width: 0, height: 0 };
-      const bend = options.bendOverrides?.get(relation.id) ?? relation.bend
-        ?? pickAutoBend(nodes, source, target, length, geometry, { x: labelSize.width / 2, y: labelSize.height / 2 });
-      const { cp1, cp2, p1, p2, mid } = geometry(bend);
+      // 控制点优先（手动拖动过）；其次旧版弯曲量；都没有时自动避让节点
+      const controls = options.controlOverrides?.get(relation.id) ?? relation.controls;
+      const { cp1, cp2, p1, p2, mid } = controls
+        ? geometry({ x: c1.x + controls[0].x, y: c1.y + controls[0].y }, { x: c2.x + controls[1].x, y: c2.y + controls[1].y })
+        : bendGeometry(relation.bend ?? pickAutoBend(nodes, source, target, length, bendGeometry, { x: labelSize.width / 2, y: labelSize.height / 2 }));
       // 箭头沿终点切线方向
       let ax = p2.x - cp2.x;
       let ay = p2.y - cp2.y;
@@ -601,8 +675,12 @@ export function computeMindmapStructures(nodes: readonly LayoutNode[], options: 
         path,
         arrowPath,
         mid,
-        chordMid: { x: (c1.x + c2.x) / 2, y: (c1.y + c2.y) / 2 },
-        normal,
+        c1,
+        c2,
+        p1,
+        p2,
+        cp1,
+        cp2,
         lines: [],
         bounds,
       };

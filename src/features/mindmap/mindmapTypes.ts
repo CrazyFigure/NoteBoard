@@ -63,8 +63,16 @@ export interface MindRelation {
   id: string;
   targetId: string;
   title?: string;
-  // 曲线弯曲量（沿两端连线法向的偏移，px）；未设置时自动计算
+  // 曲线弯曲量（沿两端连线法向的偏移，px）；旧版数据使用，controls 优先
   bend?: number;
+  // 两个控制点，分别相对起点 / 终点节点中心的偏移（px）；未设置时自动计算
+  controls?: [MindPoint, MindPoint];
+}
+
+/** 二维偏移 / 坐标 */
+export interface MindPoint {
+  x: number;
+  y: number;
 }
 
 /**

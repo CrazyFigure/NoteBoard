@@ -6,8 +6,9 @@ import { describe, expect, test } from 'vitest';
 import JSZip from 'jszip';
 import type { MindNode, MindmapLayout } from '@/features/mindmap/mindmapTypes';
 import {
-  bendFromPoint,
   computeMindmapStructures,
+  dragRangeEnd,
+  rangeFixedEndId,
   getSiblingRangeForSelection,
   pruneMindmapStructures,
   removeStructure,
@@ -161,13 +162,42 @@ describe('几何跟随节点', () => {
     expect(result.summaries[0].label.x).toBeGreaterThan(box.x + box.width);
   });
 
-  test('拖动手柄换算的弯曲量使曲线中点经过指针位置', () => {
+  test('控制点直接决定走线：拖到右侧时曲线从两端节点的右侧出线', () => {
     const { nodes } = computeMindmapLayout(sample(), 'right', 6);
     const relation = computeMindmapStructures(nodes).relations[0];
-    const target = { x: relation.chordMid.x + relation.normal.x * 60, y: relation.chordMid.y + relation.normal.y * 60 };
-    const bend = bendFromPoint(relation, target);
-    const moved = computeMindmapStructures(nodes, { bendOverrides: new Map([[relation.id, bend]]) }).relations[0];
-    expect(Math.hypot(moved.mid.x - target.x, moved.mid.y - target.y)).toBeLessThan(12);
+    const source = nodes.find((n) => n.node.id === 'a')!;
+    const target = nodes.find((n) => n.node.id === 'c')!;
+    // 两个控制点都放到节点右侧 200px
+    const controls: [{ x: number; y: number }, { x: number; y: number }] = [{ x: 200, y: 0 }, { x: 200, y: 0 }];
+    const moved = computeMindmapStructures(nodes, { controlOverrides: new Map([[relation.id, controls]]) }).relations[0];
+    expect(moved.cp1).toEqual({ x: moved.c1.x + 200, y: moved.c1.y });
+    expect(moved.p1.x).toBeGreaterThanOrEqual(source.x + source.width);
+    expect(moved.p2.x).toBeGreaterThanOrEqual(target.x + target.width);
+    // 保存的控制点同样生效，且序列化往返保留
+    const root = sample();
+    root.children[0].relations![0].controls = controls;
+    const parsed = parseMindmapDocument(serializeMindmapDocument(root));
+    expect(parsed.children[0].relations![0].controls).toEqual(controls);
+    const saved = computeMindmapStructures(computeMindmapLayout(parsed, 'right', 6).nodes).relations[0];
+    expect(saved.p1.x).toBeGreaterThanOrEqual(source.x + source.width);
+  });
+
+  test('拖动概要端点扩大 / 缩小覆盖范围，固定端取离手柄较远的一端', () => {
+    const { nodes } = computeMindmapLayout(sample(), 'right', 6);
+    const owner = nodes.find((n) => n.level === 0)!;
+    const summary = computeMindmapStructures(nodes).summaries[0];
+    const [top, bottom] = summary.handles;
+    // 拖下端：固定端为首个节点 a
+    expect(rangeFixedEndId(owner, { startId: 'a', endId: 'b' }, bottom)).toBe('a');
+    expect(rangeFixedEndId(owner, { startId: 'a', endId: 'b' }, top)).toBe('b');
+    const c = nodes.find((n) => n.node.id === 'c')!;
+    expect(dragRangeEnd(owner, 'a', { x: bottom.x, y: c.y + c.height / 2 })).toEqual({ startId: 'a', endId: 'c' });
+    // 拖过固定端时顺序自动交换
+    const a = nodes.find((n) => n.node.id === 'a')!;
+    expect(dragRangeEnd(owner, 'b', { x: top.x, y: a.y - 100 })).toEqual({ startId: 'a', endId: 'b' });
+    // 预览覆盖立即反映到几何
+    const extended = computeMindmapStructures(nodes, { rangeOverrides: new Map([['s1', { startId: 'a', endId: 'c' }]]) }).summaries[0];
+    expect(extended.handles[1].y).toBeGreaterThan(c.y + c.height);
   });
 });
 
