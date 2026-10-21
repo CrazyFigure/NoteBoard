@@ -7,12 +7,14 @@ import * as ipc from '../../core/ipc/commands';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
 import { useExplorerStore } from '../explorer/explorerStore';
+import { markActiveTabFollowed } from '../explorer/useReveal';
+import { useLayoutStore } from '../../stores/layoutStore';
 import { openDocument } from '../editor-code/orchestration/openDocument';
 // 🔴 P0-1：新建文档与打开文件同样预取编辑器资源（openDocument 打开路径有预取——
 //    新建路径此前缺失：首次新建要完整加载模块（显示 fallback 数秒）；
 //    预取与渲染共享资源注册表（R4-02），完成后再打开直接命中 fulfilled 状态）
 import { prefetchEditor, resolveEditorKind } from '../editor-host/editorLoaders';
-import type { DocumentKind, LanguageId } from '../../core/ipc/types';
+import type { DocumentKind, FileTreeNode, LanguageId } from '../../core/ipc/types';
 import { showToast } from '../../stores/toastStore';
 import { useSyncStore } from '../../stores/syncStore';
 import { createDefaultBitableDocument, serializeBitableDocument } from '../bitable/bitableConverter';
@@ -24,6 +26,16 @@ let untitledCounter = 0;
 function nextUntitledKey(prefix: string): string {
   untitledCounter += 1;
   return `untitled:${prefix}:${Date.now()}:${untitledCounter}`;
+}
+
+/**
+ * 将用户主动打开的目录设为资源管理器根，侧栏收起时自动展开，确保能立即看到。
+ * 先标记活动标签已跟随，避免 Explorer 重新挂载时的跟随逻辑把根目录改回活动文件所在目录。
+ */
+function showRootInExplorer(root: string, nodes: FileTreeNode[]): void {
+  markActiveTabFollowed();
+  useExplorerStore.getState().setRoot(root, nodes);
+  useLayoutStore.getState().setExplorerVisible(true);
 }
 
 /**
@@ -64,7 +76,7 @@ export async function openFolderDialog(): Promise<void> {
 
   const root = selected;
   const nodes = await ipc.readDir(root, false);
-  useExplorerStore.getState().setRoot(root, nodes);
+  showRootInExplorer(root, nodes);
 
   // 推送到最近打开（非关键路径）
   try {
@@ -82,7 +94,7 @@ export async function openStagingArea(): Promise<void> {
   try {
     const root = await ipc.ensureStagingDirectory();
     const nodes = await ipc.readDir(root, false);
-    useExplorerStore.getState().setRoot(root, nodes);
+    showRootInExplorer(root, nodes);
   } catch (error) {
     showToast(`无法打开暂存区：${error instanceof Error ? error.message : String(error)}`, 'error', 5000);
   }
@@ -99,7 +111,7 @@ export async function openSyncFolder(): Promise<void> {
   }
   try {
     const nodes = await ipc.readDir(root, false);
-    useExplorerStore.getState().setRoot(root, nodes);
+    showRootInExplorer(root, nodes);
   } catch (error) {
     showToast(`无法打开同步文件夹：${error instanceof Error ? error.message : String(error)}`, 'error', 5000);
   }
