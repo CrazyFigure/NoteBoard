@@ -777,21 +777,42 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </div>
                   </div>
 
-                  {/* 代码文件效果预览 */}
+                  {/* 代码文件效果预览：模拟编辑区（行号槽 + 正文），体现字体、行高与编辑区边距 */}
                   <PreviewCollapse>
-                    <pre className="nb-typography-code-preview" style={{
-                      margin: 0,
-                      padding: '10px 14px',
-                      background: 'var(--code-block-bg)',
+                    <div style={{
+                      display: 'flex',
+                      background: 'var(--editor-bg)',
                       border: '1px solid var(--editor-border)',
                       borderRadius: 'var(--radius-sm)',
+                      overflow: 'hidden',
                       fontFamily: 'var(--mono-font-family)',
                       fontSize: settings.typography.monoFontSize ?? 14,
                       lineHeight: settings.typography.monoLineHeight ?? 1.5,
-                      color: 'var(--code-block-text)',
                     }}>
-                      <code>{`-- 查询笔记表（中西文代码混排测试）\nSELECT id, title, created_at\nFROM notes\nWHERE status = 'active' -- 仅查询有效笔记;`}</code>
-                    </pre>
+                      {/* 行号槽：上下边距与正文一致，保证行号与文本行对齐 */}
+                      <div aria-hidden style={{
+                        padding: `${settings.typography.monoPaddingY ?? 16}px 8px ${settings.typography.monoPaddingY ?? 16}px 12px`,
+                        background: 'var(--cm-gutter-bg)',
+                        color: 'var(--cm-gutter-text)',
+                        borderRight: '1px solid var(--editor-border)',
+                        textAlign: 'right',
+                        userSelect: 'none',
+                        flexShrink: 0,
+                      }}>
+                        {[1, 2, 3, 4].map((n) => <div key={n}>{n}</div>)}
+                      </div>
+                      <pre className="nb-typography-code-preview" style={{
+                        flex: 1,
+                        minWidth: 0,
+                        margin: 0,
+                        padding: `${settings.typography.monoPaddingY ?? 16}px ${settings.typography.monoPaddingX ?? 24}px`,
+                        overflowX: 'auto',
+                        font: 'inherit',
+                        color: 'var(--editor-text)',
+                      }}>
+                        <code>{`-- 查询笔记表（中西文代码混排测试）\nSELECT id, title, created_at\nFROM notes\nWHERE status = 'active' -- 仅查询有效笔记;`}</code>
+                      </pre>
+                    </div>
                   </PreviewCollapse>
                 </div>
 
