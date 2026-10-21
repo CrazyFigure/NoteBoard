@@ -29,7 +29,42 @@ export interface MindNode {
   textAlign?: MindmapTextAlign;
   // 图片显示方式；未设置时跟随设置
   imageFit?: MindmapImageFit;
+  // 概要（大括号）：挂在父节点上，覆盖一段连续子节点
+  summaries?: MindSummary[];
+  // 外框：挂在父节点上，圈住一段连续子节点及其子树
+  boundaries?: MindBoundary[];
+  // 联系线：从本节点指向任意其他节点
+  relations?: MindRelation[];
   children: MindNode[];
+}
+
+/**
+ * 子节点范围：用首尾子节点 id 表示（而非下标），
+ * 子节点增删、排序后范围仍跟随原节点；首尾节点被移走时自动收缩或失效
+ */
+export interface MindNodeRange {
+  id: string;
+  startId: string;
+  endId: string;
+}
+
+/** 概要：大括号 + 概要文字 */
+export interface MindSummary extends MindNodeRange {
+  text: string;
+}
+
+/** 外框：虚线圆角框 + 可选标题 */
+export interface MindBoundary extends MindNodeRange {
+  title?: string;
+}
+
+/** 联系线：带箭头的虚线曲线，可选文字说明 */
+export interface MindRelation {
+  id: string;
+  targetId: string;
+  title?: string;
+  // 曲线弯曲量（沿两端连线法向的偏移，px）；未设置时自动计算
+  bend?: number;
 }
 
 /**
@@ -74,14 +109,29 @@ export interface XMindTopic {
   image?: { src: string; width?: number; height?: number };
   children?: {
     attached?: XMindTopic[];
+    // 概要主题（与 summaries[].topicId 对应）
+    summary?: XMindTopic[];
   };
+  // 外框：range 为 "(起,止)" 子主题下标，或 "master" 表示主题自身
+  boundaries?: Array<{ id: string; range: string; title?: string }>;
+  // 概要：range 同上，topicId 指向 children.summary 中的概要主题
+  summaries?: Array<{ id: string; range: string; topicId: string }>;
   style?: Record<string, unknown>;
+}
+
+/** XMind 画布级联系线 */
+export interface XMindRelationship {
+  id: string;
+  end1Id: string;
+  end2Id: string;
+  title?: string;
 }
 
 export interface XMindSheet {
   id: string;
   title: string;
   rootTopic: XMindTopic;
+  relationships?: XMindRelationship[];
 }
 
 export type XMindContentJson = XMindSheet[];

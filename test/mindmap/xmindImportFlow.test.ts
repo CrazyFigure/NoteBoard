@@ -40,7 +40,7 @@ describe('XMind 导入交互', () => {
   it('选择第二张画布后提示该画布的兼容差异，选中内容完整返回', async () => {
     vi.mocked(requestMindmapChoice).mockResolvedValue('1');
     expect((await importXmindWithDialogs(await sample()))?.text).toBe('B');
-    expect(confirmMindmapImport).toHaveBeenCalledWith(['关联线无法转换']);
+    expect(confirmMindmapImport).toHaveBeenCalledWith(['部分关联线端点缺失，未转换']);
     expect(useDocumentStore.getState().documents.size).toBe(0);
   });
 

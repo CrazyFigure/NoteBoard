@@ -14,10 +14,21 @@ import {
   FileText,
   Image as ImageIcon,
   X,
+  Braces,
+  SquareDashed,
+  Spline,
 } from 'lucide-react';
 import type { MindNode } from './mindmapTypes';
 import { generateNodeId, moveMindNode, isMindNodeDescendant } from './mindmapConverter';
-import { cloneMindmapTree } from './mindmapTree';
+import { cloneMindmapTree, findMindNode, walkMindNodes } from './mindmapTree';
+import {
+  removeStructure,
+  resolveRangeIndexes,
+  setStructureText,
+  SUMMARY_PLACEHOLDER,
+  type MindStructureKind,
+  type MindStructureRef,
+} from './mindmapStructures';
 import { MindmapIconPicker } from './MindmapIconPicker';
 import { MindmapImagePreview } from './MindmapImagePreview';
 import { adjustMarksForTextChange, restoreLineBreaks, toSingleLineText } from './mindmapRichText';
@@ -51,6 +62,55 @@ interface DragSession {
   sourceId: string;
   sourceText: string;
   isDragging: boolean;
+}
+
+/** 大纲行下方显示的结构元素（概要 / 外框 / 联系线） */
+interface OutlineStructureItem extends MindStructureRef {
+  /** 概要文字 / 外框标题 / 联系线文字 */
+  text: string;
+  /** 前缀说明：覆盖节点数或联系线目标 */
+  caption: string;
+}
+
+const STRUCTURE_ICONS: Record<MindStructureKind, React.ReactNode> = {
+  summary: <Braces size={12} />,
+  boundary: <SquareDashed size={12} />,
+  relation: <Spline size={12} />,
+};
+
+/** 结构元素小标签：前缀说明 + 可编辑文字 + 删除按钮 */
+function OutlineStructureChip({
+  item,
+  onTextChange,
+  onRemove,
+}: {
+  item: OutlineStructureItem;
+  onTextChange: (text: string) => void;
+  onRemove: () => void;
+}) {
+  const placeholder = item.kind === 'summary' ? SUMMARY_PLACEHOLDER : item.kind === 'boundary' ? '外框标题' : '联系线文字';
+  // 输入框宽度随文字增长：中日韩等全角字符按两个字宽计
+  const shown = item.text || placeholder;
+  const columns = Array.from(shown).reduce((sum, ch) => sum + (/[⺀-￯]/.test(ch) ? 2 : 1), 0);
+  return (
+    <div className="nb-outliner-structure-chip" data-kind={item.kind}>
+      {STRUCTURE_ICONS[item.kind]}
+      <span className="nb-outliner-structure-caption">{item.caption}</span>
+      <input
+        type="text"
+        value={item.text}
+        placeholder={placeholder}
+        style={{ width: `${Math.max(4, Math.min(40, columns + 1))}ch` }}
+        onChange={(e) => onTextChange(e.target.value)}
+        aria-label={placeholder}
+      />
+      <Tooltip content="移除" side="top" sideOffset={4}>
+        <button type="button" className="nb-outliner-structure-remove" onClick={onRemove} aria-label="移除">
+          <X size={11} />
+        </button>
+      </Tooltip>
+    </div>
+  );
 }
 
 export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEditorProps) {
@@ -112,6 +172,47 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
     }
 
     return list;
+  }, [root]);
+
+  // 结构元素在大纲中的挂载行：概要挂在范围末尾节点下，外框挂在范围首个节点下，联系线挂在起点节点下
+  const structureItems = React.useMemo(() => {
+    const result = new Map<string, OutlineStructureItem[]>();
+    const push = (rowId: string, item: OutlineStructureItem) => {
+      const list = result.get(rowId);
+      if (list) list.push(item);
+      else result.set(rowId, [item]);
+    };
+    const relations: Array<{ owner: MindNode; relation: NonNullable<MindNode['relations']>[number] }> = [];
+    const textOf = new Map<string, string>();
+    for (const node of walkMindNodes(root)) {
+      textOf.set(node.id, node.text);
+      for (const summary of node.summaries ?? []) {
+        const range = resolveRangeIndexes(node, summary);
+        if (!range) continue;
+        const count = range[1] - range[0] + 1;
+        push(node.children[range[1]].id, { kind: 'summary', ownerId: node.id, id: summary.id, text: summary.text, caption: count > 1 ? `概要 ${count} 项` : '概要' });
+      }
+      for (const boundary of node.boundaries ?? []) {
+        const range = resolveRangeIndexes(node, boundary);
+        if (!range) continue;
+        const count = range[1] - range[0] + 1;
+        push(node.children[range[0]].id, { kind: 'boundary', ownerId: node.id, id: boundary.id, text: boundary.title ?? '', caption: count > 1 ? `外框 ${count} 项` : '外框' });
+      }
+      for (const relation of node.relations ?? []) relations.push({ owner: node, relation });
+    }
+    for (const { owner, relation } of relations) {
+      const target = textOf.get(relation.targetId);
+      if (target === undefined) continue;
+      const short = target.replace(/\s+/g, ' ').trim();
+      push(owner.id, {
+        kind: 'relation',
+        ownerId: owner.id,
+        id: relation.id,
+        text: relation.title ?? '',
+        caption: `→ ${short.length > 16 ? `${short.slice(0, 16)}…` : short || '（空白）'}`,
+      });
+    }
+    return result;
   }, [root]);
 
   // 小大纲沿用原布局，大大纲按真实行高虚拟化；当前输入和待聚焦行始终保留，不能因滚动丢焦点。
@@ -253,6 +354,22 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
         return false;
       }
       findAndSet(cloned);
+    });
+  };
+
+  // 修改结构元素文字（概要 / 外框标题 / 联系线文字）
+  const handleStructureText = (ref: MindStructureRef, text: string) => {
+    updateTree((cloned) => {
+      const owner = findMindNode(cloned, ref.ownerId);
+      if (owner) setStructureText(owner, ref, text);
+    });
+  };
+
+  // 移除结构元素
+  const handleStructureRemove = (ref: MindStructureRef) => {
+    updateTree((cloned) => {
+      const owner = findMindNode(cloned, ref.ownerId);
+      if (owner) removeStructure(owner, ref);
     });
   };
 
@@ -1083,6 +1200,28 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
                   )}
                 </div>
               </div>
+
+              {/* 概要 / 外框 / 联系线：在导图模式中添加，大纲中可改文字或移除 */}
+              {structureItems.has(item.node.id) && (
+                <div
+                  style={{
+                    paddingLeft: paddingLeft + 32,
+                    marginTop: 2,
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 6,
+                  }}
+                >
+                  {structureItems.get(item.node.id)!.map((structure) => (
+                    <OutlineStructureChip
+                      key={`${structure.kind}-${structure.id}`}
+                      item={structure}
+                      onTextChange={(text) => handleStructureText(structure, text)}
+                      onRemove={() => handleStructureRemove(structure)}
+                    />
+                  ))}
+                </div>
+              )}
 
               {/* 节点备注区域（浅色小字多行输入 + 图片） */}
               {(hasNote || hasImage) && (

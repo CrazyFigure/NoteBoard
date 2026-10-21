@@ -70,11 +70,14 @@ export function mapMindmapTree<T extends object>(
 
 /** 复制节点字段与富文本标记，不经过整树 JSON 编解码。 */
 export function cloneMindmapTree(root: MindNode): MindNode {
-  return mapMindmapTree(root, (node) => node.children, (node) => ({
-    ...node,
-    marks: node.marks?.map((mark) => ({ ...mark })),
-    children: [],
-  }));
+  return mapMindmapTree(root, (node) => node.children, (node) => {
+    const next: MindNode = { ...node, marks: node.marks?.map((mark) => ({ ...mark })), children: [] };
+    // 概要 / 外框 / 联系线数组同样逐项复制，避免克隆树改写时影响原树
+    if (node.summaries) next.summaries = node.summaries.map((item) => ({ ...item }));
+    if (node.boundaries) next.boundaries = node.boundaries.map((item) => ({ ...item }));
+    if (node.relations) next.relations = node.relations.map((item) => ({ ...item }));
+    return next;
+  });
 }
 
 /** 查找指定节点；提供给画布、搜索与移动操作复用。 */

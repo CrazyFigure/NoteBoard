@@ -28,6 +28,17 @@ import {
   NOTE_FONT_SIZE,
   NOTE_LINE_HEIGHT,
 } from './mindmapTextMeasure';
+import {
+  computeMindmapStructures,
+  BOUNDARY_TITLE_FONT_SIZE,
+  BOUNDARY_TITLE_HEIGHT,
+  RELATION_FONT_SIZE,
+  RELATION_LINE_HEIGHT,
+  SUMMARY_FONT_SIZE,
+  SUMMARY_LINE_HEIGHT,
+  type MindmapStructureLayout,
+  type Rect,
+} from './mindmapStructures';
 
 export type MindmapImageFormat = 'png' | 'jpeg';
 
@@ -80,6 +91,8 @@ export function computeExportFrame(
   links: LayoutLink[],
   decorations: LayoutDecoration[],
   padding = EXPORT_PADDING,
+  /** 概要 / 外框 / 联系线等伸出节点范围的元素 */
+  extraBounds?: Rect | null,
 ): { width: number; height: number; offsetX: number; offsetY: number } {
   let minX = Infinity;
   let minY = Infinity;
@@ -90,6 +103,12 @@ export function computeExportFrame(
     minY = Math.min(minY, n.y);
     maxX = Math.max(maxX, n.x + n.width);
     maxY = Math.max(maxY, n.y + n.height);
+  }
+  if (extraBounds) {
+    minX = Math.min(minX, extraBounds.x);
+    minY = Math.min(minY, extraBounds.y);
+    maxX = Math.max(maxX, extraBounds.x + extraBounds.width);
+    maxY = Math.max(maxY, extraBounds.y + extraBounds.height);
   }
   for (const d of [...links.map((l) => l.path), ...decorations.map((dec) => dec.path)]) {
     const b = pathBounds(d);
@@ -460,6 +479,103 @@ function drawNode(
   }
 }
 
+/** 结构元素绘制阶段：外框在连线下方，概要在节点同层，联系线在节点上方 */
+type StructurePhase = 'below' | 'middle' | 'above';
+
+/** 绘制概要 / 外框 / 联系线（与画布 DOM 渲染保持同样的颜色与线型） */
+function drawStructures(
+  ctx: CanvasRenderingContext2D,
+  structures: MindmapStructureLayout,
+  theme: MindmapTheme,
+  fontFamily: string,
+  phase: StructurePhase,
+) {
+  const branchColor = (index: number) => theme.branchColors[index % theme.branchColors.length] ?? theme.branchColors[0];
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.textBaseline = 'middle';
+  if (phase === 'below') {
+    // 外框：浅色底 + 虚线边
+    for (const b of structures.boundaries) {
+      const color = branchColor(b.branchIndex);
+      roundRectPath(ctx, b.rect.x, b.rect.y, b.rect.width, b.rect.height, 12);
+      ctx.globalAlpha = 0.06;
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.globalAlpha = 0.75;
+      ctx.setLineDash([6, 4]);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = color;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
+  } else if (phase === 'middle') {
+    const surface = resolveCssVars('var(--editor-surface, #ffffff)');
+    // 外框标题标签
+    for (const b of structures.boundaries) {
+      if (!b.titleBox || !b.titleText) continue;
+      const box = b.titleBox;
+      roundRectPath(ctx, box.x, box.y, box.width, box.height, BOUNDARY_TITLE_HEIGHT / 2);
+      ctx.fillStyle = branchColor(b.branchIndex);
+      ctx.fill();
+      ctx.font = buildFont(BOUNDARY_TITLE_FONT_SIZE, 500, fontFamily);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(b.titleText, box.x + 7, box.y + box.height / 2);
+    }
+    // 概要：大括号 + 文字框
+    for (const s of structures.summaries) {
+      const color = branchColor(s.branchIndex);
+      ctx.globalAlpha = theme.edgeOpacity;
+      ctx.lineWidth = 1.8;
+      ctx.strokeStyle = color;
+      ctx.stroke(new Path2D(s.bracePath));
+      ctx.globalAlpha = 1;
+      const { label } = s;
+      roundRectPath(ctx, label.x, label.y, label.width, label.height, 8);
+      ctx.fillStyle = theme.nodeTint ? mixColors(color, surface, theme.nodeTint) : surface;
+      ctx.fill();
+      roundRectPath(ctx, label.x + 0.75, label.y + 0.75, label.width - 1.5, label.height - 1.5, 7.25);
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.font = buildFont(SUMMARY_FONT_SIZE, 500, fontFamily);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = resolveCssVars('var(--editor-text, #1e293b)');
+      if (!s.text) ctx.globalAlpha = 0.5;
+      const top = label.y + (label.height - s.lines.length * SUMMARY_LINE_HEIGHT) / 2;
+      s.lines.forEach((line, idx) => ctx.fillText(line, label.x + label.width / 2, top + idx * SUMMARY_LINE_HEIGHT + SUMMARY_LINE_HEIGHT / 2));
+      ctx.globalAlpha = 1;
+    }
+  } else {
+    // 联系线：虚线曲线 + 实心箭头 + 底色文字
+    const color = resolveCssVars('var(--editor-text-secondary, #64748b)');
+    const background = resolveCssVars('var(--editor-bg, #ffffff)');
+    for (const r of structures.relations) {
+      ctx.setLineDash([6, 4]);
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = color;
+      ctx.stroke(new Path2D(r.path));
+      ctx.setLineDash([]);
+      ctx.fillStyle = color;
+      ctx.fill(new Path2D(r.arrowPath));
+      if (r.labelBox && r.lines.length > 0) {
+        const box = r.labelBox;
+        roundRectPath(ctx, box.x, box.y, box.width, box.height, 4);
+        ctx.fillStyle = background;
+        ctx.fill();
+        ctx.font = buildFont(RELATION_FONT_SIZE, 400, fontFamily);
+        ctx.textAlign = 'center';
+        ctx.fillStyle = color;
+        const top = box.y + (box.height - r.lines.length * RELATION_LINE_HEIGHT) / 2;
+        r.lines.forEach((line, idx) => ctx.fillText(line, box.x + box.width / 2, top + idx * RELATION_LINE_HEIGHT + RELATION_LINE_HEIGHT / 2));
+      }
+    }
+  }
+  ctx.restore();
+}
+
 /**
  * 按当前导图外观生成 PNG / JPG 图片
  */
@@ -488,7 +604,8 @@ export async function exportMindmapImageBlob(options: MindmapImageExportOptions)
       return img ? { width: img.naturalWidth || img.width, height: img.naturalHeight || img.height } : undefined;
     },
   });
-  const frame = computeExportFrame(nodes, links, decorations);
+  const structures = computeMindmapStructures(nodes, { measure: getSharedTextMeasurer(), fontFamily });
+  const frame = computeExportFrame(nodes, links, decorations, EXPORT_PADDING, structures.bounds);
 
   // 倍率：默认 3 倍（高分屏与放大查看都清晰），超出浏览器画布上限时自动降低
   const requested = options.scale && options.scale > 0 ? options.scale : 3;
@@ -513,6 +630,9 @@ export async function exportMindmapImageBlob(options: MindmapImageExportOptions)
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.scale(scale, scale);
   ctx.translate(frame.offsetX, frame.offsetY);
+
+  // 外框（最底层）
+  drawStructures(ctx, structures, theme, fontFamily, 'below');
 
   // 装饰线（主轴 / 脊柱）
   const decoColor = resolveCssVars('var(--editor-text-secondary, #64748b)');
@@ -545,10 +665,16 @@ export async function exportMindmapImageBlob(options: MindmapImageExportOptions)
   }
   ctx.restore();
 
+  // 外框标题与概要
+  drawStructures(ctx, structures, theme, fontFamily, 'middle');
+
   // 节点卡片
   for (const n of nodes) {
     drawNode(ctx, n, theme, fontFamily, images);
   }
+
+  // 联系线（节点上方）
+  drawStructures(ctx, structures, theme, fontFamily, 'above');
 
   const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png';
   return await new Promise<Blob>((resolve, reject) => {

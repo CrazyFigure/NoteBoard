@@ -9,11 +9,13 @@ import type {
   MindmapEdgeStyle,
   MindmapLayout,
   XMindContentJson,
+  XMindRelationship,
   XMindTopic,
   XMindSheet,
 } from './mindmapTypes';
 import { normalizeMarks } from './mindmapRichText';
-import { cloneMindmapTree, findMindNode, findMindNodeParent, getMindmapTreeStats, getTopLevelMindNodeIds, mapMindmapTree, stringifyMindmapJson } from './mindmapTree';
+import { normalizeNodeStructures, pruneMindmapStructures, resolveRangeIndexes } from './mindmapStructures';
+import { cloneMindmapTree, findMindNode, findMindNodeParent, getMindmapTreeStats, getTopLevelMindNodeIds, mapMindmapTree, stringifyMindmapJson, walkMindNodes } from './mindmapTree';
 
 /** 合法布局枚举（用于反序列化时的防御性校验） */
 const VALID_LAYOUTS: MindmapLayout[] = [
@@ -98,11 +100,11 @@ export function parseMindmapDocument(content: string): MindNode {
       const parsed = JSON.parse(trimmed);
       // 若为 NoteBoard Mindmap 格式（标题允许为空字符串）
       if (parsed.root && typeof parsed.root === 'object' && typeof parsed.root.text === 'string') {
-        return normalizeNode(parsed.root);
+        return withPrunedStructures(normalizeNode(parsed.root));
       }
       // 若直接为 MindNode
       if (typeof parsed.text === 'string' && Array.isArray(parsed.children)) {
-        return normalizeNode(parsed);
+        return withPrunedStructures(normalizeNode(parsed));
       }
       // 若为 XMind content.json 数组
       if (Array.isArray(parsed) && parsed[0]?.rootTopic) {
@@ -115,6 +117,12 @@ export function parseMindmapDocument(content: string): MindNode {
 
   // 2. 尝试按 Markdown 列表与大纲解析
   return markdownToMindNode(trimmed);
+}
+
+/** 清理概要 / 外框 / 联系线的失效引用后返回同一棵树 */
+function withPrunedStructures(root: MindNode): MindNode {
+  pruneMindmapStructures(root);
+  return root;
 }
 
 /**
@@ -137,6 +145,8 @@ function normalizeNode(node: Partial<MindNode>): MindNode {
     marks: normalizeMarks(source.marks, (source.text || '').length),
     textAlign: source.textAlign === 'left' || source.textAlign === 'center' ? source.textAlign : undefined,
     imageFit: source.imageFit === 'original' || source.imageFit === 'fill' ? source.imageFit : undefined,
+    // 概要 / 外框 / 联系线只保留结构合法的条目
+    ...normalizeNodeStructures(source),
     isExpanded: source.isExpanded !== false,
     children: [],
   }));
@@ -225,7 +235,7 @@ export function xmindJsonToMindNode(sheets: XMindSheet[]): MindNode {
 }
 
 /**
- * NoteBoard MindNode 转换为 XMind Topic
+ * NoteBoard MindNode 转换为 XMind Topic（含外框与概要；联系线属于画布级，见 mindNodeToXmindJson）
  */
 export function mindNodeToXmindTopic(node: MindNode): XMindTopic {
   const create = (source: MindNode): XMindTopic => {
@@ -238,6 +248,26 @@ export function mindNodeToXmindTopic(node: MindNode): XMindTopic {
       topic.note = { plain: { content: source.note } };
     }
     if (source.isExpanded === false) topic.branch = 'folded';
+    // 外框：XMind 以子主题下标区间 "(起,止)" 表示范围
+    const boundaries = (source.boundaries ?? []).flatMap((boundary) => {
+      const indexes = resolveRangeIndexes(source, boundary);
+      if (!indexes) return [];
+      return [{ id: boundary.id, range: `(${indexes[0]},${indexes[1]})`, ...(boundary.title ? { title: boundary.title } : {}) }];
+    });
+    if (boundaries.length > 0) topic.boundaries = boundaries;
+    // 概要：范围 + 指向 children.summary 中的概要主题
+    const summaryTopics: XMindTopic[] = [];
+    const summaries = (source.summaries ?? []).flatMap((summary) => {
+      const indexes = resolveRangeIndexes(source, summary);
+      if (!indexes) return [];
+      const topicId = `${summary.id}-topic`;
+      summaryTopics.push({ id: topicId, title: summary.text });
+      return [{ id: summary.id, range: `(${indexes[0]},${indexes[1]})`, topicId }];
+    });
+    if (summaries.length > 0) {
+      topic.summaries = summaries;
+      topic.children = { summary: summaryTopics };
+    }
     return topic;
   };
   const result = create(node);
@@ -246,7 +276,7 @@ export function mindNodeToXmindTopic(node: MindNode): XMindTopic {
     const { source, target } = stack.pop()!;
     if (source.children.length === 0) continue;
     const attached: XMindTopic[] = [];
-    target.children = { attached };
+    target.children = { ...target.children, attached };
     for (const child of source.children) {
       const next = create(child);
       attached.push(next);
@@ -265,6 +295,22 @@ export function mindNodeToXmindJson(root: MindNode): XMindContentJson {
     title: root.text || '画布 1',
     rootTopic: mindNodeToXmindTopic(root),
   };
+  // 联系线在 XMind 中挂在画布上，以两端主题 id 相连
+  const ids = new Set<string>();
+  for (const node of walkMindNodes(root)) ids.add(node.id);
+  const relationships: XMindRelationship[] = [];
+  for (const node of walkMindNodes(root)) {
+    for (const relation of node.relations ?? []) {
+      if (!ids.has(relation.targetId) || relation.targetId === node.id) continue;
+      relationships.push({
+        id: relation.id,
+        end1Id: node.id,
+        end2Id: relation.targetId,
+        ...(relation.title ? { title: relation.title } : {}),
+      });
+    }
+  }
+  if (relationships.length > 0) sheet.relationships = relationships;
   return [sheet];
 }
 

@@ -13,6 +13,10 @@ import {
   Trash2,
   X,
   GripVertical,
+  Braces,
+  SquareDashed,
+  Spline,
+  Pencil,
 } from 'lucide-react';
 import type {
   MindNode,
@@ -61,6 +65,26 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { IS_MOBILE_UI, USES_COMMAND_KEY } from '../../core/platform';
 import type { MindmapSearchHighlight } from './mindmapSearch';
 import { formatShortcut } from '../../core/shortcuts';
+import { showToast } from '../../stores/toastStore';
+import {
+  bendFromPoint,
+  computeMindmapStructures,
+  findStructure,
+  generateStructureId,
+  getSiblingRangeForSelection,
+  getStructureText,
+  removeStructure,
+  setStructureText,
+  BOUNDARY_TITLE_FONT_SIZE,
+  BOUNDARY_TITLE_HEIGHT,
+  RELATION_FONT_SIZE,
+  RELATION_LINE_HEIGHT,
+  SUMMARY_FONT_SIZE,
+  SUMMARY_LINE_HEIGHT,
+  SUMMARY_PLACEHOLDER,
+  type LayoutRelation,
+  type MindStructureRef,
+} from './mindmapStructures';
 
 interface MindmapRendererProps {
   root: MindNode;
@@ -306,6 +330,24 @@ function insertSiblingNode(n: MindNode, anchorId: string, sibling: MindNode): bo
 /** 缩略图节点的最小像素尺寸，缩得很小时仍能看出分支走向 */
 const MINIMAP_MIN_NODE_PX = 1.5;
 
+/** 联系线颜色：未选中为次级文字色，选中为强调色 */
+const RELATION_COLOR = 'var(--editor-text-secondary, #64748b)';
+const ACCENT_COLOR = 'var(--editor-accent, #3b82f6)';
+
+/** 结构元素是否为同一个 */
+function isSameStructure(a: MindStructureRef | null, b: MindStructureRef | null): boolean {
+  return Boolean(a && b && a.kind === b.kind && a.id === b.id && a.ownerId === b.ownerId);
+}
+
+/** 联系线拖动弯曲手柄的会话 */
+interface BendSession {
+  pointerId: number;
+  ownerId: string;
+  id: string;
+  relation: Pick<LayoutRelation, 'chordMid' | 'normal'>;
+  moved: boolean;
+}
+
 export function MindmapRenderer({
   root,
   onChange,
@@ -416,10 +458,31 @@ export function MindmapRenderer({
   // multiSelectedIds 为 Ctrl / Cmd + 单击多选的全部节点（至少 2 个时才非空，含主选中）
   const [selectedNodeId, setPrimarySelectedId] = useState<string | null>(null);
   const [multiSelectedIds, setMultiSelectedIds] = useState<readonly string[]>(NO_IDS);
+  // 选中的结构元素（概要 / 外框 / 联系线），与节点选中互斥
+  const [selectedStructure, setSelectedStructure] = useState<MindStructureRef | null>(null);
+  const selectedStructureRef = useRef(selectedStructure);
+  selectedStructureRef.current = selectedStructure;
+  // 正在编辑文字的结构元素与草稿
+  const [editingStructure, setEditingStructure] = useState<{ ref: MindStructureRef; text: string } | null>(null);
+  // 联系线连接模式：起点节点 + 指针当前位置（导图坐标）
+  const [connectFrom, setConnectFrom] = useState<string | null>(null);
+  const connectFromRef = useRef(connectFrom);
+  connectFromRef.current = connectFrom;
+  const [connectPointer, setConnectPointer] = useState<{ x: number; y: number } | null>(null);
+  // 拖动联系线弯曲手柄：会话 + 实时预览
+  const bendSessionRef = useRef<BendSession | null>(null);
+  const [bendPreview, setBendPreview] = useState<{ id: string; bend: number } | null>(null);
   /** 单选（或取消选中）：同时退出多选，既有的单选入口都经由它 */
   const setSelectedNodeId = useCallback((id: string | null) => {
     setPrimarySelectedId(id);
     setMultiSelectedIds(NO_IDS);
+    setSelectedStructure(null);
+  }, []);
+  /** 选中结构元素：取消节点选中 */
+  const selectStructure = useCallback((ref: MindStructureRef | null) => {
+    setPrimarySelectedId(null);
+    setMultiSelectedIds(NO_IDS);
+    setSelectedStructure(ref);
   }, []);
   const isMultiSelecting = multiSelectedIds.length > 1;
 
@@ -526,6 +589,17 @@ export function MindmapRenderer({
     ],
   );
 
+  // 概要 / 外框 / 联系线几何：排版之后按节点实际坐标计算，始终跟随节点位置
+  const bendOverrides = useMemo(
+    () => (bendPreview ? new Map([[bendPreview.id, bendPreview.bend]]) : undefined),
+    [bendPreview],
+  );
+  const structures = useMemo(
+    () => computeMindmapStructures(nodes, { measure: getSharedTextMeasurer(), fontFamily, bendOverrides }),
+    // fontVersion 仅用于字体加载完成后强制重新测量
+    [nodes, fontFamily, fontVersion, bendOverrides],
+  );
+
   // 布局仍覆盖全部已展开节点，只有真正的节点和连线 DOM 按视口裁剪。
   const viewport = useMemo(() => getMindmapViewport(panRef.current, zoom, viewportSize.width, viewportSize.height), [pan, zoom, viewportSize]);
   // 多选集合（查找用）
@@ -560,8 +634,16 @@ export function MindmapRenderer({
       if (n.x + n.width > right) right = n.x + n.width;
       if (n.y + n.height > bottom) bottom = n.y + n.height;
     }
+    // 概要文字、外框与联系线可能伸出节点范围
+    const extra = structures.bounds;
+    if (extra) {
+      left = Math.min(left, extra.x);
+      top = Math.min(top, extra.y);
+      right = Math.max(right, extra.x + extra.width);
+      bottom = Math.max(bottom, extra.y + extra.height);
+    }
     return { left, top, width: right - left, height: bottom - top };
-  }, [nodes]);
+  }, [nodes, structures]);
 
   // 缩略图场景：内容只随布局 / 配色变化重绘，平移和缩放只移动视口框
   const getMinimapScene = useCallback((): MinimapScene => {
@@ -814,6 +896,191 @@ export function MindmapRenderer({
     const primary = next.includes(id) ? id : selectedNodeId && next.includes(selectedNodeId) ? selectedNodeId : next[next.length - 1];
     setPrimarySelectedId(primary);
     setMultiSelectedIds(next);
+    setSelectedStructure(null);
+  };
+
+  // ── 概要 / 外框 / 联系线 ──
+
+  /** 为选中节点添加概要或外框（多选时覆盖首尾之间的全部同级节点），随后选中新元素 */
+  const addRangeStructure = (kind: 'summary' | 'boundary', ids: readonly string[]) => {
+    const range = getSiblingRangeForSelection(root, ids);
+    if (!range.ok) {
+      showToast(range.reason, 'error');
+      return;
+    }
+    const id = generateStructureId(kind);
+    updateTree((cloned) => {
+      updateNodeById(cloned, range.parentId, (parent) => {
+        if (kind === 'summary') {
+          (parent.summaries ??= []).push({ id, startId: range.startId, endId: range.endId, text: SUMMARY_PLACEHOLDER });
+        } else {
+          (parent.boundaries ??= []).push({ id, startId: range.startId, endId: range.endId });
+        }
+        // 范围内节点必须展开显示，否则新元素看不到
+        parent.isExpanded = true;
+      });
+    });
+    const ref: MindStructureRef = { kind, ownerId: range.parentId, id };
+    selectStructure(ref);
+    // 新概要直接进入文字编辑，便于立即输入
+    if (kind === 'summary') setEditingStructure({ ref, text: SUMMARY_PLACEHOLDER });
+  };
+
+  /** 进入联系线连接模式：随后点击目标节点完成连接 */
+  const startConnect = (fromId: string) => {
+    setSelectedNodeId(null);
+    setConnectFrom(fromId);
+    setConnectPointer(null);
+  };
+
+  const cancelConnect = () => {
+    setConnectFrom(null);
+    setConnectPointer(null);
+  };
+
+  /** 点击目标节点完成连线；已存在同向联系线时直接选中它 */
+  const finishConnect = (targetId: string) => {
+    const fromId = connectFromRef.current;
+    cancelConnect();
+    if (!fromId || fromId === targetId) return;
+    const existing = findNodeById(root, fromId)?.relations?.find((relation) => relation.targetId === targetId);
+    if (existing) {
+      selectStructure({ kind: 'relation', ownerId: fromId, id: existing.id });
+      return;
+    }
+    const id = generateStructureId('relation');
+    updateTree((cloned) => {
+      updateNodeById(cloned, fromId, (node) => {
+        (node.relations ??= []).push({ id, targetId });
+      });
+    });
+    selectStructure({ kind: 'relation', ownerId: fromId, id });
+  };
+
+  /** 删除结构元素（一个撤销步） */
+  const deleteStructure = (ref: MindStructureRef) => {
+    updateTree((cloned) => {
+      const owner = findMindNode(cloned, ref.ownerId);
+      if (owner) removeStructure(owner, ref);
+    });
+    setSelectedStructure(null);
+    setEditingStructure(null);
+  };
+  const deleteStructureRef = useRef(deleteStructure);
+  deleteStructureRef.current = deleteStructure;
+
+  /** 开始编辑结构元素文字 */
+  const beginEditStructure = (ref: MindStructureRef) => {
+    const item = findStructure(findNodeById(root, ref.ownerId), ref);
+    if (!item) return;
+    selectStructure(ref);
+    setEditingStructure({ ref, text: getStructureText(item, ref.kind) });
+  };
+  const beginEditStructureRef = useRef(beginEditStructure);
+  beginEditStructureRef.current = beginEditStructure;
+
+  /** 提交结构元素文字；未改动时不产生撤销步 */
+  const commitStructureEdit = () => {
+    const editing = editingStructure;
+    if (!editing) return;
+    setEditingStructure(null);
+    const { ref } = editing;
+    const item = findStructure(findNodeById(root, ref.ownerId), ref);
+    const text = editing.text.trim();
+    if (!item || text === getStructureText(item, ref.kind)) return;
+    updateTree((cloned) => {
+      const owner = findMindNode(cloned, ref.ownerId);
+      if (owner) setStructureText(owner, ref, text);
+    });
+  };
+
+  /** 屏幕坐标换算为导图坐标 */
+  const clientToWorld = (clientX: number, clientY: number): { x: number; y: number } | null => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    return {
+      x: (clientX - rect.left - panRef.current.x) / zoomRef.current,
+      y: (clientY - rect.top - panRef.current.y) / zoomRef.current,
+    };
+  };
+
+  // 拖动联系线中点手柄调整弯曲：实时预览，松手一次写入（一个撤销步）
+  const handleBendPointerDown = (e: React.PointerEvent<HTMLElement>, relation: LayoutRelation) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+    bendSessionRef.current = { pointerId: e.pointerId, ownerId: relation.ownerId, id: relation.id, relation, moved: false };
+  };
+
+  const handleBendPointerMove = (e: React.PointerEvent<HTMLElement>) => {
+    const session = bendSessionRef.current;
+    if (!session || session.pointerId !== e.pointerId) return;
+    e.stopPropagation();
+    const point = clientToWorld(e.clientX, e.clientY);
+    if (!point) return;
+    session.moved = true;
+    setBendPreview({ id: session.id, bend: bendFromPoint(session.relation, point) });
+  };
+
+  const handleBendPointerUp = (e: React.PointerEvent<HTMLElement>) => {
+    const session = bendSessionRef.current;
+    if (!session || session.pointerId !== e.pointerId) return;
+    e.stopPropagation();
+    bendSessionRef.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+    const preview = bendPreview;
+    setBendPreview(null);
+    if (!session.moved || preview?.id !== session.id) return;
+    updateTree((cloned) => {
+      const relation = findMindNode(cloned, session.ownerId)?.relations?.find((item) => item.id === session.id);
+      if (relation) relation.bend = preview.bend;
+    });
+  };
+
+  /** 结构元素工具栏锚点（导图坐标，工具栏显示在其正上方） */
+  const getStructureAnchor = (ref: MindStructureRef): { x: number; y: number } | null => {
+    if (ref.kind === 'summary') {
+      const s = structures.summaries.find((item) => item.id === ref.id && item.ownerId === ref.ownerId);
+      return s ? { x: s.label.x + s.label.width / 2, y: s.label.y } : null;
+    }
+    if (ref.kind === 'boundary') {
+      const b = structures.boundaries.find((item) => item.id === ref.id && item.ownerId === ref.ownerId);
+      return b ? { x: b.rect.x + b.rect.width / 2, y: b.rect.y } : null;
+    }
+    const r = structures.relations.find((item) => item.id === ref.id && item.ownerId === ref.ownerId);
+    // 工具栏让出中点的弯曲手柄
+    return r ? { x: r.mid.x, y: (r.labelBox ? r.labelBox.y - 10 : r.mid.y) - 6 } : null;
+  };
+
+  /** 结构元素文字输入框位置（导图坐标） */
+  const getStructureEditBox = (ref: MindStructureRef): { x: number; y: number; width: number } | null => {
+    if (ref.kind === 'summary') {
+      const s = structures.summaries.find((item) => item.id === ref.id && item.ownerId === ref.ownerId);
+      return s ? { x: s.label.x, y: s.label.y + s.label.height / 2 - 13, width: Math.max(140, s.label.width) } : null;
+    }
+    if (ref.kind === 'boundary') {
+      const b = structures.boundaries.find((item) => item.id === ref.id && item.ownerId === ref.ownerId);
+      return b ? { x: b.rect.x + 10, y: b.rect.y - 13, width: Math.max(160, b.titleBox?.width ?? 0) } : null;
+    }
+    const r = structures.relations.find((item) => item.id === ref.id && item.ownerId === ref.ownerId);
+    return r ? { x: r.mid.x - 80, y: r.mid.y - 13, width: 160 } : null;
+  };
+
+  /** 恢复联系线自动弯曲 */
+  const resetRelationBend = (ref: MindStructureRef) => {
+    updateTree((cloned) => {
+      const relation = findMindNode(cloned, ref.ownerId)?.relations?.find((item) => item.id === ref.id);
+      if (relation) delete relation.bend;
+    });
   };
 
   /** 设置节点的对齐 / 图片显示方式（可多个，一次撤销步）；传 undefined 表示恢复跟随设置 */
@@ -1067,6 +1334,12 @@ export function MindmapRenderer({
       }
     }
 
+    // 连接模式：预览线跟随指针
+    if (connectFromRef.current) {
+      const point = clientToWorld(e.clientX, e.clientY);
+      if (point) setConnectPointer(point);
+    }
+
     const session = dragSessionRef.current;
 
     // 1. 若当前非节点拖拽会话，走普通画布鼠标平移
@@ -1268,7 +1541,7 @@ export function MindmapRenderer({
         touchPointsRef.current.delete(e.pointerId);
         return;
       }
-      if (!target.closest('.nb-mindmap-node') && !target.closest('button, input, textarea')) {
+      if (!target.closest('.nb-mindmap-node') && !target.closest('[data-mindmap-structure]') && !target.closest('button, input, textarea')) {
         setIsPanning(true);
         panStartRef.current = { x: e.clientX - panRef.current.x, y: e.clientY - panRef.current.y };
       }
@@ -1319,6 +1592,8 @@ export function MindmapRenderer({
   // 画布鼠标按下平移
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0 || (e.target as HTMLElement).closest('.nb-mindmap-node')) return;
+    // 概要 / 外框 / 联系线自行处理点选，不进入画布平移
+    if ((e.target as Element).closest('[data-mindmap-structure]')) return;
     // 触屏点按后补发的兼容鼠标事件：只保留取消选中，不进入平移态（否则后续无 pointerup 复位）
     if (Date.now() - lastTouchAtRef.current < 800) {
       setSelectedNodeId(null);
@@ -1332,6 +1607,11 @@ export function MindmapRenderer({
   // 按 Esc 随时平滑取消当前拖拽
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Esc 退出联系线连接模式
+      if (e.key === 'Escape' && connectFromRef.current) {
+        setConnectFrom(null);
+        setConnectPointer(null);
+      }
       if (e.key === 'Escape' && dragSessionRef.current) {
         dragSessionRef.current = null;
         setIsDraggingNode(false);
@@ -1364,6 +1644,23 @@ export function MindmapRenderer({
       }
       // 正在就地编辑标题或确认删除时，快捷键由输入框 / 对话框自身接管
       if (editingNodeIdRef.current || deleteConfirmRef.current) return;
+
+      // 选中概要 / 外框 / 联系线：Delete 删除，Enter 编辑文字，Esc 取消选中
+      const structure = selectedStructureRef.current;
+      if (structure) {
+        if (e.key === 'Delete' || (USES_COMMAND_KEY && e.key === 'Backspace')) {
+          const container = containerRef.current;
+          if (el && el !== document.body && container && !container.contains(el) && !el.contains(container)) return;
+          e.preventDefault();
+          deleteStructureRef.current(structure);
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          beginEditStructureRef.current(structure);
+        } else if (e.key === 'Escape') {
+          setSelectedStructure(null);
+        }
+        return;
+      }
 
       const selected = selectedNodeIdRef.current;
       if (!selected) return;
@@ -1446,7 +1743,7 @@ export function MindmapRenderer({
         height: '100%',
         overflow: 'hidden',
         position: 'relative',
-        cursor: isDraggingNode ? 'grabbing' : isPanning ? 'grabbing' : 'default',
+        cursor: isDraggingNode ? 'grabbing' : isPanning ? 'grabbing' : connectFrom ? 'crosshair' : 'default',
         background: 'var(--editor-bg, #ffffff)',
         userSelect: 'none',
         // 触屏手势（平移 / 双指缩放）全部由画布自行处理，禁止浏览器默认滚动与页面缩放
@@ -1484,6 +1781,51 @@ export function MindmapRenderer({
             overflow: 'visible',
           }}
         >
+          {/* 外框：浅色底 + 虚线边，位于连线与节点之下；只有边线可点选，框内空白仍可拖动画布 */}
+          {structures.boundaries.map((b) => {
+            const ref: MindStructureRef = { kind: 'boundary', ownerId: b.ownerId, id: b.id };
+            const selected = isSameStructure(selectedStructure, ref);
+            const color = theme.branchColors[b.branchIndex % theme.branchColors.length] ?? theme.branchColors[0];
+            return (
+              <g key={`boundary-${b.id}`} className="nb-mindmap-boundary" data-selected={selected}>
+                <rect
+                  className="nb-mindmap-boundary-frame"
+                  x={b.rect.x}
+                  y={b.rect.y}
+                  width={b.rect.width}
+                  height={b.rect.height}
+                  rx={12}
+                  fill={color}
+                  fillOpacity={0.06}
+                  stroke={selected ? ACCENT_COLOR : color}
+                  strokeWidth={selected ? 2 : 1.5}
+                  strokeDasharray="6 4"
+                  strokeOpacity={selected ? 1 : 0.75}
+                />
+                <rect
+                  data-mindmap-structure
+                  x={b.rect.x}
+                  y={b.rect.y}
+                  width={b.rect.width}
+                  height={b.rect.height}
+                  rx={12}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth={12}
+                  style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    selectStructure(ref);
+                  }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    beginEditStructure(ref);
+                  }}
+                />
+              </g>
+            );
+          })}
           {/* 装饰线：时间轴主轴、鱼骨脊柱 */}
           {decorations.map((deco, idx) => (
             <path
@@ -1515,7 +1857,122 @@ export function MindmapRenderer({
               />
             );
           })}
+          {/* 概要大括号：开口朝向被概括的节点 */}
+          {structures.summaries.map((s) => {
+            const selected = isSameStructure(selectedStructure, { kind: 'summary', ownerId: s.ownerId, id: s.id });
+            const color = theme.branchColors[s.branchIndex % theme.branchColors.length] ?? theme.branchColors[0];
+            return (
+              <path
+                key={`summary-brace-${s.id}`}
+                d={s.bracePath}
+                fill="none"
+                stroke={selected ? ACCENT_COLOR : color}
+                strokeWidth={selected ? 2.2 : 1.8}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity={selected ? 1 : theme.edgeOpacity}
+              />
+            );
+          })}
         </svg>
+
+        {/* 外框标题与概要文字（节点卡片之下，避免遮挡节点） */}
+        {structures.boundaries.map((b) => {
+          if (!b.titleBox) return null;
+          const ref: MindStructureRef = { kind: 'boundary', ownerId: b.ownerId, id: b.id };
+          if (isSameStructure(editingStructure?.ref ?? null, ref)) return null;
+          const selected = isSameStructure(selectedStructure, ref);
+          const color = theme.branchColors[b.branchIndex % theme.branchColors.length] ?? theme.branchColors[0];
+          return (
+            <div
+              key={`boundary-title-${b.id}`}
+              data-mindmap-structure
+              className="nb-mindmap-structure-tag"
+              data-selected={selected}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                selectStructure(ref);
+              }}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                beginEditStructure(ref);
+              }}
+              style={{
+                position: 'absolute',
+                left: b.titleBox.x,
+                top: b.titleBox.y,
+                width: b.titleBox.width,
+                height: b.titleBox.height,
+                lineHeight: `${BOUNDARY_TITLE_HEIGHT}px`,
+                fontSize: BOUNDARY_TITLE_FONT_SIZE,
+                fontWeight: 500,
+                padding: '0 7px',
+                boxSizing: 'border-box',
+                borderRadius: BOUNDARY_TITLE_HEIGHT / 2,
+                background: selected ? ACCENT_COLOR : color,
+                color: '#ffffff',
+                whiteSpace: 'pre',
+                overflow: 'hidden',
+                cursor: 'pointer',
+              }}
+            >
+              {b.titleText}
+            </div>
+          );
+        })}
+        {structures.summaries.map((s) => {
+          const ref: MindStructureRef = { kind: 'summary', ownerId: s.ownerId, id: s.id };
+          if (isSameStructure(editingStructure?.ref ?? null, ref)) return null;
+          const selected = isSameStructure(selectedStructure, ref);
+          const color = theme.branchColors[s.branchIndex % theme.branchColors.length] ?? theme.branchColors[0];
+          return (
+            <div
+              key={`summary-label-${s.id}`}
+              data-mindmap-structure
+              className="nb-mindmap-summary-label"
+              data-selected={selected}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                selectStructure(ref);
+              }}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                beginEditStructure(ref);
+              }}
+              style={{
+                position: 'absolute',
+                left: s.label.x,
+                top: s.label.y,
+                width: s.label.width,
+                height: s.label.height,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center',
+                fontSize: SUMMARY_FONT_SIZE,
+                fontWeight: 500,
+                lineHeight: `${SUMMARY_LINE_HEIGHT}px`,
+                boxSizing: 'border-box',
+                border: `1.5px solid ${selected ? ACCENT_COLOR : color}`,
+                borderRadius: 8,
+                background: theme.nodeTint
+                  ? `color-mix(in srgb, ${color} ${theme.nodeTint}%, var(--editor-surface, #ffffff))`
+                  : 'var(--editor-surface, #ffffff)',
+                color: 'var(--editor-text, #1e293b)',
+                boxShadow: selected ? `0 0 0 2px ${ACCENT_COLOR}` : '0 2px 6px rgba(0, 0, 0, 0.05)',
+                cursor: 'pointer',
+              }}
+            >
+              {s.lines.map((line, idx) => (
+                <div key={idx} className="nb-mindmap-title-line" style={{ height: SUMMARY_LINE_HEIGHT, opacity: s.text ? 1 : 0.5 }}>
+                  {line}
+                </div>
+              ))}
+            </div>
+          );
+        })}
 
         {/* 拖拽重排序落位高亮指示线 (Drop Indicator Line - 前置 before / 后置 after)：
             同级纵向排列时为横线，横向排列（组织图 / 时间轴 / 鱼骨图）时为竖线 */}
@@ -1598,6 +2055,11 @@ export function MindmapRenderer({
               onClick={(e) => {
                 e.stopPropagation();
                 if (isDraggingNode) return;
+                // 连接模式：点击的节点即联系线终点
+                if (connectFrom) {
+                  finishConnect(n.node.id);
+                  return;
+                }
                 // Ctrl / Cmd + 单击：加入或移出多选
                 if (isMultiSelectModifier(e)) toggleMultiSelect(n.node.id);
                 else setSelectedNodeId(n.node.id);
@@ -1649,7 +2111,7 @@ export function MindmapRenderer({
                       ? theme.rootShadow
                       : '0 2px 6px rgba(0, 0, 0, 0.05)',
                 padding: `${textStyle.paddingY}px ${textStyle.paddingX}px`,
-                cursor: isEditing ? 'text' : isDraggingNode ? 'grabbing' : isRoot ? 'default' : 'grab',
+                cursor: connectFrom ? 'crosshair' : isEditing ? 'text' : isDraggingNode ? 'grabbing' : isRoot ? 'default' : 'grab',
                 opacity: isSourceOrDescendant ? 0.35 : 1,
                 transform: isSourceOrDescendant ? 'scale(0.97)' : isDropTargetInside ? 'scale(1.02)' : 'none',
                 boxSizing: 'border-box',
@@ -1999,6 +2461,55 @@ export function MindmapRenderer({
                   </button>
                 </Tooltip>
 
+                {/* 概要与外框：作用于选中节点（多选时覆盖首尾之间的同级节点） */}
+                {!isRoot && (
+                  <>
+                    <Tooltip content="添加概要" side="top" sideOffset={4}>
+                      <button
+                        type="button"
+                        className="nb-mindmap-toolbar-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          addRangeStructure('summary', getActionTargetIds(n.node.id));
+                        }}
+                        aria-label="添加概要"
+                      >
+                        <Braces size={12} />
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="添加外框" side="top" sideOffset={4}>
+                      <button
+                        type="button"
+                        className="nb-mindmap-toolbar-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          addRangeStructure('boundary', getActionTargetIds(n.node.id));
+                        }}
+                        aria-label="添加外框"
+                      >
+                        <SquareDashed size={12} />
+                      </button>
+                    </Tooltip>
+                  </>
+                )}
+
+                {/* 联系线：点击后再点目标节点 */}
+                {!isMultiSelecting && (
+                  <Tooltip content="添加联系线" side="top" sideOffset={4}>
+                    <button
+                      type="button"
+                      className="nb-mindmap-toolbar-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startConnect(n.node.id);
+                      }}
+                      aria-label="添加联系线"
+                    >
+                      <Spline size={12} />
+                    </button>
+                  </Tooltip>
+                )}
+
                 {/* 添加子分支 */}
                 {!isMultiSelecting && (
                   <Tooltip content="添加子分支" side="top" sideOffset={4}>
@@ -2143,7 +2654,241 @@ export function MindmapRenderer({
             </div>
           );
         })}
+
+        {/* 联系线图层：位于节点之上；只有线条本身可点选 */}
+        <svg
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            width: 8000,
+            height: 8000,
+            pointerEvents: 'none',
+            overflow: 'visible',
+          }}
+        >
+          {structures.relations.map((r) => {
+            const ref: MindStructureRef = { kind: 'relation', ownerId: r.ownerId, id: r.id };
+            const selected = isSameStructure(selectedStructure, ref);
+            const color = selected ? ACCENT_COLOR : RELATION_COLOR;
+            return (
+              <g key={`relation-${r.id}`} className="nb-mindmap-relation" data-selected={selected}>
+                <path
+                  className="nb-mindmap-relation-line"
+                  d={r.path}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth={selected ? 2.2 : 1.6}
+                  strokeDasharray="6 4"
+                  strokeLinecap="round"
+                />
+                <path d={r.arrowPath} fill={color} stroke={color} strokeWidth={1} strokeLinejoin="round" />
+                <path
+                  data-mindmap-structure
+                  d={r.path}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth={14}
+                  style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    selectStructure(ref);
+                  }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    beginEditStructure(ref);
+                  }}
+                />
+              </g>
+            );
+          })}
+          {/* 连接模式预览线：从起点节点中心指向指针 */}
+          {connectFrom && connectPointer && (() => {
+            const source = nodes.find((n) => n.node.id === connectFrom);
+            if (!source) return null;
+            return (
+              <line
+                x1={source.x + source.width / 2}
+                y1={source.y + source.height / 2}
+                x2={connectPointer.x}
+                y2={connectPointer.y}
+                stroke={ACCENT_COLOR}
+                strokeWidth={1.8}
+                strokeDasharray="6 4"
+                strokeLinecap="round"
+              />
+            );
+          })()}
+        </svg>
+
+        {/* 联系线说明文字 */}
+        {structures.relations.map((r) => {
+          if (!r.labelBox) return null;
+          const ref: MindStructureRef = { kind: 'relation', ownerId: r.ownerId, id: r.id };
+          if (isSameStructure(editingStructure?.ref ?? null, ref)) return null;
+          const selected = isSameStructure(selectedStructure, ref);
+          return (
+            <div
+              key={`relation-label-${r.id}`}
+              data-mindmap-structure
+              className="nb-mindmap-structure-tag"
+              data-selected={selected}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                selectStructure(ref);
+              }}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                beginEditStructure(ref);
+              }}
+              style={{
+                position: 'absolute',
+                left: r.labelBox.x,
+                top: r.labelBox.y,
+                width: r.labelBox.width,
+                height: r.labelBox.height,
+                padding: '2px 6px',
+                boxSizing: 'border-box',
+                fontSize: RELATION_FONT_SIZE,
+                lineHeight: `${RELATION_LINE_HEIGHT}px`,
+                textAlign: 'center',
+                borderRadius: 4,
+                background: 'var(--editor-bg, #ffffff)',
+                color: selected ? ACCENT_COLOR : 'var(--editor-text-secondary, #64748b)',
+                cursor: 'pointer',
+              }}
+            >
+              {r.lines.map((line, idx) => (
+                <div key={idx} className="nb-mindmap-title-line" style={{ height: RELATION_LINE_HEIGHT }}>
+                  {line}
+                </div>
+              ))}
+            </div>
+          );
+        })}
+
+        {/* 选中联系线：中点弯曲手柄 */}
+        {selectedStructure?.kind === 'relation' && !editingStructure && (() => {
+          const r = structures.relations.find((item) => item.id === selectedStructure.id && item.ownerId === selectedStructure.ownerId);
+          if (!r) return null;
+          // 有说明文字时手柄挪到文字上方，避免挡住文字
+          const handleY = r.labelBox ? r.labelBox.y - 10 : r.mid.y;
+          return (
+            <Tooltip content="拖动调整弯曲，双击恢复" side="bottom" sideOffset={6} disabled={Boolean(bendPreview)}>
+              <div
+                data-mindmap-structure
+                className="nb-mindmap-bend-handle"
+                onPointerDown={(e) => handleBendPointerDown(e, r)}
+                onPointerMove={handleBendPointerMove}
+                onPointerUp={handleBendPointerUp}
+                onPointerCancel={handleBendPointerUp}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  resetRelationBend(selectedStructure);
+                }}
+                style={{ left: r.mid.x - 6, top: handleY - 6 }}
+              />
+            </Tooltip>
+          );
+        })()}
+
+        {/* 选中结构元素的快捷工具栏：编辑文字 / 删除 */}
+        {selectedStructure && !editingStructure && (() => {
+          const anchor = getStructureAnchor(selectedStructure);
+          if (!anchor) return null;
+          const editLabel = selectedStructure.kind === 'summary' ? '编辑概要' : selectedStructure.kind === 'boundary' ? '编辑外框标题' : '编辑联系线文字';
+          return (
+            <div
+              data-mindmap-structure
+              className="nb-mindmap-node-toolbar"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: 'absolute',
+                left: anchor.x,
+                top: anchor.y,
+                transform: 'translate(-50%, calc(-100% - 8px))',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 3,
+                padding: '2px 5px',
+                background: 'var(--editor-surface, #ffffff)',
+                border: '1px solid var(--editor-border, #cbd5e1)',
+                borderRadius: 6,
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.12)',
+                zIndex: 20,
+              }}
+            >
+              <Tooltip content={editLabel} shortcut="Enter" side="top" sideOffset={4}>
+                <button
+                  type="button"
+                  className="nb-mindmap-toolbar-btn"
+                  onClick={() => beginEditStructure(selectedStructure)}
+                  aria-label={editLabel}
+                >
+                  <Pencil size={12} />
+                </button>
+              </Tooltip>
+              <Tooltip content="删除" shortcut={USES_COMMAND_KEY ? 'Backspace' : 'Delete'} side="top" sideOffset={4}>
+                <button
+                  type="button"
+                  className="nb-mindmap-toolbar-btn is-danger"
+                  onClick={() => deleteStructure(selectedStructure)}
+                  aria-label="删除"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </Tooltip>
+            </div>
+          );
+        })()}
+
+        {/* 结构元素文字就地编辑 */}
+        {editingStructure && (() => {
+          const box = getStructureEditBox(editingStructure.ref);
+          if (!box) return null;
+          const placeholder = editingStructure.ref.kind === 'summary' ? '输入概要' : editingStructure.ref.kind === 'boundary' ? '外框标题（可留空）' : '联系线文字（可留空）';
+          return (
+            <input
+              data-mindmap-structure
+              autoFocus
+              className="nb-mindmap-structure-input"
+              value={editingStructure.text}
+              placeholder={placeholder}
+              onFocus={(e) => e.currentTarget.select()}
+              onChange={(e) => setEditingStructure({ ref: editingStructure.ref, text: e.target.value })}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  commitStructureEdit();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setEditingStructure(null);
+                }
+              }}
+              onBlur={commitStructureEdit}
+              onMouseDown={(e) => e.stopPropagation()}
+              style={{ left: box.x, top: box.y, width: box.width }}
+            />
+          );
+        })()}
       </div>
+
+      {/* 联系线连接模式提示 */}
+      {connectFrom && (
+        <div className="nb-mindmap-connect-hint" onMouseDown={(e) => e.stopPropagation()}>
+          <Spline size={13} />
+          <span>点击目标节点创建联系线</span>
+          <button type="button" className="nb-mindmap-connect-cancel" onClick={cancelConnect}>
+            取消
+          </button>
+        </div>
+      )}
 
       {/* 内容全部移出视野时的回位按钮（底部居中） */}
       {contentOffscreen && (
