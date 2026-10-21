@@ -2,6 +2,7 @@
 import * as fs from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root=fileURLToPath(new URL('./dist/',import.meta.url));
@@ -20,8 +21,27 @@ for(const entry of catalog.plugins){
     if(createHash('sha256').update(data).digest('hex')!==entry.sha256)throw new Error(`${name} 已发布且内容不同，请先提高该插件版本号`);
   }else uploads.push(file);
 }
-if(!exists)gh(['release','create','plugins','--repo',repo,'--title','NoteBoard 官方插件','--notes','独立版本的 NoteBoard 官方插件：文档查看、电子书阅读与多维表格工作台。','--latest=false']);
+// 说明按本次目录重新生成，每次发布都覆盖，保证表格中的版本号与实际可下载版本一致。
+const cell=(text)=>String(text??'').replaceAll('|','\\|').replaceAll('\n',' ');
+// 取所有插件中最高的最低应用版本，提示用户需先升级到该版本。
+const minApp=catalog.plugins.map((p)=>p.minAppVersion).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true})).at(-1);
+const notes=[
+  '适用于 NoteBoard 的独立版本官方插件。在软件「设置 → 插件」中下载，安装后勾选启用即可使用；后续可在同一页面检查更新。',
+  '',
+  '| 插件 | 当前版本 | 功能 | 本版更新 |',
+  '| --- | --- | --- | --- |',
+  ...catalog.plugins.map((p)=>`| ${cell(p.name)} | ${cell(p.version)} | ${cell(p.description)} | ${cell(p.changelog)} |`),
+  '',
+  `插件按需加载，更新后自动清理旧版程序并保留用户数据；需 NoteBoard ${minApp} 及以上版本。页面中较早版本的插件包仅为兼容保留，请以上表版本为准。`,
+  '',
+  `推荐字体同样在插件页下载，来自[官方字体包](https://github.com/${repo}/releases/tag/fonts-v1.0.0)。插件与第三方组件的完整许可证随包附带，[源码与锁定依赖](https://github.com/${repo}/tree/main/plugins)在本仓库维护。`,
+  '',
+].join('\n');
+const notesFile=path.join(await fs.mkdtemp(path.join(os.tmpdir(),'nb-plugins-')),'notes.md');
+await fs.writeFile(notesFile,notes);
+if(!exists)gh(['release','create','plugins','--repo',repo,'--title','NoteBoard 官方插件','--notes-file',notesFile,'--latest=false']);
 for(const file of uploads)gh(['release','upload','plugins',file,'--repo',repo]);
 // 旧目录供已发布的旧版本使用，新目录包含全部插件；两者都在插件包上传完成后才覆盖。
 gh(['release','upload','plugins',path.join(root,'catalog.json'),path.join(root,'catalog-v2.json'),'--repo',repo,'--clobber']);
+gh(['release','edit','plugins','--repo',repo,'--notes-file',notesFile]);
 process.stdout.write('官方插件目录发布完成\n');
