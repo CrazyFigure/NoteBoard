@@ -47,6 +47,8 @@ export const DEFAULT_SETTINGS: Settings = {
     monoLineHeight: 1.5,
     contentWidth: 'wide',
     monoContentWidth: 'full',
+    monoPaddingY: 16,
+    monoPaddingX: 24,
     explorerFontFamily: '',
     explorerFontFamilyZh: '',
     explorerFontSize: 13,

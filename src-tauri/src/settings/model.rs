@@ -106,6 +106,12 @@ pub struct TypographySettings {
     // 代码与纯文本编辑区宽度（默认全宽 full）
     #[serde(default = "default_mono_content_width")]
     pub mono_content_width: String,
+    // 代码与纯文本编辑区上下内边距 (px)
+    #[serde(default = "default_mono_padding_y")]
+    pub mono_padding_y: u32,
+    // 代码与纯文本编辑区左右内边距 (px)
+    #[serde(default = "default_mono_padding_x")]
+    pub mono_padding_x: u32,
     // 文件树西文字体（留空跟随系统）
     #[serde(default)]
     pub explorer_font_family: String,
@@ -145,6 +151,8 @@ impl Default for TypographySettings {
             mono_line_height: 1.5,
             content_width: "wide".to_string(),
             mono_content_width: "full".to_string(),
+            mono_padding_y: default_mono_padding_y(),
+            mono_padding_x: default_mono_padding_x(),
             explorer_font_family: String::new(),
             explorer_font_family_zh: String::new(),
             explorer_font_size: 13,
@@ -340,6 +348,9 @@ fn default_ui_font_size() -> u32 { 13 }
 fn default_content_width() -> String { "wide".to_string() }
 // 默认代码与纯文本内容宽度：full (100%)
 fn default_mono_content_width() -> String { "full".to_string() }
+// 默认代码与纯文本编辑区内边距 (px)
+fn default_mono_padding_y() -> u32 { 16 }
+fn default_mono_padding_x() -> u32 { 24 }
 fn default_view_mode() -> String { "visual".to_string() }
 fn default_markdown_normalization() -> String { "ask".to_string() }
 fn default_true() -> bool { true }

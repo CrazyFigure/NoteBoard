@@ -132,7 +132,8 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
         caretColor: 'var(--cm-cursor)',
       },
       '.cm-content': {
-        padding: '16px 24px',
+        // 内边距由设置「代码编辑区边距」驱动
+        padding: 'var(--mono-padding-y, 16px) var(--mono-padding-x, 24px)',
         caretColor: 'var(--cm-cursor)',
       },
     });
@@ -146,6 +147,8 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
     typography.monoFontFamilyZh,
     typography.monoFontSize,
     typography.monoLineHeight,
+    typography.monoPaddingY,
+    typography.monoPaddingX,
   ]);
 
   useEffect(() => {
@@ -312,7 +315,8 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
       },
       '.cm-content': {
         // 移除 margin: 0 auto 与 maxWidth，避免破坏 CodeMirror 虚拟选区坐标
-        padding: '16px 24px',
+        // 内边距由设置「代码编辑区边距」驱动
+        padding: 'var(--mono-padding-y, 16px) var(--mono-padding-x, 24px)',
         caretColor: 'var(--cm-cursor)',
       },
     });

@@ -119,8 +119,8 @@ function createSourceTypographyTheme() {
       fontSize: 'var(--mono-font-size)',
     },
     '.cm-content': {
-      // 行号槽已有右边线分隔，左内边距收窄，避免正文被挤得过窄
-      padding: '16px 24px 16px 12px',
+      // 行号槽已有右边线分隔，左内边距取设置值的一半，避免正文被挤得过窄
+      padding: 'var(--mono-padding-y, 16px) var(--mono-padding-x, 24px) var(--mono-padding-y, 16px) calc(var(--mono-padding-x, 24px) / 2)',
     },
   });
 }
@@ -238,6 +238,8 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     typography.monoFontFamilyZh,
     typography.monoFontSize,
     typography.monoLineHeight,
+    typography.monoPaddingY,
+    typography.monoPaddingX,
   ]);
 
   // 🔴 S08：TipTap 内核移入 VisualKernel；本组件经 onReady 回调持有实例

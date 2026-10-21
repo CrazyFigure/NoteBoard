@@ -666,6 +666,37 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </div>
                   </div>
 
+                  {/* 代码 / 纯文本 / MD 源码编辑区边距：文本与顶部、行号槽、右侧之间的留白 */}
+                  <div style={formRowStyle}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      <div style={formRowStyle}>
+                        <label style={labelStyle}>编辑区上下边距 ({settings.typography.monoPaddingY ?? 16}px)</label>
+                        <SettingsRange
+                          min="0"
+                          max="48"
+                          step="2"
+                          value={settings.typography.monoPaddingY ?? 16}
+                          onChange={(e) => setTypography({ monoPaddingY: parseInt(e.target.value, 10) })}
+                          style={{ width: '100%' }}
+                        />
+                      </div>
+                      <div style={formRowStyle}>
+                        <label style={labelStyle}>编辑区左右边距 ({settings.typography.monoPaddingX ?? 24}px)</label>
+                        <SettingsRange
+                          min="0"
+                          max="48"
+                          step="2"
+                          value={settings.typography.monoPaddingX ?? 24}
+                          onChange={(e) => setTypography({ monoPaddingX: parseInt(e.target.value, 10) })}
+                          style={{ width: '100%' }}
+                        />
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>
+                      同时作用于 MD 源码模式（行号侧取一半）
+                    </span>
+                  </div>
+
                   {/* 代码与纯文本编辑区最大宽度 */}
                   <div style={formRowStyle}>
                     <label style={labelStyle}>代码 / 纯文本 / MD 源码编辑区最大宽度 (默认全宽 100%)</label>

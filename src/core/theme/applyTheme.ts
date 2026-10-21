@@ -190,6 +190,8 @@ const DEFAULT_TYPOGRAPHY: TypographySettings = {
   monoLineHeight: 1.5,
   contentWidth: 'wide',
   monoContentWidth: 'full',
+  monoPaddingY: 16,
+  monoPaddingX: 24,
   explorerFontFamily: '',
   explorerFontFamilyZh: '',
   explorerFontSize: 13,
@@ -232,6 +234,9 @@ export function applyTypography(t: Partial<TypographySettings>): void {
   root.style.setProperty('--mono-line-height', `${merged.monoLineHeight ?? 1.5}`);
   // 代码与纯文本编辑区域最大宽度（默认 full 全宽 100%）
   root.style.setProperty('--mono-max-width', resolveContentWidth(merged.monoContentWidth ?? 'full'));
+  // 代码与纯文本编辑区内边距（文本与顶部、行号槽、右侧之间的留白）
+  root.style.setProperty('--mono-padding-y', `${merged.monoPaddingY ?? 16}px`);
+  root.style.setProperty('--mono-padding-x', `${merged.monoPaddingX ?? 24}px`);
 
   // 3. 文件树排版（资源管理器）
   const explorerFontFamilyCss = formatFontFamily(

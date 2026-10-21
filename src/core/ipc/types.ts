@@ -271,6 +271,10 @@ export interface TypographySettings {
   contentWidth: ContentWidth;
   // 代码 / 纯文本 / Markdown 源码编辑区最大宽度（预设 full/wide 等或百分比，默认 full）
   monoContentWidth?: ContentWidth;
+  // 代码 / 纯文本 / Markdown 源码编辑区上下内边距 (px，缺省 16)
+  monoPaddingY?: number;
+  // 代码 / 纯文本 / Markdown 源码编辑区左右内边距 (px，缺省 24；源码模式左侧取一半)
+  monoPaddingX?: number;
   // 文件树西文字体（留空跟随系统）
   explorerFontFamily?: string;
   // 文件树中文字体（留空跟随系统）

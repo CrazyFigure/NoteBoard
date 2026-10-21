@@ -154,6 +154,8 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   --mono-line-height: 1.5;
   --content-max-width: 92%;
   --mono-max-width: 100%;
+  --mono-padding-y: 16px;
+  --mono-padding-x: 24px;
   --explorer-font-family: var(--ui-font-family);
   --explorer-font-size: 13px;
   --explorer-item-height: 24px;
