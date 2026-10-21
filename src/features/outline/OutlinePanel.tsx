@@ -156,44 +156,6 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
     [editor, editValue],
   );
 
-  // 滚动联动：编辑区滚动 → 大纲当前项跟随
-  useEffect(() => {
-    if (!editor) return;
-
-    const scrollContainer = editor.view.dom.parentElement;
-    if (!scrollContainer) return;
-
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const handleScroll = () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        // 取 offsetTop <= scrollTop + 40 的最后一个
-        const scrollTop = scrollContainer.scrollTop;
-        let lastVisible: HeadingItem | null = null;
-
-        for (const h of headings) {
-          const dom = editor.view.nodeDOM(h.pos);
-          if (dom instanceof HTMLElement) {
-            if (dom.offsetTop <= scrollTop + 40) {
-              lastVisible = h;
-            }
-          }
-        }
-
-        if (lastVisible) {
-          setActiveId(lastVisible.id);
-        }
-      }, 50);
-    };
-
-    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
-    return () => {
-      scrollContainer.removeEventListener('scroll', handleScroll);
-      if (debounceTimer) clearTimeout(debounceTimer);
-    };
-  }, [editor, headings, setActiveId]);
-
   // 大纲面板自身跟随当前项滚动
   useEffect(() => {
     if (!activeId || !scrollContainerRef.current) return;

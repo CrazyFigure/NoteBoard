@@ -7,6 +7,8 @@
 // 2. 提取 level, text, pos
 // 3. 当前项高亮：pos <= cursorPos 的最后一个
 // 4. selectionUpdate + debounce 100ms
+// 5. 编辑区滚动 + debounce 50ms：光标仍在可视区内时跟随光标，
+//    光标已滚出可视区时改为跟随可视区最上方所在的章节
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Editor } from '@tiptap/core';
@@ -18,6 +20,69 @@ export interface HeadingItem {
   level: number;
   text: string;
   pos: number;
+}
+
+/** 视口顶部判定阈值：标题顶部进入可视区顶端该距离内，即视为当前阅读章节 */
+const VIEWPORT_TOP_THRESHOLD = 40;
+
+/**
+ * 查找可视化编辑区的滚动容器。
+ * contenteditable 与 EditorContent 包裹层都不自身滚动，真正滚动的是外层 scroller。
+ */
+function findEditorScroller(dom: HTMLElement): HTMLElement | null {
+  const scroller = dom.closest<HTMLElement>('.nb-md-visual-scroller');
+  if (scroller) return scroller;
+  for (let node = dom.parentElement; node; node = node.parentElement) {
+    const { overflowY } = getComputedStyle(node);
+    if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') return node;
+  }
+  return null;
+}
+
+/** 取 pos <= targetPos 的最后一个标题 */
+function findHeadingBeforePos(headings: readonly HeadingItem[], targetPos: number): HeadingItem | null {
+  let active: HeadingItem | null = null;
+  for (const h of headings) {
+    if (h.pos <= targetPos) {
+      active = h;
+    } else {
+      break;
+    }
+  }
+  return active;
+}
+
+/** 判断文档位置所在行是否与滚动容器可视区相交 */
+function isPosInViewport(editor: Editor, pos: number, viewport: DOMRect): boolean {
+  try {
+    const coords = editor.view.coordsAtPos(pos);
+    return coords.bottom > viewport.top && coords.top < viewport.bottom;
+  } catch {
+    return false;
+  }
+}
+
+/** 取顶部已进入可视区顶端阈值内的最后一个标题，即可视区最上方所在章节 */
+function findHeadingAtViewportTop(
+  editor: Editor,
+  headings: readonly HeadingItem[],
+  viewport: DOMRect,
+): HeadingItem | null {
+  const topLine = viewport.top + VIEWPORT_TOP_THRESHOLD;
+  let active: HeadingItem | null = null;
+  for (const h of headings) {
+    const dom = editor.view.nodeDOM(h.pos);
+    if (!(dom instanceof HTMLElement)) continue;
+    const rect = dom.getBoundingClientRect();
+    // 未渲染（display: none）的标题矩形全为 0，不能参与位置判定
+    if (rect.width === 0 && rect.height === 0) continue;
+    if (rect.top <= topLine) {
+      active = h;
+    } else {
+      break;
+    }
+  }
+  return active;
 }
 
 /** 标题内容与位置完全一致时复用旧数组，避免无变化事务造成无效大纲渲染。 */
@@ -40,6 +105,7 @@ export function useHeadings(editor: Editor | null) {
   const [headings, setHeadings] = useState<HeadingItem[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 选区监听始终读取最新标题，但监听 Effect 不依赖标题数组，切断
   // “Effect 提取新数组 → setState → Effect 重跑”的 React #185 更新闭环。
   const headingsRef = useRef<HeadingItem[]>([]);
@@ -84,22 +150,22 @@ export function useHeadings(editor: Editor | null) {
   }, [editor, extractHeadings]);
 
   // 计算当前活动标题
-  const updateActiveHeading = useCallback(() => {
+  // scroller 为空表示由选区变化驱动：用户主动移动了光标，直接跟随光标；
+  // 否则由滚动驱动：光标仍在可视区内跟随光标，已滚出则跟随可视区最上方章节
+  const updateActiveHeading = useCallback((scroller: HTMLElement | null = null) => {
     const currentHeadings = headingsRef.current;
-    if (!editor || currentHeadings.length === 0) {
+    if (!editor || editor.isDestroyed || currentHeadings.length === 0) {
       setActiveId(null);
       return;
     }
 
     const cursorPos = editor.state.selection.from;
-    let active: HeadingItem | null = null;
+    let active = findHeadingBeforePos(currentHeadings, cursorPos);
 
-    for (const h of currentHeadings) {
-      if (h.pos <= cursorPos) {
-        active = h;
-      } else {
-        break;
-      }
+    const viewport = scroller?.getBoundingClientRect();
+    // 编辑区隐藏（如切到源码模式）时尺寸为 0，无法判定可视区，保持光标跟随
+    if (viewport && viewport.height > 0 && !isPosInViewport(editor, cursorPos, viewport)) {
+      active = findHeadingAtViewportTop(editor, currentHeadings, viewport);
     }
 
     setActiveId(active?.id ?? null);
@@ -126,7 +192,7 @@ export function useHeadings(editor: Editor | null) {
 
     // selectionUpdate → debounce 100ms 更新当前项
     const handleSelectionUpdate = ({ transaction }: { transaction: Transaction }) => {
-      // Ctrl+F 只负责正文查找；搜索产生的程序化选区不得驱动右侧大纲滚动。
+      // 搜索产生的程序化选区本身不驱动大纲；只有搜索把页面滚走时，才由滚动联动按可视区跟随。
       if (transaction.getMeta(EDITOR_SEARCH_NAVIGATION_META)) return;
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
@@ -134,13 +200,31 @@ export function useHeadings(editor: Editor | null) {
       }, 100);
     };
 
+    // 编辑区滚动 → debounce 50ms 按可视区重新判定当前项
+    let scroller: HTMLElement | null = null;
+    try {
+      scroller = findEditorScroller(editor.view.dom);
+    } catch {
+      // 视图尚未挂载时无法取得 DOM，仅保留光标跟随
+      scroller = null;
+    }
+    const handleScroll = () => {
+      if (scrollDebounceRef.current) clearTimeout(scrollDebounceRef.current);
+      scrollDebounceRef.current = setTimeout(() => {
+        updateActiveHeading(scroller);
+      }, 50);
+    };
+
     editor.on('update', handleUpdate);
     editor.on('selectionUpdate', handleSelectionUpdate);
+    scroller?.addEventListener('scroll', handleScroll, { passive: true });
 
     return () => {
       editor.off('update', handleUpdate);
       editor.off('selectionUpdate', handleSelectionUpdate);
+      scroller?.removeEventListener('scroll', handleScroll);
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (scrollDebounceRef.current) clearTimeout(scrollDebounceRef.current);
     };
   }, [editor, updateHeadings, updateActiveHeading]);
 

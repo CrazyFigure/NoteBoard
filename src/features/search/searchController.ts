@@ -152,7 +152,7 @@ function scrollTipTapPositionToCenter(editor: Editor, pos: number): void {
 
 /**
  * 在 TipTap 正文内选择并滚动到搜索结果。
- * 事务携带搜索来源标记，右侧大纲据此忽略联动，不把 Ctrl+F 误表现为目录跳转。
+ * 事务携带搜索来源标记，右侧大纲据此忽略选区联动，仅在页面滚动后按可视区跟随。
  */
 function navigateTipTapSearchResult(editor: Editor, from: number, to = from): void {
   const maxPosition = editor.state.doc.content.size;
