@@ -47,8 +47,9 @@ jobs:
             exit 0
           fi
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # 统计快照统一归属仓库所有者，使用账号隐私邮箱关联 GitHub 身份。
+          git config user.name "CrazyFigure"
+          git config user.email "102232448+CrazyFigure@users.noreply.github.com"
           git add assets/star-history.json assets/star-history.svg
           git commit -m "docs: update star history"
           git push
