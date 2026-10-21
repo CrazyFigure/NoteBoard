@@ -33,6 +33,7 @@ import { bumpDocumentRevision, getDocumentRevision } from '../../core/editor/edi
 import { autoSaveDocument } from './markdownAutoSave';
 import { registerHistoryMaterializeHook } from '../history/documentHistory';
 import { saveViewState } from '../session/editorSuspension';
+import { findVisualScrollContainer } from './visualScroller';
 
 interface VisualKernelProps {
   docKey: string;
@@ -229,7 +230,7 @@ export function VisualKernel({
     // 编辑器创建与 React 视图挂载存在短暂时间差，视图尚未就绪时等待后续挂载，不能读取空 DOM。
     const editorView = editor.view;
     if (!editorView?.dom) return;
-    const scrollContainer = editorView.dom.parentElement as HTMLElement | null;
+    const scrollContainer = findVisualScrollContainer(editorView.dom);
     if (!scrollContainer) return;
 
     const saveRecoveryCheckpoint = () => {

@@ -40,6 +40,7 @@ import { getSessionGeneration } from '../../features/session/documentSession';
 // 🔴 J2：visual 模式先物化暂存快照（输入热路径只暂存不可变引用，flush 时序列化）
 import { submitCapturedContent } from '../session/documentSession';
 import { flushPendingVisualSnapshot, flushPendingSourceSnapshot, hasPendingSnapshot } from './visualSnapshot';
+import { findVisualScrollContainer } from './visualScroller';
 
 /** 读取文档当前视图模式（无 tab 信息时默认 visual） */
 function currentMode(docKey: string): 'visual' | 'source' {
@@ -164,8 +165,8 @@ export function createMarkdownEditorCapabilities(
       return {
         kind: 'markdown' as const,
         selection: { anchor: editor.state.selection.anchor, head: editor.state.selection.head },
-        // TipTap 的 contenteditable 不自身滚动，滚动发生在 EditorContent 容器
-        scrollTop: (editor.view.dom.parentElement as HTMLElement | null)?.scrollTop ?? 0,
+        // TipTap 的 contenteditable 与 EditorContent 包裹层都不自身滚动，滚动发生在外层 scroller
+        scrollTop: findVisualScrollContainer(editor.view.dom)?.scrollTop ?? 0,
         mode: 'visual' as const,
       };
     },

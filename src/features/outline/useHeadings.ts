@@ -14,6 +14,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Editor } from '@tiptap/core';
 import type { Transaction } from '@tiptap/pm/state';
 import { EDITOR_SEARCH_NAVIGATION_META } from '../../core/editor/searchNavigation';
+import { findVisualScrollContainer } from '../editor-md/visualScroller';
 
 export interface HeadingItem {
   id: string;
@@ -24,20 +25,6 @@ export interface HeadingItem {
 
 /** 视口顶部判定阈值：标题顶部进入可视区顶端该距离内，即视为当前阅读章节 */
 const VIEWPORT_TOP_THRESHOLD = 40;
-
-/**
- * 查找可视化编辑区的滚动容器。
- * contenteditable 与 EditorContent 包裹层都不自身滚动，真正滚动的是外层 scroller。
- */
-function findEditorScroller(dom: HTMLElement): HTMLElement | null {
-  const scroller = dom.closest<HTMLElement>('.nb-md-visual-scroller');
-  if (scroller) return scroller;
-  for (let node = dom.parentElement; node; node = node.parentElement) {
-    const { overflowY } = getComputedStyle(node);
-    if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') return node;
-  }
-  return null;
-}
 
 /** 取 pos <= targetPos 的最后一个标题 */
 function findHeadingBeforePos(headings: readonly HeadingItem[], targetPos: number): HeadingItem | null {
@@ -203,7 +190,7 @@ export function useHeadings(editor: Editor | null) {
     // 编辑区滚动 → debounce 50ms 按可视区重新判定当前项
     let scroller: HTMLElement | null = null;
     try {
-      scroller = findEditorScroller(editor.view.dom);
+      scroller = findVisualScrollContainer(editor.view.dom);
     } catch {
       // 视图尚未挂载时无法取得 DOM，仅保留光标跟随
       scroller = null;

@@ -85,6 +85,7 @@ import { createMarkdownEditorCapabilities } from './editorCapabilities';
 import { takeViewState } from '../session/editorSuspension';
 // 🔴 N10.2：实例就绪终点标记（requestId 与打开请求对齐）
 import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
+import { findVisualScrollContainer } from './visualScroller';
 
 /** 回收恢复的 Markdown 视图状态形态（captureViewState 捕获） */
 type RestoredMarkdownViewState = {
@@ -206,8 +207,8 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       .setTextSelection({ from: clampedAnchor, to: clampedHead })
       .scrollIntoView()
       .run();
-    // TipTap 的 contenteditable 不自身滚动，滚动发生在 EditorContent 容器
-    const container = editor.view.dom.parentElement as HTMLElement | null;
+    // TipTap 的 contenteditable 与 EditorContent 包裹层都不自身滚动，滚动发生在外层 scroller
+    const container = findVisualScrollContainer(editor.view.dom);
     if (container) container.scrollTop = scrollTop;
   }, [docKey]);
 
