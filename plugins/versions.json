@@ -3,7 +3,7 @@
   {"id":"excel","name":"Excel 查看","description":"XLS / XLSX 只读表格","version":"1.1.0","changelog":"可调整行高列宽，冻结表头，编辑栏显示完整内容，拖选自动滚动。"},
   {"id":"powerpoint","name":"PowerPoint 查看","description":"PPT / PPTX 幻灯片阅读","version":"1.1.0","changelog":"幻灯片缩略图、键盘翻页与滚轮缩放。"},
   {"id":"pdf","name":"PDF 查看","description":"PDF 分页阅读","version":"1.1.0","changelog":"页码直接输入，独立翻页按钮，Ctrl/⌘ + 滚轮按指针位置缩放。"},
-  {"id":"cad","name":"CAD 查看","description":"DWG / DXF 本地图纸阅读","version":"1.1.0","changelog":"修复 UTF-8 中文 DXF 乱码，工具栏与其它查看器统一。"},
+  {"id":"cad","name":"CAD 查看","description":"DWG / DXF 本地图纸阅读","version":"1.2.0","changelog":"扩展大图纸预览预算，减少重复块和缓存开销，优化 GPU 分批与文字显示，修复保存视口偏移导致的空白画面。"},
   {"id":"epub","name":"EPUB 阅读","description":"EPUB 电子书阅读","version":"1.0.0","changelog":"支持目录跳转、章节翻页、字号调节与阅读进度记忆。"},
   {"id":"workbench","name":"多维表格工作台","description":"自由组合多表格数据","version":"1.1.0","changelog":"数据源显示文件名，下拉框适配主题。"}
 ]

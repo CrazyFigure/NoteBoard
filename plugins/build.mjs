@@ -44,7 +44,9 @@ const entries=[];
 // CAD 独立线程与 WASM 只嵌入 CAD 包，不进入主程序或其它插件。
 const cadRoot=path.join(root,'node_modules/@flyfish-dev/cad-viewer');
 const dxfWorker=await build({entryPoints:[path.join(root,'cad/dxf-worker.mjs')],bundle:true,write:false,metafile:true,format:'esm',platform:'browser',target:'chrome105',minify:true});
-const cadAssets={worker:await fs.readFile(path.join(cadRoot,'dist/wasm/dwg-worker.js'),'utf8'),module:cspCompatibleRuntime(await fs.readFile(path.join(cadRoot,'dist/wasm/libredwg-web.js'),'utf8')),wasm:(await fs.readFile(path.join(cadRoot,'dist/wasm/libredwg-web.wasm'))).toString('base64'),dxfWorker:dxfWorker.outputFiles[0].text};
+// 校验与场景精简先打包成闭包，随后放在解析 Worker 前，两个格式共用同一份预算。
+const sceneWorker=await build({entryPoints:[path.join(root,'cad/scene-worker.mjs')],bundle:true,write:false,format:'iife',platform:'browser',target:'chrome105',minify:true});
+const cadAssets={worker:await fs.readFile(path.join(cadRoot,'dist/wasm/dwg-worker.js'),'utf8'),module:cspCompatibleRuntime(await fs.readFile(path.join(cadRoot,'dist/wasm/libredwg-web.js'),'utf8')),wasm:(await fs.readFile(path.join(cadRoot,'dist/wasm/libredwg-web.wasm'))).toString('base64'),dxfWorker:dxfWorker.outputFiles[0].text,sceneWorker:sceneWorker.outputFiles[0].text};
 for(const item of metadata) {
   const name=`${item.id}-${item.version}.nbplugin`;
   if(!requested.length||requested.includes(item.id)) {
