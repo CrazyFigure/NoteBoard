@@ -10,11 +10,10 @@ export const CAD_LIMITS = Object.freeze({
   renderPoints: 12_000_000,
   blocks: 20_000,
   insertDepth: 32,
-  textCharacters: 500_000,
   parseTimeoutMs: 120_000,
 });
 
-/** 在解析线程去除无用块及业务缓存，记忆化检查块引用，返回完整可绘制场景与有界文字。 */
+/** 在解析线程去除无用块及业务缓存，记忆化检查块引用，返回保留图中文字的完整可绘制场景。 */
 export function prepareScene(document) {
   const sourceBlocks = document.blocks ?? {};
   // 归一化器通常提供小写别名；缺少别名的 DXF 也按块名大小写无关的规则查找。
@@ -27,8 +26,7 @@ export function prepareScene(document) {
   const visiting = new Set();
   const cache = new Map();
   const seenEntities = new Set();
-  const textParts = [];
-  let sourceEntities = 0, geometryPoints = 0, textCharacters = 0, textTruncated = false;
+  let sourceEntities = 0, geometryPoints = 0;
 
   /** 所有数值预算均在展开之前检查，避免阵列或共享块先占满内存。 */
   const check = (value, limit, label) => {
@@ -56,18 +54,6 @@ export function prepareScene(document) {
     return points;
   };
 
-  /** 文字逐条截取且显式标记截断，避免先拼接整个大图纸后才裁剪。 */
-  const collectText = (entity) => {
-    const value = entity.text ?? entity.value;
-    if (typeof value !== 'string' || !value) return;
-    const remaining = CAD_LIMITS.textCharacters - textCharacters;
-    if (remaining <= 1) { textTruncated = true; return; }
-    const part = value.slice(0, remaining - 1);
-    textParts.push(part);
-    textCharacters += part.length + 1;
-    if (part.length < value.length) textTruncated = true;
-  };
-
   /** 源实体只计一次；清理渲染器不使用的扩展数据，降低跨线程克隆及 INSERT 复制成本。 */
   const inspectEntity = (entity) => {
     const points = pointCount(entity);
@@ -78,7 +64,6 @@ export function prepareScene(document) {
       check(geometryPoints, CAD_LIMITS.geometryPoints, '几何数据量');
       delete entity.raw;
       delete entity.xdata;
-      collectText(entity);
     }
     // 圆弧细分计入预算；大场景统一使用 48 段上限，不减少源实体或图纸范围。
     const kind = entity.kind ?? String(entity.type).toLowerCase();
@@ -139,7 +124,7 @@ export function prepareScene(document) {
   const stats = { sourceEntities, geometryPoints, ...totals, blocks: reachable.size };
   const large = totals.expandedEntities > 50_000 || geometryPoints > 200_000;
   const fitMode = resolveInitialFit(document);
-  return { document, stats, text: textParts.join('\n'), textTruncated, large, fitMode };
+  return { document, stats, large, fitMode };
 }
 
 /** 原视口没有图形时才尝试目标点偏移；仍为空则显示完整范围，保留有效的原始视角。 */

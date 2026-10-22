@@ -1,4 +1,4 @@
-// 大图纸扩容必须同时覆盖完整显示、预算边界、循环引用和文字开销，不能只改常量。
+// 大图纸扩容必须同时覆盖完整显示、预算边界和循环引用，不能只改常量。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CAD_LIMITS, prepareScene, canvasOptionsForScene, resolveInitialFit } from '../cad/scene.mjs';
@@ -49,7 +49,7 @@ test('几何预算覆盖路径、填充与样条，重复引用的曲线也受�
   assert.throws(() => prepareScene(drawing([insert('a', { insertRowCount: 300_000 })], { a: block })), /绘制几何量/);
 });
 
-test('只读取可见图纸使用的定义及属性文字，有界拼接且标记截断', () => {
+test('保留图中及块属性文字，移除非显示缓存与未引用定义', () => {
   const attr = { type: 'ATTRIB', text: '阀门编号', xdata: [{ cache: 'unused' }] };
   const doc = drawing([insert('Valve', { attribs: [attr] }), { type: 'TEXT', text: '<script>原样显示</script>', name: 'unused' }], {
     Valve: { entities: [{ type: 'TEXT', text: '泵站' }] },
@@ -57,15 +57,12 @@ test('只读取可见图纸使用的定义及属性文字，有界拼接且标�
   });
   doc.xrecords = [{ cache: 'unused' }];
   const scene = prepareScene(doc);
-  assert.match(scene.text, /阀门编号/);
-  assert.match(scene.text, /泵站/);
-  assert.match(scene.text, /<script>/);
-  assert.doesNotMatch(scene.text, /未使用文字/);
+  assert.equal(scene.document.entities[0].attribs[0].text, '阀门编号');
+  assert.equal(scene.document.entities[1].text, '<script>原样显示</script>');
+  assert.equal(scene.document.blocks.Valve.entities[0].text, '泵站');
+  assert.equal(scene.document.blocks.unused, undefined);
   assert.equal(attr.xdata, undefined);
   assert.equal(doc.xrecords, undefined);
-  const long = prepareScene(drawing([{ type: 'TEXT', text: '中'.repeat(CAD_LIMITS.textCharacters + 10) }]));
-  assert.ok(long.text.length <= CAD_LIMITS.textCharacters);
-  assert.equal(long.textTruncated, true);
 });
 
 test('大图需要 WebGL，小图仍支持 Canvas2D 兼容模式', () => {

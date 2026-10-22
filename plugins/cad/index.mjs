@@ -1,23 +1,21 @@
 // 只读 CAD 插件：解析线程、图形上下文和所有 Blob URL 均随文档关闭释放。
 import { CadViewer, isWebGLAvailable } from '@flyfish-dev/cad-viewer';
 import assets from 'noteboard:cad-assets';
-import {createView,el,button,iconButton,separator,copyText} from '../shared/view.mjs';
+import {createView,el,iconButton,separator} from '../shared/view.mjs';
 import { CAD_LIMITS, canvasOptionsForScene } from './scene.mjs';
 
 /** 所有解析资源包含在已校验的插件内，打开图纸不请求远程文件或外部参照。 */
-export async function mount({container,name,bytes,signal,notify}) {
+export async function mount({container,name,bytes,signal}) {
   if(signal.aborted)throw new DOMException('已取消','AbortError');
   if(bytes.byteLength>CAD_LIMITS.fileBytes)throw new Error('CAD 预览支持 50 MB 以内的图纸，请使用专业 CAD 软件打开此文件。');
   const view=createView(container,name),urls=[];let viewer,worker,stopped=false;
   const blob=(value,type)=>{const url=URL.createObjectURL(new Blob([value],{type}));urls.push(url);return url;};
-  const status=el('span','np-muted','正在后台解析图纸…'),canvasHost=el('div','cad-canvas'),text=el('div','cad-text');
-  view.style.textContent+=`.np-scroll{overflow:hidden;display:flex;flex-direction:column}.cad-canvas{flex:1;min-height:0;position:relative;touch-action:none}.cad-canvas canvas{width:100%;height:100%;display:block;touch-action:none}.cad-text{display:none;flex:1;min-height:0;overflow:auto;padding:18px;font-family:var(--content-font-family,var(--ui-font-family));line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere}.cad-text.show{display:block}.cad-hint{padding:6px 12px;border-top:1px solid var(--editor-border);font-size:11px;color:var(--editor-text-muted)}.cad-source{color:var(--editor-text-muted);font-size:12px;text-decoration:none;padding:0 6px;border-radius:4px}.cad-source:hover{color:var(--editor-accent);background:var(--toolbar-hover)}`;
+  const status=el('span','np-muted','正在后台解析图纸…'),canvasHost=el('div','cad-canvas');
+  view.style.textContent+=`.np-scroll{overflow:hidden;display:flex;flex-direction:column}.cad-canvas{flex:1;min-height:0;position:relative;touch-action:none}.cad-canvas canvas{width:100%;height:100%;display:block;touch-action:none}.cad-hint{padding:6px 12px;border-top:1px solid var(--editor-border);font-size:11px;color:var(--editor-text-muted)}`;
   const hint=el('div','cad-hint','滚轮缩放 · 拖动平移 · 图纸只读，外部参照与缺失 SHX 字体可能影响显示');
-  view.viewport.append(canvasHost,text,hint);
-  const source=el('a','cad-source','开源代码');source.href='https://github.com/flyfish-dev/cad-viewer';source.target='_blank';source.rel='noopener noreferrer';
-  let allText='';
-  const textToggle=button('文字',()=>{const show=text.classList.toggle('show');textToggle.setAttribute('aria-pressed',String(show));canvasHost.hidden=show;canvasHost.style.display=show?'none':'';if(!show)viewer?.resize();},{icon:'text',tip:'切换图纸与文字列表'});textToggle.setAttribute('aria-pressed','false');
-  view.toolbar.append(status,separator(),iconButton('minus','缩小',()=>viewer?.zoomOut(),'np-ghost'),iconButton('plus','放大',()=>viewer?.zoomIn(),'np-ghost'),iconButton('scan','适合窗口',()=>viewer?.fit(),'np-ghost'),separator(),textToggle,button('复制文字',()=>void copyText(allText,notify),{icon:'copy',tip:'复制图中全部文字'}),source);
+  view.viewport.append(canvasHost,hint);
+  // 只保留图纸浏览操作，图中文字仍由渲染器正常绘制，不再提供独立文字列表。
+  view.toolbar.append(status,separator(),iconButton('minus','缩小',()=>viewer?.zoomOut(),'np-ghost'),iconButton('plus','放大',()=>viewer?.zoomIn(),'np-ghost'),iconButton('scan','适合窗口',()=>viewer?.fit(),'np-ghost'));
   // 线程内按实际块引用整理结果；不再克隆模型空间的重复定义或在 UI 线程重复遍历整图。
   const isDwg=/\.dwg$/i.test(name);
   let code=assets.dxfWorker;
@@ -52,10 +50,6 @@ export async function mount({container,name,bytes,signal,notify}) {
     });
     worker.terminate();if(signal.aborted)return destroy;
     const options=canvasOptionsForScene(result.scene,isWebGLAvailable());
-    // 文字在 Worker 中有界收集；不把 CAD 内容作为 HTML，也不重复读取未使用的块。
-    allText=result.scene.text;
-    text.textContent=allText||'图纸中没有可复制的文字';
-    if(result.scene.textTruncated)text.append(el('div','np-muted','文字较多，列表和复制仅包含前 50 万字；图纸显示不受影响。'));
     if(result.scene.large)hint.textContent+=' · 大图纸已优化显示，细小文字放大后显示';
     status.textContent='正在生成图纸画面…';
     // 让加载状态有机会刷新，再执行 GPU 场景构建；关闭文档后不得继续创建上下文。
