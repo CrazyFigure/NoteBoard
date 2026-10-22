@@ -1,4 +1,4 @@
-// 发布先检查所有已有版本，禁止用相同版本号替换不同代码；目录最后上传，避免半发布状态。
+// 发布先检查所有已有版本，禁止用相同版本号替换不同代码（此类插件保留线上原包）；目录最后上传，避免半发布状态。
 import * as fs from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -12,14 +12,29 @@ const exists=(()=>{try{gh(['release','view','plugins','--repo',repo]);return tru
 const catalog=JSON.parse(await fs.readFile(path.join(root,'catalog-v2.json'),'utf8'));
 const expected=JSON.parse(await fs.readFile(new URL('./versions.json',import.meta.url),'utf8')).length;
 if(catalog.plugins.length!==expected)throw new Error(`必须构建全部 ${expected} 个官方插件，防止覆盖目录时遗漏已发布插件`);
-const uploads=[];
+const uploads=[],kept=[];
 const assets=exists?JSON.parse(gh(['release','view','plugins','--repo',repo,'--json','assets'])).assets:[];
-for(const entry of catalog.plugins){
+for(const [index,entry] of catalog.plugins.entries()){
   const name=`${entry.id}-${entry.version}.nbplugin`,file=path.join(root,name),prior=assets.find((a)=>a.name===name);
   if(prior){
     const data=execFileSync('gh',['api',`repos/${repo}/releases/assets/${prior.apiUrl.split('/').pop()}`,'-H','Accept: application/octet-stream'],{maxBuffer:40*1024*1024});
-    if(createHash('sha256').update(data).digest('hex')!==entry.sha256)throw new Error(`${name} 已发布且内容不同，请先提高该插件版本号`);
+    const sha256=createHash('sha256').update(data).digest('hex');
+    // 共享代码改动会让未升版本的插件重新打包出不同内容；同版本仍不替换，目录改指向线上原包，只发布升了版本的插件。
+    if(sha256!==entry.sha256){
+      const {manifest}=JSON.parse(data.toString('utf8'));
+      catalog.plugins[index]={...manifest,licenses:undefined,url:entry.url,sha256,size:data.length};
+      kept.push(name);
+    }
   }else uploads.push(file);
+}
+if(kept.length){
+  // 旧目录只是新目录的子集，按 id 同步替换，两份目录与线上实际文件保持一致。
+  const legacy=JSON.parse(await fs.readFile(path.join(root,'catalog.json'),'utf8'));
+  legacy.plugins=legacy.plugins.map((entry)=>catalog.plugins.find((item)=>item.id===entry.id)??entry);
+  await fs.writeFile(path.join(root,'catalog.json'),JSON.stringify(legacy,null,2));
+  await fs.writeFile(path.join(root,'catalog-v2.json'),JSON.stringify(catalog,null,2));
+  // 未升版本却有改动时在 Actions 页面提示，避免本应发布的修改被静默跳过。
+  process.stdout.write(`::warning::以下插件内容有变化但版本号未提高，已保留线上原包：${kept.join('、')}\n`);
 }
 // 说明按本次目录重新生成，每次发布都覆盖，保证表格中的版本号与实际可下载版本一致。
 const cell=(text)=>String(text??'').replaceAll('|','\\|').replaceAll('\n',' ');
