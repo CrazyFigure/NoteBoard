@@ -11,6 +11,7 @@ import { useEditorActive } from '../../core/editor/EditorActivityContext';
 import { EditorContent, useEditor } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
 import { undoDepth as prosemirrorUndoDepth } from '@tiptap/pm/history';
+import { isInTable, __pastedCells } from '@tiptap/pm/tables';
 import { on, off, emit } from '../../core/emitter';
 import { registerShortcut } from '../../core/shortcuts';
 import { buildExtensions } from './extensions';
@@ -172,7 +173,12 @@ export function VisualKernel({
         class: 'nb-prose',
         style: 'outline: none; max-width: var(--content-max-width); margin: 0 auto; padding: 16px 24px; min-height: 100%; font-size: var(--content-font-size); line-height: var(--content-line-height); font-family: var(--content-font-family); color: var(--editor-text);',
       },
-      handlePaste: (_view, event) => {
+      handlePaste: (view, event, slice) => {
+        // Excel 复制单元格时可同时携带图片、HTML 表格和文本；表格内优先交给表格插件及默认文本粘贴。
+        // 仅在存在可用文本或已解析的单元格结构时让行，纯图片仍沿用原有图片插入流程。
+        if (isInTable(view.state) && (event.clipboardData?.getData('text/plain') || __pastedCells(slice))) {
+          return false;
+        }
         const items = event.clipboardData?.items;
         if (!items) return false;
         for (const item of Array.from(items)) {
