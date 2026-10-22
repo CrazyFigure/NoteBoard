@@ -29,14 +29,15 @@ pub fn bring_to_front(window: &tauri::WebviewWindow) {
 }
 
 /// 使用 Windows 原生窗口 API 激活后台窗口，并在前台权限受限时修正 Z 序。
+/// 窗口显示与最小化恢复由上层统一处理；此处只调整焦点与 Z 序，保留最大化状态。
 #[cfg(target_os = "windows")]
 fn bring_to_front_on_windows(window: &tauri::WebviewWindow) -> Result<(), String> {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
     use windows::Win32::UI::WindowsAndMessaging::{
         BringWindowToTop, GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow,
-        SetWindowPos, ShowWindow, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOMOVE, SWP_NOOWNERZORDER,
-        SWP_NOSIZE, SWP_SHOWWINDOW, SW_RESTORE,
+        SetWindowPos, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE,
+        SWP_SHOWWINDOW,
     };
 
     // Tauri 与当前项目依赖的 windows crate 版本不同，原生句柄指针需要显式转换。
@@ -44,8 +45,6 @@ fn bring_to_front_on_windows(window: &tauri::WebviewWindow) -> Result<(), String
     let hwnd = HWND(tauri_hwnd.0);
 
     unsafe {
-        let _ = ShowWindow(hwnd, SW_RESTORE);
-
         // 临时关联当前工作线程与前台线程的输入队列，提高 SetForegroundWindow 的成功率。
         let current_thread_id = GetCurrentThreadId();
         let foreground_window = GetForegroundWindow();
