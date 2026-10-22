@@ -272,8 +272,8 @@ jobs:
       - name: Generate Android project
         run: |
           pnpm tauri android init --ci
-          # 用项目 Logo 生成安卓启动图标（仅影响 CI 工作区，不改动仓库中的桌面图标）
-          pnpm tauri icon logo.png
+          # 用安卓专用源图生成启动图标（插画已缩进自适应图标安全区；仅影响 CI 工作区，不改动仓库中的桌面图标）
+          pnpm tauri icon src-tauri/icons/icon-android.png
           node scripts/patch-android.mjs
 
       # 配置了签名 Secrets 时使用正式签名；否则 release 退化为 debug 签名（仍可安装，但升级需卸载重装）
