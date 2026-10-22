@@ -237,6 +237,11 @@ export function saveBinaryFile(
   });
 }
 
+// 把当前窗口的打印版式（@media print）直接写成 PDF（仅 Windows WebView2 支持）
+export function printWindowToPdf(path: string): Promise<void> {
+  return invoke<void>('print_window_to_pdf', { path });
+}
+
 export function readDir(path: string, showHidden: boolean): Promise<FileTreeNode[]> {
   return invoke<FileTreeNode[]>('read_dir', { path, showHidden });
 }

@@ -58,3 +58,6 @@ font-kit = "0.14"
 # Win32_Graphics_Gdi：S06 起系统字体枚举使用 GDI EnumFontFamiliesExW 原生实现（替代 PowerShell 子进程）
 # Win32_Security_Cryptography：同步与备份的密码/令牌使用 DPAPI 绑定当前 Windows 用户加密保存
 windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_Security_Cryptography"] }
+# Markdown 导出 PDF：直接调用 WebView2 PrintToPdf，版本须与 tauri/wry 使用的保持一致
+webview2-com = "0.38"
+windows-core = "0.61"

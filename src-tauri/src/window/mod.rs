@@ -1,6 +1,7 @@
 pub mod manager;
 pub mod intent;
 pub mod commands;
+pub mod print_pdf;
 // 托盘与全局快捷键仅桌面端存在（移动端单窗口常驻前台）
 #[cfg(desktop)]
 pub mod tray;

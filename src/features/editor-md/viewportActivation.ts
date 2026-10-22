@@ -15,6 +15,9 @@ interface ObserverEntry {
 /** 复用池：WeakMap<Element, ObserverEntry> */
 const pool = new WeakMap<Element, ObserverEntry>();
 
+/** 尚未取消观察的元素（WeakMap 不可遍历，导出 PDF 时需据此强制激活全部离屏块） */
+const observed = new Set<Element>();
+
 /** 共享 IntersectionObserver */
 let sharedObserver: IntersectionObserver | null = null;
 
@@ -39,6 +42,7 @@ function getSharedObserver(): IntersectionObserver | null {
 
           if (item.once) {
             pool.delete(entry.target);
+            observed.delete(entry.target);
             sharedObserver?.unobserve(entry.target);
           }
         }
@@ -72,6 +76,7 @@ export function observe(
   pool.set(el, entry);
 
   if (observer) {
+    observed.add(el);
     observer.observe(el);
   } else {
     // Fallback: 无 IntersectionObserver 时立即触发
@@ -86,6 +91,7 @@ export function observe(
   // 返回取消观察函数
   return () => {
     pool.delete(el);
+    observed.delete(el);
     observer?.unobserve(el);
   };
 }
@@ -95,7 +101,34 @@ export function observe(
  */
 export function unobserve(el: Element): void {
   pool.delete(el);
+  observed.delete(el);
   getSharedObserver()?.unobserve(el);
+}
+
+/**
+ * 立即激活容器内所有尚未进入视口的元素
+ * 供导出 PDF 等需要完整渲染结果的场景使用：离屏的公式、图表平时按需渲染，导出前必须全部就绪
+ */
+export function activateWithin(container: Element): void {
+  for (const el of [...observed]) {
+    // 顺带清理已脱离文档却未取消观察的元素，避免集合长期持有
+    if (!el.isConnected) {
+      observed.delete(el);
+      continue;
+    }
+    if (!container.contains(el)) continue;
+    const item = pool.get(el);
+    if (!item || (item.once && item.fired)) continue;
+    item.callback({
+      target: el,
+      isIntersecting: true,
+      intersectionRatio: 1,
+    } as IntersectionObserverEntry);
+    item.fired = true;
+    if (item.once) {
+      unobserve(el);
+    }
+  }
 }
 
 /**

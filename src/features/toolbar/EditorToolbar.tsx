@@ -10,6 +10,7 @@ import { useLayoutStore } from '../../stores/layoutStore';
 import { MarkdownToolbar } from './MarkdownToolbar';
 import { CodeToolbar } from './CodeToolbar';
 import { FloatingExpandHandle } from './FloatingExpandHandle';
+import { MarkdownExportMenu } from './MarkdownExportMenu';
 import { ToolbarButton, ToolbarDivider } from './ToolbarComponents';
 import { requestReadingMode } from '../reading/readingMode';
 
@@ -71,8 +72,9 @@ export function EditorToolbar({ activeTab, activeEditor }: EditorToolbarProps) {
         />
       ) : null}
 
-      {/* 右侧视图操作：沉浸阅读（Markdown、代码与 Mermaid / PlantUML / 信息图）与收起按钮 */}
+      {/* 右侧视图操作：导出（仅 Markdown）、沉浸阅读（Markdown、代码与 Mermaid / PlantUML / 信息图）与收起按钮 */}
       <div style={{ marginLeft: 8, display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+        {activeTab.kind === 'markdown' && <MarkdownExportMenu tab={activeTab} editor={activeEditor} />}
         <ToolbarButton
           icon={<BookOpen size={15} strokeWidth={2.2} />}
           title="沉浸阅读"

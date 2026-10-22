@@ -96,6 +96,7 @@ pub fn run() {
             window::commands::focus_window,
             window::commands::close_window,
             window::commands::set_show_window_shortcut,
+            window::print_pdf::print_window_to_pdf,
             // registry
             registry::commands::register_document,
             registry::commands::unregister_document,
