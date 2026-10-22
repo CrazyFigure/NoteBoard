@@ -6,6 +6,8 @@ const MAX_ENTRIES = 10000, MAX_TOTAL = 256 * 1024 * 1024;
 /** 按 EPUB 内部路径规则解析相对地址；越过根目录的 .. 被忽略，结果不含片段。 */
 export function resolvePath(base, href) {
   const clean = href.split('#')[0];
+  // 纯锚点引用仍属于当前文档，不能退回到文档所在目录。
+  if (!clean) return base;
   let decoded = clean;
   try { decoded = decodeURIComponent(clean); } catch { /* 保留原始写法 */ }
   const parts = decoded.startsWith('/') ? [] : base.split('/').slice(0, -1);
@@ -14,6 +16,48 @@ export function resolvePath(base, href) {
     else if (part && part !== '.') parts.push(part);
   }
   return parts.join('/');
+}
+
+/** 片段允许百分号编码；无效编码保留原文，兼容旧书的锚点名称。 */
+export function decodeFragment(fragment = '') {
+  try { return decodeURIComponent(fragment); } catch { return fragment; }
+}
+
+/** 按书脊顺序把目录锚点展开为阅读章节，排除独立导航页并保留未列入目录的正文。 */
+export function readingChapters(spine, toc, navigationPaths = new Set()) {
+  const targets = new Map();
+  const walk = (items) => { for (const item of items) {
+    if (item.path && !navigationPaths.has(item.path)) {
+      const entries = targets.get(item.path) ?? [];
+      const fragment = decodeFragment(item.fragment);
+      // 父子目录或别名可能指向同一位置，同一锚点只参与一次翻章。
+      if (!entries.some((entry) => entry.fragment === fragment)) entries.push({ path:item.path, fragment, label:item.label });
+      targets.set(item.path, entries);
+    }
+    walk(item.children ?? []);
+  } };
+  walk(toc);
+  return spine.flatMap((item, spineIndex) => {
+    if (navigationPaths.has(item.path)) return [];
+    const entries = targets.get(item.path) ?? [{ path:item.path, fragment:'', label:`第 ${spineIndex + 1} 章` }];
+    return entries.map((entry, index) => ({ ...entry, spineIndex, endFragment:entries[index + 1]?.fragment ?? '' }));
+  });
+}
+
+/** 同时支持 id 与旧式 name 锚点，不把书籍中的特殊字符拼接进 CSS 选择器。 */
+export function findAnchor(root, fragment) {
+  const name = decodeFragment(fragment);
+  return name ? Array.from(root.querySelectorAll('[id],[name]')).find((node) => node.id === name || node.getAttribute('name') === name) : null;
+}
+
+/** 单文件多章节按相邻目录锚点截取，保留跨容器的结构；缺失或倒序锚点不截断正文。 */
+export function chapterFragment(body, chapter) {
+  const start = findAnchor(body, chapter.fragment), end = findAnchor(body, chapter.endFragment);
+  const range = body.ownerDocument.createRange();
+  range.selectNodeContents(body);
+  if (start) range.setStartBefore(start);
+  if (end && (!start || (start.compareDocumentPosition(end) & 4))) range.setEndBefore(end);
+  return range.cloneContents();
 }
 
 const xml = (text) => {
@@ -84,8 +128,13 @@ export async function openBook(bytes) {
       toc = walk(byName(doc, 'navMap')[0]);
     }
   }
-  // 没有目录时按书脊生成章节列表，保证始终可以跳转。
-  if (!toc.length) toc = spine.map((item, index) => ({ label:`第 ${index + 1} 章`, path:item.path, fragment:'', children:[] }));
+  // 导航文档是辅助入口，不能成为正常阅读时的“下一章”。EPUB 2 通过 guide 标明目录页。
+  const navigationPaths = new Set(nav ? [nav.path] : []);
+  for (const ref of byName(opf, 'reference')) if (ref.getAttribute('type') === 'toc' && ref.getAttribute('href')) navigationPaths.add(resolvePath(opfPath, ref.getAttribute('href')));
+  const chapters = readingChapters(spine, toc, navigationPaths);
+  if (!chapters.length) throw new Error('电子书没有可阅读的章节');
+  // 没有目录时按有效阅读章节生成列表，保证始终可以跳转。
+  if (!toc.length) toc = chapters.map((item) => ({ ...item, children:[] }));
   const types = new Map([...manifest.values()].map((item) => [item.path, item.type]));
-  return { zip, title, creator, spine, toc, types, encrypted, read:(path, type) => read(path, type) };
+  return { zip, title, creator, spine, chapters, toc, types, encrypted, read:(path, type) => read(path, type) };
 }

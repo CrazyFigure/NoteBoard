@@ -151,13 +151,15 @@ export function zoomControl({ min, max, step, get, set, target }) {
 }
 
 /** 页码控件：文本输入（无上下箭头、滚轮不改值）+ 独立的上一页/下一页按钮。 */
-export function pager({ go, vertical = true }) {
+export function pager({ go, vertical = true, unit = '页' }) {
   const group = el('span', 'np-group'), input = el('input', 'np-field'), total = el('span', 'np-muted', '/ 0');
-  input.type = 'text'; input.inputMode = 'numeric'; input.setAttribute('aria-label', '页码'); tip(input, '输入页码后回车跳转');
+  // 电子书按目录章节导航，其余查看器保持原有页码含义与提示。
+  const label = unit === '章' ? '章节' : '页码';
+  input.type = 'text'; input.inputMode = 'numeric'; input.setAttribute('aria-label', label); tip(input, `输入${label}后回车跳转`);
   let count = 0, current = 1;
   const jump = (n) => { if (!count) return; current = clamp(Math.round(n), 1, count); input.value = String(current); go(current); };
-  const prev = iconButton(vertical ? 'chevron-up' : 'chevron-left', '上一页', () => jump(current - 1), 'np-ghost');
-  const next = iconButton(vertical ? 'chevron-down' : 'chevron-right', '下一页', () => jump(current + 1), 'np-ghost');
+  const prev = iconButton(vertical ? 'chevron-up' : 'chevron-left', `上一${unit}`, () => jump(current - 1), 'np-ghost');
+  const next = iconButton(vertical ? 'chevron-down' : 'chevron-right', `下一${unit}`, () => jump(current + 1), 'np-ghost');
   input.addEventListener('focus', () => input.select());
   input.addEventListener('keydown', (event) => { event.stopPropagation(); if (event.key === 'Enter') { const n = parseInt(input.value, 10); if (Number.isFinite(n)) jump(n); else input.value = String(current); input.blur(); } if (event.key === 'Escape') { input.value = String(current); input.blur(); } });
   input.addEventListener('blur', () => { const n = parseInt(input.value, 10); if (Number.isFinite(n) && n !== current) jump(n); else input.value = String(current); });
@@ -166,7 +168,7 @@ export function pager({ go, vertical = true }) {
   return {
     element: group,
     /** 滚动等外部变化同步页码；输入中不覆盖用户正在键入的数字。 */
-    set(page, pages = count) { count = pages; current = clamp(page, 1, Math.max(1, count)); total.textContent = `/ ${count}`; if (group.getRootNode().activeElement !== input) input.value = String(current); prev.disabled = current <= 1; next.disabled = current >= count; },
+    set(page, pages = count) { count = pages; current = clamp(page, 1, Math.max(1, count)); total.textContent = `/ ${count}${unit === '章' ? ' 章' : ''}`; if (group.getRootNode().activeElement !== input) input.value = String(current); prev.disabled = current <= 1; next.disabled = current >= count; },
   };
 }
 

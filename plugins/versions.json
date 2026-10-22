@@ -4,6 +4,6 @@
   {"id":"powerpoint","name":"PowerPoint 查看","description":"PPT / PPTX 幻灯片阅读","version":"1.1.0","changelog":"幻灯片缩略图、键盘翻页与滚轮缩放。"},
   {"id":"pdf","name":"PDF 查看","description":"PDF 分页阅读","version":"1.1.0","changelog":"页码直接输入，独立翻页按钮，Ctrl/⌘ + 滚轮按指针位置缩放。"},
   {"id":"cad","name":"CAD 查看","description":"DWG / DXF 本地图纸阅读","version":"1.2.1","changelog":"精简 CAD 工具栏，移除文字列表、复制文字和开源代码入口。"},
-  {"id":"epub","name":"EPUB 阅读","description":"EPUB 电子书阅读","version":"1.0.0","changelog":"支持目录跳转、章节翻页、字号调节与阅读进度记忆。"},
+  {"id":"epub","name":"EPUB 阅读","description":"EPUB 电子书阅读","version":"1.0.1","changelog":"修复单文件多章节的计数、翻章和目录高亮，支持拖动调整目录宽度。"},
   {"id":"workbench","name":"多维表格工作台","description":"自由组合多表格数据","version":"1.1.0","changelog":"数据源显示文件名，下拉框适配主题。"}
 ]
