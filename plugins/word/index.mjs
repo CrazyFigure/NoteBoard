@@ -1,9 +1,11 @@
 // Word 只读查看：DOCX 保留页面结构，DOC 使用免费二进制解析器；永不写回原文件。
-import { renderAsync } from 'docx-preview';
+import { parseAsync, renderDocument } from 'docx-preview';
 import { parseMsDocToHtml } from 'msdoc-viewer';
 import DOMPurify from 'dompurify';
 import { createView, button, iconButton, separator, zoomControl, guardLinks, applyFontFallback } from '../shared/view.mjs';
 import { cleanOpenXml } from '../shared/openXml.mjs';
+import { deduplicatePageBreaks } from './pagination.mjs';
+import { markPageNumberFields, updatePageNumberFields } from './pageFields.mjs';
 
 export async function mount({ container, name, bytes, signal, notify }) {
   const view = createView(container, name);
@@ -40,7 +42,14 @@ export async function mount({ container, name, bytes, signal, notify }) {
     if (/\.docx$/i.test(name)) {
       // 禁止嵌入 HTML 内容块，修订和批注按静态文档呈现，不启用编辑器。
       const cleanBytes=await cleanOpenXml(bytes);if(signal.aborted){view.destroy();return;}
-      await renderAsync(cleanBytes, page, page, { inWrapper:true, ignoreLastRenderedPageBreak:false, renderAltChunks:false, renderChanges:false, renderComments:false, useBase64URL:true });
+      const options={ inWrapper:true, ignoreLastRenderedPageBreak:false, renderAltChunks:false, renderChanges:false, renderComments:false, renderHeaders:true, renderFooters:true, useBase64URL:true };
+      // 手动分页后紧接的历史分页标记表示同一页边界，渲染前去重，保留真正的空白页。
+      const document=await parseAsync(cleanBytes,options);if(signal.aborted){view.destroy();return;}
+      deduplicatePageBreaks(document);
+      // 页眉页脚在每页复用同一个文档部件，域缓存必须在渲染出的每页副本上分别更新。
+      markPageNumberFields(document);
+      await renderDocument(document, page, page, options);
+      updatePageNumberFields(page);
     } else {
       const result = await parseMsDocToHtml(bytes);
       if (signal.aborted) { view.destroy(); return; }

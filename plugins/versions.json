@@ -1,7 +1,7 @@
 [
-  {"id":"word","name":"Word 查看","description":"DOC / DOCX 只读阅读","version":"1.1.0","changelog":"缩放支持直接输入比例与 Ctrl/⌘ + 滚轮。"},
+  {"id":"word","name":"Word 查看","description":"DOC / DOCX 只读阅读","version":"1.1.1","changelog":"修复重复分页产生的空白页，按实际分页更新页眉页脚中的顺序页码。"},
   {"id":"excel","name":"Excel 查看","description":"XLS / XLSX 只读表格","version":"1.1.0","changelog":"可调整行高列宽，冻结表头，编辑栏显示完整内容，拖选自动滚动。"},
-  {"id":"powerpoint","name":"PowerPoint 查看","description":"PPT / PPTX 幻灯片阅读","version":"1.1.0","changelog":"幻灯片缩略图、键盘翻页与滚轮缩放。"},
+  {"id":"powerpoint","name":"PowerPoint 查看","description":"PPT / PPTX 幻灯片阅读","version":"1.1.1","changelog":"修复组合图形的坐标缩放放大文字、导致文字超出图形。"},
   {"id":"pdf","name":"PDF 查看","description":"PDF 分页阅读","version":"1.1.0","changelog":"页码直接输入，独立翻页按钮，Ctrl/⌘ + 滚轮按指针位置缩放。"},
   {"id":"cad","name":"CAD 查看","description":"DWG / DXF 本地图纸阅读","version":"1.2.1","changelog":"精简 CAD 工具栏，移除文字列表、复制文字和开源代码入口。"},
   {"id":"epub","name":"EPUB 阅读","description":"EPUB 电子书阅读","version":"1.0.1","changelog":"修复单文件多章节的计数、翻章和目录高亮，支持拖动调整目录宽度。"},

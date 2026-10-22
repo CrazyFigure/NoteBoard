@@ -3,9 +3,11 @@ import { parse } from '@web-ppt/core';
 import { Viewer } from '@web-ppt/viewer-core';
 import { createView, el, button, copyText, guardLinks, applyFontFallback, zoomControl, pager, separator } from '../shared/view.mjs';
 import { cleanOpenXml } from '../shared/openXml.mjs';
+import { normalizePowerPointGroups } from './groupGeometry.mjs';
 
 export async function mount({ container, name, bytes, signal, notify }) {
-  const presentation = await parse(/\.pptx$/i.test(name)?await cleanOpenXml(bytes):bytes);
+  // 先归一组合的几何坐标，避免 SVG 组合缩放再次放大字号，导致文字超出图形。
+  const presentation = await parse(/\.pptx$/i.test(name)?await cleanOpenXml(bytes,normalizePowerPointGroups):bytes);
   if (signal.aborted) { presentation.dispose?.(); return; }
   const view = createView(container, name);
   view.style.textContent += `.np-slides{display:flex;height:100%;min-height:0}
