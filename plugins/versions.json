@@ -5,5 +5,5 @@
   {"id":"pdf","name":"PDF 查看","description":"PDF 分页阅读","version":"1.2.0","changelog":"新增沉浸阅读，全屏阅读时工具栏自动收起。"},
   {"id":"cad","name":"CAD 查看","description":"DWG / DXF 本地图纸阅读","version":"1.3.0","changelog":"新增沉浸阅读，全屏阅读时工具栏自动收起。"},
   {"id":"epub","name":"EPUB 阅读","description":"EPUB 电子书阅读","version":"1.1.0","changelog":"新增沉浸阅读，全屏阅读时工具栏自动收起。"},
-  {"id":"workbench","name":"多维表格工作台","description":"自由组合多表格数据","version":"1.1.1","changelog":"修复组件设置下拉框无法选择；设置面板按组件精简并说明字段用途，面板停靠右侧可边改边看。"}
+  {"id":"workbench","name":"多维表格工作台","description":"自由组合多表格数据","version":"1.1.2","changelog":"修复组件拖手无法拖动排序，支持触屏拖动与方向键微调。"}
 ]

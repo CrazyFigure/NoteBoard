@@ -1,7 +1,7 @@
 // 字段的业务 key 不一定等于存储 ID；测试使用不同值，防止空名称和错误统计回归。
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {widget,display,presetWidget,PRESETS,sourceLabel,labels,matchesFilter,fieldOptions,missingBinding,filterChoices} from '../workbench/index.mjs';
+import {widget,display,presetWidget,PRESETS,sourceLabel,labels,matchesFilter,fieldOptions,missingBinding,filterChoices,moveWidget} from '../workbench/index.mjs';
 
 test('组件绑定真实字段 ID，选择项显示业务标签',()=>{
   const dataset={id:'current',name:'任务',columns:[{id:'col_title',key:'title',name:'任务名称',type:'text'},{id:'col_status',key:'status',name:'当前状态',type:'select',options:[{id:'opt_done',label:'已完成'}]}],rows:[]};
@@ -60,4 +60,13 @@ test('必要字段缺失时给出提示，统计图默认按多选字段分组',
   assert.match(missingBinding({type:'progress',statusField:'project'},projects),/已完成选项/);
   assert.equal(missingBinding({type:'progress',statusField:'done'},projects),'');
   assert.match(missingBinding({type:'metric',aggregate:'count',period:'today',dateField:''},projects),/日期字段/);
+});
+
+test('拖动排序插入到目标之前或之后，目标无效时保持原样',()=>{
+  const list=['a','b','c','d'].map((id)=>({id}));const ids=(items)=>items.map((w)=>w.id).join('');
+  assert.equal(ids(moveWidget(list,'a','c',true)),'bcad');
+  assert.equal(ids(moveWidget(list,'d','b',false)),'adbc');
+  assert.equal(ids(moveWidget(list,'b','a',false)),'bacd');
+  assert.equal(moveWidget(list,'a','x',true),list);
+  assert.equal(ids(list),'abcd');
 });

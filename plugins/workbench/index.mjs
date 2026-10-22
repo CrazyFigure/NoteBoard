@@ -69,6 +69,13 @@ export function missingBinding(w,dataset){
   return '';
 }
 
+/** 把组件移到目标组件之前或之后，返回新数组；目标无效时保持原顺序。 */
+export function moveWidget(widgets,id,targetId,after){
+  const item=widgets.find((w)=>w.id===id),rest=widgets.filter((w)=>w.id!==id),to=rest.findIndex((w)=>w.id===targetId);
+  if(!item||to<0)return widgets;
+  rest.splice(to+(after?1:0),0,item);return rest;
+}
+
 /** 按选项文字猜测「已完成」项，猜不到时留空由用户选择。 */
 const doneOption=(column)=>column?.options?.find((o)=>/完成|done|closed/i.test(o.label))?.id??'';
 
@@ -112,7 +119,7 @@ export function presetWidget(key,dataset){
 
 export async function mount(api){
   const {container,signal,notify}=api,view=createView(container,api.name);
-  let saved=clone(api.getConfig()??template('personal',api.getCurrentData())),draft=clone(saved),editing=false,selected=null,panel=null,dragged=null,destroyed=false;
+  let saved=clone(api.getConfig()??template('personal',api.getCurrentData())),draft=clone(saved),editing=false,selected=null,panel=null,destroyed=false;
   let query='',requestGeneration=0,panelKey='';
   const datasets=new Map([['current',api.getCurrentData()]]);
   const canvas=el('main','wb-canvas');view.viewport.append(canvas);
@@ -129,6 +136,7 @@ export async function mount(api){
   view.style.textContent+=`
     .wb-note-description{font-size:.92em;line-height:1.7;color:var(--editor-text-muted);margin:6px 0;overflow-wrap:anywhere}.wb-note-description p{margin:3px 0}.wb-note-description pre{white-space:pre-wrap;margin:4px 0}.wb-note-description ul,.wb-note-description ol{padding-left:18px}.wb-record .wb-note-description{max-height:3.4em;overflow:hidden}.wb-record small{display:block;margin-top:5px}.wb-text p{margin:0 0 10px}
     .wb-hint{font-size:11px;line-height:1.5;opacity:.85}.wb-checks{display:flex;flex-direction:column;gap:2px;max-height:240px;overflow:auto;padding:4px;border:1px solid var(--control-border);border-radius:6px}.wb-check{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:5px;color:var(--editor-text);cursor:pointer}.wb-check:hover{background:var(--toolbar-hover)}.wb-check:active{background:var(--toolbar-active)}.wb-check input{accent-color:var(--editor-accent);width:15px;height:15px;margin:0;min-height:0}
+    .wb-drag{touch-action:none}.wb-widget.dragging{opacity:.4}.wb-widget[data-drop=left]{box-shadow:-4px 0 0 var(--editor-accent)}.wb-widget[data-drop=right]{box-shadow:4px 0 0 var(--editor-accent)}.wb-widget[data-drop=top]{box-shadow:0 -4px 0 var(--editor-accent)}.wb-widget[data-drop=bottom]{box-shadow:0 4px 0 var(--editor-accent)}.wb-ghost{position:fixed;z-index:40;pointer-events:none;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:6px 10px;border-radius:6px;border:1px solid var(--editor-accent);background:var(--editor-bg);box-shadow:var(--shadow-md,0 4px 12px rgba(0,0,0,.12));font-size:12px}
     .wb-panel h3:first-of-type{margin-top:26px}.wb-backdrop.docked{background:transparent;pointer-events:none}.wb-backdrop.docked .wb-panel{pointer-events:auto}.np-scroll.wb-panel-open{padding-right:360px}.np-scroll.wb-panel-open .wb-canvas{padding-left:24px;padding-right:24px}
     @media(max-width:760px){.np-toolbar .np-name{width:auto;max-width:none;margin-right:auto}.wb-grid{grid-template-columns:repeat(6,minmax(0,1fr))}.wb-widget{grid-column:span 6!important}.wb-widget[data-type="metric"]{grid-column:span 2!important;height:120px!important}.wb-widget[data-type="metric"] .wb-source{display:none}.wb-widget[data-type="metric"] h2{font-size:12px}.wb-widget[data-type="metric"] .wb-metric{font-size:30px}}
   `;
@@ -226,9 +234,41 @@ export async function mount(api){
   function renderWidgets(){
     const grid=canvas.querySelector('#wb-grid');if(!grid)return;grid.replaceChildren();
     for(const w of draft.widgets){const card=el('section',`wb-widget${editing?' editing':''}${selected===w.id?' selected':''}`);card.dataset.type=w.type;card.style.gridColumn=`span ${[4,6,8,12].includes(Number(w.width))?w.width:6}`;card.style.height=`${Math.min(900,Math.max(120,Number(w.height)||320))}px`;
-      const header=el('div','wb-widget-header');if(editing){const drag=el('button','wb-drag');drag.append(icon('grip',14));drag.type='button';drag.draggable=true;drag.setAttribute('aria-label','拖动组件排序');tip(drag,'拖动排序');drag.addEventListener('dragstart',()=>{dragged=w.id;});header.append(drag);card.addEventListener('dragover',(event)=>event.preventDefault());card.addEventListener('drop',(event)=>{event.preventDefault();if(!dragged||dragged===w.id)return;const from=draft.widgets.findIndex((i)=>i.id===dragged),to=draft.widgets.findIndex((i)=>i.id===w.id);draft.widgets.splice(to,0,draft.widgets.splice(from,1)[0]);dragged=null;renderCanvas();});}
+      card.dataset.id=w.id;const header=el('div','wb-widget-header');if(editing){const drag=el('button','wb-drag');drag.append(icon('grip',14));drag.type='button';drag.setAttribute('aria-label','拖动组件排序');tip(drag,'拖动排序，方向键可微调');drag.addEventListener('pointerdown',(event)=>startDrag(event,w.id,card));drag.addEventListener('keydown',(event)=>{const step={ArrowUp:-1,ArrowLeft:-1,ArrowDown:1,ArrowRight:1}[event.key];if(!step)return;event.preventDefault();const index=draft.widgets.findIndex((i)=>i.id===w.id),other=draft.widgets[index+step];if(other)reorder(w.id,other.id,step>0,true);});header.append(drag);}
       header.append(el('h2','',w.title));if(draft.sources.length&&!['markdown','links'].includes(w.type))header.append(el('span','wb-source',getData(w).name));if(editing){const gear=button('设置',()=>{selected=w.id;panel='widget';renderPanel();renderWidgets();canvas.querySelector('.wb-widget.selected')?.scrollIntoView({block:'nearest',behavior:'smooth'});});gear.className='wb-gear';header.append(gear);}const body=el('div','wb-widget-body');card.append(header,body);grid.append(card);try{content(body,w);}catch(error){body.append(el('div','wb-error',error.message));}
     }
+  }
+
+  /** 调整顺序后重绘；键盘微调时把焦点还给同一组件的拖手，便于连续移动。 */
+  function reorder(id,targetId,after,refocus=false){
+    draft.widgets=moveWidget(draft.widgets,id,targetId,after);renderCanvas();
+    if(refocus)[...canvas.querySelectorAll('.wb-widget')].find((card)=>card.dataset.id===id)?.querySelector('.wb-drag')?.focus();
+  }
+
+  /** 宿主 WebView 开启了 dragDropEnabled，Windows 上原生 HTML5 拖放收不到 drop；改用指针事件实现拖动排序。 */
+  function startDrag(event,id,card){
+    if(event.button!==0)return;event.preventDefault();
+    const handle=event.currentTarget,startX=event.clientX,startY=event.clientY;let active=false,target=null,after=false,ghost=null;
+    handle.setPointerCapture(event.pointerId);
+    const clear=()=>canvas.querySelectorAll('[data-drop]').forEach((node)=>node.removeAttribute('data-drop'));
+    const move=(e)=>{
+      // 移动超过 4px 才进入拖动，避免点击拖手时误触
+      if(!active){if(Math.hypot(e.clientX-startX,e.clientY-startY)<4)return;active=true;card.classList.add('dragging');ghost=el('div','wb-ghost',draft.widgets.find((w)=>w.id===id)?.title??'');view.root.append(ghost);}
+      ghost.style.left=`${e.clientX+14}px`;ghost.style.top=`${e.clientY+14}px`;
+      // 靠近可视区上下边缘时自动滚动，便于拖到屏幕外的位置
+      const box=view.viewport.getBoundingClientRect();if(e.clientY<box.top+48)view.viewport.scrollBy(0,-18);else if(e.clientY>box.bottom-48)view.viewport.scrollBy(0,18);
+      clear();const hit=view.root.elementFromPoint(e.clientX,e.clientY)?.closest('.wb-widget');target=hit&&hit!==card?hit:null;if(!target)return;
+      // 接近整行宽的组件按上下半区判断，其余按左右半区判断插入位置
+      const rect=target.getBoundingClientRect(),vertical=rect.width>canvas.querySelector('#wb-grid').clientWidth*.7;
+      after=vertical?e.clientY>rect.top+rect.height/2:e.clientX>rect.left+rect.width/2;target.dataset.drop=vertical?(after?'bottom':'top'):(after?'right':'left');
+    };
+    const end=(e)=>{
+      handle.removeEventListener('pointermove',move);handle.removeEventListener('pointerup',end);handle.removeEventListener('pointercancel',end);removeEventListener('keydown',cancel,true);
+      ghost?.remove();clear();card.classList.remove('dragging');
+      if(e?.type==='pointerup'&&active&&target)reorder(id,target.dataset.id,after);
+    };
+    const cancel=(e)=>{if(e.key!=='Escape')return;e.preventDefault();e.stopPropagation();target=null;if(handle.hasPointerCapture(event.pointerId))handle.releasePointerCapture(event.pointerId);end();};
+    handle.addEventListener('pointermove',move);handle.addEventListener('pointerup',end);handle.addEventListener('pointercancel',end);addEventListener('keydown',cancel,true);
   }
 
   /** 编辑模式使用草稿，保存才正式提交，取消恢复布局与字段绑定。 */
