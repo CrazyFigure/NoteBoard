@@ -217,6 +217,8 @@ export function dropdown({ options, value, onChange, ariaLabel = '', className =
   const open = () => {
     const root = trigger.getRootNode(); if (!(root instanceof ShadowRoot)) return;
     menu = el('div', 'np-menu'); menu.setAttribute('role', 'listbox');
+    // 按下选项时焦点须留在触发按钮上：否则按钮先 blur 收起菜单，松开时 click 落空，选择不生效
+    menu.addEventListener('mousedown', (event) => event.preventDefault());
     options.forEach(([key, text], index) => {
       const option = el('div', 'np-option'); option.setAttribute('role', 'option'); option.setAttribute('aria-selected', String(String(key) === current));
       option.append(icon('check', 14), el('span', '', text));

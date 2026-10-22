@@ -18,13 +18,66 @@ export function display(dataset,row,key){
   return typeof value==='object'?JSON.stringify(value):String(value);
 }
 
+/** 选项字段按选项拆成多个值（多选可同时属于多组）；勾选框统一为已完成/未完成。 */
+export function labels(dataset,row,key){
+  const column=dataset.columns.find((c)=>c.id===key),value=row[key];
+  if(column?.type==='checkbox')return [value===true?'已完成':'未完成'];
+  if(column?.type==='select'||column?.type==='multiSelect'){const values=Array.isArray(value)?value:value==null||value===''?[]:[value];return values.map((v)=>column.options?.find((o)=>o.id===v)?.label??String(v));}
+  const text=display(dataset,row,key);return text?[text]:[];
+}
+
+/** 可按选项挑选筛选值的字段，返回候选文字；文本等字段返回 null 改用输入框。 */
+export function filterChoices(column){
+  if(column?.type==='checkbox')return ['已完成','未完成'];
+  if(column?.type==='select'||column?.type==='multiSelect')return (column.options??[]).map((o)=>o.label);
+  return null;
+}
+
+/** 筛选值未填写时不生效，避免半配置状态把全部记录都筛掉。 */
+export function matchesFilter(w,dataset,row){
+  if(!w.filterField)return true;
+  const values=labels(dataset,row,w.filterField).map((v)=>v.toLowerCase()),expected=String(w.filterValue??'').trim().toLowerCase();
+  if(w.filterOperator==='isEmpty')return !values.length;
+  if(w.filterOperator==='notEmpty')return values.length>0;
+  if(!expected)return true;
+  if(w.filterOperator==='equals')return values.includes(expected);
+  if(w.filterOperator==='notEquals')return !values.includes(expected);
+  return values.some((v)=>v.includes(expected));
+}
+
+const DATE_TYPES=['date','dateTime'],NUMBER_TYPES=['number','rating','progress'];
+// 各绑定位只列出能用的字段类型，避免把文本误选为日期或数值。
+const FIELD_KINDS={any:()=>true,date:(c)=>DATE_TYPES.includes(c.type),number:(c)=>NUMBER_TYPES.includes(c.type),status:(c)=>['checkbox','select','multiSelect'].includes(c.type),group:(c)=>!['longText','link'].includes(c.type)};
+/** 下拉候选字段；旧配置绑定了类型不符的字段时仍保留显示，不静默改掉用户设置。 */
+export function fieldOptions(dataset,kind,current='',empty='不使用'){
+  const match=FIELD_KINDS[kind]??FIELD_KINDS.any;
+  return [['',empty],...dataset.columns.filter((c)=>match(c)||c.id===current).map((c)=>[c.id,c.name])];
+}
+
+/** 必要字段未绑定时明确提示，不把全部记录误算为结果。 */
+export function missingBinding(w,dataset){
+  if(['markdown','links'].includes(w.type))return '';
+  if(w.type==='calendar'&&!w.dateField)return '在组件设置中选择日期字段';
+  if(w.period&&!w.dateField)return '请在组件设置中绑定日期字段';
+  if(w.type==='chart'&&!w.groupField)return '在组件设置中选择分组字段';
+  if((w.type==='metric'&&w.aggregate&&w.aggregate!=='count'||w.type==='chart'&&w.aggregate==='sum')&&!w.valueField)return '在组件设置中选择数值字段';
+  if(w.type==='progress'||w.onlyCompleted||w.onlyIncomplete){
+    const column=dataset.columns.find((c)=>c.id===w.statusField);
+    if(!column)return '在组件设置中选择完成状态字段';
+    if(column.type!=='checkbox'&&!w.completedValue)return '在组件设置中选择已完成选项';
+  }
+  return '';
+}
+
+/** 按选项文字猜测「已完成」项，猜不到时留空由用户选择。 */
+const doneOption=(column)=>column?.options?.find((o)=>/完成|done|closed/i.test(o.label))?.id??'';
+
 /** 模板只建立视图和字段绑定，不向用户的真实数据表插入演示记录。 */
 export function widget(type,dataset,title){
   const text=dataset.columns.find((c)=>c.type==='text'||c.type==='longText')?.id??dataset.columns[0]?.id??'';
   const status=dataset.columns.find((c)=>c.type==='checkbox'||/状态|完成|status/i.test(c.name))??dataset.columns.find((c)=>c.type==='select');
   const date=dataset.columns.find((c)=>/截止|到期|due|结束/i.test(c.name)&&/^date/.test(c.type))??dataset.columns.find((c)=>/^date/.test(c.type));
-  const done=status?.options?.find((o)=>/完成|done|closed/i.test(o.label));
-  return {id:id(),type,title:title??TYPES[type],sourceId:dataset.id,width:type==='metric'?4:type==='tasks'||type==='table'?8:6,height:type==='metric'?150:320,titleField:text,descriptionField:dataset.columns.find((c)=>c.type==='longText')?.id??'',statusField:status?.id??'',completedValue:done?.id??'',dateField:date?.id??'',groupField:status?.id??'',valueField:'',aggregate:'count',limit:12,filterField:'',filterOperator:'contains',filterValue:'',sortField:'',sortDirection:'asc',content:''};
+  return {id:id(),type,title:title??TYPES[type],sourceId:dataset.id,width:type==='metric'?4:type==='tasks'||type==='table'?8:6,height:type==='metric'?150:320,titleField:text,descriptionField:dataset.columns.find((c)=>c.type==='longText')?.id??'',statusField:status?.id??'',completedValue:doneOption(status),dateField:date?.id??'',groupField:(status??dataset.columns.find((c)=>c.type==='multiSelect'))?.id??'',valueField:'',aggregate:'count',limit:12,filterField:'',filterOperator:'contains',filterValue:'',sortField:'',sortDirection:'asc',content:''};
 }
 
 function template(kind,dataset,sources=[]){
@@ -60,7 +113,7 @@ export function presetWidget(key,dataset){
 export async function mount(api){
   const {container,signal,notify}=api,view=createView(container,api.name);
   let saved=clone(api.getConfig()??template('personal',api.getCurrentData())),draft=clone(saved),editing=false,selected=null,panel=null,dragged=null,destroyed=false;
-  let query='',requestGeneration=0;
+  let query='',requestGeneration=0,panelKey='';
   const datasets=new Map([['current',api.getCurrentData()]]);
   const canvas=el('main','wb-canvas');view.viewport.append(canvas);
   const backdrop=el('div','wb-backdrop');backdrop.hidden=true;view.root.append(backdrop);
@@ -75,13 +128,16 @@ export async function mount(api){
   // 小屏三项指标并列，优先给任务内容留出空间；操作栏避免无意义换行。
   view.style.textContent+=`
     .wb-note-description{font-size:.92em;line-height:1.7;color:var(--editor-text-muted);margin:6px 0;overflow-wrap:anywhere}.wb-note-description p{margin:3px 0}.wb-note-description pre{white-space:pre-wrap;margin:4px 0}.wb-note-description ul,.wb-note-description ol{padding-left:18px}.wb-record .wb-note-description{max-height:3.4em;overflow:hidden}.wb-record small{display:block;margin-top:5px}.wb-text p{margin:0 0 10px}
+    .wb-hint{font-size:11px;line-height:1.5;opacity:.85}.wb-checks{display:flex;flex-direction:column;gap:2px;max-height:240px;overflow:auto;padding:4px;border:1px solid var(--control-border);border-radius:6px}.wb-check{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:5px;color:var(--editor-text);cursor:pointer}.wb-check:hover{background:var(--toolbar-hover)}.wb-check:active{background:var(--toolbar-active)}.wb-check input{accent-color:var(--editor-accent);width:15px;height:15px;margin:0;min-height:0}
+    .wb-panel h3:first-of-type{margin-top:26px}.wb-backdrop.docked{background:transparent;pointer-events:none}.wb-backdrop.docked .wb-panel{pointer-events:auto}.np-scroll.wb-panel-open{padding-right:360px}.np-scroll.wb-panel-open .wb-canvas{padding-left:24px;padding-right:24px}
     @media(max-width:760px){.np-toolbar .np-name{width:auto;max-width:none;margin-right:auto}.wb-grid{grid-template-columns:repeat(6,minmax(0,1fr))}.wb-widget{grid-column:span 6!important}.wb-widget[data-type="metric"]{grid-column:span 2!important;height:120px!important}.wb-widget[data-type="metric"] .wb-source{display:none}.wb-widget[data-type="metric"] h2{font-size:12px}.wb-widget[data-type="metric"] .wb-metric{font-size:30px}}
   `;
 
   /** 异常集中转成可读反馈，组件错误不破坏已有配置。 */
   function safe(action){return async()=>{try{await action();}catch(error){notify(error.message??String(error));}};}
   function getData(w){const data=datasets.get(w.sourceId??'current');return data?{...data,name:sourceLabel(data.name)}:{id:w.sourceId,name:'数据源未连接',columns:[],rows:[],error:'请在数据源中重新连接文件'};}
-  function complete(w,row,dataset){const column=dataset.columns.find((c)=>c.id===w.statusField);return column?.type==='checkbox'?row[w.statusField]===true:!!w.completedValue&&row[w.statusField]===w.completedValue;}
+  // 多选字段只要包含「已完成」选项即视为完成
+  function complete(w,row,dataset){const column=dataset.columns.find((c)=>c.id===w.statusField),value=row[w.statusField];return column?.type==='checkbox'?value===true:!!w.completedValue&&(Array.isArray(value)?value.includes(w.completedValue):value===w.completedValue);}
 
   /** 同一组件的筛选、搜索、排序和统计均基于同一组行，避免指标与清单不一致。 */
   function filtered(w,dataset){
@@ -89,8 +145,11 @@ export async function mount(api){
       const effectiveQuery=api.getSearchQuery?.()??query;
       if(effectiveQuery&&!dataset.columns.some((c)=>display(dataset,row,c.id).toLowerCase().includes(effectiveQuery.toLowerCase())))return false;
       if(w.onlyCompleted&&!complete(w,row,dataset)||w.onlyIncomplete&&complete(w,row,dataset))return false;
-      if(w.filterField){const value=display(dataset,row,w.filterField),expected=String(w.filterValue??'');if(w.filterOperator==='equals'&&value!==expected||w.filterOperator==='notEquals'&&value===expected||w.filterOperator==='isEmpty'&&value!==''||(!w.filterOperator||w.filterOperator==='contains')&&!value.toLowerCase().includes(expected.toLowerCase()))return false;}
-      if(w.period){if(!w.dateField)return false;const day=String(row[w.dateField]??'').slice(0,10),today=localDay(new Date());if(w.period==='today'&&day!==today)return false;if(w.period==='upcoming'){const end=new Date();end.setDate(end.getDate()+3);if(day<today||day>localDay(end))return false;}if(w.period==='overdue'&&(!day||day>=today))return false;}
+      if(!matchesFilter(w,dataset,row))return false;
+      if(w.period){if(!w.dateField)return false;const day=String(row[w.dateField]??'').slice(0,10),now=new Date(),today=localDay(now);if(w.period==='today'&&day!==today)return false;if(w.period==='upcoming'){const end=new Date();end.setDate(end.getDate()+3);if(day<today||day>localDay(end))return false;}if(w.period==='overdue'&&(!day||day>=today))return false;
+        // 本周按周一至周日计算，本月按年月前缀比较
+        if(w.period==='week'){const start=new Date(now.getFullYear(),now.getMonth(),now.getDate()-(now.getDay()+6)%7),end=new Date(start.getFullYear(),start.getMonth(),start.getDate()+6);if(day<localDay(start)||day>localDay(end))return false;}
+        if(w.period==='month'&&day.slice(0,7)!==today.slice(0,7))return false;}
       return true;
     });
     if(w.sortField)rows=[...rows].sort((a,b)=>display(dataset,a,w.sortField).localeCompare(display(dataset,b,w.sortField),'zh-CN',{numeric:true})*(w.sortDirection==='desc'?-1:1));
@@ -121,12 +180,12 @@ export async function mount(api){
   /** 绘制单个组件，未知或删除的字段只展示空态，不猜测替换成其它业务字段。 */
   function content(body,w){
     const dataset=getData(w),rows=filtered(w,dataset),limit=Math.min(100,Math.max(1,Number(w.limit)||12));
-    if(w.period&&!w.dateField){body.append(el('div','wb-empty','请在组件设置中绑定日期字段'));return;}
     if(['markdown','links'].includes(w.type)){
       if(w.type==='markdown'){const content=el('div','wb-text');content.innerHTML=DOMPurify.sanitize(marked.parse(String(w.content||'在组件设置中写下想展示的内容')),{FORBID_TAGS:['img','iframe','object','style'],ALLOWED_URI_REGEXP:/^(?:#|data:)/i});body.append(content);}
       else{for(const line of String(w.content??'').split('\n').filter(Boolean)){const [name,url]=line.split('|').map((s)=>s.trim());const b=button(name||url,safe(()=>api.openLink(url||name)));b.className='wb-link';body.append(b);}if(!body.children.length)body.append(el('div','wb-empty','在组件设置中添加常用入口'));}return;
     }
     if(dataset.error){body.append(el('div','wb-error',dataset.error));return;}
+    const missing=missingBinding(w,dataset);if(missing){body.append(el('div','wb-empty',missing));return;}
     if(w.type==='metric'){
       const values=rows.map((r)=>r[w.valueField]).filter((v)=>v!==null&&v!==undefined&&v!=='').map(Number).filter(Number.isFinite);let n=rows.length;
       if(w.aggregate==='sum')n=values.reduce((a,b)=>a+b,0);if(w.aggregate==='avg')n=values.length?values.reduce((a,b)=>a+b,0)/values.length:0;if(w.aggregate==='min')n=values.length?values.reduce((a,b)=>Math.min(a,b)):0;if(w.aggregate==='max')n=values.length?values.reduce((a,b)=>Math.max(a,b)):0;
@@ -137,13 +196,12 @@ export async function mount(api){
       body.append(el('div','wb-progress-number',`${percent}%`));const track=el('div','wb-bar-track'),fill=el('div','wb-bar-fill');fill.style.width=`${percent}%`;track.append(fill);body.append(track);const label=el('div','wb-progress-label');label.append(el('span','',`已完成 ${done}`),el('span','',`共 ${rows.length} 项`));body.append(label);return;
     }
     if(w.type==='chart'){
-      if(!w.groupField){body.append(el('div','wb-empty','在组件设置中选择分组字段'));return;}
-      const groups=new Map();for(const row of rows){const label=display(dataset,row,w.groupField)||'未分类';groups.set(label,(groups.get(label)??0)+(w.aggregate==='sum'?Number(row[w.valueField])||0:1));}
+      // 多选记录计入它的每个选项，空值归入「未分类」
+      const groups=new Map();for(const row of rows){const keys=labels(dataset,row,w.groupField),amount=w.aggregate==='sum'?Number(row[w.valueField])||0:1;for(const label of keys.length?keys:['未分类'])groups.set(label,(groups.get(label)??0)+amount);}
       const values=[...groups].sort((a,b)=>b[1]-a[1]).slice(0,limit),max=Math.max(1,...values.map((p)=>p[1]));const bars=el('div','wb-bars');bars.setAttribute('role','img');bars.setAttribute('aria-label',`${w.title}，${values.map(([k,v])=>`${k} ${v}`).join('，')}`);
       for(const [name,value]of values){const row=el('div','wb-bar-row'),track=el('div','wb-bar-track'),fill=el('div','wb-bar-fill');fill.style.width=`${Math.max(0,value)/max*100}%`;track.append(fill);row.append(el('span','',name),track,el('span','',value.toLocaleString('zh-CN')));bars.append(row);}body.append(bars);if(!values.length)body.append(el('div','wb-empty','暂无数据'));return;
     }
     if(w.type==='calendar'){
-      if(!w.dateField){body.append(el('div','wb-empty','在组件设置中选择日期字段'));return;}
       const state=dateSelections.get(w.id)??{month:new Date(new Date().getFullYear(),new Date().getMonth(),1),day:localDay(new Date())};dateSelections.set(w.id,state);
       const nav=el('div','wb-calendar-nav');nav.append(iconButton('chevron-left','上个月',()=>{state.month=new Date(state.month.getFullYear(),state.month.getMonth()-1,1);renderCanvas();}),el('span','',state.month.toLocaleDateString('zh-CN',{year:'numeric',month:'long'})),iconButton('chevron-right','下个月',()=>{state.month=new Date(state.month.getFullYear(),state.month.getMonth()+1,1);renderCanvas();}));body.append(nav);
       const grid=el('div','wb-calendar');for(const day of ['一','二','三','四','五','六','日'])grid.append(el('span','',day));const start=(state.month.getDay()+6)%7;for(let i=0;i<start;i++)grid.append(el('span'));
@@ -169,7 +227,7 @@ export async function mount(api){
     const grid=canvas.querySelector('#wb-grid');if(!grid)return;grid.replaceChildren();
     for(const w of draft.widgets){const card=el('section',`wb-widget${editing?' editing':''}${selected===w.id?' selected':''}`);card.dataset.type=w.type;card.style.gridColumn=`span ${[4,6,8,12].includes(Number(w.width))?w.width:6}`;card.style.height=`${Math.min(900,Math.max(120,Number(w.height)||320))}px`;
       const header=el('div','wb-widget-header');if(editing){const drag=el('button','wb-drag');drag.append(icon('grip',14));drag.type='button';drag.draggable=true;drag.setAttribute('aria-label','拖动组件排序');tip(drag,'拖动排序');drag.addEventListener('dragstart',()=>{dragged=w.id;});header.append(drag);card.addEventListener('dragover',(event)=>event.preventDefault());card.addEventListener('drop',(event)=>{event.preventDefault();if(!dragged||dragged===w.id)return;const from=draft.widgets.findIndex((i)=>i.id===dragged),to=draft.widgets.findIndex((i)=>i.id===w.id);draft.widgets.splice(to,0,draft.widgets.splice(from,1)[0]);dragged=null;renderCanvas();});}
-      header.append(el('h2','',w.title));if(draft.sources.length&&!['markdown','links'].includes(w.type))header.append(el('span','wb-source',getData(w).name));if(editing){const gear=button('设置',()=>{selected=w.id;panel='widget';renderPanel();renderWidgets();});gear.className='wb-gear';header.append(gear);}const body=el('div','wb-widget-body');card.append(header,body);grid.append(card);try{content(body,w);}catch(error){body.append(el('div','wb-error',error.message));}
+      header.append(el('h2','',w.title));if(draft.sources.length&&!['markdown','links'].includes(w.type))header.append(el('span','wb-source',getData(w).name));if(editing){const gear=button('设置',()=>{selected=w.id;panel='widget';renderPanel();renderWidgets();canvas.querySelector('.wb-widget.selected')?.scrollIntoView({block:'nearest',behavior:'smooth'});});gear.className='wb-gear';header.append(gear);}const body=el('div','wb-widget-body');card.append(header,body);grid.append(card);try{content(body,w);}catch(error){body.append(el('div','wb-error',error.message));}
     }
   }
 
@@ -180,17 +238,37 @@ export async function mount(api){
     if(editing)view.toolbar.append(button('页面设置',()=>{panel='page';renderPanel();}),button('模板',()=>{panel='templates';renderPanel();}),button('添加组件',()=>{panel='add';renderPanel();}),button('数据源',()=>{panel='sources';renderPanel();}),button('取消',()=>{editing=false;draft=clone(saved);selected=null;closePanel();renderToolbar();renderCanvas();}),button('保存布局',safe(()=>{api.onChange(clone(draft));saved=clone(draft);editing=false;selected=null;closePanel();renderToolbar();renderCanvas();})));
     else view.toolbar.append(button('刷新数据',safe(loadAll)),button('自定义',startEdit));
   }
-  function closePanel(){panel=null;backdrop.hidden=true;renderWidgets();}
+  function closePanel(){panel=null;panelKey='';backdrop.hidden=true;view.viewport.classList.remove('wb-panel-open');renderWidgets();}
 
-  /** 表单只在明确 change 后更新预览，输入过程中保留焦点和未完成的中文输入。 */
-  function field(parent,label,value,onChange,options){
+  /** 表单只在明确 change 后更新预览，输入过程中保留焦点和未完成的中文输入。
+   *  下拉选择同时重建面板，联动显示相关设置；文本输入不重建，避免吞掉紧随其后的点击。 */
+  function field(parent,label,value,onChange,options,hint){
     const wrap=el('label','wb-field',label);let input;
-    if(Array.isArray(options)){input=dropdown({options,value:String(value??''),ariaLabel:label,onChange:(next)=>{onChange(next);renderCanvas();}});}
+    if(Array.isArray(options)){input=dropdown({options,value:String(value??''),ariaLabel:label,onChange:(next)=>{onChange(next);renderCanvas();renderPanel();}});}
     else{input=el(options==='textarea'?'textarea':'input');input.value=String(value??'');input.addEventListener('change',()=>{onChange(input.value);renderCanvas();});}
-    wrap.append(input);parent.append(wrap);return input;
+    wrap.append(input);if(hint)wrap.append(el('small','wb-hint',hint));parent.append(wrap);return input;
   }
+  /** 数据表显示字段：空数组表示全部字段；至少保留一列，避免表格变空。 */
+  function columnPicker(parent,w,data){
+    const wrap=el('div','wb-field','显示字段'),list=el('div','wb-checks');
+    for(const column of data.columns){
+      const item=el('label','wb-check'),box=el('input');box.type='checkbox';box.dataset.id=column.id;box.checked=!w.visibleFields?.length||w.visibleFields.includes(column.id);
+      box.addEventListener('change',()=>{const ids=[...list.querySelectorAll('input')].filter((input)=>input.checked).map((input)=>input.dataset.id);if(!ids.length){box.checked=true;return;}w.visibleFields=ids.length===data.columns.length?[]:ids;renderCanvas();});
+      item.append(box,el('span','',column.name));list.append(item);
+    }
+    wrap.append(list,el('small','wb-hint','最多显示前 12 列'));parent.append(wrap);
+  }
+  /** 宽屏时面板停靠在右侧、不遮挡画布，便于边改边看；工具栏始终可见，随时可保存。 */
   function renderPanel(){
-    if(!panel)return;backdrop.hidden=false;backdrop.replaceChildren();const box=el('aside','wb-panel'),header=el('div','wb-panel-head');header.append(el('h2','',panel==='widget'?'组件设置':panel==='page'?'页面设置':panel==='templates'?'选择模板':panel==='sources'?'数据源':'添加组件'),iconButton('x','关闭',closePanel,'np-ghost'));box.append(header);backdrop.append(box);
+    if(!panel)return;
+    const previous=backdrop.querySelector('.wb-panel'),key=`${panel}:${selected}`,keep=!!previous&&key===panelKey,scrollTop=previous?.scrollTop??0,focused=keep?view.root.activeElement?.getAttribute?.('aria-label'):null;panelKey=key;
+    const docked=container.clientWidth>=1000;backdrop.classList.toggle('docked',docked);view.viewport.classList.toggle('wb-panel-open',docked);
+    backdrop.style.top=`${view.toolbar.offsetHeight}px`;backdrop.hidden=false;backdrop.replaceChildren();const box=el('aside','wb-panel'),header=el('div','wb-panel-head');header.append(el('h2','',panel==='widget'?'组件设置':panel==='page'?'页面设置':panel==='templates'?'选择模板':panel==='sources'?'数据源':'添加组件'),iconButton('x','关闭',closePanel,'np-ghost'));box.append(header);backdrop.append(box);
+    buildPanel(box);
+    // 联动重建后保持原滚动位置和键盘焦点
+    if(keep){box.scrollTop=scrollTop;if(focused)[...box.querySelectorAll('[aria-label]')].find((node)=>node.getAttribute('aria-label')===focused)?.focus({preventScroll:true});}
+  }
+  function buildPanel(box){
     if(panel==='page'){field(box,'工作台名称',draft.title,(v)=>draft.title=v);field(box,'简介',draft.subtitle,(v)=>draft.subtitle=v);return;}
     if(panel==='templates'){const palette=el('div','wb-palette');for(const [key,name,desc]of [['personal','个人工作台','任务 · 日程 · 笔记'],['project','项目驾驶舱','状态分布 · 进度 · 清单'],['knowledge','知识与灵感','资料 · 笔记 · 常用入口'],['blank','空白画布','从零开始自由组合']]){const b=button(name,()=>{const apply=button('替换当前布局',()=>{draft=template(key,api.getCurrentData(),draft.sources);selected=null;closePanel();renderCanvas();});box.querySelector('.wb-panel-actions')?.remove();const actions=el('div','wb-panel-actions');actions.append(apply);box.append(actions);});b.append(el('small','',desc));palette.append(b);}box.append(palette);return;}
     if(panel==='add'){
@@ -208,22 +286,61 @@ export async function mount(api){
       for(const source of draft.sources){const row=el('div','wb-source-row');row.append(el('strong','',sourceLabel(source.name)),el('p','',source.path));const data=datasets.get(source.id);if(data?.error)row.append(el('p','wb-error',data.error));const actions=el('div','wb-panel-actions');actions.append(button('重新绑定',safe(async()=>{const next=await api.chooseSource();if(!next)return;draft.sources=draft.sources.map((s)=>s.id===source.id?next:s);draft.widgets.forEach((w)=>{if(w.sourceId===source.id)w.sourceId=next.id;});await loadAll();renderPanel();})),button('移除',()=>{draft.sources=draft.sources.filter((s)=>s.id!==source.id);draft.widgets.forEach((w)=>{if(w.sourceId===source.id)w.sourceId='current';});renderPanel();renderCanvas();}));row.append(actions);box.append(row);}
       box.append(button('添加多维表格文件',safe(async()=>{if(draft.sources.length>=8)throw new Error('最多支持 8 个外部数据源');const source=await api.chooseSource();if(source){draft.sources.push(source);await loadAll();renderPanel();}})));return;
     }
-    const w=draft.widgets.find((w)=>w.id===selected);if(!w){closePanel();return;}const data=getData(w),fields=[['','请选择字段'],...data.columns.map((c)=>[c.id,c.name])];
+    const w=draft.widgets.find((w)=>w.id===selected);if(!w){closePanel();return;}const data=getData(w),pick=(kind,current,empty)=>fieldOptions(data,kind,current,empty);
+    const section=(title)=>box.append(el('h3','',title));
+    const limit=(label)=>field(box,label,w.limit,(v)=>w.limit=Math.max(1,Math.min(100,Number(v)||12)));
+    // 完成状态字段与「已完成」选项成对出现；切换字段时自动猜测已完成项
+    const status=(hint)=>{field(box,'完成状态字段',w.statusField,(v)=>{w.statusField=v;w.completedValue=doneOption(data.columns.find((c)=>c.id===v));},pick('status',w.statusField,'请选择字段'),hint);const column=data.columns.find((c)=>c.id===w.statusField);if(column?.options)field(box,'已完成选项',w.completedValue,(v)=>w.completedValue=v,[['','请选择'],...column.options.map((o)=>[o.id,o.label])],'选中该项即视为完成');};
     field(box,'名称',w.title,(v)=>w.title=v);
     field(box,'宽度',w.width,(v)=>w.width=Number(v),[['4','三分之一'],['6','二分之一'],['8','三分之二'],['12','整行']]);
     field(box,'高度（120—900）',w.height,(v)=>w.height=Math.min(900,Math.max(120,Number(v)||320)));
     if(['markdown','links'].includes(w.type)){field(box,w.type==='links'?'每行一个入口：名称 | https://网址':'文本内容',w.content,(v)=>w.content=v,'textarea');}
     else{
-      if(draft.sources.length)field(box,'数据源',w.sourceId??'current',(v)=>{w.sourceId=v;renderPanel();},[['current',api.getCurrentData().name],...draft.sources.map((s)=>[s.id,sourceLabel(s.name)])]);
-      if(['tasks','notes','calendar'].includes(w.type)){field(box,'标题字段',w.titleField,(v)=>w.titleField=v,fields);field(box,'描述字段',w.descriptionField,(v)=>w.descriptionField=v,fields);field(box,'日期字段',w.dateField,(v)=>w.dateField=v,fields);}
-      if(['tasks','progress','metric'].includes(w.type)){field(box,'完成状态字段',w.statusField,(v)=>{w.statusField=v;renderPanel();},fields);const status=data.columns.find((c)=>c.id===w.statusField);if(status?.options)field(box,'已完成选项',w.completedValue,(v)=>w.completedValue=v,[['','请选择'],...status.options.map((o)=>[o.id,o.label])]);}
-      if(['metric','chart'].includes(w.type)){field(box,'统计方式',w.aggregate,(v)=>w.aggregate=v,w.type==='chart'?[['count','记录数'],['sum','求和']]:[['count','记录数'],['sum','求和'],['avg','平均值'],['min','最小值'],['max','最大值']]);field(box,'数值字段',w.valueField,(v)=>w.valueField=v,fields);}
-      if(w.type==='chart')field(box,'分组字段',w.groupField,(v)=>w.groupField=v,fields);
-      box.append(el('h3','','筛选与排序'));field(box,'筛选字段',w.filterField,(v)=>w.filterField=v,fields);field(box,'条件',w.filterOperator,(v)=>w.filterOperator=v,[['contains','包含'],['equals','等于'],['notEquals','不等于'],['isEmpty','为空']]);field(box,'筛选值（选项使用显示文字）',w.filterValue,(v)=>w.filterValue=v);
-      field(box,'日期字段',w.dateField,(v)=>w.dateField=v,fields);field(box,'日期范围',w.period,(v)=>w.period=v,[['','全部日期'],['today','今天'],['upcoming','未来三天'],['overdue','已逾期']]);
-      field(box,'完成状态筛选',w.onlyCompleted?'done':w.onlyIncomplete?'todo':'all',(v)=>{w.onlyCompleted=v==='done';w.onlyIncomplete=v==='todo';},[['all','全部'],['todo','未完成'],['done','已完成']]);
-      field(box,'排序字段',w.sortField,(v)=>w.sortField=v,fields);field(box,'排序方向',w.sortDirection,(v)=>w.sortDirection=v,[['asc','升序'],['desc','降序']]);field(box,'最多显示记录（1—100）',w.limit,(v)=>w.limit=Math.max(1,Math.min(100,Number(v)||12)));
+      if(draft.sources.length)field(box,'数据源',w.sourceId??'current',(v)=>{w.sourceId=v;},[['current',api.getCurrentData().name],...draft.sources.map((s)=>[s.id,sourceLabel(s.name)])]);
+      // 各组件只展示实际会用到的设置
+      if(['tasks','notes','calendar'].includes(w.type)){
+        section('显示内容');
+        if(w.type==='calendar')field(box,'日期字段',w.dateField,(v)=>w.dateField=v,pick('date',w.dateField,'请选择字段'),'记录按此日期标在月历上');
+        field(box,'标题字段',w.titleField,(v)=>w.titleField=v,pick('any',w.titleField,'请选择字段'),'每条记录的主文字');
+        field(box,'描述字段',w.descriptionField,(v)=>w.descriptionField=v,pick('any',w.descriptionField),'显示在标题下方');
+        if(w.type!=='calendar')field(box,'日期字段',w.dateField,(v)=>w.dateField=v,pick('date',w.dateField),'显示在记录下方');
+        if(w.type==='tasks')status('显示勾选框，可直接打勾');
+      }
+      if(w.type==='table'){section('显示内容');columnPicker(box,w,data);}
+      if(w.type==='metric'){
+        section('统计');field(box,'统计方式',w.aggregate,(v)=>w.aggregate=v,[['count','记录数'],['sum','求和'],['avg','平均值'],['min','最小值'],['max','最大值']]);
+        if(w.aggregate&&w.aggregate!=='count')field(box,'数值字段',w.valueField,(v)=>w.valueField=v,pick('number',w.valueField,'请选择字段'),'参与计算的数字字段');
+      }
+      if(w.type==='chart'){
+        section('统计');field(box,'分组字段',w.groupField,(v)=>w.groupField=v,pick('group',w.groupField,'请选择字段'),'每个取值一根柱子');
+        field(box,'统计方式',w.aggregate,(v)=>w.aggregate=v,[['count','记录数'],['sum','求和']]);
+        if(w.aggregate==='sum')field(box,'数值字段',w.valueField,(v)=>w.valueField=v,pick('number',w.valueField,'请选择字段'),'按分组累加该字段');
+        limit('最多显示分组（1—100）');
+      }
+      if(w.type==='progress'){section('统计');status('完成数 ÷ 总数');}
+      section('筛选');
+      field(box,'筛选字段',w.filterField,(v)=>{w.filterField=v;w.filterValue='';w.filterOperator=filterChoices(data.columns.find((c)=>c.id===v))?'equals':'contains';},pick('any',w.filterField,'不筛选'));
+      if(w.filterField){
+        const choices=filterChoices(data.columns.find((c)=>c.id===w.filterField));
+        field(box,'条件',w.filterOperator||'contains',(v)=>w.filterOperator=v,[...choices?[]:[['contains','包含']],['equals','等于'],['notEquals','不等于'],['isEmpty','为空'],['notEmpty','不为空']]);
+        if(!['isEmpty','notEmpty'].includes(w.filterOperator))field(box,'筛选值',w.filterValue,(v)=>w.filterValue=v,choices?[['','请选择'],...choices.map((label)=>[label,label])]:undefined);
+      }
+      if(w.type!=='calendar'){
+        field(box,'日期范围',w.period??'',(v)=>w.period=v,[['','全部日期'],['today','今天'],['week','本周'],['month','本月'],['upcoming','未来三天'],['overdue','已逾期']]);
+        if(w.period&&!['tasks','notes'].includes(w.type))field(box,'日期字段',w.dateField,(v)=>w.dateField=v,pick('date',w.dateField,'请选择字段'),'按此日期判断范围');
+      }
+      if(w.type!=='progress'){
+        const state=w.onlyCompleted?'done':w.onlyIncomplete?'todo':'all';
+        field(box,'完成情况',state,(v)=>{w.onlyCompleted=v==='done';w.onlyIncomplete=v==='todo';},[['all','全部'],['todo','只看未完成'],['done','只看已完成']]);
+        if(state!=='all'&&w.type!=='tasks')status('据此判断是否完成');
+      }
+      if(['tasks','notes','table','calendar'].includes(w.type)){
+        section('排序与数量');field(box,'排序字段',w.sortField,(v)=>w.sortField=v,pick('any',w.sortField,'默认顺序'));
+        if(w.sortField)field(box,'排序方向',w.sortDirection,(v)=>w.sortDirection=v,[['asc','升序'],['desc','降序']]);
+        limit(w.type==='calendar'?'每天最多显示（1—100）':'最多显示记录（1—100）');
+      }
     }
+    box.append(el('p','wb-footer-hint','修改即时预览，保存布局后生效'));
     const actions=el('div','wb-panel-actions');
     for(const [label,offset]of [['上移',-1],['下移',1]])actions.append(button(label,()=>{const i=draft.widgets.indexOf(w),to=i+offset;if(to>=0&&to<draft.widgets.length){draft.widgets.splice(to,0,draft.widgets.splice(i,1)[0]);renderCanvas();}}));
     actions.append(button('复制组件',()=>{if(draft.widgets.length>=64)return;const next={...clone(w),id:id(),title:`${w.title} 副本`};draft.widgets.push(next);selected=next.id;renderCanvas();renderPanel();}),button('删除组件',()=>{draft.widgets=draft.widgets.filter((x)=>x.id!==w.id);selected=null;closePanel();renderCanvas();}));box.append(actions);
