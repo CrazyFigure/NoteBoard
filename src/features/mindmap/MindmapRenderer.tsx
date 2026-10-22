@@ -124,6 +124,8 @@ export interface MindmapRendererHandle {
   addSummary: () => void;
   addBoundary: () => void;
   startConnect: () => void;
+  /** 整图或中心主题移到画面中央（沉浸阅读切换后视口尺寸变化时使用） */
+  centerContent: () => void;
 }
 
 type DropPosition = 'before' | 'inside' | 'after';
@@ -1203,11 +1205,13 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       const ids = currentSelectionIds();
       if (ids.length === 1) startConnect(ids[0]);
     },
+    centerContent: handleScrollBackToContent,
   };
   useImperativeHandle(ref, () => ({
     addSummary: () => commandsRef.current?.addSummary(),
     addBoundary: () => commandsRef.current?.addBoundary(),
     startConnect: () => commandsRef.current?.startConnect(),
+    centerContent: () => commandsRef.current?.centerContent(),
   }), []);
 
   // 选中变化通知顶部操作栏

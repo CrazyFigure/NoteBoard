@@ -9,6 +9,7 @@ import { IS_NATIVE_MOBILE, IS_WEB } from '../core/platform';
 import { useWindowStore } from '../stores/windowStore';
 import { useSearchStore } from '../stores/searchStore';
 import { useLayoutStore } from '../stores/layoutStore';
+import { requestReadingMode } from '../features/reading/readingMode';
 import { useSettingsStore } from '../stores/settingsStore';
 import { showToast } from '../stores/toastStore';
 import { ToastContainer } from '../components/Toast';
@@ -117,6 +118,8 @@ export function MobileShell() {
     } else if (!activeKey && previous) {
       useMobileStore.getState().setPage('home');
     }
+    // 切换或关闭文档时退出沉浸阅读，避免顶栏停留在隐藏状态
+    if (activeKey !== previous && useLayoutStore.getState().readingMode) requestReadingMode(false);
   }, [activeKey]);
 
   // 手机网页保存到服务器后返回首页时重新读取列表，避免新笔记直到手动刷新才出现。
@@ -140,7 +143,7 @@ export function MobileShell() {
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, []);
 
-  // Android 返回键：覆盖层 → 查找栏 → 设置 → 编辑页 → 上级文件夹 → 再按一次退到后台
+  // Android 返回键：覆盖层 → 查找栏 → 设置 → 沉浸阅读 → 编辑页 → 上级文件夹 → 再按一次退到后台
   useEffect(() => {
     if (!IS_NATIVE_MOBILE) return;
     let lastBackAt = 0;
@@ -167,6 +170,11 @@ export function MobileShell() {
       }
       if (useLayoutStore.getState().settingsModalVisible) {
         useLayoutStore.getState().setSettingsModalVisible(false);
+        return;
+      }
+      // 沉浸阅读中返回先退出阅读，再返回首页
+      if (useLayoutStore.getState().readingMode) {
+        requestReadingMode(false);
         return;
       }
       if (state.page === 'editor') {

@@ -2,7 +2,7 @@
 // 基于 Diagrams.net Embed 协议 + postMessage 双向通信 + 主题联动与自动保存 + Ctrl+S 统一保存
 // 详见 docs/09-开发路线图.md
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Download, FileCode, RefreshCw, WifiOff } from 'lucide-react';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
@@ -19,6 +19,9 @@ import {
 import { scheduleAutoSave, submitCapturedContent } from '../session/documentSession';
 import type { EditorCapabilities, FlushReason } from '../../core/editor/editorTypes';
 import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
+import { ReadingModeButton } from '../reading/ReadingModeButton';
+import { ReadingModeOverlay } from '../reading/ReadingModeOverlay';
+import { requestReadingMode, useIsReading } from '../reading/readingMode';
 
 interface DrawioEditorProps {
   docKey: string;
@@ -46,6 +49,9 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
   const setContent = useDocumentStore((s) => s.setContent);
   const setDirty = useDocumentStore((s) => s.setDirty);
   const setTabDirty = useWindowStore((s) => s.setTabDirty);
+  // 沉浸阅读：隐藏顶部操作条，绘图区独占屏幕
+  const isReading = useIsReading(docKey);
+  const exitReading = useCallback(() => requestReadingMode(false), []);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -329,7 +335,7 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
         style={{
           height: 36,
           minHeight: 36,
-          display: 'flex',
+          display: isReading ? 'none' : 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '0 12px',
@@ -396,11 +402,21 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
               <span>导出 PNG</span>
             </button>
           </Tooltip>
+          {/* 沉浸阅读 */}
+          <ReadingModeButton
+            docKey={docKey}
+            className="nb-editor-toolbar-btn"
+            showLabel
+            iconSize={12}
+            style={{ padding: '3px 8px', fontSize: 11, borderRadius: 4 }}
+          />
         </div>
       </div>
 
       {/* Draw.io iframe 嵌入容器 */}
       <div style={{ flex: 1, position: 'relative', width: '100%', height: '100%' }}>
+        {/* 沉浸阅读：退出按钮（焦点在 iframe 内时 Esc 由 Draw.io 接收，需点击退出） */}
+        {isReading && <ReadingModeOverlay onExit={exitReading} />}
         <iframe
           ref={iframeRef}
           src={embedUrl}

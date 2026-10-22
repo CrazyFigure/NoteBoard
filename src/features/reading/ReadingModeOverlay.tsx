@@ -1,9 +1,11 @@
-// NoteBoard Markdown 沉浸阅读浮层
+// NoteBoard 沉浸阅读浮层（各格式共用）
 // 顶部细进度条 + 右上角退出胶囊：指针静止时淡出，移动或悬停时恢复，Esc 同样可退出
+// 只有存在可见滚动容器（Markdown / 代码）时才显示进度，画布类格式只显示退出按钮
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Minimize2 } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
+import { useReadingEscape } from './readingMode';
 
 /** 指针静止多久后胶囊淡出（毫秒） */
 const IDLE_DIM_DELAY = 1800;
@@ -11,30 +13,24 @@ const IDLE_DIM_DELAY = 1800;
 const SCROLLER_SELECTOR = '.nb-md-visual-scroller, .cm-scroller';
 
 interface ReadingModeOverlayProps {
-  /** Markdown 编辑器根节点，从中查找当前可见的滚动容器 */
-  rootRef: React.RefObject<HTMLDivElement | null>;
+  /** 编辑器根节点，从中查找当前可见的滚动容器；不传则不显示进度 */
+  rootRef?: React.RefObject<HTMLDivElement | null>;
   onExit: () => void;
 }
 
-/** 当前可见滚动容器的阅读进度（0~1） */
-function readProgress(root: HTMLElement | null): number {
-  if (!root) return 0;
+/** 当前可见滚动容器的阅读进度（0~1）；没有可见滚动容器时为 null */
+function readProgress(root: HTMLElement | null | undefined): number | null {
+  if (!root) return null;
   const scrollers = Array.from(root.querySelectorAll<HTMLElement>(SCROLLER_SELECTOR));
   // display:none 的内核 offsetParent 为空，取实际可见的那一个
   const el = scrollers.find((node) => node.offsetParent !== null);
-  if (!el) return 0;
+  if (!el) return null;
   const max = el.scrollHeight - el.clientHeight;
   return max > 0 ? Math.min(1, Math.max(0, el.scrollTop / max)) : 1;
 }
 
-/** 焦点在可输入元素中时 Esc 归输入框（如查找栏），不退出阅读 */
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || Boolean(target.closest('input, textarea, select'));
-}
-
 export function ReadingModeOverlay({ rootRef, onExit }: ReadingModeOverlayProps) {
-  const [progress, setProgress] = useState(0);
+  const [progress, setProgress] = useState<number | null>(null);
   const [awake, setAwake] = useState(true);
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
@@ -42,7 +38,7 @@ export function ReadingModeOverlay({ rootRef, onExit }: ReadingModeOverlayProps)
 
   // 跟踪滚动进度：scroll 不冒泡，在根节点捕获阶段统一监听
   useEffect(() => {
-    const root = rootRef.current;
+    const root = rootRef?.current;
     if (!root) return;
     let frame = 0;
     const update = () => {
@@ -82,26 +78,18 @@ export function ReadingModeOverlay({ rootRef, onExit }: ReadingModeOverlayProps)
   }, []);
 
   // Esc 退出：让弹窗与输入框优先处理自己的 Esc
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || event.defaultPrevented || isTypingTarget(event.target)) return;
-      if (document.querySelector('[role="dialog"], [aria-modal="true"]')) return;
-      event.preventDefault();
-      onExit();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onExit]);
+  useReadingEscape(true, onExit);
 
   const visible = awake || hovered;
-  const percent = Math.round(progress * 100);
 
   return (
     <>
       {/* 顶部阅读进度条 */}
-      <div className="nb-reading-progress" aria-hidden="true">
-        <div className="nb-reading-progress-bar" style={{ transform: `scaleX(${progress})` }} />
-      </div>
+      {progress !== null && (
+        <div className="nb-reading-progress" aria-hidden="true">
+          <div className="nb-reading-progress-bar" style={{ transform: `scaleX(${progress})` }} />
+        </div>
+      )}
 
       {/* 右上角退出胶囊：淡出时保留低透明度，始终可被找到 */}
       <div
@@ -113,8 +101,12 @@ export function ReadingModeOverlay({ rootRef, onExit }: ReadingModeOverlayProps)
           setPressed(false);
         }}
       >
-        <span className="nb-reading-percent">{percent}%</span>
-        <span className="nb-reading-divider" aria-hidden="true" />
+        {progress !== null && (
+          <>
+            <span className="nb-reading-percent">{Math.round(progress * 100)}%</span>
+            <span className="nb-reading-divider" aria-hidden="true" />
+          </>
+        )}
         <Tooltip content="退出沉浸阅读" shortcut="Esc" side="bottom" align="end" sideOffset={8}>
           <button
             type="button"

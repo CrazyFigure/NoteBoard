@@ -5,11 +5,11 @@ import { createView, el, button, copyText, guardLinks, applyFontFallback, zoomCo
 import { cleanOpenXml } from '../shared/openXml.mjs';
 import { normalizePowerPointGroups } from './groupGeometry.mjs';
 
-export async function mount({ container, name, bytes, signal, notify }) {
+export async function mount({ container, name, bytes, signal, notify, reading }) {
   // 先归一组合的几何坐标，避免 SVG 组合缩放再次放大字号，导致文字超出图形。
   const presentation = await parse(/\.pptx$/i.test(name)?await cleanOpenXml(bytes,normalizePowerPointGroups):bytes);
   if (signal.aborted) { presentation.dispose?.(); return; }
-  const view = createView(container, name);
+  const view = createView(container, name, reading);
   view.style.textContent += `.np-slides{display:flex;height:100%;min-height:0}
     .np-thumbs{width:176px;flex-shrink:0;overflow:auto;padding:12px 10px;border-right:1px solid var(--editor-border);background:var(--editor-surface);display:flex;flex-direction:column;gap:10px}
     .np-thumb{display:grid;grid-template-columns:18px 1fr;align-items:start;gap:6px;height:auto;padding:0;border:0;background:transparent;text-align:left}

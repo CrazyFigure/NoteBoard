@@ -10,7 +10,7 @@ import {
   lineNumbers,
   highlightActiveLineGutter,
 } from '@codemirror/view';
-import { EditorState, Prec, Text, Transaction } from '@codemirror/state';
+import { Compartment, EditorState, Prec, Text, Transaction } from '@codemirror/state';
 import { undoDepth as cmUndoDepth } from '@codemirror/commands';
 import {
   createBaseExtensions,
@@ -57,6 +57,20 @@ import {
   undoDocumentHistory,
 } from '../history/documentHistory';
 import { discardPendingSourceSnapshot, flushPendingSourceSnapshot, hasPendingSourceSnapshot, stagePendingSourceSnapshot } from '../editor-md/visualSnapshot';
+import { ReadingModeOverlay } from '../reading/ReadingModeOverlay';
+import { isDocumentReading, requestReadingMode, useIsReading } from '../reading/readingMode';
+
+/** 沉浸阅读时代码视图只读（compartment 仅作标识，可在多个实例间共享） */
+const readingReadOnlyCompartment = new Compartment();
+/** 只读之外还要吞掉 JSON 展开/压缩快捷键：它们直接派发事务，不受 readOnly 约束 */
+const readingLockExtension = [
+  EditorState.readOnly.of(true),
+  EditorView.editable.of(false),
+  Prec.highest(keymap.of(
+    ['Shift-Alt-f', 'Alt-Shift-f', 'Mod-Alt-l', 'Mod-Alt-f', 'Shift-Alt-m', 'Alt-Shift-m', 'Mod-Alt-m']
+      .map((key) => ({ key, run: () => true })),
+  )),
+];
 
 // ── 实例代际 ──
 
@@ -80,6 +94,18 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
   // 右键菜单弹出坐标（null 表示关闭）
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const closeMenu = useCallback(() => setMenuPos(null), []);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const isReading = useIsReading(docKey);
+  const exitReading = useCallback(() => requestReadingMode(false), []);
+
+  // 沉浸阅读期间只读，防止误触改动正文；退出后恢复编辑
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: readingReadOnlyCompartment.reconfigure(
+        isReading ? readingLockExtension : [],
+      ),
+    });
+  }, [isReading]);
 
   // 监听编辑器设置变化并热重配（空格、换行符、行号、软换行等）
   useEffect(() => {
@@ -271,10 +297,11 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
 
     // 最高优先级接管撤销/重做，防止落入当前 CodeMirror 实例的局部历史
     const unifiedHistoryKeymap = Prec.highest(keymap.of([
+      // 沉浸阅读只读：吞掉撤销/重做，避免绕过只读改动正文
       {
         key: 'Mod-z',
         run: () => {
-          undoDocumentHistory(docKey);
+          if (!isDocumentReading(docKey)) undoDocumentHistory(docKey);
           return true;
         },
       },
@@ -282,14 +309,14 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
         key: 'Mod-y',
         mac: 'Mod-Shift-z',
         run: () => {
-          redoDocumentHistory(docKey);
+          if (!isDocumentReading(docKey)) redoDocumentHistory(docKey);
           return true;
         },
       },
       {
         linux: 'Ctrl-Shift-z',
         run: () => {
-          redoDocumentHistory(docKey);
+          if (!isDocumentReading(docKey)) redoDocumentHistory(docKey);
           return true;
         },
       },
@@ -329,6 +356,10 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
         ...createBaseExtensions(initialEditorSettings),
         updateListener,
         jsonOperationsKeymap,
+        // 重挂载时若已在阅读中，直接以只读创建
+        readingReadOnlyCompartment.of(
+          isDocumentReading(docKey) ? readingLockExtension : [],
+        ),
       ],
     });
 
@@ -469,7 +500,9 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
   return (
     // 外层 Flex 容器负责居中与背景色，避免内部 .cm-content 居中导致坐标偏移
     <div
+      ref={rootRef}
       style={{
+        position: 'relative',
         width: '100%',
         height: '100%',
         overflow: 'hidden',
@@ -509,6 +542,8 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
           onClose={closeMenu}
         />
       )}
+      {/* 沉浸阅读：进度条与退出按钮 */}
+      {isReading && <ReadingModeOverlay rootRef={rootRef} onExit={exitReading} />}
     </div>
   );
 }

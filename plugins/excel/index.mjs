@@ -44,10 +44,10 @@ export function rowSizes(rows = [], count) {
   });
 }
 
-export async function mount({ container, name, bytes, signal, notify }) {
+export async function mount({ container, name, bytes, signal, notify, reading }) {
   const workbook = XLSX.read(/\.xlsx$/i.test(name)?await cleanOpenXml(bytes):bytes, { type:'array', cellStyles:true, cellDates:true, cellFormula:true });
   if (signal.aborted) return;
-  const view = createView(container, name);
+  const view = createView(container, name, reading);
   view.style.textContent += `
     .np-scroll{background:var(--editor-bg);outline:none}
     .np-formula{display:flex;align-items:stretch;border-bottom:1px solid var(--editor-border);background:var(--editor-bg);flex-shrink:0;min-height:30px}

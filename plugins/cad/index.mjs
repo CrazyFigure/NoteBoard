@@ -5,10 +5,10 @@ import {createView,el,iconButton,separator} from '../shared/view.mjs';
 import { CAD_LIMITS, canvasOptionsForScene } from './scene.mjs';
 
 /** 所有解析资源包含在已校验的插件内，打开图纸不请求远程文件或外部参照。 */
-export async function mount({container,name,bytes,signal}) {
+export async function mount({container,name,bytes,signal,reading}) {
   if(signal.aborted)throw new DOMException('已取消','AbortError');
   if(bytes.byteLength>CAD_LIMITS.fileBytes)throw new Error('CAD 预览支持 50 MB 以内的图纸，请使用专业 CAD 软件打开此文件。');
-  const view=createView(container,name),urls=[];let viewer,worker,stopped=false;
+  const view=createView(container,name,reading),urls=[];let viewer,worker,stopped=false;
   const blob=(value,type)=>{const url=URL.createObjectURL(new Blob([value],{type}));urls.push(url);return url;};
   const status=el('span','np-muted','正在后台解析图纸…'),canvasHost=el('div','cad-canvas');
   view.style.textContent+=`.np-scroll{overflow:hidden;display:flex;flex-direction:column}.cad-canvas{flex:1;min-height:0;position:relative;touch-action:none}.cad-canvas canvas{width:100%;height:100%;display:block;touch-action:none}.cad-hint{padding:6px 12px;border-top:1px solid var(--editor-border);font-size:11px;color:var(--editor-text-muted)}`;

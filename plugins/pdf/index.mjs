@@ -15,8 +15,8 @@ class Fonts { async fetch({filename}) {return bytesFor('fonts',filename);} }
 
 const GAP=20, PAD=20;
 
-export async function mount({container,name,bytes,signal}) {
-  const view=createView(container,name);
+export async function mount({container,name,bytes,signal,reading}) {
+  const view=createView(container,name,reading);
   const workerUrl=URL.createObjectURL(new Blob([workerCode],{type:'text/javascript'}));
   GlobalWorkerOptions.workerSrc=workerUrl;
   // zoom 为绝对比例（1 = 100%）；fit 为真时随窗口宽度自适应，手动缩放后保持用户比例。

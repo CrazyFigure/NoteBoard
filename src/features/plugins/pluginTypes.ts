@@ -23,6 +23,16 @@ export interface InstalledPlugin {
 export interface CatalogPlugin extends PluginManifest { url: string; sha256: string; size: number }
 export interface PluginCatalog { schemaVersion: number; plugins: CatalogPlugin[] }
 
+/** 沉浸阅读接口：插件在自己的工具栏放入口按钮，阅读时自行收起工具栏；旧版插件忽略即可 */
+export interface PluginReadingApi {
+  /** 当前文档是否处于沉浸阅读 */
+  get: () => boolean;
+  /** 进入或退出沉浸阅读（外壳隐藏与系统全屏由主程序处理） */
+  set: (enabled: boolean) => void;
+  /** 订阅阅读状态变化，返回取消订阅函数 */
+  subscribe: (listener: (active: boolean) => void) => () => void;
+}
+
 /** 插件只接收本次用户打开的文件和显式选择的数据源。Office 查看器不提供写入接口。 */
 export interface PluginContext {
   container: HTMLElement;
@@ -30,6 +40,7 @@ export interface PluginContext {
   bytes?: Uint8Array;
   signal: AbortSignal;
   notify: (message: string) => void;
+  reading?: PluginReadingApi;
 }
 export interface PluginModule {
   mount: (context: PluginContext) => Promise<(() => void) | void>;

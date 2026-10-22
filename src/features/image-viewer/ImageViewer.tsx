@@ -25,6 +25,9 @@ import * as ipc from '../../core/ipc/commands';
 import { extFromPath } from '../../core/docKind';
 import { showToast } from '../../stores/toastStore';
 import { Tooltip } from '../../components/Tooltip';
+import { ReadingModeButton } from '../reading/ReadingModeButton';
+import { ReadingModeOverlay } from '../reading/ReadingModeOverlay';
+import { requestReadingMode, useIsReading } from '../reading/readingMode';
 
 interface ImageViewerProps {
   docKey: string;
@@ -140,6 +143,9 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
 
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+  // 沉浸阅读：隐藏工具栏与信息条，只留图片
+  const isReading = useIsReading(docKey);
+  const exitReading = useCallback(() => requestReadingMode(false), []);
 
   // 自适应窗口缩放
   const fitToWindow = useCallback(() => {
@@ -166,6 +172,19 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
     setScale(Math.max(Number(fitScale.toFixed(3)), 0.1));
     setTranslate({ x: 0, y: 0 });
   }, [naturalSize, rotation]);
+
+  // 进入/退出阅读后视口尺寸变化（外壳隐藏与系统全屏动画），稍后重新自适应；首次挂载不触发，保留恢复的视图
+  const fitToWindowRef = useRef(fitToWindow);
+  fitToWindowRef.current = fitToWindow;
+  const readingMountedRef = useRef(false);
+  useEffect(() => {
+    if (!readingMountedRef.current) {
+      readingMountedRef.current = true;
+      return;
+    }
+    const timer = setTimeout(() => fitToWindowRef.current(), 320);
+    return () => clearTimeout(timer);
+  }, [isReading]);
 
   // 当图片首次加载完成时
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -318,6 +337,9 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
     >
+      {/* 沉浸阅读：退出按钮 */}
+      {isReading && <ReadingModeOverlay onExit={exitReading} />}
+
       {/* 顶部悬浮控制工具栏 */}
       <div
         style={{
@@ -326,7 +348,7 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
           left: '50%',
           transform: 'translateX(-50%)',
           zIndex: 20,
-          display: 'flex',
+          display: isReading ? 'none' : 'flex',
           alignItems: 'center',
           gap: 4,
           padding: '4px 8px',
@@ -492,6 +514,11 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
             <ExternalLink size={15} />
           </button>
         </Tooltip>
+
+        <div style={{ width: 1, height: 16, background: 'var(--editor-border)', margin: '0 4px' }} />
+
+        {/* 沉浸阅读 */}
+        <ReadingModeButton docKey={docKey} className="nb-image-toolbar-btn" iconSize={15} />
       </div>
 
       {/* 图片主视口渲染画布 */}
@@ -578,7 +605,7 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
           height: 28,
           background: 'var(--statusbar-bg, var(--editor-surface))',
           borderTop: '1px solid var(--editor-border)',
-          display: 'flex',
+          display: isReading ? 'none' : 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '0 12px',

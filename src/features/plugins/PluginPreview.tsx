@@ -11,6 +11,9 @@ import { ProgressRing } from './ProgressRing';
 import { UnsupportedView, type UnsupportedPluginAction } from '../../components/UnsupportedView';
 import { showToast } from '../../stores/toastStore';
 import { getDocumentRevision, registerEditorCapabilities } from '../../core/editor/editorRegistry';
+import { useLayoutStore } from '../../stores/layoutStore';
+import { isDocumentReading, requestReadingMode, useIsReading, useReadingEscape } from '../reading/readingMode';
+import type { PluginReadingApi } from './pluginTypes';
 import './plugins.css';
 
 export function PluginPreview({ docKey }: { docKey: string }) {
@@ -23,6 +26,9 @@ export function PluginPreview({ docKey }: { docKey: string }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   useEffect(() => { void initializePlugins(); }, []);
+  // 沉浸阅读：入口按钮与工具栏收起由插件实现，Esc 退出由宿主统一处理（插件内输入框会拦截自己的 Esc）
+  const isReading = useIsReading(docKey);
+  useReadingEscape(isReading);
 
   useEffect(() => {
     if (!id || !current?.enabled || !ref.current) return;
@@ -30,17 +36,30 @@ export function PluginPreview({ docKey }: { docKey: string }) {
     // 版本切换为独立容器，旧异步渲染的清理不会覆盖新文档。
     const target = document.createElement('div');target.style.height='100%';ref.current.replaceChildren(target);
     let dispose: (() => void) | void;
+    // 阅读状态订阅随本次挂载一并清理，插件未取消订阅也不会泄漏
+    const readingListeners = new Set<() => void>();
+    const reading: PluginReadingApi = {
+      get: () => isDocumentReading(docKey),
+      set: (enabled) => requestReadingMode(enabled),
+      subscribe: (listener) => {
+        const unsubscribe = useLayoutStore.subscribe((state, prev) => {
+          if (state.readingMode !== prev.readingMode) listener(isDocumentReading(docKey));
+        });
+        readingListeners.add(unsubscribe);
+        return () => { unsubscribe(); readingListeners.delete(unsubscribe); };
+      },
+    };
     setError(''); setLoading(true);
     void (async () => {
       try {
         const [module, bytes] = await Promise.all([loadPlugin(id, current.manifest.version), readPreviewFile(docKey)]);
         if (controller.signal.aborted) return;
-        dispose = await module.mount({ container:target, name:doc?.displayName ?? docKey, bytes, signal:controller.signal, notify:(text) => showToast(text) });
+        dispose = await module.mount({ container:target, name:doc?.displayName ?? docKey, bytes, signal:controller.signal, notify:(text) => showToast(text), reading });
         if (controller.signal.aborted) { dispose?.(); target.replaceChildren(); }
       } catch (e) { if (!controller.signal.aborted) setError(String(e)); }
       finally { if (!controller.signal.aborted) setLoading(false); }
     })();
-    return () => { controller.abort(); dispose?.(); target.remove(); };
+    return () => { controller.abort(); dispose?.(); readingListeners.forEach((unsubscribe) => unsubscribe()); target.remove(); };
   }, [docKey, doc?.mtime, id, current?.enabled, current?.manifest.version]);
 
   useEffect(() => {

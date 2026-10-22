@@ -37,6 +37,8 @@ import { Tooltip } from '../../components/Tooltip';
 import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
 import { codeMirrorSearchSupport } from '../search/searchController';
 import { tripleClickLineSelection } from '../editor-code/tripleClickLine';
+import { ReadingModeOverlay } from '../reading/ReadingModeOverlay';
+import { requestReadingMode, useIsReading } from '../reading/readingMode';
 
 interface InfographicSplitEditorProps {
   docKey: string;
@@ -54,6 +56,10 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
   const setTabDirty = useWindowStore((s) => s.setTabDirty);
 
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('split');
+  // 沉浸阅读只显示预览，工具栏与源码栏隐藏（不改动用户选择的布局）
+  const isReading = useIsReading(docKey);
+  const paneMode: LayoutMode = isReading ? 'preview' : layoutMode;
+  const exitReading = useCallback(() => requestReadingMode(false), []);
   const [splitRatio, setSplitRatio] = useState<number>(0.5);
   const [isResizing, setIsResizing] = useState<boolean>(false);
   const splitContainerRef = useRef<HTMLDivElement>(null);
@@ -220,10 +226,10 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
 
   // 切换布局或分栏比例后通知 CodeMirror 重新测量尺寸
   useEffect(() => {
-    if (layoutMode !== 'preview' && editorViewRef.current) {
+    if (paneMode !== 'preview' && editorViewRef.current) {
       editorViewRef.current.requestMeasure();
     }
-  }, [layoutMode, splitRatio]);
+  }, [paneMode, splitRatio]);
 
   // 点击外部关闭模板下拉
   useEffect(() => {
@@ -380,7 +386,7 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
         style={{
           height: 38,
           minHeight: 38,
-          display: 'flex',
+          display: isReading ? 'none' : 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '0 12px',
@@ -559,12 +565,14 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
           userSelect: isResizing ? 'none' : 'auto',
         }}
       >
+        {/* 沉浸阅读：退出按钮 */}
+        {isReading && <ReadingModeOverlay onExit={exitReading} />}
         {/* 左侧源码编辑区 */}
         <div
           ref={editorContainerRef}
           style={{
-            display: layoutMode === 'preview' ? 'none' : 'block',
-            width: layoutMode === 'split' ? `calc(${splitRatio * 100}% - 4px)` : '100%',
+            display: paneMode === 'preview' ? 'none' : 'block',
+            width: paneMode === 'split' ? `calc(${splitRatio * 100}% - 4px)` : '100%',
             height: '100%',
             overflow: 'hidden',
             flexShrink: 0,
@@ -572,7 +580,7 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
         />
 
         {/* 分栏可拖拽分隔条 */}
-        {layoutMode === 'split' && (
+        {paneMode === 'split' && (
           <Tooltip content="拖拽调节分栏比例，双击居中复位 (50%)" side="top" sideOffset={6}>
             <div
               onMouseDown={handleResizerMouseDown}
@@ -612,8 +620,8 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
         {/* 右侧实时渲染预览区 */}
         <div
           style={{
-            display: layoutMode === 'code' ? 'none' : 'flex',
-            width: layoutMode === 'split' ? `calc(${(1 - splitRatio) * 100}% - 4px)` : '100%',
+            display: paneMode === 'code' ? 'none' : 'flex',
+            width: paneMode === 'split' ? `calc(${(1 - splitRatio) * 100}% - 4px)` : '100%',
             height: '100%',
             overflow: 'hidden',
             position: 'relative',

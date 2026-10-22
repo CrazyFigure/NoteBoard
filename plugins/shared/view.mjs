@@ -3,7 +3,8 @@ export const IS_MAC = /Mac|iPhone|iPad/i.test(globalThis.navigator?.platform || 
 /** 修饰键按平台显示，提示文字与实际按键保持一致。 */
 export const MOD = IS_MAC ? '⌘' : 'Ctrl';
 
-export function createView(container, name) {
+/** reading 为主程序提供的沉浸阅读接口（旧版主程序不提供时不显示入口）。 */
+export function createView(container, name, reading) {
   const root = container.shadowRoot ?? container.attachShadow({ mode: 'open' });
   root.replaceChildren();
   const style = document.createElement('style');
@@ -27,13 +28,38 @@ export function createView(container, name) {
     .np-menu{position:fixed;z-index:1001;min-width:140px;max-width:min(360px,calc(100vw - 16px));max-height:300px;overflow:auto;padding:4px;border:1px solid var(--editor-border);border-radius:8px;background:var(--editor-bg);box-shadow:var(--shadow-lg,0 10px 30px rgba(0,0,0,.16));animation:np-menu-in .12s ease-out}
     .np-option{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:5px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.np-option>svg{visibility:hidden;color:var(--editor-accent)}.np-option[aria-selected=true]{color:var(--editor-accent)}.np-option[aria-selected=true]>svg{visibility:visible}.np-option.active,.np-option:hover{background:var(--toolbar-hover)}.np-option:active{background:var(--toolbar-active)}
     @keyframes np-menu-in{from{opacity:0;transform:translateY(-3px)}}
+    .np-reading{order:99}
+    :host([data-reading]) .np-toolbar{position:absolute;top:0;left:0;right:0;z-index:20;box-shadow:var(--shadow-md,0 4px 12px rgba(0,0,0,.12));transform:translateY(-100%);opacity:0;transition:transform .2s ease,opacity .2s ease}
+    :host([data-reading]) .np-toolbar.np-reveal,:host([data-reading]) .np-toolbar:has(:focus-visible,[aria-expanded=true]){transform:none;opacity:1}
     @media(max-width:760px){.np-toolbar{padding:6px 8px;gap:4px}.np-name{max-width:100%;width:100%}button{height:40px;min-width:40px}button.np-icon{width:40px}.np-field{height:40px;font-size:16px}}
   `;
   root.append(style);
   const layout = el('section', 'np-layout'), toolbar = el('header', 'np-toolbar'), viewport = el('div', 'np-scroll');
   const title = el('span', 'np-name', name); toolbar.append(title);
   layout.append(toolbar, viewport); root.append(layout);
-  return { root, toolbar, viewport, style, destroy: () => root.replaceChildren() };
+  const stopReading = reading ? readingControl(container, toolbar, reading) : null;
+  return { root, toolbar, viewport, style, destroy: () => { stopReading?.(); root.replaceChildren(); } };
+}
+
+/** 沉浸阅读入口固定在工具栏末尾；阅读时工具栏浮于顶部并收起，指针靠近顶部或键盘聚焦时展开。 */
+function readingControl(host, toolbar, reading) {
+  let active = false, timer = 0;
+  const b = button('', () => reading.set(!active), { icon: 'maximize', className: 'np-icon np-ghost np-reading' });
+  tip(b, () => (active ? '退出沉浸阅读（Esc）' : '沉浸阅读'));
+  const reveal = (show, delay = 0) => { clearTimeout(timer); if (show) toolbar.classList.add('np-reveal'); else timer = setTimeout(() => toolbar.classList.remove('np-reveal'), delay); };
+  const sync = (next) => {
+    active = next; host.toggleAttribute('data-reading', active);
+    b.setAttribute('aria-pressed', String(active)); b.setAttribute('aria-label', active ? '退出沉浸阅读' : '沉浸阅读');
+    b.replaceChildren(icon(active ? 'minimize' : 'maximize', 15));
+    // 进入阅读时短暂展示工具栏，提示它收在顶部
+    if (active) { reveal(true); reveal(false, 1600); } else reveal(false);
+  };
+  // 触屏没有悬停，按下顶部区域同样展开
+  const near = (event) => { if (!active) return; const top = host.getBoundingClientRect().top; if (event.clientY - top < Math.max(48, toolbar.offsetHeight + 8)) reveal(true); else if (toolbar.classList.contains('np-reveal')) reveal(false, 300); };
+  host.shadowRoot.addEventListener('pointermove', near); host.shadowRoot.addEventListener('pointerdown', near);
+  toolbar.append(b); sync(reading.get());
+  const unsubscribe = reading.subscribe(sync);
+  return () => { unsubscribe(); clearTimeout(timer); host.removeAttribute('data-reading'); };
 }
 
 /** 所有用户文本均通过 textContent 写入，不作为 HTML 执行。 */
@@ -53,6 +79,7 @@ const ICONS = {
   grip: 'M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01', settings: 'M20 7h-9M14 17H5M17 17a3 3 0 1 0 6 0 3 3 0 1 0-6 0M7 7a3 3 0 1 0-6 0 3 3 0 1 0 6 0',
   list: 'M3 12h.01M3 18h.01M3 6h.01M8 12h13M8 18h13M8 6h13',
   external: 'M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6',
+  maximize: 'M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7', minimize: 'M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7',
 };
 
 /** 内联 SVG 图标，颜色跟随 currentColor。 */

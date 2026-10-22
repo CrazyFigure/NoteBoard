@@ -72,6 +72,9 @@ import {
 import { scheduleAutoSave, submitCapturedContent } from '../session/documentSession';
 import { takeViewState } from '../session/editorSuspension';
 import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
+import { ReadingModeButton } from '../reading/ReadingModeButton';
+import { ReadingModeOverlay } from '../reading/ReadingModeOverlay';
+import { requestReadingMode, useIsReading } from '../reading/readingMode';
 import type { EditorCapabilities } from '../../core/editor/editorTypes';
 import {
   createMindmapSearchCapabilities,
@@ -143,6 +146,19 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
   const defaultImageFit: MindmapImageFit =
     useSettingsStore((s) => s.settings.editor.mindmapImageFit) === 'fill' ? 'fill' : 'original';
   const rootElRef = useRef<HTMLDivElement>(null);
+  // 沉浸阅读：隐藏顶部工具栏与撤销栏，画布独占屏幕
+  const isReading = useIsReading(docKey);
+  const exitReading = useCallback(() => requestReadingMode(false), []);
+  // 进入/退出阅读后画布尺寸变化（外壳隐藏与系统全屏动画），稍后把内容移回画面中央；首次挂载不触发，保留恢复的视图
+  const readingMountedRef = useRef(false);
+  useEffect(() => {
+    if (!readingMountedRef.current) {
+      readingMountedRef.current = true;
+      return;
+    }
+    const timer = setTimeout(() => rendererRef.current?.centerContent(), 360);
+    return () => clearTimeout(timer);
+  }, [isReading]);
   // 导出默认文件名：已保存的文档用文件名，未保存的新文档统一叫「思维导图」
   const exportBaseName = docKey.startsWith('untitled:')
     ? '思维导图'
@@ -517,7 +533,7 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
         style={{
           height: 40,
           minHeight: 40,
-          display: 'flex',
+          display: isReading ? 'none' : 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '0 14px',
@@ -678,6 +694,9 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
             />
           )}
 
+          {/* 沉浸阅读 */}
+          <ReadingModeButton docKey={docKey} className="nb-editor-icon-btn" />
+
           {/* 导入：XMind 或 Markdown 大纲 */}
           <Tooltip content="导入 XMind 或 Markdown 文件" side="bottom" sideOffset={4}>
             <label className="nb-editor-toolbar-btn">
@@ -778,8 +797,11 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
           />
         )}
 
+        {/* 沉浸阅读：退出按钮 */}
+        {isReading && <ReadingModeOverlay onExit={exitReading} />}
+
         {/* 导图模式左下角：撤销 / 重做 */}
-        {viewMode === 'mindmap' && (
+        {viewMode === 'mindmap' && !isReading && (
           <div className="nb-mindmap-history-bar">
             <Tooltip content="撤销" shortcut="Ctrl+Z" side="top" sideOffset={6}>
               <button

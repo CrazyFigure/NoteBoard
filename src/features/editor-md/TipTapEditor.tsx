@@ -41,8 +41,8 @@ import { useWindowStore } from '../../stores/windowStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { on, off, emit } from '../../core/emitter';
 import { MarkdownModeToggle } from './MarkdownModeToggle';
-import { ReadingModeOverlay } from './ReadingModeOverlay';
-import { requestMarkdownReadingMode } from './readingMode';
+import { ReadingModeOverlay } from '../reading/ReadingModeOverlay';
+import { requestReadingMode } from '../reading/readingMode';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { ExternalChangeBanner } from './ExternalChangeBanner';
 import { markdownPlainBracketExtension } from './sourcePlainBracket';
@@ -172,7 +172,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   const settings = useSettingsStore((s) => s.settings);
   const typography = settings.typography;
   // 沉浸阅读只作用于当前活动文档（保活的后台实例不受影响）
-  const readingModeEnabled = useLayoutStore((s) => s.markdownReadingMode);
+  const readingModeEnabled = useLayoutStore((s) => s.readingMode);
   const isActiveDocument = useWindowStore((s) => s.activeKey === docKey);
   const isReading = readingModeEnabled && isActiveDocument;
 
@@ -789,7 +789,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     });
   }, [isReading, viewMode]);
 
-  const exitReading = useCallback(() => requestMarkdownReadingMode(false), []);
+  const exitReading = useCallback(() => requestReadingMode(false), []);
 
   // 监听来自状态栏或外部的模式切换请求
   useEffect(() => {

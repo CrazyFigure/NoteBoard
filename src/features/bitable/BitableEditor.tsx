@@ -28,6 +28,7 @@ import { takeBitableRecordRequest } from './recordOpenRequests';
 import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
 import { usePointerReorder } from './usePointerReorder';
 import { Tooltip } from '../../components/Tooltip';
+import { ReadingModeButton } from '../reading/ReadingModeButton';
 import {
   areCellValuesEqual,
   coerceCellValue,
@@ -1416,6 +1417,11 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
               </button>
             )}
           </div>
+
+          {/* 沉浸阅读 / 退出阅读 */}
+          {/* 只隐藏应用外壳：视图切换与搜索仍是阅读所需，工具栏保留，按钮兼作退出；
+              表格内 Esc 用于关闭各类浮层，因此不以 Esc 退出 */}
+          <ReadingModeButton docKey={docKey} className="nb-bitable-btn-secondary" escHint={false} style={{ padding: '4px 6px' }} />
 
           {/* 导出按钮（移动端隐藏：使用频率低，且挤占窄屏工具栏空间） */}
           <Tooltip content="导出为 CSV 表格" side="bottom" sideOffset={4}>

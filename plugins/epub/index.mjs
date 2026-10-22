@@ -11,10 +11,10 @@ export function scopeBookCss(text) {
   return text.replace(/(^|[\s,{}>+~(])(html|body)(?=[\s,{.#:[>+~)]|$)/gi, '$1.np-epub-body');
 }
 
-export async function mount({ container, name, bytes, signal, notify }) {
+export async function mount({ container, name, bytes, signal, notify, reading }) {
   const book = await openBook(bytes);
   if (signal.aborted) return;
-  const view = createView(container, book.title || name);
+  const view = createView(container, book.title || name, reading);
   const urls = new Map();
   let chapter = -1, scale = 1, saveTimer = 0, generation = 0, destroyed = false;
   // 目录宽度只影响当前阅读器，随阅读进度保存；未调整时保留原有桌面和窄屏默认尺寸。

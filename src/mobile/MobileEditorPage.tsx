@@ -6,6 +6,7 @@
 import { useState, type ReactNode } from 'react';
 import type { Editor } from '@tiptap/core';
 import {
+  BookOpen,
   Code2,
   Eye,
   FileOutput,
@@ -32,6 +33,7 @@ import { EditorStack } from '../components/shell/EditorStack';
 import { ActionSheet, BottomSheet, IconButton, TopBar, type SheetAction } from './components';
 import { shareEntry } from './mobileFiles';
 import { useMobileStore } from './mobileStore';
+import { requestReadingMode, supportsReadingMode } from '../features/reading/readingMode';
 
 export interface MobileEditorPageProps {
   activeTab: Tab | null;
@@ -65,7 +67,9 @@ export function MobileEditorPage({ activeTab, activeEditor, getMarkdownEditorRea
   const isVisible = page === 'editor' && !!activeTab;
   // 画板演示模式：隐藏顶栏与格式栏，画布独占屏幕
   const boardPresentationMode = useLayoutStore((s) => s.boardPresentationMode);
-  const isPresenting = boardPresentationMode && activeTab?.kind === 'board';
+  // 沉浸阅读同样收起顶栏与格式栏；退出入口由各格式自身提供（退出胶囊或工具栏按钮）
+  const readingMode = useLayoutStore((s) => s.readingMode);
+  const isPresenting = (boardPresentationMode && activeTab?.kind === 'board') || (readingMode && supportsReadingMode(activeTab));
 
   // 打开查找：带入当前选中文本（与桌面 Ctrl+F 一致）
   const openSearch = () => {
@@ -84,6 +88,9 @@ export function MobileEditorPage({ activeTab, activeEditor, getMarkdownEditorRea
         icon: activeTab.viewMode === 'source' ? <Eye size={18} /> : <Code2 size={18} />,
         onSelect: () => emit('toggle-md-view-mode', { key: activeTab.key }),
       });
+    }
+    if (supportsReadingMode(activeTab)) {
+      moreActions.push({ key: 'reading', label: '沉浸阅读', icon: <BookOpen size={18} />, onSelect: () => requestReadingMode(true) });
     }
     if (isTextual) {
       moreActions.push({ key: 'search', label: '查找与替换', icon: <Search size={18} />, onSelect: openSearch });

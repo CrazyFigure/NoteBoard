@@ -28,8 +28,8 @@ interface LayoutStore {
   editorToolbarVisible: boolean;
   /** 画板是否处于纯净全屏演示模式；仅为当前窗口临时 UI 状态，不参与布局持久化 */
   boardPresentationMode: boolean;
-  /** Markdown 是否处于沉浸阅读模式；仅为当前窗口临时 UI 状态，不参与布局持久化 */
-  markdownReadingMode: boolean;
+  /** 当前活动文档是否处于沉浸阅读模式；仅为当前窗口临时 UI 状态，不参与布局持久化 */
+  readingMode: boolean;
   /** 是否正在向窗口内拖拽文件 */
   isDraggingFile: boolean;
   /** 当前处于打开状态的标题栏/Tab 菜单数量（>0 表示有菜单浮层激活） */
@@ -52,7 +52,7 @@ interface LayoutStore {
   setSettingsModalVisible: (visible: boolean) => void;
   setEditorToolbarVisible: (visible: boolean) => void;
   setBoardPresentationMode: (enabled: boolean) => void;
-  setMarkdownReadingMode: (enabled: boolean) => void;
+  setReadingMode: (enabled: boolean) => void;
   setIsDraggingFile: (dragging: boolean) => void;
 
   // ── 持久化 ──
@@ -87,7 +87,7 @@ export const useLayoutStore = create<LayoutStore>((set, get) => ({
   settingsTarget: null,
   editorToolbarVisible: true,
   boardPresentationMode: false,
-  markdownReadingMode: false,
+  readingMode: false,
   isDraggingFile: false,
   activeMenuCount: 0,
 
@@ -109,7 +109,7 @@ export const useLayoutStore = create<LayoutStore>((set, get) => ({
   setSettingsModalVisible: (visible) => set({ settingsModalVisible: visible }),
   setEditorToolbarVisible: (visible) => set({ editorToolbarVisible: visible }),
   setBoardPresentationMode: (enabled) => set({ boardPresentationMode: enabled }),
-  setMarkdownReadingMode: (enabled) => set({ markdownReadingMode: enabled }),
+  setReadingMode: (enabled) => set({ readingMode: enabled }),
   setIsDraggingFile: (dragging) => set({ isDraggingFile: dragging }),
 
   toLayout: () => {
@@ -132,7 +132,7 @@ export const useLayoutStore = create<LayoutStore>((set, get) => ({
       editorToolbarVisible: layout.editorToolbarVisible ?? true,
       // 演示模式不能跨窗口恢复，避免启动后意外隐藏应用外壳
       boardPresentationMode: false,
-      markdownReadingMode: false,
+      readingMode: false,
     });
   },
 }));

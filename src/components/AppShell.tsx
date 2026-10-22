@@ -55,7 +55,7 @@ import {
 import { useFavoritesStore } from '../features/favorites/favoritesStore';
 import { MissingFileDialog } from '../features/external/MissingFileDialog';
 import { checkActiveDocumentStillExists } from '../features/external/missingFileGuard';
-import { requestMarkdownReadingMode } from '../features/editor-md/readingMode';
+import { isDocumentReading, requestReadingMode, supportsReadingMode } from '../features/reading/readingMode';
 
 // ── 分隔条样式 ──
 
@@ -94,7 +94,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
     outlineWidth,
     statusBarVisible,
     boardPresentationMode,
-    markdownReadingMode,
+    readingMode,
     toggleExplorer,
     toggleOutline,
   } = useLayoutStore();
@@ -119,13 +119,13 @@ export function AppShell(_props: { children?: React.ReactNode }) {
   const showOutline = activeTab?.kind === 'markdown';
   // 仅活动画板可以接管应用外壳；切到其他格式时立即恢复常规布局
   const isBoardPresentationMode = boardPresentationMode && activeTab?.kind === 'board';
-  // Markdown 沉浸阅读同样接管外壳：隐藏标题栏、侧栏、操作栏与状态栏
-  const isMarkdownReadingMode = markdownReadingMode && activeTab?.kind === 'markdown';
-  const isShellHidden = isBoardPresentationMode || isMarkdownReadingMode;
+  // 沉浸阅读同样接管外壳：隐藏标题栏、侧栏、操作栏与状态栏
+  const isReadingMode = readingMode && supportsReadingMode(activeTab);
+  const isShellHidden = isBoardPresentationMode || isReadingMode;
 
   // 切换或关闭标签时退出沉浸阅读，避免窗口停留在全屏且外壳不可见
   useEffect(() => {
-    if (useLayoutStore.getState().markdownReadingMode) requestMarkdownReadingMode(false);
+    if (useLayoutStore.getState().readingMode) requestReadingMode(false);
   }, [activeKey]);
 
   // 🔴 S05：已移除 AppShell 的全局 Drawio 空闲预热（E 节 8：取消无意图的全编辑器空闲
@@ -217,6 +217,8 @@ export function AppShell(_props: { children?: React.ReactNode }) {
       const currentTab = useWindowStore.getState().activeTab();
       if (!currentTab) return;
       // code 与 markdown 源码模式均通过能力注册表分发；能力内部按当前模式判断可用性
+      // 沉浸阅读只读：不改写正文
+      if (isDocumentReading(currentTab.key)) return;
       getEditorCapabilities(currentTab.key)?.codeOps?.expandJson();
     };
 
@@ -238,6 +240,8 @@ export function AppShell(_props: { children?: React.ReactNode }) {
     const handleMinifyAction = () => {
       const currentTab = useWindowStore.getState().activeTab();
       if (!currentTab) return;
+      // 沉浸阅读只读：不改写正文
+      if (isDocumentReading(currentTab.key)) return;
       getEditorCapabilities(currentTab.key)?.codeOps?.minifyJson();
     };
 

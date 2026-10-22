@@ -7,8 +7,8 @@ import { cleanOpenXml } from '../shared/openXml.mjs';
 import { deduplicatePageBreaks } from './pagination.mjs';
 import { markPageNumberFields, updatePageNumberFields } from './pageFields.mjs';
 
-export async function mount({ container, name, bytes, signal, notify }) {
-  const view = createView(container, name);
+export async function mount({ container, name, bytes, signal, notify, reading }) {
+  const view = createView(container, name, reading);
   guardLinks(view.root, notify);
   let zoom = 1;
   const page = document.createElement('div'); page.className = 'np-word';
@@ -32,12 +32,12 @@ export async function mount({ container, name, bytes, signal, notify }) {
     zoom=Math.min(1,Math.max(.25,(view.viewport.clientWidth-24)/Math.max(1,width)));page.style.zoom=String(zoom);zoomer.update();
   };
   // 阅读排版忽略原版式，按应用正文字体与主题重排，便于长时间阅读。
-  const reading = button('阅读排版', () => {
-    const on = page.classList.toggle('reading'); reading.setAttribute('aria-pressed', String(on));
+  const reflow = button('阅读排版', () => {
+    const on = page.classList.toggle('reading'); reflow.setAttribute('aria-pressed', String(on));
     if (on) setZoom(1); else fitWidth();
   }, { icon:'book', tip:'按应用字体与主题重排正文' });
-  reading.setAttribute('aria-pressed', 'false');
-  view.toolbar.append(zoomer.element, iconButton('fit-width', '适合宽度', fitWidth), separator(), reading);
+  reflow.setAttribute('aria-pressed', 'false');
+  view.toolbar.append(zoomer.element, iconButton('fit-width', '适合宽度', fitWidth), separator(), reflow);
   try {
     if (/\.docx$/i.test(name)) {
       // 禁止嵌入 HTML 内容块，修订和批注按静态文档呈现，不启用编辑器。
