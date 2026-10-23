@@ -2,7 +2,7 @@
 name = "noteboard-perf-host-min"
 version = "0.2.7"
 description = "NoteBoard 性能对照：最小 Tauri 宿主（仅空窗口，无插件无业务依赖）"
-license = "GPL-3.0-only"
+license = "AGPL-3.0-only"
 edition = "2021"
 
 # 🔴 对照原则：tauri 版本与主应用（src-tauri）一致，不引入任何插件，

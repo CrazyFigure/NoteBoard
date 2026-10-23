@@ -1,5 +1,5 @@
 // NoteBoard 关于面板
-// 版本、GPL-3.0、第三方致谢、仓库链接、配置损坏告警位
+// 版本、AGPL-3.0、第三方致谢、仓库链接、配置损坏告警位
 // 详见 docs/09-开发路线图.md 12.9
 
 import { RefreshCw, ExternalLink } from 'lucide-react';
@@ -117,7 +117,7 @@ export function AboutPanel() {
             <span>{checkingUpdate ? '正在检查' : '检测更新'}</span>
           </button>}
         </div>
-        <p style={{ margin: '4px 0' }}>许可证: GPL-3.0</p>
+        <p style={{ margin: '4px 0' }}>许可证: AGPL-3.0</p>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '4px 0' }}>
           <span>开源仓库:</span>
           <button

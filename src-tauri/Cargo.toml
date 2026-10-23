@@ -3,7 +3,7 @@ name = "noteboard"
 version = "0.6.3"
 description = "Windows 桌面笔记 + 画板软件"
 authors = ["CrazyFigure"]
-license = "GPL-3.0-only"
+license = "AGPL-3.0-only"
 edition = "2021"
 
 [lib]

@@ -2,4 +2,4 @@
 
 来源：https://github.com/LibreDWG/libredwg/blob/master/test/test-data/2000/Line.dwg
 
-许可原文见本仓库根目录 `LICENSE`。不将该样例打包到查看插件中。
+许可原文见本仓库 `licenses/GPL-3.0.txt`。不将该样例打包到查看插件中。

@@ -1632,7 +1632,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   采用 Rust Tauri v2 原生高性能底座与 TipTap / CodeMirror 6 / Excalidraw 多核驱动。
                 </p>
                 <div style={{ fontSize: 12, color: 'var(--editor-text-muted)' }}>
-                  版本 v{APP_VERSION} · GPL-3.0 License
+                  版本 v{APP_VERSION} · AGPL-3.0 License
                 </div>
 
                 {/* 快捷操作：检测更新与 GitHub 仓库 */}

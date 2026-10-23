@@ -5,7 +5,7 @@
 
   **Windows / macOS / Linux / 安卓 / 网页 笔记 + 画板 + 多维表格 + 知识工作台**
 
-  [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
+  [![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
   ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android%20%7C%20Web-lightgrey.svg)
   ![Tauri](https://img.shields.io/badge/Tauri-v2-24C8DB.svg)
   [![Release](https://img.shields.io/github/v/release/CrazyFigure/NoteBoard)](https://github.com/CrazyFigure/NoteBoard/releases/latest)
@@ -106,7 +106,11 @@ pnpm tauri build    # 构建安装包
 
 ## 开源协议
 
-[GPL-3.0-only](LICENSE)
+[AGPL-3.0-only](LICENSE)（0.6.3 及以前版本为 GPL-3.0-only）
+
+- **开源使用**：遵循 AGPL-3.0，修改后分发或以网络服务形式提供，须公开完整源码。
+- **商业授权**：如需闭源集成或不便履行 AGPL 义务，可另行获取商业授权，请通过 [Issues](https://github.com/CrazyFigure/NoteBoard/issues) 联系作者。
+- **参与贡献**：提交 Pull Request 即表示同意 [贡献者许可协议（CLA）](CLA.md)。
 
 ## Star 走势
 

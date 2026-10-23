@@ -17,7 +17,7 @@ RUN cargo build --locked --release --manifest-path server/native/Cargo.toml
 # 运行镜像仅包含网页服务依赖和静态文件，不携带 Rust、桌面运行时或本机数据。
 FROM node:22-bookworm-slim
 LABEL org.opencontainers.image.source="https://github.com/CrazyFigure/NoteBoard" \
-      org.opencontainers.image.licenses="GPL-3.0-only" \
+      org.opencontainers.image.licenses="AGPL-3.0-only" \
       org.opencontainers.image.title="NoteBoard"
 ENV NODE_ENV=production PORT=3000 NOTEBOARD_DATA_DIR=/data NOTEBOARD_STATIC_DIR=/app/dist-web
 WORKDIR /app/server

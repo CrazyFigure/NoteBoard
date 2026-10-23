@@ -3,7 +3,7 @@
   "version": "0.6.3",
   "description": "Windows 桌面笔记 + 画板软件",
   "type": "module",
-  "license": "GPL-3.0-only",
+  "license": "AGPL-3.0-only",
   "scripts": {
     "sync:version": "node scripts/sync-version.mjs",
     "predev": "node scripts/sync-version.mjs",

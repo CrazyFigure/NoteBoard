@@ -34,7 +34,7 @@ async function notices(inputs) {
     }
   }
   const ownLicense=await fs.readFile(path.join(root,'../LICENSE'),'utf8');
-  return ['NoteBoard 官方插件源码：GPL-3.0-only。第三方组件遵循下列各自许可。',ownLicense,...items.sort((a,b)=>a.name.localeCompare(b.name)).map((item)=>`\n${item.name}\n${item.text}`)].join('\n');
+  return ['NoteBoard 官方插件源码：AGPL-3.0-only。第三方组件遵循下列各自许可。',ownLicense,...items.sort((a,b)=>a.name.localeCompare(b.name)).map((item)=>`\n${item.name}\n${item.text}`)].join('\n');
 }
 const assets={cmaps:{},fonts:{}};
 for(const [key,dir] of [['cmaps','cmaps'],['fonts','standard_fonts']]) {
@@ -66,7 +66,7 @@ for(const item of metadata) {
       licenses='CAD 插件整体遵循 AGPL-3.0-only，完整源码及锁定依赖见 https://github.com/CrazyFigure/NoteBoard/tree/main/plugins/cad\n'+licenses;
       // 原始 Worker 中的 LibreDWG 代码不出现在 esbuild 输入列表，显式附带其许可。
       licenses+='\n'+await notices([...Object.keys(dxfWorker.metafile.inputs),'node_modules/@flyfish-dev/cad-viewer/package.json']);
-      licenses+='\nLibreDWG / @mlightcad/libredwg-web 0.7.9 · GPL-3.0-only\n源码：https://github.com/mlightcad/libredwg-web\n'+await fs.readFile(path.join(root,'../LICENSE'),'utf8');
+      licenses+='\nLibreDWG / @mlightcad/libredwg-web 0.7.9 · GPL-3.0-only\n源码：https://github.com/mlightcad/libredwg-web\n'+await fs.readFile(path.join(root,'../licenses/GPL-3.0.txt'),'utf8');
     }
     if(item.id==='pdf')for(const dir of ['cmaps','standard_fonts'])for(const name of await fs.readdir(path.join(root,'node_modules/pdfjs-dist',dir)))if(/license/i.test(name))licenses+=`\nPDF ${dir}/${name}\n${await fs.readFile(path.join(root,'node_modules/pdfjs-dist',dir,name),'utf8')}`;
     const manifest={...item,apiVersion:1,minAppVersion:'0.5.8',codeSha256:createHash('sha256').update(code).digest('hex'),licenses};
