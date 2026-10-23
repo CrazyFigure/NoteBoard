@@ -186,6 +186,8 @@ export function UpdateModal({
   if (!isOpen) return null;
 
   const showDetail = Boolean(result?.updateAvailable && !checkError && !checking);
+  // 免安装版不在应用内下载安装，主按钮改为前往 GitHub Release 页面
+  const portableUpdate = Boolean(showDetail && result?.portable);
   const latestDate = formatDate(result?.publishedAt);
 
   return (
@@ -400,10 +402,16 @@ export function UpdateModal({
                       {result.releaseNotesTruncated ? `${releaseNotes.length}+` : releaseNotes.length} 个版本待更新
                     </span>
                   )}
-                  <span className="nb-update-hero-size">
-                    <span className="nb-update-hero-label">安装包 </span>
-                    {formatBytes(result.installerSize)}
-                  </span>
+                  {portableUpdate ? (
+                    <span className="nb-update-hero-size">
+                      <span className="nb-update-hero-label">免安装版需手动下载替换</span>
+                    </span>
+                  ) : (
+                    <span className="nb-update-hero-size">
+                      <span className="nb-update-hero-label">安装包 </span>
+                      {formatBytes(result.installerSize)}
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -489,8 +497,8 @@ export function UpdateModal({
             {showDetail ? '稍后' : '关闭'}
           </button>
 
-          {/* 打开 Release 页面 */}
-          {result?.releaseUrl && (
+          {/* 打开 Release 页面（免安装版由主按钮承担，避免重复） */}
+          {result?.releaseUrl && !portableUpdate && (
             <button
               type="button"
               className="nb-btn-secondary"
@@ -530,8 +538,28 @@ export function UpdateModal({
             </button>
           )}
 
+          {/* 免安装版：前往 GitHub 下载 */}
+          {portableUpdate && result && (
+            <button
+              type="button"
+              className="nb-btn-primary"
+              onClick={() => handleOpenUrl(result.releaseUrl)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 16px',
+                fontSize: 12,
+                fontWeight: 500,
+              }}
+            >
+              <ExternalLink size={14} />
+              <span>前往 GitHub 下载</span>
+            </button>
+          )}
+
           {/* 下载并安装升级 */}
-          {showDetail && (
+          {showDetail && !portableUpdate && (
             <button
               type="button"
               className="nb-btn-primary"

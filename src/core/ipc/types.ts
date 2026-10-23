@@ -467,6 +467,8 @@ export interface UpdateCheckResult {
   releaseNotes?: UpdateReleaseNote[];
   // 未安装版本超出单页 Release 列表，更早的日志需前往 Release 页面查看
   releaseNotesTruncated?: boolean;
+  // Windows 免安装版：不提供安装包，引导前往 Release 页面下载
+  portable?: boolean;
 }
 
 // 单个版本的更新日志条目

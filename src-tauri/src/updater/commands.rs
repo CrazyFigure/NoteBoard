@@ -137,6 +137,10 @@ fn installer_asset_score(asset_name: &str) -> i32 {
     if !(normalized.ends_with(".exe") || normalized.ends_with(".msi")) {
         return -1;
     }
+    // 免安装版不是安装器，直接运行不会完成升级
+    if normalized.contains("portable") {
+        return -1;
+    }
 
     let mut score = 10;
     if normalized.ends_with(".exe") {
@@ -174,6 +178,17 @@ fn installer_asset_score(asset_name: &str) -> i32 {
     let x64 = name.contains("x86_64") || name.contains("amd64") || name.contains("x64");
     if !name.contains("universal") && ((cfg!(target_arch = "aarch64") && !arm) || (cfg!(target_arch = "x86_64") && !x64)) { return -1; }
     if name.ends_with(".appimage") { 20 } else { 10 }
+}
+
+/// 是否为 Windows 免安装版：NSIS 安装目录必有 uninstall.exe，免安装版 exe 旁边没有
+fn is_portable_build() -> bool {
+    if !cfg!(target_os = "windows") {
+        return false;
+    }
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| !dir.join("uninstall.exe").is_file()))
+        .unwrap_or(false)
 }
 
 /// 从 Release 资产列表中挑选最优安装包
@@ -679,7 +694,13 @@ pub async fn check_for_updates(app: AppHandle) -> Result<UpdateCheckResult, Stri
 
     let latest_version = release.tag_name.trim_start_matches(['v', 'V']).to_string();
     let update_available = is_newer_version(&release.tag_name, &current_version);
-    let installer_asset = select_update_installer_asset(&release.assets);
+    // 免安装版不下载运行安装包，避免在旁边另装一份安装版
+    let portable = is_portable_build();
+    let installer_asset = if portable {
+        None
+    } else {
+        select_update_installer_asset(&release.assets)
+    };
 
     // 未安装版本日志：最新版在前，其后依次为更早的未安装版本
     let release_notes: Vec<UpdateReleaseNote> = if update_available {
@@ -712,6 +733,7 @@ pub async fn check_for_updates(app: AppHandle) -> Result<UpdateCheckResult, Stri
         release_body: release.body,
         release_notes,
         release_notes_truncated,
+        portable,
     })
 }
 
@@ -755,6 +777,9 @@ pub async fn download_and_install_update(
     let normalized_url = download_url.trim();
     if !is_valid_update_download_url(normalized_url) {
         return Err("无效的更新安装包下载地址".to_string());
+    }
+    if is_portable_build() {
+        return Err("免安装版请前往 Release 页面下载新版本".to_string());
     }
 
     let safe_file_name = sanitize_asset_file_name(&asset_name);

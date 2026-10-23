@@ -550,6 +550,9 @@ pub struct UpdateCheckResult {
     // 未安装版本过多、超出单页 Release 列表时为 true，前端提示前往 Release 页面查看更早日志
     #[serde(default)]
     pub release_notes_truncated: bool,
+    // 当前为 Windows 免安装版：不提供安装包，前端引导前往 Release 页面手动下载
+    #[serde(default)]
+    pub portable: bool,
 }
 
 // 单个版本的更新日志条目

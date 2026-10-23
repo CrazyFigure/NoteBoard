@@ -132,6 +132,35 @@ jobs:
           # 规范产物文件命名
           assetNamePattern: NoteBoard_[version]_[platform]_[arch][setup][ext]
 
+      # 免安装版：前端资源已内嵌于主程序，直接复用上一步编译出的 exe；数据仍写入 %APPDATA%\NoteBoard，与安装版共享
+      - name: Collect portable EXE
+        id: portable
+        shell: pwsh
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $source = 'src-tauri/target/release/noteboard.exe'
+          if (-not (Test-Path $source)) { throw "未找到主程序：$source" }
+          # 文件名带 portable 且不含 setup，应用内更新据此只挑选安装包
+          $target = "NoteBoard_${version}_windows_x64_portable.exe"
+          Copy-Item $source $target
+          "path=$target" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      # 手动触发时也能从 Actions 页面下载
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-portable
+          path: ${{ steps.portable.outputs.path }}
+          if-no-files-found: error
+
+      # 标签发布：上传到 tauri-action 创建的同一 Release
+      - name: Upload portable to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${env:GITHUB_REF_NAME}" "${{ steps.portable.outputs.path }}" --clobber
+
   # 正式标签的 Windows 安装包上传后，以仓库拥有者的跨仓库令牌提交 WinGet 更新申请。
   # 与 APK 构建并行；预发布和仅验证安卓的手动运行不向官方软件源提交。
   publish-winget:
