@@ -1,9 +1,11 @@
-// NoteBoard WebView2 渲染自愈（仅 Windows 生效）
+// NoteBoard WebView 渲染自愈（桌面端）
 //
-// 长时间闲置、息屏或睡眠唤醒后，部分显卡驱动（AMD 居多）会重置图形设备，WebView2 的 GPU 进程随之退出。
+// Windows：长时间闲置、息屏或睡眠唤醒后，部分显卡驱动（AMD 居多）会重置图形设备，WebView2 的 GPU 进程随之退出。
 // Chromium 会自动拉起新的 GPU 进程，但宿主窗口里的合成画面可能停留在黑屏/残块，直到控制器重新提交可见性。
 // 这里监听 ProcessFailed：GPU 进程退出时切换一次控制器可见性强制重绘，并在窗口下次获得焦点时再补一次；
 // 渲染进程崩溃时页面已不可用，直接重载（未保存内容由暂存机制兜底）。
+//
+// macOS / Linux：内存紧张或长时间闲置时系统可能回收页面进程，WKWebView / WebKitGTK 默认停在白屏，同样直接重载。
 
 use std::collections::HashSet;
 use std::sync::Mutex;
@@ -19,10 +21,22 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
         .on_webview_ready(|webview| {
             #[cfg(windows)]
             windows_impl::attach(webview);
-            #[cfg(not(windows))]
+            #[cfg(target_os = "linux")]
+            linux_impl::attach(webview);
+            #[cfg(not(any(windows, target_os = "linux")))]
             let _ = webview;
         })
         .build()
+}
+
+/// macOS 页面进程被系统终止后的回调（由 tauri::Builder::on_web_content_process_terminate 注册）
+#[cfg(target_os = "macos")]
+pub fn on_web_content_process_terminate<R: Runtime>(webview: &tauri::Webview<R>) {
+    log::warn!(
+        "[render-recovery] {} 页面进程退出，重载页面",
+        webview.label()
+    );
+    let _ = webview.reload();
 }
 
 /// 窗口重新获得焦点时调用：若该窗口的 Webview 在后台经历过 GPU 进程退出，再强制重绘一次
@@ -49,9 +63,12 @@ pub fn forget(label: &str) {
     }
 }
 
+// 仅 Windows 的 GPU 进程退出会产生待补刷标记，其他平台不编译以免未使用告警
+#[cfg(windows)]
 fn mark_pending(label: &str) {
     if let Ok(mut set) = PENDING_REPAINT.lock() {
-        set.get_or_insert_with(HashSet::new).insert(label.to_string());
+        set.get_or_insert_with(HashSet::new)
+            .insert(label.to_string());
     }
 }
 
@@ -65,12 +82,12 @@ fn repaint<R: Runtime>(window: &tauri::WebviewWindow<R>) {
 
 #[cfg(windows)]
 mod windows_impl {
+    use tauri::Manager;
     use webview2_com::Microsoft::Web::WebView2::Win32::{
         COREWEBVIEW2_PROCESS_FAILED_KIND, COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED,
         COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED,
         COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED,
     };
-    use tauri::Manager;
     use webview2_com::ProcessFailedEventHandler;
 
     pub fn attach<R: tauri::Runtime>(webview: tauri::Webview<R>) {
@@ -146,5 +163,29 @@ mod windows_impl {
             let _ = controller.SetIsVisible(true);
             let _ = controller.NotifyParentWindowPositionChanged();
         });
+    }
+}
+
+#[cfg(target_os = "linux")]
+mod linux_impl {
+    use webkit2gtk::{WebProcessTerminationReason, WebViewExt};
+
+    pub fn attach<R: tauri::Runtime>(webview: tauri::Webview<R>) {
+        let label = webview.label().to_string();
+        let result = webview.with_webview(move |platform| {
+            platform
+                .inner()
+                .connect_web_process_terminated(move |view, reason| {
+                    // 主动调用 terminate 接口属于有意关闭，不做恢复
+                    if reason == WebProcessTerminationReason::TerminatedByApi {
+                        return;
+                    }
+                    log::warn!("[render-recovery] {label} 页面进程退出（{reason:?}），重载页面");
+                    view.reload();
+                });
+        });
+        if let Err(e) = result {
+            log::warn!("[render-recovery] 无法访问 WebView：{e}");
+        }
     }
 }

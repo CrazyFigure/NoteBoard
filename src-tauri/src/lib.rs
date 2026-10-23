@@ -73,6 +73,11 @@ pub fn run() {
     #[cfg(target_os = "android")]
     let builder = builder.plugin(mobile_bridge::plugin());
 
+    // macOS 页面进程被系统回收后默认停在白屏，交给渲染自愈模块重载
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .on_web_content_process_terminate(window::render_recovery::on_web_content_process_terminate);
+
     builder
         .manage(Mutex::new(AppState::default()))
         .setup(|app| {

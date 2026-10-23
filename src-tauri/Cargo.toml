@@ -61,3 +61,7 @@ windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Thre
 # Markdown 导出 PDF：直接调用 WebView2 PrintToPdf，版本须与 tauri/wry 使用的保持一致
 webview2-com = "0.38"
 windows-core = "0.61"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# WebKitGTK 页面进程退出后自动重载（web-process-terminated 信号），版本须与 tauri/wry 使用的保持一致
+webkit2gtk = { version = "2.0", features = ["v2_20"] }
