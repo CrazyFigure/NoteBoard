@@ -226,6 +226,8 @@ pub fn on_window_event(window: &Window, event: &WindowEvent) {
             let app = window.app_handle();
             let state = app.state::<Mutex<AppState>>();
             touch_window(&state, &label);
+            // 后台期间 GPU 进程退出过的窗口，切回时补一次强制重绘，避免黑屏
+            crate::window::render_recovery::on_window_focused(window);
         }
         // 窗口被销毁时统一注销窗口记录与状态；未处理打开请求转交其它存活窗口
         WindowEvent::Destroyed => {
@@ -233,6 +235,7 @@ pub fn on_window_event(window: &Window, event: &WindowEvent) {
             let app = window.app_handle().clone();
             let state = app.state::<Mutex<AppState>>();
             let reassign = unregister_window(&state, &label);
+            crate::window::render_recovery::forget(&label);
             // 🔴 锁外唤醒转交目标：该窗口需要重新消费队列
             if let Some((target_label, queue_version)) = reassign {
                 crate::window::intent::notify_open_requests(&app, &target_label, queue_version);

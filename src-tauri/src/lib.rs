@@ -62,6 +62,9 @@ pub fn run() {
             .build(),
     );
 
+    // WebView2 GPU/渲染进程异常后的画面自愈（逻辑仅 Windows 生效，其他平台为空插件）
+    let builder = builder.plugin(window::render_recovery::plugin());
+
     // 全局唤起窗口快捷键（仅桌面端；具体按键由设置决定，启动时在 bootstrap 中注册）
     #[cfg(desktop)]
     let builder = builder.plugin(window::global_shortcut::plugin());
