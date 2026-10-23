@@ -6,13 +6,14 @@
 // 这些节点在可视化模式中以只读源码样式展示，编辑需切换到源码模式；
 // 块级 HTML 例外：可渲染时显示过滤后的渲染结果，并可就地编辑源码（见 rawHtmlBlockView）。
 
-import { Node, mergeAttributes } from '@tiptap/core';
+import { Extension, Node, mergeAttributes } from '@tiptap/core';
 import { createIndexedBlockStart } from './markdownBlockStart';
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import { emitRawSegment } from './rawMarkdownSegments';
 import { normalizeImageAlign, normalizeImageWidth } from './imageNodeView';
 import { RawHtmlBlockComponent } from './rawHtmlBlockView';
 import { createRawHtmlInlineView } from './rawHtmlInlineView';
+import { matchSplitHtmlBlock } from './rawHtmlScan';
 
 // Front matter：必须位于文档最开始，结束标记为 `---` 或 `...`
 const FRONT_MATTER_PATTERN = /^---[ \t]*\n((?:[^\n]*\n)*?)(?:---|\.\.\.)[ \t]*(?:\n|$)/;
@@ -267,6 +268,25 @@ export const RawHtmlInline = Node.create({
   },
   parseMarkdown: (token, helpers) => helpers.createNode('rawHtmlInline', { raw: token.text ?? '' }),
   renderMarkdown: (node) => emitRawSegment(String(node.attrs?.raw ?? '')),
+});
+
+/**
+ * 合并被空行拆开的块级 HTML：整体是一段完整 HTML 时产出单个块级 html token，交给 RawHtmlBlock 解析（规则见 rawHtmlScan）。
+ * marked 后注册的块级 tokenizer 先执行，本扩展须先于折叠块/分栏/高亮块注册，保证其标准写法优先被识别。
+ */
+export const RawHtmlBlockMerge = Extension.create({
+  name: 'rawHtmlBlockMerge',
+  markdownTokenizer: {
+    name: 'rawHtmlBlockMerge',
+    level: 'block',
+    // 不打断段落：段落后的 HTML 由下一轮块解析处理（同时避免 TipTap 对每个段落用 tokenize 探测起点）
+    start: () => -1,
+    tokenize: (src, tokens) => {
+      const raw = matchSplitHtmlBlock(src, tokens);
+      if (!raw) return undefined;
+      return { type: 'html', block: true, pre: false, raw, text: raw };
+    },
+  },
 });
 
 /** 块级原始 HTML 原子节点：仅接管 marked 的块级 html token，行内 HTML 维持原有处理 */

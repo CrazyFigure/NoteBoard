@@ -1,10 +1,11 @@
 // NoteBoard 块级原始 HTML 节点视图
 // 可渲染的 HTML 块按过滤后的结果显示（与 GitHub 渲染 README 一致），不可渲染的保持只读源码样式；
+// 自带样式表 / SVG / 整页文档的复杂 HTML 放入 Shadow DOM 隔离渲染，样式与编辑器互不干扰；
 // 双击或点击"编辑"进入源码编辑，修改只作用于 raw 原文，渲染结果从不写回文件。
 // 从插入菜单新建的块 raw 为空：挂载后直接进入编辑；未输入内容时失焦或"完成"保留空块（显示占位，序列化时忽略），
 // 仅按 Esc / "取消" 时移除。
 
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
 import { Selection } from '@tiptap/pm/state';
 import { convertFileSrc } from '@tauri-apps/api/core';
@@ -14,7 +15,7 @@ import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { useExplorerStore } from '../explorer/explorerStore';
 import { handleRenderedHtmlLinkClick, isAbsoluteLocalPath, resolveRelativeDocPath } from './linkHandler';
-import { renderRawHtmlPreview } from './rawHtmlRender';
+import { ISOLATED_BODY_CLASS, renderRawHtmlPreview } from './rawHtmlRender';
 import { formatShortcut } from '../../core/shortcuts';
 
 /** 可视化模式插入的空 HTML 块 */
@@ -55,6 +56,65 @@ export function resolveDocumentImageSrc(src: string): string {
   return resolveLocalSrc(src, currentBaseDir());
 }
 
+// 隔离渲染的基础样式：重置从编辑器继承的排版（行高、字距、空白处理等），只沿用文字颜色与字体以适配主题；
+// 选择器包在 :where() 中不增加优先级，HTML 自带样式表可直接覆盖
+const ISOLATED_BASE_CSS = `
+:host {
+  all: initial;
+  display: block;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  color-scheme: inherit;
+}
+:where(.${ISOLATED_BODY_CLASS} > :first-child) { margin-top: 0; }
+:where(.${ISOLATED_BODY_CLASS} > :last-child) { margin-bottom: 0; }
+:where(a) { color: var(--editor-link, LinkText); }
+:where(img, video) { max-width: 100%; }
+:where(a, img) { -webkit-user-drag: none; }
+`;
+
+// 所有隔离块共享同一份构造样式表，避免每块重复解析；运行环境不支持时退回 <style> 元素
+let isolatedBaseSheet: CSSStyleSheet | null | undefined;
+
+function getIsolatedBaseSheet(): CSSStyleSheet | null {
+  if (isolatedBaseSheet !== undefined) return isolatedBaseSheet;
+  try {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(ISOLATED_BASE_CSS);
+    isolatedBaseSheet = sheet;
+  } catch {
+    isolatedBaseSheet = null;
+  }
+  return isolatedBaseSheet;
+}
+
+function createStyleElement(css: string): HTMLStyleElement {
+  const style = document.createElement('style');
+  style.textContent = css;
+  return style;
+}
+
+/** 在 Shadow DOM 中渲染已过滤的复杂 HTML */
+function IsolatedHtml({ html, styles }: { html: string; styles: string[] }) {
+  const hostRef = useRef<HTMLDivElement>(null);
+
+  // 绘制前写入，避免先闪出空白再撑开高度
+  useLayoutEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const root = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
+    // 内容已经过 DOMPurify 过滤
+    root.innerHTML = html;
+    const baseSheet = getIsolatedBaseSheet();
+    if (baseSheet && 'adoptedStyleSheets' in root) root.adoptedStyleSheets = [baseSheet];
+    // 样式表以 textContent 写入，不会被当作 HTML 解析；基础样式在前，HTML 自带样式可覆盖
+    root.prepend(...(baseSheet ? [] : [createStyleElement(ISOLATED_BASE_CSS)]), ...styles.map(createStyleElement));
+  }, [html, styles]);
+
+  return <div ref={hostRef} className="nb-md-html-shadow" />;
+}
+
 export function RawHtmlBlockComponent({ node, editor, getPos, selected, updateAttributes, deleteNode }: NodeViewProps) {
   const raw = String(node.attrs.raw ?? '');
   // 新插入的空块直接进入编辑
@@ -62,7 +122,10 @@ export function RawHtmlBlockComponent({ node, editor, getPos, selected, updateAt
   const [draft, setDraft] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const baseDir = currentBaseDir();
-  const preview = useMemo(() => renderRawHtmlPreview(raw, (src) => resolveLocalSrc(src, baseDir)), [raw, baseDir]);
+  const preview = useMemo(
+    () => renderRawHtmlPreview(raw, (src) => resolveLocalSrc(src, baseDir), { isolate: true }),
+    [raw, baseDir],
+  );
 
   const startEditing = () => {
     if (!editor.isEditable) return;
@@ -183,6 +246,19 @@ export function RawHtmlBlockComponent({ node, editor, getPos, selected, updateAt
             handleRenderedHtmlLinkClick(e);
           }}
         />
+      ) : preview.kind === 'isolated' ? (
+        <div
+          className="nb-md-html-render is-isolated"
+          // Shadow DOM 内的点击冒泡到这里，链接处理按事件路径取实际目标
+          onClick={(e) => {
+            handleRenderedHtmlLinkClick(e);
+          }}
+          onAuxClick={(e) => {
+            handleRenderedHtmlLinkClick(e);
+          }}
+        >
+          <IsolatedHtml html={preview.html} styles={preview.styles} />
+        </div>
       ) : (
         <pre className="nb-md-raw-block nb-md-raw-html" data-label="HTML">
           {/* 空块：新建后未输入即失焦，或清空了源码 */}

@@ -172,6 +172,16 @@ interface RenderedLinkMouseEvent {
   ctrlKey: boolean;
   metaKey: boolean;
   preventDefault(): void;
+  /** React 合成事件的原生事件 */
+  nativeEvent?: Event;
+  composedPath?(): EventTarget[];
+}
+
+/** 事件的实际目标：Shadow DOM（隔离渲染的 HTML 块）内的点击在外层会被重定向到宿主元素，需从事件路径取原始节点 */
+function renderedEventOrigin(event: RenderedLinkMouseEvent): EventTarget | null {
+  const native = event.nativeEvent ?? event;
+  const path = typeof native.composedPath === 'function' ? native.composedPath() : [];
+  return path[0] ?? event.target;
 }
 
 /**
@@ -180,10 +190,12 @@ interface RenderedLinkMouseEvent {
  * Ctrl/Cmd + 单击或鼠标中键单击时按普通链接规则打开：外部链接交给系统默认浏览器，本地文件在 NoteBoard 内打开。
  */
 export function handleRenderedHtmlLinkClick(event: RenderedLinkMouseEvent): boolean {
-  const anchor = event.target instanceof Element ? event.target.closest('a') : null;
+  const origin = renderedEventOrigin(event);
+  const anchor = origin instanceof Element ? origin.closest('a') : null;
   if (!anchor) return false;
   event.preventDefault();
-  const href = anchor.getAttribute('href');
+  // SVG 中的链接可能使用旧式 xlink:href
+  const href = anchor.getAttribute('href') ?? anchor.getAttribute('xlink:href');
   const shouldOpen = (event.button === 0 && (event.ctrlKey || event.metaKey)) || event.button === 1;
   const activeKey = useWindowStore.getState().activeKey;
   if (shouldOpen && href && activeKey) void handleLinkClick(href, activeKey);

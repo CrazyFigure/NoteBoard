@@ -93,4 +93,19 @@ describe('HTML 块 / 行内 HTML 渲染内容中的链接 (handleRenderedHtmlLin
     expect(handleRenderedHtmlLinkClick(event)).toBe(false);
     expect(event.preventDefault).not.toHaveBeenCalled();
   });
+
+  it('Shadow DOM 内的链接：外层监听按事件路径识别（隔离渲染的 HTML 块）', () => {
+    const container = document.createElement('div');
+    const host = document.createElement('div');
+    container.appendChild(host);
+    document.body.appendChild(container);
+    host.attachShadow({ mode: 'open' }).innerHTML = '<a href="https://example.com/shadow"><span>链接文字</span></a>';
+    const listener = vi.fn((event: MouseEvent) => handleRenderedHtmlLinkClick(event));
+    container.addEventListener('click', listener);
+    const span = host.shadowRoot!.querySelector('span')!;
+    span.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true, cancelable: true, ctrlKey: true }));
+    expect(listener).toHaveReturnedWith(true);
+    expect(ipc.openExternalUrl).toHaveBeenCalledWith('https://example.com/shadow');
+    container.remove();
+  });
 });

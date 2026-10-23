@@ -31,7 +31,7 @@ import { GitHubAlert } from '../alertExtension';
 import { DetailsBlock } from '../detailsExtension';
 import { ColumnBlock, ColumnsBlock } from '../columnsExtension';
 import { CalloutBlock } from '../calloutExtension';
-import { FootnoteDefinitionBlock, FootnoteReference, FrontMatterBlock, RawHtmlBlock, RawHtmlInline } from '../markdownPreserveExtensions';
+import { FootnoteDefinitionBlock, FootnoteReference, FrontMatterBlock, RawHtmlBlock, RawHtmlBlockMerge, RawHtmlInline } from '../markdownPreserveExtensions';
 import { slashSuggestion } from '../slashCommand';
 
 import { handleLinkClick } from '../linkHandler';
@@ -458,6 +458,9 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // GitHub Alerts
     GitHubAlert,
+
+    // 被空行拆开的完整 HTML 合并为一块：marked 中后注册者先执行，须排在折叠块/分栏/高亮块之前，让其标准写法优先
+    RawHtmlBlockMerge,
 
     // 折叠块：只接管标准写法的 <details>，须先于块级 HTML 原样保留注册
     DetailsBlock,

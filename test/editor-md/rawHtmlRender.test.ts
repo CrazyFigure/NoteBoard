@@ -10,7 +10,7 @@ import { isBalancedHtml, renderRawHtmlPreview } from '../../src/features/editor-
 /** 取渲染结果 HTML，非渲染结果时测试失败 */
 function renderedHtml(raw: string, resolveSrc?: (src: string) => string): string {
   const preview = renderRawHtmlPreview(raw, resolveSrc);
-  if (preview.kind !== 'render') throw new Error(`期望渲染，实际为源码展示：${preview.reason}`);
+  if (preview.kind !== 'render') throw new Error(`期望渲染，实际为：${preview.kind === 'source' ? preview.reason : preview.kind}`);
   return preview.html;
 }
 
@@ -126,5 +126,79 @@ describe('块级 HTML：往返逐字不变', () => {
   it('不含图片的 <a> 仍转为普通链接', () => {
     expect(parseMarkdown(editor, '<a href="https://x.example">文字</a> tail')).toBe(true);
     expect(serializeMarkdown(editor)).toBe('[文字](https://x.example) tail');
+  });
+});
+
+describe('块级 HTML：复杂内容隔离渲染', () => {
+  /** 取隔离渲染结果，非隔离结果时测试失败 */
+  function isolated(raw: string, resolveSrc?: (src: string) => string) {
+    const preview = renderRawHtmlPreview(raw, resolveSrc, { isolate: true });
+    if (preview.kind !== 'isolated') throw new Error(`期望隔离渲染，实际为：${preview.kind}`);
+    return preview;
+  }
+
+  it('自带样式表时保留 <style> 与 class', () => {
+    const preview = isolated('<style>.card { color: red; }</style>\n<div class="card" id="c">x</div>');
+    expect(preview.styles).toEqual(['.card { color: red; }']);
+    expect(preview.html).toContain('class="card"');
+    expect(preview.html).toContain('id="c"');
+    expect(preview.html).not.toContain('<style');
+  });
+
+  it('整页文档：head 样式提取，body 改写为容器并保留属性，html/body 选择器指向宿主与容器', () => {
+    const preview = isolated('<!DOCTYPE html>\n<html><head><title>T</title><style>body { margin: 0 } html, :root { color: red } .body-x { color: blue }</style></head>\n<body class="dark" style="padding: 8px"><p>x</p></body></html>');
+    expect(preview.html).toMatch(/^<div class="dark nb-html-body" style="padding: 8px;?">/);
+    expect(preview.html).toContain('<p>x</p>');
+    expect(preview.html).not.toContain('<title');
+    const css = preview.styles.join('\n');
+    expect(css).toContain('.nb-html-body { margin: 0');
+    expect(css).toContain(':host, :host { color: red');
+    expect(css).toContain('.body-x');
+  });
+
+  it('SVG 内联图形可渲染', () => {
+    const preview = isolated('<div><svg viewBox="0 0 10 10" width="10"><circle cx="5" cy="5" r="4" fill="red"/></svg></div>');
+    expect(preview.html).toContain('<circle');
+  });
+
+  it.each([
+    ['脚本', '<style>a{}</style><div>x<script>alert(1)</script></div>', '<script'],
+    ['事件属性', '<style>a{}</style><div><img src="a.png" onerror="alert(1)"></div>', 'onerror'],
+    ['javascript 链接', '<style>a{}</style><p><a href="javascript:alert(1)">x</a></p>', 'javascript:'],
+    ['iframe', '<style>a{}</style><div>x<iframe src="https://evil.example"></iframe></div>', '<iframe'],
+    ['表单输入', '<style>a{}</style><div>x<form><input value="1"><textarea></textarea></form></div>', '<input'],
+    ['popover 调用者', '<style>a{}</style><div><button popovertarget="p">b</button><div popover id="p">x</div></div>', 'popovertarget'],
+    ['悬停调用者', '<style>a{}</style><div><a href="#" interestfor="p">b</a><div popover id="p">x</div></div>', 'interestfor'],
+    ['命令调用', '<style>a{}</style><div><button commandfor="d" command="show-modal">b</button></div>', 'command'],
+    ['图像热区链接', '<style>a{}</style><div><img src="a.png" usemap="#m"><map name="m"><area href="https://a.example"></map></div>', '<area'],
+    ['自动播放', '<style>a{}</style><div><video src="a.mp4" autoplay></video></div>', 'autoplay'],
+    ['meta 跳转', '<head><meta http-equiv="refresh" content="0;url=https://a.example"><style>a{}</style></head><body>x</body>', '<meta'],
+  ])('%s被移除', (_name, raw, forbidden) => {
+    const preview = isolated(raw);
+    expect(preview.html).not.toContain(forbidden);
+  });
+
+  it('样式表中的 </style> 不会逃逸为 HTML', () => {
+    const preview = isolated('<style>p::after { content: "</sty" "le><img src=x onerror=alert(1)>" }</style><p>x</p>');
+    expect(preview.html).not.toContain('onerror');
+  });
+
+  it('本地媒体地址经解析器改写', () => {
+    const preview = isolated('<style>a{}</style><div><img src="a.png"><video src="v.mp4" poster="p.png"></video></div>', (src) => `asset://${src}`);
+    expect(preview.html).toContain('src="asset://a.png"');
+    expect(preview.html).toContain('src="asset://v.mp4"');
+    expect(preview.html).toContain('poster="asset://p.png"');
+  });
+
+  it('未开启隔离时维持原有白名单渲染', () => {
+    expect(renderRawHtmlPreview('<div class="x">a<style>p{}</style></div>').kind).toBe('render');
+  });
+
+  it('普通 README 写法不走隔离渲染', () => {
+    expect(renderRawHtmlPreview('<p align="center"><b>标题</b></p>', undefined, { isolate: true }).kind).toBe('render');
+  });
+
+  it('过滤后无可见内容时按源码展示', () => {
+    expect(renderRawHtmlPreview('<style>a{}</style>', undefined, { isolate: true })).toEqual({ kind: 'source', reason: 'empty' });
   });
 });
