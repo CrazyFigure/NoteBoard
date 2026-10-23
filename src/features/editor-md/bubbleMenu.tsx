@@ -21,6 +21,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { handleLinkClick } from './linkHandler';
+import { normalizeHighlightAttributes } from './markdownInlineMarks';
 import { useWindowStore } from '../../stores/windowStore';
 import { Tooltip } from '../../components/Tooltip';
 import { promptLinkUrl } from '../../components/promptPresets';
@@ -206,7 +207,8 @@ function HighlightPalette({
                 e.currentTarget.style.transform = 'scale(1)';
               }}
             >
-              {editor.isActive('highlight', { color: item.color }) && (
+              {/* 默认黄色以无颜色存储，按规范化后的属性判断选中 */}
+              {editor.isActive('highlight', normalizeHighlightAttributes(item.color)) && (
                 <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.6)', fontWeight: 'bold' }}>✓</span>
               )}
             </button>

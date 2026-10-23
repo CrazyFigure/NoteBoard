@@ -74,6 +74,7 @@ import { ALERT_KINDS, AlertMenuIcon, alertMenuLabel, type AlertKind } from '../e
 import { CALLOUT_PRESETS, CalloutPresetIcon, type CalloutPreset } from '../editor-md/calloutPickers';
 import { RAW_HTML_SOURCE_SNIPPET, insertRawHtmlContent } from '../editor-md/rawHtmlBlockView';
 import { InlineEmojiGrid, insertInlineEmoji } from '../editor-md/inlineEmoji';
+import { renderHighlightSource } from '../editor-md/markdownInlineMarks';
 // 🔴 S03：从 editor-md 边界内实例表获取内核实例（不再依赖编辑器组件文件的 getter 导出）
 import { getMdTipTapEditor as getActiveTipTapEditor, getMdSourceView as getActiveSourceView } from '../editor-md/editorInstances';
 import { emit } from '../../core/emitter';
@@ -283,7 +284,8 @@ export function MarkdownToolbar({
       executeSourceAction((view) => {
         const { from, to } = view.state.selection.main;
         const selText = view.state.sliceDoc(from, to);
-        const insert = `<mark style="background: ${color}">${selText}</mark>`;
+        // 与可视化模式序列化写法一致，切换模式时不触发规范化
+        const insert = renderHighlightSource(selText, color);
         view.dispatch({ changes: { from, to, insert } });
       });
       return;
