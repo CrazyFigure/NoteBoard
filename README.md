@@ -106,7 +106,7 @@ pnpm tauri build    # 构建安装包
 
 ## 开源协议
 
-[AGPL-3.0-only](LICENSE)（0.6.3 及以前版本为 GPL-3.0-only）
+[AGPL-3.0-only](LICENSE)
 
 - **开源使用**：遵循 AGPL-3.0，修改后分发或以网络服务形式提供，须公开完整源码。
 - **商业授权**：如需闭源集成或不便履行 AGPL 义务，可另行获取商业授权，请通过 [Issues](https://github.com/CrazyFigure/NoteBoard/issues) 联系作者。
