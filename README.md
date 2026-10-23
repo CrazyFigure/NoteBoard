@@ -26,6 +26,7 @@
 | 平台 | 安装包（[最新 Release](https://github.com/CrazyFigure/NoteBoard/releases/latest)） | 说明 |
 |---|---|---|
 | **Windows** | `NoteBoard_x.y.z_windows_x64-setup.exe` | Win10 1809+，需 WebView2（Win11 已内置） |
+| **Windows 免安装** | `NoteBoard_x.y.z_windows_x64_portable.exe` | 双击即用，不注册文件关联；数据与安装版共用 `%APPDATA%\NoteBoard` |
 | **安卓** | `NoteBoard_x.y.z_android_arm64.apk` | arm64 设备 |
 | **macOS** | `.dmg` | Apple Silicon / Intel 分别提供；未经 Apple 公证 |
 | **Linux** | `.deb` / `.AppImage` | x86_64；AppImage 需 `chmod +x`，可能需安装 FUSE |
@@ -51,7 +52,7 @@
 
 ## 更新须知
 
-- **应用**：Windows 支持应用内更新；安卓应用内检查后跳转下载 APK；macOS / Linux 手动下载或使用包管理器；网页执行 `docker compose pull && docker compose up -d`。
+- **应用**：Windows 支持应用内更新，免安装版检查到新版本后跳转 GitHub 手动下载替换；安卓应用内检查后跳转下载 APK；macOS / Linux 手动下载或使用包管理器；网页执行 `docker compose pull && docker compose up -d`。
 - **插件独立更新**：升级应用不会更新插件，请到「设置 → 插件」检查更新。
 - **版本要求**：插件需 NoteBoard **0.5.8+**；EPUB 阅读等新插件需 **0.6.0+**，旧版本看不到。
 - **macOS 首次打开**被拦截时，到「系统设置 → 隐私与安全性」允许打开。
