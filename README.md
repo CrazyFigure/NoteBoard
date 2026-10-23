@@ -12,9 +12,9 @@
 </div>
 
 <p align="center">
-  <a href="https://cdn.jsdelivr.net/gh/CrazyFigure/NoteBoard@a0a5c28093d9bdf63f3ab6b2150e15d136476d03/assets/tour.mp4"><img src="assets/tour.webp" alt="NoteBoard 一分钟速览：Markdown 双模编辑、多维表格（表格 / 看板 / 甘特图）、思维导图、白板、图表与信息图、文本对比、Office / PDF / CAD / EPUB 插件、多端同步、三套主题与全平台支持" /></a>
+  <a href="https://cdn.jsdelivr.net/gh/CrazyFigure/NoteBoard@7a93c374fca401830bbc655dda050618fe78e6e2/assets/tour.mp4"><img src="assets/tour.webp" alt="NoteBoard 一分钟速览：Markdown 双模编辑、多维表格（表格 / 看板 / 甘特图）、思维导图、白板、图表与信息图、文本对比、Office / PDF / CAD / EPUB 插件、多端同步、三套主题与全平台支持" /></a>
   <br />
-  ▶ <a href="https://cdn.jsdelivr.net/gh/CrazyFigure/NoteBoard@a0a5c28093d9bdf63f3ab6b2150e15d136476d03/assets/tour.mp4">观看高清完整版</a>
+  ▶ <a href="https://cdn.jsdelivr.net/gh/CrazyFigure/NoteBoard@7a93c374fca401830bbc655dda050618fe78e6e2/assets/tour.mp4">观看高清完整版</a>
 </p>
 
 ---
