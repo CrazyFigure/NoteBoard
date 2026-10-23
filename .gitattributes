@@ -7,3 +7,5 @@
 *.icns binary
 *.woff2 binary
 *.ttf binary
+*.webp binary
+*.mp4 binary

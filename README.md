@@ -13,6 +13,10 @@
   [![Release](https://img.shields.io/github/v/release/CrazyFigure/NoteBoard)](https://github.com/CrazyFigure/NoteBoard/releases/latest)
 </div>
 
+[![NoteBoard 一分钟速览：Markdown 双模编辑、多维表格（表格 / 看板 / 甘特图）、思维导图、白板、图表与信息图、文本对比、Office / PDF / CAD / EPUB 插件、多端同步、三套主题与全平台支持](assets/tour.webp)](assets/tour.mp4)
+
+<p align="center">▶ <a href="assets/tour.mp4">观看高清完整版</a></p>
+
 ---
 
 本地优先、文件优先：无强制工作区、无强制云同步，双击即开、即开即写，数据完全由你掌控。
