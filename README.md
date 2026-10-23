@@ -5,17 +5,17 @@
 
   **Windows / macOS / Linux / 安卓 / 网页 笔记 + 画板 + 多维表格 + 知识工作台**
 
-  像记事本一样随手打开任意文本文件，像 Typora 一样写 Markdown，像飞书一样整理多维表格，像白板一样画图，像 XMind 一样梳理脑图。
-
   [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
   ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android%20%7C%20Web-lightgrey.svg)
   ![Tauri](https://img.shields.io/badge/Tauri-v2-24C8DB.svg)
   [![Release](https://img.shields.io/github/v/release/CrazyFigure/NoteBoard)](https://github.com/CrazyFigure/NoteBoard/releases/latest)
 </div>
 
-[![NoteBoard 一分钟速览：Markdown 双模编辑、多维表格（表格 / 看板 / 甘特图）、思维导图、白板、图表与信息图、文本对比、Office / PDF / CAD / EPUB 插件、多端同步、三套主题与全平台支持](assets/tour.webp)](assets/tour.mp4)
-
-<p align="center">▶ <a href="assets/tour.mp4">观看高清完整版</a></p>
+<p align="center">
+  <a href="assets/tour.mp4"><img src="assets/tour.webp" width="720" alt="NoteBoard 一分钟速览：Markdown 双模编辑、多维表格（表格 / 看板 / 甘特图）、思维导图、白板、图表与信息图、文本对比、Office / PDF / CAD / EPUB 插件、多端同步、三套主题与全平台支持" /></a>
+  <br />
+  ▶ <a href="assets/tour.mp4">观看高清完整版</a>
+</p>
 
 ---
 
