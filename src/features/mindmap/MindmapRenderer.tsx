@@ -109,6 +109,8 @@ interface MindmapRendererProps {
   searchHighlight?: MindmapSearchHighlight;
   /** 选中节点变化（顶部操作栏据此决定概要 / 外框 / 联系线按钮是否可用） */
   onSelectionChange?: (selection: MindmapSelectionInfo) => void;
+  /** 历史记录差异标记：节点 id → 新增 / 删除 / 修改 / 移动（渲染为 data-diff 属性，由历史查看样式着色） */
+  diffMarks?: ReadonlyMap<string, string>;
 }
 
 /** 当前选中节点概况 */
@@ -403,6 +405,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   defaultImageFit,
   searchHighlight,
   onSelectionChange,
+  diffMarks,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -2253,6 +2256,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
             <div
               key={n.node.id}
               className="nb-mindmap-node"
+              data-node-id={n.node.id}
+              data-diff={diffMarks?.get(n.node.id)}
               onPointerDown={(e) => handleNodePointerDown(e, n)}
               onClick={(e) => {
                 e.stopPropagation();

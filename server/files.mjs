@@ -108,7 +108,8 @@ export async function createFiles(dataDir) {
     const result = [];
     const directory = await fs.opendir(target);
     for await (const item of directory) {
-      if (item.isSymbolicLink() || item.name.startsWith('.nb-write-') || !showHidden && item.name.startsWith('.')) continue;
+      // 文档历史记录目录是内部存储，始终隐藏
+      if (item.isSymbolicLink() || item.name.startsWith('.nb-write-') || item.name.toLowerCase() === '.nb-history' || !showHidden && item.name.startsWith('.')) continue;
       if (!item.isDirectory() && !item.isFile()) continue;
       if (result.length >= 10000) throw fail('单个文件夹最多显示 10000 项，请分目录整理', 413);
       const stat = await fs.stat(path.join(target, item.name));

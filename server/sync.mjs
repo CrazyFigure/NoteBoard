@@ -7,13 +7,20 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fail } from './files.mjs';
 
-/** 工作进程只通过管道接收受控命令，不监听额外端口或暴露磁盘路径。 */
-export async function startSyncWorker(files, dataDir) {
+/**
+ * 工作进程只通过管道接收受控命令，不监听额外端口或暴露磁盘路径。
+ * allowSync 为 false（部署未启用访问认证）时只提供文档历史记录：不启动同步调度、不执行同步钩子。
+ */
+export async function startSyncWorker(files, dataDir, { allowSync = true } = {}) {
   const binary = process.env.NOTEBOARD_SYNC_BINARY || fileURLToPath(new URL('./noteboard-sync-server', import.meta.url));
   try { await fs.access(binary); } catch { return null; }
   const events = new EventEmitter();
   events.setMaxListeners(200);
-  const worker = spawn(binary, [], { env: { ...process.env, NOTEBOARD_DATA_DIR: path.resolve(dataDir) }, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+  const env = { ...process.env, NOTEBOARD_DATA_DIR: path.resolve(dataDir), NOTEBOARD_SYNC_DISABLED: allowSync ? '0' : '1' };
+  const worker = spawn(binary, [], { env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+  // 工作进程不单独维持 Node 事件循环：HTTP 服务关闭后进程可正常退出（标准输入关闭时工作进程随之退出）
+  worker.unref();
+  for (const stream of [worker.stdin, worker.stdout, worker.stderr]) stream?.unref?.();
   const pending = new Map();
   let counter = 0;
   let stopped = false;
@@ -75,6 +82,8 @@ export async function startSyncWorker(files, dataDir) {
       config.backup.localDir = !config.backup.localDir || config.backup.localDir === '/backups' ? backups : await files.resolve(config.backup.localDir);
     }
     if (name === 'backup_restore' && args.targetDir) args.targetDir = await files.resolve(args.targetDir);
+    // 历史记录命令的文档路径同样换成真实路径（工作进程会再次校验位于工作区内）
+    if (name.startsWith('history_') && typeof args.path === 'string') args.path = await files.resolve(args.path);
     return call(name, args);
   }
 

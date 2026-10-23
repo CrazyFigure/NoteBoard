@@ -30,9 +30,10 @@ export function canUseWebSync(): boolean { return syncAvailable; }
 export async function initializeWebRuntime(): Promise<void> {
   // 服务器 IP + HTTP 也能复制文本；图片复制和主动粘贴仍遵循浏览器 HTTPS 权限限制。
   installWebClipboardFallback();
-  const capabilities = await request<{ syncAvailable: boolean; authEnabled: boolean }>('web_capabilities');
+  const capabilities = await request<{ syncAvailable: boolean; authEnabled: boolean; historyAvailable?: boolean }>('web_capabilities');
   syncAvailable = capabilities.syncAvailable;
-  if (syncAvailable) {
+  // 未启用多端同步的部署仍可能提供历史记录：同样需要事件流刷新版本列表
+  if (syncAvailable || capabilities.historyAvailable) {
     const stream = new EventSource('/api/events');
     stream.onmessage = (message) => {
       const event = JSON.parse(message.data) as { event: string; payload: unknown };

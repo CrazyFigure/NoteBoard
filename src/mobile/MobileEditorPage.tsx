@@ -17,6 +17,7 @@ import {
   Share2,
   X,
   Files,
+  History,
 } from 'lucide-react';
 import { emit } from '../core/emitter';
 import { getExplorerFileIcon } from '../features/explorer/fileIcons';
@@ -34,6 +35,9 @@ import { ActionSheet, BottomSheet, IconButton, TopBar, type SheetAction } from '
 import { shareEntry } from './mobileFiles';
 import { useMobileStore } from './mobileStore';
 import { requestReadingMode, supportsReadingMode } from '../features/reading/readingMode';
+// 历史记录：查看界面覆盖整个编辑页，按需懒加载
+import { HistoryHost } from '../features/versionHistory/HistoryHost';
+import { openVersionHistory } from '../features/versionHistory/versionHistoryStore';
 
 export interface MobileEditorPageProps {
   activeTab: Tab | null;
@@ -98,6 +102,10 @@ export function MobileEditorPage({ activeTab, activeEditor, getMarkdownEditorRea
     if (activeTab.toolKind !== 'textdiff') {
       moreActions.push({ key: 'saveas', label: '另存为', icon: <FileOutput size={18} />, onSelect: () => void saveAs(activeTab.key, '') });
     }
+    // 历史记录：已保存的可编辑文档（图片与只读查看格式不记录）
+    if (activeTab.path && !activeTab.toolKind && activeTab.kind !== 'image' && activeTab.kind !== 'preview' && activeTab.kind !== 'unsupported') {
+      moreActions.push({ key: 'history', label: '历史记录', icon: <History size={18} />, onSelect: () => openVersionHistory(activeTab.key) });
+    }
     if (activeTab.path) {
       moreActions.push({
         key: 'share',
@@ -160,6 +168,9 @@ export function MobileEditorPage({ activeTab, activeEditor, getMarkdownEditorRea
       {formatBar && !isPresenting && <div className="nb-m-format-bar">{formatBar}</div>}
 
       <ActionSheet open={moreOpen} onClose={() => setMoreOpen(false)} title={activeTab?.displayName} actions={moreActions} />
+
+      {/* 历史记录查看界面：覆盖整个编辑页（含顶栏），返回后回到编辑器 */}
+      {isVisible && <HistoryHost />}
 
       {/* 大纲：点击标题后跳转并收起 */}
       <BottomSheet open={outlineOpen} onClose={() => setOutlineOpen(false)} title="大纲" size="tall">

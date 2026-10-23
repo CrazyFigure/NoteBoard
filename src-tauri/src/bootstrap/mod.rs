@@ -39,6 +39,9 @@ pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // 多端同步后台调度线程（进程唯一；启动后延迟数秒在后台同步，不阻塞窗口显示）
     crate::sync::scheduler::init(app.handle().clone());
 
+    // 文档历史记录后台线程（未开启时钩子全部立即返回）
+    crate::history::init(app.handle().clone());
+
     // 注册主窗口
     let state = app.state::<Mutex<AppState>>();
     {

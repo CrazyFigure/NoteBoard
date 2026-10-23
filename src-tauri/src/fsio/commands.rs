@@ -121,11 +121,15 @@ pub fn write_document(
     // 查看器文件禁止通过文本写入接口覆盖，二进制导入仍由专用接口处理。
     if crate::dto::kind_from_path(&path).0 == crate::dto::DocumentKind::Preview { return Err("Office 和 PDF 仅支持只读查看".into()); }
     crate::sync::hooks::prepare_write(p);
+    // 历史记录：磁盘上尚未记录的旧内容（首次记录 / 应用外修改）在覆盖前补记
+    crate::history::hooks::prepare_write(p);
 
     match write::write_with_encoding(p, &content, encoding, eol) {
         Ok((size, mtime)) => {
             // 同步目录内的手动/自动保存触发同步（防抖合并）
             crate::sync::hooks::on_written(p);
+            // 历史记录：后台记录本次保存的版本
+            crate::history::hooks::on_written(p);
             Ok(WriteResult {
                 ok: true,
                 mtime,
@@ -246,6 +250,8 @@ pub fn rename_path(from: String, to: String) -> Result<(), String> {
     std::fs::rename(&from, &to).map_err(|e| format!("重命名失败: {}", e))?;
     // 同步目录内改名：登记改名线索，其他设备执行改名而不是删除+新建
     crate::sync::hooks::on_renamed(Path::new(&from), Path::new(&to));
+    // 历史记录跟随新路径（目录改名时其中全部文档一起跟随）
+    crate::history::hooks::on_renamed(Path::new(&from), Path::new(&to));
     Ok(())
 }
 
@@ -253,10 +259,15 @@ pub fn rename_path(from: String, to: String) -> Result<(), String> {
 #[tauri::command]
 pub fn move_to_trash(path: String) -> Result<(), String> {
     // 已开启多端同步且启用回收站时，同步目录内的删除移入同步回收站（可在各设备恢复）
-    if let Some(result) = crate::sync::hooks::try_move_to_sync_trash(Path::new(&path)) {
-        return result;
+    let result = match crate::sync::hooks::try_move_to_sync_trash(Path::new(&path)) {
+        Some(result) => result,
+        None => trash::move_to_trash(Path::new(&path)),
+    };
+    // 删除成功后历史转入待清理（保留期内恢复同一文件时重新关联）
+    if result.is_ok() {
+        crate::history::hooks::on_deleted(Path::new(&path));
     }
-    trash::move_to_trash(Path::new(&path))
+    result
 }
 
 /// 路径是否存在

@@ -17,6 +17,7 @@ pub mod config;
 pub mod diff3;
 pub mod engine;
 pub mod error;
+pub mod history_phase;
 pub mod hooks;
 pub mod manifest;
 pub mod plan;
@@ -30,3 +31,6 @@ pub mod util;
 
 #[cfg(test)]
 mod tests_e2e;
+
+#[cfg(test)]
+mod tests_history;

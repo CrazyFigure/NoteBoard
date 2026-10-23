@@ -324,6 +324,21 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   --board-button-hover-bg: #ebeff4;
   --board-button-active-bg: #eff6ff;
   --board-selection-outline: #3b82f6;
+
+  /* 历史记录：差异高亮与版本列表 */
+  --diff-insert-bg: rgba(34,197,94,0.14);
+  --diff-insert-text: #15803d;
+  --diff-insert-border: #22c55e;
+  --diff-delete-bg: rgba(239,68,68,0.12);
+  --diff-delete-text: #b91c1c;
+  --diff-delete-border: #ef4444;
+  --diff-modify-bg: rgba(245,158,11,0.16);
+  --diff-modify-border: #f59e0b;
+  --diff-focus-ring: #3b82f6;
+  --history-panel-bg: #fafbfc;
+  --history-item-hover-bg: #eef2f6;
+  --history-item-active-bg: #eff6ff;
+  --history-month-text: #64748b;
 }
 
 /* ═════════════════════════════════════════════════════════
@@ -461,6 +476,21 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   --board-button-hover-bg: #E6E3D9;
   --board-button-active-bg: #FDF0EB;
   --board-selection-outline: #C4623E;
+
+  /* 历史记录：差异高亮与版本列表 */
+  --diff-insert-bg: rgba(22,163,74,0.13);
+  --diff-insert-text: #166534;
+  --diff-insert-border: #16a34a;
+  --diff-delete-bg: rgba(220,38,38,0.11);
+  --diff-delete-text: #b91c1c;
+  --diff-delete-border: #dc2626;
+  --diff-modify-bg: rgba(217,119,6,0.15);
+  --diff-modify-border: #d97706;
+  --diff-focus-ring: #C4623E;
+  --history-panel-bg: #F5F4EF;
+  --history-item-hover-bg: #E5E2D8;
+  --history-item-active-bg: #FDF0EB;
+  --history-month-text: #6B6860;
 }
 
 /* ═════════════════════════════════════════════════════════
@@ -600,6 +630,21 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   --board-button-hover-bg: #2e2e34;
   --board-button-active-bg: #172033;
   --board-selection-outline: #60a5fa;
+
+  /* 历史记录：差异高亮与版本列表 */
+  --diff-insert-bg: rgba(74,222,128,0.15);
+  --diff-insert-text: #4ade80;
+  --diff-insert-border: #22c55e;
+  --diff-delete-bg: rgba(248,113,113,0.16);
+  --diff-delete-text: #f87171;
+  --diff-delete-border: #ef4444;
+  --diff-modify-bg: rgba(251,191,36,0.15);
+  --diff-modify-border: #fbbf24;
+  --diff-focus-ring: #60a5fa;
+  --history-panel-bg: #0a0a0b;
+  --history-item-hover-bg: #242429;
+  --history-item-active-bg: #172033;
+  --history-month-text: #a1a1aa;
 }
 
 /* ═════════════════════════════════════════════════════════

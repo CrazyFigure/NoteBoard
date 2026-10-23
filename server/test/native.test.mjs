@@ -92,3 +92,49 @@ test('两个网页实例通过现有 WebDAV 协议双向同步，并能备份和
   const stored = await fs.readFile(path.join(temp, 'server-a/native/sync/config.json'), 'utf8');
   assert.ok(!stored.includes('test-secret'));
 });
+
+test('未启用访问认证时仍提供文档历史记录，且不开放同步命令', { skip: !process.env.NOTEBOARD_SYNC_BINARY }, async (t) => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'noteboard-history-http-'));
+  const server = await createWebServer({ dataDir: path.join(temp, 'data') });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => {
+    server.stopNoteboard(); server.closeAllConnections(); await new Promise((resolve) => server.close(resolve));
+    await fs.rm(temp, { recursive: true, force: true });
+  });
+  async function send(command, args = {}) {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/command`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-NoteBoard-Request': '1', 'X-NoteBoard-Client': 'browser-history-1234' }, body: JSON.stringify({ command, args }) });
+    return { status: response.status, body: await response.json() };
+  }
+  async function call(command, args) {
+    const { status, body } = await send(command, args);
+    assert.equal(status, 200, `${command}: ${JSON.stringify(body)}`);
+    return body.result;
+  }
+  const capabilities = await call('web_capabilities');
+  assert.equal(capabilities.syncAvailable, false);
+  assert.equal(capabilities.historyAvailable, true);
+  assert.equal((await call('history_get_config')).mode, 'off');
+  assert.equal((await call('history_set_mode', { mode: 'local' })).mode, 'local');
+  const file = await call('create_file', { dir: '/workspace', name: '历史.md' });
+  let revision = file.webRevision;
+  for (const content of ['# 第一版', '# 第一版\n\n补充']) {
+    const written = await call('write_document', { path: file.key, content, encoding: 'utf8', eol: 'lf', expectedRevision: revision });
+    revision = written.webRevision;
+  }
+  // 后台线程异步记录：轮询等待版本出现
+  let list;
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    list = await call('history_list', { path: file.key });
+    if (list.entries.length >= 1 && list.entries[0].size > 0) break;
+    await delay(50);
+  }
+  assert.ok(list.entries.length >= 1);
+  const latest = await call('history_read', { path: file.key, entryId: list.entries[0].id });
+  assert.equal(latest.content, '# 第一版\n\n补充');
+  // 工作区外的路径被拒绝；同步命令在无认证时不可用
+  assert.notEqual((await send('history_list', { path: '/etc/passwd' })).status, 200);
+  assert.equal((await send('sync_get_config')).status, 403);
+  // 历史目录不出现在文件列表
+  const names = (await call('read_dir', { path: '/workspace', showHidden: true })).map((n) => n.name);
+  assert.ok(!names.includes('.nb-history'));
+});

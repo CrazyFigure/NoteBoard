@@ -23,7 +23,7 @@ interface LayoutStore {
   statusBarVisible: boolean;
   settingsModalVisible: boolean;
   /** 文件缺少查看器或字体入口指定打开设置的位置，不持久化。 */
-  settingsTarget: 'plugins' | 'fonts' | `plugin:${string}` | null;
+  settingsTarget: 'plugins' | 'fonts' | 'history' | `plugin:${string}` | null;
   /** 编辑器顶部操作栏是否可见 */
   editorToolbarVisible: boolean;
   /** 画板是否处于纯净全屏演示模式；仅为当前窗口临时 UI 状态，不参与布局持久化 */

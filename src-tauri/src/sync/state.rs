@@ -159,6 +159,10 @@ pub fn write_base_content(root: &str, id: &str, data: Option<&[u8]>) {
     }
 }
 
+/// 仅测试：轮流替换全局状态的端到端测试互斥执行（并行运行会互相覆盖状态）
+#[cfg(test)]
+pub static TEST_STATE_LOCK: Mutex<()> = Mutex::new(());
+
 /// 仅测试：整体替换内存中的状态（模拟多台设备轮流同步），返回旧状态
 #[cfg(test)]
 pub fn swap_for_test(next: LocalState) -> LocalState {

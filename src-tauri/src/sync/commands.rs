@@ -35,7 +35,7 @@ pub fn sync_get_config() -> SyncConfigFile {
 pub fn sync_save_config(config: SyncConfigFile) -> Result<SyncConfigFile, String> {
     let current = scheduler::current_config();
     let mut cfg = config;
-    cfg.device_id = current.device_id;
+    cfg.device_id = current.device_id.clone();
     cfg.sync.interval_minutes = cfg.sync.interval_minutes.clamp(1, 24 * 60);
     cfg.sync.trash_days = cfg.sync.trash_days.min(3650);
     cfg.backup.interval_hours = cfg.backup.interval_hours.clamp(1, 24 * 30);
@@ -44,6 +44,8 @@ pub fn sync_save_config(config: SyncConfigFile) -> Result<SyncConfigFile, String
     if cfg.sync.device_name.trim().is_empty() {
         cfg.sync.device_name = config::default_device_name();
     }
+    // 历史记录为跨设备同步时，关闭同步、更换同步目录或远端前先把旧目录中的历史迁回本机
+    crate::history::service::before_sync_config_saved(&current, &cfg);
     config::save(&cfg)?;
     if let Ok(s) = sched() {
         s.set_config(cfg.clone());

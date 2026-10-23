@@ -70,6 +70,8 @@ fn pause() {
 
 #[test]
 fn two_devices_full_lifecycle() {
+    // 与其他轮流替换全局同步状态的测试互斥
+    let _guard = state::TEST_STATE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     // 测试数据写入临时应用数据目录，绝不触碰真实的用户配置
     let data = tempfile::tempdir().unwrap();
     crate::app_dirs::set_data_root(data.path().to_path_buf());

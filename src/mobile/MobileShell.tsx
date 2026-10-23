@@ -25,6 +25,7 @@ import { MobileEditorPage } from './MobileEditorPage';
 import { consumeIncomingFiles, navigateUp, refreshCurrentFolder, switchLocation, validateFileName } from './mobileFiles';
 import { readRememberedLocation, useMobileStore } from './mobileStore';
 import { cancelSaveAs, mobileSaveAsPicker, resolveSaveAs, useMobileSaveAsStore } from './mobileSaveAs';
+import { useVersionHistoryStore } from '../features/versionHistory/versionHistoryStore';
 
 /** 两次返回键退出的判定间隔 */
 const EXIT_CONFIRM_MS = 2000;
@@ -170,6 +171,11 @@ export function MobileShell() {
       }
       if (useLayoutStore.getState().settingsModalVisible) {
         useLayoutStore.getState().setSettingsModalVisible(false);
+        return;
+      }
+      // 历史记录查看中：返回键回到文档
+      if (useVersionHistoryStore.getState().open) {
+        useVersionHistoryStore.getState().close();
         return;
       }
       // 沉浸阅读中返回先退出阅读，再返回首页

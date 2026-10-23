@@ -29,6 +29,11 @@ pub fn read_directory(path: &Path, show_hidden: bool) -> Result<Vec<FileTreeNode
                 return None;
             }
 
+            // 文档历史记录目录始终隐藏（内部存储，手动改动会破坏历史）
+            if name.eq_ignore_ascii_case(crate::sync::util::HISTORY_DIR) {
+                return None;
+            }
+
             let metadata = e.metadata().ok()?;
             let is_dir = metadata.is_dir();
             let is_symlink = metadata.file_type().is_symlink();

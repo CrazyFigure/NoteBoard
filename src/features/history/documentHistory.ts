@@ -553,6 +553,44 @@ function moveHistory(docKey: string, offset: -1 | 1): boolean {
   }
 }
 
+/**
+ * 以一次新编辑的方式整篇替换文档内容（还原历史版本使用）。
+ * 追加为独立的历史分组并交给当前编辑器呈现，Ctrl+Z 可回到替换前；
+ * 没有已挂载的编辑器时返回 false，由调用方提示。
+ */
+export function applyDocumentContentAsChange(docKey: string, content: string): boolean {
+  materializePending(docKey);
+  const state = histories.get(docKey);
+  const adapter = adapters.get(docKey);
+  if (!state || !adapter || state.isApplying) return false;
+  const previousIndex = state.index;
+  const previousContent = materializeNode(state, previousIndex);
+  if (previousContent === content) return true;
+  const mode = state.entries[previousIndex].mode;
+  recordDocumentChange(docKey, content, { mode, startsNewGroup: true });
+  state.isApplying = true;
+  try {
+    adapter.applyEntry(toPublicEntry(state, state.index), {
+      direction: 'redo',
+      changeOffset: findFirstChangeOffset(previousContent, content),
+    });
+    state.forceNextGroup = true;
+    state.lastEditMode = null;
+    notifyHistoryChange(docKey);
+    return true;
+  } catch (error) {
+    // 编辑器拒绝应用：撤掉刚追加的节点，时间线回到替换前
+    state.entries.splice(state.index, 1);
+    state.index = Math.min(previousIndex, state.entries.length - 1);
+    state.lastMaterialized = null;
+    console.error('应用还原内容失败:', error);
+    notifyHistoryChange(docKey);
+    return false;
+  } finally {
+    state.isApplying = false;
+  }
+}
+
 /** 沿文件统一时间线撤销一个编辑分组 */
 export function undoDocumentHistory(docKey: string): boolean {
   // 🔴 J2：导航前先物化暂存快照（当前组末端必须先进历史才能正确回退一步）

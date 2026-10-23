@@ -34,6 +34,7 @@ export const EVENTS = {
   SYNC_REPORT: 'nb://sync-report',
   SYNC_APPLIED: 'nb://sync-applied',
   SYNC_CONFIG_CHANGED: 'nb://sync-config-changed',
+  HISTORY_CHANGED: 'nb://history-changed',
 } as const;
 
 // ── 监听封装 ──
@@ -115,6 +116,13 @@ export function onSyncApplied(cb: (changes: SyncLocalChange[]) => void): Promise
 /** 同步配置在任一窗口被修改 */
 export function onSyncConfigChanged(cb: (config: SyncConfigFile) => void): Promise<UnlistenFn> {
   return listen<SyncConfigFile>(EVENTS.SYNC_CONFIG_CHANGED, (e) => cb(e.payload));
+}
+
+// ── 文档历史记录 ──
+
+/** 某个文档记录了新版本或版本列表被修改 */
+export function onHistoryChanged(cb: (p: { path: string }) => void): Promise<UnlistenFn> {
+  return listen<{ path: string }>(EVENTS.HISTORY_CHANGED, (e) => cb(e.payload));
 }
 
 // ── 系统文件拖拽监听 ──

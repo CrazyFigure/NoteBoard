@@ -23,8 +23,10 @@ export async function createWebServer(options = {}) {
   const fonts = await createFonts(dataDir);
   // 插件程序按部署实例共享；用户文档与工作台布局继续由文件服务管理。
   const pluginCommand = await createPlugins(dataDir, JSON.parse(await fs.readFile(path.join(projectDir, 'package.json'), 'utf8')).version);
-  // 同步管理包含云端凭证，只在部署访问认证已启用时启动服务和开放接口。
-  const sync = username ? await startSyncWorker(files, dataDir) : null;
+  // 原生工作进程同时提供多端同步与文档历史记录。同步管理包含云端凭证，只在部署访问认证已启用时开放；
+  // 未启用认证时工作进程只提供历史记录（不启动同步调度、不执行同步钩子）。
+  const native = await startSyncWorker(files, dataDir, { allowSync: !!username });
+  const sync = username ? native : null;
   const streams = new Set();
   const attempts = new Map();
 
@@ -87,7 +89,11 @@ export async function createWebServer(options = {}) {
     if (cmd === 'download_font_pack') return fonts.download();
     if (cmd === 'remove_font_pack') return fonts.remove();
     const key = () => clientKey(req);
-    if (cmd === 'web_capabilities') return { syncAvailable: !!sync, authEnabled: !!username };
+    if (cmd === 'web_capabilities') return { syncAvailable: !!sync, authEnabled: !!username, historyAvailable: !!native };
+    if (cmd.startsWith('history_')) {
+      if (!native) throw fail('当前部署未启用历史记录', 503);
+      return native.command(cmd, args);
+    }
     if (cmd.startsWith('sync_') || cmd.startsWith('backup_')) {
       if (!username) throw fail('网页同步需要先设置部署访问账号密码', 403);
       if (!sync) throw fail('同步工作进程不可用，请检查镜像构建或 NOTEBOARD_SYNC_BINARY', 503);
@@ -119,16 +125,16 @@ export async function createWebServer(options = {}) {
       case 'write_document':
       case 'save_binary_file': {
         if (cmd === 'write_document' && classify(args.path)[0] === 'preview') throw fail('此文件仅支持只读查看');
-        await sync?.hook('prepare_write', { path: args.path });
+        await native?.hook('prepare_write', { path: args.path });
         const bytes = cmd === 'write_document' ? files.encode(args.content, args.encoding, args.eol) : Buffer.from(args.base64, 'base64');
         const result = await files.write(args.path, bytes, args.expectedRevision);
-        await sync?.hook('on_written', { path: args.path });
+        await native?.hook('on_written', { path: args.path });
         return result;
       }
       case 'create_file': {
         const target = child(args.dir, args.name);
         await files.write(target, Buffer.alloc(0), null, true);
-        await sync?.hook('on_written', { path: target });
+        await native?.hook('on_written', { path: target });
         return files.read(target);
       }
       case 'create_dir': {
@@ -142,12 +148,17 @@ export async function createWebServer(options = {}) {
         const existing = await fs.lstat(to).catch((error) => { if (error.code === 'ENOENT') return null; throw error; });
         if (existing) throw fail('目标名称已存在', 409);
         await fs.rename(from, to);
-        await sync?.hook('on_renamed', { from: args.from, to: args.to });
+        await native?.hook('on_renamed', { from: args.from, to: args.to });
         return null;
       });
       case 'move_to_trash': {
-        const moved = await sync?.hook('move_to_sync_trash', { path: args.path });
-        if (!moved) await files.trash(args.path);
+        const moved = await native?.hook('move_to_sync_trash', { path: args.path });
+        if (!moved) {
+          // 历史记录钩子需要删除前的真实路径
+          const resolved = native ? await files.resolve(args.path) : null;
+          await files.trash(args.path);
+          if (resolved) await native.hook('on_deleted', { path: args.path }).catch(() => {});
+        }
         return null;
       }
       case 'load_settings': return files.loadState('settings', null);
@@ -234,14 +245,15 @@ export async function createWebServer(options = {}) {
         return res.end(bytes);
       }
       if (url.pathname === '/api/events' && req.method === 'GET') {
-        if (!sync) throw fail('同步事件不可用', 403);
+        if (!native) throw fail('同步事件不可用', 403);
         if (streams.size >= 100) throw fail('连接数过多', 429);
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no' });
         res.write(': connected\n\n'); streams.add(res);
-        const forward = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`);
-        sync.events.on('event', forward);
+        // 未启用多端同步（无访问认证）时只转发历史记录事件
+        const forward = (event) => { if (sync || String(event.event).startsWith('nb://history-')) res.write(`data: ${JSON.stringify(event)}\n\n`); };
+        native.events.on('event', forward);
         const timer = setInterval(() => res.write(': heartbeat\n\n'), 25000);
-        req.on('close', () => { clearInterval(timer); streams.delete(res); sync.events.off('event', forward); });
+        req.on('close', () => { clearInterval(timer); streams.delete(res); native.events.off('event', forward); });
         return;
       }
       if (!['GET', 'HEAD', 'POST'].includes(req.method)) throw fail('不支持的请求方法', 405);
@@ -254,7 +266,7 @@ export async function createWebServer(options = {}) {
         if (url.pathname === '/api/upload') {
           const target = url.searchParams.get('path');
           const result = await files.write(target, await body(req, MAX_FILE_BYTES), null, true);
-          await sync?.hook('on_written', { path: target });
+          await native?.hook('on_written', { path: target });
           return json(res, 200, result);
         }
         if (url.pathname === '/api/command') {
@@ -296,7 +308,9 @@ export async function createWebServer(options = {}) {
   server.requestTimeout = 120000;
   server.on('close', () => sync?.close());
   // 停止时先关闭 SSE，避免长连接阻止服务和同步工作进程退出。
-  server.stopNoteboard = () => { for (const stream of streams) stream.end(); sync?.close(); };
+  server.stopNoteboard = () => { for (const stream of streams) stream.end(); native?.close(); };
+  // 直接关闭 HTTP 服务时同样停止工作进程
+  server.on('close', () => native?.close());
   return server;
 }
 

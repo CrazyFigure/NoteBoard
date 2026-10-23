@@ -46,6 +46,7 @@ import {
   ChartColumn,
   Star,
   FolderSync,
+  History,
 } from 'lucide-react';
 import { Tooltip } from '../Tooltip';
 import { on, off } from '../../core/emitter';
@@ -56,6 +57,7 @@ import { useExplorerStore } from '../../features/explorer/explorerStore';
 import { useFavoritesStore } from '../../features/favorites/favoritesStore';
 import { findFavoriteByPath } from '../../features/favorites/favoritesUtils';
 import { moveToNewWindow } from '../../features/window/windowManager';
+import { openVersionHistory } from '../../features/versionHistory/versionHistoryStore';
 import { saveDocument, saveAs } from '../../features/editor-code/orchestration/saveDocument';
 import {
   newMarkdown,
@@ -481,6 +483,25 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
                 />
                 <span>{isFavorited ? '编辑收藏' : '加入收藏夹'}</span>
               </button>
+
+              {/* 查看历史记录（图片与只读查看格式不记录） */}
+              {tab.kind !== 'image' && tab.kind !== 'preview' && tab.kind !== 'unsupported' && (
+                <button
+                  type="button"
+                  style={getMenuItemStyle(false)}
+                  onClick={() => {
+                    setMenuPos(null);
+                    openVersionHistory(tab.key);
+                  }}
+                  onMouseEnter={handleMenuItemMouseEnter}
+                  onMouseLeave={handleMenuItemMouseLeave}
+                  onMouseDown={handleMenuItemMouseDown}
+                  onMouseUp={handleMenuItemMouseUp}
+                >
+                  <History size={13} />
+                  <span>历史记录</span>
+                </button>
+              )}
 
               {/* 复制文件名 */}
               <button

@@ -139,6 +139,10 @@ async fn run_with_retry(
         let mut ch = Vec::new();
         let locked = if backend.needs_lock() { acquire_lock(&mut backend, device_id, &cfg.device_name).await? ; true } else { false };
         let result = sync_once(cfg, &root, device_id, &mut backend, &mut r, &mut ch).await;
+        // 文档历史阶段：主同步成功后、释放远端锁之前上传 / 下载历史（失败只记警告）
+        if result.is_ok() {
+            super::history_phase::run(cfg, device_id, &mut backend, &mut r).await;
+        }
         if locked {
             let _ = backend.delete(&lock_path(), "NoteBoard 同步").await;
         }
@@ -588,6 +592,7 @@ async fn sync_once(
                 match remove_local(&abs, &l.rec.path) {
                     Ok(()) => {
                         w.local_applied = true;
+                        crate::history::hooks::on_deleted(&abs);
                         classify(Some(&l.rec), None, &mut report.download);
                         changes.push(LocalChange { kind: "deleted".into(), path: abs.to_string_lossy().to_string(), from: None });
                         prune_empty_dirs(root, &l.rec.path);
@@ -654,6 +659,10 @@ async fn sync_once(
             rec.path = new_rel;
             dest = rel_to_abs(root, &rec.path);
         }
+        // 历史记录：即将用远端内容覆盖本机文件，本机内容尚未记录时先补记
+        if own_path && works[i].content.is_some() && dest.is_file() {
+            crate::history::hooks::before_overwrite(&dest);
+        }
         let result: std::io::Result<()> = (|| {
             if let Some(parent) = dest.parent() {
                 std::fs::create_dir_all(parent)?;
@@ -675,6 +684,18 @@ async fn sync_once(
             Ok(()) => {
                 let w = &mut works[i];
                 w.local_applied = true;
+                // 历史记录：改名跟随，新内容记为来自远端设备的版本
+                if let Some(l) = &local {
+                    if l.rec.path != rec.path {
+                        crate::history::hooks::on_renamed(&rel_to_abs(root, &l.rec.path), &dest);
+                    }
+                }
+                if w.content.is_some() {
+                    let device = w.item.remote.as_ref().map(|e| e.device.clone()).unwrap_or_default();
+                    let name = manifest.devices.get(&device).map(|d| d.name.clone()).unwrap_or_default();
+                    let merged = matches!(w.item.target, Target::Live { src: Source::Merge { .. }, .. });
+                    crate::history::hooks::after_pulled(&dest, &device, &name, merged);
+                }
                 let before = local.as_ref().map(|l| &l.rec);
                 classify(before, Some(&rec), &mut report.download);
                 let abs = dest.to_string_lossy().to_string();

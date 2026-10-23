@@ -5,6 +5,7 @@
 #[path = "../../../../src-tauri/src/sync/diff3.rs"] pub mod diff3;
 #[path = "../../../../src-tauri/src/sync/engine.rs"] pub mod engine;
 #[path = "../../../../src-tauri/src/sync/error.rs"] pub mod error;
+#[path = "../../../../src-tauri/src/sync/history_phase.rs"] pub mod history_phase;
 #[path = "../../../../src-tauri/src/sync/hooks.rs"] pub mod hooks;
 #[path = "../../../../src-tauri/src/sync/manifest.rs"] pub mod manifest;
 #[path = "../../../../src-tauri/src/sync/plan.rs"] pub mod plan;

@@ -23,6 +23,8 @@ pub mod perf;
 pub mod mobile_bridge;
 // 多端同步与备份（WebDAV / S3 / GitHub / Gitee / GitCode / GitLab）
 pub mod sync;
+// 文档历史记录（版本历史）
+pub mod history;
 
 use state::AppState;
 use std::sync::Mutex;
@@ -189,6 +191,17 @@ pub fn run() {
             sync::commands::backup_list,
             sync::commands::backup_delete,
             sync::commands::backup_restore,
+            // 文档历史记录
+            history::commands::history_get_config,
+            history::commands::history_set_mode,
+            history::commands::history_set_options,
+            history::commands::history_list,
+            history::commands::history_read,
+            history::commands::history_checkpoint,
+            history::commands::history_pin,
+            history::commands::history_delete_entry,
+            history::commands::history_usage,
+            history::commands::history_clear_all,
         ])
         .on_window_event(|window, event| {
             window::manager::on_window_event(window, event)

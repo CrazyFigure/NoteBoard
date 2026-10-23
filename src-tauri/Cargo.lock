@@ -2428,6 +2428,7 @@ dependencies = [
  "chrono",
  "dunce",
  "encoding_rs",
+ "flate2",
  "font-kit",
  "hex",
  "log",

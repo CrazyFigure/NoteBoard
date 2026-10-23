@@ -28,6 +28,8 @@ import {
   releaseSessionAfterClosing,
 } from '../features/session/documentSession';
 import { markClosed } from '../features/session/editorSuspension';
+// 关闭文档后封口历史记录的合并窗口（仅 IPC 封装，无组件依赖）
+import { notifyHistoryDocumentClosed } from '../features/versionHistory/historyLifecycle';
 
 export interface Tab {
   /** 唯一 ID（用文件路径规范化 key） */
@@ -165,6 +167,8 @@ export async function disposeTabLifecycleAsync(key: string): Promise<void> {
   try {
     // 2. 排空在途写（已作废任务立即跳过）
     await drainDocumentWrites(key).catch(() => {});
+    // 写盘全部完成后封口历史版本：重新打开再编辑会另起一版
+    notifyHistoryDocumentClosed(key);
     // 3. 🔴 R3-05/C08：代际条件注销——drain 期间同路径重开（代际推进）则跳过，
     //    后端只校验窗口 label 无法区分新旧会话，旧关闭不得注销新归属
     if (getSessionGeneration(key) === closeGeneration) {

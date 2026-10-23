@@ -37,6 +37,13 @@ import type {
   SyncStatus,
   SyncTrashItem,
   BackupInfo,
+  HistoryConfigView,
+  HistoryMode,
+  HistoryOptionsInput,
+  HistoryListResult,
+  HistoryReadResult,
+  HistoryUsage,
+  HistoryCheckpointReason,
 } from './types';
 
 // ── 窗口（S04 打开队列 + 迁移协议） ──
@@ -523,4 +530,53 @@ export function backupDelete(name: string): Promise<void> {
 /** 恢复备份：targetDir 为空表示恢复到同步目录 */
 export function backupRestore(name: string, targetDir: string | null): Promise<string> {
   return invoke<string>('backup_restore', { name, targetDir });
+}
+
+// ── 文档历史记录 ──
+
+export function historyGetConfig(): Promise<HistoryConfigView> {
+  return invoke<HistoryConfigView>('history_get_config');
+}
+
+/** 切换模式（关闭时删除全部历史） */
+export function historySetMode(mode: HistoryMode): Promise<HistoryConfigView> {
+  return invoke<HistoryConfigView>('history_set_mode', { mode });
+}
+
+export function historySetOptions(options: HistoryOptionsInput): Promise<HistoryConfigView> {
+  return invoke<HistoryConfigView>('history_set_options', { options });
+}
+
+export function historyList(path: string): Promise<HistoryListResult> {
+  return invoke<HistoryListResult>('history_list', { path });
+}
+
+export function historyRead(path: string, entryId: string): Promise<HistoryReadResult> {
+  return invoke<HistoryReadResult>('history_read', { path, entryId });
+}
+
+/** 检查点：close 封口当前版本；before-restore 记录未保存内容；restore 标记下一次写盘为还原 */
+export function historyCheckpoint(
+  path: string,
+  reason: HistoryCheckpointReason,
+  content?: string | null,
+  restoredFrom?: string | null,
+): Promise<void> {
+  return invoke<void>('history_checkpoint', { path, reason, content: content ?? null, restoredFrom: restoredFrom ?? null });
+}
+
+export function historyPin(path: string, entryId: string, pinned: boolean): Promise<void> {
+  return invoke<void>('history_pin', { path, entryId, pinned });
+}
+
+export function historyDeleteEntry(path: string, entryId: string): Promise<void> {
+  return invoke<void>('history_delete_entry', { path, entryId });
+}
+
+export function historyUsage(): Promise<HistoryUsage> {
+  return invoke<HistoryUsage>('history_usage');
+}
+
+export function historyClearAll(): Promise<void> {
+  return invoke<void>('history_clear_all');
 }

@@ -56,6 +56,9 @@ import { useFavoritesStore } from '../features/favorites/favoritesStore';
 import { MissingFileDialog } from '../features/external/MissingFileDialog';
 import { checkActiveDocumentStillExists } from '../features/external/missingFileGuard';
 import { isDocumentReading, requestReadingMode, supportsReadingMode } from '../features/reading/readingMode';
+// 历史记录：挂载点只订阅开关，查看界面按需懒加载
+import { HistoryHost } from '../features/versionHistory/HistoryHost';
+import { openVersionHistory, useVersionHistoryStore } from '../features/versionHistory/versionHistoryStore';
 
 // ── 分隔条样式 ──
 
@@ -126,6 +129,12 @@ export function AppShell(_props: { children?: React.ReactNode }) {
   // 切换或关闭标签时退出沉浸阅读，避免窗口停留在全屏且外壳不可见
   useEffect(() => {
     if (useLayoutStore.getState().readingMode) requestReadingMode(false);
+  }, [activeKey]);
+
+  // 历史记录查看属于当前文档：切换或关闭标签时退出
+  useEffect(() => {
+    const history = useVersionHistoryStore.getState();
+    if (history.open && history.docKey !== activeKey) history.close();
   }, [activeKey]);
 
   // 🔴 S05：已移除 AppShell 的全局 Drawio 空闲预热（E 节 8：取消无意图的全编辑器空闲
@@ -280,7 +289,20 @@ export function AppShell(_props: { children?: React.ReactNode }) {
       description: 'JSON 格式校验',
     });
 
+    // Ctrl+Alt+Z 查看当前文档的历史记录
+    const unregHistory = registerShortcut({
+      key: 'Ctrl+Alt+Z',
+      action: () => {
+        const history = useVersionHistoryStore.getState();
+        if (history.open) history.close();
+        else openVersionHistory();
+      },
+      scope: 'global',
+      description: '历史记录',
+    });
+
     return () => {
+      unregHistory();
       unregCtrlS();
       unregCtrlF();
       unregCtrlH();
@@ -331,6 +353,8 @@ export function AppShell(_props: { children?: React.ReactNode }) {
         key="app-main"
         style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}
       >
+        {/* 历史记录查看界面（覆盖编辑区与侧栏，编辑器保持挂载） */}
+        {!isShellHidden && <HistoryHost />}
         <Group
           id="nb-layout"
           orientation="horizontal"

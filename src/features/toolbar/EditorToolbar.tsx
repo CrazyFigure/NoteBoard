@@ -3,7 +3,7 @@
 // 状态由 layoutStore 管理，与文档撤销/重做时间线完全隔离
 
 import React from 'react';
-import { BookOpen, ChevronUp } from 'lucide-react';
+import { BookOpen, ChevronUp, History } from 'lucide-react';
 import type { Editor } from '@tiptap/core';
 import type { Tab } from '../../stores/windowStore';
 import { useLayoutStore } from '../../stores/layoutStore';
@@ -13,6 +13,7 @@ import { FloatingExpandHandle } from './FloatingExpandHandle';
 import { MarkdownExportMenu } from './MarkdownExportMenu';
 import { ToolbarButton, ToolbarDivider } from './ToolbarComponents';
 import { requestReadingMode } from '../reading/readingMode';
+import { openVersionHistory } from '../versionHistory/versionHistoryStore';
 
 interface EditorToolbarProps {
   activeTab: Tab | null;
@@ -75,6 +76,12 @@ export function EditorToolbar({ activeTab, activeEditor }: EditorToolbarProps) {
       {/* 右侧视图操作：导出（仅 Markdown）、沉浸阅读（Markdown、代码与 Mermaid / PlantUML / 信息图）与收起按钮 */}
       <div style={{ marginLeft: 8, display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
         {activeTab.kind === 'markdown' && <MarkdownExportMenu tab={activeTab} editor={activeEditor} />}
+        <ToolbarButton
+          icon={<History size={15} strokeWidth={2.2} />}
+          title="历史记录"
+          shortcut="Ctrl+Alt+Z"
+          onClick={() => openVersionHistory(activeTab.key)}
+        />
         <ToolbarButton
           icon={<BookOpen size={15} strokeWidth={2.2} />}
           title="沉浸阅读"

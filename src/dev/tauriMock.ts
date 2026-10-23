@@ -97,6 +97,214 @@ let mockSyncConfig: Record<string, unknown> = {
   backup: { autoEnabled: true, intervalHours: 24, keepCount: 10, target: 'local', localDir: 'D:/Backup/NoteBoard', provider: { ...mockProvider, kind: 'github' } },
 };
 
+// ── 文档历史记录（内存样例：URL 带 mockHistory=off 时模拟未开启） ──
+
+interface MockVersion {
+  id: string;
+  at: number;
+  content: string;
+  reason: string;
+  device: string;
+  name: string;
+  restoredFrom?: string;
+  pinned?: boolean;
+  open?: boolean;
+}
+
+const MOCK_DEVICE = 'mock-device';
+let mockHistoryMode = new URLSearchParams(window.location.search).get('mockHistory') === 'off' ? 'off' : 'local';
+let mockHistoryWindow = 10;
+let mockHistoryRetention = 90;
+const mockHistories = new Map<string, MockVersion[]>();
+let mockVersionSeq = 0;
+
+function mockVersion(content: string, ageMinutes: number, reason = 'save', device = MOCK_DEVICE, name = '我的电脑'): MockVersion {
+  mockVersionSeq += 1;
+  return { id: `v${mockVersionSeq.toString().padStart(4, '0')}`, at: now - ageMinutes * 60_000, content, reason, device, name };
+}
+
+/** 粗略统计：剥离公共前后缀后各自剩余的字数 */
+function mockStats(prev: string | undefined, next: string) {
+  if (prev === undefined) return undefined;
+  let pre = 0;
+  while (pre < prev.length && pre < next.length && prev[pre] === next[pre]) pre += 1;
+  let suf = 0;
+  while (suf < prev.length - pre && suf < next.length - pre && prev[prev.length - 1 - suf] === next[next.length - 1 - suf]) suf += 1;
+  const count = (s: string) => s.replace(/[\r\n]/g, '').length;
+  return { ins: count(next.slice(pre, next.length - suf)), del: count(prev.slice(pre, prev.length - suf)), unit: 'char' };
+}
+
+function seedHistory(path: string, versions: MockVersion[]): void {
+  mockHistories.set(path, versions.sort((a, b) => a.at - b.at));
+}
+
+seedHistory(`${WORKSPACE}/周报.md`, [
+  mockVersion('* 本周完成\n', 60 * 24 * 40, 'initial'),
+  mockVersion('* 本周完成\n* 下周计划\n', 60 * 24 * 40 - 6),
+  mockVersion('* 本周完成：同步设置页\n* 下周计划\n\n重点：桌面端适配\n', 60 * 24 * 3, 'sync-pull', 'macbook', 'MacBook'),
+  mockVersion('* 本周完成：同步设置页\n* 下周计划：历史记录\n\n_重点_：移动端适配\n', 60 * 26),
+  mockVersion('* 本周完成\n* 下周计划\n\n_重点_：移动端适配\n', 60 * 30),
+]);
+seedHistory(`${WORKSPACE}/欢迎使用 NoteBoard.md`, [
+  mockVersion('# 欢迎使用 NoteBoard\n\n这是你的笔记工作区。\n', 60 * 24 * 2, 'initial'),
+  mockVersion('# 欢迎使用 NoteBoard\n\n这是你的笔记工作区。\n\n- 点击右下角 **＋** 新建\n- 长按文件查看更多操作\n', 60 * 5),
+  mockVersion(files.get(`${WORKSPACE}/欢迎使用 NoteBoard.md`)?.content ?? '', 3),
+]);
+seedHistory(`${WORKSPACE}/购物清单.txt`, [
+  mockVersion('牛奶\n面包\n', 60 * 24 * 41, 'initial'),
+  mockVersion('牛奶\n全麦面包\n苹果\n', 60 * 24 * 40.5, 'save', 'phone', '安卓设备'),
+  mockVersion('牛奶\n面包\n鸡蛋\n', 60 * 24 * 40),
+]);
+
+// Markdown 渲染级差异样例：标题改名、嵌套列表增删、表格单元格修改、代码块替换
+const CONCEPT_V1 = [
+  '# 00001_基础概念', '',
+  '- Tracking 平台项目组织：',
+  '  - Tracking：链路追踪服务', '    - tracking-agent：agent服务包', '    - tracking-core：核心逻辑',
+  '  - Tracking-Realtime：实时计算', '    - tracking-realtime-streaming：实时数据ETL处理',
+  '  - tracking-common：基础公共服务包', '',
+  '| 模块 | 负责人 |', '| --- | --- |', '| agent | 张三 |', '| core | 李四 |', '',
+  '```js', 'const port = 8080;', '```', '',
+  '旧的补充说明，稍后删除。', '',
+].join('\n');
+const CONCEPT_V2 = [
+  '# 基础概念', '',
+  '- Tracking 平台项目组织：',
+  '  - Tracking：链路追踪Agent服务', '    - tracking-agent：agent服务包', '    - tracking-core：核心逻辑', '    - tracking-plugin：插件逻辑',
+  '  - Tracking-Realtime：实时计算服务', '    - tracking-realtime-alerting：实时内存告警计算', '    - tracking-realtime-streaming：实时数据ETL处理',
+  '  - Tracking-Management：控制台管理服务', '    - tracking-management-console：管理平台',
+  '  - tracking-common：基础公共服务包', '',
+  '| 模块 | 负责人 |', '| --- | --- |', '| agent | 张三 |', '| core | **王五** |', '',
+  '```js', 'const port = 9090;', '```', '',
+].join('\n');
+seed(`${WORKSPACE}/项目笔记/基础概念.md`, CONCEPT_V2, 30);
+seedHistory(`${WORKSPACE}/项目笔记/基础概念.md`, [
+  mockVersion('# 00001_基础概念\n\n- Tracking 平台项目组织：\n', 60 * 24 * 33, 'initial'),
+  mockVersion(CONCEPT_V1, 60 * 24 * 33 - 20, 'save', 'macbook', 'MacBook'),
+  mockVersion(CONCEPT_V2, 60 * 2),
+]);
+
+// 多维表格样例：旧版本改单元格、删一行、改列名，新版本新增一行与一列
+{
+  const next = createDefaultBitableDocument('任务看板');
+  const old = JSON.parse(JSON.stringify(next)) as typeof next;
+  old.title = '任务清单';
+  if (old.rows[0]) old.rows[0].col_status = 'opt_todo';
+  if (old.rows[1]) old.rows[1].col_assignee = '张三';
+  old.rows.splice(2, 0, { id: 'row_removed', col_name: '旧需求整理', col_status: 'opt_done', col_assignee: '李四' });
+  const statusCol = old.columns.find((c) => c.id === 'col_status');
+  if (statusCol) statusCol.name = '状态';
+  next.rows.push({ id: 'row_added', col_name: '历史记录功能', col_status: 'opt_doing', col_priority: 'p_p0', col_assignee: '王五' });
+  next.columns.push({ id: 'col_estimate', key: 'estimate', name: '预估工时', type: 'number', width: 100 });
+  if (next.rows[0]) next.rows[0].col_estimate = 8;
+  seed(`${WORKSPACE}/任务看板.bitable`, serializeBitableDocument(next), 30);
+  seedHistory(`${WORKSPACE}/任务看板.bitable`, [
+    mockVersion(serializeBitableDocument(old), 60 * 24 * 5, 'initial'),
+    mockVersion(serializeBitableDocument(next), 40),
+  ]);
+}
+
+// 思维导图样例：节点改名、新增、删除子树、移动
+{
+  const node = (id: string, text: string, children: unknown[] = []) => ({ id, text, children });
+  const oldTree = node('root', '产品路线图', [
+    node('q1', '一季度', [node('q1a', '多端同步'), node('q1b', '备份恢复')]),
+    node('q2', '二季度', [node('q2a', '插件市场'), node('q2b', '网页版')]),
+    node('q3', '三季度', [node('q3a', '协作编辑', [node('q3a1', '实时光标')])]),
+  ]);
+  const newTree = node('root', '产品路线图', [
+    node('q1', '一季度', [node('q1a', '多端同步'), node('q1b', '备份与恢复'), node('q2b', '网页版')]),
+    node('q2', '二季度', [node('q2a', '插件市场'), node('q2c', '历史记录')]),
+    node('q3', '三季度'),
+  ]);
+  const docOf = (root: unknown) => JSON.stringify({ version: 1, root, layout: 'right', theme: 'classic' }, null, 2);
+  seed(`${WORKSPACE}/项目笔记/路线图.mindmap`, docOf(newTree), 20);
+  seedHistory(`${WORKSPACE}/项目笔记/路线图.mindmap`, [
+    mockVersion(docOf(oldTree), 60 * 24 * 2, 'initial'),
+    mockVersion(docOf(newTree), 20, 'save', 'macbook', 'MacBook'),
+  ]);
+}
+
+// 画板样例：移动并改文字的方框、新增方框、删除椭圆
+{
+  const base = { type: 'rectangle', angle: 0, strokeColor: '#1e1e1e', backgroundColor: 'transparent', fillStyle: 'solid', strokeWidth: 2, strokeStyle: 'solid', roughness: 1, opacity: 100, groupIds: [], frameId: null, roundness: { type: 3 }, seed: 1, version: 1, versionNonce: 1, isDeleted: false, boundElements: null, updated: 1, link: null, locked: false };
+  const box = (id: string, x: number, y: number, extra: Record<string, unknown> = {}) => ({ ...base, id, x, y, width: 180, height: 80, ...extra });
+  const label = (id: string, container: string, x: number, y: number, text: string) => ({
+    ...base, type: 'text', id, x, y, width: 120, height: 25, text, originalText: text, fontSize: 20, fontFamily: 5, textAlign: 'center', verticalAlign: 'middle', containerId: container, lineHeight: 1.25, autoResize: true,
+  });
+  const scene = (elements: unknown[]) => JSON.stringify({ type: 'excalidraw', version: 2, source: 'noteboard', elements, appState: { viewBackgroundColor: '#ffffff', gridSize: null }, files: {} });
+  const v1 = scene([
+    box('front', 100, 100, { boundElements: [{ id: 'front-t', type: 'text' }] }), label('front-t', 'front', 130, 127, '前端'),
+    box('api', 400, 100, { boundElements: [{ id: 'api-t', type: 'text' }] }), label('api-t', 'api', 430, 127, '接口服务'),
+    box('cache', 400, 300, { type: 'ellipse', backgroundColor: '#ffc9c9' }),
+  ]);
+  const v2 = scene([
+    box('front', 100, 100, { boundElements: [{ id: 'front-t', type: 'text' }], version: 5 }), label('front-t', 'front', 130, 127, '网页前端'),
+    box('api', 460, 140, { boundElements: [{ id: 'api-t', type: 'text' }] }), label('api-t', 'api', 490, 167, '接口服务'),
+    box('db', 460, 320, { backgroundColor: '#b2f2bb', boundElements: [{ id: 'db-t', type: 'text' }] }), label('db-t', 'db', 490, 347, '数据库'),
+  ]);
+  seed(`${WORKSPACE}/架构草图.excalidraw`, v2, 5);
+  seedHistory(`${WORKSPACE}/架构草图.excalidraw`, [
+    mockVersion(v1, 60 * 24, 'initial'),
+    mockVersion(v2, 5),
+  ]);
+}
+
+// Draw.io 样例：图形改文字、移动、新增与删除（明文页面）
+{
+  const cell = (id: string, value: string, x: number, y: number) =>
+    `<mxCell id="${id}" value="${value}" style="rounded=1;whiteSpace=wrap;" vertex="1" parent="1"><mxGeometry x="${x}" y="${y}" width="120" height="60" as="geometry"/></mxCell>`;
+  const file = (cells: string) => `<mxfile host="NoteBoard"><diagram id="page1" name="部署图"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>${cells}</root></mxGraphModel></diagram></mxfile>`;
+  const v1 = file(cell('web', '网页', 40, 40) + cell('api', '接口', 240, 40) + cell('mq', '消息队列', 240, 160));
+  const v2 = file(cell('web', '网页前端', 40, 40) + cell('api', '接口', 280, 60) + cell('db', '数据库', 280, 180));
+  seed(`${WORKSPACE}/项目笔记/部署图.drawio`, v2, 8);
+  seedHistory(`${WORKSPACE}/项目笔记/部署图.drawio`, [
+    mockVersion(v1, 60 * 24 * 3, 'initial'),
+    mockVersion(v2, 8),
+  ]);
+}
+
+function mockHistoryList(path: string) {
+  const list = mockHistories.get(path) ?? [];
+  const entries = list.map((v, i) => ({
+    id: v.id, start: v.at, at: v.at, hash: v.id, size: v.content.length, reason: v.reason,
+    origin: { device: v.device, name: v.name }, stats: mockStats(list[i - 1]?.content, v.content),
+    restoredFrom: v.restoredFrom, pinned: v.pinned, open: v.open, isOwn: v.device === MOCK_DEVICE,
+  })).reverse();
+  return { docId: list.length ? `doc-${nameOf(path)}` : null, kind: kindOf(nameOf(path)), deviceId: MOCK_DEVICE, entries };
+}
+
+let mockPendingRestore: { path: string; from: string } | null = null;
+
+/** 模拟写盘后的记录：合并窗口内的连续保存只更新最后一版 */
+function mockRecordWrite(path: string, content: string): void {
+  if (mockHistoryMode === 'off' || kindOf(nameOf(path)) === 'preview') return;
+  const list = mockHistories.get(path) ?? [];
+  const last = list[list.length - 1];
+  if (last?.content === content) return;
+  const restore = mockPendingRestore?.path === path ? mockPendingRestore : null;
+  mockPendingRestore = null;
+  if (!restore && last?.open && last.reason === 'save' && Date.now() - last.at < mockHistoryWindow * 60_000) {
+    last.content = content;
+    last.at = Date.now();
+  } else {
+    if (last) last.open = false;
+    const v = mockVersion(content, 0, restore ? 'restore' : 'save');
+    v.at = Date.now();
+    v.open = !restore;
+    if (restore) v.restoredFrom = restore.from;
+    list.push(v);
+  }
+  mockHistories.set(path, list);
+}
+
+function mockHistoryConfig() {
+  return {
+    mode: mockHistoryMode, retentionDays: mockHistoryRetention, mergeWindowMin: mockHistoryWindow, maxTotalMb: 0,
+    effectiveMaxMb: 1024, syncAvailable: true, gitBackend: false,
+  };
+}
+
 function parentOf(path: string): string {
   const index = path.lastIndexOf('/');
   return index <= 0 ? '/' : path.slice(0, index);
@@ -278,6 +486,64 @@ export function installTauriMock(): void {
         return '已恢复备份：写回 3 个文件，1 个备份之外的文件已移入回收站';
       case 'backup_delete':
         return null;
+      // ── 文档历史记录 ──
+      case 'history_get_config':
+        return mockHistoryConfig();
+      case 'history_set_mode':
+        mockHistoryMode = String(args.mode);
+        if (mockHistoryMode === 'off') mockHistories.clear();
+        return mockHistoryConfig();
+      case 'history_set_options': {
+        const options = args.options as { retentionDays: number; mergeWindowMin: number };
+        mockHistoryRetention = options.retentionDays;
+        mockHistoryWindow = options.mergeWindowMin;
+        return mockHistoryConfig();
+      }
+      case 'history_list':
+        return mockHistoryMode === 'off' ? { docId: null, kind: 'code', deviceId: MOCK_DEVICE, entries: [] } : mockHistoryList(String(args.path));
+      case 'history_read': {
+        const version = mockHistories.get(String(args.path))?.find((v) => v.id === args.entryId);
+        if (!version) throw new Error('版本不存在或已被清理');
+        return { content: version.content, encoding: 'utf8', size: version.content.length };
+      }
+      case 'history_checkpoint': {
+        const path = String(args.path);
+        const list = mockHistories.get(path) ?? [];
+        if (args.reason === 'close' || args.reason === 'before-restore') {
+          const last = list[list.length - 1];
+          if (last) last.open = false;
+        }
+        if (args.reason === 'before-restore' && typeof args.content === 'string' && list[list.length - 1]?.content !== args.content) {
+          const v = mockVersion(args.content, 0, 'before-restore');
+          v.at = Date.now();
+          list.push(v);
+          mockHistories.set(path, list);
+        }
+        if (args.reason === 'restore') mockPendingRestore = { path, from: String(args.restoredFrom) };
+        return null;
+      }
+      case 'history_pin': {
+        const version = mockHistories.get(String(args.path))?.find((v) => v.id === args.entryId);
+        if (version) version.pinned = Boolean(args.pinned);
+        return null;
+      }
+      case 'history_delete_entry': {
+        const path = String(args.path);
+        mockHistories.set(path, (mockHistories.get(path) ?? []).filter((v) => v.id !== args.entryId));
+        return null;
+      }
+      case 'history_usage': {
+        let entries = 0;
+        let bytes = 0;
+        for (const list of mockHistories.values()) {
+          entries += list.length;
+          bytes += list.reduce((n, v) => n + v.content.length * 3, 0);
+        }
+        return { bytes, docs: mockHistories.size, entries };
+      }
+      case 'history_clear_all':
+        mockHistories.clear();
+        return null;
       // ── 文件系统 ──
       case 'read_dir':
         return listDir(String(args.path));
@@ -306,6 +572,7 @@ export function installTauriMock(): void {
       case 'write_document': {
         const path = String(args.path);
         files.set(path, { content: String(args.content ?? ''), mtime: Date.now() });
+        mockRecordWrite(path, String(args.content ?? ''));
         return { ok: true, mtime: Math.floor(Date.now() / 1000), size: String(args.content ?? '').length, error: null };
       }
       case 'create_dir':

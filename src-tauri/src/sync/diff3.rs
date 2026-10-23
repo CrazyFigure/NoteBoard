@@ -111,6 +111,17 @@ fn lcs_pairs(a: &[&str], b: &[&str]) -> Option<Vec<(usize, usize)>> {
     Some(pairs)
 }
 
+/// 两段文本按行比较的改动块：旧文本行区间 [os, oe) 被替换为新文本行区间 [xs, xe)。
+/// 供历史记录统计改动量复用；改动规模超过上限时返回 None。
+#[allow(clippy::type_complexity)]
+pub fn line_hunks<'a>(old: &'a str, new: &'a str) -> Option<(Vec<&'a str>, Vec<&'a str>, Vec<(usize, usize, usize, usize)>)> {
+    let a = lines(old);
+    let b = lines(new);
+    let pairs = lcs_pairs(&a, &b)?;
+    let out = hunks(a.len(), b.len(), &pairs, true).into_iter().map(|h| (h.os, h.oe, h.xs, h.xe)).collect();
+    Some((a, b, out))
+}
+
 /// 由匹配对生成改动块
 fn hunks(o_len: usize, x_len: usize, pairs: &[(usize, usize)], from_a: bool) -> Vec<Hunk> {
     let mut out = Vec::new();

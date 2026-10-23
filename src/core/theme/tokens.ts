@@ -68,6 +68,12 @@ export const REQUIRED_TOKENS: readonly string[] = [
   '--board-canvas-bg', '--board-panel-bg', '--board-panel-border',
   '--board-icon-fg', '--board-button-hover-bg', '--board-button-active-bg',
   '--board-selection-outline',
+
+  // 历史记录：差异高亮与版本列表
+  '--diff-insert-bg', '--diff-insert-text', '--diff-insert-border',
+  '--diff-delete-bg', '--diff-delete-text', '--diff-delete-border',
+  '--diff-modify-bg', '--diff-modify-border', '--diff-focus-ring',
+  '--history-panel-bg', '--history-item-hover-bg', '--history-item-active-bg', '--history-month-text',
 ] as const;
 
 // ── 对比度测试用的 Token 对 ──
@@ -106,6 +112,10 @@ export const TEXT_PAIRS: readonly [string, string][] = [
   ['--hljs-variable', '--editor-bg'],
   ['--hljs-function', '--editor-bg'],
   ['--hljs-meta', '--editor-bg'],
+  // 历史记录差异文字（删除线 / 新增）
+  ['--diff-insert-text', '--editor-bg'],
+  ['--diff-delete-text', '--editor-bg'],
+  ['--history-month-text', '--history-panel-bg'],
 ] as const;
 
 // 指示器类 Token（≥ 3:1）—— [indicator, bg]

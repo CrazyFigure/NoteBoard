@@ -23,6 +23,9 @@ encoding_rs = "0.8"
 log = "0.4"
 url = "2"
 dunce = "1"
+# 文档历史记录：版本正文 gzip 存储；读取历史正文时与桌面端相同的编码探测
+flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
+chardetng = "0.1"
 
 [lints.rust]
 # 复用原生业务模块中的条件编译标记，宿主本身不启用桌面窗口分支。

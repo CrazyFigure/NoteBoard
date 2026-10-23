@@ -1,0 +1,961 @@
+/* NoteBoard 文档历史记录查看界面
+ * 覆盖在编辑区之上（编辑器保持挂载，返回后撤销栈与滚动位置不丢）
+ * 颜色全部来自主题变量：--diff-* 差异高亮、--history-* 版本列表 */
+
+.nb-vh-root {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: var(--editor-bg);
+  color: var(--editor-text);
+  font-family: var(--ui-font-family);
+  font-size: var(--ui-font-size);
+}
+
+/* ── 顶栏 ── */
+.nb-vh-topbar {
+  height: 48px;
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--editor-border);
+  background: var(--editor-surface);
+}
+
+.nb-vh-topbar-left,
+.nb-vh-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.nb-vh-topbar-right {
+  justify-content: flex-end;
+}
+
+.nb-vh-title {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.nb-vh-title-name {
+  font-weight: 600;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nb-vh-title-sub {
+  font-size: 11px;
+  color: var(--editor-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nb-vh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--editor-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast), border-color var(--transition-fast);
+}
+
+.nb-vh-btn:hover:not(:disabled) {
+  background: var(--toolbar-hover);
+  color: var(--editor-text);
+}
+
+.nb-vh-btn:active:not(:disabled) {
+  background: var(--toolbar-active);
+  transform: scale(0.96);
+}
+
+.nb-vh-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.nb-vh-btn.is-outline {
+  border-color: var(--control-border);
+  background: var(--editor-bg);
+}
+
+.nb-vh-icon-btn {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+}
+
+.nb-vh-counter {
+  font-size: 12px;
+  color: var(--editor-text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.nb-vh-counter strong {
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+/* ── 主体 ── */
+.nb-vh-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.nb-vh-stage {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.nb-vh-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--editor-text-muted);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.nb-vh-empty {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  color: var(--editor-text-muted);
+  text-align: center;
+}
+
+.nb-vh-empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--editor-text);
+}
+
+.nb-vh-banner {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--editor-text-secondary);
+  background: var(--editor-surface);
+  border: 1px solid var(--editor-border);
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* ── 版本列表 ── */
+.nb-vh-panel {
+  width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--editor-border);
+  background: var(--history-panel-bg);
+}
+
+.nb-vh-panel-head {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--editor-border);
+}
+
+.nb-vh-help {
+  display: inline-flex;
+  color: var(--editor-text-muted);
+  cursor: help;
+}
+
+.nb-vh-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 12px;
+}
+
+.nb-vh-month {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 10px 16px 6px;
+  font-size: 12px;
+  color: var(--history-month-text);
+  background: var(--history-panel-bg);
+}
+
+.nb-vh-item {
+  position: relative;
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 16px 10px 19px;
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--editor-border) 70%, transparent);
+  background: transparent;
+  color: var(--editor-text);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.nb-vh-item:hover {
+  background: var(--history-item-hover-bg);
+}
+
+.nb-vh-item:active {
+  background: var(--toolbar-active);
+}
+
+.nb-vh-item.is-active {
+  background: var(--history-item-active-bg);
+}
+
+.nb-vh-item.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--editor-accent);
+}
+
+.nb-vh-item:focus-visible {
+  outline: 2px solid var(--diff-focus-ring);
+  outline-offset: -2px;
+}
+
+.nb-vh-item-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--editor-text);
+}
+
+.nb-vh-item.is-active .nb-vh-item-time {
+  color: var(--accent-strong);
+}
+
+.nb-vh-badge {
+  font-size: 10px;
+  line-height: 16px;
+  padding: 0 5px;
+  border-radius: 3px;
+  color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent-strong) 12%, transparent);
+  font-weight: 500;
+}
+
+.nb-vh-item-desc {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--editor-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nb-vh-item-desc .is-ins {
+  color: var(--diff-insert-text);
+}
+
+.nb-vh-item-desc .is-del {
+  color: var(--diff-delete-text);
+}
+
+.nb-vh-item-device {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--editor-text-muted);
+}
+
+.nb-vh-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.nb-vh-item-actions {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  display: none;
+  gap: 2px;
+}
+
+.nb-vh-item:hover .nb-vh-item-actions,
+.nb-vh-item:focus-within .nb-vh-item-actions {
+  display: flex;
+}
+
+.nb-vh-mini-btn {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--editor-text-muted);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-vh-mini-btn:hover {
+  background: var(--toolbar-hover);
+  color: var(--editor-text);
+}
+
+.nb-vh-mini-btn:active {
+  transform: scale(0.9);
+  background: var(--toolbar-active);
+}
+
+.nb-vh-mini-btn.is-danger:hover {
+  color: var(--diff-delete-text);
+}
+
+.nb-vh-pin {
+  color: var(--warning-600);
+  display: inline-flex;
+}
+
+.nb-vh-panel-foot {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  border-top: 1px solid var(--editor-border);
+  font-size: 13px;
+}
+
+/* 开关 */
+.nb-vh-switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: 999px;
+  border: none;
+  padding: 0;
+  background: var(--control-border);
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-vh-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--transition-fast);
+}
+
+.nb-vh-switch.is-on {
+  background: var(--editor-accent);
+}
+
+.nb-vh-switch.is-on::after {
+  transform: translateX(16px);
+}
+
+.nb-vh-switch:hover {
+  filter: brightness(1.05);
+}
+
+.nb-vh-switch:active {
+  transform: scale(0.94);
+}
+
+.nb-vh-switch:focus-visible {
+  outline: 2px solid var(--diff-focus-ring);
+  outline-offset: 2px;
+}
+
+/* 窄屏：版本列表移到下方 */
+@media (max-width: 720px) {
+  .nb-vh-body {
+    flex-direction: column;
+  }
+  .nb-vh-panel {
+    width: auto;
+    height: 42%;
+    border-left: none;
+    border-top: 1px solid var(--editor-border);
+  }
+  .nb-vh-topbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .nb-vh-topbar-center {
+    display: none;
+  }
+}
+
+/* ── Markdown 渲染级差异 ── */
+.nb-hd-scroller {
+  height: 100%;
+  overflow: auto;
+  position: relative;
+}
+
+.nb-hd-prose .nb-hd-ins {
+  background: var(--diff-insert-bg);
+  border-radius: 2px;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--diff-insert-border) 55%, transparent);
+}
+
+.nb-hd-prose .nb-hd-del {
+  background: var(--diff-delete-bg);
+  color: var(--diff-delete-text);
+  border-radius: 2px;
+  text-decoration: line-through;
+  text-decoration-color: var(--diff-delete-border);
+}
+
+/* 整块改动：浅底 + 左侧细色条（伪元素绝对定位，不影响正文排版） */
+.nb-hd-prose .nb-hd-block {
+  position: relative;
+  border-radius: var(--radius-sm);
+}
+
+.nb-hd-prose .nb-hd-block::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -12px;
+  width: 3px;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+/* 列表项：色条放到项目符号左侧 */
+.nb-hd-prose li.nb-hd-block::after {
+  left: -30px;
+}
+
+.nb-hd-prose .nb-hd-block-ins {
+  background: color-mix(in srgb, var(--diff-insert-border) 8%, transparent);
+}
+
+.nb-hd-prose .nb-hd-block-ins::after {
+  background: var(--diff-insert-border);
+}
+
+.nb-hd-prose .nb-hd-block-del {
+  background: color-mix(in srgb, var(--diff-delete-border) 7%, transparent);
+  color: var(--diff-delete-text);
+  text-decoration: line-through;
+  text-decoration-color: var(--diff-delete-border);
+}
+
+.nb-hd-prose .nb-hd-block-del::after {
+  background: var(--diff-delete-border);
+}
+
+.nb-hd-prose .nb-hd-block-del img,
+.nb-hd-prose .nb-hd-block-del svg,
+.nb-hd-prose .nb-hd-block-del canvas {
+  opacity: 0.55;
+}
+
+.nb-hd-prose .nb-hd-block-mod::after {
+  background: var(--diff-modify-border);
+}
+
+/* 表格行与单元格不能承载绝对定位伪元素：改用内侧色条 */
+.nb-hd-prose tr.nb-hd-block::after,
+.nb-hd-prose td.nb-hd-block::after,
+.nb-hd-prose th.nb-hd-block::after {
+  display: none;
+}
+
+.nb-hd-prose tr.nb-hd-block-ins,
+.nb-hd-prose td.nb-hd-block-ins,
+.nb-hd-prose th.nb-hd-block-ins {
+  box-shadow: inset 3px 0 0 var(--diff-insert-border);
+}
+
+.nb-hd-prose tr.nb-hd-block-del,
+.nb-hd-prose td.nb-hd-block-del,
+.nb-hd-prose th.nb-hd-block-del {
+  box-shadow: inset 3px 0 0 var(--diff-delete-border);
+}
+
+.nb-hd-prose tr.nb-hd-block-mod,
+.nb-hd-prose td.nb-hd-block-mod,
+.nb-hd-prose th.nb-hd-block-mod {
+  box-shadow: inset 3px 0 0 var(--diff-modify-border);
+}
+
+/* 当前定位的改动 */
+.nb-hd-prose .nb-hd-current {
+  outline: 2px solid var(--diff-focus-ring);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* 关闭「显示更改」：隐藏删除内容，去掉新增与修改的标记 */
+.nb-hd-scroller[data-changes='off'] .nb-hd-del,
+.nb-hd-scroller[data-changes='off'] .nb-hd-block-del {
+  display: none;
+}
+
+.nb-hd-scroller[data-changes='off'] .nb-hd-ins {
+  background: none;
+  box-shadow: none;
+}
+
+.nb-hd-scroller[data-changes='off'] .nb-hd-block-ins,
+.nb-hd-scroller[data-changes='off'] .nb-hd-block-mod,
+.nb-hd-scroller[data-changes='off'] .nb-hd-current {
+  background: none;
+  box-shadow: none;
+  outline: none;
+}
+
+.nb-hd-scroller[data-changes='off'] .nb-hd-block::after {
+  display: none;
+}
+
+/* ── 移动端：紧凑顶栏、版本列表全屏面板、悬浮改动跳转 ── */
+.nb-vh-root.is-mobile {
+  padding-top: var(--nb-m-safe-top, 0px);
+}
+
+.nb-vh-root.is-mobile .nb-vh-topbar {
+  height: 52px;
+  min-height: 52px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 0 6px;
+}
+
+.nb-vh-root.is-mobile .nb-vh-topbar-center {
+  display: none;
+}
+
+.nb-vh-root.is-mobile .nb-vh-icon-btn {
+  width: 40px;
+  height: 40px;
+}
+
+.nb-vh-root.is-mobile .nb-vh-btn.is-on {
+  color: var(--accent-strong);
+  background: var(--editor-selection);
+}
+
+.nb-vh-root.is-mobile .nb-vh-body {
+  flex-direction: row;
+  position: relative;
+}
+
+.nb-vh-panel.is-sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  width: auto;
+  height: auto;
+  border: none;
+  transform: translateX(100%);
+  visibility: hidden;
+  transition: transform var(--transition-normal), visibility var(--transition-normal);
+}
+
+.nb-vh-panel.is-sheet.is-open {
+  transform: none;
+  visibility: visible;
+}
+
+.nb-vh-root.is-mobile .nb-vh-item {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+/* 移动端没有悬停，固定 / 删除按钮常显 */
+.nb-vh-root.is-mobile .nb-vh-item-actions {
+  display: flex;
+}
+
+.nb-vh-float-nav {
+  position: absolute;
+  right: 12px;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 4px 4px 10px;
+  border-radius: 999px;
+  background: var(--editor-surface);
+  border: 1px solid var(--editor-border);
+  box-shadow: var(--shadow-md);
+}
+
+.nb-vh-float-nav .nb-vh-icon-btn {
+  border-radius: 999px;
+}
+
+.nb-vh-root.is-mobile .nb-vh-panel-foot {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  height: calc(52px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ── 改动说明条（导图 / 画板等无行内文字的格式） ── */
+.nb-vh-caption {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 5;
+  max-width: min(640px, 80%);
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--editor-text);
+  background: var(--editor-surface);
+  border: 1px solid var(--editor-border);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ── 思维导图差异 ── */
+.nb-vh-mindmap {
+  position: absolute;
+  inset: 0;
+}
+
+.nb-vh-mindmap .nb-mindmap-node[data-diff]::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 11px;
+  border: 2px solid transparent;
+  pointer-events: none;
+}
+
+.nb-vh-mindmap .nb-mindmap-node[data-diff='ins']::after {
+  border-color: var(--diff-insert-border);
+  background: color-mix(in srgb, var(--diff-insert-border) 10%, transparent);
+}
+
+.nb-vh-mindmap .nb-mindmap-node[data-diff='mod']::after {
+  border-color: var(--diff-modify-border);
+  background: color-mix(in srgb, var(--diff-modify-border) 10%, transparent);
+}
+
+.nb-vh-mindmap .nb-mindmap-node[data-diff='moved']::after {
+  border: 2px dashed var(--diff-focus-ring);
+}
+
+.nb-vh-mindmap .nb-mindmap-node[data-diff='del'] {
+  opacity: 0.6;
+}
+
+.nb-vh-mindmap .nb-mindmap-node[data-diff='del']::after {
+  border: 2px dashed var(--diff-delete-border);
+  background: color-mix(in srgb, var(--diff-delete-border) 8%, transparent);
+}
+
+.nb-vh-mindmap .nb-mindmap-node[data-diff='del'] * {
+  text-decoration: line-through;
+  text-decoration-color: var(--diff-delete-border);
+}
+
+.nb-vh-mindmap .nb-mindmap-node {
+  cursor: default !important;
+}
+
+/* ── 多维表格差异 ── */
+.nb-bt-viewer {
+  height: 100%;
+  overflow: auto;
+  padding: 16px 20px 48px;
+  box-sizing: border-box;
+}
+
+.nb-bt-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.nb-bt-notes span {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: color-mix(in srgb, var(--diff-modify-border) 14%, transparent);
+  color: var(--editor-text);
+}
+
+.nb-bt-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  min-width: 100%;
+}
+
+.nb-bt-table th,
+.nb-bt-table td {
+  border-right: 1px solid var(--editor-border);
+  border-bottom: 1px solid var(--editor-border);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+  max-width: 320px;
+  min-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nb-bt-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--editor-surface);
+  font-weight: 600;
+  border-top: 1px solid var(--editor-border);
+  white-space: nowrap;
+}
+
+.nb-bt-table tr > :first-child {
+  border-left: 1px solid var(--editor-border);
+}
+
+.nb-bt-index {
+  min-width: 40px !important;
+  width: 40px;
+  color: var(--editor-text-muted);
+  text-align: right !important;
+}
+
+.nb-bt-table th.is-ins,
+.nb-bt-table td.is-col-ins {
+  background: color-mix(in srgb, var(--diff-insert-border) 9%, var(--editor-bg));
+}
+
+.nb-bt-table th.is-del,
+.nb-bt-table td.is-col-del {
+  background: color-mix(in srgb, var(--diff-delete-border) 8%, var(--editor-bg));
+  color: var(--diff-delete-text);
+  text-decoration: line-through;
+}
+
+.nb-bt-table th.is-mod {
+  box-shadow: inset 0 -2px 0 var(--diff-modify-border);
+}
+
+.nb-bt-row.is-ins td {
+  background: color-mix(in srgb, var(--diff-insert-border) 9%, var(--editor-bg));
+}
+
+.nb-bt-row.is-ins td:first-child {
+  box-shadow: inset 3px 0 0 var(--diff-insert-border);
+}
+
+.nb-bt-row.is-del td {
+  background: color-mix(in srgb, var(--diff-delete-border) 8%, var(--editor-bg));
+  color: var(--diff-delete-text);
+  text-decoration: line-through;
+}
+
+.nb-bt-row.is-del td:first-child {
+  box-shadow: inset 3px 0 0 var(--diff-delete-border);
+}
+
+.nb-bt-row.is-mod td:first-child {
+  box-shadow: inset 3px 0 0 var(--diff-modify-border);
+}
+
+.nb-bt-row.is-moved td:first-child {
+  box-shadow: inset 3px 0 0 var(--diff-focus-ring);
+}
+
+.nb-bt-table td.is-changed {
+  background: var(--diff-modify-bg);
+}
+
+.nb-bt-row.is-current td,
+.nb-bt-table th.is-current {
+  outline: 2px solid var(--diff-focus-ring);
+  outline-offset: -2px;
+}
+
+.nb-bt-change {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nb-bt-old {
+  color: var(--diff-delete-text);
+  text-decoration: line-through;
+  text-decoration-color: var(--diff-delete-border);
+}
+
+.nb-bt-new {
+  color: var(--diff-insert-text);
+}
+
+.nb-bt-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.nb-bt-chip {
+  padding: 0 6px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.nb-bt-more {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--editor-text-muted);
+}
+
+/* ── 画板差异 ── */
+.nb-vh-board {
+  position: absolute;
+  inset: 0;
+}
+
+.nb-vh-board-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 4;
+}
+
+.nb-vh-board-mark {
+  position: absolute;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  transition: box-shadow var(--transition-fast);
+}
+
+.nb-vh-board-mark.is-ins {
+  border-color: var(--diff-insert-border);
+  background: color-mix(in srgb, var(--diff-insert-border) 6%, transparent);
+}
+
+.nb-vh-board-mark.is-mod {
+  border-color: var(--diff-modify-border);
+  background: color-mix(in srgb, var(--diff-modify-border) 6%, transparent);
+}
+
+.nb-vh-board-mark.is-del {
+  border: 2px dashed var(--diff-delete-border);
+  background: color-mix(in srgb, var(--diff-delete-border) 5%, transparent);
+}
+
+.nb-vh-board-mark.is-current {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--diff-focus-ring) 45%, transparent);
+}
+
+/* ── Draw.io 差异 ── */
+.nb-vh-drawio {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.nb-vh-drawio-summary {
+  flex-shrink: 0;
+  max-height: 34%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--editor-border);
+  background: var(--editor-surface);
+  font-size: 12px;
+}
+
+.nb-vh-drawio-page {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+}
+
+.nb-vh-drawio-name {
+  font-weight: 600;
+  color: var(--editor-text);
+}
+
+.nb-vh-drawio-page .is-ins {
+  color: var(--diff-insert-text);
+}
+
+.nb-vh-drawio-page .is-mod {
+  color: var(--editor-text-secondary);
+  border-bottom: 2px solid var(--diff-modify-border);
+}
+
+.nb-vh-drawio-page .is-del {
+  color: var(--diff-delete-text);
+}
+
+.nb-vh-drawio-text {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}

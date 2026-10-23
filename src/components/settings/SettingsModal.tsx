@@ -3,7 +3,7 @@
 // 详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud, ChevronRight, Monitor } from 'lucide-react';
+import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud, ChevronRight, Monitor, History } from 'lucide-react';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { THEMES } from '../../core/theme/themes';
 import { contentWidthToPercent, CONTENT_WIDTH_PERCENT_MAP } from '../../core/theme/applyTheme';
@@ -25,6 +25,8 @@ import { formatShortcut } from '../../core/shortcuts';
 import { SyncPanel } from '../../features/sync/SyncPanel';
 // 插件管理随设置窗口加载，查看器重库仍由已安装包按需提供。
 import { PluginsPanel } from '../../features/plugins/PluginsPanel';
+// 历史记录设置随设置窗口加载（只含设置表单，不含查看界面）
+import { HistorySettingsPanel } from '../../features/versionHistory/HistorySettingsPanel';
 import { useLayoutStore } from '../../stores/layoutStore';
 
 interface SettingsModalProps {
@@ -32,7 +34,7 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type TabType = 'appearance' | 'typography' | 'editor' | 'file' | 'sync' | 'plugins' | 'shortcuts' | 'general' | 'about';
+type TabType = 'appearance' | 'typography' | 'editor' | 'file' | 'sync' | 'history' | 'plugins' | 'shortcuts' | 'general' | 'about';
 
 // 托盘与全局快捷键仅原生桌面端可用（网页与移动端没有系统托盘）
 const SUPPORTS_SYSTEM_INTEGRATION = !IS_NATIVE_MOBILE && !IS_WEB;
@@ -41,7 +43,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('appearance');
   const settingsTarget = useLayoutStore((state) => state.settingsTarget);
   // 打开入口携带目标，字体按钮与缺少查看器的文件页均能直达安装区域。
-  useEffect(() => { if (isOpen && settingsTarget) setActiveTab('plugins'); }, [isOpen, settingsTarget]);
+  useEffect(() => { if (isOpen && settingsTarget) setActiveTab(settingsTarget === 'history' ? 'history' : 'plugins'); }, [isOpen, settingsTarget]);
   // 关闭后清除一次性定位，普通设置入口沿用上次查看的栏目。
   useEffect(() => { if (!isOpen && settingsTarget) useLayoutStore.setState({settingsTarget:null}); }, [isOpen, settingsTarget]);
   const { settings, resolvedTheme, setThemeMode, setTypography, setEditor, setFile, setSystem } = useSettingsStore();
@@ -256,6 +258,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               icon={<Cloud size={15} />}
               label="同步与备份"
               onClick={() => setActiveTab('sync')}
+            />
+            <NavBtn
+              active={activeTab === 'history'}
+              icon={<History size={15} />}
+              label="历史记录"
+              onClick={() => setActiveTab('history')}
             />
             {/* 移动端没有物理键盘快捷键，隐藏该分组 */}
             <NavBtn active={activeTab === 'plugins'} icon={<LayoutTemplate size={15} />} label="插件" onClick={() => setActiveTab('plugins')} />
@@ -1421,6 +1429,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
             {/* 5. 同步与备份：与其他页签一样直接渲染，配置未就绪的提示由面板自身处理。 */}
             {activeTab === 'sync' && <SyncPanel />}
+            {activeTab === 'history' && <HistorySettingsPanel />}
             {activeTab === 'plugins' && <PluginsPanel target={settingsTarget} />}
 
             {/* 全局：窗口与托盘等系统集成选项（仅原生桌面端） */}

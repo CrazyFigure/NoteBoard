@@ -11,6 +11,8 @@ pub const TRASH_DIR: &str = ".nb-trash";
 pub const META_DIR: &str = ".noteboard-sync";
 /// 本地应用远端变更时使用的同盘临时目录（保证 rename 原子且不跨卷）
 pub const TMP_DIR: &str = ".nb-sync-tmp";
+/// 文档历史记录目录（由同步的历史阶段单独上传下载，不进入整文件同步与备份）
+pub const HISTORY_DIR: &str = ".nb-history";
 
 /// 同步路径必须同时适用于 Windows / Unix；拒绝远端清单穿越和无法跨端还原的文件名。
 pub fn portable_relative_path(rel: &str) -> bool {
@@ -126,7 +128,7 @@ pub fn abs_to_rel(root: &Path, abs: &Path) -> Option<String> {
 pub fn is_ignored_name(name: &str, is_dir: bool) -> bool {
     let lower = name.to_lowercase();
     if is_dir {
-        return matches!(lower.as_str(), ".git" | ".svn" | ".hg" | TMP_DIR | META_DIR);
+        return matches!(lower.as_str(), ".git" | ".svn" | ".hg" | TMP_DIR | META_DIR | HISTORY_DIR);
     }
     matches!(lower.as_str(), ".ds_store" | "thumbs.db" | "desktop.ini")
         || lower.starts_with("~$")
