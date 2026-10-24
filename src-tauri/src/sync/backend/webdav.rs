@@ -76,7 +76,9 @@ impl WebDav {
     pub async fn read(&mut self, rel: &str) -> SyncResult<Option<Vec<u8>>> {
         let url = self.url_of(&join_remote(&self.dir, rel));
         let resp = self.send(self.request(Method::GET, &url)).await?;
-        if resp.status() == StatusCode::NOT_FOUND {
+        // 坚果云对祖先目录不存在的 GET 返回 409（AncestorsNotFound）而非 404，需同样视为文件不存在，
+        // 否则首次同步/测试连接会被误报为「远端数据在同步期间被其他设备更新」
+        if resp.status() == StatusCode::NOT_FOUND || resp.status() == StatusCode::CONFLICT {
             return Ok(None);
         }
         if !resp.status().is_success() {
