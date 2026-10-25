@@ -128,6 +128,10 @@ pub fn create_window(app: &tauri::AppHandle, label: String) -> Result<(), String
         .decorations(cfg!(target_os = "macos"))
         .visible(false)
         .shadow(true);
+        // Windows 新建窗口沿用主窗口的 BufferQueue 呈现策略；不改变窗口尺寸、状态或其他平台的创建参数。
+        #[cfg(target_os = "windows")]
+        let builder = builder
+            .additional_browser_args(crate::window::render_recovery::WINDOWS_BROWSER_ARGS);
         // macOS 标题栏透明叠加到 WebView 上，标签栏与红绿灯同处一行（与 tauri.macos.conf.json 保持一致）。
         #[cfg(target_os = "macos")]
         let builder = builder

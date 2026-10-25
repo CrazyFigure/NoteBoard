@@ -36,6 +36,19 @@ pub fn run() {
     #[cfg(mobile)]
     perf::init();
 
+    let context = tauri::generate_context!();
+    #[cfg(windows)]
+    let context = {
+        let mut context = context;
+        // 主窗口由 Tauri 根据配置自动创建，必须提前设置呈现参数，on_webview_ready 时已无法改变浏览器环境。
+        // 后续新建窗口复用同一组参数，避免同一应用的窗口使用不同的呈现策略。
+        for window_config in &mut context.config_mut().app.windows {
+            window_config.additional_browser_args =
+                Some(window::render_recovery::WINDOWS_BROWSER_ARGS.to_string());
+        }
+        context
+    };
+
     let builder = tauri::Builder::default();
 
     // 🔴 single-instance 必须第一个注册（仅桌面端；Android 由系统保证单 Activity）
@@ -206,7 +219,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             window::manager::on_window_event(window, event)
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building NoteBoard application")
         .run(|_app, _event| {
             // Finder 的“打开方式”通过 Opened 事件传入文件，不能仅依赖命令行 argv。

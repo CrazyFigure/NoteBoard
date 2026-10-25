@@ -1,5 +1,8 @@
 // NoteBoard WebView 渲染自愈（桌面端）
 //
+// Windows 主画面呈现：创建 WebView 前统一启用 BufferQueue，在支持动态 DComp 纹理的环境中同步画面与合成提交。
+// 该路径用于缓解未触发进程异常的合成闪屏/黑屏；是否解决闲置恢复问题仍需在受影响设备上验证。
+//
 // Windows：长时间闲置、息屏或睡眠唤醒后，部分显卡驱动（AMD 居多）会重置图形设备，WebView2 的 GPU 进程随之退出。
 // Chromium 会自动拉起新的 GPU 进程，但宿主窗口里的合成画面可能停留在黑屏/残块，直到控制器重新提交可见性。
 // 这里监听 ProcessFailed：GPU 进程退出时切换一次控制器可见性强制重绘，并在窗口下次获得焦点时再补一次；
@@ -11,6 +14,12 @@ use std::collections::HashSet;
 use std::sync::Mutex;
 use tauri::plugin::{Builder, TauriPlugin};
 use tauri::{Manager, Runtime};
+
+/// Windows 所有窗口共用的 WebView2 参数，须在创建控制器前设置，保留 DirectComposition 和 GPU 渲染。
+/// 自定义参数会替换 Wry 默认值，因此保留锁定版本 Wry 0.55.1 的功能禁用项和默认媒体播放策略。
+/// BufferQueue 为 Chromium 功能开关，依赖运行时与动态 DComp 纹理能力；升级 WebView2 后需重新回归。
+#[cfg(windows)]
+pub const WINDOWS_BROWSER_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required --enable-features=BufferQueue";
 
 /// GPU 进程退出后尚未在获得焦点时补刷的 Webview 标签
 static PENDING_REPAINT: Mutex<Option<HashSet<String>>> = Mutex::new(None);
