@@ -57,7 +57,11 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
                 let handle = app.clone();
                 std::thread::spawn(move || restore_hidden_windows(&handle));
             }
-            MENU_QUIT => request_quit(app),
+            MENU_QUIT => {
+                // emit_to 会经 Wry 执行脚本；切出菜单回调后再投递，避免在事件循环内持锁重入 WebView2。
+                let handle = app.clone();
+                std::thread::spawn(move || request_quit(&handle));
+            }
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {

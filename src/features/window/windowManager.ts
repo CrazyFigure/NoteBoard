@@ -268,7 +268,11 @@ export async function startEventListeners(): Promise<void> {
       if (targetLabel && targetLabel !== currentLabel) {
         return;
       }
-      requestCurrentWindowClose();
+      // 原生托盘事件不等待异步处理；集中记录失败，避免关闭异常变成未处理的 Promise 拒绝。
+      void requestCurrentWindowClose().catch((error) => {
+        console.error('处理窗口关闭请求失败:', error);
+        showToast('关闭窗口失败，请重试', 'error');
+      });
     });
     if (!accept(epoch)) {
       try { unlisten(); } catch { /* 已注销 */ }
@@ -403,6 +407,11 @@ export function stopEventListeners(): void {
 
 // ── 窗口关闭流程 ──
 
+// 每个 WebView 独立协调关闭：合并连续托盘退出/系统关闭请求，避免重复暂存与注销文档。
+let pendingWindowCloseRequest: Promise<void> | null = null;
+// 确认框后的实际关闭也可能尚在保存快照或排空写队列，期间不得再次执行清理。
+let pendingWindowClose: Promise<void> | null = null;
+
 /**
  * 标题栏关闭按钮：开启“最小化到托盘”时仅隐藏窗口（内容留在内存中，无需确认）；
  * 否则走统一关闭流程。系统关闭事件的同类判断在 Rust CloseRequested 中完成。
@@ -420,9 +429,40 @@ export async function requestCloseButton(): Promise<void> {
  * 若存在未保存文档则保留窗口关闭意图并弹出确认框；否则立即执行实际关闭流程。
  * 迁移保护中的文档不进入关闭确认（迁移未提交前不能销毁源内容）。
  */
-export async function requestCurrentWindowClose(): Promise<void> {
+export function requestCurrentWindowClose(): Promise<void> {
+  // 正在执行实际关闭或准备确认框时复用在途任务，不重复暂存或注销文档。
+  if (pendingWindowClose) return pendingWindowClose;
+  if (pendingWindowCloseRequest) return pendingWindowCloseRequest;
+
+  pendingWindowCloseRequest = prepareCurrentWindowClose().finally(() => {
+    // 取消确认由 store 清除 isWindowClosing；准备失败也释放任务，允许后续重试。
+    pendingWindowCloseRequest = null;
+  });
+  return pendingWindowCloseRequest;
+}
+
+/** 显示关闭确认所在窗口；原生显示失败仍保留前端保护，不绕过用户确认直接退出。 */
+async function showWindowForCloseConfirmation(): Promise<void> {
+  const win = getCurrentWindow();
+  try {
+    await win.show();
+    await win.unminimize();
+    await win.setFocus();
+  } catch {
+    // 显示失败不影响后续保护流程。
+  }
+}
+
+/** 检查未保存内容，必要时恢复窗口并暂存，然后进入确认或实际关闭流程。 */
+async function prepareCurrentWindowClose(): Promise<void> {
   const tabStore = useWindowStore.getState();
   const label = getCurrentWindow().label;
+
+  // 已有确认框时只重新显示：用户可能再次把窗口隐藏到托盘，不重复写暂存或重置当前选择。
+  if (tabStore.isWindowClosing) {
+    await showWindowForCloseConfirmation();
+    return;
+  }
 
   // 空白未命名文件可直接关闭；只有脏态或确有内容的未命名文件进入关闭保护。
   const dirtyTabs = tabStore.tabs.filter(
@@ -431,14 +471,7 @@ export async function requestCurrentWindowClose(): Promise<void> {
 
   if (dirtyTabs.length > 0) {
     // 从托盘退出时窗口可能处于隐藏状态，确认框弹出前先显示窗口
-    const win = getCurrentWindow();
-    try {
-      await win.show();
-      await win.unminimize();
-      await win.setFocus();
-    } catch {
-      // 显示失败不影响后续保护流程
-    }
+    await showWindowForCloseConfirmation();
     // 系统关闭请求到达时先立即刷新副本；即使用户尚未在确认框中选择，内容也已受保护。
     try {
       await stashPendingDocuments({ keys: dirtyTabs.map((tab) => tab.key) });
@@ -458,7 +491,17 @@ export async function requestCurrentWindowClose(): Promise<void> {
 /**
  * 执行实际窗口关闭：注销文档 → 通知后端注销并关闭窗口/退出进程
  */
-export async function performWindowClose(label: string, snapshotSaved = false): Promise<void> {
+export function performWindowClose(label: string, snapshotSaved = false): Promise<void> {
+  if (pendingWindowClose) return pendingWindowClose;
+  pendingWindowClose = finishWindowClose(label, snapshotSaved).finally(() => {
+    // IPC 失败后保留重试入口；成功时窗口会销毁，不额外改变标签与确认框状态。
+    pendingWindowClose = null;
+  });
+  return pendingWindowClose;
+}
+
+/** 按原有顺序保存快照、排空文档写入并通知后端关闭；由 performWindowClose 保证不重入。 */
+async function finishWindowClose(label: string, snapshotSaved: boolean): Promise<void> {
   const tabStore = useWindowStore.getState();
 
   // 无确认框的干净窗口在这里记录；有确认框的分支会在移除标签前提前记录。
@@ -485,6 +528,7 @@ export async function performWindowClose(label: string, snapshotSaved = false): 
     await ipc.closeWindow(label);
   } catch (e) {
     console.error('关闭窗口失败:', e);
+    showToast('关闭窗口失败，请重试', 'error');
   }
 }
 
