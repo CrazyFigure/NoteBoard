@@ -58,6 +58,8 @@ html[data-platform='mobile'] {
   position: relative;
   display: flex;
   flex-direction: column;
+  /* 旧版 WebView 不识别 dvh；必须先保留 vh 回退，避免首页卸载后绝对定位的编辑页使外壳高度归零。 */
+  height: 100vh;
   height: 100dvh;
   width: 100vw;
   overflow: hidden;
