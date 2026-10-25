@@ -221,6 +221,8 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   --editor-heading: #0f172a;
   --editor-accent: #3b82f6;
   --accent-strong: #3b82f6;
+  /* 柔和按钮使用同色 RGB 通道叠加浅底，避免依赖 WebView2 的 color-mix 支持。 */
+  --accent-strong-rgb: 59, 130, 246;
   --editor-link: #2563eb;
   --editor-quote-bg: rgba(59,130,246,0.08);
   --editor-selection: rgba(59,130,246,0.15);
@@ -373,6 +375,8 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   --editor-heading: #1A1918;
   --editor-accent: #D97757;
   --accent-strong: #C4623E;
+  /* 与主题强调色保持一致，供柔和按钮生成兼容的半透明填充。 */
+  --accent-strong-rgb: 196, 98, 62;
   --editor-link: #A34D2E;
   --editor-quote-bg: rgba(217,119,87,0.08);
   --editor-selection: rgba(217,119,87,0.15);
@@ -527,6 +531,8 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   --editor-heading: #fafafa;
   --editor-accent: #60a5fa;
   --accent-strong: #60a5fa;
+  /* 与主题强调色保持一致，供柔和按钮生成兼容的半透明填充。 */
+  --accent-strong-rgb: 96, 165, 250;
   --editor-link: #6cb0ff;
   --editor-quote-bg: rgba(255,255,255,0.035);
   --editor-selection: rgba(96,165,250,0.22);
@@ -2063,7 +2069,9 @@ button:not(:disabled) {
   cursor: not-allowed;
 }
 
-/* 危险操作按钮（默认带浅红柔和底色，如放弃修改、不保存、删除等） */
+/* 危险操作按钮（默认带浅红柔和底色，如放弃修改、不保存、删除等）。
+ * 半透明渐变叠加主题底色，保持原混色比例；避免构建后的 color-mix 回退
+ * 将背景变成与文字相同的纯色，导致部分 Windows WebView2 中看不清按钮。 */
 .nb-btn-danger {
   display: inline-flex;
   align-items: center;
@@ -2072,7 +2080,7 @@ button:not(:disabled) {
   padding: 6px 14px;
   border-radius: var(--radius-md, 6px);
   border: 1px solid color-mix(in srgb, var(--error-500) 30%, var(--editor-border));
-  background: color-mix(in srgb, var(--error-500) 8%, var(--editor-surface));
+  background: linear-gradient(rgba(239, 68, 68, 0.08), rgba(239, 68, 68, 0.08)), var(--editor-surface);
   color: var(--error-500);
   font-size: 13px;
   cursor: pointer;
@@ -2082,7 +2090,7 @@ button:not(:disabled) {
 }
 
 .nb-btn-danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--error-500) 18%, var(--editor-surface));
+  background: linear-gradient(rgba(239, 68, 68, 0.18), rgba(239, 68, 68, 0.18)), var(--editor-surface);
   border-color: color-mix(in srgb, var(--error-500) 65%, var(--editor-border));
   color: var(--error-600);
   transform: translateY(-1px);
@@ -2090,7 +2098,7 @@ button:not(:disabled) {
 }
 
 .nb-btn-danger:active:not(:disabled) {
-  background: color-mix(in srgb, var(--error-500) 28%, var(--editor-surface));
+  background: linear-gradient(rgba(239, 68, 68, 0.28), rgba(239, 68, 68, 0.28)), var(--editor-surface);
   border-color: var(--error-600);
   transform: translateY(0) scale(0.97);
   box-shadow: var(--shadow-sm);
@@ -2101,7 +2109,8 @@ button:not(:disabled) {
   cursor: not-allowed;
 }
 
-/* 柔和特色操作按钮（默认带浅强调色柔和底色，如暂存等特色次级功能） */
+/* 柔和特色操作按钮（默认带浅强调色柔和底色，如暂存等特色次级功能）。
+ * 与危险按钮共用兼容的叠色方式，RGB 通道随主题切换，文字与图标继续使用强调色。 */
 .nb-btn-soft {
   display: inline-flex;
   align-items: center;
@@ -2110,7 +2119,7 @@ button:not(:disabled) {
   padding: 6px 14px;
   border-radius: var(--radius-md, 6px);
   border: 1px solid color-mix(in srgb, var(--accent-strong) 28%, var(--editor-border));
-  background: color-mix(in srgb, var(--accent-strong) 9%, var(--editor-surface));
+  background: linear-gradient(rgba(var(--accent-strong-rgb), 0.09), rgba(var(--accent-strong-rgb), 0.09)), var(--editor-surface);
   color: var(--accent-strong);
   font-size: 13px;
   cursor: pointer;
@@ -2120,7 +2129,7 @@ button:not(:disabled) {
 }
 
 .nb-btn-soft:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent-strong) 18%, var(--editor-surface));
+  background: linear-gradient(rgba(var(--accent-strong-rgb), 0.18), rgba(var(--accent-strong-rgb), 0.18)), var(--editor-surface);
   border-color: var(--editor-border-focus);
   color: var(--accent-strong);
   transform: translateY(-1px);
@@ -2128,7 +2137,7 @@ button:not(:disabled) {
 }
 
 .nb-btn-soft:active:not(:disabled) {
-  background: color-mix(in srgb, var(--accent-strong) 28%, var(--editor-surface));
+  background: linear-gradient(rgba(var(--accent-strong-rgb), 0.28), rgba(var(--accent-strong-rgb), 0.28)), var(--editor-surface);
   transform: translateY(0) scale(0.97);
   box-shadow: var(--shadow-sm);
 }
@@ -2141,38 +2150,38 @@ button:not(:disabled) {
 /* 墨夜主题下的危险按钮适配（在深色背景下保持柔和清晰的警示红） */
 :root[data-theme="mo-ye"] .nb-btn-danger {
   color: #f87171;
-  background: color-mix(in srgb, #ef4444 14%, var(--editor-surface));
+  background: linear-gradient(rgba(239, 68, 68, 0.14), rgba(239, 68, 68, 0.14)), var(--editor-surface);
   border-color: color-mix(in srgb, #f87171 35%, var(--editor-border));
 }
 
 :root[data-theme="mo-ye"] .nb-btn-danger:hover:not(:disabled) {
   color: #fca5a5;
-  background: color-mix(in srgb, #ef4444 24%, var(--editor-surface));
+  background: linear-gradient(rgba(239, 68, 68, 0.24), rgba(239, 68, 68, 0.24)), var(--editor-surface);
   border-color: color-mix(in srgb, #f87171 70%, var(--editor-border));
   box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25);
 }
 
 :root[data-theme="mo-ye"] .nb-btn-danger:active:not(:disabled) {
-  background: color-mix(in srgb, #ef4444 32%, var(--editor-surface));
+  background: linear-gradient(rgba(239, 68, 68, 0.32), rgba(239, 68, 68, 0.32)), var(--editor-surface);
   border-color: #ef4444;
 }
 
 /* 墨夜主题下的柔和特色按钮适配（在深色背景下保持通透蓝光） */
 :root[data-theme="mo-ye"] .nb-btn-soft {
   color: #93c5fd;
-  background: color-mix(in srgb, var(--accent-strong) 14%, var(--editor-surface));
+  background: linear-gradient(rgba(var(--accent-strong-rgb), 0.14), rgba(var(--accent-strong-rgb), 0.14)), var(--editor-surface);
   border-color: color-mix(in srgb, var(--accent-strong) 38%, var(--editor-border));
 }
 
 :root[data-theme="mo-ye"] .nb-btn-soft:hover:not(:disabled) {
   color: #bfdbfe;
-  background: color-mix(in srgb, var(--accent-strong) 24%, var(--editor-surface));
+  background: linear-gradient(rgba(var(--accent-strong-rgb), 0.24), rgba(var(--accent-strong-rgb), 0.24)), var(--editor-surface);
   border-color: var(--accent-strong);
   box-shadow: 0 4px 12px rgba(96, 165, 250, 0.25);
 }
 
 :root[data-theme="mo-ye"] .nb-btn-soft:active:not(:disabled) {
-  background: color-mix(in srgb, var(--accent-strong) 34%, var(--editor-surface));
+  background: linear-gradient(rgba(var(--accent-strong-rgb), 0.34), rgba(var(--accent-strong-rgb), 0.34)), var(--editor-surface);
 }
 
 /* 墨夜主题下的次级/卡片按钮适配：
