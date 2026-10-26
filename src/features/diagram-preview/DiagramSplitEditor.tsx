@@ -31,6 +31,7 @@ import { buildExportFileName, type ChartImageSource } from '../export/chartExpor
 import { Tooltip } from '../../components/Tooltip';
 import { codeMirrorSearchSupport } from '../search/searchController';
 import { tripleClickLineSelection } from '../editor-code/tripleClickLine';
+import { createIndentationExtension } from '../editor-code/indentation';
 import { ReadingModeOverlay } from '../reading/ReadingModeOverlay';
 import { requestReadingMode, useIsReading } from '../reading/readingMode';
 
@@ -218,6 +219,8 @@ export function DiagramSplitEditor({ docKey }: DiagramSplitEditorProps) {
         // 三击选行不带换行符，避免行号高亮跳到下一行
         tripleClickLineSelection,
         history(),
+        // 图表源码也采用设置中的缩进，并阻止 Tab 遍历预览和工具栏控件。
+        createIndentationExtension(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
         // Ctrl+F 搜索高亮与查询状态（界面由统一悬浮搜索栏提供）
         codeMirrorSearchSupport,

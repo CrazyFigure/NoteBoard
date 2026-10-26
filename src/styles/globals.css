@@ -1301,7 +1301,8 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   font-family: var(--mono-font-family);
   font-size: var(--mono-font-size);
   line-height: var(--mono-line-height, 1.5);
-  tab-size: 2;
+  /* 代码块继承当前编辑器设置的 Tab 显示宽度。 */
+  tab-size: var(--nb-tab-size, 2);
 }
 /* 原样保留块（front matter / 块级 HTML）：只读源码样式，右上角标注类型，选中时描边强调 */
 .ProseMirror pre.nb-md-raw-block {
@@ -1563,7 +1564,8 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   border: none;
   outline: none;
   resize: vertical;
-  tab-size: 2;
+  /* 块内源码与正文使用相同的 Tab 显示宽度。 */
+  tab-size: var(--nb-tab-size, 2);
 }
 /* 脚注：引用为上标，定义为弱化的小号原文 */
 .ProseMirror .nb-md-footnote-ref {

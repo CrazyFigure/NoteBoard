@@ -75,7 +75,6 @@ function PromptDialog() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.isComposing) return;
-      const panel = panelRef.current;
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
@@ -88,22 +87,8 @@ function PromptDialog() {
         submitRef.current();
         return;
       }
-      // Tab 焦点限制在弹窗内循环
-      if (e.key === 'Tab' && panel) {
-        const items = Array.from(panel.querySelectorAll<HTMLElement>('input, button:not(:disabled)'));
-        if (items.length > 0) {
-          const first = items[0];
-          const last = items[items.length - 1];
-          const active = document.activeElement;
-          if (e.shiftKey && (active === first || !panel.contains(active))) {
-            e.preventDefault();
-            last.focus();
-          } else if (!e.shiftKey && (active === last || !panel.contains(active))) {
-            e.preventDefault();
-            first.focus();
-          }
-        }
-      }
+      // 与全局规则一致：输入弹窗也不使用 Tab 循环切换输入框和按钮。
+      if (e.key === 'Tab') e.preventDefault();
       // 其余按键只阻断传播，不阻止默认行为（输入、Ctrl+A、Ctrl+Z 等仍在输入框内生效）
       e.stopPropagation();
     };

@@ -12,6 +12,7 @@ import { perfMark } from './core/perf/perfMarks';
 import { IS_MOBILE_UI, IS_WEB } from './core/platform';
 import { installInputModalityTracking } from './core/inputModality';
 import { installNumberInputWheelGuard } from './core/numberInputGuard';
+import { installTabNavigationGuard } from './core/tabNavigationGuard';
 import { installTextareaMultiClickFix } from './core/textareaMultiClick';
 import { installMobileFocusGuard } from './mobile/focusGuard';
 
@@ -34,6 +35,9 @@ installInputModalityTracking();
 
 // 数字输入框：滚轮经过时失焦，避免滚动页面时误改数值（上下微调按钮由全局样式隐藏）
 installNumberInputWheelGuard();
+
+// 全应用禁用浏览器式 Tab 焦点遍历，文档缩进和块内导航继续由各编辑器处理。
+installTabNavigationGuard();
 
 // 多行文本框：双击 / 三击不再选中行尾换行符（行尾空白双击选最后一个词，三击不带换行）
 installTextareaMultiClickFix();

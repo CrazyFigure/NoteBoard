@@ -9,6 +9,7 @@ import { EditorView, keymap, lineNumbers, highlightActiveLineGutter } from '@cod
 import { EditorState, Compartment } from '@codemirror/state';
 import type { ViewUpdate } from '@codemirror/view';
 import { defaultKeymap, historyKeymap, history } from '@codemirror/commands';
+import { createIndentationExtension } from '../editor-code/indentation';
 import {
   Columns,
   Code2,
@@ -163,6 +164,8 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
         // 三击选行不带换行符，避免行号高亮跳到下一行
         tripleClickLineSelection,
         history(),
+        // 信息图源码与普通文本文档共用缩进宽度、制表符偏好和 Tab 按键规则。
+        createIndentationExtension(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
         // Ctrl+F 搜索高亮与查询状态（界面由统一悬浮搜索栏提供）
         codeMirrorSearchSupport,

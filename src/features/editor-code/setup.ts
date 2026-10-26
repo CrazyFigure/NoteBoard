@@ -1,5 +1,5 @@
 // NoteBoard CodeMirror 6 基础配置
-// history / defaultKeymap / searchKeymap / indentWithTab / bracketMatching 等
+// history / defaultKeymap / searchKeymap / 设置驱动的 Tab 缩进 / bracketMatching 等
 // 详见 docs/09-开发路线图.md 阶段4
 
 import { Compartment, type Extension, RangeSetBuilder } from '@codemirror/state';
@@ -7,7 +7,6 @@ import {
   history,
   defaultKeymap,
   historyKeymap,
-  indentWithTab,
 } from '@codemirror/commands';
 import { search, highlightSelectionMatches } from '@codemirror/search';
 import {
@@ -16,7 +15,6 @@ import {
   foldGutter,
   foldKeymap,
   indentOnInput,
-  indentUnit,
   syntaxHighlighting,
 } from '@codemirror/language';
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
@@ -37,6 +35,7 @@ import {
 import { nbSyntaxHighlighting } from './highlightStyle';
 import { nbEditorTheme } from './theme';
 import { tripleClickLineSelection } from './tripleClickLine';
+import { createIndentationExtension } from './indentation';
 
 // ── 热重配 Compartment ──
 // 详见 docs/09-开发路线图.md 4.3
@@ -161,8 +160,8 @@ export function createBaseExtensions(options?: BaseExtensionsOptions): Extension
     closeBrackets(),
     // 输入时自动缩进
     indentOnInput(),
-    // 缩进单位
-    indentUnit.of('  '),
+    // 所有文本文档及 Markdown 源码共用设置；宽度和空格/制表符偏好即时更新。
+    createIndentationExtension(),
     // 语法高亮（NoteBoard 自定义样式）
     themeCompartment.of(nbSyntaxHighlighting),
     // fallback 高亮（覆盖未映射的 tag）
@@ -189,7 +188,6 @@ export function createBaseExtensions(options?: BaseExtensionsOptions): Extension
       ...historyKeymap,
       ...foldKeymap,
       ...closeBracketsKeymap,
-      indentWithTab,
     ]),
     // 语言（占位，由 openDocument 动态装载）
     languageCompartment.of([]),

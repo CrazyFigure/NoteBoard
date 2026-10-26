@@ -47,6 +47,7 @@ import { InlineEmojiRender } from '../inlineEmoji';
 import { MultiClickSelectionFix } from '../multiClickSelection';
 import { EnterKeyBehavior } from '../enterKeyBehavior';
 import { SelectAllBehavior } from '../selectAllBehavior';
+import { TabKeyBehavior } from '../tabKeyBehavior';
 import { useWindowStore } from '../../../stores/windowStore';
 
 import Suggestion from '@tiptap/suggestion';
@@ -413,6 +414,8 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
     EnterKeyBehavior,
     // 全选：Ctrl+A 第一次选中当前文本块，再按一次全选文档
     SelectAllBehavior,
+    // 正文 Tab 插入空格；块内已有快捷键优先，无法继续缩进或导航时也不触发浏览器焦点遍历。
+    TabKeyBehavior,
 
     // 任务列表（项间距：紧凑 / 宽松）
     MarkdownTaskList,

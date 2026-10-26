@@ -14,6 +14,7 @@ import { Tooltip } from '../../components/Tooltip';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useCollapsibleState } from './collapsibleState';
 import { codeHighlightPlugin } from './codeHighlightPlugin';
+import { handleCodeBlockTab } from './tabKeyBehavior';
 
 /** 支持的代码语言完整列表及检索别名（与斜杠命令共用 codeLanguages 中的定义） */
 const LANGUAGES = CODE_LANGUAGES;
@@ -422,6 +423,14 @@ function CodeBlockComponent({ node, editor, getPos, updateAttributes }: NodeView
 
 // 导出扩展：基于 @tiptap/extension-code-block + React 节点视图（contentReactNodeViewRenderer）
 export const CodeBlockView = CodeBlock.extend({
+  /** 保留原有回车等快捷键，Tab 单独采用实时设置并保持多行选区与内容完整。 */
+  addKeyboardShortcuts() {
+    return {
+      ...this.parent?.(),
+      Tab: ({ editor }) => handleCodeBlockTab(editor, false),
+      'Shift-Tab': ({ editor }) => handleCodeBlockTab(editor, true),
+    };
+  },
   addOptions() {
     const parent = (this.parent?.() ?? {}) as Record<string, unknown>;
     return {
