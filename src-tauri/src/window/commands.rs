@@ -113,27 +113,44 @@ pub async fn create_window(
 #[tauri::command]
 pub async fn begin_document_transfer(
     app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
     state: State<'_, Mutex<AppState>>,
     source_label: String,
     doc: TransferredDocument,
     expected_revision: u64,
+    target_label: Option<String>,
+    position: Option<(i32, i32)>,
 ) -> Result<BeginTransferResponse, String> {
+    // 迁移只能由实际源 WebView 发起；前端不能借填写 label 转移其他窗口的文档。
+    if window.label() != source_label { return Err("迁移源窗口身份不匹配".into()); }
     let key = doc.key.clone();
+    let is_new = target_label.is_none();
 
     // 创建目标窗口并注册迁移记录（锁内只做短状态操作）
     let (transfer_id, target_label) = {
         let mut s = state.lock().unwrap();
-        let target_label = s.alloc_label();
+        if !s.windows.contains_key(&source_label) || s.is_closing(&source_label) {
+            return Err("迁移源窗口已关闭".into());
+        }
+        if s.transfers.values().any(|t| t.key == key && matches!(t.state, TransferState::Preparing | TransferState::TargetPrepared)) {
+            return Err("该标签已有迁移正在进行".into());
+        }
+        let target_label = if let Some(target) = target_label {
+            if target == source_label || !s.windows.get(&target).is_some_and(|w| w.is_ready) || s.is_closing(&target) {
+                return Err("目标窗口尚未就绪或已关闭".into());
+            }
+            target
+        } else { s.alloc_label() };
         let seq = target_label
             .trim_start_matches("nb-")
             .parse::<u32>()
             .unwrap_or(0);
-        s.register_window(
+        if is_new { s.register_window(
             target_label.clone(),
             manager::WindowRecord::new(target_label.clone(), seq),
         );
         s.intents
-            .insert(target_label.clone(), WindowIntent::AdoptDocuments { docs: vec![] });
+            .insert(target_label.clone(), WindowIntent::AdoptDocuments { docs: vec![] }); }
         let transfer_id = format!("t-{}", s.next_request_seq);
         s.next_request_seq += 1;
         s.transfers.insert(
@@ -153,13 +170,32 @@ pub async fn begin_document_transfer(
 
     // 🔴 切线程建窗（同步上下文调用 build() 会死锁）
     let create_start = crate::perf::now_instant();
-    manager::create_window(&app, target_label.clone())?;
-    crate::perf::span_with("create_window", create_start, Some(&target_label), &[]);
+    if is_new {
+        manager::create_window_at(&app, target_label.clone(), position)?;
+        crate::perf::span_with("create_window", create_start, Some(&target_label), &[]);
+    } else if let Err(error) = app.emit_to(&target_label, "nb://transfer-available", &transfer_id) {
+        // 唤醒失败时立即中止，不让源等待一个目标根本没有收到的事务。
+        let mut s = state.lock().unwrap();
+        if let Some(record) = s.transfers.get_mut(&transfer_id) {
+            record.state = TransferState::Aborted;
+            record.payload = None;
+        }
+        return Err(error.to_string());
+    }
 
     Ok(BeginTransferResponse {
         transfer_id,
         target_label,
     })
+}
+
+/// 窗口重新加载后补拉尚未接纳的迁移，事件仅负责唤醒，不是正文的唯一来源。
+#[tauri::command]
+pub fn list_incoming_transfers(window: tauri::WebviewWindow, state: State<'_, Mutex<AppState>>) -> Vec<String> {
+    let s = state.lock().unwrap();
+    s.transfers.values().filter(|r| r.target_label == window.label()
+        && matches!(r.state, TransferState::Preparing | TransferState::TargetPrepared))
+        .map(|r| r.transfer_id.clone()).collect()
 }
 
 /// 目标窗口读取迁移载荷（🔴 R06：非破坏 peek——接纳途中失败/重载可重新获取；
@@ -535,6 +571,10 @@ mod tests {
                     history: None,
                     view_state_snapshot: None,
                     display_name: None,
+                    insert_before: None,
+                    drop_position: None,
+                    tab_meta: None,
+                    tool_state: None,
                 }),
             },
         );
@@ -728,6 +768,10 @@ mod tests {
                     history: None,
                     view_state_snapshot: None,
                     display_name: None,
+                    insert_before: None,
+                    drop_position: None,
+                    tab_meta: None,
+                    tool_state: None,
                 }),
             },
         );

@@ -112,6 +112,12 @@ pub fn now_ms() -> i64 {
 /// 🔴 必须切线程：在同步上下文中调 build() 会死锁
 #[cfg(desktop)]
 pub fn create_window(app: &tauri::AppHandle, label: String) -> Result<(), String> {
+    create_window_at(app, label, None)
+}
+
+/// 拖出标签时在松手附近建立窗口；Wayland 由合成器决定位置，不依赖全局坐标。
+#[cfg(desktop)]
+pub fn create_window_at(app: &tauri::AppHandle, label: String, position: Option<(i32, i32)>) -> Result<(), String> {
     let handle = app.clone();
     let l = label.clone();
 
@@ -141,7 +147,15 @@ pub fn create_window(app: &tauri::AppHandle, label: String) -> Result<(), String
         // 窗口层拖拽开关是 Windows 专有 API；其他系统保留默认启用的 WebView 文件拖拽处理。
         #[cfg(target_os = "windows")]
         let builder = builder.drag_and_drop(true);
-        let _ = builder.build();
+        if let Ok(window) = builder.build() {
+            if let Some((x, y)) = position {
+                // Windows 原生拖放返回物理像素，macOS 返回逻辑点；对齐标签栏而不是窗口中心。
+                #[cfg(target_os = "windows")]
+                let _ = window.set_position(tauri::PhysicalPosition::new(x.saturating_sub(60), y.saturating_sub(18)));
+                #[cfg(target_os = "macos")]
+                let _ = window.set_position(tauri::LogicalPosition::new(x as f64 - 100.0, y as f64 - 18.0));
+            }
+        }
     });
 
     Ok(())
@@ -151,6 +165,12 @@ pub fn create_window(app: &tauri::AppHandle, label: String) -> Result<(), String
 #[cfg(mobile)]
 pub fn create_window(_app: &tauri::AppHandle, _label: String) -> Result<(), String> {
     Err("移动端不支持多窗口".to_string())
+}
+
+/// 移动端保留同一命令契约，但不创建额外原生窗口。
+#[cfg(mobile)]
+pub fn create_window_at(app: &tauri::AppHandle, label: String, _position: Option<(i32, i32)>) -> Result<(), String> {
+    create_window(app, label)
 }
 
 /// 注册窗口到 AppState

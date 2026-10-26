@@ -18,6 +18,7 @@ import { useWindowStore } from '../../stores/windowStore';
 // 🔴 R3-10：异步核对结果按会话代际条件提交（旧读取不误标同路径新会话）
 import { drainDocumentWrites, getSessionGeneration } from '../session/documentSession';
 import { isRecreateOnSaveAllowed } from '../external/missingFileGuard';
+import { normalizeEol } from '../editor-md/serialize';
 
 /** 目录监听记录 */
 interface WatchRecord {
@@ -96,7 +97,8 @@ export function scheduleDocumentRecheck(rawPath: string): void {
   const doc = useDocumentStore.getState().getDocument(docKey);
   const tab = useWindowStore.getState().getTab(docKey);
   // 只核对已打开且已加载（非 lazy）的文档
-  if (!doc || !tab || tab.lazySource || doc.content === null || doc.kind === 'image') return;
+  if (!doc || !tab || tab.lazySource || doc.content === null || doc.kind === 'image'
+    || useWindowStore.getState().isTransferring(docKey)) return;
   // 🔴 R3-10：不再跳过已 modified/deleted 的文档——外部写回基线（内容恢复
   // 一致）时仍需复核恢复 clean；modified 期间重复核对幂等（内容比较）
   pendingDocRechecks.add(docKey);
@@ -121,7 +123,7 @@ export function scheduleDocumentRecheck(rawPath: string): void {
 export async function recheckDocument(docKey: string): Promise<void> {
   // 🔴 R3-10：捕获读取时刻的基线与会话代际——异步返回后校验（旧读取迟到不误标新会话）
   const docAtStart = useDocumentStore.getState().getDocument(docKey);
-  if (!docAtStart) return;
+  if (!docAtStart || useWindowStore.getState().isTransferring(docKey)) return;
   const generationAtStart = getSessionGeneration(docKey);
   const checkId = ++nextDocRecheckId;
   latestDocRechecks.set(docKey, checkId);
@@ -135,13 +137,14 @@ export async function recheckDocument(docKey: string): Promise<void> {
     // 🔴 R3-10：读取返回后校验会话未换代（同路径重开——旧读取结果不适用于新会话）
     if (getSessionGeneration(docKey) !== generationAtStart || latestDocRechecks.get(docKey) !== checkId) return;
     const docNow = useDocumentStore.getState().getDocument(docKey);
-    if (!docNow) return;
+    if (!docNow || useWindowStore.getState().isTransferring(docKey)) return;
     // 读取期间又完成了保存：旧读盘结果不能与新基线比较，改为重新安排核对。
     if (docNow.baselineContent !== baselineAtStart) {
       scheduleDocumentRecheck(docKey);
       return;
     }
-    const nextStatus: 'modified' | 'clean' = payload.content !== baselineAtStart ? 'modified' : 'clean';
+    // 编辑器快照统一 LF，Windows 实际写盘可为 CRLF；按与脏态相同的规则比较，仍检出真实文字变化。
+    const nextStatus: 'modified' | 'clean' = normalizeEol(payload.content) !== normalizeEol(baselineAtStart) ? 'modified' : 'clean';
     if (docNow.externalStatus !== nextStatus) {
       useDocumentStore.getState().setExternalStatus(docKey, nextStatus);
       useWindowStore.getState().setTabExternalStatus(docKey, nextStatus);

@@ -3,6 +3,9 @@ pub mod intent;
 pub mod commands;
 pub mod print_pdf;
 pub mod render_recovery;
+// 原生标签拖放只在桌面端装配，移动端继续使用窗口内排序。
+#[cfg(desktop)]
+pub mod tab_drag;
 // 托盘与全局快捷键仅桌面端存在（移动端单窗口常驻前台）
 #[cfg(desktop)]
 pub mod tray;

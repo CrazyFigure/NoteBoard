@@ -406,6 +406,9 @@ export function installTauriMock(): void {
       case 'record_web_spans':
       case 'delete_staged_file':
         return null;
+      case 'list_incoming_transfers':
+        // 浏览器开发没有跨原生窗口迁移，保持新握手接口返回空队列。
+        return [];
       case 'list_open_requests':
       case 'stash_documents':
       case 'list_system_fonts':
@@ -419,6 +422,7 @@ export function installTauriMock(): void {
       case 'load_session':
         return null;
       case 'is_perf_spans_enabled':
+      case 'claim_tab_drop':
         return false;
       case 'get_font_pack_status':
       case 'refresh_font_pack_status':

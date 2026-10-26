@@ -205,6 +205,17 @@ pub struct TransferredDocument {
     /// 标签显示名（未命名文档的 key 不含可读名称，必须随载荷传递；缺省按 key 推断）
     #[serde(default)]
     pub display_name: Option<String>,
+    /// 插入目标标签之前；缺省追加，目标标签已关闭时也追加。
+    #[serde(default)]
+    pub insert_before: Option<String>,
+    /// 原生目标内坐标；目标 WebView 按自身 DPI 换算后计算标签插入位置。
+    #[serde(default)]
+    pub drop_position: Option<serde_json::Value>,
+    /// 标签状态与工具视图快照；工具数据不写入文件或暂存区。
+    #[serde(default)]
+    pub tab_meta: Option<serde_json::Value>,
+    #[serde(default)]
+    pub tool_state: Option<serde_json::Value>,
 }
 
 // ── 打开请求队列（C 节协议） ──

@@ -28,6 +28,7 @@ pub mod history;
 
 use state::AppState;
 use std::sync::Mutex;
+use tauri::Manager;
 
 /// 应用入口（桌面端由 main.rs 调用；移动端由 mobile_entry_point 宏生成的原生入口调用）
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -80,6 +81,11 @@ pub fn run() {
     // WebView2 GPU/渲染进程异常后的画面自愈（逻辑仅 Windows 生效，其他平台为空插件）
     let builder = builder.plugin(window::render_recovery::plugin());
 
+    // 系统拖放落点在 Rust 同步登记，前端异步补充标签顺序。
+    #[cfg(desktop)]
+    let builder = builder.manage(window::tab_drag::TabDragState::default())
+        .plugin(window::tab_drag::plugin());
+
     // 全局唤起窗口快捷键（仅桌面端；具体按键由设置决定，启动时在 bootstrap 中注册）
     #[cfg(desktop)]
     let builder = builder.plugin(window::global_shortcut::plugin());
@@ -112,6 +118,7 @@ pub fn run() {
             window::commands::enqueue_open_requests,
             window::commands::create_window,
             window::commands::begin_document_transfer,
+            window::commands::list_incoming_transfers,
             window::commands::take_transfer_payload,
             window::commands::prepare_transfer_complete,
             window::commands::abort_transfer,
@@ -119,6 +126,10 @@ pub fn run() {
             window::commands::focus_window,
             window::commands::close_window,
             window::commands::set_show_window_shortcut,
+            #[cfg(desktop)]
+            window::tab_drag::start_tab_drag,
+            #[cfg(desktop)]
+            window::tab_drag::claim_tab_drop,
             window::print_pdf::print_window_to_pdf,
             // registry
             registry::commands::register_document,
@@ -218,7 +229,17 @@ pub fn run() {
             history::commands::history_clear_all,
         ])
         .on_window_event(|window, event| {
+            #[cfg(desktop)]
+            if let tauri::WindowEvent::DragDrop(event) = event {
+                window::tab_drag::record_drop(window.app_handle(), window.label(), event);
+            }
             window::manager::on_window_event(window, event)
+        })
+        .on_webview_event(|webview, event| {
+            #[cfg(desktop)]
+            if let tauri::WebviewEvent::DragDrop(event) = event {
+                window::tab_drag::record_drop(webview.app_handle(), webview.window().label(), event);
+            }
         })
         .build(context)
         .expect("error while building NoteBoard application")

@@ -20,13 +20,13 @@ export function useExternalFileChanges(): void {
 
     /** 只对有磁盘正文的文档建监听；未命名、懒加载及二进制查看器不走文本核对。 */
     const reconcile = () => {
-      const { tabs, activeKey } = useWindowStore.getState();
+      const { tabs, activeKey, isTransferring } = useWindowStore.getState();
       const directories = new Map<string, string>();
       const nextKeys = new Set<string>();
       for (const tab of tabs) {
         const doc = useDocumentStore.getState().getDocument(tab.key);
         if (!tab.path || tab.key.startsWith('untitled:') || tab.lazySource
-          || !doc || doc.content === null || doc.kind === 'image') continue;
+          || !doc || doc.content === null || doc.kind === 'image' || isTransferring(tab.key)) continue;
         nextKeys.add(tab.key);
         const dir = dirnameOf(tab.path);
         if (dir) directories.set(pathKey(dir), dir);

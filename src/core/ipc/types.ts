@@ -100,6 +100,37 @@ export interface TransferredDocument {
   viewStateSnapshot?: unknown;
   /** 标签显示名（未命名文档的 key 不含可读名称，须随载荷传递；缺省按 key 推断） */
   displayName?: string | null;
+  /** 目标标签插入锚点；无锚点时追加。 */
+  insertBefore?: string | null;
+  /** 原生落点交由目标窗口自己换算 DPI 并确定插入位置。 */
+  dropPosition?: { x: number; y: number };
+  /** 保留真实路径、外部状态与工具类型，不能从 key 猜测工具路径。 */
+  tabMeta?: {
+    path: string | null;
+    externalStatus: 'clean' | 'modified' | 'deleted' | 'renamed' | null;
+    isDetached: boolean;
+    toolKind?: 'textdiff';
+  };
+  /** 纯前端工具的可序列化快照，只在内存迁移。 */
+  toolState?: unknown;
+}
+
+/** 系统拖放结果：目标坐标为目标 WebView 物理像素；新窗位置保留原生坐标语义。 */
+export interface TabDragResult {
+  cancelled: boolean;
+  target: { label: string; beforeKey: string | null; x: number; y: number } | null;
+  position: [number, number] | null;
+}
+
+/** 原生拖动的展示摘要；正文由迁移接口定向读取，不放入该广播。 */
+export interface NativeTabDragInfo { sourceLabel: string; key: string; displayName: string }
+
+/** 省略目标表示新建；原生拖出完成后才传递位置。 */
+export interface TabTransferTarget {
+  targetLabel?: string;
+  beforeKey?: string | null;
+  position?: [number, number] | null;
+  dropPosition?: { x: number; y: number };
 }
 
 // ── 打开请求队列（S04 C 节协议） ──

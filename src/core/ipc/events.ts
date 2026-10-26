@@ -13,6 +13,7 @@ import type {
   SyncLocalChange,
   SyncReportEvent,
   SyncStatus,
+  NativeTabDragInfo,
 } from './types';
 
 // ── 事件名常量 ──
@@ -49,6 +50,16 @@ export function onTransferCommitted(
   cb: (p: { transferId: string; key: string }) => void,
 ): Promise<UnlistenFn> {
   return listen<{ transferId: string; key: string }>(EVENTS.TRANSFER_COMMITTED, (e) => cb(e.payload));
+}
+
+/** 已有窗口接收迁移：只唤醒拉取，正文不通过广播传递。 */
+export function onTransferAvailable(cb: (transferId: string) => void): Promise<UnlistenFn> {
+  return listen<string>('nb://transfer-available', (e) => cb(e.payload));
+}
+
+/** 跨窗口同步拖动摘要，悬停坐标只由各窗口自己的原生事件提供。 */
+export function onTabDragState(cb: (info: NativeTabDragInfo | null) => void): Promise<UnlistenFn> {
+  return listen<NativeTabDragInfo | null>('nb://tab-drag-state', (e) => cb(e.payload));
 }
 
 /** 迁移中止：源解锁本地编辑，目标删除临时 session */

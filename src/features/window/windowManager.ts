@@ -14,8 +14,10 @@ import {
   onCloseRequested,
   onFocusTab,
   onDragDrop,
+  onTransferAvailable,
+  onTabDragState,
 } from '../../core/ipc/events';
-import type { OpenRequestDto, TransferredDocument, WindowBootDto } from '../../core/ipc/types';
+import type { OpenRequestDto, TransferredDocument, WindowBootDto, TabTransferTarget } from '../../core/ipc/types';
 import { openDocument } from '../editor-code/orchestration/openDocument';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
@@ -36,6 +38,11 @@ import { serializeDocumentHistory, restoreDocumentHistory } from '../history/doc
 // 🔴 R06：迁移视图状态快照经回收恢复存储传递
 import { saveViewState } from '../session/editorSuspension';
 import { reportWebSpans } from '../../core/perf/reportWebSpans';
+import { captureTextDiff, restoreTextDiff, clearTextDiffTransfer, type TextDiffSnapshot } from '../textdiff/textDiffTransfer';
+import { nativeTabInsertionAnchor } from './tabDropTarget';
+import { IS_WEB, IS_NATIVE_MOBILE } from '../../core/platform';
+import { drainDocumentWrites } from '../session/documentSession';
+import { markTabArriving, resetTabDragFeedback, setNativeTabDragInfo, setNativeTabDragPoint } from './tabDragFeedback';
 import {
   acquireBootCoordinator,
   releaseBootCoordinator,
@@ -78,12 +85,18 @@ const pendingStartupTransfers: string[] = [];
  * 的权威状态查询处理（committed 保留 / aborted 清理 / 未知保留）。
  */
 export async function completePendingTransfers(): Promise<void> {
-  const transfers = pendingStartupTransfers.splice(0);
+  // 每次只由一个消费者接纳；事件、启动补拉和重复唤醒可以交错。
+  const transfers = [...new Set(pendingStartupTransfers.splice(0))];
   for (const transferId of transfers) {
+    if (adoptingTransfers.has(transferId)) continue;
+    adoptingTransfers.add(transferId);
     try {
       await adoptTransferredDocument(transferId);
     } catch (e) {
       console.error('处理挂起迁移失败:', e);
+      await ipc.abortTransfer(getCurrentWindow().label, transferId, 'adopt-failed').catch(() => {});
+    } finally {
+      adoptingTransfers.delete(transferId);
     }
   }
 }
@@ -97,6 +110,8 @@ export async function requestShellReadyAndDrain(): Promise<void> {
   // 🔴 N07：业务就绪放行——设置已加载（调用时机由 App 保证）；
   //    期间缓存的事件唤醒在此补消费，迁移接收延后到设置之后
   markBusinessReady();
+  transferBusinessReady = true;
+  if (!IS_WEB && !IS_NATIVE_MOBILE) pendingStartupTransfers.push(...await ipc.listIncomingTransfers());
   // 🔴 N07：挂起的启动迁移在真实设置就绪后提交（此前仅记录）
   await completePendingTransfers();
   try {
@@ -122,12 +137,16 @@ async function processOpenRequest(request: OpenRequestDto): Promise<OpenRequestR
 
 /** 目标侧记录 transferId → key 的映射（aborted 事件不含 key，需本地反查） */
 const adoptKeyByTransfer = new Map<string, string>();
+const adoptingTransfers = new Set<string>();
+let transferBusinessReady = false;
 
 async function adoptTransferredDocument(transferId: string): Promise<void> {
   const label = getCurrentWindow().label;
   // 一次性拉取迁移载荷（Rust 端拉取后清空正文引用）
   const doc = await ipc.takeTransferPayload(label, transferId);
   if (!doc) return; // 已被拉取 / 已中止
+  // 已有窗口不可覆盖自己的标签（包括恢复占位），冲突时让源保留原内容。
+  if (useWindowStore.getState().getTab(doc.key)) throw new Error('目标窗口已有同名标签');
 
   // 未命名文档的 key（untitled:txt:时间戳:序号）不是磁盘路径：
   // 显示名取载荷携带的名称，且不能把 key 当作 path/dirPath（否则标签与 Tooltip 显示内部 key）
@@ -139,10 +158,11 @@ async function adoptTransferredDocument(transferId: string): Promise<void> {
   const kind = (doc.kind ?? kindFromPath(doc.key)) as Tab['kind'];
   // 迁移载荷的 language 为 string（由源窗口的 LanguageId 序列化而来），此处收窄回 LanguageId
   const language = (doc.language ?? languageFromPath(doc.key)) as ReturnType<typeof languageFromPath>;
-  const content = doc.content ?? '';
+  const content = doc.content;
+  const toolKind = doc.tabMeta?.toolKind;
 
   const docStore = useDocumentStore.getState();
-  docStore.upsertFromPayload({
+  if (!toolKind) docStore.upsertFromPayload({
     key: doc.key,
     displayName: name,
     dirPath,
@@ -151,12 +171,18 @@ async function adoptTransferredDocument(transferId: string): Promise<void> {
     content,
     encoding: (doc.encoding ?? 'utf8') as 'utf8',
     eol: (doc.eol ?? 'lf') as 'lf',
-    size: doc.size ?? content.length,
+    size: doc.size ?? content?.length ?? 0,
     mtime: doc.mtime ?? 0,
     readonly: doc.readonly ?? false,
   });
-  // 脏文档必须携带基线：迁移载荷的 content 是最新内容而非基线，需显式恢复
-  if (doc.baseline != null && doc.isDirty) {
+  if (!toolKind) {
+    docStore.setDirty(doc.key, doc.isDirty);
+    docStore.setExternalStatus(doc.key, doc.tabMeta?.externalStatus ?? null);
+  } else {
+    restoreTextDiff(doc.key, doc.toolState as TextDiffSnapshot | null);
+  }
+  // 干净文档也保留真实磁盘基线：内核可能只规范化了 CRLF，不能把 flush 文本当作磁盘原文。
+  if (doc.baseline != null && !toolKind) {
     docStore.updateBaseline(doc.key, doc.baseline, doc.mtime ?? 0, doc.size ?? 0);
   }
 
@@ -176,16 +202,28 @@ async function adoptTransferredDocument(transferId: string): Promise<void> {
   const tab: Tab = {
     key: doc.key,
     displayName: name,
-    path: isUntitled ? null : doc.key,
+    path: doc.tabMeta ? doc.tabMeta.path : (isUntitled ? null : doc.key),
     kind,
     language,
     isDirty: doc.isDirty,
     isPreview: false,
     viewMode: doc.viewMode ?? null,
-    externalStatus: null,
-    isDetached: false,
+    externalStatus: doc.tabMeta?.externalStatus ?? null,
+    isDetached: doc.tabMeta?.isDetached ?? false,
+    toolKind,
   };
+  // 移动的标签固定为正式页；不能替换目标当前预览标签。
+  const preview = useWindowStore.getState().tabs.find((item) => item.isPreview);
+  if (preview) useWindowStore.getState().setTabPreview(preview.key, false);
+  markTabArriving(doc.key);
   useWindowStore.getState().openTab(tab);
+  const insertBefore = doc.dropPosition ? nativeTabInsertionAnchor(doc.dropPosition, doc.key) : doc.insertBefore;
+  if (insertBefore) {
+    const current = useWindowStore.getState();
+    const from = current.tabs.findIndex((item) => item.key === doc.key);
+    const to = current.tabs.findIndex((item) => item.key === insertBefore);
+    if (to >= 0) current.reorderTabs(from, to);
+  }
 
   // 🔴 R06：视图状态快照存入回收恢复存储（编辑器挂载时按类型恢复选区/滚动/折叠）
   if (doc.viewStateSnapshot != null) {
@@ -200,6 +238,7 @@ async function adoptTransferredDocument(transferId: string): Promise<void> {
     if (status.state === 'committed') {
       useWindowStore.getState().exitTransfer(doc.key);
       adoptKeyByTransfer.delete(transferId);
+      await getCurrentWindow().setFocus().catch(() => {});
     }
   } catch (e) {
     // 🔴 R06：prepare IPC 失败不假定后端 aborted——先查询权威状态：
@@ -223,6 +262,7 @@ async function adoptTransferredDocument(transferId: string): Promise<void> {
     } else if (state === 'aborted') {
       tabStore.closeTab(doc.key);
       useDocumentStore.getState().remove(doc.key);
+      clearTextDiffTransfer(doc.key);
       tabStore.exitTransfer(doc.key);
       adoptKeyByTransfer.delete(transferId);
       showToast('接收迁移文档失败，已保留在原窗口', 'error');
@@ -242,6 +282,8 @@ async function adoptTransferredDocument(transferId: string): Promise<void> {
 let unlistenCloseRequested: (() => void) | null = null;
 let unlistenFocusTab: (() => void) | null = null;
 let unlistenDragDrop: (() => void) | null = null;
+let unlistenTransferAvailable: (() => void) | null = null;
+let unlistenTabDragState: (() => void) | null = null;
 let unlistenTransferEvents: Array<() => void> = [];
 let reconcileTimer: ReturnType<typeof setInterval> | null = null;
 // 🔴 N07：事件监听建立代际——StrictMode 快速卸载/重挂载时，旧 start 的迟到
@@ -293,17 +335,59 @@ export async function startEventListeners(): Promise<void> {
     unlistenFocusTab = unlisten;
   }
 
-  // 拖拽：drop 事件入队本窗口打开队列并唤醒消费（不再在监听里直接打开）
+  // 已有窗口接收标签的监听必须先于 shell-ready；设置未就绪时只入队。
+  if (!unlistenTransferAvailable) {
+    const unlisten = await onTransferAvailable((transferId) => {
+      pendingStartupTransfers.push(transferId);
+      if (transferBusinessReady) void completePendingTransfers();
+    });
+    if (!accept(epoch)) { unlisten(); return; }
+    unlistenTransferAvailable = unlisten;
+  }
+
+  // 原生拖动摘要只用于源标签和接收窗口的视觉反馈。
+  if (!unlistenTabDragState) {
+    const unlisten = await onTabDragState(setNativeTabDragInfo);
+    if (!accept(epoch)) { unlisten(); return; }
+    unlistenTabDragState = unlisten;
+  }
+
+  // 拖拽：内部票据交给迁移，外部文件进入原有可靠打开队列。
   if (!unlistenDragDrop) {
+    let internalDrag = false;
+    let recognizingDrag = false;
+    let dragEventEpoch = 0;
     const unlisten = await onDragDrop(async (payload) => {
-      if (payload.type === 'enter' || payload.type === 'over') {
-        useLayoutStore.getState().setIsDraggingFile(true);
+      if (payload.type === 'enter') {
+        const currentEpoch = ++dragEventEpoch;
+        recognizingDrag = true;
+        const internal = !IS_WEB && !IS_NATIVE_MOBILE
+          ? await ipc.claimTabDrop(payload.paths, null).catch(() => false) : false;
+        // 拖入识别的 IPC 可能晚于 leave/drop，旧结果不能把覆盖层重新打开。
+        if (currentEpoch !== dragEventEpoch) return;
+        recognizingDrag = false;
+        internalDrag = internal;
+        useLayoutStore.getState().setIsDraggingFile(!internalDrag);
+        if (internalDrag) setNativeTabDragPoint(payload.position);
+      } else if (payload.type === 'over') {
+        if (internalDrag) setNativeTabDragPoint(payload.position);
+        else if (!recognizingDrag) useLayoutStore.getState().setIsDraggingFile(true);
       } else if (payload.type === 'leave') {
+        ++dragEventEpoch;
+        recognizingDrag = false;
+        internalDrag = false;
+        setNativeTabDragPoint(null);
         useLayoutStore.getState().setIsDraggingFile(false);
       } else if (payload.type === 'drop') {
+        ++dragEventEpoch;
+        recognizingDrag = false;
+        internalDrag = false;
+        setNativeTabDragPoint(null);
         useLayoutStore.getState().setIsDraggingFile(false);
         if (payload.paths.length > 0) {
           try {
+            if (!IS_WEB && !IS_NATIVE_MOBILE
+              && await ipc.claimTabDrop(payload.paths, nativeTabInsertionAnchor(payload.position))) return;
             await ipc.enqueueOpenRequests(label, payload.paths, 'drop');
           } catch (e) {
             console.error('拖拽入队失败:', e);
@@ -343,6 +427,7 @@ export async function startEventListeners(): Promise<void> {
         const key = adoptKeyByTransfer.get(transferId);
         if (key) {
           adoptKeyByTransfer.delete(transferId);
+          clearTextDiffTransfer(key);
           const tabStore = useWindowStore.getState();
           tabStore.closeTab(key);
           useDocumentStore.getState().remove(key);
@@ -384,6 +469,12 @@ export async function startEventListeners(): Promise<void> {
  * 停止事件监听（卸载时；bootCoordinator 的队列监听由 releaseBootCoordinator 管理）
  */
 export function stopEventListeners(): void {
+  unlistenTabDragState?.();
+  unlistenTabDragState = null;
+  resetTabDragFeedback();
+  transferBusinessReady = false;
+  unlistenTransferAvailable?.();
+  unlistenTransferAvailable = null;
   unlistenCloseRequested?.();
   unlistenFocusTab?.();
   unlistenDragDrop?.();
@@ -457,6 +548,11 @@ async function showWindowForCloseConfirmation(): Promise<void> {
 async function prepareCurrentWindowClose(): Promise<void> {
   const tabStore = useWindowStore.getState();
   const label = getCurrentWindow().label;
+  // 迁移未提交时仍可能持有唯一正文；窗口级关闭也必须遵守标签迁移保护。
+  if (tabStore.transferringKeys.length > 0) {
+    showToast('标签正在移动，请完成后再关闭窗口', 'warning');
+    return;
+  }
 
   // 已有确认框时只重新显示：用户可能再次把窗口隐藏到托盘，不重复写暂存或重置当前选择。
   if (tabStore.isWindowClosing) {
@@ -541,117 +637,117 @@ async function finishWindowClose(label: string, snapshotSaved: boolean): Promise
  * committed 后源清理（transferred 语义）；aborted 后源解锁保留；
  * 未知终态保留数据并保持迁移保护，事件/查询对账后收尾。
  */
-export async function moveToNewWindow(docKey: string): Promise<boolean> {
-  const docStore = useDocumentStore.getState();
-  const doc = docStore.getDocument(docKey);
-  if (!doc) return false;
+/** 右键菜单沿用原有入口；拖动可以指定已有目标窗口和插入锚点。 */
+export function moveToNewWindow(docKey: string): Promise<boolean> {
+  return moveTabToWindow(docKey);
+}
 
+// 正文加载也属于迁移准备，跨 await 防止同一标签被连续发起两次。
+const preparingTransfers = new Set<string>();
+
+/**
+ * 统一迁移：锁定源标签 → 加载/flush 权威内容 → 捕获历史和视图 → 目标确认 → 清理源。
+ * 图片/只读预览保留 null 正文；文本对比通过专用内存快照交接，不伪造可写文档。
+ * 只有权威 committed 才移除源；未知终态继续保护数据并由对账收尾。
+ */
+export async function moveTabToWindow(docKey: string, target?: TabTransferTarget): Promise<boolean> {
   const tabStore = useWindowStore.getState();
-  const tab = tabStore.getTab(docKey);
-  if (!tab) return false;
-  if (tabStore.isTransferring(docKey)) return false; // 已有迁移在进行
-
+  const initialTab = tabStore.getTab(docKey);
+  if (!initialTab || tabStore.isTransferring(docKey) || preparingTransfers.has(docKey)
+    || tabStore.isWindowClosing || tabStore.pendingCloseKeys.includes(docKey)) return false;
   const label = getCurrentWindow().label;
-
-  // 🔴 N02：迁移是正文出口——未加载的懒标签先按需加载；失败/未知一律中止
-  //    （绝不用空占位镜像迁移，也不用 '' 补成合法空文档）
-  const writable = await ensureWritableContent(docKey);
-  if (writable === null) {
-    showToast('正文尚未加载完成，无法迁移', 'warning');
-    return false;
-  }
-
-  // 1. 🔴 N01 完整屏障：先进入迁移保护（阻断关闭竞争与界面输入），再移走焦点
-  //    （pointerEvents 不挡已聚焦编辑器的键盘/IME——blur 让组合输入先提交），
-  //    然后才 flush——保护先于捕获，捕获后不再有新输入混入
+  preparingTransfers.add(docKey);
+  let reconcileUnknown = false;
   tabStore.enterTransfer(docKey);
   try {
+    // blur 先提交 IME 组合输入；后续 flush 抛错也必须经过 finally 解除保护。
     (document.activeElement as HTMLElement | null)?.blur();
-  } catch {
-    // 忽略
-  }
-
-  const capabilities = getEditorCapabilities(docKey);
-  const captured = capabilities ? await capabilities.flush('transfer') : null;
-  const content = captured?.content ?? useDocumentStore.getState().getDocument(docKey)?.content;
-  if (content == null) {
-    // 🔴 N02：无权威正文（无实例且镜像未知）——中止迁移，源保持原状
-    tabStore.exitTransfer(docKey);
-    showToast('无法捕获文档正文，迁移已取消', 'error');
-    return false;
-  }
-  const revision = captured?.revision ?? getDocumentRevision(docKey);
-
-  // 🔴 R06：捕获真实视图状态（选区/滚动/折叠/查看变换；不可回收类型同样捕获）
-  const capturedViewState = capabilities?.captureViewState?.() ?? null;
-  // 🔴 R06：可序列化统一历史（检查点+补丁链整体迁移；目标无历史时导入）
-  const serializedHistory = serializeDocumentHistory(docKey);
-
-  // 2. 构建完整迁移载荷（不读滞后镜像；携带原 metadata、基线、视图状态与历史）
-  const transferred: TransferredDocument = {
-    key: doc.key,
-    content,
-    boardScene: null,
-    isDirty: doc.isDirty,
-    viewMode: tab.viewMode as 'visual' | 'source' | null,
-    viewState: {
-      selection: null,
-      scrollTop: 0,
-      boardViewport: null,
-      foldedRanges: [],
-    },
-    kind: doc.kind,
-    language: doc.language,
-    encoding: doc.encoding,
-    eol: doc.eol,
-    readonly: doc.readonly,
-    mtime: doc.mtime,
-    size: doc.size,
-    baseline: doc.baselineContent,
-    revision,
-    history: serializedHistory,
-    // 额外视图状态（captureViewState 的判别联合快照）
-    viewStateSnapshot: capturedViewState,
-    // 未命名文档的 key 是内部标识，显示名必须随载荷传递
-    displayName: doc.displayName,
-  };
-
-  showToast('正在移动到新窗口…', 'info');
-
-  // 🔴 N01：终态未知时保持迁移保护（finally 不解锁，由对账回调负责）
-  let reconcileUnknown = false;
-  try {
-    // 3. 发起迁移（创建目标窗口 + 注册 Preparing 记录；所有权仍属源）
-    const { transferId } = await ipc.beginDocumentTransfer(label, transferred, revision);
-
-    // 4. 等待权威终态（事件优先 + 低频查询兜底；禁止盲目超时回滚）
+    const isContentless = ['image', 'preview', 'unsupported'].includes(initialTab.kind);
+    if (!initialTab.toolKind && !isContentless && await ensureWritableContent(docKey) === null) {
+      showToast('正文尚未加载完成，无法迁移', 'warning');
+      return false;
+    }
+    // 只读恢复页也需要先打开真实会话，但不要求不存在的文本正文。
+    if (isContentless && initialTab.lazySource) {
+      const { loadRestoredTab } = await import('../session/closedWindowSession');
+      if (await loadRestoredTab(docKey) !== 'loaded') return false;
+    }
+    const capabilities = getEditorCapabilities(docKey);
+    const captured = capabilities ? await capabilities.flush('transfer') : null;
+    // 旧自动保存必须落盘并更新基线后才捕获迁移载荷，避免目标把源的迟到保存误判为外部修改。
+    await drainDocumentWrites(docKey);
+    // flush/懒加载可能更新元信息，必须重新读取，不能沿用准备前的旧脏态和基线。
+    const doc = useDocumentStore.getState().getDocument(docKey);
+    const tab = useWindowStore.getState().getTab(docKey);
+    if (!tab || (!tab.toolKind && !doc)) return false;
+    const content = captured?.content ?? doc?.content ?? null;
+    if (!tab.toolKind && !isContentless && content === null) {
+      showToast('无法捕获文档正文，迁移已取消', 'error');
+      return false;
+    }
+    const revision = captured?.revision ?? getDocumentRevision(docKey);
+    const transferred: TransferredDocument = {
+      key: docKey,
+      content,
+      boardScene: null,
+      isDirty: doc?.isDirty ?? tab.isDirty,
+      viewMode: tab.viewMode,
+      viewState: { selection: null, scrollTop: 0, boardViewport: null, foldedRanges: [] },
+      kind: doc?.kind ?? tab.kind,
+      language: doc?.language ?? tab.language,
+      encoding: doc?.encoding ?? 'utf8',
+      eol: doc?.eol ?? 'lf',
+      readonly: doc?.readonly ?? false,
+      mtime: doc?.mtime ?? 0,
+      size: doc?.size ?? 0,
+      baseline: doc?.baselineContent ?? null,
+      revision,
+      history: tab.toolKind ? null : serializeDocumentHistory(docKey),
+      viewStateSnapshot: capabilities?.captureViewState?.() ?? null,
+      displayName: tab.displayName,
+      insertBefore: target?.beforeKey,
+      dropPosition: target?.dropPosition,
+      tabMeta: { path: tab.path, externalStatus: tab.externalStatus,
+        isDetached: tab.isDetached, toolKind: tab.toolKind },
+      toolState: tab.toolKind === 'textdiff' ? captureTextDiff(docKey) : undefined,
+    };
+    showToast(target?.targetLabel ? '正在移动标签…' : '正在移动到新窗口…', 'info');
+    // 无目标时保持旧命令调用形式，既有右键迁移和回归测试共用同一事务。
+    const { transferId } = target
+      ? await ipc.beginDocumentTransfer(label, transferred, revision, target)
+      : await ipc.beginDocumentTransfer(label, transferred, revision);
     const outcome = await waitForTransferOutcome(transferId, label);
     if (outcome === 'committed') {
-      // 5. 源清理（transferred 语义）：不移除目标所有权、不删暂存、不清空目标已接管的历史
       tabStore.closeTab(docKey);
-      docStore.remove(docKey);
+      useDocumentStore.getState().remove(docKey);
       clearDocumentRevision(docKey);
+      clearTextDiffTransfer(docKey);
+      if (target) await closeEmptyDragSource(label);
       return true;
     }
     if (outcome === 'aborted') {
-      // 权威 aborted：源解锁，文档保留在原窗口
       showToast('迁移未完成，文档已保留在当前窗口', 'warning');
       return false;
     }
-    // 🔴 N01：终态未知——保留数据并保持迁移保护（源/目标均不恢复写入，防止
-    //    两个会话同时持有写权限）；事件与低频查询对账到达权威终态后再收尾
     reconcileUnknown = true;
-    scheduleTransferReconcile(transferId, docKey);
+    scheduleTransferReconcile(transferId, docKey, Boolean(target));
     showToast('迁移状态暂时未知，文档暂时锁定；状态确认后将自动完成或还原', 'warning');
     return false;
-  } catch (e) {
-    console.error('迁移到新窗口失败:', e);
-    showToast('迁移到新窗口失败，文档已保留在当前窗口', 'error');
+  } catch (error) {
+    console.error('标签迁移失败:', error);
+    showToast('标签移动失败，内容已保留在当前窗口', 'error');
     return false;
   } finally {
-    // 🔴 N01：终态未知时保持迁移保护（对账回调负责解锁），其余终态正常解锁
+    preparingTransfers.delete(docKey);
     if (!reconcileUnknown) tabStore.exitTransfer(docKey);
   }
+}
+
+/** 拖走最后一个标签后关闭空源窗口；不触发普通关闭流程覆盖目标会话快照。 */
+async function closeEmptyDragSource(label: string): Promise<void> {
+  if (useWindowStore.getState().tabs.length !== 0) return;
+  try { await ipc.closeWindow(label); }
+  catch (error) { console.warn('标签已移动，但空窗口关闭失败:', error); }
 }
 
 /** 迁移等待的权威终态（unknown = 后端状态不可知，必须保守处理） */
@@ -755,7 +851,7 @@ async function resolveOutcomeByQuery(transferId: string): Promise<TransferOutcom
  * committed→源清理（transferred 语义）；aborted→解锁源恢复编辑。
  * 上限 60 秒无终态则停止轮询并提示（事件注册保留——事件最终到达时仍可收尾）。
  */
-function scheduleTransferReconcile(transferId: string, docKey: string): void {
+function scheduleTransferReconcile(transferId: string, docKey: string, closeEmpty = false): void {
   if (pendingTransferWaits.has(transferId)) return; // 已有对账进行中
   let elapsed = 0;
   const reconcile = (outcome: 'committed' | 'aborted') => {
@@ -766,7 +862,9 @@ function scheduleTransferReconcile(transferId: string, docKey: string): void {
       useDocumentStore.getState().remove(docKey);
       clearDocumentRevision(docKey);
       tabStore.exitTransfer(docKey);
-      showToast('迁移已确认完成，文档已移至新窗口', 'success');
+      clearTextDiffTransfer(docKey);
+      if (closeEmpty) void closeEmptyDragSource(getCurrentWindow().label);
+      showToast('标签已移动', 'success');
     } else {
       // 权威 aborted：解锁源，文档保留
       tabStore.exitTransfer(docKey);

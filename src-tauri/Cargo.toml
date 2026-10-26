@@ -56,10 +56,14 @@ tauri-plugin-global-shortcut = "~2.3"
 trash = "5"
 font-kit = "0.14"
 
+# 标签跨窗口使用系统拖放；Linux 单独使用 GTK 事件串行号，兼容 Wayland。
+[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
+drag = { path = "vendor/drag" }
+
 [target."cfg(windows)".dependencies]
 # Win32_Graphics_Gdi：S06 起系统字体枚举使用 GDI EnumFontFamiliesExW 原生实现（替代 PowerShell 子进程）
 # Win32_Security_Cryptography：同步与备份的密码/令牌使用 DPAPI 绑定当前 Windows 用户加密保存
-windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_Security_Cryptography"] }
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_Graphics_Gdi", "Win32_Security_Cryptography"] }
 # Markdown 导出 PDF：直接调用 WebView2 PrintToPdf，版本须与 tauri/wry 使用的保持一致
 webview2-com = "0.38"
 windows-core = "0.61"
@@ -67,3 +71,5 @@ windows-core = "0.61"
 [target.'cfg(target_os = "linux")'.dependencies]
 # WebKitGTK 页面进程退出后自动重载（web-process-terminated 信号），版本须与 tauri/wry 使用的保持一致
 webkit2gtk = { version = "2.0", features = ["v2_20"] }
+# 与 Tauri 使用同一 GTK 3 版本；原生标签拖放从 WebView 的真实鼠标事件发起。
+gtk = "0.18"

@@ -9,6 +9,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragMoveEvent,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -81,8 +82,11 @@ import * as ipc from '../../core/ipc/commands';
 import { getExplorerFileIcon } from '../../features/explorer/fileIcons';
 import { checkOpenDocumentStillExists } from '../../features/external/missingFileGuard';
 import { useSyncStore } from '../../stores/syncStore';
-import { IS_WEB } from '../../core/platform';
+import { IS_WEB, IS_NATIVE_MOBILE } from '../../core/platform';
 import { formatShortcut } from '../../core/shortcuts';
+import { dragTab } from '../../features/window/tabDrag';
+import { TabDropOverlay } from '../../features/window/TabDropOverlay';
+import { useArrivingTabKey, useNativeDraggedTabKey } from '../../features/window/tabDragFeedback';
 
 // ── 类型图标映射 ──
 
@@ -114,9 +118,12 @@ interface TabItemProps {
   isActive: boolean;
   onActivate: () => void;
   onClose: () => void;
+  /** 原生拖动源淡出；新接收标签只播放一次入场动画。 */
+  nativeDragging: boolean;
+  arriving: boolean;
 }
 
-function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
+function TabItem({ tab, isActive, onActivate, onClose, nativeDragging, arriving }: TabItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: tab.key });
 
@@ -164,8 +171,9 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
   // 单个 Tab 的外观样式（采用现代圆角卡片设计，短标题自动紧凑缩短，长标题受限截断）
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
+    transition: transition ?? 'opacity 120ms ease',
+    opacity: isDragging || nativeDragging ? 0.4 : 1,
+    animation: arriving && !isDragging ? 'nb-tab-arrive 200ms ease-out' : undefined,
     display: 'flex',
     alignItems: 'center',
     gap: 6,
@@ -228,6 +236,8 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
           style={style}
           {...attributes}
           {...listeners}
+          data-tab-key={tab.key}
+          data-tab-arriving={arriving || undefined}
           onClick={onActivate}
           onContextMenu={(e) => {
             e.preventDefault();
@@ -296,6 +306,7 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
           {/* 关闭按钮（固定靠在 Tab 最右侧） */}
           <button
             className="tab-close"
+            onPointerDown={(event) => event.stopPropagation()}
             style={closeBtnStyle}
             onClick={(e) => {
               e.stopPropagation();
@@ -433,8 +444,8 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
             <span>关闭全部</span>
           </button>
 
-          {/* 工具型视图（文本对比）无文档模型，不支持迁移到独立窗口 */}
-          {!tab.toolKind && !IS_WEB && (
+          {/* 桌面所有标签均通过统一迁移入口打开独立窗口。 */}
+          {!IS_WEB && !IS_NATIVE_MOBILE && (
             <>
               <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />
 
@@ -639,6 +650,10 @@ const HIDDEN_TAB_SCROLLBAR: TabScrollbarState = { visible: false, thumbLeft: 0, 
 export function TabBar() {
   const { tabs, activeKey, activateTab, requestCloseTab, reorderTabs } = useWindowStore();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const nativeDraggedKey = useNativeDraggedTabKey();
+  const arrivingKey = useArrivingTabKey();
+  // 窗口内沿用原有排序反馈；越出标签栏后只交接一次系统拖放。
+  const nativeDragStartedRef = useRef(false);
   // 自绘滚动条：几何状态、悬停/拖动态与拖动起点
   const [scrollbar, setScrollbar] = useState<TabScrollbarState>(HIDDEN_TAB_SCROLLBAR);
   const [scrollbarHovered, setScrollbarHovered] = useState(false);
@@ -733,12 +748,30 @@ export function TabBar() {
   }, [newMenuPos, saveMenuPos]);
 
   const handleDragEnd = (e: DragEndEvent) => {
+    if (nativeDragStartedRef.current) return;
     const { active, over } = e;
     if (!over || active.id === over.id) return;
     const fromIndex = tabs.findIndex((t) => t.key === active.id);
     const toIndex = tabs.findIndex((t) => t.key === over.id);
     if (fromIndex < 0 || toIndex < 0) return;
     reorderTabs(fromIndex, toIndex);
+  };
+
+  /** 越界时接管桌面鼠标手势；网页、移动端与触摸拖动维持原有排序。 */
+  const handleDragMove = (event: DragMoveEvent) => {
+    if (IS_WEB || IS_NATIVE_MOBILE || nativeDragStartedRef.current) return;
+    const pointer = event.activatorEvent as PointerEvent;
+    if (pointer.pointerType !== 'mouse') return;
+    const bar = scrollRef.current?.getBoundingClientRect();
+    if (!bar) return;
+    const x = pointer.clientX + event.delta.x;
+    const y = pointer.clientY + event.delta.y;
+    // 8px 容差避免正常水平排序中的细微抖动意外拆窗。
+    if (y >= bar.top - 8 && y <= bar.bottom + 8 && x >= -8 && x <= window.innerWidth + 8) return;
+    nativeDragStartedRef.current = true;
+    void dragTab(String(event.active.id)).finally(() => { nativeDragStartedRef.current = false; });
+    // 原生拖放接管后结束 DOM 排序传感器，避免松手时重复排序或残留拖动外观。
+    document.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId: pointer.pointerId }));
   };
 
   // 滚轮横滚
@@ -885,6 +918,7 @@ export function TabBar() {
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', height: '100%', minWidth: 0, flex: '0 1 auto', maxWidth: 'calc(100vw - 210px)' }}>
+      {!IS_WEB && !IS_NATIVE_MOBILE && <TabDropOverlay />}
       {/* 滚动外壳：不随内容滚动，为自绘滚动条提供定位基准 */}
       <div style={{ position: 'relative', display: 'flex', height: '100%', minWidth: 0, flex: '0 1 auto' }}>
         <div
@@ -895,7 +929,8 @@ export function TabBar() {
           onScroll={updateScrollbar}
           role="tablist"
         >
-          <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+          <DndContext sensors={sensors} onDragStart={() => { nativeDragStartedRef.current = false; }}
+            onDragMove={handleDragMove} onDragEnd={handleDragEnd}>
             <SortableContext
               items={tabs.map((t) => t.key)}
               strategy={horizontalListSortingStrategy}
@@ -905,6 +940,8 @@ export function TabBar() {
                   key={tab.key}
                   tab={tab}
                   isActive={tab.key === activeKey}
+                  nativeDragging={tab.key === nativeDraggedKey}
+                  arriving={tab.key === arrivingKey}
                   onActivate={() => handleActivateTab(tab.key)}
                   onClose={() => requestCloseTab(tab.key)}
                 />

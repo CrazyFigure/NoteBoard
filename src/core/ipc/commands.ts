@@ -44,6 +44,8 @@ import type {
   HistoryReadResult,
   HistoryUsage,
   HistoryCheckpointReason,
+  TabDragResult,
+  TabTransferTarget,
 } from './types';
 
 // ── 窗口（S04 打开队列 + 迁移协议） ──
@@ -107,12 +109,30 @@ export function beginDocumentTransfer(
   sourceLabel: string,
   doc: TransferredDocument,
   expectedRevision: number,
+  target?: TabTransferTarget,
 ): Promise<BeginTransferResponse> {
   return invoke<BeginTransferResponse>('begin_document_transfer', {
     sourceLabel,
     doc,
     expectedRevision,
+    targetLabel: target?.targetLabel ?? null,
+    position: target?.position ?? null,
   });
+}
+
+/** 原生系统拖放只传票据；正文继续通过迁移协议发送。 */
+export function startTabDrag(key: string, image: string, displayName: string): Promise<TabDragResult> {
+  return invoke<TabDragResult>('start_tab_drag', { key, image, displayName });
+}
+
+/** 判断并消费内部票据，避免把临时票据当作普通文件打开。 */
+export function claimTabDrop(paths: string[], beforeKey: string | null): Promise<boolean> {
+  return invoke<boolean>('claim_tab_drop', { paths, beforeKey });
+}
+
+/** 目标初始化或重载后补拉，避免丢失迁移唤醒事件。 */
+export function listIncomingTransfers(): Promise<string[]> {
+  return invoke<string[]>('list_incoming_transfers');
 }
 
 /** 目标窗口一次性拉取迁移载荷 */

@@ -79,6 +79,28 @@ describe('🔴 N09 外部正文修改核对链', () => {
     resetEditorRegistryForTest();
   });
 
+  it('迁移或保存后，磁盘 CRLF 与编辑器 LF 基线不误报外部修改', async () => {
+    seedOpenDocument('第一行\n第二行\n', '第一行\n第二行\n');
+    readDocumentMock.mockResolvedValue({ content: '第一行\r\n第二行\r\n' });
+    await recheckDocument(KEY);
+    expect(useDocumentStore.getState().getDocument(KEY)?.externalStatus).toBe('clean');
+    // 只忽略行尾编码差异，真实内容修改依然需要冲突确认。
+    readDocumentMock.mockResolvedValue({ content: '第一行\r\n外部修改\r\n' });
+    await recheckDocument(KEY);
+    expect(useDocumentStore.getState().getDocument(KEY)?.externalStatus).toBe('modified');
+  });
+
+  it('迁移保护期间不核对，交接结束后仍能检测真实外部修改', async () => {
+    seedOpenDocument('基线', '基线');
+    useWindowStore.getState().enterTransfer(KEY);
+    await recheckDocument(KEY);
+    expect(readDocumentMock).not.toHaveBeenCalled();
+    useWindowStore.getState().exitTransfer(KEY);
+    readDocumentMock.mockResolvedValue({ content: '外部修改' });
+    await recheckDocument(KEY);
+    expect(useDocumentStore.getState().getDocument(KEY)?.externalStatus).toBe('modified');
+  });
+
   it('外部修改同名文件（含等长替换）→ 核对后置 modified，自动保存被阻止', async () => {
     // 用户已打开：正文与基线一致（干净）
     seedOpenDocument('hello world', 'hello world');
