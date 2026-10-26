@@ -1,7 +1,7 @@
 // 各类文本编辑器共用缩进设置，避免 Markdown、源码及普通文本各自使用固定宽度。
 import { useSettingsStore } from '../../stores/settingsStore';
 
-/** 读取当前设置；宽度沿用设置界面的 1—8 范围，缺失或非法值回退到默认的 2。 */
+/** 读取当前设置；兼容历史配置的 1—8 范围，缺失或非法值回退到默认的 2。 */
 export function getEditorIndentation(): { tabSize: number; unit: string } {
   const settings = useSettingsStore.getState().settings.editor;
   const tabSize = Number.isFinite(settings.tabSize) && settings.tabSize > 0

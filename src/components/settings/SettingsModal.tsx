@@ -16,6 +16,7 @@ import { showToast } from '../../stores/toastStore';
 import { FontPackSettingsCard } from './FontPackSettingsCard';
 import { SettingsRange } from './SettingsRange';
 import { SettingsSelect } from './SettingsSelect';
+import { TabSizeSelect } from './TabSizeSelect';
 import { Tooltip } from '../Tooltip';
 import type { MarkdownNormalizationPolicy } from '../../core/ipc/types';
 import { IS_MOBILE_UI, IS_NATIVE_MOBILE, IS_WEB } from '../../core/platform';
@@ -1035,13 +1036,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <div>Tab 缩进宽度</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>每个 Tab 对应的空格数量</div>
                     </div>
-                    <input
-                      type="number"
-                      min="1"
-                      max="8"
+                    {/* 常用宽度使用下拉选择，旧配置中的其他宽度保留为自定义项。 */}
+                    <TabSizeSelect
                       value={settings.editor.tabSize}
-                      onChange={(e) => setEditor({ tabSize: parseInt(e.target.value, 10) || 2 })}
-                      style={{ ...inputStyle, width: 60, textAlign: 'center' }}
+                      onChange={(tabSize) => setEditor({ tabSize })}
                     />
                   </div>
 
