@@ -10,17 +10,20 @@ mod sync;
 #[path = "../../../src-tauri/src/app_dirs.rs"] mod app_dirs;
 
 // 文档历史记录：复用原生实现（不含依赖 Tauri 的命令层）
+// 路径写在内联模块上：子模块直接在真实目录下解析。若写在子模块上，会以不存在的 src/history/
+// 为起点拼接 ../，Linux 按物理路径解析 .. 会找不到文件（Windows 按字面折叠，本机无法发现）。
+#[path = "../../../src-tauri/src/history"]
 mod history {
-    #[path = "../../../../src-tauri/src/history/catalog.rs"] pub mod catalog;
-    #[path = "../../../../src-tauri/src/history/config.rs"] pub mod config;
-    #[path = "../../../../src-tauri/src/history/hooks.rs"] pub mod hooks;
-    #[path = "../../../../src-tauri/src/history/identity.rs"] pub mod identity;
-    #[path = "../../../../src-tauri/src/history/model.rs"] pub mod model;
-    #[path = "../../../../src-tauri/src/history/retention.rs"] pub mod retention;
-    #[path = "../../../../src-tauri/src/history/service.rs"] pub mod service;
-    #[path = "../../../../src-tauri/src/history/space.rs"] pub mod space;
-    #[path = "../../../../src-tauri/src/history/stats.rs"] pub mod stats;
-    #[path = "../../../../src-tauri/src/history/store.rs"] pub mod store;
+    pub mod catalog;
+    pub mod config;
+    pub mod hooks;
+    pub mod identity;
+    pub mod model;
+    pub mod retention;
+    pub mod service;
+    pub mod space;
+    pub mod stats;
+    pub mod store;
     pub fn now_ms() -> i64 { crate::sync::util::now_ms() }
 }
 
