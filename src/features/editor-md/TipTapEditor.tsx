@@ -205,9 +205,9 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     editor
       .chain()
       .setTextSelection({ from: clampedAnchor, to: clampedHead })
-      .scrollIntoView()
       .run();
-    // TipTap 的 contenteditable 与 EditorContent 包裹层都不自身滚动，滚动发生在外层 scroller
+    // 按保存的阅读位置恢复外层滚动，不滚动到可能已不在视口内的旧光标。
+    // TipTap 的 contenteditable 与 EditorContent 包裹层都不自身滚动，滚动发生在外层 scroller。
     const container = findVisualScrollContainer(editor.view.dom);
     if (container) container.scrollTop = scrollTop;
   }, [docKey]);
@@ -608,7 +608,8 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     emit('view-mode-changed', { key: docKey, mode: 'visual' });
     visualUndoDepthRef.current = prosemirrorUndoDepth(targetEditor.state);
     setTimeout(() => {
-      targetEditor.commands.focus();
+      // 初始化或模式切换只交还焦点，保留文首或已恢复的滚动位置；移动端仍由聚焦守卫控制键盘。
+      if (!targetEditor.isDestroyed) targetEditor.commands.focus(undefined, { scrollIntoView: false });
     }, 20);
   }, [docKey]);
 

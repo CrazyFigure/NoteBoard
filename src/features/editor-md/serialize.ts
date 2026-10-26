@@ -6,6 +6,7 @@
 // 不变式 I-14: 打开 → 切 visual → 切 source → tab 不出现脏圆点
 
 import type { Editor } from '@tiptap/core';
+import { Selection } from '@tiptap/pm/state';
 import { textWouldFormInlineMath } from './mathSyntax';
 import { beginRawSegmentSession, endRawSegmentSession, restoreRawSegments } from './rawMarkdownSegments';
 import { INVISIBLE_CHARACTER_ENTITIES, isDecodableEntitySuffix, usesInvisibleCharacterEntities } from './markdownHtmlEntities';
@@ -671,6 +672,7 @@ export function serializeMarkdown(editor: Editor): string {
 /**
  * 执行整篇内容同步，但永远不写入编辑器内核的局部历史。
  * 用户可见的撤销/重做由文件级统一时间线负责，初始化和模式同步都不允许伪造编辑步骤。
+ * 整篇替换后从文档开头建立合法选区，避免旧光标被映射到末尾；历史导航和视图恢复可随后覆盖。
  */
 function replaceEditorContent(
   editor: Editor,
@@ -680,6 +682,8 @@ function replaceEditorContent(
   replace
     .command(({ tr }) => {
       tr.setMeta('addToHistory', false);
+      // 与正文替换共用事务，兼容列表、图片等首块，三端聚焦时均不会误跳到文末。
+      tr.setSelection(Selection.atStart(tr.doc));
       return true;
     })
     .run();
