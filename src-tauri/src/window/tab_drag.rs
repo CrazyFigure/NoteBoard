@@ -214,8 +214,10 @@ pub async fn start_tab_drag(
     let sender = Arc::new(Mutex::new(Some(tx)));
     let callback_sender = sender.clone();
     let completion_app = app.clone();
-    // 原生拖放循环必须在 UI 线程；异步命令等待阻塞接收放到工作线程。
-    let scheduled = app.run_on_main_thread(move || {
+    // 原生拖放必须在 UI 线程；Windows 还要退出当前 Tao 回调，避免 OLE 嵌套循环缓存悬停事件。
+    #[cfg(target_os = "windows")]
+    let scheduling_error_sender = sender.clone();
+    let start = move || {
         let result = start_native(&window, path, bytes, move |cancelled, position| {
             // 从工作线程排回 UI 队列：先处理先前的原生 Drop，再结算落点，不靠固定等待时长猜测。
             if let Some(tx) = callback_sender.lock().unwrap().take() {
@@ -235,6 +237,17 @@ pub async fn start_tab_drag(
                 let _ = tx.send(Err(error));
             }
         }
+    };
+    let scheduled = app.run_on_main_thread(move || {
+        #[cfg(target_os = "windows")]
+        if let Err(error) = windows_dispatch::defer_start(start) {
+            if let Some(tx) = scheduling_error_sender.lock().unwrap().take() {
+                let _ = tx.send(Err(error));
+            }
+        }
+        // AppKit 创建异步拖放会话后立即返回；GTK 已延后到真实鼠标事件，不需要 Windows 调度。
+        #[cfg(not(target_os = "windows"))]
+        start();
     });
     let result = match scheduled {
         Ok(()) => {
@@ -323,6 +336,11 @@ fn primary_button_pressed() -> bool {
 mod linux;
 #[cfg(target_os = "linux")]
 use linux::start_native;
+
+// Windows 的 DoDragDrop 会同步运行消息循环，必须在 Tao 事件回调之外启动。
+#[cfg(target_os = "windows")]
+#[path = "tab_drag_windows.rs"]
+mod windows_dispatch;
 
 #[cfg(test)]
 mod tests {

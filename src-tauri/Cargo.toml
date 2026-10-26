@@ -73,3 +73,7 @@ windows-core = "0.61"
 webkit2gtk = { version = "2.0", features = ["v2_20"] }
 # 与 Tauri 使用同一 GTK 3 版本；原生标签拖放从 WebView 的真实鼠标事件发起。
 gtk = "0.18"
+
+[target.'cfg(target_os = "windows")'.dev-dependencies]
+# 与 Tauri 当前锁定的 Tao 版本共用依赖，回归 OLE 嵌套循环中的实时事件投递。
+tao = { version = "0.35", default-features = false, features = ["rwh_06"] }
