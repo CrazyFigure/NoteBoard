@@ -1,6 +1,6 @@
 {
   "name": "noteboard",
-  "version": "0.6.6",
+  "version": "0.6.7",
   "description": "Windows 桌面笔记 + 画板软件",
   "type": "module",
   "license": "AGPL-3.0-only",
