@@ -76,7 +76,8 @@ import { CALLOUT_PRESETS, CalloutPresetIcon, type CalloutPreset } from '../edito
 import { RAW_HTML_SOURCE_SNIPPET, insertRawHtmlContent } from '../editor-md/rawHtmlBlockView';
 import { insertWikiLinkInEditor, insertWikiLinkInSource } from '../wikilink/wikiLinkActions';
 import { InlineEmojiGrid, insertInlineEmoji } from '../editor-md/inlineEmoji';
-import { renderHighlightSource } from '../editor-md/markdownInlineMarks';
+import { renderHighlightSource, renderTextColorSource } from '../editor-md/markdownInlineMarks';
+import { TextColorGrid, TextColorIcon } from '../editor-md/formatPickers';
 // 🔴 S03：从 editor-md 边界内实例表获取内核实例（不再依赖编辑器组件文件的 getter 导出）
 import { getMdTipTapEditor as getActiveTipTapEditor, getMdSourceView as getActiveSourceView } from '../editor-md/editorInstances';
 import { emit } from '../../core/emitter';
@@ -165,6 +166,7 @@ export function MarkdownToolbar({
   const [headingDropdownOpen, setHeadingDropdownOpen] = useState(false);
   const [insertDropdownOpen, setInsertDropdownOpen] = useState(false);
   const [highlightDropdownOpen, setHighlightDropdownOpen] = useState(false);
+  const [textColorDropdownOpen, setTextColorDropdownOpen] = useState(false);
 
   // ── 获取当前标题状态 ──
   const currentHeadingLabel = useMemo(() => {
@@ -302,6 +304,29 @@ export function MarkdownToolbar({
     setHighlightDropdownOpen(false);
     if (!editor || isSourceMode) return;
     editor.chain().focus().unsetHighlight().run();
+  };
+
+  // ── 字体颜色操作 ──
+  const handleSelectTextColor = (color: string) => {
+    setTextColorDropdownOpen(false);
+    if (isSourceMode) {
+      executeSourceAction((view) => {
+        const { from, to } = view.state.selection.main;
+        const selText = view.state.sliceDoc(from, to);
+        // 与可视化模式序列化写法一致，切换模式时不触发规范化
+        const insert = renderTextColorSource(selText, color);
+        view.dispatch({ changes: { from, to, insert } });
+      });
+      return;
+    }
+    if (!editor) return;
+    editor.chain().focus().setMark('textColor', { color }).run();
+  };
+
+  const handleRemoveTextColor = () => {
+    setTextColorDropdownOpen(false);
+    if (!editor || isSourceMode) return;
+    editor.chain().focus().unsetMark('textColor').run();
   };
 
   // ── 插入元素处理 ──
@@ -634,13 +659,14 @@ export function MarkdownToolbar({
         } else {
           text = view.state.sliceDoc(from, to);
         }
-        // 清除行首块级语法（标题 #, 引用 >, 列表 -, 1.）及行内语法（加粗 **, 斜体 *, 删除线 ~~, 高亮 ==, 行内代码 `, 链接 [t](u)）
+        // 清除行首块级语法（标题 #, 引用 >, 列表 -, 1.）及行内语法（加粗 **, 斜体 *, 删除线 ~~, 高亮 ==, 字体颜色 <span>, 行内代码 `, 链接 [t](u)）
         const cleaned = text
           .replace(/^(#{1,6}\s+|>+\s*|[-*+]\s+(?:\[[ xX]\]\s+)?|\d+\.\s+)/gm, '')
           .replace(/(\*\*|__)(.*?)\1/g, '$2')
           .replace(/(\*|_)(.*?)\1/g, '$2')
           .replace(/(~~)(.*?)\1/g, '$2')
           .replace(/(==)(.*?)\1/g, '$2')
+          .replace(/<span style="color: [^"<>;]+">(.*?)<\/span>/g, '$1')
           .replace(/(`)(.*?)\1/g, '$2')
           .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
 
@@ -821,6 +847,28 @@ export function MarkdownToolbar({
         active={!isSourceMode && Boolean(editor?.isActive('code'))}
         onClick={() => toggleMark('code')}
       />
+
+      {/* ── 字体颜色与色板下拉（色条显示当前颜色） ── */}
+      <ToolbarDropdown
+        isOpen={textColorDropdownOpen}
+        onOpenChange={setTextColorDropdownOpen}
+        trigger={
+          <ToolbarButton
+            icon={<TextColorIcon color={isSourceMode ? null : editor?.getAttributes('textColor').color} size={15} />}
+            title="字体颜色"
+            hasDropdown
+            active={!isSourceMode && Boolean(editor?.isActive('textColor'))}
+          />
+        }
+      >
+        <div style={{ padding: '6px 4px', width: 176 }}>
+          <TextColorGrid
+            activeColor={isSourceMode ? null : editor?.getAttributes('textColor').color}
+            onSelect={handleSelectTextColor}
+            onClear={handleRemoveTextColor}
+          />
+        </div>
+      </ToolbarDropdown>
 
       {/* ── 文本高亮与调色盘下拉（二级调色盘） ── */}
       <ToolbarDropdown

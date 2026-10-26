@@ -2084,6 +2084,22 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   -webkit-box-decoration-break: clone;
 }
 
+/* 字体颜色：文件中保存原色值（内联 color）；菜单色样经 --nb-text-color 取色 */
+.nb-text-color-preview {
+  color: var(--nb-text-color);
+}
+
+/* 深色主题：中等明度的预设色在黑底上偏暗，显示时向白色提亮（不改动文件中的色值） */
+:root[data-theme="mo-ye"] .ProseMirror .nb-text-color,
+:root[data-theme="mo-ye"] .nb-text-color-preview {
+  color: color-mix(in srgb, var(--nb-text-color) 68%, #ffffff) !important;
+}
+
+/* 高亮底色始终是浅色，其中的彩色文字保持原色才清晰 */
+:root[data-theme="mo-ye"] .ProseMirror mark .nb-text-color {
+  color: var(--nb-text-color) !important;
+}
+
 /* 分割线 */
 .ProseMirror hr {
   height: 2px;

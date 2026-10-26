@@ -1,5 +1,5 @@
 // NoteBoard Markdown 编辑器右键双模上下文菜单
-// 1. 选中文本：浮现加粗、斜体、代码、多色高亮(二级菜单)、标题转换(H1~H6二级菜单)、转为代码块/提示块/高亮块/引用块/折叠块、复制剪切
+// 1. 选中文本：浮现缩进和对齐(二级菜单)、加粗、斜体、代码、字体颜色(二级菜单)、多色高亮(二级菜单)、标题转换(H1~H6二级菜单)、转为代码块/提示块/高亮块/引用块/折叠块、复制剪切
 // 2. 未选中文本：浮现标题(H1~H6二级菜单)、提示块(二级菜单)、高亮块(二级菜单)、列表(二级菜单)、代码块、引用块、折叠块、分栏(二级菜单)、表格(二级菜单)、公式与图表(二级菜单)、图片(二级菜单)、表情(二级面板)等
 // 详见 docs/07-UI布局与交互规范.md
 
@@ -20,6 +20,9 @@ import { DEFAULT_INFOGRAPHIC_CODE } from '../infographic/infographicTemplates';
 import { promptImageUrl, promptLinkUrl } from '../../components/promptPresets';
 import { useWindowStore } from '../../stores/windowStore';
 import { insertWikiLinkInEditor } from '../wikilink/wikiLinkActions';
+import { activeBlockAlign, canChangeBlockIndent, canSetBlockAlign, changeBlockIndent, setBlockAlign } from './blockFormat';
+import { ALIGN_OPTIONS, AlignIcon, INDENT_OPTIONS, TextColorIcon } from './formatPickers';
+import { TEXT_COLORS } from './markdownInlineMarks';
 import {
   Bold,
   Italic,
@@ -294,6 +297,26 @@ export function EditorContextMenu({
             <div style={dividerStyle} />
 
             {/* ── 文本格式化组 ── */}
+            {/* ── 缩进和对齐 (带对齐 / 缩进二级子菜单) ── */}
+            <button
+              type="button"
+              style={{
+                ...btnStyle,
+                background:
+                  activeSubmenu === 'selection-align'
+                    ? 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))'
+                    : 'transparent',
+              }}
+              onMouseEnter={(e) => handleOpenSubmenu('selection-align', e)}
+              onClick={(e) => handleOpenSubmenu('selection-align', e)}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <AlignIcon align={activeBlockAlign(editor)} size={15} />
+                <span>缩进和对齐</span>
+              </div>
+              <ChevronRight size={14} style={{ opacity: 0.6 }} />
+            </button>
+
             <button
               type="button"
               style={btnStyle}
@@ -389,6 +412,26 @@ export function EditorContextMenu({
               </div>
             </button>
 
+            {/* ── 字体颜色 (带颜色二级子菜单) ── */}
+            <button
+              type="button"
+              style={{
+                ...btnStyle,
+                background:
+                  activeSubmenu === 'selection-text-color'
+                    ? 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))'
+                    : 'transparent',
+              }}
+              onMouseEnter={(e) => handleOpenSubmenu('selection-text-color', e)}
+              onClick={(e) => handleOpenSubmenu('selection-text-color', e)}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <TextColorIcon color={editor.getAttributes('textColor').color} size={15} />
+                <span>字体颜色</span>
+              </div>
+              <ChevronRight size={14} style={{ opacity: 0.6 }} />
+            </button>
+
             {/* ── 文本高亮 (带多色二级子菜单) ── */}
             <button
               type="button"
@@ -404,7 +447,7 @@ export function EditorContextMenu({
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Highlighter size={15} color="#eab308" />
-                <span>文本高亮颜色</span>
+                <span>文本高亮</span>
               </div>
               <ChevronRight size={14} style={{ opacity: 0.6 }} />
             </button>
@@ -1003,6 +1046,123 @@ export function EditorContextMenu({
           }}
           onClick={(e) => e.stopPropagation()}
         >
+          {/* 二级：缩进和对齐（列表项、表格内不可对齐，缩进改为调整列表层级） */}
+          {activeSubmenu === 'selection-align' && (
+            <>
+              {ALIGN_OPTIONS.map(({ align, label, Icon }) => {
+                const alignable = canSetBlockAlign(editor);
+                const active = alignable && activeBlockAlign(editor) === align;
+                return (
+                  <button
+                    key={align}
+                    type="button"
+                    disabled={!alignable}
+                    style={{
+                      ...btnStyle,
+                      background: active ? 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))' : 'transparent',
+                      color: active ? 'var(--accent-500, #3b82f6)' : btnStyle.color,
+                      opacity: alignable ? 1 : 0.4,
+                      cursor: alignable ? 'pointer' : 'not-allowed',
+                    }}
+                    onClick={() => {
+                      // 设置选中段落 / 标题的对齐方式
+                      setBlockAlign(editor, align);
+                      onClose();
+                    }}
+                    onMouseEnter={(e) => {
+                      if (alignable && !active) e.currentTarget.style.background = 'var(--editor-hover-background, rgba(0, 0, 0, 0.06))';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!active) e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Icon size={15} />
+                      <span>{label}</span>
+                    </div>
+                  </button>
+                );
+              })}
+              <div style={dividerStyle} />
+              {INDENT_OPTIONS.map(({ delta, label, Icon }) => {
+                const enabled = canChangeBlockIndent(editor, delta);
+                return (
+                  <button
+                    key={delta}
+                    type="button"
+                    disabled={!enabled}
+                    style={{ ...btnStyle, opacity: enabled ? 1 : 0.4, cursor: enabled ? 'pointer' : 'not-allowed' }}
+                    onClick={() => {
+                      // 段落 / 标题调整缩进级别，列表项调整层级
+                      changeBlockIndent(editor, delta);
+                      onClose();
+                    }}
+                    onMouseEnter={(e) => {
+                      if (enabled) e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
+                    }}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Icon size={15} />
+                      <span>{label}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </>
+          )}
+
+          {/* 二级：字体颜色挑选 */}
+          {activeSubmenu === 'selection-text-color' && (
+            <>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--editor-text-secondary, #64748b)', padding: '4px 8px' }}>
+                选择字体颜色
+              </div>
+              {TEXT_COLORS.map((item) => (
+                <button
+                  key={item.color}
+                  type="button"
+                  style={btnStyle}
+                  onClick={() => {
+                    // 设置选中文字的颜色
+                    editor.chain().focus().setMark('textColor', { color: item.color }).run();
+                    onClose();
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {/* 色样与正文同样在深色主题下提亮 */}
+                    <span
+                      className="nb-text-color-preview"
+                      style={{ '--nb-text-color': item.color, width: 15, textAlign: 'center', fontWeight: 700 } as React.CSSProperties}
+                    >
+                      A
+                    </span>
+                    <span>{item.name}</span>
+                  </div>
+                </button>
+              ))}
+              <div style={dividerStyle} />
+              <button
+                type="button"
+                style={btnStyle}
+                onClick={() => {
+                  // 恢复默认文字颜色
+                  editor.chain().focus().unsetMark('textColor').run();
+                  onClose();
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--editor-text-secondary, #64748b)' }}>
+                  <X size={14} />
+                  <span>默认颜色</span>
+                </div>
+              </button>
+            </>
+          )}
+
           {/* 二级：高亮颜色挑选 */}
           {activeSubmenu === 'selection-highlight' && (
             <>

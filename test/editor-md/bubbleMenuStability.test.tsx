@@ -37,6 +37,8 @@ it('父组件重复渲染时 BubbleMenu 的事务配置引用应保持稳定', a
     view: { dom: editorDom },
     isActive: () => false,
     getAttributes: () => ({}),
+    // 缩进和对齐按钮渲染时读取选区内的段落（空文档即左对齐）
+    state: { selection: { from: 0, to: 0 }, doc: { nodesBetween: () => undefined } },
   } as unknown as Editor;
 
   const host = document.createElement('div');

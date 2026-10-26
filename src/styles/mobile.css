@@ -1168,6 +1168,13 @@ html[data-platform='mobile'] body {
   display: none !important;
 }
 
+/* 选中文字悬浮菜单：窄屏放不下一行时换行，不超出视口 */
+[data-platform='mobile'] .nb-bubble-menu {
+  flex-wrap: wrap;
+  max-width: calc(100vw - 16px);
+  row-gap: 2px;
+}
+
 /* 自绘右键菜单（长按触发）：限制在视口内 */
 [data-platform='mobile'] .nb-context-menu {
   max-width: calc(100vw - 16px);

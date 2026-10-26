@@ -76,8 +76,15 @@ describe('空行拆块合并：编辑器解析与往返', () => {
   });
 
   it('README 写法保持拆开，中间的 Markdown 仍是标题', () => {
+    const markdown = '<div align="center">\n\n# 标题\n\n段落\n\n</div>';
+    expect(topLevel(markdown).map((node) => node.type)).toEqual(['rawHtmlBlock', 'heading', 'paragraph', 'rawHtmlBlock']);
+    expect(serializeMarkdown(editor)).toBe(markdown);
+  });
+
+  it('只包裹一个标题的居中写法解析为居中标题', () => {
     const markdown = '<div align="center">\n\n# 标题\n\n</div>';
-    expect(topLevel(markdown).map((node) => node.type)).toEqual(['rawHtmlBlock', 'heading', 'rawHtmlBlock']);
+    expect(topLevel(markdown).map((node) => node.type)).toEqual(['heading']);
+    expect(editor.state.doc.firstChild?.attrs.textAlign).toBe('center');
     expect(serializeMarkdown(editor)).toBe(markdown);
   });
 

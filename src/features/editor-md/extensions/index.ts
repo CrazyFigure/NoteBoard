@@ -22,7 +22,8 @@ import { emitRawSegment } from '../rawMarkdownSegments';
 import { Link } from '@tiptap/extension-link';
 
 import { CodeBlockView } from '../codeBlockView';
-import { SafeMarkdownHighlight, SafeMarkdownUnderline } from '../markdownInlineMarks';
+import { SafeMarkdownHighlight, SafeMarkdownUnderline, TextColor } from '../markdownInlineMarks';
+import { BlockFormatSyntax, FormattedHeading, FormattedParagraph } from '../blockFormat';
 import { searchReplaceExtension } from '../searchReplace';
 import { MathInline, MathBlock } from '../katexExtensions';
 import { MermaidBlock } from '../mermaidExtension';
@@ -382,6 +383,9 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
       },
       // 改由 MarkdownLink 注册：需接管 `[![alt](src)](href)` 的解析
       link: false,
+      // 改由 FormattedParagraph / FormattedHeading 注册：承载对齐与缩进，序列化为 div 包裹写法
+      paragraph: false,
+      heading: false,
       dropcursor: {
         width: 2,
         color: 'var(--editor-accent)',
@@ -391,6 +395,10 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // 行内代码需允许与粗体/斜体共存，才能无损承载合法 Markdown 的嵌套结构
     MarkdownCompatibleCode,
+
+    // 段落与标题（支持对齐、缩进）
+    FormattedParagraph,
+    FormattedHeading,
 
     // 列表项（续段缩进与列表标记等宽）
     MarkdownListItem,
@@ -515,12 +523,17 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
     // 高亮块：只接管标准写法的 <div class="nb-callout">，同样须先于块级 HTML 原样保留注册
     CalloutBlock,
 
+    // 段落 / 标题的对齐与缩进：只接管标准写法的 <div align / style>，同样须先于块级 HTML 原样保留注册
+    BlockFormatSyntax,
+
     // 原样保留语法：front matter、脚注、块级 HTML（可视化中只读展示，保证往返不丢失）
     FrontMatterBlock,
     FootnoteDefinitionBlock,
     FootnoteReference,
     RawHtmlBlock,
     RawHtmlInline,
+    // 字体颜色：须排在行内 HTML 之后，让标准写法的 <span style="color"> 先被识别
+    TextColor,
 
     // 双向链接 `[[笔记]]`：原子节点逐字保留原文，输入 `[[` 弹出仓库笔记补全
     ...(options?.wikiLinks !== false

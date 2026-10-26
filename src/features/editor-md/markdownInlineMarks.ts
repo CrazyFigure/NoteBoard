@@ -7,10 +7,12 @@
 // 不限制定界符外侧字符，保证中文语境 `文字==高亮==文字` 仍可识别。
 // 多色高亮：`==x==` 只能表达默认黄色，其它颜色序列化为 `<mark style="background-color: …">x</mark>`，
 // 否则保存后重新解析（如规范化）会把颜色丢成默认黄色。
+// 字体颜色：Markdown 无对应语法，写作 `<span style="color: …">x</span>`（VS Code 预览、Typora 等可显示颜色，
+// GitHub 过滤 style 后退化为普通文字）；只接管该标准写法，其它 <span> 仍由行内 HTML 原样保留。
 
 import Underline from '@tiptap/extension-underline';
 import Highlight from '@tiptap/extension-highlight';
-import type { Attributes, MarkdownLexerConfiguration, MarkdownToken } from '@tiptap/core';
+import { Mark, mergeAttributes, type Attributes, type MarkdownLexerConfiguration, type MarkdownToken } from '@tiptap/core';
 
 const SAFE_UNDERLINE_PATTERN = /^\+\+(?!\s)([\s\S]*?\S)\+\+(?!\+)/;
 const SAFE_HIGHLIGHT_PATTERN = /^==(?!\s)([^=]*?[^=\s])==(?!=)/;
@@ -24,6 +26,10 @@ const BACKGROUND_SHORTHAND = /(?:^|;)\s*background\s*:\s*([^;]+?)\s*(?:;|$)/i;
 const COLORED_MARK_OPEN_PREFIX = '<mark style="background-color: ';
 const COLORED_MARK_OPEN_PATTERN = /^<mark style="background-color: ([^"<>;]+)">/;
 const COLORED_MARK_CLOSE = '</mark>';
+// 字体颜色的标准写法（与 renderMarkdown 输出一致）
+const TEXT_COLOR_OPEN_PREFIX = '<span style="color: ';
+const TEXT_COLOR_OPEN_PATTERN = /^<span style="color: ([^"<>;]+)">/;
+const TEXT_COLOR_CLOSE = '</span>';
 
 /** 按给定规则构造行内标记 token；不匹配时返回 undefined 让 marked 回退为普通文本。 */
 function tokenizeDelimited(
@@ -141,5 +147,103 @@ export const SafeMarkdownHighlight = Highlight.extend({
     },
     tokenize: (src, _tokens, lexer) =>
       tokenizeColoredMark(src, lexer) ?? tokenizeDelimited(SAFE_HIGHLIGHT_PATTERN, 'highlight', src, lexer),
+  },
+});
+
+/**
+ * 字体颜色预设：取中等明度的色值，浅色主题白底与深色主题黑底上都清晰可读
+ *（深色主题另在 globals.css 中提亮显示，文件中仍保存原色值）。
+ */
+export const TEXT_COLORS = [
+  { name: '红色', color: '#d44c47' },
+  { name: '橙色', color: '#d9730d' },
+  { name: '黄色', color: '#cb912f' },
+  { name: '绿色', color: '#448361' },
+  { name: '蓝色', color: '#337ea9' },
+  { name: '紫色', color: '#9065b0' },
+  { name: '粉色', color: '#c14c8a' },
+  { name: '灰色', color: '#787774' },
+];
+
+/** 字体颜色是否可写入 style 属性；非法值返回 null */
+function resolveTextColor(color: unknown): string | null {
+  if (typeof color !== 'string') return null;
+  const value = color.trim();
+  return value && SAFE_COLOR_VALUE.test(value) ? value : null;
+}
+
+/** 生成字体颜色的 Markdown 源码（源码模式工具栏与可视化序列化共用）；颜色非法时原样返回内容 */
+export function renderTextColorSource(content: string, color: unknown): string {
+  const value = resolveTextColor(color);
+  return value ? `${TEXT_COLOR_OPEN_PREFIX}${value}">${content}${TEXT_COLOR_CLOSE}` : content;
+}
+
+/**
+ * 识别标准写法 `<span style="color: X">…</span>`，内部按行内 Markdown 解析。
+ * 内容为空或含嵌套 <span> 时不处理，交给行内 HTML 原样保留，避免错配闭合标签。
+ */
+function tokenizeTextColor(src: string, lexer: MarkdownLexerConfiguration): MarkdownToken | undefined {
+  const open = TEXT_COLOR_OPEN_PATTERN.exec(src);
+  if (!open || !resolveTextColor(open[1]) || open[1] !== open[1].trim()) return undefined;
+  const rest = src.slice(open[0].length);
+  const closeIndex = rest.indexOf(TEXT_COLOR_CLOSE);
+  if (closeIndex <= 0 || /<span\b/i.test(rest.slice(0, closeIndex))) return undefined;
+  const innerContent = rest.slice(0, closeIndex);
+  return {
+    type: 'textColor',
+    raw: open[0] + innerContent + TEXT_COLOR_CLOSE,
+    text: innerContent,
+    color: open[1],
+    tokens: lexer.inlineTokens(innerContent),
+  };
+}
+
+/**
+ * 字体颜色标记。
+ * marked 后注册的行内 tokenizer 先执行，须注册在 RawHtmlInline 之后，才能先于行内 HTML 识别标准写法。
+ */
+export const TextColor = Mark.create({
+  name: 'textColor',
+
+  addAttributes() {
+    return {
+      color: {
+        default: null,
+        // 只从本编辑器输出的 data 属性还原：网页粘贴的文字颜色（含深色网页的白字）不带入文档
+        parseHTML: (element: HTMLElement) => resolveTextColor(element.getAttribute('data-text-color')),
+        renderHTML: () => ({}),
+      },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: 'span[data-text-color]' }];
+  },
+
+  // 颜色同时写入 CSS 变量，供深色主题在显示时提亮；粘贴到其它应用仍保留原色
+  renderHTML({ mark, HTMLAttributes }) {
+    const color = resolveTextColor(mark.attrs.color);
+    if (!color) return ['span', HTMLAttributes, 0];
+    return [
+      'span',
+      mergeAttributes(HTMLAttributes, {
+        'data-text-color': color,
+        class: 'nb-text-color',
+        style: `color: ${color}; --nb-text-color: ${color}`,
+      }),
+      0,
+    ];
+  },
+
+  renderMarkdown: (node, h) => renderTextColorSource(h.renderChildren(node), node.attrs?.color),
+  parseMarkdown: (token, h) => {
+    const color = resolveTextColor(token.color);
+    return h.applyMark('textColor', h.parseInline(token.tokens || []), color ? { color } : undefined);
+  },
+  markdownTokenizer: {
+    name: 'textColor',
+    level: 'inline',
+    start: (src: string) => src.indexOf(TEXT_COLOR_OPEN_PREFIX),
+    tokenize: (src, _tokens, lexer) => tokenizeTextColor(src, lexer),
   },
 });
