@@ -368,6 +368,11 @@ export async function subscribeTransferEvents(handlers: {
 
 /** 仅供测试：重置全部协调器状态 */
 export function resetBootCoordinatorForTest(): void {
+  // 重置状态时同步取消 ACK 退避任务并释放句柄，避免旧重试泄漏到下一个用例。
+  if (drainRetryTimer !== null) {
+    clearTimeout(drainRetryTimer);
+    drainRetryTimer = null;
+  }
   for (const unlisten of state.unlisteners) {
     try {
       unlisten();

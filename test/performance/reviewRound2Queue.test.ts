@@ -14,11 +14,19 @@ const boot = (consumerId: string) => ({ consumerId, startupMode: 'explicit-open'
 
 describe('二轮复审：队列失效分支', () => {
   beforeEach(() => {
+    // ACK 退避与后续重拉都由虚拟时钟驱动，测试必须覆盖完整重试周期。
+    vi.useFakeTimers();
     vi.resetAllMocks(); resetBootCoordinatorForTest();
     vi.mocked(events.onOpenRequestsAvailable).mockResolvedValue(() => {});
     vi.mocked(ipc.windowListenersReady).mockResolvedValue(boot('current'));
   });
-  afterEach(() => { resetBootCoordinatorForTest(); vi.restoreAllMocks(); });
+  afterEach(() => {
+    // 先作废协调器，再清理尚在等待的退避任务，防止用例结束后继续输出或消费队列。
+    resetBootCoordinatorForTest();
+    vi.clearAllTimers();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
 
   it.each(['reject', 'false'] as const)('B09：ACK 持续 %s 时单次 drain 不得反复执行同一请求', async mode => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -36,7 +44,17 @@ describe('二轮复审：队列失效分支', () => {
     setRequestProcessor(process);
     requestDrain();
     await settleMicrotasks();
+    await vi.advanceTimersByTimeAsync(400);
+    expect(ipc.ackOpenRequest).toHaveBeenCalledTimes(3);
+    expect(pages).toBe(1);
+    // 5 秒后的再次消费只能重试 ACK；持续失败也不能重复打开同一个请求。
+    await vi.advanceTimersByTimeAsync(5400);
+    expect(ipc.ackOpenRequest).toHaveBeenCalledTimes(6);
+    expect(pages).toBe(2);
     expect(process).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(1);
+    resetBootCoordinatorForTest();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('B10：旧挂载握手晚到不得覆盖新挂载 consumer', async () => {

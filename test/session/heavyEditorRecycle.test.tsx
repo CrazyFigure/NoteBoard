@@ -67,7 +67,7 @@ import { getEditorCapabilities, resetEditorRegistryForTest } from '@/core/editor
 import { suspendEditorInstance, takeViewState, saveViewState } from '@/features/session/editorSuspension';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useWindowStore } from '@/stores/windowStore';
-import { clearAllDocumentHistories } from '@/features/history/documentHistory';
+import { applyDocumentContentAsChange, clearAllDocumentHistories } from '@/features/history/documentHistory';
 
 /** 挂载宿主（返回 unmount；React act 环境） */
 function mount(node: React.ReactNode): { container: HTMLDivElement; root: Root } {
@@ -115,11 +115,14 @@ describe('🔴 S12 重型编辑器回收等价', () => {
       expect(capabilities).not.toBeNull();
       expect(capabilities!.canSuspend()).toBe(true);
 
-      // 2. 外部内容变更（store 驱动 rootNode 更新）→ flush 序列化与 store 一致
-      useDocumentStore.getState().setContent(key, serializeMindmapDocument(parseMindmapDocument('# 修改后的根')));
-      await act(async () => { await Promise.resolve(); });
+      // 2. 经真实历史适配器更新编辑器与镜像，不能只改 store 后让 flush 把旧树写回而误判通过。
+      const changedContent = serializeMindmapDocument(parseMindmapDocument('# 修改后的根'));
+      await act(async () => {
+        expect(applyDocumentContentAsChange(key, changedContent)).toBe(true);
+      });
       const captured = await capabilities!.flush('evict');
-      expect(captured?.content).toBe(useDocumentStore.getState().getDocument(key)?.content);
+      expect(captured?.content).toBe(changedContent);
+      expect(useDocumentStore.getState().getDocument(key)?.content).toBe(changedContent);
 
       // 3. 回收链：suspend → flush + captureViewState 保存
       const suspended = await suspendEditorInstance(key);

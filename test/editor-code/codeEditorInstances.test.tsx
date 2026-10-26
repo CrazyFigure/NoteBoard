@@ -158,7 +158,8 @@ describe('编辑器能力注册表（code 实例）', () => {
       const revB0 = capsB.getRevision();
 
       // 后台标签 B 也要能取到权威内容（不再依赖 activeKey 校验与滞后镜像）
-      useWindowStore.setState({ activeKey: KEY_A });
+      // 切换活动标签会驱动已挂载组件，须在 act 内提交并等待渲染。
+      act(() => useWindowStore.setState({ activeKey: KEY_A }));
       const docB = await syncDocumentContent(KEY_B);
       const docA = await syncDocumentContent(KEY_A);
       expect(docA?.content).toBe('{"a":1}');

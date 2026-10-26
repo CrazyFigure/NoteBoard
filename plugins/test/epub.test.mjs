@@ -84,7 +84,6 @@ test('目录、工具栏、正文翻章、书内链接、高亮和进度恢复�
   const container = document.createElement('div'); document.body.append(container);
   let destroy = await mount({ container, name:'test.epub', bytes, signal:signal.signal, notify() {} });
   const root = container.shadowRoot, body = () => root.querySelector('.np-epub-page').shadowRoot;
-  const page = () => root.querySelector('[aria-label="章节"]');
   const current = () => root.querySelector('.np-toc-item[aria-current=true]')?.textContent;
   try {
     assert.equal(root.querySelector('.np-muted').textContent, '/ 3 章');

@@ -26,6 +26,8 @@ describe('触屏捏合缩放', () => {
   let root: Root;
   beforeEach(() => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    // 捏合用例只验证指针与缩放语义；jsdom 无 2D 画布，使用组件已有的无画布回退。
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
     host = document.createElement('div');
     document.body.appendChild(host);
     root = createRoot(host);
@@ -33,6 +35,7 @@ describe('触屏捏合缩放', () => {
   afterEach(async () => {
     await act(async () => root.unmount());
     host.remove();
+    vi.restoreAllMocks();
   });
 
   const renderMindmap = async (onZoomChange: (zoom: number) => void) => {

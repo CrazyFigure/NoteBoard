@@ -19,7 +19,7 @@
     "lint": "eslint . --max-warnings 0",
     "test:unit": "vitest run",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "test:contract": "vitest run test/contract",
+    "test:contract": "vitest run test/core/editorRegistry.test.ts test/session test/window test/staging",
     "gate:budget": "node scripts/check-budget.mjs --check",
     "verify:ico": "node scripts/verify-ico.mjs"
   },

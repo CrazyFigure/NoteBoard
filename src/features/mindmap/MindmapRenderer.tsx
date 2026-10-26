@@ -13,8 +13,6 @@ import {
   Trash2,
   X,
   GripVertical,
-  Braces,
-  SquareDashed,
   Spline,
   Pencil,
 } from 'lucide-react';

@@ -2,7 +2,7 @@
 // 验证反斜杠字面量检索、替换以及无匹配时的高亮与选区重置
 // 以及"搜索不自动跳转、基于光标导航、首/末跳转"的交互语义
 
-import { describe, test, expect } from 'vitest';
+import { afterAll, beforeAll, describe, test, expect, vi } from 'vitest';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { search } from '@codemirror/search';
@@ -19,6 +19,12 @@ import {
   type SearchOptions,
 } from '@/features/search/searchController';
 import { searchReplaceExtension } from '@/features/editor-md/searchReplace';
+
+// jsdom 没有窗口滚动布局；搜索用例仅验证匹配与选区，结束后恢复原始接口。
+beforeAll(() => {
+  vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
+});
+afterAll(() => vi.restoreAllMocks());
 
 // JSDOM 环境下补全 Range 测量接口以支持 CodeMirror 6
 if (typeof Range !== 'undefined') {

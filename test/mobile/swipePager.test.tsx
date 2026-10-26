@@ -6,6 +6,9 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { SwipePager } from '../../src/mobile/SwipePager';
 
+// 明确启用 React 测试环境，避免已由 act 包裹的挂载和卸载产生环境警告。
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
 let container: HTMLDivElement;
 let root: Root;
 

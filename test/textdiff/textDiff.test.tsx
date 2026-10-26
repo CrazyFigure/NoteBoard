@@ -20,6 +20,9 @@ import { TooltipProvider } from '@/components/Tooltip';
 import { useWindowStore } from '@/stores/windowStore';
 import { useDocumentStore } from '@/stores/documentStore';
 
+// React 19 需要显式声明 act 环境，挂载和卸载产生的更新仍由各用例的 act 驱动。
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
 // jsdom 无布局：stub ResizeObserver（组件内已判空，stub 保证行为一致）
 class ResizeObserverStub {
   observe(): void { /* jsdom 无布局 */ }

@@ -50,26 +50,16 @@ function findSafeCutPoint(md: MarkdownIt, content: string, start: number, maxEnd
   pos = minEnd;
 
   while (pos < Math.min(start + MAX_SECTION_SIZE, maxEnd)) {
-    // 检查是否在代码围栏内
-    if (isInsideFence(content, pos)) {
-      pos++;
-      continue;
-    }
-
-    // 检查是否在表格内
-    if (isInsideTable(content, pos)) {
-      pos++;
-      continue;
-    }
-
-    // 检查是否在 frontmatter 内
-    if (isInsideFrontmatter(content, pos)) {
-      pos++;
-      continue;
-    }
-
-    // 检查是否是块级边界（空行后非空行开头），且不切开折叠块 <details> 与分栏块、高亮块
-    if (isBlockBoundary(content, pos) && !isInsideDetails(content, pos) && !isInsideDivBlock(content, pos)) {
+    // 只有空行后的非空行首才可能切段；先筛选候选边界，避免每个字符都重新扫描全文前缀。
+    // 候选点仍须通过围栏、表格、frontmatter 和容器块检查，保持原有安全切点规则。
+    if (
+      isBlockBoundary(content, pos)
+      && !isInsideFence(content, pos)
+      && !isInsideTable(content, pos)
+      && !isInsideFrontmatter(content, pos)
+      && !isInsideDetails(content, pos)
+      && !isInsideDivBlock(content, pos)
+    ) {
       return pos;
     }
 

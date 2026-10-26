@@ -162,12 +162,15 @@ describe('S08 协调器惰性挂载（内核替身）', () => {
     const { recordDocumentChange } = await import(
       '@/features/history/documentHistory'
     );
-    recordDocumentChange(KEY, EDITED, {
-      mode: 'source',
-      startsNewGroup: true,
-      selection: { anchor: 0, head: 0 },
+    // 历史与镜像更新都会通知已挂载组件，须先由 act 完成这次源码编辑。
+    act(() => {
+      recordDocumentChange(KEY, EDITED, {
+        mode: 'source',
+        startsNewGroup: true,
+        selection: { anchor: 0, head: 0 },
+      });
+      useDocumentStore.getState().setContent(KEY, EDITED);
     });
-    useDocumentStore.getState().setContent(KEY, EDITED);
     act(() => {
       emit('toggle-md-view-mode', { key: KEY, mode: 'visual' });
     });

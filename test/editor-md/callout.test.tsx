@@ -203,7 +203,12 @@ describe('大文档分段不切开高亮块', () => {
     const filler = Array.from({ length: 2400 }, (_, index) => `段落 ${index}`).join('\n\n');
     const inner = Array.from({ length: 1600 }, (_, index) => `内部 ${index}`).join('\n\n');
     const content = `${filler.slice(0, 20_000)}\n\n${callout(inner)}\n\ntail`;
-    for (const section of splitSections(content)) {
+    const sections = splitSections(content);
+    // 必须实际切段且逐字保留正文，不能通过返回单段绕过容器边界保护。
+    expect(sections).toHaveLength(2);
+    expect(sections[0].end).toBe(content.lastIndexOf('tail'));
+    expect(sections.map((section) => section.content).join('')).toBe(content);
+    for (const section of sections) {
       const opens = section.content.match(/<div[\s>]/g)?.length ?? 0;
       const closes = section.content.match(/<\/div>/g)?.length ?? 0;
       expect(opens).toBe(closes);

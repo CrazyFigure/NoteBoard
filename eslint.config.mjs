@@ -23,7 +23,7 @@ const nodeGlobals = {
 export default [
   {
     // 构建产物、依赖和 Rust 工程不属于前端 JavaScript 静态检查范围。
-    ignores: ['dist/**', 'plugins/dist/**', '**/node_modules/**', 'src-tauri/**', 'coverage/**', 'test-results/**', 'tools/**'],
+    ignores: ['dist/**', 'dist-web/**', 'plugins/dist/**', '**/node_modules/**', 'src-tauri/**', 'coverage/**', 'test-results/**', 'tools/**'],
   },
   {
     // JavaScript 配置和脚本使用 ESLint 核心推荐规则，并声明 Node 运行时全局变量。
@@ -37,6 +37,11 @@ export default [
   {
     // 官方查看器和工作台模块运行于浏览器，构建脚本继续使用 Node 全局。
     files: ['plugins/{shared,word,excel,powerpoint,pdf,cad,epub,workbench}/**/*.mjs'],
+    languageOptions: { globals: globals.browser },
+  },
+  {
+    // 插件测试在 Node 中通过 jsdom 提供浏览器接口，同时保留脚本的 Node 全局声明。
+    files: ['plugins/test/**/*.test.mjs'],
     languageOptions: { globals: globals.browser },
   },
   {
