@@ -320,8 +320,8 @@ function applyMarkdownCleanupCandidates(
   return output;
 }
 
-/** 仅记录源码写法、不影响文档语义的节点属性（codeBlock.sourceFence、table.markdownStyle） */
-const SOURCE_FORMAT_ATTRIBUTES = ['sourceFence', 'markdownStyle'];
+/** 仅记录源码写法、不影响文档语义的节点属性：围栏、表格风格与列表原始缩进。 */
+const SOURCE_FORMAT_ATTRIBUTES = ['sourceFence', 'markdownStyle', 'sourceIndent', 'sourceContinuationIndents', 'sourceLeadingIndent'];
 
 /** 深拷贝 JSON 并去掉源码写法属性 */
 function withoutSourceFormatAttributes(json: unknown): unknown {

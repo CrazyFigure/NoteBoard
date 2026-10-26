@@ -29,7 +29,7 @@ import { MarkdownNormalizeDialog } from './MarkdownNormalizeDialog';
 import {
   rememberNormalizationChoice,
   resolveNormalizationPolicy,
-  type NormalizationChoice,
+  type NormalizationDialogChoice,
 } from './markdownNormalization';
 import { useToastStore } from '../../stores/toastStore';
 import { judgeLargeDoc } from './largeDoc';
@@ -666,9 +666,14 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   }, [commitVisualMode, stayInSourceMode]);
 
   /** 规范化确认框的用户选择 */
-  const handleNormalizeChoice = useCallback((choice: NormalizationChoice, remember: boolean) => {
+  const handleNormalizeChoice = useCallback((choice: NormalizationDialogChoice, remember: boolean) => {
     const prompt = normalizePrompt;
     setNormalizePrompt(null);
+    if (choice === 'cancel') {
+      // 桌面、Web 与移动端共用关闭入口；已有修改仍走未保存保护，不强制丢弃内容。
+      useWindowStore.getState().requestCloseTab(docKey);
+      return;
+    }
     if (remember) rememberNormalizationChoice(docKey, choice);
     if (!prompt || choice !== 'normalize') {
       sourceViewRef.current?.focus();

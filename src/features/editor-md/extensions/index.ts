@@ -18,6 +18,7 @@ import { TableCell } from '@tiptap/extension-table';
 import { TableHeader } from '@tiptap/extension-table';
 import { Markdown } from '@tiptap/markdown';
 import { createIsolatedMarkdownParser } from '../markdownBlockStart';
+import { emitRawSegment } from '../rawMarkdownSegments';
 import { Link } from '@tiptap/extension-link';
 
 import { CodeBlockView } from '../codeBlockView';
@@ -172,7 +173,7 @@ const UnifiedDocumentHistoryKeys = Extension.create<{ docKey: string }>({
   },
 });
 
-import { EnhancedImageBlock, parseLinkedImageToken } from '../imageNodeView';
+import { EnhancedImageBlock, formatMarkdownDestination, parseLinkedImageToken } from '../imageNodeView';
 import { formatShortcut } from '../../../core/shortcuts';
 
 /**
@@ -255,14 +256,20 @@ const MarkdownTable = Table.extend({
 });
 
 /**
- * 列表项：续段与子列表缩进到列表标记之后的文字位置（`- ` 为 2 格，`1. ` 为 3 格，`10. ` 为 4 格）。
- * 官方实现统一缩进 2 格，CommonMark 要求有序列表项的续行至少缩进到编号宽度，
- * 否则在 GitHub 等标准渲染器中续段 / 子列表会脱离列表（NoteBoard 自身的解析器较宽松，看不出差异）。
+ * 列表项：已有内容沿用原缩进；新建续段与子列表默认对齐标记后的文字位置。
+ * 格式属性只控制源码写法，不能改变节点的父子关系或代码块内部的空白。
  */
 const MarkdownListItem = ListItem.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      sourceIndent: { default: null, rendered: false, keepOnSplit: false },
+      sourceContinuationIndents: { default: null, rendered: false, keepOnSplit: false },
+    };
+  },
   renderMarkdown(node, helpers, context) {
     const parentType = context?.parentType;
-    let prefix = '- ';
+    let prefix = node.type === 'taskItem' ? `- [${node.attrs?.checked ? 'x' : ' '}] ` : '- ';
     if (parentType === 'orderedList') {
       const parentAttrs = context?.meta?.parentAttrs as { start?: number; type?: string } | undefined;
       const index = (parentAttrs?.start || 1) - 1 + (context?.index || 0);
@@ -270,17 +277,37 @@ const MarkdownListItem = ListItem.extend({
     }
     const [first, ...rest] = node.content ?? [];
     if (!first) return prefix;
-    const childIndent = ' '.repeat(prefix.length);
-    let output = `${prefix}${helpers.renderChildren([first])}`;
+    // 新建任务子项沿用既有的两格默认；已有文档仍优先使用记录的缩进。
+    const defaultIndent = node.type === 'taskItem' ? 2 : prefix.length;
+    // 首段的软换行 / 硬换行仍属于当前列表项，不能在回写时退到文档顶层。
+    const continuation = node.attrs?.sourceContinuationIndents as string[] | null;
+    const firstContent = helpers.renderChildren([first]).split('\n').map((line, index) =>
+      index === 0 ? line : (continuation?.[index - 1] ?? ' '.repeat(defaultIndent)) + line,
+    ).join('\n');
+    let output = `${prefix}${firstContent}`;
     rest.forEach((child, index) => {
       const rendered = helpers.renderChild?.(child, index + 1) ?? helpers.renderChildren([child]);
       if (rendered === undefined || rendered === null) return;
+      const sourceIndents = node.attrs?.sourceIndent as Array<string | null> | null;
+      const childIndent = sourceIndents?.[index + 1] ?? ' '.repeat(defaultIndent);
       // 与官方实现一致：子块内部的空行同样带缩进，保证无序列表的输出与旧版逐字相同
       const indented = rendered.split('\n').map((line) => childIndent + line).join('\n');
       output += child.type === 'paragraph' ? `\n\n${indented}` : `\n${indented}`;
     });
     return output;
   },
+});
+
+/** 任务列表使用同一套原文缩进回写规则，避免子任务或普通子列表被统一压成两格。 */
+const MarkdownTaskItem = TaskItem.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      sourceIndent: { default: null, rendered: false, keepOnSplit: false },
+      sourceContinuationIndents: { default: null, rendered: false, keepOnSplit: false },
+    };
+  },
+  renderMarkdown: MarkdownListItem.config.renderMarkdown,
 });
 
 /**
@@ -296,6 +323,13 @@ const MarkdownLink = Link.extend({
       parent?: (token: MarkdownToken, helpers: MarkdownParseHelpers) => MarkdownParseResult;
     }).parent;
     return parentParse?.(token, helpers) ?? [];
+  },
+  renderMarkdown(node, helpers) {
+    // 地址和标题属于链接语法，不能被普通正文的实体还原 / 冗余转义清理改写。
+    const href = formatMarkdownDestination(String(node.attrs?.href ?? ''));
+    const title = String(node.attrs?.title ?? '');
+    const destination = title ? `${href} "${title.replace(/(["\\])/g, '\\$1')}"` : href;
+    return `[${helpers.renderChildren(node)}](${emitRawSegment(destination)})`;
   },
 });
 
@@ -383,6 +417,8 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
     // 链接（带链接的图片解析为带 href 的图片节点，其余与官方一致）
     MarkdownLink.configure({
       openOnClick: false,
+      // 盘符不是网络协议；各平台显示其他平台文档时也保留其本地地址，点击仍由应用接管。
+      isAllowedUri: (url, context) => /^[a-z]:[\\/]/i.test(url) || context.defaultValidate(url),
       HTMLAttributes: {
         rel: 'noopener noreferrer',
         target: null, // 🔴 必须为 null，绝不能设置 _blank，避免 WebView2 底层触发系统新窗口
@@ -423,7 +459,7 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // 任务列表（项间距：紧凑 / 宽松）
     MarkdownTaskList,
-    TaskItem.configure({
+    MarkdownTaskItem.configure({
       nested: true,
       HTMLAttributes: {
         'data-type': 'taskItem',

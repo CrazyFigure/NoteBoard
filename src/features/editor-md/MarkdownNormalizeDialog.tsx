@@ -1,6 +1,6 @@
 // NoteBoard Markdown 格式规范化确认框
 // 进入可视化模式前发现"解析→序列化"会改变原文时弹出：说明会改什么、可查看差异，
-// 由用户决定规范化并进入可视化，或保持源码模式（原文一字不改）。
+// 由用户决定规范化并进入可视化、保持源码模式，或取消打开（不记住策略）。
 
 import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { FileCode2, Wand2, ChevronDown, ChevronRight } from 'lucide-react';
@@ -8,7 +8,7 @@ import {
   computeNormalizationDiff,
   NORMALIZATION_CATEGORY_LABELS,
   NORMALIZATION_CATEGORY_REASONS,
-  type NormalizationChoice,
+  type NormalizationDialogChoice,
   type NormalizationDiff,
 } from './markdownNormalization';
 
@@ -18,18 +18,20 @@ function whitespaceMark(text: string): ReactNode {
 }
 
 /**
- * 差异文本中把"看不见"的空白显式标出：行尾空白与所有制表符，否则行尾空格类差异看起来像没改。
+ * 差异文本中把"看不见"的空白显式标出：行尾空白、制表符，以及缩进差异中的行首空白。
  * 行内普通空格保持原样，避免中英混排的正文被满屏圆点干扰阅读。
  */
-function renderVisibleWhitespace(text: string): ReactNode {
+function renderVisibleWhitespace(text: string, showIndent: boolean): ReactNode {
   if (text === '') return <span className="nb-md-normalize-empty">（无）</span>;
   return text.split('\n').map((line, index) => {
     const trailing = /[ \t]+$/.exec(line)?.[0] ?? '';
     const body = line.slice(0, line.length - trailing.length);
+    const leading = showIndent ? /^[ \t]+/.exec(body)?.[0] ?? '' : '';
     return (
       <Fragment key={index}>
         {index > 0 && '\n'}
-        {body.split('\t').map((part, partIndex) => (
+        {leading && whitespaceMark(leading)}
+        {body.slice(leading.length).split('\t').map((part, partIndex) => (
           <Fragment key={partIndex}>
             {partIndex > 0 && whitespaceMark('\t')}
             {part}
@@ -49,7 +51,7 @@ export interface MarkdownNormalizeDialogProps {
   /** 规范化后的文本 */
   normalized: string;
   /** 用户选择回调：remember 表示本次会话内对该文档记住选择 */
-  onChoose: (choice: NormalizationChoice, remember: boolean) => void;
+  onChoose: (choice: NormalizationDialogChoice, remember: boolean) => void;
 }
 
 export function MarkdownNormalizeDialog({ displayName, original, normalized, onChoose }: MarkdownNormalizeDialogProps) {
@@ -72,17 +74,18 @@ export function MarkdownNormalizeDialog({ displayName, original, normalized, onC
     };
   }, [original, normalized]);
 
-  // Esc 等同于"保持源码模式"（最安全的默认选择）
+  // Esc 与取消按钮一致，中止本次打开且不记住策略，避免意外接受打开或规范化。
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onChoose('source', remember);
+        event.stopImmediatePropagation();
+        onChoose('cancel', false);
       }
     };
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [onChoose, remember]);
+  }, [onChoose]);
 
   const totalChanges = diffResult?.categories.reduce((sum, item) => sum + item.count, 0) ?? 0;
 
@@ -98,7 +101,7 @@ export function MarkdownNormalizeDialog({ displayName, original, normalized, onC
 
         <p style={{ margin: '0 0 12px', fontSize: 13, lineHeight: 1.6, color: 'var(--editor-text-secondary)' }}>
           「{displayName}」中的部分 Markdown 写法在可视化编辑器中会以统一格式保存。
-          文档内容与渲染效果不变，但源码写法会被调整。
+          请查看差异后选择；保持源码模式可保留原文，取消则关闭此文档。
         </p>
 
         <div className="nb-md-normalize-summary">
@@ -140,8 +143,8 @@ export function MarkdownNormalizeDialog({ displayName, original, normalized, onC
                   第 {hunk.line} 行 · <span className="nb-md-normalize-hunk-category">{NORMALIZATION_CATEGORY_LABELS[hunk.category]}</span>
                   <span className="nb-md-normalize-hunk-reason">（{NORMALIZATION_CATEGORY_REASONS[hunk.category]}）</span>
                 </div>
-                <pre className="nb-md-normalize-before">{renderVisibleWhitespace(hunk.before)}</pre>
-                <pre className="nb-md-normalize-after">{renderVisibleWhitespace(hunk.after)}</pre>
+                <pre className="nb-md-normalize-before">{renderVisibleWhitespace(hunk.before, ['list-indent', 'whitespace'].includes(hunk.category))}</pre>
+                <pre className="nb-md-normalize-after">{renderVisibleWhitespace(hunk.after, ['list-indent', 'whitespace'].includes(hunk.category))}</pre>
               </div>
             ))}
             {totalChanges > diffResult.hunks.length && (
@@ -158,6 +161,15 @@ export function MarkdownNormalizeDialog({ displayName, original, normalized, onC
         </label>
 
         <div className="nb-md-normalize-actions">
+          {/* 取消不记住任何策略；关闭流程由宿主统一执行并保护未保存修改。 */}
+          <button
+            type="button"
+            className="nb-btn-secondary nb-md-normalize-cancel"
+            onClick={() => onChoose('cancel', false)}
+            style={{ padding: '6px 14px', fontSize: 13 }}
+          >
+            取消
+          </button>
           {/* 安全选项：保持源码模式，原文不做任何改动 */}
           <button
             type="button"

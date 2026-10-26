@@ -8,6 +8,9 @@ import type { MarkdownNormalizationPolicy } from '../../core/ipc/types';
 /** 用户在询问框中的选择：规范化进入可视化，或保持源码模式 */
 export type NormalizationChoice = 'normalize' | 'source';
 
+/** 取消只中止本次打开，不属于可记住的文档规范化策略。 */
+export type NormalizationDialogChoice = NormalizationChoice | 'cancel';
+
 // 会话内按文档记住的选择（关闭应用后失效，避免长期记忆造成"为何不再询问"的困惑）
 const rememberedChoices = new Map<string, NormalizationChoice>();
 
@@ -91,8 +94,8 @@ export const NORMALIZATION_CATEGORY_LABELS: Record<NormalizationCategory, string
 /** 每类规范化的理由：说明为什么可视化编辑器会这样写回 */
 export const NORMALIZATION_CATEGORY_REASONS: Record<NormalizationCategory, string> = {
   'trailing-whitespace': '解析时会丢弃',
-  'list-indent': '兼容 GitHub',
-  whitespace: '不影响显示',
+  'list-indent': '请核对列表层级',
+  whitespace: '请核对缩进与空行',
   entity: '显示不变',
   'list-marker': '写法等价',
   'list-number': '显示不变',
@@ -103,8 +106,8 @@ export const NORMALIZATION_CATEGORY_REASONS: Record<NormalizationCategory, strin
   table: '显示不变',
   link: '写法等价',
   'line-break': '写法等价',
-  escape: '显示不变',
-  other: '写法等价',
+  escape: '请核对字面字符',
+  other: '请核对差异',
 };
 
 export interface NormalizationDiff {

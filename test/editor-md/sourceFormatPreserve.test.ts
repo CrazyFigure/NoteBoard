@@ -2,6 +2,7 @@
 
 import { afterAll, describe, expect, it } from 'vitest';
 import { Editor } from '@tiptap/core';
+import type { JSONContent } from '@tiptap/core';
 import { buildExtensions } from '../../src/features/editor-md/extensions';
 import { parseMarkdown, serializeMarkdown } from '../../src/features/editor-md/serialize';
 import { detectTableMarkdownStyle, displayWidth } from '../../src/features/editor-md/markdownTable';
@@ -146,8 +147,101 @@ describe('有序列表续行缩进', () => {
     expect(roundTrip(markdown)).toBe(markdown);
   });
 
-  it('旧版 2 格缩进写回为与编号等宽', () => {
-    expect(roundTrip('1. a\n\n  b')).toBe('1. a\n\n   b');
+  it('已有的 2 格续段缩进保持原样', () => {
+    expect(roundTrip('1. a\n\n  b')).toBe('1. a\n\n  b');
+  });
+
+  it.each([
+    ['图中的两格子列表', '1. 给角色：\n  - `SERVER`\n  - `CALCULATE`\n2. 配置'],
+    ['两格有序子列表与三级列表', '1. a\n  1. b\n    1. c\n2. d'],
+    ['四格无序子列表', '- a\n    - b\n        - c'],
+    ['软换行续行', '1. a\n  b\n   c\n2. d'],
+    ['软续行与不同缩进的子列表', '1. a\n  b\n    - c\n    - d\n2. e'],
+    ['硬换行续行', '1. a  \n  b\n2. c'],
+    ['无序列表续行', '- a\n  b\n- c'],
+    ['制表符子列表', '1. a\n\t- b\n\t- c'],
+    ['无序列表的制表符子列表', '- a\n\t- b'],
+    ['整个列表的已有缩进', '  - a\n    - b'],
+    ['正文换行后的缩进', '首行\n  续行'],
+    ['列表内引用', '1. a\n   > b\n   > c\n2. d'],
+    ['任务列表内四格子列表', '- [ ] a\n    - b\n    - c'],
+    ['任务列表内四格子任务', '- [ ] a\n    - [x] b\n        - [ ] c'],
+    ['列表内围栏', '1. a\n   ```js\n   x\n   ```\n2. b'],
+    ['围栏内的编号属于代码', '1. a\n   ```text\n   1. code\n   2. code\n   ```\n2. b'],
+    ['代码内部与行尾空格', '1. a\n   ```py\n     x  \n   ```\n2. b'],
+  ])('%s 保留原文且多次往返稳定', (_name, markdown) => {
+    expect(roundTrip(markdown)).toBe(markdown);
+    expect(roundTrip(roundTrip(markdown))).toBe(markdown);
+  });
+
+  it('围栏代码中的编号不生成额外列表节点', () => {
+    roundTrip('1. a\n   ```text\n   1. code\n   2. code\n   ```\n2. b');
+    const firstItem = (editor.getJSON() as JSONContent).content?.[0].content?.[0];
+    expect(firstItem?.content?.map((node) => node.type)).toEqual(['paragraph', 'codeBlock']);
+    expect(firstItem?.content?.[1].content?.[0].text).toBe('1. code\n2. code');
+  });
+
+  it('编辑已有列表正文仍保留子列表缩进及层级', () => {
+    roundTrip('1. a\n  - b\n    - c\n2. d');
+    let textPos = 0;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.isText && node.text === 'b') textPos = pos;
+    });
+    editor.commands.insertContentAt({ from: textPos, to: textPos + 1 }, '修改后');
+    const markdown = '1. a\n  - 修改后\n    - c\n2. d';
+    expect(serializeMarkdown(editor)).toBe(markdown);
+    expect(roundTrip(markdown)).toBe(markdown);
+  });
+});
+
+describe('跨平台链接与图片地址', () => {
+  it.each([
+    String.raw`[backend](C:\Users\21573\.codex\guidelines\backend.md)`,
+    String.raw`[UNC](\\server\share\_notes\a.md)`,
+    String.raw`[相对](..\_notes\a.md)`,
+    String.raw`[当前目录](.\_notes\a.md)`,
+    '[POSIX](/home/user/.config/说明.md)',
+    '[Android](/storage/emulated/0/笔记/说明.md)',
+    '[iOS](/var/mobile/Documents/说明.md)',
+    '[相对](../笔记/说明.md)',
+    '[文件](file:///C:/Users/.config/a.md)',
+    '[空格](<../my notes/a.md>)',
+    '[括号](<../notes/a(b).md>)',
+    '[URL](https://example.com/?value=&amp;copy;)',
+    String.raw`[标题](https://example.com "say \"Hi\"")`,
+    String.raw`![图](C:\Users\.assets\_logo.png)`,
+    '![图](/storage/emulated/0/笔记/图片.png)',
+    String.raw`[![图](C:\Users\.assets\logo.png)](C:\notes\_readme.md)`,
+    String.raw`[普通转义](../some\(file\).md)`,
+  ])('%s 不丢失地址或改变含义', (markdown) => {
+    // 普通 Markdown 括号转义可改为尖括号包裹，但实际地址必须保持，二次往返需稳定。
+    const expected = markdown === String.raw`[普通转义](../some\(file\).md)`
+      ? '[普通转义](<../some(file).md>)' : markdown;
+    expect(roundTrip(markdown)).toBe(expected);
+    expect(roundTrip(expected)).toBe(expected);
+  });
+
+  it('引用式链接的 Windows 路径不丢字符', () => {
+    expect(roundTrip(String.raw`[ref][id]
+
+[id]: C:\Users\.codex\a.md`)).toBe(String.raw`[ref](C:\Users\.codex\a.md)`);
+  });
+
+  it.each([
+    [String.raw`[模糊相对](notes\_todo.md)`, '[模糊相对](notes_todo.md)'],
+    [String.raw`[POSIX 转义](../some\_file.md)`, '[POSIX 转义](../some_file.md)'],
+    [String.raw`[普通 URL](https://example.com/some\_file)`, '[普通 URL](https://example.com/some_file)'],
+  ])('按用户决定保留标准 Markdown 转义语义：%s', (markdown, expected) => {
+    expect(roundTrip(markdown)).toBe(expected);
+    expect(roundTrip(expected)).toBe(expected);
+  });
+
+  it('Windows 盘符链接在可视化 DOM 中保留实际 href', () => {
+    const href = String.raw`C:\Users\.codex\a.md`;
+    roundTrip(`[文件](${href})`);
+    const host = document.createElement('div');
+    host.innerHTML = editor.getHTML();
+    expect(host.querySelector('a')?.getAttribute('href')).toBe(href);
   });
 });
 

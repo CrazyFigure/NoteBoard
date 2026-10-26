@@ -1,9 +1,9 @@
-// NoteBoard 列表项间距（紧凑 / 宽松）
+// NoteBoard 列表原始缩进与项间距（紧凑 / 宽松）
 // Markdown 中列表项之间空一行即"宽松列表"：标准渲染器会把各项包进段落，项间距更大。
 // 官方序列化总是紧凑输出，宽松列表一进入可视化就被合并空行。这里在解析时记住原文写法，
 // 序列化时按记录写回，并在可视化编辑器中以更大的项间距呈现；用户可通过块把手菜单切换。
 
-import { BulletList, OrderedList, TaskList } from '@tiptap/extension-list';
+import { BulletList, OrderedList, TaskList, ORDERED_LIST_MARKER_PATTERN, parseListMarker } from '@tiptap/extension-list';
 import type {
   JSONContent,
   MarkdownLexerConfiguration,
@@ -12,6 +12,7 @@ import type {
   MarkdownRendererHelpers,
   MarkdownToken,
   MarkdownTokenizer,
+  RenderContext,
 } from '@tiptap/core';
 
 export type ListSpacing = 'tight' | 'loose';
@@ -44,6 +45,8 @@ export function detectListSpacing(raw: string): ListSpacing {
 /** 列表节点的项间距属性：可视化中以 data-spacing 呈现，支持从 HTML 粘贴还原 */
 function spacingAttribute() {
   return {
+    // 整个列表的原始前导空白只在容器外层补回，嵌套层由父列表项负责。
+    sourceLeadingIndent: { default: '', rendered: false },
     spacing: {
       default: 'tight' as ListSpacing,
       parseHTML: (element: HTMLElement): ListSpacing => (element.getAttribute('data-spacing') === 'loose' ? 'loose' : 'tight'),
@@ -58,19 +61,161 @@ function withSourceSpacing(parsed: MarkdownParseResult | undefined, token: Markd
   if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object' || !('type' in parsed)) return parsed ?? [];
   const spacing = typeof token.raw === 'string' ? detectListSpacing(token.raw) : 'tight';
   const node = parsed as JSONContent;
-  return { ...node, attrs: { ...node.attrs, spacing } };
+  const items = (token.items as MarkdownToken[] | undefined) ?? [];
+  // 任务分词器不提供 item.raw，按同级复选框边界从列表原文补回，嵌套任务不会误分组。
+  const taskRaws: string[] = [];
+  if (node.type === 'taskList' && typeof token.raw === 'string') {
+    const lines = token.raw.replace(/^(?:[ \t]*\n)+/, '').split('\n');
+    const base = TASK_ITEM_MARKER.exec(lines[0])?.[1].length;
+    for (const line of lines) {
+      if (TASK_ITEM_MARKER.exec(line)?.[1].length === base) taskRaws.push(line);
+      else if (taskRaws.length > 0) taskRaws[taskRaws.length - 1] += `\n${line}`;
+    }
+  }
+  return {
+    ...node,
+    attrs: { ...node.attrs, spacing, sourceLeadingIndent: /^[ \t]*/.exec(String(token.raw ?? '').replace(/^(?:[ \t]*\n)+/, ''))?.[0] ?? '' },
+    content: node.content?.map((item, index) => {
+      const source = items[index];
+      if (item.type !== 'taskItem' || !source) return withSourceItemIndent(item, source);
+      return withSourceItemIndent(item, {
+        ...source,
+        raw: taskRaws[index] ?? source.raw,
+        tokens: [
+          { type: 'paragraph', raw: String(source.mainContent ?? source.text ?? '') },
+          ...((source.nestedTokens as MarkdownToken[] | undefined) ?? []),
+        ],
+      });
+    }),
+  };
+}
+
+/**
+ * 将原列表项的容器缩进记录为格式属性，保留 2 / 3 / 4 格等已有写法。
+ * 按直接子块在原文中的起点记录，代码块内部缩进不计入容器宽度；
+ * 首段续行只记录解析时移除的前缀，额外的正文空白仍由文本节点保存。
+ */
+function withSourceItemIndent(node: JSONContent, token: MarkdownToken | undefined): JSONContent {
+  if (!token?.raw || !['listItem', 'taskItem'].includes(node.type ?? '')) return node;
+  const lines = token.raw.split('\n');
+  const marker = /^([ \t]*)(?:[-+*](?:[ \t]+\[[ xX]\])?|(?:\d+|[a-zA-Z]+)[.)])[ \t]+/.exec(lines[0]);
+  if (!marker) return node;
+  const base = marker[1].length;
+  const width = typeof token.sourceContentIndent === 'number' ? token.sourceContentIndent : marker[0].length - base;
+  const parts = (token.tokens ?? []).filter((part) => part.type !== 'space');
+  const continuation = (parts[0]?.raw ?? '').replace(/\n+$/, '').split('\n').slice(1).map((_, index) => {
+    const indent = /^[ \t]*/.exec(lines[index + 1] ?? '')?.[0] ?? '';
+    // 保存实际字符，制表符不能被当成一个空格再写回。
+    return indent.slice(base, base + width);
+  });
+  const indents: Array<string | null> = [null];
+  let cursor = 1;
+  for (const part of parts.slice(1)) {
+    const firstLine = (part.raw ?? '').split('\n').find((line) => line.trim() !== '')?.trimStart();
+    // 从上一个子块之后继续扫描，避免多段落列表反复从头查找而退化为平方复杂度。
+    let start = cursor;
+    while (start < lines.length && lines[start].trimStart() !== firstLine) start += 1;
+    if (firstLine === undefined || start >= lines.length) start = -1;
+    if (start < 0) {
+      // 单独收集的嵌套有序列表不包含在父 item.raw 中，使用其原始起点计算相对缩进。
+      const nestedIndent = /^[ \t]*/.exec(part.raw ?? '')?.[0] ?? '';
+      indents.push(part.type === 'list' && nestedIndent.length > base ? nestedIndent.slice(base) : null);
+      continue;
+    }
+    const indent = /^[ \t]*/.exec(lines[start])?.[0] ?? '';
+    // 缩进代码的额外 4 格属于代码语法；转换为围栏时不能当成列表容器缩进再次添加。
+    const codeIndent = part.type === 'code' && part.codeBlockStyle === 'indented' ? 4 : 0;
+    indents.push(indent.slice(base, Math.max(base, indent.length - codeIndent)));
+    cursor = start + 1;
+  }
+  return {
+    ...node,
+    attrs: { ...node.attrs, sourceIndent: indents, sourceContinuationIndents: continuation },
+  };
 }
 
 /** 按项间距连接各项：宽松列表项之间空一行 */
-function renderListItems(node: JSONContent, helpers: MarkdownRendererHelpers): string {
+function renderListItems(node: JSONContent, helpers: MarkdownRendererHelpers, context?: RenderContext): string {
   if (!node.content) return '';
-  return helpers.renderChildren(node.content, node.attrs?.spacing === 'loose' ? '\n\n' : '\n');
+  const rendered = helpers.renderChildren(node.content, node.attrs?.spacing === 'loose' ? '\n\n' : '\n');
+  const leading = String(node.attrs?.sourceLeadingIndent ?? '');
+  return leading && !['listItem', 'taskItem'].includes(context?.parentType ?? '')
+    ? rendered.split('\n').map((line) => leading + line).join('\n') : rendered;
 }
 
 type ParentParse = (token: MarkdownToken, helpers: MarkdownParseHelpers) => MarkdownParseResult;
 
 /** 有序列表入口沿用官方支持的数字/字母标记，仅提前排除普通正文，避免逐段拆分全文。 */
 const baseOrderedTokenizer = OrderedList.config.markdownTokenizer as MarkdownTokenizer | undefined;
+
+// 沿用数字、字母及罗马数字标记；标记后的空白是列表容器前缀的一部分。
+const ORDERED_ITEM = new RegExp(`^([ \\t]*)(${ORDERED_LIST_MARKER_PATTERN})[.)][ \\t]+(.*)$`);
+// 无缩进且可中断段落的块不能被当作当前列表项的懒续行。
+const LIST_PARAGRAPH_INTERRUPTER = /^(?:#{1,6}(?:\s|$)|[-+*](?:\s|$)|>|`{3,}|~{3,}|\$\$|(?:_[ \t]*){3,}$)/;
+
+/**
+ * 按列表项边界收集原文，再仅移除容器前缀后解析正文。
+ * 保留旧文档的两格子列表；围栏内的 `1.` / `a.` 是代码，不能另拆为列表；
+ * 正文不做 trim，防止代码首尾空白被吞掉。嵌套内容由同一块解析器递归处理。
+ */
+function tokenizeOrderedList(src: string, lexer: MarkdownLexerConfiguration): MarkdownToken | undefined {
+  const lines = src.split('\n');
+  const first = ORDERED_ITEM.exec(lines[0]);
+  if (!first) return undefined;
+  const base = first[1].length;
+  const items: MarkdownToken[] = [];
+  let cursor = 0;
+  while (cursor < lines.length) {
+    const marker = ORDERED_ITEM.exec(lines[cursor]);
+    if (!marker || marker[1].length !== base) break;
+    const start = cursor;
+    const prefixWidth = lines[cursor].length - marker[3].length;
+    let sawBlank = false;
+    let fence: { character: string; length: number } | null = null;
+    cursor += 1;
+    for (; cursor < lines.length; cursor += 1) {
+      const line = lines[cursor];
+      const leading = /^[ \t]*/.exec(line)?.[0].length ?? 0;
+      const body = line.slice(Math.min(leading, prefixWidth));
+      if (fence) {
+        const closing = /^ {0,3}(`+|~+)[ \t]*$/.exec(body)?.[1];
+        if (closing?.[0] === fence.character && closing.length >= fence.length) fence = null;
+        continue;
+      }
+      const next = ORDERED_ITEM.exec(line);
+      if (next && next[1].length <= base) break;
+      if (line.trim() === '') {
+        sawBlank = true;
+        continue;
+      }
+      if (leading <= base && (sawBlank || LIST_PARAGRAPH_INTERRUPTER.test(line.trimStart()))) break;
+      // 只在列表容器内识别围栏，反引号围栏的语言不能再含反引号。
+      const opening = leading > base ? /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(body) : null;
+      if (opening && (opening[1][0] === '~' || !opening[2].includes('`'))) {
+        fence = { character: opening[1][0], length: opening[1].length };
+      }
+    }
+    const rawLines = lines.slice(start, cursor);
+    // 旧文档的容器可能少于编号宽度：同一项各行必须移除相同前缀，不能逐行多减一格而压扁深层列表。
+    const bodyIndent = rawLines.slice(1).reduce((width, line) => {
+      if (!line.trim()) return width;
+      const leading = /^[ \t]*/.exec(line)?.[0].length ?? 0;
+      return leading > base ? Math.min(width, leading) : width;
+    }, prefixWidth);
+    const body = [marker[3], ...rawLines.slice(1).map((line) => {
+      const leading = /^[ \t]*/.exec(line)?.[0].length ?? 0;
+      return line.slice(Math.min(leading, bodyIndent));
+    })].join('\n').replace(/(?:\n[ \t]*)+$/, '');
+    const parts = lexer.blockTokens(body);
+    // schema 要求首块为段落，空项或以代码等块开头时显式补齐。
+    if (!parts[0] || !['paragraph', 'text'].includes(parts[0].type ?? '')) {
+      parts.unshift({ type: 'paragraph', raw: '', tokens: [] });
+    }
+    items.push({ type: 'list_item', raw: rawLines.join('\n'), tokens: parts, sourceContentIndent: bodyIndent - base });
+  }
+  const marker = parseListMarker(first[2]);
+  return { type: 'list', ordered: true, start: marker.start, typeMarker: marker.type, items, raw: lines.slice(0, cursor).join('\n') };
+}
 
 export const MarkdownBulletList = BulletList.extend({
   addAttributes() {
@@ -87,9 +232,9 @@ export const MarkdownOrderedList = OrderedList.extend({
   markdownTokenizer: baseOrderedTokenizer ? {
     ...baseOrderedTokenizer,
     tokenize(src, tokens, lexer) {
-      // 空白前缀与标记规则须覆盖官方字母、罗马数字列表，实际解析仍交给原 tokenizer。
+      // 普通正文快速排除，避免为每个段落反复拆分剩余全文。
       if (!/^\s*(?:\d+|[a-zA-Z]+)[.)](?:[ \t]|$)/.test(src)) return undefined;
-      return baseOrderedTokenizer.tokenize.call(this, src, tokens, lexer);
+      return tokenizeOrderedList(src, lexer);
     },
   } : undefined,
   addAttributes() {

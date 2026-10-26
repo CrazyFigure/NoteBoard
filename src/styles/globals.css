@@ -4459,6 +4459,22 @@ button.nb-callout-icon:active {
   gap: 8px;
   margin-top: 16px;
 }
+/* 桌面取消位于最左侧；窄窗口与手机一致，主操作在上、取消在下，避免三按钮挤出屏幕。 */
+.nb-md-normalize-cancel {
+  margin-right: auto;
+}
+@media (max-width: 480px) {
+  .nb-md-normalize-actions {
+    flex-direction: column-reverse;
+  }
+  .nb-md-normalize-actions button {
+    justify-content: center;
+    min-height: 44px;
+  }
+  .nb-md-normalize-cancel {
+    margin-right: 0;
+  }
+}
 
 /* prefers-reduced-motion */
 @media (prefers-reduced-motion: reduce) {

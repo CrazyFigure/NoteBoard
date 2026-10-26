@@ -1146,6 +1146,11 @@ html[data-platform='mobile'] body {
   min-height: 44px;
 }
 
+/* 平板也使用底部操作列，取消按钮与其他按钮等宽。 */
+[data-platform='mobile'] .nb-md-normalize-cancel {
+  margin-right: 0;
+}
+
 /* 编辑器内容：手机屏幕上收窄页边距、适度放大正文 */
 [data-platform='mobile'] .ProseMirror {
   padding-left: 16px !important;

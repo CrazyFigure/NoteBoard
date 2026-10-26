@@ -1,12 +1,47 @@
 // 特殊块起点按一次块解析建立索引，避免每个普通段落重复扫描剩余全文。
-import { Marked, type marked, type Token, type TokensList } from 'marked';
+import { Marked, Tokenizer, type marked, type Token, type TokensList } from 'marked';
 
 interface BlockContext { source: string; positions: Map<RegExp, number[]> }
 const contexts = new WeakMap<object, BlockContext>();
 
+/**
+ * Windows 本地地址中的反斜杠是路径分隔符，不能按 Markdown 标点转义吞掉。
+ * 识别规则与宿主系统无关：其他平台打开 Windows 文档时也必须完整保留地址；
+ * 用户确认：模糊相对地址仍遵循 Markdown 转义，只有盘符、UNC、file 和点号前缀等明确写法保留。
+ */
+function preserveLocalDestination(raw: string | undefined, parsed: string): string {
+  if (raw === undefined) return parsed;
+  const destination = raw.startsWith('<') && raw.endsWith('>') ? raw.slice(1, -1) : raw;
+  const isWindowsPath = /^[a-z]:[\\/]/i.test(destination)
+    || /^\\\\/.test(destination)
+    || /^file:.*\\/i.test(destination)
+    || /^\.{1,2}\\/.test(destination);
+  return isWindowsPath ? destination : parsed;
+}
+
 /** 独立解析器及嵌套块上下文；Marked 的 start 回调接收当前块原文的剩余后缀。 */
 export function createIsolatedMarkdownParser(): typeof marked {
   const instance = new Marked();
+  // 在链接 / 图片及引用定义的共同分词入口修复地址，避免各节点各自补救已丢失的字符。
+  instance.use({
+    tokenizer: {
+      link(source) {
+        const token = Tokenizer.prototype.link.call(this, source);
+        if (!token) return false;
+        // 用已经通过原分词器校验、截断的 raw 再提取地址，沿用其嵌套括号与标题规则。
+        const raw = this.rules.inline.link.exec(token.raw)?.[2]?.trim();
+        token.href = preserveLocalDestination(raw, token.href);
+        return token;
+      },
+      def(source) {
+        const token = Tokenizer.prototype.def.call(this, source);
+        if (!token) return false;
+        const raw = this.rules.block.def.exec(token.raw)?.[2]?.trim();
+        token.href = preserveLocalDestination(raw, token.href);
+        return token;
+      },
+    },
+  });
   const BaseLexer = instance.Lexer;
   class IndexedLexer<ParserOutput = string, RendererOutput = string> extends BaseLexer<ParserOutput, RendererOutput> {
     // 保留 Marked 的两种重载及泛型，普通 token 数组和带 links 的根列表都按原类型返回。

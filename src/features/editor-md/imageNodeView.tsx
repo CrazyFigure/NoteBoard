@@ -28,6 +28,7 @@ import { useExplorerStore } from '../explorer/explorerStore';
 import { handleLinkClick, isAbsoluteLocalPath, resolveRelativeDocPath } from './linkHandler';
 import { openDocument } from '../editor-code/orchestration/openDocument';
 import { Tooltip } from '../../components/Tooltip';
+import { emitRawSegment } from './rawMarkdownSegments';
 
 /** 大图预览 Lightbox 模态框组件 */
 function ImageLightboxModal({
@@ -685,8 +686,8 @@ function escapeHtmlAttribute(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
-/** Markdown 图片地址：含空白、括号或尖括号时用 <...> 包裹，避免链接目标被截断。 */
-function formatImageDestination(src: string): string {
+/** Markdown 链接 / 图片地址：含空白、括号或尖括号时用 <...> 包裹，避免目标被截断。 */
+export function formatMarkdownDestination(src: string): string {
   if (!/[\s()<>]/.test(src)) return src;
   return `<${src.replace(/[<>]/g, (character) => encodeURIComponent(character))}>`;
 }
@@ -713,7 +714,7 @@ export function renderImageMarkdown(attrs: Record<string, unknown>): string {
 
   // alt 中的方括号需转义（反斜杠保持原样，避免 Windows 路径类文本被翻倍）；title 中的双引号需转义
   const safeAlt = alt.replace(/([[\]])/g, '\\$1');
-  const destination = formatImageDestination(src);
+  const destination = formatMarkdownDestination(src);
   return title
     ? `![${safeAlt}](${destination} "${title.replace(/(["\\])/g, '\\$1')}")`
     : `![${safeAlt}](${destination})`;
@@ -724,7 +725,7 @@ function wrapImageLink(image: string, attrs: Record<string, unknown>): string {
   const href = typeof attrs.href === 'string' ? attrs.href : '';
   if (!href) return image;
   const linkTitle = typeof attrs.linkTitle === 'string' ? attrs.linkTitle : '';
-  const destination = formatImageDestination(href);
+  const destination = formatMarkdownDestination(href);
   return linkTitle
     ? `[${image}](${destination} "${linkTitle.replace(/(["\\])/g, '\\$1')}")`
     : `[${image}](${destination})`;
@@ -822,7 +823,8 @@ export const EnhancedImageBlock = Node.create({
     });
   },
 
-  renderMarkdown: (node) => wrapImageLink(renderImageMarkdown(node.attrs ?? {}), node.attrs ?? {}),
+  // 图片地址、替代文字和标题已按各自语法转义，全文正文清理不得再次解释它们。
+  renderMarkdown: (node) => emitRawSegment(wrapImageLink(renderImageMarkdown(node.attrs ?? {}), node.attrs ?? {})),
 
   addNodeView() {
     return ReactNodeViewRenderer(ImageComponent);
