@@ -109,11 +109,9 @@ export function SyncPanel() {
 
   return (
     <div className="nb-sync-panel">
+      {/* 页级仅保留标题，同步与备份的具体规则由设置项说明。 */}
       <div>
         <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>同步与备份</h3>
-        <p style={{ fontSize: 12, color: 'var(--editor-text-muted)', margin: 0 }}>
-          在多台电脑和手机之间双向同步一个文件夹，并定期把它备份到本地或云端。
-        </p>
       </div>
       <SyncSection draft={draft} update={update} flush={flush} />
       <ProviderSection draft={draft} update={update} />

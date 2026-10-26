@@ -195,7 +195,7 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--outline-bg)' }}>
-      {/* 大纲标题栏 */}
+      {/* 大纲标题栏仅保留页签，不展示条目数量。 */}
       <div
         style={{
           height: 28,
@@ -229,11 +229,6 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
             反向链接
           </button>
         </div>
-        {tab === 'outline' && (
-          <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>
-            {headings.length} 项
-          </span>
-        )}
       </div>
 
       {tab === 'backlinks' && (

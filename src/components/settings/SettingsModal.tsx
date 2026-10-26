@@ -287,14 +287,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
           {/* 右侧设置面板 */}
           <div ref={contentRef} className="nb-settings-content" style={{ flex: 1, padding: '24px 30px', overflowY: 'auto' }}>
-            {/* 1. 外观主题 */}
+            {/* 1. 外观主题：页级仅保留标题，主题卡片继续展示配色说明。 */}
             {activeTab === 'appearance' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
                 <div>
                   <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>主题配色方案</h3>
-                  <p style={{ fontSize: 12, color: 'var(--editor-text-muted)', margin: 0 }}>
-                    精心设计的经典配色，针对 Markdown 代码块与行内代码深度调优。
-                  </p>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
@@ -346,14 +343,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </div>
             )}
 
-            {/* 2. 排版与字体 */}
+            {/* 2. 排版与字体：页级仅保留标题，具体排版规则由设置项说明。 */}
             {activeTab === 'typography' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                 <div>
                   <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>排版参数自定义</h3>
-                  <p style={{ fontSize: 12, color: 'var(--editor-text-muted)', margin: 0 }}>
-                    独立配置软件界面、Markdown 正文、代码与纯文本以及文件树的排版与版心宽度参数。
-                  </p>
                 </div>
 
                 {/* 应用字体包独立于安装包，设置页提供下载、修复、导入和删除的长期入口。 */}
@@ -941,14 +935,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </div>
             )}
 
-            {/* 3. 编辑器配置 */}
+            {/* 3. 编辑器配置：页级仅保留标题，具体编辑行为由设置项说明。 */}
             {activeTab === 'editor' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                 <div>
                   <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>编辑器与代码设置</h3>
-                  <p style={{ fontSize: 12, color: 'var(--editor-text-muted)', margin: 0 }}>
-                    配置纯文本、SQL、JSON 等代码编辑器的显示效果及 Markdown 增强选项。
-                  </p>
                 </div>
 
                 {/* ── 3.1 代码与纯文本展示 ── */}
@@ -1210,14 +1201,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </div>
             )}
 
-            {/* 4. 文件与保存设置 */}
+            {/* 4. 文件与保存设置：页级仅保留标题，保留保存策略等操作提示。 */}
             {activeTab === 'file' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                 <div>
                   <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>文件与保存设置</h3>
-                  <p style={{ fontSize: 12, color: 'var(--editor-text-muted)', margin: 0 }}>
-                    按文件类型独立配置自动保存策略，以及本地文件管理选项。
-                  </p>
                 </div>
 
                 {/* ── 4.1 自动保存设置 ── */}
@@ -1430,14 +1418,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             {activeTab === 'history' && <HistorySettingsPanel />}
             {activeTab === 'plugins' && <PluginsPanel target={settingsTarget} />}
 
-            {/* 全局：窗口与托盘等系统集成选项（仅原生桌面端） */}
+            {/* 全局：仅原生桌面端展示，页级仅保留标题，托盘行为由设置项说明。 */}
             {activeTab === 'general' && SUPPORTS_SYSTEM_INTEGRATION && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                 <div>
                   <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>全局设置</h3>
-                  <p style={{ fontSize: 12, color: 'var(--editor-text-muted)', margin: 0 }}>
-                    窗口行为与系统托盘等应用级选项。
-                  </p>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
@@ -1462,14 +1447,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </div>
             )}
 
-            {/* 6. 快捷键指南 */}
+            {/* 6. 快捷键指南：页级仅保留标题，具体操作说明保留在快捷键条目中。 */}
             {activeTab === 'shortcuts' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                 <div>
                   <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>快捷键一览</h3>
-                  <p style={{ fontSize: 12, color: 'var(--editor-text-muted)', margin: 0 }}>
-                    支持选中文本局部操作或全文操作，兼容 VS Code 与 JetBrains 常用快捷键。
-                  </p>
                 </div>
 
                 {/* JSON 与代码快捷操作 */}
