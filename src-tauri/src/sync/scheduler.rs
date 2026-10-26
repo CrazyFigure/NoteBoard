@@ -11,7 +11,7 @@ use super::backup;
 use super::config::{self, SyncConfigFile};
 use super::engine;
 use super::state;
-use super::types::{BackupReport, LocalChange, SyncStatus};
+use super::types::{BackupReport, LocalChange, SyncStatus, SyncUpdateConfirmation};
 use super::util::now_ms;
 use serde::Serialize;
 use std::collections::VecDeque;
@@ -34,6 +34,56 @@ pub enum Job {
     RestoreToRoot { name: String, reply: std::sync::mpsc::Sender<Result<String, String>> },
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Events;
+    impl EventSink for Events { fn emit_json(&self, _: &str, _: serde_json::Value) {} }
+
+    /// 不启动后台线程，直接验证任务选择与跨窗口一次性决定，避免触碰实际账号。
+    fn pending_scheduler() -> Scheduler {
+        let mut config = SyncConfigFile::default();
+        config.sync.enabled = true;
+        config.sync.root_dir = "test-root".into();
+        let status = SyncStatus { update_confirmation: Some(SyncUpdateConfirmation { id: "pending".into(), files: Vec::new() }), ..Default::default() };
+        Scheduler { app: Arc::new(Events), cv: Condvar::new(), inner: Mutex::new(Inner {
+            sync_paused: true, approved_updates: Vec::new(), config, status,
+            pending_sync: None, startup_at: Some(0), change_first: Some(0), change_deadline: Some(0), retry_at: Some(0), retry_count: 0,
+            next_interval: 0, pending_backup: None, backup_retry_at: 0, jobs: VecDeque::new(),
+        }) }
+    }
+
+    #[test]
+    fn pending_or_cancelled_updates_block_every_automatic_sync_trigger() {
+        let scheduler = pending_scheduler();
+        scheduler.request_sync("manual");
+        assert!(scheduler.take_due(&mut scheduler.lock(), now_ms()).is_none());
+        scheduler.resolve_updates("pending", false).unwrap();
+        scheduler.notify_change();
+        assert!(scheduler.status().sync_paused);
+        assert!(scheduler.take_due(&mut scheduler.lock(), now_ms()).is_none());
+        scheduler.request_sync("manual");
+        assert!(matches!(scheduler.take_due(&mut scheduler.lock(), now_ms()), Some(Task::Sync(_))));
+    }
+
+    #[test]
+    fn confirmation_is_single_use_and_configuration_changes_invalidate_it() {
+        let scheduler = pending_scheduler();
+        assert!(scheduler.resolve_updates("stale-window", true).is_err());
+        scheduler.resolve_updates("pending", true).unwrap();
+        assert!(scheduler.resolve_updates("pending", true).is_err());
+        assert!(!scheduler.status().sync_paused);
+        assert!(matches!(scheduler.take_due(&mut scheduler.lock(), now_ms()), Some(Task::Sync(_))));
+        let scheduler = pending_scheduler();
+        let mut config = scheduler.lock().config.clone();
+        config.sync.provider.webdav.password = "changed".into();
+        scheduler.set_config(config);
+        assert!(scheduler.status().update_confirmation.is_none());
+        assert!(scheduler.resolve_updates("pending", true).is_err());
+    }
+}
+
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct ReportEvent<'a, T: Serialize> {
@@ -50,6 +100,10 @@ struct AppliedEvent<'a> {
 }
 
 struct Inner {
+    /// 等待确认或用户取消后暂停自动同步；手动同步或切换目标才重新检查。
+    sync_paused: bool,
+    /// 一次性授权的内容指纹，取出执行后立即清空。
+    approved_updates: Vec<String>,
     config: SyncConfigFile,
     status: SyncStatus,
     pending_sync: Option<String>,
@@ -94,6 +148,8 @@ pub fn init(app: impl EventSink) {
     let st = state::snapshot();
     let now = now_ms();
     let inner = Inner {
+        sync_paused: false,
+        approved_updates: Vec::new(),
         startup_at: if cfg.sync.enabled && cfg.sync.sync_on_startup { Some(now + STARTUP_DELAY_MS) } else { None },
         next_interval: now + interval_ms(&cfg),
         status: SyncStatus { last_sync: st.last_sync.clone(), last_backup: st.last_backup.clone(), ..Default::default() },
@@ -153,7 +209,7 @@ impl Scheduler {
         if let Some(job) = g.jobs.pop_front() {
             return Some(Task::Job(job));
         }
-        let ready = Self::sync_ready(&g.config);
+        let ready = Self::sync_ready(&g.config) && !g.sync_paused;
         if let Some(t) = g.pending_sync.take() {
             if ready {
                 return Some(Task::Sync(t));
@@ -196,7 +252,7 @@ impl Scheduler {
     /// 距下一个定时事件的等待时长
     fn wait_for(&self, g: &Inner, now: i64) -> Duration {
         let mut next = now + 60_000;
-        let ready = Self::sync_ready(&g.config);
+        let ready = Self::sync_ready(&g.config) && !g.sync_paused;
         if ready {
             for t in [g.startup_at, g.change_deadline, g.retry_at].into_iter().flatten() {
                 next = next.min(t);
@@ -237,7 +293,8 @@ impl Scheduler {
         let status = {
             let g = self.lock();
             let mut s = g.status.clone();
-            s.next_sync_at = if Self::sync_ready(&g.config) && g.config.sync.interval_enabled { g.next_interval } else { 0 };
+            s.sync_paused = g.sync_paused;
+            s.next_sync_at = if Self::sync_ready(&g.config) && !g.sync_paused && g.config.sync.interval_enabled { g.next_interval } else { 0 };
             s.next_backup_at = Self::next_backup_at(&g);
             s
         };
@@ -247,19 +304,42 @@ impl Scheduler {
     pub fn status(&self) -> SyncStatus {
         let g = self.lock();
         let mut s = g.status.clone();
-        s.next_sync_at = if Self::sync_ready(&g.config) && g.config.sync.interval_enabled { g.next_interval } else { 0 };
+        s.sync_paused = g.sync_paused;
+        s.next_sync_at = if Self::sync_ready(&g.config) && !g.sync_paused && g.config.sync.interval_enabled { g.next_interval } else { 0 };
         s.next_backup_at = Self::next_backup_at(&g);
         s
     }
 
     fn do_sync(&self, trigger: &str) {
-        let cfg = {
+        let (cfg, approved) = {
             let mut g = self.lock();
+            if g.sync_paused { return; }
             g.status.syncing = true;
-            g.config.clone()
+            (g.config.clone(), std::mem::take(&mut g.approved_updates))
         };
         self.emit_status();
-        let outcome = block_on(engine::run_sync(&cfg.sync, &cfg.device_id, trigger));
+        let outcome = block_on(engine::run_sync_with_approval(&cfg.sync, &cfg.device_id, trigger, super::backend::Backend::new(&cfg.sync.provider), &approved));
+        if !outcome.updates.is_empty() {
+            {
+                let mut g = self.lock();
+                g.status.syncing = false;
+                // 输入或目标已变化时丢弃旧预览，使用当前配置重新检查。
+                if serde_json::to_value(&cfg.sync).ok() == serde_json::to_value(&g.config.sync).ok() {
+                    g.sync_paused = true;
+                    g.status.update_confirmation = Some(SyncUpdateConfirmation { id: uuid::Uuid::new_v4().to_string(), files: outcome.updates });
+                    g.pending_sync = None;
+                    g.startup_at = None;
+                    g.change_first = None;
+                    g.change_deadline = None;
+                    g.retry_at = None;
+                } else if Self::sync_ready(&g.config) {
+                    g.pending_sync = Some("manual".into());
+                }
+            }
+            // 等待用户决定是正常交互状态，不记录为同步失败，也不触发错误通知或后台重试。
+            self.emit_status();
+            return;
+        }
         let report = outcome.report;
         let transient = !report.ok && outcome.transient;
         let now = now_ms();
@@ -345,8 +425,26 @@ impl Scheduler {
 
     pub fn request_sync(&self, trigger: &str) {
         let mut g = self.lock();
+        if g.status.update_confirmation.is_some() { return; }
+        g.sync_paused = false;
         g.pending_sync = Some(trigger.to_string());
         self.cv.notify_all();
+    }
+
+    /// 接收任意窗口的一次性决定；取消不执行更新，旧窗口或重复请求不能复用已消费的标识。
+    pub fn resolve_updates(&self, id: &str, accept: bool) -> Result<(), String> {
+        {
+            let mut g = self.lock();
+            let pending = g.status.update_confirmation.as_ref().ok_or("这次更新确认已结束，请重新同步")?;
+            if pending.id != id { return Err("文件列表已变化，请使用最新的更新确认".into()); }
+            let pending = g.status.update_confirmation.take().expect("已检查确认请求");
+            g.approved_updates = if accept { pending.files.into_iter().map(|file| file.fingerprint).collect() } else { Vec::new() };
+            g.sync_paused = !accept;
+            if accept { g.pending_sync = Some("manual".into()); }
+            self.cv.notify_all();
+        }
+        self.emit_status();
+        Ok(())
     }
 
     pub fn request_backup(&self, trigger: &str) {
@@ -364,7 +462,7 @@ impl Scheduler {
     /// 同步目录中的文件被保存/新建/改名/删除：防抖后同步
     pub fn notify_change(&self) {
         let mut g = self.lock();
-        if !Self::sync_ready(&g.config) || !g.config.sync.sync_on_save {
+        if !Self::sync_ready(&g.config) || g.sync_paused || !g.config.sync.sync_on_save {
             return;
         }
         let now = now_ms();
@@ -384,12 +482,20 @@ impl Scheduler {
             // 只有切换同步文件夹才立即同步；服务配置在输入过程中会频繁保存，
             // 不能每次都触发同步（半截地址必然失败），由「测试连接 / 立即同步」或下次定时同步生效
             let target_changed = g.config.sync.root_dir != cfg.sync.root_dir;
+            // 确认绑定完整同步配置；地址、账号、密码、路径等变化时旧授权立即失效。
+            let sync_changed = serde_json::to_value(&g.config.sync).ok() != serde_json::to_value(&cfg.sync).ok();
+            let had_confirmation = g.status.update_confirmation.is_some();
+            if sync_changed {
+                g.status.update_confirmation = None;
+                g.approved_updates.clear();
+                g.sync_paused = false;
+            }
             g.config = cfg;
             if interval_changed {
                 g.next_interval = now_ms() + interval_ms(&g.config);
             }
             let ready = Self::sync_ready(&g.config);
-            if ready && (!was_ready || target_changed) {
+            if ready && (!was_ready || target_changed || (sync_changed && had_confirmation)) {
                 g.pending_sync = Some("enable".into());
             }
             if !ready {

@@ -1,5 +1,6 @@
 // 直接编译原项目模块，保持同步协议、远端适配、三方合并和备份算法唯一实现。
 #[path = "../../../../src-tauri/src/sync/backend/mod.rs"] pub mod backend;
+#[path = "../../../../src-tauri/src/sync/bootstrap.rs"] pub mod bootstrap;
 #[path = "../../../../src-tauri/src/sync/backup.rs"] pub mod backup;
 #[path = "../../../../src-tauri/src/sync/config.rs"] pub mod config;
 #[path = "../../../../src-tauri/src/sync/diff3.rs"] pub mod diff3;
@@ -35,3 +36,9 @@ pub mod runtime {
 
 #[cfg(test)]
 #[path = "../../../../src-tauri/src/sync/tests_e2e.rs"] mod tests_e2e;
+
+#[cfg(test)]
+#[path = "../../../../src-tauri/src/sync/tests_webdav.rs"] mod tests_webdav;
+
+#[cfg(test)]
+#[path = "../../../../src-tauri/src/sync/tests_history.rs"] mod tests_history;

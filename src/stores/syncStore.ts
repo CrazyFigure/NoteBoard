@@ -49,6 +49,8 @@ function toastForReport(event: SyncReportEvent): void {
 }
 
 let subscribed = false;
+// 初始化快照可能晚于实时事件返回，不能让旧快照清掉刚收到的文件更新确认。
+let statusGeneration = 0;
 
 export const useSyncStore = create<SyncStore>((set, get) => ({
   config: null,
@@ -67,13 +69,14 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
     set({ initialized: true });
     if (!subscribed) {
       subscribed = true;
-      void onSyncStatus((status) => set({ status }));
+      void onSyncStatus((status) => { statusGeneration += 1; set({ status }); });
       void onSyncConfigChanged((config) => set({ config }));
       void onSyncReport(toastForReport);
     }
     try {
+      const generation = statusGeneration;
       const [config, status] = await Promise.all([ipc.syncGetConfig(), ipc.syncGetStatus()]);
-      set({ config, status });
+      set({ config, ...(generation === statusGeneration ? { status } : {}) });
     } catch (error) {
       console.error('加载同步配置失败:', error);
     }

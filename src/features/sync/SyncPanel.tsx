@@ -132,6 +132,7 @@ function SyncSection({ draft, update, flush }: { draft: SyncConfigFile; update: 
   const status = useSyncStore((s) => s.status);
   const last = status?.lastSync ?? null;
   const syncing = status?.syncing ?? false;
+  const paused = status?.syncPaused ?? false;
   const [mobilePath, setMobilePath] = useState(draft.sync.rootDir);
   const [resetOpen, setResetOpen] = useState(false);
 
@@ -171,7 +172,7 @@ function SyncSection({ draft, update, flush }: { draft: SyncConfigFile; update: 
     }
   };
 
-  const statusClass = syncing ? 'is-running' : !last ? '' : !last.ok ? 'is-error' : last.errors.length ? 'is-warn' : 'is-ok';
+  const statusClass = syncing ? 'is-running' : paused ? 'is-warn' : !last ? '' : !last.ok ? 'is-error' : last.errors.length ? 'is-warn' : 'is-ok';
   const statusIcon = syncing ? (
     <Loader2 size={16} className="nb-sync-spin" />
   ) : !last ? (
@@ -196,7 +197,7 @@ function SyncSection({ draft, update, flush }: { draft: SyncConfigFile; update: 
           {statusIcon}
           <div className="nb-sync-status-text">
             <span>
-              {syncing ? '正在同步…' : last ? describeSyncReport(last) : draft.sync.enabled ? '尚未同步' : '多端同步未开启'}
+              {syncing ? '正在同步…' : paused ? status?.updateConfirmation ? '等待确认同名文件的更新' : '同步已暂停，点击立即同步重新检查' : last ? describeSyncReport(last) : draft.sync.enabled ? '尚未同步' : '多端同步未开启'}
             </span>
             {last && !syncing && (
               <span className="nb-sync-muted">

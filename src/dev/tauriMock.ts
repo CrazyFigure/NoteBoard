@@ -465,6 +465,7 @@ export function installTauriMock(): void {
       case 'sync_test_connection':
         return '连接成功，远端已有同步数据，开启同步后将与本机双向合并';
       case 'sync_now':
+      case 'sync_resolve_updates':
       case 'backup_now':
       case 'sync_trash_delete':
         return null;

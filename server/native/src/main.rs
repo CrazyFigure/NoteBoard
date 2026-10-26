@@ -181,6 +181,8 @@ async fn dispatch(command: &str, args: &Value) -> Result<Value, String> {
             Ok(json!(backend.test().await.map_err(|error| error.message)?))
         }
         "sync_now" => { root()?; if !cfg.sync.enabled { return Err("请先开启多端同步".into()); } scheduler.request_sync("manual"); Ok(Value::Null) }
+        // 网页和桌面共享确认标识与一次性授权，公开访客仍由现有命令鉴权拦截。
+        "sync_resolve_updates" => { scheduler.resolve_updates(&text("id"), args["accept"].as_bool().ok_or("缺少更新决定")?)?; Ok(Value::Null) }
         "sync_trash_list" => Ok(json!(sync::trash::list_items(&root()?, cfg.sync.trash_days, cfg.sync.trash_enabled))),
         "sync_trash_restore" => { let restored = sync::trash::restore(&root()?, &text("id"))?; scheduler.notify_change(); Ok(json!(restored)) }
         "sync_trash_delete" => { sync::trash::delete_item(&root()?, &text("id"))?; scheduler.notify_change(); Ok(Value::Null) }

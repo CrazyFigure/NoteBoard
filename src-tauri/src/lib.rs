@@ -195,6 +195,7 @@ pub fn run() {
             sync::commands::sync_save_config,
             sync::commands::sync_test_connection,
             sync::commands::sync_now,
+            sync::commands::sync_resolve_updates,
             sync::commands::sync_get_status,
             sync::commands::sync_trash_list,
             sync::commands::sync_trash_restore,

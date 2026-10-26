@@ -56,6 +56,9 @@ const AddFavoriteModal = lazy(() =>
 const SyncTrashDialog = lazy(() =>
   import('./features/sync/SyncTrashDialog').then((m) => ({ default: m.SyncTrashDialog })),
 );
+
+// 自动同步也可能需要更新确认，弹窗挂在全局，不依赖用户是否打开设置页。
+const SyncUpdateDialog = lazy(() => import('./features/sync/SyncUpdateDialog').then((m) => ({ default: m.SyncUpdateDialog })));
 // 移动端界面独立分包：桌面构建入口不加载移动端外壳
 const MobileShell = lazy(() =>
   import('./mobile/MobileShell').then((m) => ({ default: m.MobileShell })),
@@ -227,6 +230,7 @@ export default function App() {
   const favoritesManagerEverOpened = useEverOpened(favoritesManagerOpen);
   const addFavoriteEverOpened = useEverOpened(addFavoriteOpen);
   const syncTrashOpen = useSyncStore((s) => s.trashOpen);
+  const syncUpdatePending = useSyncStore((s) => !!s.status?.updateConfirmation);
   const syncTrashEverOpened = useEverOpened(syncTrashOpen);
 
   // Ctrl+Shift+S 另存为
@@ -368,6 +372,7 @@ export default function App() {
             </Suspense>
           )}
           {/* 同步回收站（内部以 trashOpen 控制开关） */}
+          {syncUpdatePending && <Suspense fallback={null}><SyncUpdateDialog /></Suspense>}
           {syncTrashEverOpened && (
             <Suspense fallback={null}>
               <SyncTrashDialog />

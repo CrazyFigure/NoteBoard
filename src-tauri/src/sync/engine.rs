@@ -41,6 +41,8 @@ struct LockFile {
 
 /// 一次同步的输出
 pub struct SyncOutcome {
+    /// 未确认时不落盘、不提交清单；调度器据此暂停全部自动触发入口。
+    pub updates: Vec<super::types::SyncFileUpdate>,
     pub report: SyncReport,
     pub changes: Vec<LocalChange>,
     /// 失败原因是否为临时性（网络、限流、其他设备占用），调度器据此退避重试
@@ -54,12 +56,18 @@ pub async fn run_sync(cfg: &SyncSettings, device_id: &str, trigger: &str) -> Syn
 
 /// 使用指定后端执行同步（测试注入内存后端）
 pub async fn run_sync_with(cfg: &SyncSettings, device_id: &str, trigger: &str, backend: SyncResult<Backend>) -> SyncOutcome {
+    run_sync_with_approval(cfg, device_id, trigger, backend, &[]).await
+}
+
+/// 确认只对本次文件快照生效；重试期间发现内容变化时重新等待确认。
+pub async fn run_sync_with_approval(cfg: &SyncSettings, device_id: &str, trigger: &str, backend: SyncResult<Backend>, approved: &[String]) -> SyncOutcome {
     let started = now_ms();
     let mut report = SyncReport { trigger: trigger.to_string(), ..Default::default() };
     let mut changes = Vec::new();
     let mut transient = false;
+    let mut updates = Vec::new();
     let result = match backend {
-        Ok(b) => run_with_retry(cfg, device_id, b, &mut report, &mut changes).await,
+        Ok(b) => run_with_retry(cfg, device_id, b, &mut report, &mut changes, approved).await,
         Err(e) => Err(e),
     };
     match result {
@@ -69,14 +77,15 @@ pub async fn run_sync_with(cfg: &SyncSettings, device_id: &str, trigger: &str, b
         }
         Err(e) => {
             transient = e.is_transient() || e.kind == SyncErrorKind::Conflict;
+            updates = e.updates;
             report.ok = false;
-            report.message = format!("同步失败：{}", e.message);
-            report.errors.insert(0, e.message);
+            report.message = if e.kind == SyncErrorKind::ConfirmationRequired { e.message.clone() } else { format!("同步失败：{}", e.message) };
+            if e.kind != SyncErrorKind::ConfirmationRequired { report.errors.insert(0, e.message); }
         }
     }
     report.at = now_ms();
     report.duration_ms = report.at - started;
-    SyncOutcome { report, changes, transient }
+    SyncOutcome { report, changes, transient, updates }
 }
 
 /// 生成结果摘要（区分方向）
@@ -120,6 +129,7 @@ async fn run_with_retry(
     mut backend: Backend,
     report: &mut SyncReport,
     changes: &mut Vec<LocalChange>,
+    approved: &[String],
 ) -> SyncResult<()> {
     if cfg.root_dir.trim().is_empty() {
         return Err(SyncError::config("尚未设置同步文件夹"));
@@ -129,7 +139,6 @@ async fn run_with_retry(
         return Err(SyncError::config(format!("同步文件夹不存在：{}", root.display())));
     }
     state::bind(cfg.root_dir.trim(), &cfg.provider.identity());
-    trash::purge_expired(&root, cfg.trash_days);
 
     let mut attempt = 0;
     loop {
@@ -138,7 +147,7 @@ async fn run_with_retry(
         let mut r = SyncReport { trigger: report.trigger.clone(), ..Default::default() };
         let mut ch = Vec::new();
         let locked = if backend.needs_lock() { acquire_lock(&mut backend, device_id, &cfg.device_name).await? ; true } else { false };
-        let result = sync_once(cfg, &root, device_id, &mut backend, &mut r, &mut ch).await;
+        let result = sync_once(cfg, &root, device_id, &mut backend, &mut r, &mut ch, approved).await;
         // 文档历史阶段：主同步成功后、释放远端锁之前上传 / 下载历史（失败只记警告）
         if result.is_ok() {
             super::history_phase::run(cfg, device_id, &mut backend, &mut r).await;
@@ -376,6 +385,7 @@ async fn sync_once(
     backend: &mut Backend,
     report: &mut SyncReport,
     changes: &mut Vec<LocalChange>,
+    approved: &[String],
 ) -> SyncResult<()> {
     backend.begin().await?;
     let remote_bytes = backend.read(&manifest_path()).await?;
@@ -387,6 +397,11 @@ async fn sync_once(
         }
         None => (Manifest { format: MANIFEST_FORMAT, ..Default::default() }, None),
     };
+    // 确认发生在本机更新、过期回收站清理与内容上传之前；仅允许临时远端锁写入。
+    let scan_started = now_ms();
+    let scanned = scan_tree(root)?;
+    let imported = super::bootstrap::prepare(backend, &mut manifest, base_rev.is_none(), &scanned,
+        |rel| hash_file(&rel_to_abs(root, rel)).map_err(SyncError::local), approved, state::snapshot().force_local).await?;
     // 扫描虽跳过符号链接，远端下载也必须检查目标父级，避免借现有链接写出同步根目录。
     for entry in manifest.entries.values() {
         super::util::ensure_safe_destination(root, &entry.rec.path).map_err(SyncError::local)?;
@@ -402,8 +417,7 @@ async fn sync_once(
         });
     }
 
-    let scan_started = now_ms();
-    let scanned = scan_tree(root)?;
+    trash::purge_expired(root, cfg.trash_days);
     let snapshot = state::snapshot();
     let view = build_local_view(&scanned, &snapshot, scan_started, |rel| hash_file(&rel_to_abs(root, rel)));
     report.errors.extend(view.errors.iter().cloned());
@@ -735,7 +749,8 @@ async fn sync_once(
     let mut puts: Vec<(String, Vec<u8>)> = Vec::new();
     let mut put_keys: HashSet<String> = HashSet::new();
     let mut deletes: Vec<String> = Vec::new();
-    let mut manifest_changed = false;
+    // 仅远端有文件或双方内容相同时，也必须提交首次建立的清单。
+    let mut manifest_changed = imported;
     let mut upload_counts = Counts::default();
     let mut final_bytes: HashMap<usize, Vec<u8>> = HashMap::new();
     for (i, w) in works.iter_mut().enumerate() {

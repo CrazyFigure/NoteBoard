@@ -493,6 +493,11 @@ export function syncNow(): Promise<void> {
   return invoke<void>('sync_now');
 }
 
+/** 消费一次性更新确认；后台重新校验两端内容变化后才执行同步。 */
+export function syncResolveUpdates(id: string, accept: boolean): Promise<void> {
+  return invoke<void>('sync_resolve_updates', { id, accept });
+}
+
 export function syncGetStatus(): Promise<SyncStatus> {
   return invoke<SyncStatus>('sync_get_status');
 }

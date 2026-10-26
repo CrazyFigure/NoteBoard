@@ -562,6 +562,74 @@ label.nb-sync-row {
 }
 
 /* 移动端：单列布局，弹窗改为底部面板 */
+/* 同名更新预览复用主题变量，长路径换行、长列表单独滚动，不挤出确认按钮。 */
+.nb-sync-update-dialog {
+  width: min(600px, calc(100vw - 32px));
+}
+
+.nb-sync-update-dialog .nb-sync-dialog-title > svg,
+.nb-sync-update-direction {
+  color: var(--accent-strong);
+}
+
+.nb-sync-dialog-body .nb-sync-update-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 300px;
+  overflow-y: auto;
+  flex-shrink: 0;
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-md);
+  background: var(--editor-surface);
+}
+
+.nb-sync-update-file {
+  padding: 12px 14px;
+}
+
+.nb-sync-update-file + .nb-sync-update-file {
+  border-top: 1px solid var(--editor-border);
+}
+
+.nb-sync-update-file-head,
+.nb-sync-update-direction {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.nb-sync-update-file-head > svg {
+  flex-shrink: 0;
+  color: var(--editor-text-muted);
+}
+
+.nb-sync-update-path {
+  color: var(--editor-text);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.nb-sync-update-direction {
+  margin: 6px 0 4px 23px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.nb-sync-update-times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 18px;
+  margin-left: 23px;
+  color: var(--editor-text-secondary);
+  font-size: 11px;
+}
+
+.nb-sync-update-dialog button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/* 移动端：单列布局，弹窗改为底部面板 */
 [data-platform='mobile'] .nb-sync-grid {
   grid-template-columns: 1fr;
 }

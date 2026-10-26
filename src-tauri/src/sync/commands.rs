@@ -77,6 +77,12 @@ pub fn sync_get_status() -> Result<SyncStatus, String> {
     Ok(sched()?.status())
 }
 
+/// 确认或取消首次同名文件更新，真正执行仍由唯一的后台调度线程完成。
+#[tauri::command]
+pub fn sync_resolve_updates(id: String, accept: bool) -> Result<(), String> {
+    sched()?.resolve_updates(&id, accept)
+}
+
 #[tauri::command]
 pub fn sync_trash_list() -> Result<Vec<TrashItem>, String> {
     let cfg = scheduler::current_config();

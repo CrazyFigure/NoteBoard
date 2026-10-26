@@ -10,6 +10,19 @@ use std::collections::HashSet;
 
 const SERVICE: &str = "WebDAV";
 
+/// 单层目录元数据；首次配对需要保留子目录和原始修改时间。
+pub struct DavEntry {
+    pub name: String,
+    pub is_dir: bool,
+    pub size: u64,
+    pub mtime: i64,
+}
+
+/// 仅兼容服务明确给出的缺失祖先目录错误，不吞掉其他 HTTP 409 冲突。
+fn ancestors_not_found(body: &str) -> bool {
+    body.split(|c: char| !c.is_ascii_alphanumeric()).any(|part| part == "AncestorsNotFound")
+}
+
 pub struct WebDav {
     client: reqwest::Client,
     /// 以 `/` 结尾的服务地址
@@ -73,11 +86,16 @@ impl WebDav {
         from_status(status, SERVICE, hint, &body)
     }
 
+    /// 读取文件；仅 404 或明确的缺失祖先目录响应视为不存在，其他冲突保留错误语义。
     pub async fn read(&mut self, rel: &str) -> SyncResult<Option<Vec<u8>>> {
         let url = self.url_of(&join_remote(&self.dir, rel));
         let resp = self.send(self.request(Method::GET, &url)).await?;
         if resp.status() == StatusCode::NOT_FOUND {
             return Ok(None);
+        }
+        if resp.status() == StatusCode::CONFLICT {
+            let body = resp.text().await.map_err(|e| from_reqwest(e, SERVICE))?;
+            return if ancestors_not_found(&body) { Ok(None) } else { Err(from_status(409, SERVICE, "读取失败", &body)) };
         }
         if !resp.status().is_success() {
             return Err(Self::fail(resp, "文件不存在或服务地址错误").await);
@@ -142,10 +160,17 @@ impl WebDav {
         Err(Self::fail(resp, "删除失败").await)
     }
 
+    /// 备份列表继续只返回直属文件；首次配对通过 entries 读取目录元数据。
     pub async fn list(&mut self, dir: &str) -> SyncResult<Vec<RemoteFile>> {
+        Ok(self.entries(dir).await?.into_iter().filter(|entry| !entry.is_dir)
+            .map(|entry| RemoteFile { name: entry.name, size: entry.size }).collect())
+    }
+
+    /// 按层读取目录，限制响应大小；保留目录项供首次同步递归发现已有文件。
+    pub async fn entries(&mut self, dir: &str) -> SyncResult<Vec<DavEntry>> {
         let full = join_remote(&self.dir, dir);
         let url = format!("{}/", self.url_of(&full).trim_end_matches('/'));
-        let body = r#"<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getcontentlength/></d:prop></d:propfind>"#;
+        let body = r#"<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getcontentlength/><d:getlastmodified/></d:prop></d:propfind>"#;
         let method = Method::from_bytes(b"PROPFIND").expect("PROPFIND");
         let resp = self
             .send(
@@ -158,29 +183,72 @@ impl WebDav {
         if resp.status() == StatusCode::NOT_FOUND {
             return Ok(Vec::new());
         }
+        if resp.status() == StatusCode::CONFLICT {
+            let body = resp.text().await.map_err(|e| from_reqwest(e, SERVICE))?;
+            return if ancestors_not_found(&body) { Ok(Vec::new()) } else { Err(from_status(409, SERVICE, "目录读取失败", &body)) };
+        }
         if !resp.status().is_success() {
             return Err(Self::fail(resp, "目录不存在").await);
         }
-        let text = resp.text().await.map_err(|e| from_reqwest(e, SERVICE))?;
+        // 目录可能经过服务端重定向，href 应相对最终地址解析；兼容相对路径与绝对地址。
+        let directory_url = resp.url().clone();
+        let parent = percent_encoding::percent_decode_str(directory_url.path()).decode_utf8_lossy();
+        let prefix = format!("{}/", parent.trim_end_matches('/'));
+        // 逐块限制目录 XML，避免异常服务返回无限响应耗尽内存。
+        const MAX_LIST_BYTES: usize = 8 * 1024 * 1024;
+        let mut resp = resp;
+        let mut bytes = Vec::new();
+        while let Some(chunk) = resp.chunk().await.map_err(|e| from_reqwest(e, SERVICE))? {
+            if bytes.len() + chunk.len() > MAX_LIST_BYTES {
+                return Err(SyncError::server("WebDAV 单层目录过大，请选择更小的同步目录"));
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        let text = String::from_utf8(bytes).map_err(|_| SyncError::server("WebDAV 目录响应不是有效 UTF-8"))?;
+        // 登录页等异常 2xx 响应不能被当成空目录，否则可能漏掉应当确认的同名文件。
+        if xml::elements(&text, "multistatus").is_empty() {
+            return Err(SyncError::server("WebDAV 未返回有效目录列表，请检查服务地址和访问权限"));
+        }
         let mut files = Vec::new();
         for response in xml::elements(&text, "response") {
-            // 目录（含被列举的目录自身）跳过
-            if !xml::elements(&response, "collection").is_empty() {
-                continue;
-            }
             let Some(href) = xml::first_text(&response, "href") else { continue };
-            let decoded = percent_encoding::percent_decode_str(href.trim_end_matches('/'))
+            // href 可以是绝对地址或绝对路径；只接收当前目录的直接子项，跳过目录自身。
+            let href_url = directory_url.join(&href).map_err(|_| SyncError::server("WebDAV 返回了无效的文件地址"))?;
+            let href_path = href_url.path();
+            let decoded = percent_encoding::percent_decode_str(href_path.trim_end_matches('/'))
                 .decode_utf8_lossy()
                 .to_string();
-            let name = decoded.rsplit('/').next().unwrap_or("").to_string();
-            if name.is_empty() {
-                continue;
-            }
+            if decoded == prefix.trim_end_matches('/') { continue; }
+            let Some(name) = decoded.strip_prefix(&prefix) else {
+                return Err(SyncError::server("WebDAV 返回的目录路径与请求不一致，已停止同步"));
+            };
+            if name.is_empty() || name.contains('/') { return Err(SyncError::server("WebDAV 未返回正确的单层目录列表，已停止同步")); }
             let size = xml::first_text(&response, "getcontentlength")
                 .and_then(|s| s.parse::<u64>().ok())
                 .unwrap_or(0);
-            files.push(RemoteFile { name, size });
+            let mtime = xml::first_text(&response, "getlastmodified")
+                .and_then(|text| chrono::DateTime::parse_from_rfc2822(&text).ok())
+                .map(|time| time.timestamp_millis()).unwrap_or(0);
+            files.push(DavEntry { name: name.to_string(), size, mtime, is_dir: !xml::elements(&response, "collection").is_empty() });
         }
         Ok(files)
+    }
+
+    /// 流式计算远端内容哈希，比较使用 SHA-256；不把整个目录的正文同时装入内存。
+    pub async fn content_hash(&self, rel: &str, limit: u64) -> SyncResult<(String, u64)> {
+        use sha2::{Digest, Sha256};
+        let url = self.url_of(&join_remote(&self.dir, rel));
+        let mut resp = self.send(self.request(Method::GET, &url)).await?;
+        if !resp.status().is_success() {
+            return Err(Self::fail(resp, "远端文件在检查期间已变化，请重试").await);
+        }
+        let mut hash = Sha256::new();
+        let mut size = 0u64;
+        while let Some(chunk) = resp.chunk().await.map_err(|e| from_reqwest(e, SERVICE))? {
+            size += chunk.len() as u64;
+            if size > limit { return Err(SyncError::server(format!("远端文件过大，无法首次配对：{}", rel))); }
+            hash.update(&chunk);
+        }
+        Ok((hex::encode(hash.finalize()), size))
     }
 }

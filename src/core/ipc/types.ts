@@ -648,7 +648,26 @@ export interface BackupReport {
   message: string;
 }
 
+/** 首次配对时内容不同的同名文件；方向由 SHA-256 和两端修改时间确定。 */
+export interface SyncFileUpdate {
+  path: string;
+  direction: 'upload' | 'download';
+  localMtime: number;
+  remoteMtime: number;
+  localSize: number;
+  remoteSize: number;
+  fingerprint: string;
+}
+
+export interface SyncUpdateConfirmation {
+  id: string;
+  files: SyncFileUpdate[];
+}
+
 export interface SyncStatus {
+  /** 旧宿主未提供字段时按未暂停处理。 */
+  syncPaused?: boolean;
+  updateConfirmation?: SyncUpdateConfirmation | null;
   syncing: boolean;
   backingUp: boolean;
   lastSync: SyncReport | null;

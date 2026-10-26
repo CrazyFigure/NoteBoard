@@ -4,6 +4,8 @@ use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyncErrorKind {
+    /// 同名文件内容不同，需要用户确认本次更新方向；不自动重试。
+    ConfirmationRequired,
     /// 配置不完整或格式错误
     Config,
     /// 认证失败（401）
@@ -30,11 +32,13 @@ pub enum SyncErrorKind {
 pub struct SyncError {
     pub kind: SyncErrorKind,
     pub message: String,
+    /// 等待确认的文件快照，仅在更新确认分支携带。
+    pub updates: Vec<super::types::SyncFileUpdate>,
 }
 
 impl SyncError {
     pub fn new(kind: SyncErrorKind, message: impl Into<String>) -> Self {
-        Self { kind, message: message.into() }
+        Self { kind, message: message.into(), updates: Vec::new() }
     }
     pub fn config(message: impl Into<String>) -> Self {
         Self::new(SyncErrorKind::Config, message)

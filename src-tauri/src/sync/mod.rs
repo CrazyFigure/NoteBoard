@@ -11,6 +11,7 @@
 //   commands             —— IPC 命令
 
 pub mod backend;
+pub mod bootstrap;
 pub mod backup;
 pub mod commands;
 pub mod config;
@@ -34,3 +35,6 @@ mod tests_e2e;
 
 #[cfg(test)]
 mod tests_history;
+
+#[cfg(test)]
+mod tests_webdav;

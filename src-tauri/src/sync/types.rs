@@ -56,10 +56,37 @@ pub struct BackupReport {
     pub message: String,
 }
 
+/// 首次配对时内容不同的同名文件；指纹绑定两端内容，避免确认后文件变化仍沿用旧授权。
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncFileUpdate {
+    pub path: String,
+    /// upload：本机较新；download：远端较新；时间相同沿用本机优先规则。
+    pub direction: String,
+    pub local_mtime: i64,
+    pub remote_mtime: i64,
+    pub local_size: u64,
+    pub remote_size: u64,
+    pub fingerprint: String,
+}
+
+/// 一次性确认请求：所有窗口共享同一标识，由调度器串行接收决定。
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncUpdateConfirmation {
+    pub id: String,
+    pub files: Vec<SyncFileUpdate>,
+}
+
 /// 同步/备份运行状态（广播给所有窗口）
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncStatus {
+    /// 等待确认或用户取消后，自动同步保持暂停，手动同步可重新检查。
+    #[serde(default)]
+    pub sync_paused: bool,
+    #[serde(default)]
+    pub update_confirmation: Option<SyncUpdateConfirmation>,
     pub syncing: bool,
     pub backing_up: bool,
     pub last_sync: Option<SyncReport>,
