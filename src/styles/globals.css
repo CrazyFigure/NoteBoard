@@ -1059,6 +1059,457 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   opacity: 0.95;
 }
 
+/* 双向链接 [[笔记]]：浅底胶囊，与普通超链接区分；目标未找到时弱化为虚线 */
+.ProseMirror .nb-wikilink {
+  color: var(--editor-link, #2563eb);
+  background: color-mix(in srgb, var(--editor-link, #2563eb) 9%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--editor-link, #2563eb) 35%, transparent);
+  border-radius: 4px;
+  padding: 0 3px;
+  margin: 0 1px;
+  cursor: pointer;
+  word-break: break-word;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.ProseMirror .nb-wikilink:hover {
+  background: color-mix(in srgb, var(--editor-link, #2563eb) 16%, transparent);
+}
+
+.ProseMirror .nb-wikilink:active {
+  background: color-mix(in srgb, var(--editor-link, #2563eb) 24%, transparent);
+}
+
+.ProseMirror .nb-wikilink.is-unresolved {
+  color: var(--editor-text-muted);
+  background: transparent;
+  border-bottom: 1px dashed currentColor;
+}
+
+.ProseMirror .nb-wikilink.is-unresolved:hover {
+  background: color-mix(in srgb, var(--editor-text-muted) 12%, transparent);
+}
+
+.ProseMirror .nb-wikilink.ProseMirror-selectednode {
+  outline: 2px solid var(--editor-accent);
+  outline-offset: 1px;
+}
+
+/* 双击编辑：显示 [[ 原文 ]] 输入框 */
+.ProseMirror .nb-wikilink.is-editing {
+  color: var(--editor-text-muted);
+  background: transparent;
+  border-bottom-color: transparent;
+  cursor: text;
+}
+
+.nb-wikilink-input {
+  font: inherit;
+  color: var(--editor-text);
+  background: var(--editor-surface);
+  border: 1px solid var(--editor-accent);
+  border-radius: 4px;
+  padding: 0 4px;
+  margin: 0 1px;
+  outline: none;
+  max-width: 100%;
+}
+
+/* 双链补全菜单 */
+.nb-wikilink-menu-popup {
+  display: flex;
+}
+
+.nb-wikilink-menu {
+  width: min(320px, calc(100vw - 32px));
+  /* 弹层按光标上下可用空间写入该变量，超出时列表内部滚动 */
+  max-height: var(--nb-wikilink-menu-max-height, 320px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--editor-surface);
+  border: 1px solid var(--editor-border);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px -4px rgba(0, 0, 0, 0.18), 0 3px 8px -2px rgba(0, 0, 0, 0.1);
+}
+
+.nb-wikilink-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--editor-text-secondary);
+  background: var(--editor-bg);
+  border-bottom: 1px solid var(--editor-border);
+  flex-shrink: 0;
+}
+
+.nb-wikilink-menu-header > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nb-wikilink-menu-hint {
+  font-size: 10px;
+  font-weight: 400;
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+
+.nb-wikilink-menu-list {
+  overflow-y: auto;
+  padding: 4px;
+  min-height: 0;
+}
+
+.nb-wikilink-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--editor-text);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-wikilink-menu-item.is-active {
+  background: var(--editor-selection-background, var(--toolbar-hover));
+}
+
+.nb-wikilink-menu-item:active {
+  transform: scale(0.985);
+}
+
+.nb-wikilink-menu-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--editor-text-muted);
+}
+
+.nb-wikilink-menu-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.nb-wikilink-menu-name {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 已打开但不在当前仓库内的文档 */
+.nb-wikilink-menu-badge {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  color: var(--editor-text-muted);
+  background: color-mix(in srgb, var(--editor-text-muted) 12%, transparent);
+  vertical-align: 1px;
+}
+
+/* 双链嵌入 ![[...]]：图片直接显示，笔记显示为只读卡片 */
+.ProseMirror .nb-wikiembed {
+  display: block;
+  margin: 6px 0;
+  border-radius: 8px;
+  cursor: default;
+}
+
+.ProseMirror .nb-wikiembed .nb-wikiembed-content {
+  display: block;
+}
+
+.ProseMirror .nb-wikiembed.ProseMirror-selectednode {
+  outline: 2px solid var(--editor-accent);
+  outline-offset: 2px;
+}
+
+.ProseMirror .nb-wikiembed-content[data-embed-kind='note'] {
+  border: 1px solid var(--editor-border);
+  border-left: 3px solid color-mix(in srgb, var(--editor-link, #2563eb) 55%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--editor-surface) 60%, transparent);
+  overflow: hidden;
+}
+
+.ProseMirror .nb-wikiembed-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--editor-link, #2563eb);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.ProseMirror .nb-wikiembed-header:hover {
+  background: color-mix(in srgb, var(--editor-link, #2563eb) 8%, transparent);
+}
+
+.ProseMirror .nb-wikiembed-header:active {
+  transform: scale(0.995);
+}
+
+.ProseMirror .nb-wikiembed-content[data-embed-kind='note'] .nb-wikiembed-header {
+  border-bottom: 1px solid var(--editor-border);
+}
+
+.ProseMirror .nb-wikiembed-content[data-embed-kind='placeholder'] .nb-wikiembed-header {
+  border: 1px dashed var(--editor-border);
+  border-radius: 8px;
+  color: var(--editor-text-muted);
+  font-weight: 400;
+}
+
+.ProseMirror .nb-wikiembed-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ProseMirror .nb-wikiembed-open {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--editor-text-muted);
+}
+
+.ProseMirror .nb-wikiembed-body {
+  display: block;
+  padding: 8px 14px 10px;
+  max-height: 420px;
+  overflow: auto;
+  font-size: 0.95em;
+}
+
+.ProseMirror .nb-wikiembed-hint {
+  display: block;
+  font-size: 12px;
+  color: var(--editor-text-muted);
+}
+
+.ProseMirror .nb-wikiembed-image {
+  display: block;
+  max-width: 100%;
+  border-radius: 6px;
+}
+
+.nb-wikilink-menu-path {
+  font-size: 11px;
+  color: var(--editor-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nb-wikilink-menu-empty {
+  padding: 14px 10px;
+  font-size: 12px;
+  color: var(--editor-text-muted);
+  text-align: center;
+  line-height: 1.6;
+}
+
+/* 大纲侧栏分页：文档大纲 / 反向链接 */
+.nb-outline-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.nb-outline-tab {
+  height: 22px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--editor-text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-outline-tab:hover {
+  background: var(--toolbar-hover);
+  color: var(--editor-text);
+}
+
+.nb-outline-tab:active {
+  transform: scale(0.96);
+}
+
+.nb-outline-tab.is-active {
+  color: var(--editor-text);
+  font-weight: 600;
+}
+
+/* 反向链接 */
+.nb-backlinks {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.nb-backlinks-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 4px 12px;
+  font-size: 11px;
+  color: var(--editor-text-muted);
+  border-bottom: 1px solid var(--editor-border);
+  flex-shrink: 0;
+}
+
+.nb-backlinks-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--editor-text-muted);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-backlinks-refresh:hover {
+  background: var(--toolbar-hover);
+  color: var(--editor-text);
+}
+
+.nb-backlinks-refresh:active {
+  transform: scale(0.92);
+}
+
+.nb-backlinks-refresh.is-loading svg {
+  animation: nb-backlinks-spin 0.9s linear infinite;
+}
+
+@keyframes nb-backlinks-spin {
+  to { transform: rotate(360deg); }
+}
+
+.nb-backlinks-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 0 8px;
+}
+
+.nb-backlinks-group {
+  padding: 2px 6px 6px;
+}
+
+.nb-backlinks-source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 26px;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--editor-text);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-backlinks-source:hover {
+  background: var(--toolbar-hover);
+}
+
+.nb-backlinks-source:active,
+.nb-backlinks-snippet:active {
+  transform: scale(0.985);
+}
+
+.nb-backlinks-source > svg {
+  flex-shrink: 0;
+  color: var(--editor-text-muted);
+}
+
+.nb-backlinks-source-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nb-backlinks-count {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--editor-text-muted);
+}
+
+.nb-backlinks-snippet {
+  display: block;
+  width: calc(100% - 12px);
+  margin: 2px 0 2px 12px;
+  padding: 4px 8px;
+  border: none;
+  border-left: 2px solid var(--editor-border);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: transparent;
+  color: var(--editor-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+  text-align: left;
+  word-break: break-word;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-backlinks-snippet:hover {
+  background: var(--toolbar-hover);
+  border-left-color: var(--editor-accent);
+}
+
+.nb-backlinks-snippet-link {
+  color: var(--editor-link);
+}
+
+.nb-backlinks-empty {
+  padding: 24px 16px;
+  font-size: 12px;
+  color: var(--editor-text-muted);
+  text-align: center;
+  line-height: 1.6;
+}
+
 /* 列表 */
 .ProseMirror ul:not([data-type="taskList"]),
 .ProseMirror ol {

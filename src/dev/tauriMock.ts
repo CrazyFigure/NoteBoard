@@ -21,8 +21,8 @@ function seed(path: string, content: string, ageMinutes: number): void {
   files.set(path, { content, mtime: now - ageMinutes * 60_000 });
 }
 
-seed(`${WORKSPACE}/欢迎使用 NoteBoard.md`, '# 欢迎使用 NoteBoard\n\n这是你的笔记工作区。\n\n- 点击右下角 **＋** 新建\n- 长按文件查看更多操作\n\n> [!TIP]\n> 从其它应用分享文件到 NoteBoard 即可编辑。\n', 3);
-seed(`${WORKSPACE}/周报.md`, '* 本周完成\n* 下周计划\n\n_重点_：移动端适配\n', 60 * 30);
+seed(`${WORKSPACE}/欢迎使用 NoteBoard.md`, '# 欢迎使用 NoteBoard\n\n这是你的笔记工作区。\n\n- 点击右下角 **＋** 新建\n- 长按文件查看更多操作\n- 输入 `[[` 链接其它笔记：[[周报]]、[[需求#目标|项目目标]]、[[尚未同步的笔记]]\n\n> [!TIP]\n> 从其它应用分享文件到 NoteBoard 即可编辑。\n\n![[需求]]\n', 3);
+seed(`${WORKSPACE}/周报.md`, '* 本周完成\n* 下周计划\n\n_重点_：移动端适配，见 [[需求]]\n', 60 * 30);
 seed(`${WORKSPACE}/购物清单.txt`, '牛奶\n面包\n鸡蛋\n', 60 * 24 * 40);
 seed(`${WORKSPACE}/架构草图.excalidraw`, '', 60 * 5);
 seed(`${WORKSPACE}/项目笔记/需求.md`, '# 需求\n\n## 背景\n\n## 目标\n', 90);

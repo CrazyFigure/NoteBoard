@@ -27,6 +27,7 @@ import { consumeIncomingFiles, navigateUp, refreshCurrentFolder, switchLocation,
 import { readRememberedLocation, useMobileStore } from './mobileStore';
 import { cancelSaveAs, mobileSaveAsPicker, resolveSaveAs, useMobileSaveAsStore } from './mobileSaveAs';
 import { useVersionHistoryStore } from '../features/versionHistory/versionHistoryStore';
+import { invalidateNoteIndex, registerVaultRootProvider } from '../features/wikilink/noteIndex';
 
 /** 两次返回键退出的判定间隔 */
 const EXIT_CONFIRM_MS = 2000;
@@ -129,6 +130,9 @@ export function MobileShell() {
     if (IS_WEB && page === 'home') void refreshCurrentFolder();
   }, [page]);
 
+  // 双链以当前存储位置的根目录作为笔记仓库
+  useEffect(() => registerVaultRootProvider(() => useMobileStore.getState().locationRoot || null), []);
+
   // 进入后台立即保存；回到前台刷新权限、文件列表、外部修改检测并接收新传入文件
   useEffect(() => {
     const handleVisibility = () => {
@@ -140,6 +144,8 @@ export function MobileShell() {
       void refreshCurrentFolder();
       void checkActiveDocumentStillExists(true).catch(() => {});
       void consumeIncomingFiles();
+      // 后台期间同步或其它应用可能增删了笔记，双链索引需重建
+      invalidateNoteIndex();
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);

@@ -27,6 +27,7 @@ function PromptDialog() {
   const [preview, setPreview] = useState<{ url: string; state: PreviewState }>({ url: '', state: 'idle' });
   const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
   // 记录打开前的焦点，取消时归还（例如回到编辑器原光标处）
   const prevFocusRef = useRef<Element | null>(document.activeElement);
 
@@ -61,6 +62,11 @@ function PromptDialog() {
   // 打开后聚焦输入框并全选，便于直接覆盖旧值
   useEffect(() => {
     const timer = window.setTimeout(() => {
+      // 纯确认弹窗聚焦确认按钮，Enter 直接确认
+      if (request.confirmOnly) {
+        confirmRef.current?.focus();
+        return;
+      }
       inputRef.current?.focus();
       inputRef.current?.select();
     }, 30);
@@ -81,7 +87,7 @@ function PromptDialog() {
         closeRef.current(null);
         return;
       }
-      if (e.key === 'Enter' && e.target === inputRef.current) {
+      if (e.key === 'Enter' && (request.confirmOnly || e.target === inputRef.current)) {
         e.preventDefault();
         e.stopPropagation();
         submitRef.current();
@@ -140,73 +146,75 @@ function PromptDialog() {
           </Tooltip>
         </div>
 
-        <div className="nb-prompt-body">
-          <div className={`nb-prompt-field${error ? ' has-error' : ''}`}>
-            <input
-              ref={inputRef}
-              className="nb-prompt-input"
-              type="text"
-              value={value}
-              placeholder={request.placeholder}
-              spellCheck={false}
-              autoCapitalize="off"
-              autoCorrect="off"
-              autoComplete="off"
-              onChange={(e) => {
-                setValue(e.target.value);
-                setError(null);
-              }}
-            />
-            {value && (
-              <Tooltip content="清空" side="top" sideOffset={4}>
-                <button
-                  type="button"
-                  className="nb-prompt-clear"
-                  aria-label="清空"
-                  // 保持输入框焦点，点击后可直接重新输入
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    setValue('');
-                    setError(null);
-                    inputRef.current?.focus();
-                  }}
-                >
-                  <XCircle size={15} />
-                </button>
-              </Tooltip>
-            )}
-          </div>
-          {error && <div className="nb-prompt-error">{error}</div>}
-
-          {request.previewImage && (
-            <div className={`nb-prompt-preview is-${preview.state}`}>
-              {preview.url && (
-                <img
-                  key={preview.url}
-                  src={preview.url}
-                  alt=""
-                  // 与编辑器图片节点一致不发送 Referer，兼顾隐私与图床防盗链
-                  referrerPolicy="no-referrer"
-                  onLoad={() => setPreview((p) => (p.url === preview.url ? { ...p, state: 'ok' } : p))}
-                  onError={() => setPreview((p) => (p.url === preview.url ? { ...p, state: 'error' } : p))}
-                />
-              )}
-              {preview.state === 'idle' && <span>输入 http(s) 图片地址后在此预览</span>}
-              {preview.state === 'loading' && (
-                <span>
-                  <Loader2 size={16} className="nb-prompt-spin" />
-                  正在加载预览…
-                </span>
-              )}
-              {preview.state === 'error' && (
-                <span>
-                  <ImageOff size={16} />
-                  预览加载失败，仍可尝试插入
-                </span>
+        {!request.confirmOnly && (
+          <div className="nb-prompt-body">
+            <div className={`nb-prompt-field${error ? ' has-error' : ''}`}>
+              <input
+                ref={inputRef}
+                className="nb-prompt-input"
+                type="text"
+                value={value}
+                placeholder={request.placeholder}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+                autoComplete="off"
+                onChange={(e) => {
+                  setValue(e.target.value);
+                  setError(null);
+                }}
+              />
+              {value && (
+                <Tooltip content="清空" side="top" sideOffset={4}>
+                  <button
+                    type="button"
+                    className="nb-prompt-clear"
+                    aria-label="清空"
+                    // 保持输入框焦点，点击后可直接重新输入
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      setValue('');
+                      setError(null);
+                      inputRef.current?.focus();
+                    }}
+                  >
+                    <XCircle size={15} />
+                  </button>
+                </Tooltip>
               )}
             </div>
-          )}
-        </div>
+            {error && <div className="nb-prompt-error">{error}</div>}
+
+            {request.previewImage && (
+              <div className={`nb-prompt-preview is-${preview.state}`}>
+                {preview.url && (
+                  <img
+                    key={preview.url}
+                    src={preview.url}
+                    alt=""
+                    // 与编辑器图片节点一致不发送 Referer，兼顾隐私与图床防盗链
+                    referrerPolicy="no-referrer"
+                    onLoad={() => setPreview((p) => (p.url === preview.url ? { ...p, state: 'ok' } : p))}
+                    onError={() => setPreview((p) => (p.url === preview.url ? { ...p, state: 'error' } : p))}
+                  />
+                )}
+                {preview.state === 'idle' && <span>输入 http(s) 图片地址后在此预览</span>}
+                {preview.state === 'loading' && (
+                  <span>
+                    <Loader2 size={16} className="nb-prompt-spin" />
+                    正在加载预览…
+                  </span>
+                )}
+                {preview.state === 'error' && (
+                  <span>
+                    <ImageOff size={16} />
+                    预览加载失败，仍可尝试插入
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="nb-prompt-foot">
           <span className="nb-prompt-hint">
@@ -215,7 +223,7 @@ function PromptDialog() {
           <button type="button" className="nb-btn-secondary" onClick={() => close(null)}>
             取消
           </button>
-          <button type="button" className="nb-btn-primary" disabled={!canSubmit} onClick={submit}>
+          <button ref={confirmRef} type="button" className="nb-btn-primary" disabled={!canSubmit} onClick={submit}>
             {request.confirmLabel ?? '确定'}
           </button>
         </div>

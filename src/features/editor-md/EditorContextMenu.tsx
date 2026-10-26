@@ -58,6 +58,7 @@ import {
   ChevronRight,
   RemoveFormatting,
   Smile,
+  Waypoints,
   X,
 } from 'lucide-react';
 import { formatShortcut } from '../../core/shortcuts';
@@ -935,6 +936,28 @@ export function EditorContextMenu({
                 <span>插入超链接</span>
               </div>
             </button>
+
+            {/* 9.5 插入双向链接：写入 `[[` 后由补全弹层接管（未启用双链的编辑器不显示） */}
+            {editor.schema.nodes.wikiLink && (
+              <button
+                type="button"
+                style={btnStyle}
+                onClick={() => {
+                  onClose();
+                  editor.chain().focus().insertContent('[[').run();
+                }}
+                onMouseEnter={(e) => {
+                  setActiveSubmenu(null);
+                  e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
+                }}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Waypoints size={15} color="#8b5cf6" />
+                  <span>插入双向链接 ([[)</span>
+                </div>
+              </button>
+            )}
 
             {/* 10. 水平分割线 */}
             <button

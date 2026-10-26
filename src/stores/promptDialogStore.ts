@@ -22,6 +22,8 @@ export interface PromptOptions {
   validate?: (value: string) => string | null;
   /** 在输入框下方实时预览图片地址 */
   previewImage?: boolean;
+  /** 纯确认弹窗：不显示输入框，确认时返回空字符串 */
+  confirmOnly?: boolean;
 }
 
 interface PromptRequest extends PromptOptions {
@@ -60,3 +62,10 @@ export const usePromptDialogStore = create<PromptDialogStore>((set, get) => ({
  */
 export const showPrompt = (options: PromptOptions): Promise<string | null> =>
   usePromptDialogStore.getState().open(options);
+
+/**
+ * 打开主题化确认弹窗（与输入弹窗同一外观）
+ * @returns 确认返回 true，取消返回 false
+ */
+export const showConfirm = async (options: Omit<PromptOptions, 'confirmOnly' | 'allowEmpty'>): Promise<boolean> =>
+  (await usePromptDialogStore.getState().open({ ...options, confirmOnly: true, allowEmpty: true })) !== null;

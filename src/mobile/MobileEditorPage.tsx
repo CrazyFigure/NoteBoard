@@ -177,8 +177,8 @@ export function MobileEditorPage({ activeTab, activeEditor, getMarkdownEditorRea
         <div
           className="nb-m-outline"
           onClickCapture={(event) => {
-            // 点击标题行（非筛选输入框）后关闭面板，让用户看到跳转结果
-            if ((event.target as HTMLElement).closest('input')) return;
+            // 点击标题行（非筛选输入框、分页切换等）后关闭面板，让用户看到跳转结果
+            if ((event.target as HTMLElement).closest('input, [data-sheet-keep]')) return;
             window.setTimeout(() => setOutlineOpen(false), 120);
           }}
         >

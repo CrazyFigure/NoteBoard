@@ -2,9 +2,10 @@
 // NoteBoard 大纲面板
 // 24px 行、缩进 min(level-1,5)*12+8、字号阶梯、当前项高亮
 // 搜索过滤、h2/h3 折叠、双击就地重命名
+// 顶部可切换到「反链」：列出链接到当前文档的其它笔记
 // 详见 docs/09-开发路线图.md 9.2-9.10
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import { ChevronRight } from 'lucide-react';
 import type { Editor } from '@tiptap/core';
 import { Tooltip } from '../../components/Tooltip';
@@ -13,6 +14,14 @@ import { useHeadings, type HeadingItem } from './useHeadings';
 interface OutlinePanelProps {
   editor: Editor | null;
 }
+
+// 反向链接面板按需加载：大纲随首屏装载，扫描笔记的代码只在切到「反向链接」时下载
+const BacklinksPanel = lazy(() => import('../wikilink/BacklinksPanel').then((module) => ({ default: module.BacklinksPanel })));
+
+type OutlineTab = 'outline' | 'backlinks';
+
+/** 本次运行中最后选择的分页：切换文档、收起再展开时保持 */
+let lastOutlineTab: OutlineTab = 'outline';
 
 /** 字号阶梯 */
 function getFontSize(level: number): number {
@@ -27,6 +36,11 @@ function getIndent(level: number): number {
 
 export function OutlinePanel({ editor }: OutlinePanelProps) {
   const { headings, activeId, setActiveId } = useHeadings(editor);
+  const [tab, setTabState] = useState<OutlineTab>(lastOutlineTab);
+  const setTab = useCallback((next: OutlineTab) => {
+    lastOutlineTab = next;
+    setTabState(next);
+  }, []);
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -193,16 +207,43 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--editor-text)' }}>
-          文档大纲
-        </span>
-        <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>
-          {headings.length} 项
-        </span>
+        <div className="nb-outline-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'outline'}
+            className={`nb-outline-tab${tab === 'outline' ? ' is-active' : ''}`}
+            data-sheet-keep=""
+            onClick={() => setTab('outline')}
+          >
+            文档大纲
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'backlinks'}
+            className={`nb-outline-tab${tab === 'backlinks' ? ' is-active' : ''}`}
+            data-sheet-keep=""
+            onClick={() => setTab('backlinks')}
+          >
+            反向链接
+          </button>
+        </div>
+        {tab === 'outline' && (
+          <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>
+            {headings.length} 项
+          </span>
+        )}
       </div>
 
+      {tab === 'backlinks' && (
+        <Suspense fallback={null}>
+          <BacklinksPanel />
+        </Suspense>
+      )}
+
       {/* 搜索框 */}
-      {headings.length > 0 && (
+      {tab === 'outline' && headings.length > 0 && (
         <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--editor-border)', flexShrink: 0 }}>
           <input
             type="text"
@@ -225,7 +266,7 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
       )}
 
       {/* 标题列表 */}
-      {headings.length === 0 ? (
+      {tab !== 'outline' ? null : headings.length === 0 ? (
         <div
           style={{
             padding: '24px 16px',

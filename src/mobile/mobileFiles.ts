@@ -164,6 +164,9 @@ export async function renameEntry(node: FileTreeNode, newName: string): Promise<
   const parentDir = dirnameOf(node.path);
   const newPath = joinPath(parentDir, trimmed);
   try {
+    // 重命名前收集指向它的双链，迁移完成后询问并更新（与桌面资源管理器一致）
+    const wikiLinks = await import('../features/wikilink/renameLinks');
+    const linkPlan = await wikiLinks.planWikiLinkRenameSafely(node.path, node.isDir);
     await ipc.renamePath(node.path, newPath);
     if (!node.isDir) {
       // 单文件：同步迁移已打开文档 store 与标签
@@ -175,6 +178,7 @@ export async function renameEntry(node: FileTreeNode, newName: string): Promise<
       useWindowStore.getState().renameTabsDirectory(node.path, newPath);
     }
     await refreshCurrentFolder();
+    if (linkPlan) void wikiLinks.applyWikiLinkRename(linkPlan, newPath);
     return true;
   } catch (error) {
     showToast(errorMessage(error), 'error');

@@ -27,6 +27,7 @@ import {
   Sigma,
   Workflow,
   Link2,
+  Waypoints,
   Calendar,
   Clock,
   RemoveFormatting,
@@ -601,6 +602,18 @@ const LINK_LEAF: LeafCommandItem = {
   },
 };
 
+const WIKI_LINK_LEAF: LeafCommandItem = {
+  id: 'wikiLink',
+  label: '双向链接',
+  description: '链接到仓库内的其它笔记',
+  shortcutHint: '[[',
+  icon: <Waypoints size={17} color="#8b5cf6" />,
+  aliases: ['wiki', 'wikilink', 'shuanglian', 'sl', 'backlink', 'note', 'biji'],
+  keywords: '双向链接 双链 笔记链接 反向链接 wiki wikilink shuanglian sl',
+  // 写入 `[[` 后由双链补全接管：弹出笔记列表供搜索选择
+  action: (editor, range) => editor.chain().focus().deleteRange(range).insertContent('[[').run(),
+};
+
 const DIVIDER_LEAF: LeafCommandItem = {
   id: 'divider',
   label: '水平分割线',
@@ -736,13 +749,14 @@ const ALL_LEAFS: LeafCommandItem[] = [
   IMAGE_LOCAL_LEAF,
   IMAGE_URL_LEAF,
   LINK_LEAF,
+  WIKI_LINK_LEAF,
   ...DATETIME_LEAFS,
   DIVIDER_LEAF,
   CLEAR_FORMAT_LEAF,
   ...EMOJI_LEAFS,
 ];
 
-/** 默认根级菜单项（严格遵循优先级：标题 > 列表 > 代码块 > GitHub提示 > 高亮块 > 引用块 > 折叠块 > 分栏 > HTML 块 > 表格 > 公式与图表 > 本地图片 > 网络图片 > 超链接 > 表情 > 日期时间 > 分割线 > 清除格式） */
+/** 默认根级菜单项（严格遵循优先级：标题 > 列表 > 代码块 > GitHub提示 > 高亮块 > 引用块 > 折叠块 > 分栏 > HTML 块 > 表格 > 公式与图表 > 本地图片 > 网络图片 > 超链接 > 双向链接 > 表情 > 日期时间 > 分割线 > 清除格式） */
 const ROOT_MENU_ENTRIES: MenuEntry[] = [
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'headings')! },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'lists')! },
@@ -758,6 +772,7 @@ const ROOT_MENU_ENTRIES: MenuEntry[] = [
   { type: 'leaf', item: IMAGE_LOCAL_LEAF },
   { type: 'leaf', item: IMAGE_URL_LEAF },
   { type: 'leaf', item: LINK_LEAF },
+  { type: 'leaf', item: WIKI_LINK_LEAF },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'emoji')! },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'datetime')! },
   { type: 'leaf', item: DIVIDER_LEAF },

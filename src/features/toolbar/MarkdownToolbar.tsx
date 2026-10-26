@@ -37,6 +37,7 @@ import {
   Boxes,
   Minus,
   Link2,
+  Waypoints,
   Image as ImageIcon,
   Calendar,
   Clock,
@@ -73,6 +74,7 @@ import { alertSourceBlock, codeSourceBlock, quoteSourceBlock, wrapSourceLines } 
 import { ALERT_KINDS, AlertMenuIcon, alertMenuLabel, type AlertKind } from '../editor-md/alertExtension';
 import { CALLOUT_PRESETS, CalloutPresetIcon, type CalloutPreset } from '../editor-md/calloutPickers';
 import { RAW_HTML_SOURCE_SNIPPET, insertRawHtmlContent } from '../editor-md/rawHtmlBlockView';
+import { startSourceWikiLinkInsert } from '../editor-md/sourceWikiLink';
 import { InlineEmojiGrid, insertInlineEmoji } from '../editor-md/inlineEmoji';
 import { renderHighlightSource } from '../editor-md/markdownInlineMarks';
 // 🔴 S03：从 editor-md 边界内实例表获取内核实例（不再依赖编辑器组件文件的 getter 导出）
@@ -132,6 +134,8 @@ export function MarkdownToolbar({
   // 保证获取到最新的 TipTap editor 实例
   const editor = propEditor || getActiveTipTapEditor(docKey) || null;
   const isSourceMode = viewMode === 'source';
+  // 双链只在启用了该节点的编辑器中提供（多维表格单元格编辑器未启用）；源码模式首开时可能尚无可视化实例
+  const canInsertWikiLink = editor ? Boolean(editor.schema.nodes.wikiLink) : isSourceMode;
   // Hook 必须无条件调用；嵌入式编辑器传入 history 时以其为准
   const documentHistory = useDocumentHistory(docKey);
   const canUndo = history ? history.canUndo() : documentHistory.canUndo;
@@ -520,6 +524,17 @@ export function MarkdownToolbar({
       return;
     }
     emit('open-link-modal', { key: docKey });
+  };
+
+  // 双向链接：写入 `[[` 后由补全弹层接管（可视化 / 源码各自的补全）
+  const handleInsertWikiLink = () => {
+    setInsertDropdownOpen(false);
+    if (isSourceMode) {
+      executeSourceAction((view) => startSourceWikiLinkInsert(view));
+      return;
+    }
+    if (!editor) return;
+    editor.chain().focus().insertContent('[[').run();
   };
 
   const handleInsertLocalImage = async () => {
@@ -1043,6 +1058,16 @@ export function MarkdownToolbar({
           shortcut="Ctrl+K"
           onClick={handleOpenLink}
         />
+
+        {/* 7.5 双向链接（多维表格单元格等未启用双链的编辑器不显示） */}
+        {canInsertWikiLink && (
+          <ToolbarDropdownItem
+            icon={<Waypoints size={14} color="#8b5cf6" />}
+            label="双向链接"
+            shortcut="[["
+            onClick={handleInsertWikiLink}
+          />
+        )}
 
         {/* 8. 日期时间二级菜单 */}
         <ToolbarDropdownItem

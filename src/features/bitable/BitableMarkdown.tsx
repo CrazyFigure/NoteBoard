@@ -393,6 +393,47 @@ function renderLatex(katex: typeof import('katex'), latex: string, displayMode: 
   return html;
 }
 
+/** 把容器内的公式占位替换为 KaTeX 排版结果；返回取消函数（容器重渲染前调用） */
+function typesetMathPlaceholders(root: HTMLElement): () => void {
+  const placeholders = Array.from(root.querySelectorAll<HTMLElement>('.nb-md-math:not(.is-rendered)'));
+  if (placeholders.length === 0) return () => {};
+  let cancelled = false;
+  loadKatex()
+    .then((katex) => {
+      if (cancelled) return;
+      for (const element of placeholders) {
+        if (!element.isConnected) continue;
+        try {
+          element.innerHTML = renderLatex(katex, element.textContent ?? '', element.tagName === 'DIV');
+          element.classList.add('is-rendered');
+        } catch {
+          // 单个公式异常保留源码展示
+        }
+      }
+    })
+    .catch(() => {
+      // KaTeX 加载失败时保持源码展示
+    });
+  return () => {
+    cancelled = true;
+  };
+}
+
+/**
+ * 在原生 DOM 容器中渲染只读 Markdown（双链嵌入等不经 React 的场景），样式与公式排版同单元格渲染。
+ * @returns 取消函数：再次渲染或销毁前调用，丢弃尚未完成的公式排版
+ */
+export function renderReadonlyMarkdownInto(
+  container: HTMLElement,
+  source: string,
+  resolveSrc?: (src: string) => string,
+): () => void {
+  ensureStyleInjected();
+  container.classList.add('nb-bitable-md');
+  container.innerHTML = renderBitableMarkdown(source, resolveSrc);
+  return typesetMathPlaceholders(container);
+}
+
 /** 首次渲染时把样式表挂到 document.head，供所有单元格共享 */
 function ensureStyleInjected() {
   if (styleInjected || typeof document === 'undefined') return;
@@ -426,28 +467,7 @@ export function BitableMarkdown({
   useEffect(() => {
     const root = containerRef.current;
     if (!root) return;
-    const placeholders = Array.from(root.querySelectorAll<HTMLElement>('.nb-md-math:not(.is-rendered)'));
-    if (placeholders.length === 0) return;
-    let cancelled = false;
-    loadKatex()
-      .then((katex) => {
-        if (cancelled) return;
-        for (const element of placeholders) {
-          if (!element.isConnected) continue;
-          try {
-            element.innerHTML = renderLatex(katex, element.textContent ?? '', element.tagName === 'DIV');
-            element.classList.add('is-rendered');
-          } catch {
-            // 单个公式异常保留源码展示
-          }
-        }
-      })
-      .catch(() => {
-        // KaTeX 加载失败时保持源码展示
-      });
-    return () => {
-      cancelled = true;
-    };
+    return typesetMathPlaceholders(root);
   }, [html]);
 
   // 拦截链接点击：默认阻止 WebView 内部导航，交由上层决定打开方式

@@ -46,6 +46,7 @@ import { requestReadingMode } from '../reading/readingMode';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { ExternalChangeBanner } from './ExternalChangeBanner';
 import { markdownPlainBracketExtension } from './sourcePlainBracket';
+import { markdownWikiLinkExtension } from './sourceWikiLink';
 import {
   getCurrentDocumentHistoryContent,
   initializeDocumentHistory,
@@ -400,6 +401,8 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
         markdown(),
         // 裸 `[文本]` 是普通正文时取消 CodeMirror 的链接下划线与括号框，真实链接保持高亮。
         markdownPlainBracketExtension,
+        // 双向链接：高亮、Ctrl + 单击跳转与 `[[` 笔记补全
+        markdownWikiLinkExtension(docKey),
         nbSyntaxHighlighting,
         nbEditorTheme,
         EditorView.lineWrapping,

@@ -366,6 +366,10 @@ const TreeNodeImpl = memo(function TreeNodeImpl({
     const newPath = joinPath(parentDir, trimmed);
 
     try {
+      // 重命名前收集指向它的双链（按需加载，不影响资源管理器首屏）
+      const wikiLinks = await import('../wikilink/renameLinks');
+      const linkPlan = await wikiLinks.planWikiLinkRenameSafely(node.path, node.isDir);
+
       await ipc.renamePath(node.path, newPath);
 
       if (!node.isDir) {
@@ -389,6 +393,9 @@ const TreeNodeImpl = memo(function TreeNodeImpl({
         const rootNodes = await loadChildren(root);
         setRoot(root, rootNodes);
       }
+
+      // 已打开文档的路径迁移完成后再询问并更新双链
+      if (linkPlan) void wikiLinks.applyWikiLinkRename(linkPlan, newPath);
     } catch (error: unknown) {
       // 将 Rust 与 JavaScript 的不同异常形态统一转换为用户可读消息。
       console.error('重命名失败:', error);

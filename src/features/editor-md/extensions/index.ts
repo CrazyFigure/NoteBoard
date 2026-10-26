@@ -33,6 +33,8 @@ import { ColumnBlock, ColumnsBlock } from '../columnsExtension';
 import { CalloutBlock } from '../calloutExtension';
 import { FootnoteDefinitionBlock, FootnoteReference, FrontMatterBlock, RawHtmlBlock, RawHtmlBlockMerge, RawHtmlInline } from '../markdownPreserveExtensions';
 import { slashSuggestion } from '../slashCommand';
+import { WikiLink } from '../wikiLinkNode';
+import { WikiLinkSuggestion } from '../wikiLinkSuggestion';
 
 import { handleLinkClick } from '../linkHandler';
 import { TableClipboard } from '../tableClipboard';
@@ -308,6 +310,8 @@ export interface BuildExtensionsOptions {
   placeholder?: string;
   /** 是否跟踪纯文本粘贴以提示转换 Markdown / HTML（md 文档可视化编辑器与多维表格多行文本编辑器启用，默认 false） */
   pasteFormatDetect?: boolean;
+  /** 是否启用双向链接 `[[笔记]]`（解析、补全与跳转；默认 true，多维表格单元格不需要仓库内跳转时关闭） */
+  wikiLinks?: boolean;
 }
 
 // Markdown 允许粗体、斜体等标记包裹行内代码；默认 Code 的 excludes: '_'
@@ -481,6 +485,11 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
     FootnoteReference,
     RawHtmlBlock,
     RawHtmlInline,
+
+    // 双向链接 `[[笔记]]`：原子节点逐字保留原文，输入 `[[` 弹出仓库笔记补全
+    ...(options?.wikiLinks !== false
+      ? [WikiLink.configure({ docKey }), WikiLinkSuggestion.configure({ docKey })]
+      : []),
 
     // 斜杠命令
     Extension.create({

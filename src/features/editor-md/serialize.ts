@@ -109,6 +109,10 @@ function markStructuralEscapes(
       return { ...child, text: marked };
     }
     atLineStart = false;
+    // 双链节点逐字输出原文，单元格内的 `|` 需由节点自己写成 `\|`，这里传入位置信息
+    if (isCell && child.type === 'wikiLink') {
+      return { ...child, attrs: { ...(child.attrs as Record<string, unknown> | undefined), inTableCell: true } };
+    }
     return { ...child };
   });
   return { ...node, content };

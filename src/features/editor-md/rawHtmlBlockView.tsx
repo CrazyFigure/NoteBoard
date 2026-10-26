@@ -39,8 +39,8 @@ function currentBaseDir(): string | null {
   return currentDoc?.dirPath || useExplorerStore.getState().root || null;
 }
 
-/** 本地图片路径转换为 webview 可加载的 asset 地址 */
-function resolveLocalSrc(src: string, baseDir: string | null): string {
+/** 本地图片路径转换为 webview 可加载的 asset 地址（双链嵌入按被嵌入笔记的目录解析时同样使用） */
+export function resolveLocalSrc(src: string, baseDir: string | null): string {
   if (PASSTHROUGH_SRC_PATTERN.test(src) || src.startsWith('#')) return src;
   const absPath = baseDir ? resolveRelativeDocPath(baseDir, src) : isAbsoluteLocalPath(src) ? src : null;
   if (!absPath) return src;
