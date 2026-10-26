@@ -917,8 +917,9 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
         />
       )}
 
-      {/* 源码模式容器（常驻 DOM，确保 sourceDivRef.current 始终有效挂载） */}
+      {/* 源码模式容器常驻 DOM，确保 sourceDivRef.current 始终有效挂载；编辑状态统一 I 形鼠标指针，阅读状态保留默认样式。 */}
       <div
+        className={isReading ? undefined : 'nb-text-editor-surface'}
         style={{
           height: '100%',
           overflow: 'hidden',

@@ -653,6 +653,16 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   --history-month-text: #a1a1aa;
 }
 
+/* 各端文字编辑区的正文与空白统一使用 I 形鼠标指针；仅通过继承生效，保留链接、按钮及拖拽控件的专用样式。 */
+.nb-text-editor-surface {
+  cursor: text;
+}
+
+/* 行号栏用于选行，不是文字插入区域，保留箭头指针。 */
+.nb-text-editor-surface .cm-gutters {
+  cursor: default;
+}
+
 /* ═════════════════════════════════════════════════════════
  * Markdown 正文排版
  * ═════════════════════════════════════════════════════════ */

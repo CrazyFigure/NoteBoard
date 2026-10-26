@@ -498,8 +498,9 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
   if (!doc) return null;
 
   return (
-    // 外层 Flex 容器负责居中与背景色，避免内部 .cm-content 居中导致坐标偏移
+    // 外层负责居中与背景色，并在编辑状态统一正文和空白的鼠标指针，避免内部 .cm-content 居中导致坐标偏移。
     <div
+      className={isReading ? undefined : 'nb-text-editor-surface'}
       ref={rootRef}
       style={{
         position: 'relative',

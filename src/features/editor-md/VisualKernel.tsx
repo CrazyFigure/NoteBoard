@@ -401,8 +401,9 @@ export function VisualKernel({
   }, [editor, linkModalState]);
 
   return (
+    // 只在编辑状态统一鼠标指针，沉浸阅读继续使用浏览器默认样式。
     <div
-      className="nb-md-visual-scroller"
+      className={readOnly ? 'nb-md-visual-scroller' : 'nb-md-visual-scroller nb-text-editor-surface'}
       style={{
         height: '100%',
         overflow: 'auto',
