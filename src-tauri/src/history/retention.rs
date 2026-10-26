@@ -1,7 +1,7 @@
 // NoteBoard 文档历史记录：保留策略（纯函数）
 //
-//   - 近 7 天：全部保留（连续保存已由合并窗口压缩）
-//   - 7 天以前：每台设备每天只保留当天最后一个版本
+//   - 近 full_keep_days 天（默认 7 天）：全部保留（连续保存已由合并窗口压缩）
+//   - 更早：每台设备每天只保留当天最后一个版本
 //   - 超过保留天数：删除（保留天数为 0 表示永久）
 //   - 每个文档最多保留 MAX_ENTRIES 个版本
 // 固定的版本、合并窗口中的版本与最新 KEEP_LATEST 个版本永远不会被自动清理。
@@ -11,7 +11,6 @@ use chrono::TimeZone;
 use std::collections::HashSet;
 
 pub const DAY_MS: i64 = 24 * 3_600_000;
-pub const FULL_KEEP_DAYS: i64 = 7;
 pub const MAX_ENTRIES: usize = 500;
 pub const KEEP_LATEST: usize = 5;
 
@@ -30,10 +29,10 @@ pub fn protected(entries: &[Entry]) -> HashSet<usize> {
 }
 
 /// 对单个文档应用保留策略，返回被移除的条目（entries 按时间升序）
-pub fn apply(entries: &mut Vec<Entry>, now: i64, retention_days: u32) -> Vec<Entry> {
+pub fn apply(entries: &mut Vec<Entry>, now: i64, retention_days: u32, full_keep_days: u32) -> Vec<Entry> {
     let keep = protected(entries);
     let mut drop = vec![false; entries.len()];
-    // 7 天以前：同设备同一天只保留最后一个（从新到旧扫描，第一次出现的保留）
+    // 全部保留期以前：同设备同一天只保留最后一个（从新到旧扫描，第一次出现的保留）
     let mut seen_day: HashSet<(String, String)> = HashSet::new();
     for i in (0..entries.len()).rev() {
         let e = &entries[i];
@@ -46,7 +45,7 @@ pub fn apply(entries: &mut Vec<Entry>, now: i64, retention_days: u32) -> Vec<Ent
             drop[i] = true;
             continue;
         }
-        if age > FULL_KEEP_DAYS * DAY_MS && !seen_day.insert((e.origin.device.clone(), local_day(e.at))) {
+        if age > full_keep_days as i64 * DAY_MS && !seen_day.insert((e.origin.device.clone(), local_day(e.at))) {
             drop[i] = true;
         }
     }
@@ -86,7 +85,7 @@ mod tests {
     fn recent_entries_are_all_kept() {
         let now = 100 * DAY_MS;
         let mut v: Vec<Entry> = (0..20).map(|i| e(&i.to_string(), now - i * 3_600_000)).rev().collect();
-        assert!(apply(&mut v, now, 90).is_empty());
+        assert!(apply(&mut v, now, 90, 7).is_empty());
         assert_eq!(v.len(), 20);
     }
 
@@ -101,9 +100,23 @@ mod tests {
         for i in 0..KEEP_LATEST {
             v.push(e(&format!("new{}", i), now - i as i64));
         }
-        let removed: Vec<String> = apply(&mut v, now, 90).into_iter().map(|x| x.id).collect();
+        let removed: Vec<String> = apply(&mut v, now, 90, 7).into_iter().map(|x| x.id).collect();
         assert_eq!(removed, vec!["expired".to_string(), "day-a1".to_string()]);
         assert!(v.iter().any(|x| x.id == "day-a2"));
+    }
+
+    #[test]
+    fn full_keep_days_is_configurable() {
+        let now = 400 * DAY_MS;
+        let mut v = vec![e("a1", now - 10 * DAY_MS), e("a2", now - 10 * DAY_MS + 60_000)];
+        for i in 0..KEEP_LATEST {
+            v.push(e(&format!("new{}", i), now - i as i64));
+        }
+        // 14 天内全部保留：10 天前的两个版本都在
+        assert!(apply(&mut v.clone(), now, 90, 14).is_empty());
+        // 7 天内全部保留：10 天前同一天只留最后一个
+        let removed: Vec<String> = apply(&mut v, now, 90, 7).into_iter().map(|x| x.id).collect();
+        assert_eq!(removed, vec!["a1".to_string()]);
     }
 
     #[test]
@@ -112,7 +125,7 @@ mod tests {
         let mut pinned = e("pinned", now - 300 * DAY_MS);
         pinned.pinned = true;
         let mut v = vec![pinned, e("old", now - 300 * DAY_MS + 1), e("last", now - 300 * DAY_MS + 2)];
-        let removed = apply(&mut v, now, 30);
+        let removed = apply(&mut v, now, 30, 7);
         // 不足 KEEP_LATEST 个时全部属于「最新」，都不会被移除
         assert!(removed.is_empty());
         assert_eq!(v.len(), 3);

@@ -104,7 +104,7 @@ fn dispatch_history(command: &str, args: &Value) -> Result<Value, String> {
         "history_set_options" => {
             let o = &args["options"];
             let n = |key: &str| o[key].as_u64().unwrap_or(0) as u32;
-            Ok(json!(history::service::view(&svc.set_options(n("retentionDays"), n("mergeWindowMin"), n("maxTotalMb"))?)))
+            Ok(json!(history::service::view(&svc.set_options(n("retentionDays"), n("mergeWindowMin"), n("fullKeepDays"), n("maxTotalMb"))?)))
         }
         "history_list" => Ok(json!(svc.list(&path()?))),
         "history_read" => Ok(json!(svc.read(&path()?, &text("entryId"))?)),

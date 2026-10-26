@@ -34,9 +34,18 @@ const RETENTION_OPTIONS = [
 ] as const;
 
 const WINDOW_OPTIONS = [
+  { value: '1', label: '1 分钟' },
+  { value: '3', label: '3 分钟' },
   { value: '5', label: '5 分钟' },
   { value: '10', label: '10 分钟' },
   { value: '30', label: '30 分钟' },
+] as const;
+
+const FULL_KEEP_OPTIONS = [
+  { value: '7', label: '7 天' },
+  { value: '14', label: '14 天' },
+  { value: '30', label: '30 天' },
+  { value: '180', label: '180 天' },
 ] as const;
 
 export function HistorySettingsPanel() {
@@ -92,12 +101,13 @@ export function HistorySettingsPanel() {
     void applyMode(mode);
   };
 
-  const saveOptions = async (patch: Partial<Pick<HistoryConfigView, 'retentionDays' | 'mergeWindowMin'>>) => {
+  const saveOptions = async (patch: Partial<Pick<HistoryConfigView, 'retentionDays' | 'mergeWindowMin' | 'fullKeepDays'>>) => {
     if (!config) return;
     try {
       const next = await ipc.historySetOptions({
         retentionDays: patch.retentionDays ?? config.retentionDays,
         mergeWindowMin: patch.mergeWindowMin ?? config.mergeWindowMin,
+        fullKeepDays: patch.fullKeepDays ?? config.fullKeepDays,
         maxTotalMb: config.maxTotalMb,
       });
       setConfig(next);
@@ -193,13 +203,25 @@ export function HistorySettingsPanel() {
           <div className="nb-sync-row">
             <div>
               <div>保留时长</div>
-              <div className="nb-sync-muted">7 天前的版本每天保留一个</div>
+              <div className="nb-sync-muted">更早的版本自动删除</div>
             </div>
             <SettingsSelect
               ariaLabel="保留时长"
               value={String(config.retentionDays) as (typeof RETENTION_OPTIONS)[number]['value']}
               options={RETENTION_OPTIONS}
               onChange={(v) => void saveOptions({ retentionDays: Number(v) })}
+            />
+          </div>
+          <div className="nb-sync-row">
+            <div>
+              <div>完整保留</div>
+              <div className="nb-sync-muted">更早的版本每天只留一个</div>
+            </div>
+            <SettingsSelect
+              ariaLabel="完整保留"
+              value={String(config.fullKeepDays) as (typeof FULL_KEEP_OPTIONS)[number]['value']}
+              options={FULL_KEEP_OPTIONS}
+              onChange={(v) => void saveOptions({ fullKeepDays: Number(v) })}
             />
           </div>
           <div className="nb-sync-row">

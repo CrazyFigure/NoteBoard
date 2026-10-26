@@ -230,6 +230,7 @@ pub struct ConfigView {
     pub mode: Mode,
     pub retention_days: u32,
     pub merge_window_min: u32,
+    pub full_keep_days: u32,
     pub max_total_mb: u32,
     /// 当前生效的容量上限（MB）
     pub effective_max_mb: u64,
@@ -248,6 +249,7 @@ pub fn view(cfg: &HistoryConfig) -> ConfigView {
         mode: cfg.mode,
         retention_days: cfg.retention_days,
         merge_window_min: cfg.merge_window_min,
+        full_keep_days: cfg.full_keep_days,
         max_total_mb: cfg.max_total_mb,
         effective_max_mb: cfg.max_total_bytes(git_backend) / 1024 / 1024,
         sync_available: sync.sync.enabled && !sync.sync.root_dir.trim().is_empty(),
@@ -1174,10 +1176,11 @@ impl Service {
         }
     }
 
-    pub fn set_options(&self, retention_days: u32, merge_window_min: u32, max_total_mb: u32) -> Result<HistoryConfig, String> {
+    pub fn set_options(&self, retention_days: u32, merge_window_min: u32, full_keep_days: u32, max_total_mb: u32) -> Result<HistoryConfig, String> {
         let mut cfg = self.config();
         cfg.retention_days = retention_days;
         cfg.merge_window_min = merge_window_min;
+        cfg.full_keep_days = full_keep_days;
         cfg.max_total_mb = max_total_mb;
         cfg.sanitize();
         self.store_config(cfg.clone())?;
@@ -1254,7 +1257,7 @@ impl Service {
             if idx.last().is_some_and(|e| e.open && now - e.at > window) && Self::seal_last(store, &mut idx).is_ok() {
                 dirty = true;
             }
-            if !retention::apply(&mut idx.entries, now, cfg.retention_days).is_empty() {
+            if !retention::apply(&mut idx.entries, now, cfg.retention_days, cfg.full_keep_days).is_empty() {
                 dirty = true;
             }
             if idx.entries.is_empty() {

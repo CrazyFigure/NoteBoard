@@ -36,6 +36,8 @@ pub struct HistoryConfig {
     pub retention_days: u32,
     /// 连续保存合并窗口（分钟）
     pub merge_window_min: u32,
+    /// 全部保留的天数：更早的版本每台设备每天只保留一个
+    pub full_keep_days: u32,
     /// 总容量上限（MB）；0 表示按模式默认值
     pub max_total_mb: u32,
     pub retire_pending: Vec<RetireItem>,
@@ -43,7 +45,7 @@ pub struct HistoryConfig {
 
 impl Default for HistoryConfig {
     fn default() -> Self {
-        Self { format: 1, mode: Mode::Off, retention_days: 90, merge_window_min: 10, max_total_mb: 0, retire_pending: Vec::new() }
+        Self { format: 1, mode: Mode::Off, retention_days: 90, merge_window_min: 10, full_keep_days: 7, max_total_mb: 0, retire_pending: Vec::new() }
     }
 }
 
@@ -52,6 +54,8 @@ impl HistoryConfig {
     pub fn sanitize(&mut self) {
         self.merge_window_min = self.merge_window_min.clamp(1, 120);
         self.retention_days = self.retention_days.min(3650);
+        // 0 表示旧版配置或未传：回到默认 7 天
+        self.full_keep_days = if self.full_keep_days == 0 { 7 } else { self.full_keep_days.min(3650) };
         self.max_total_mb = self.max_total_mb.min(100 * 1024);
     }
 
@@ -100,6 +104,7 @@ mod tests {
         let mut c = cfg.clone();
         c.sanitize();
         assert_eq!(c.merge_window_min, 1);
+        assert_eq!(c.full_keep_days, 7);
         assert_eq!(HistoryConfig::default().mode, Mode::Off);
     }
 }

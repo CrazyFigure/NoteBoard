@@ -33,12 +33,14 @@ pub async fn history_set_mode(mode: Mode) -> Result<ConfigView, String> {
 pub struct OptionsInput {
     pub retention_days: u32,
     pub merge_window_min: u32,
+    #[serde(default)]
+    pub full_keep_days: u32,
     pub max_total_mb: u32,
 }
 
 #[tauri::command]
 pub async fn history_set_options(options: OptionsInput) -> Result<ConfigView, String> {
-    blocking(move |s| s.set_options(options.retention_days, options.merge_window_min, options.max_total_mb).map(|c| view(&c))).await
+    blocking(move |s| s.set_options(options.retention_days, options.merge_window_min, options.full_keep_days, options.max_total_mb).map(|c| view(&c))).await
 }
 
 #[tauri::command]

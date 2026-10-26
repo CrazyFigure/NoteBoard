@@ -720,6 +720,8 @@ export interface HistoryConfigView {
   /** 保留天数，0 表示永久 */
   retentionDays: number;
   mergeWindowMin: number;
+  /** 全部保留的天数，更早的版本每天只留一个 */
+  fullKeepDays: number;
   /** 容量上限（MB），0 表示按模式默认 */
   maxTotalMb: number;
   effectiveMaxMb: number;
@@ -732,6 +734,7 @@ export interface HistoryConfigView {
 export interface HistoryOptionsInput {
   retentionDays: number;
   mergeWindowMin: number;
+  fullKeepDays: number;
   maxTotalMb: number;
 }
 

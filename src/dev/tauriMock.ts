@@ -115,6 +115,7 @@ const MOCK_DEVICE = 'mock-device';
 let mockHistoryMode = new URLSearchParams(window.location.search).get('mockHistory') === 'off' ? 'off' : 'local';
 let mockHistoryWindow = 10;
 let mockHistoryRetention = 90;
+let mockHistoryFullKeep = 7;
 const mockHistories = new Map<string, MockVersion[]>();
 let mockVersionSeq = 0;
 
@@ -300,7 +301,7 @@ function mockRecordWrite(path: string, content: string): void {
 
 function mockHistoryConfig() {
   return {
-    mode: mockHistoryMode, retentionDays: mockHistoryRetention, mergeWindowMin: mockHistoryWindow, maxTotalMb: 0,
+    mode: mockHistoryMode, retentionDays: mockHistoryRetention, mergeWindowMin: mockHistoryWindow, fullKeepDays: mockHistoryFullKeep, maxTotalMb: 0,
     effectiveMaxMb: 1024, syncAvailable: true, gitBackend: false,
   };
 }
@@ -495,9 +496,10 @@ export function installTauriMock(): void {
         if (mockHistoryMode === 'off') mockHistories.clear();
         return mockHistoryConfig();
       case 'history_set_options': {
-        const options = args.options as { retentionDays: number; mergeWindowMin: number };
+        const options = args.options as { retentionDays: number; mergeWindowMin: number; fullKeepDays: number };
         mockHistoryRetention = options.retentionDays;
         mockHistoryWindow = options.mergeWindowMin;
+        mockHistoryFullKeep = options.fullKeepDays;
         return mockHistoryConfig();
       }
       case 'history_list':
