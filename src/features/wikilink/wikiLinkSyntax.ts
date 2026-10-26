@@ -7,6 +7,9 @@
 /** 双链内部文字上限：防止异常长的方括号文本拖慢行内解析 */
 export const WIKI_LINK_MAX_LENGTH = 400;
 
+/** 嵌入时可直接显示的图片扩展名（嵌入图片时 `|` 后面是显示宽度而非显示名） */
+export const EMBED_IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'jpe', 'jfif', 'gif', 'webp', 'svg', 'bmp', 'avif', 'apng', 'ico']);
+
 /** 双链的组成部分 */
 export interface WikiLinkParts {
   /** 目标笔记（文件名、相对路径或完整路径，可省略扩展名）；为空表示当前文档 */
@@ -22,6 +25,9 @@ const WIKI_LINK_AT_START = new RegExp(`^(!?)\\[\\[([^\\[\\]\\r\\n]{1,${WIKI_LINK
 
 /** 文本中全局匹配 `[[...]]`（用于源码装饰与反向链接扫描） */
 const WIKI_LINK_GLOBAL = new RegExp(`\\[\\[([^\\[\\]\\r\\n]{1,${WIKI_LINK_MAX_LENGTH}}?)\\]\\]`, 'g');
+
+/** 列表项起始行（无序 / 有序），其后的缩进行是列表续段而非缩进代码块 */
+const LIST_ITEM_START = /^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)/;
 
 /** front matter 的起止行 */
 const FRONT_MATTER_OPEN = /^---[ \t]*\r?$/;
@@ -62,6 +68,15 @@ export function wikiLinkLabel(parts: WikiLinkParts): string {
   const name = parts.target.split(/[\\/]/).pop() ?? parts.target;
   if (!parts.heading) return name;
   return name ? `${name} › ${parts.heading}` : parts.heading;
+}
+
+/**
+ * 双链节点写回 Markdown 的原文：`[[内部文字]]` / `![[内部文字]]`。
+ * 表格单元格中的 `|` 必须写成 `\|`，否则会被当作列分隔符（与 Obsidian 写法一致）。
+ */
+export function formatWikiLinkMarkdown(inner: string, embed: boolean, inTableCell = false): string {
+  const escaped = inTableCell ? inner.replace(/(^|[^\\])\|/g, '$1\\|') : inner;
+  return `${embed ? '!' : ''}[[${escaped}]]`;
 }
 
 /** 由组成部分生成内部文字（建议框插入、编辑后写回） */
@@ -110,11 +125,34 @@ export function extractWikiLinks(markdown: string): WikiLinkOccurrence[] {
   if (FRONT_MATTER_OPEN.test(lines[0] ?? '')) {
     frontMatterEnd = lines.findIndex((line, index) => index > 0 && FRONT_MATTER_CLOSE.test(line));
   }
+  // 缩进代码块（空行后缩进 4 格 / 制表符）：列表内的缩进是续段，不是代码
+  let inIndentedCode = false;
+  let inList = false;
+  let previousBlank = true;
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const line = lines[lineIndex];
     if (lineIndex <= frontMatterEnd) {
       offset += line.length + 1;
       continue;
+    }
+    if (!fence) {
+      const blank = !line.trim();
+      const indented = /^(?: {4}|\t)/.test(line);
+      if (inIndentedCode && (blank || indented)) {
+        offset += line.length + 1;
+        previousBlank = blank;
+        continue;
+      }
+      inIndentedCode = false;
+      if (indented && !blank && previousBlank && !inList) {
+        inIndentedCode = true;
+        offset += line.length + 1;
+        previousBlank = false;
+        continue;
+      }
+      if (LIST_ITEM_START.test(line)) inList = true;
+      else if (!blank && !/^\s/.test(line)) inList = false;
+      previousBlank = blank;
     }
     const fenceMatch = /^ {0,3}(`{3,}|~{3,})/.exec(line);
     if (fenceMatch) {
@@ -176,6 +214,28 @@ export function extractHeadingSection(markdown: string, heading: string): string
     }
   }
   return start < 0 ? null : lines.slice(start).join('\n');
+}
+
+/** 笔记中的一个标题 */
+export interface NoteHeading {
+  level: number;
+  text: string;
+}
+
+/** 列出笔记的全部 ATX 标题（跳过 front matter 与围栏代码），供选择 `#标题` 使用 */
+export function extractHeadings(markdown: string): NoteHeading[] {
+  const headings: NoteHeading[] = [];
+  let fenced = false;
+  for (const line of stripFrontMatter(markdown).split('\n')) {
+    if (/^ {0,3}(`{3,}|~{3,})/.test(line)) fenced = !fenced;
+    if (fenced) continue;
+    const match = /^ {0,3}(#{1,6})[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*\r?$/.exec(line);
+    // 标题文字里的 # 或 | 会与双链语法冲突，不能作为锚点
+    if (match && match[2].trim() && !/[#|[\]]/.test(match[2])) {
+      headings.push({ level: match[1].length, text: match[2].trim() });
+    }
+  }
+  return headings;
 }
 
 /** 去掉文首 front matter（嵌入整篇笔记时不显示元数据） */

@@ -74,7 +74,7 @@ import { alertSourceBlock, codeSourceBlock, quoteSourceBlock, wrapSourceLines } 
 import { ALERT_KINDS, AlertMenuIcon, alertMenuLabel, type AlertKind } from '../editor-md/alertExtension';
 import { CALLOUT_PRESETS, CalloutPresetIcon, type CalloutPreset } from '../editor-md/calloutPickers';
 import { RAW_HTML_SOURCE_SNIPPET, insertRawHtmlContent } from '../editor-md/rawHtmlBlockView';
-import { startSourceWikiLinkInsert } from '../editor-md/sourceWikiLink';
+import { insertWikiLinkInEditor, insertWikiLinkInSource } from '../wikilink/wikiLinkActions';
 import { InlineEmojiGrid, insertInlineEmoji } from '../editor-md/inlineEmoji';
 import { renderHighlightSource } from '../editor-md/markdownInlineMarks';
 // 🔴 S03：从 editor-md 边界内实例表获取内核实例（不再依赖编辑器组件文件的 getter 导出）
@@ -526,15 +526,15 @@ export function MarkdownToolbar({
     emit('open-link-modal', { key: docKey });
   };
 
-  // 双向链接：写入 `[[` 后由补全弹层接管（可视化 / 源码各自的补全）
+  // 双向链接：弹窗中选择笔记、标题、显示名与链接 / 嵌入方式（直接输入 `[[` 是快捷写法）
   const handleInsertWikiLink = () => {
     setInsertDropdownOpen(false);
     if (isSourceMode) {
-      executeSourceAction((view) => startSourceWikiLinkInsert(view));
+      const view = getActiveSourceView(docKey);
+      if (view) void insertWikiLinkInSource(view, docKey);
       return;
     }
-    if (!editor) return;
-    editor.chain().focus().insertContent('[[').run();
+    if (editor) void insertWikiLinkInEditor(editor, docKey);
   };
 
   const handleInsertLocalImage = async () => {

@@ -47,6 +47,7 @@ import { insertLocalImageWithDialog } from './imagePaste';
 import { promptImageUrl } from '../../components/promptPresets';
 import { useWindowStore } from '../../stores/windowStore';
 import { emit } from '../../core/emitter';
+import { insertWikiLinkInEditor } from '../wikilink/wikiLinkActions';
 import { IS_MOBILE_UI } from '../../core/platform';
 import { isTouchInteraction } from '../../core/inputModality';
 import { DEFAULT_INFOGRAPHIC_CODE, INFOGRAPHIC_TEMPLATES } from '../infographic/infographicTemplates';
@@ -610,8 +611,11 @@ const WIKI_LINK_LEAF: LeafCommandItem = {
   icon: <Waypoints size={17} color="#8b5cf6" />,
   aliases: ['wiki', 'wikilink', 'shuanglian', 'sl', 'backlink', 'note', 'biji'],
   keywords: '双向链接 双链 笔记链接 反向链接 wiki wikilink shuanglian sl',
-  // 写入 `[[` 后由双链补全接管：弹出笔记列表供搜索选择
-  action: (editor, range) => editor.chain().focus().deleteRange(range).insertContent('[[').run(),
+  // 弹窗中选择笔记、标题、显示名与链接 / 嵌入方式
+  action: (editor, range) => {
+    editor.chain().focus().deleteRange(range).run();
+    void insertWikiLinkInEditor(editor, useWindowStore.getState().activeKey ?? '');
+  },
 };
 
 const DIVIDER_LEAF: LeafCommandItem = {

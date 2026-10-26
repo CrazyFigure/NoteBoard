@@ -349,14 +349,22 @@ function startBuild(state: VaultState): Promise<NoteIndexSnapshot> {
   state.stale = false;
   state.dirtyWhileBuilding = false;
   state.lastBuildStartedAt = Date.now();
+  const previousSignature = state.snapshot ? snapshotSignature(state.snapshot) : null;
+  let changed = true;
   const building = scanVault(state.root)
     .then((snapshot) => {
+      // 文件集合与修改时间都没变时沿用旧快照：不通知订阅者，避免所有链接与嵌入无谓地重新解析、重绘
+      if (previousSignature !== null && previousSignature === snapshotSignature(snapshot) && state.snapshot) {
+        changed = false;
+        state.snapshot.builtAt = snapshot.builtAt;
+        return state.snapshot;
+      }
       state.snapshot = snapshot;
       return snapshot;
     })
     .finally(() => {
       state.building = null;
-      notify();
+      if (changed) notify();
       // 重建期间又有变化：按节流间隔再建一次
       if (state.dirtyWhileBuilding) scheduleRebuild(state);
     });
@@ -409,9 +417,31 @@ export async function loadNoteIndex(root: string, options?: { fresh?: boolean })
   return state.snapshot;
 }
 
-/** 标记全部仓库索引过期（后台按节流重建） */
-export function invalidateNoteIndex(): void {
-  for (const state of vaults.values()) scheduleRebuild(state);
+/** 快照签名：文件路径、修改时间与大小（判断重建结果是否有变化） */
+function snapshotSignature(snapshot: NoteIndexSnapshot): string {
+  let signature = `${snapshot.entries.length}`;
+  for (const entry of snapshot.entries) signature += `\n${entry.path}\t${entry.mtime}\t${entry.size}`;
+  return signature;
+}
+
+/** 切回窗口触发的重建最小间隔：频繁切换窗口时不反复扫描整个仓库 */
+const FOCUS_REBUILD_MIN_AGE_MS = 30000;
+
+/**
+ * 标记全部仓库索引过期（后台按节流重建）。
+ * minAge：快照建立不足该时长时跳过（切回窗口等低价值触发使用）。
+ */
+export function invalidateNoteIndex(options?: { minAge?: number }): void {
+  const minAge = options?.minAge ?? 0;
+  for (const state of vaults.values()) {
+    if (minAge > 0 && state.snapshot && Date.now() - state.snapshot.builtAt < minAge) continue;
+    scheduleRebuild(state);
+  }
+}
+
+/** 切回窗口 / 回到前台时调用：距上次扫描较久才重建 */
+export function invalidateNoteIndexOnFocus(): void {
+  invalidateNoteIndex({ minAge: FOCUS_REBUILD_MIN_AGE_MS });
 }
 
 // ── 过期触发 ──
@@ -424,7 +454,7 @@ function ensureInvalidationHooks(): void {
   hooksInstalled = true;
 
   // 切回窗口时其它软件或同步可能已改动文件
-  window.addEventListener('focus', () => invalidateNoteIndex());
+  window.addEventListener('focus', () => invalidateNoteIndexOnFocus());
 
   // 同步写入本机文件后重建：链接另一端到达后自动恢复为可用链接
   void import('../../core/ipc/events')
@@ -633,11 +663,21 @@ function isSubsequence(query: string, text: string): boolean {
   return false;
 }
 
+/** 匹配用的小写字段缓存：逐字搜索时不必为每个文件反复转换大小写 */
+const loweredFields = new WeakMap<NoteEntry, { stem: string; name: string; rel: string; dirKey: string }>();
+
+function lowered(entry: NoteEntry): { stem: string; name: string; rel: string; dirKey: string } {
+  let fields = loweredFields.get(entry);
+  if (!fields) {
+    fields = { stem: entry.stem.toLowerCase(), name: entry.name.toLowerCase(), rel: entry.relPath.toLowerCase(), dirKey: pathKey(entry.dir) };
+    loweredFields.set(entry, fields);
+  }
+  return fields;
+}
+
 function scoreEntry(entry: NoteEntry, query: string): number {
   if (!query) return 1;
-  const stem = entry.stem.toLowerCase();
-  const name = entry.name.toLowerCase();
-  const rel = entry.relPath.toLowerCase();
+  const { stem, name, rel } = lowered(entry);
   if (stem === query || name === query) return 100;
   if (stem.startsWith(query)) return 80;
   if (stem.includes(query)) return 60;
@@ -661,17 +701,22 @@ export function searchNotes(
   const fromKey = fromPath ? pathKey(fromPath) : '';
   const fromDirKey = fromPath ? pathKey(dirnameOf(fromPath)) : '';
   const scored: Array<{ entry: NoteEntry; score: number }> = [];
-  // 仓库外的条目（已打开的文档）只补充索引里没有的
-  const extraEntries = extras.filter((entry) => !snapshot?.byPathKey.has(pathKey(entry.path)));
+  // 仓库外的条目（已打开的文档）只补充索引里没有的，且排除当前文档自身
+  const extraEntries = extras.filter((entry) => {
+    const key = pathKey(entry.path);
+    return key !== fromKey && !snapshot?.byPathKey.has(key);
+  });
+  // 当前文档在索引中的条目按引用排除，避免逐个规范化路径比较
+  const selfEntry = fromKey ? snapshot?.byPathKey.get(fromKey) : undefined;
   for (const entry of [...(snapshot?.entries ?? []), ...extraEntries]) {
     // 链接到自身没有意义（标题跳转用 [[#标题]]）
-    if (fromKey && pathKey(entry.path) === fromKey) continue;
+    if (entry === selfEntry) continue;
     // 图片等资源只在明确搜索时出现，空查询只列笔记
     if (!normalizedQuery && !entry.isMarkdown) continue;
     let score = scoreEntry(entry, normalizedQuery);
     if (score <= 0) continue;
     if (entry.isMarkdown) score += 5;
-    if (pathKey(entry.dir) === fromDirKey) score += 3;
+    if (lowered(entry).dirKey === fromDirKey) score += 3;
     scored.push({ entry, score });
   }
   scored.sort((left, right) =>

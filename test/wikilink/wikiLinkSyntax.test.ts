@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   extractHeadingSection,
+  extractHeadings,
   extractWikiLinks,
   findWikiLinkStart,
   formatWikiLinkInner,
@@ -65,6 +66,15 @@ describe('嵌入写法', () => {
     expect(extractHeadingSection(markdown, '不存在')).toBeNull();
   });
 
+  it('列出标题：跳过代码块与含语法字符的标题', () => {
+    const markdown = '---\ntitle: x\n---\n# 一\n```\n# 代码\n```\n## 二 ##\n### 带#号\n#### 四';
+    expect(extractHeadings(markdown)).toEqual([
+      { level: 1, text: '一' },
+      { level: 2, text: '二' },
+      { level: 4, text: '四' },
+    ]);
+  });
+
   it('去掉文首 front matter', () => {
     expect(stripFrontMatter('---\ntitle: x\n---\n\n正文')).toBe('正文');
     expect(stripFrontMatter('正文\n---')).toBe('正文\n---');
@@ -72,6 +82,22 @@ describe('嵌入写法', () => {
 });
 
 describe('extractWikiLinks', () => {
+  it('跳过缩进代码块，但列表内缩进的续段照常提取', () => {
+    const markdown = [
+      '段落 [[a]]',
+      '',
+      '    [[缩进代码]]',
+      '',
+      '    [[仍是代码]]',
+      '后续 [[b]]',
+      '',
+      '- 列表 [[c]]',
+      '',
+      '    列表续段 [[d]]',
+    ].join('\n');
+    expect(extractWikiLinks(markdown).map((link) => link.inner)).toEqual(['a', 'b', 'c', 'd']);
+  });
+
   it('跳过 front matter 中的方括号', () => {
     expect(extractWikiLinks('---\nrelated: [[元数据]]\n---\n[[正文]]').map((link) => link.inner)).toEqual(['正文']);
   });

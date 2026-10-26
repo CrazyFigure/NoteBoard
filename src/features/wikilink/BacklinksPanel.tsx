@@ -18,13 +18,15 @@ const CONTENT_REFRESH_DELAY_MS = 1500;
 /** 把片段中的 `[[...]]` 渲染为链接样式，其余保持原文 */
 function renderSnippet(snippet: string): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const pattern = /\[\[([^[\]\r\n]+?)\]\]/g;
+  const pattern = /(!?)\[\[([^[\]\r\n]+?)\]\]/g;
   let last = 0;
   for (let match = pattern.exec(snippet); match; match = pattern.exec(snippet)) {
     if (match.index > last) nodes.push(snippet.slice(last, match.index));
+    const parts = parseWikiLinkInner(match[2]);
     nodes.push(
       <span key={match.index} className="nb-backlinks-snippet-link">
-        {wikiLinkLabel(parseWikiLinkInner(match[1]))}
+        {/* 嵌入的 `|` 后面是尺寸，不作为显示名 */}
+        {wikiLinkLabel(match[1] ? { ...parts, alias: '' } : parts)}
       </span>,
     );
     last = match.index + match[0].length;
@@ -102,7 +104,11 @@ export function BacklinksPanel() {
             className={`nb-backlinks-refresh${loading ? ' is-loading' : ''}`}
             aria-label="重新扫描"
             data-sheet-keep=""
-            onClick={() => invalidateNoteIndex()}
+            onClick={() => {
+              // 重建索引（有变化才会通知）的同时立即重新收集一次
+              invalidateNoteIndex();
+              setContentTick((tick) => tick + 1);
+            }}
           >
             <RefreshCw size={12} />
           </button>

@@ -33,7 +33,7 @@ import { ColumnBlock, ColumnsBlock } from '../columnsExtension';
 import { CalloutBlock } from '../calloutExtension';
 import { FootnoteDefinitionBlock, FootnoteReference, FrontMatterBlock, RawHtmlBlock, RawHtmlBlockMerge, RawHtmlInline } from '../markdownPreserveExtensions';
 import { slashSuggestion } from '../slashCommand';
-import { WikiLink } from '../wikiLinkNode';
+import { WikiLink, WikiLinkMarkdownMarks } from '../wikiLinkNode';
 import { WikiLinkSuggestion } from '../wikiLinkSuggestion';
 
 import { handleLinkClick } from '../linkHandler';
@@ -488,7 +488,7 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // 双向链接 `[[笔记]]`：原子节点逐字保留原文，输入 `[[` 弹出仓库笔记补全
     ...(options?.wikiLinks !== false
-      ? [WikiLink.configure({ docKey }), WikiLinkSuggestion.configure({ docKey })]
+      ? [WikiLink.configure({ docKey }), WikiLinkMarkdownMarks, WikiLinkSuggestion.configure({ docKey })]
       : []),
 
     // 斜杠命令

@@ -10,6 +10,7 @@ import { StatusBar } from './statusbar/StatusBar';
 import { WelcomeScreen } from './WelcomeScreen';
 import { ToastContainer } from './Toast';
 import { PromptDialogHost } from './PromptDialogHost';
+import { WikiLinkDialogHost } from '../features/wikilink/WikiLinkDialogHost';
 import { RailToggle } from './rail/RailToggle';
 import { FileDropOverlay } from './FileDropOverlay';
 import { EditorStack } from './shell/EditorStack';
@@ -547,6 +548,9 @@ export function AppShell(_props: { children?: React.ReactNode }) {
 
       {/* 全局输入弹窗（替代原生 prompt） */}
       <PromptDialogHost />
+
+      {/* 双向链接插入 / 编辑弹窗 */}
+      <WikiLinkDialogHost />
 
       {/* 全局文件拖拽释放提示 */}
       {!isShellHidden && <FileDropOverlay />}

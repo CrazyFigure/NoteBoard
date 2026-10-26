@@ -137,7 +137,8 @@ function rewriteMarkdown(markdown: string, replacements: Map<string, string>): s
 function rewriteOpenDocument(docKey: string, replacements: Map<string, string>): boolean {
   const viewMode = useWindowStore.getState().getTab(docKey)?.viewMode;
   const sourceView = getMdSourceView(docKey);
-  if (viewMode === 'source' && sourceView) {
+  // 源码模式，或源码首开尚未创建可视化实例时，改写源码编辑器
+  if (sourceView && (viewMode === 'source' || !getMdTipTapEditor(docKey))) {
     const text = sourceView.state.doc.toString();
     const changes = extractWikiLinks(text)
       .filter((occurrence) => replacements.has(occurrence.inner))
@@ -194,6 +195,8 @@ export async function applyWikiLinkRename(plan: WikiRenamePlan, newPath: string)
 
   let updated = 0;
   const failed: string[] = [];
+  /** 通过编辑器改写过的已打开文档：改完统一保存 */
+  const editedOpenDocs: string[] = [];
   for (const source of plan.sources) {
     const sourcePath = plan.moved.has(pathKey(source.entry.path))
       ? mapMovedPath(plan, newPath, source.entry.path)
@@ -212,7 +215,9 @@ export async function applyWikiLinkRename(plan: WikiRenamePlan, newPath: string)
     if (replacements.size === 0) continue;
     try {
       const open = findOpenDocument(sourcePath);
-      if (!(open?.loaded && rewriteOpenDocument(open.key, replacements))) {
+      if (open?.loaded && rewriteOpenDocument(open.key, replacements)) {
+        editedOpenDocs.push(open.key);
+      } else {
         await rewriteFile(sourcePath, replacements);
       }
       updated += source.links.filter((link) => replacements.has(link.inner)).length;
@@ -222,9 +227,22 @@ export async function applyWikiLinkRename(plan: WikiRenamePlan, newPath: string)
     }
   }
 
+  // 已打开的文档改完立即保存（不论保存策略），与未打开文件的直接写盘保持一致，避免链接更新停留在未保存状态
+  if (editedOpenDocs.length > 0) {
+    const { saveDocument } = await import('../editor-code/orchestration/saveDocument');
+    for (const docKey of editedOpenDocs) {
+      try {
+        if (!(await saveDocument(docKey))) failed.push(useDocumentStore.getState().getDocument(docKey)?.displayName ?? docKey);
+      } catch (error) {
+        console.error('[wikiLink] 保存已更新链接的文档失败:', docKey, error);
+        failed.push(docKey);
+      }
+    }
+  }
+
   invalidateNoteIndex();
   if (failed.length > 0) {
-    showToast(`已更新 ${updated} 处链接，${failed.length} 篇笔记更新失败：${failed.slice(0, 3).join('、')}`, 'warning');
+    showToast(`已更新 ${updated} 处链接，${failed.length} 篇笔记未能更新或保存：${failed.slice(0, 3).join('、')}`, 'warning');
   } else if (updated > 0) {
     showToast(`已更新 ${updated} 处双向链接`, 'success');
   }

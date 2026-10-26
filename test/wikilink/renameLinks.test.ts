@@ -42,6 +42,17 @@ vi.mock('../../src/core/ipc/commands', () => ({
 const confirm = vi.fn(async () => true);
 vi.mock('../../src/stores/promptDialogStore', () => ({ showConfirm: () => confirm() }));
 
+// 已打开文档：源码编辑器实例与保存
+const sourceViews = new Map<string, EditorView>();
+vi.mock('../../src/features/editor-md/editorInstances', () => ({
+  getMdSourceView: (key: string) => sourceViews.get(key),
+  getMdTipTapEditor: () => undefined,
+}));
+const saveDocument = vi.fn(async (_key: string) => true);
+vi.mock('../../src/features/editor-code/orchestration/saveDocument', () => ({ saveDocument: (key: string) => saveDocument(key) }));
+
+import { EditorView } from '@codemirror/view';
+import { useDocumentStore, type Document } from '../../src/stores/documentStore';
 import { applyWikiLinkRename, planWikiLinkRename } from '../../src/features/wikilink/renameLinks';
 import { resetNoteIndexForTest } from '../../src/features/wikilink/noteIndex';
 import { resetBacklinkCacheForTest } from '../../src/features/wikilink/backlinks';
@@ -50,6 +61,10 @@ afterEach(() => {
   files.clear();
   written.clear();
   confirm.mockClear();
+  saveDocument.mockClear();
+  for (const view of sourceViews.values()) view.destroy();
+  sourceViews.clear();
+  useDocumentStore.setState({ documents: new Map() });
   resetNoteIndexForTest();
   resetBacklinkCacheForTest();
 });
@@ -91,6 +106,26 @@ describe('重命名后更新双链', () => {
     await applyWikiLinkRename(plan!, `${ROOT}\\新目录`);
 
     expect(written.get(`${ROOT}\\首页.md`)).toBe('[[笔记]] 与 [[新目录/笔记]]');
+  });
+
+  it('已打开的文档在编辑器中改写后自动保存，不直接写盘', async () => {
+    const openPath = `${ROOT}\\首页.md`;
+    files.set(`${ROOT}\\计划.md`, '# 计划');
+    files.set(openPath, '磁盘旧内容 [[计划]]');
+    // 编辑器中有未保存的新内容，更新链接必须基于它
+    const view = new EditorView({ doc: '编辑中的内容 [[计划#目标]]' });
+    sourceViews.set(openPath, view);
+    useDocumentStore.setState({
+      documents: new Map([[openPath, { key: openPath, content: '编辑中的内容 [[计划#目标]]', displayName: '首页.md' } as Document]]),
+    });
+
+    const plan = await planWikiLinkRename(`${ROOT}\\计划.md`, false);
+    renameOnDisk(`${ROOT}\\计划.md`, `${ROOT}\\新计划.md`);
+    await applyWikiLinkRename(plan!, `${ROOT}\\新计划.md`);
+
+    expect(view.state.doc.toString()).toBe('编辑中的内容 [[新计划#目标]]');
+    expect(saveDocument).toHaveBeenCalledWith(openPath);
+    expect(written.has(openPath)).toBe(false);
   });
 
   it('没有指向它的链接时不询问', async () => {

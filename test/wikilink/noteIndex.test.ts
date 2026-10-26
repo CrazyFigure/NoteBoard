@@ -10,8 +10,10 @@ import {
   absoluteTargetPath,
   buildSnapshot,
   createExternalEntry,
+  getNoteIndexVersion,
   linkTargetFor,
   loadNoteIndex,
+  subscribeNoteIndex,
   relativePathBetween,
   resolveAmongEntries,
   resetNoteIndexForTest,
@@ -137,7 +139,42 @@ describe('searchNotes / shortestLinkTarget', () => {
   });
 });
 
+describe('大仓库搜索', () => {
+  it('2 万个文件逐字搜索保持在一帧以内', () => {
+    const entries: NoteEntry[] = [];
+    for (let index = 0; index < 20000; index += 1) entries.push(entry(`目录${index % 200}/笔记${index}.md`, index));
+    const big = buildSnapshot(ROOT, entries);
+    // 预热：首次搜索建立小写字段缓存
+    searchNotes(big, '笔', `${ROOT}\\目录1\\笔记1.md`);
+    const start = performance.now();
+    for (const query of ['笔', '笔记', '笔记1', '笔记12', '笔记123']) searchNotes(big, query, `${ROOT}\\目录1\\笔记1.md`);
+    const perQuery = (performance.now() - start) / 5;
+    expect(perQuery).toBeLessThan(16);
+  });
+});
+
 describe('loadNoteIndex', () => {
+  it('重建结果没有变化时不通知订阅者', async () => {
+    const node = (path: string) => ({ path, name: path.split('\\').pop()!, isDir: false, kind: 'markdown', size: 1, mtime: 1, isHidden: false, isSymlink: false });
+    readDir.mockImplementation(async () => [node(`${ROOT}\\a.md`)]);
+    await loadNoteIndex(ROOT);
+    const before = getNoteIndexVersion();
+    const listener = vi.fn();
+    const unsubscribe = subscribeNoteIndex(listener);
+    // 让快照「变旧」，fresh 读取会立即重新扫描
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.now() + 10000);
+    try {
+      await loadNoteIndex(ROOT, { fresh: true });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(readDir).toHaveBeenCalledTimes(2);
+    expect(getNoteIndexVersion()).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+
   it('逐级扫描，跳过隐藏项与不支持的文件', async () => {
     const node = (path: string, isDir: boolean, kind: string | null = 'markdown') => ({
       path,

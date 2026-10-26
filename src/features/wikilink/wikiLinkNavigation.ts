@@ -20,7 +20,7 @@ import {
   resolveWikiTarget,
   type NoteEntry,
 } from './noteIndex';
-import { parseWikiLinkInner, wikiLinkLabel } from './wikiLinkSyntax';
+import { extractHeadings, parseWikiLinkInner, wikiLinkLabel, type NoteHeading } from './wikiLinkSyntax';
 
 /** 链接的解析状态 */
 export type WikiLinkResolution =
@@ -141,6 +141,40 @@ export async function resolveWikiLinkFresh(target: string, fromPath: string | nu
     return resolveWikiTarget(refreshed, target, fromPath);
   }
   return null;
+}
+
+// ── 读取目标笔记 ──
+
+/** 读取笔记正文：已打开的文档用内存中的最新内容（含未保存修改） */
+export async function readNoteText(entry: NoteEntry): Promise<string> {
+  const key = pathKey(entry.path);
+  for (const doc of useDocumentStore.getState().documents.values()) {
+    if (pathKey(doc.key) === key && typeof doc.content === 'string') return doc.content;
+  }
+  const payload = await ipc.readDocument(entry.path);
+  return payload.content ?? '';
+}
+
+/** 标题列表缓存：路径 + 修改时间 → 标题 */
+const headingCache = new Map<string, NoteHeading[]>();
+
+/** 读取笔记的标题列表（选择 `#标题` 用）；非 Markdown 或读取失败返回空列表 */
+export async function loadNoteHeadings(entry: NoteEntry): Promise<NoteHeading[]> {
+  if (!entry.isMarkdown) return [];
+  const cacheKey = `${pathKey(entry.path)}:${entry.mtime}:${entry.size}`;
+  const cached = headingCache.get(cacheKey);
+  if (cached) return cached;
+  try {
+    const headings = extractHeadings(await readNoteText(entry));
+    // 已打开的文档内容随时变化，不缓存
+    if (entry.mtime > 0) {
+      if (headingCache.size > 200) headingCache.clear();
+      headingCache.set(cacheKey, headings);
+    }
+    return headings;
+  } catch {
+    return [];
+  }
 }
 
 // ── 打开后定位 ──

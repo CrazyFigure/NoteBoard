@@ -1097,26 +1097,6 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   outline-offset: 1px;
 }
 
-/* 双击编辑：显示 [[ 原文 ]] 输入框 */
-.ProseMirror .nb-wikilink.is-editing {
-  color: var(--editor-text-muted);
-  background: transparent;
-  border-bottom-color: transparent;
-  cursor: text;
-}
-
-.nb-wikilink-input {
-  font: inherit;
-  color: var(--editor-text);
-  background: var(--editor-surface);
-  border: 1px solid var(--editor-accent);
-  border-radius: 4px;
-  padding: 0 4px;
-  margin: 0 1px;
-  outline: none;
-  max-width: 100%;
-}
-
 /* 双链补全菜单 */
 .nb-wikilink-menu-popup {
   display: flex;
@@ -1296,12 +1276,57 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   color: var(--editor-text-muted);
 }
 
+/* 未指定高度时自适应内容、最高 420px；拖动底边或写了 `|高度` 后固定为该高度，内容在卡片内滚动 */
 .ProseMirror .nb-wikiembed-body {
   display: block;
+  box-sizing: border-box;
   padding: 8px 14px 10px;
-  max-height: 420px;
+  height: var(--nb-wikiembed-height, auto);
+  max-height: var(--nb-wikiembed-height, 420px);
   overflow: auto;
   font-size: 0.95em;
+}
+
+/* 卡片底边高度拖柄 */
+.ProseMirror .nb-wikiembed-resize {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 12px;
+  border-top: 1px solid var(--editor-border);
+  cursor: ns-resize;
+  touch-action: none;
+  user-select: none;
+  transition: background var(--transition-fast);
+}
+
+.ProseMirror .nb-wikiembed-resize-grip {
+  width: 32px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--editor-border);
+  transition: background var(--transition-fast), width var(--transition-fast);
+}
+
+.ProseMirror .nb-wikiembed-resize:hover,
+.ProseMirror .nb-wikiembed-resize.is-dragging {
+  background: color-mix(in srgb, var(--editor-accent) 8%, transparent);
+}
+
+.ProseMirror .nb-wikiembed-resize:hover .nb-wikiembed-resize-grip,
+.ProseMirror .nb-wikiembed-resize.is-dragging .nb-wikiembed-resize-grip {
+  width: 44px;
+  background: var(--editor-accent);
+}
+
+/* 只读（沉浸阅读、历史预览等）不显示拖柄 */
+.ProseMirror[contenteditable='false'] .nb-wikiembed-resize {
+  display: none;
+}
+
+/* 触屏：加大拖柄触控区域 */
+[data-platform='mobile'] .ProseMirror .nb-wikiembed-resize {
+  height: 20px;
 }
 
 .ProseMirror .nb-wikiembed-hint {
@@ -1330,6 +1355,332 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   color: var(--editor-text-muted);
   text-align: center;
   line-height: 1.6;
+}
+
+/* 笔记行右侧「# >」：进入该笔记的标题列表；当前行或悬停时显示，触屏始终显示 */
+.nb-wikilink-menu-drill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  margin-left: auto;
+  flex-shrink: 0;
+  height: 24px;
+  padding: 0 4px 0 6px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--editor-text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition-fast), background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-wikilink-menu-item.is-active .nb-wikilink-menu-drill,
+.nb-wikilink-menu-item:hover .nb-wikilink-menu-drill {
+  opacity: 1;
+}
+
+.nb-wikilink-menu-drill:hover {
+  background: color-mix(in srgb, var(--editor-accent) 14%, transparent);
+  color: var(--editor-accent);
+}
+
+.nb-wikilink-menu-drill:active {
+  transform: scale(0.92);
+}
+
+[data-platform='mobile'] .nb-wikilink-menu-drill {
+  opacity: 1;
+  height: 32px;
+  padding: 0 8px;
+}
+
+/* 底部：嵌入开关与更多选项 */
+.nb-wikilink-menu-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 6px;
+  border-top: 1px solid var(--editor-border);
+  background: var(--editor-bg);
+  flex-shrink: 0;
+}
+
+.nb-wikilink-menu-toggle,
+.nb-wikilink-menu-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--editor-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-wikilink-menu-toggle:hover,
+.nb-wikilink-menu-more:hover {
+  background: var(--toolbar-hover);
+  color: var(--editor-text);
+}
+
+.nb-wikilink-menu-toggle:active,
+.nb-wikilink-menu-more:active {
+  transform: scale(0.96);
+}
+
+/* 迷你开关 */
+.nb-wikilink-menu-switch {
+  position: relative;
+  width: 24px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--editor-border);
+  transition: background var(--transition-fast);
+}
+
+.nb-wikilink-menu-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--editor-surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+  transition: transform var(--transition-fast);
+}
+
+.nb-wikilink-menu-toggle.is-on {
+  color: var(--editor-accent);
+}
+
+.nb-wikilink-menu-toggle.is-on .nb-wikilink-menu-switch {
+  background: var(--editor-accent);
+}
+
+.nb-wikilink-menu-toggle.is-on .nb-wikilink-menu-switch::after {
+  transform: translateX(10px);
+}
+
+[data-platform='mobile'] .nb-wikilink-menu-toggle,
+[data-platform='mobile'] .nb-wikilink-menu-more {
+  height: 34px;
+  font-size: 13px;
+}
+
+/* 双链弹窗遮罩不做背景模糊：弹窗内容随输入频繁变化，模糊背景每帧重新合成会导致卡顿 */
+.nb-prompt-overlay.nb-wikidialog-overlay {
+  backdrop-filter: none;
+  background: rgb(20 18 14 / .4);
+}
+
+/* 双链弹窗：沿用 nb-prompt 外观，补充字段布局 */
+.nb-wikidialog .nb-prompt-body {
+  gap: 6px;
+}
+
+.nb-wikidialog-label {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--editor-text-secondary);
+}
+
+.nb-wikidialog-label:first-child {
+  margin-top: 0;
+}
+
+.nb-wikidialog-combo {
+  position: relative;
+}
+
+.nb-wikidialog-list {
+  margin-top: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--editor-border);
+  border-radius: 8px;
+  background: var(--editor-surface);
+}
+
+.nb-wikidialog-status {
+  font-size: 11.5px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.nb-wikidialog-status.is-ok {
+  color: var(--success-600, #16a34a);
+}
+
+.nb-wikidialog-status.is-warn {
+  color: var(--warning-600, #d97706);
+}
+
+.nb-wikidialog-status.is-muted {
+  color: var(--editor-text-muted);
+}
+
+.nb-wikidialog-select {
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--control-border, var(--editor-border));
+  border-radius: 8px;
+  background: var(--editor-bg);
+  color: var(--editor-text);
+  font-family: inherit;
+  font-size: 13.5px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.nb-wikidialog-select:hover:not(:disabled) {
+  border-color: var(--editor-border-focus);
+}
+
+.nb-wikidialog-select:focus {
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-strong) 18%, transparent);
+}
+
+.nb-wikidialog-select:disabled {
+  color: var(--editor-text-muted);
+  cursor: default;
+}
+
+.nb-wikidialog-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.nb-wikidialog-mode {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--control-border, var(--editor-border));
+  border-radius: 8px;
+  background: var(--editor-bg);
+  color: var(--editor-text-secondary);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-wikidialog-mode > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.nb-wikidialog-mode:hover {
+  border-color: var(--editor-border-focus);
+  color: var(--editor-text);
+}
+
+.nb-wikidialog-mode:active {
+  transform: scale(0.98);
+}
+
+.nb-wikidialog-mode.is-active {
+  border-color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent-strong) 8%, var(--editor-bg));
+  color: var(--accent-strong);
+}
+
+.nb-wikidialog-mode-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.nb-wikidialog-mode-text small {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--editor-text-muted);
+}
+
+/* 对应的 Markdown 写法 */
+.nb-wikidialog-syntax {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--editor-text-muted) 8%, transparent);
+  font-size: 11.5px;
+  color: var(--editor-text-muted);
+}
+
+.nb-wikidialog-syntax > span {
+  flex-shrink: 0;
+}
+
+.nb-wikidialog-syntax code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono-font-family, monospace);
+  font-size: 12px;
+  color: var(--editor-text);
+}
+
+/* 编辑已有链接时的操作行：打开笔记 / 删除链接 */
+.nb-wikidialog-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.nb-wikidialog-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--control-border, var(--editor-border));
+  border-radius: 8px;
+  background: transparent;
+  color: var(--editor-text-secondary);
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-wikidialog-action:hover {
+  background: var(--toolbar-hover);
+  color: var(--editor-text);
+}
+
+.nb-wikidialog-action.is-danger:hover {
+  border-color: color-mix(in srgb, var(--error-500, #ef4444) 45%, transparent);
+  background: color-mix(in srgb, var(--error-500, #ef4444) 10%, transparent);
+  color: var(--error-500, #ef4444);
+}
+
+.nb-wikidialog-action:active {
+  transform: scale(0.96);
+}
+
+[data-platform='mobile'] .nb-wikidialog-action {
+  flex: 1;
+  justify-content: center;
+  height: 40px;
+  font-size: 14px;
 }
 
 /* 大纲侧栏分页：文档大纲 / 反向链接 */

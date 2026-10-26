@@ -19,6 +19,7 @@ import { insertLocalImageWithDialog } from './imagePaste';
 import { DEFAULT_INFOGRAPHIC_CODE } from '../infographic/infographicTemplates';
 import { promptImageUrl, promptLinkUrl } from '../../components/promptPresets';
 import { useWindowStore } from '../../stores/windowStore';
+import { insertWikiLinkInEditor } from '../wikilink/wikiLinkActions';
 import {
   Bold,
   Italic,
@@ -937,14 +938,14 @@ export function EditorContextMenu({
               </div>
             </button>
 
-            {/* 9.5 插入双向链接：写入 `[[` 后由补全弹层接管（未启用双链的编辑器不显示） */}
+            {/* 9.5 插入双向链接：弹窗选择笔记与显示方式（未启用双链的编辑器不显示） */}
             {editor.schema.nodes.wikiLink && (
               <button
                 type="button"
                 style={btnStyle}
                 onClick={() => {
                   onClose();
-                  editor.chain().focus().insertContent('[[').run();
+                  void insertWikiLinkInEditor(editor, useWindowStore.getState().activeKey ?? '');
                 }}
                 onMouseEnter={(e) => {
                   setActiveSubmenu(null);
@@ -954,7 +955,7 @@ export function EditorContextMenu({
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Waypoints size={15} color="#8b5cf6" />
-                  <span>插入双向链接 ([[)</span>
+                  <span>插入双向链接…</span>
                 </div>
               </button>
             )}

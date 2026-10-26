@@ -8,7 +8,8 @@
 import type { Editor } from '@tiptap/core';
 import { Selection } from '@tiptap/pm/state';
 import { textWouldFormInlineMath } from './mathSyntax';
-import { beginRawSegmentSession, endRawSegmentSession, restoreRawSegments } from './rawMarkdownSegments';
+import { beginRawSegmentSession, emitRawSegment, endRawSegmentSession, restoreRawSegments } from './rawMarkdownSegments';
+import { formatWikiLinkMarkdown } from '../wikilink/wikiLinkSyntax';
 import { INVISIBLE_CHARACTER_ENTITIES, isDecodableEntitySuffix, usesInvisibleCharacterEntities } from './markdownHtmlEntities';
 
 // CommonMark 允许反斜杠转义的 ASCII 标点；这些字符前的双反斜杠不能擅自折叠，
@@ -109,10 +110,6 @@ function markStructuralEscapes(
       return { ...child, text: marked };
     }
     atLineStart = false;
-    // 双链节点逐字输出原文，单元格内的 `|` 需由节点自己写成 `\|`，这里传入位置信息
-    if (isCell && child.type === 'wikiLink') {
-      return { ...child, attrs: { ...(child.attrs as Record<string, unknown> | undefined), inTableCell: true } };
-    }
     return { ...child };
   });
   return { ...node, content };
@@ -508,10 +505,29 @@ function withoutEmptyRawHtmlBlocks(node: SerializableJsonNode): SerializableJson
   return { ...node, content };
 }
 
+/**
+ * 双链节点转为「受保护原文片段」文本：
+ * 1. 原文经 emitRawSegment 以占位符输出，实体还原、冗余转义清理等全文后处理不会改动链接内容（如 `&amp;`）；
+ * 2. 作为文本节点携带原有标记，`**[[笔记]]**` 等粗体 / 斜体包裹按普通文字一样写回
+ *    （@tiptap/markdown 不会为非文本的行内节点输出标记）；
+ * 3. 表格单元格内的 `|` 写成 `\|`。
+ * 须在序列化会话内调用（prepareJsonForSerialization 只在 produceRaw 中执行）。
+ */
+function wikiLinksToRawText(node: SerializableJsonNode, inTableCell = false): SerializableJsonNode {
+  if (node.type === 'wikiLink') {
+    const attrs = (node.attrs ?? {}) as { inner?: unknown; embed?: unknown };
+    const text = emitRawSegment(formatWikiLinkMarkdown(String(attrs.inner ?? ''), attrs.embed === true, inTableCell));
+    return node.marks ? { type: 'text', text, marks: node.marks } : { type: 'text', text };
+  }
+  if (!node.content) return node;
+  const isCell = inTableCell || node.type === 'tableCell' || node.type === 'tableHeader';
+  return { ...node, content: node.content.map((child) => wikiLinksToRawText(child, isCell)) };
+}
+
 /** 序列化前的 JSON 预处理：插入结构性必要转义哨兵（不修改编辑器中的真实文档）。 */
 function prepareJsonForSerialization(json: ReturnType<Editor['getJSON']>): ReturnType<Editor['getJSON']> {
   return markStructuralEscapes(
-    trimDroppedTrailingWhitespace(withoutEmptyRawHtmlBlocks(json as SerializableJsonNode)),
+    trimDroppedTrailingWhitespace(withoutEmptyRawHtmlBlocks(wikiLinksToRawText(json as SerializableJsonNode))),
     textWouldFormInlineMath,
   ) as ReturnType<Editor['getJSON']>;
 }
