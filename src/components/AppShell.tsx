@@ -54,6 +54,7 @@ import {
 } from '../features/welcome/welcomeActions';
 import { useFavoritesStore } from '../features/favorites/favoritesStore';
 import { MissingFileDialog } from '../features/external/MissingFileDialog';
+import { ExternalChangeDialog } from '../features/external/ExternalChangeDialog';
 import { checkActiveDocumentStillExists } from '../features/external/missingFileGuard';
 import { isDocumentReading, requestReadingMode, supportsReadingMode } from '../features/reading/readingMode';
 // 历史记录：挂载点只订阅开关，查看界面按需懒加载
@@ -539,6 +540,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
 
       {/* 仅处理应用运行期间原文件被删除的活动标签；重启恢复缺失文件会直接跳过。 */}
       <MissingFileDialog />
+      <ExternalChangeDialog />
 
       {/* 全局 Toast 提示 */}
       <ToastContainer />

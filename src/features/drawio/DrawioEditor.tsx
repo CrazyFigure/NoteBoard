@@ -145,6 +145,15 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
         // Drawio 无独立键盘焦点入口，焦点由 iframe 自身接管
       },
       getSelectedText: () => '',
+      // 外部重载必须通知 iframe 内核；只改 store 不会触发 Draw.io 再次加载 XML。
+      replaceContent: (content) => {
+        const frame = iframeRef.current?.contentWindow;
+        if (!frame || !isLoadedRef.current) return false;
+        // 作废重载前的导出回包，防止迟到 XML 覆盖刚接受的磁盘版本。
+        pendingExportRef.current?.resolve(null);
+        frame.postMessage(JSON.stringify({ action: 'load', autosave: 1, xml: content }), '*');
+        return true;
+      },
       // 🔴 S12：引擎加载成功且无错误时可回收（内容经 autosave 同步 store +
       //    flush 导出回包双重确认；挂载时从 store XML 重新 load 完整恢复）
       canSuspend: () => isLoadedRef.current && !loadErrorRef.current,

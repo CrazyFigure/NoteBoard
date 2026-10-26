@@ -63,6 +63,10 @@ describe('S12 图表双栏编辑器能力', () => {
       expect(state.layoutMode).toBe('preview');
       expect(state.zoom).toBe(1.5);
       expect(state.pan).toEqual({ x: 10, y: 20 });
+
+      // 磁盘重载确实替换真实 CodeMirror 文档，不能仅更新 store 镜像。
+      expect(caps.replaceContent?.('graph LR; Disk-->Reloaded')).toBe(true);
+      expect(view.state.doc.toString()).toBe('graph LR; Disk-->Reloaded');
     } finally {
       view.destroy();
       host.remove();
@@ -78,5 +82,6 @@ describe('S12 图表双栏编辑器能力', () => {
     });
     expect(await caps.flush('evict')).toBeNull();
     expect(caps.getSelectedText()).toBe('');
+    expect(caps.replaceContent?.('disk')).toBe(false);
   });
 });

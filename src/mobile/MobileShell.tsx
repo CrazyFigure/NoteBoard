@@ -16,6 +16,7 @@ import { ToastContainer } from '../components/Toast';
 import { PromptDialogHost } from '../components/PromptDialogHost';
 import { UnsavedGuardDialog } from '../features/editor-code/UnsavedGuardDialog';
 import { MissingFileDialog } from '../features/external/MissingFileDialog';
+import { ExternalChangeDialog } from '../features/external/ExternalChangeDialog';
 import { checkActiveDocumentStillExists } from '../features/external/missingFileGuard';
 import { saveDocument, setSaveAsPathPicker } from '../features/editor-code/orchestration/saveDocument';
 import { useCloseGuardHandlers, useMarkdownEditorRegistry, useRestoredTabLoader } from '../components/shell/shellHooks';
@@ -253,6 +254,7 @@ export function MobileShell() {
         onCancel={handleCancelClose}
       />
       <MissingFileDialog />
+      <ExternalChangeDialog />
       <ToastContainer />
       <PromptDialogHost />
     </div>

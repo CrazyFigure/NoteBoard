@@ -122,6 +122,12 @@ export async function saveDocument(docKey: string): Promise<boolean> {
     return saveAs(updatedDoc.key, authoritativeContent);
   }
 
+  // 磁盘冲突由应用级弹窗处理；手动保存和移动端退后台保存都不得覆盖外部版本。
+  if (updatedDoc.externalStatus === 'modified') {
+    showToast('文件在磁盘上已更改，请先重新加载或另存为', 'warning');
+    return false;
+  }
+
   // 没有路径 → 另存为
   if (!updatedDoc.key || updatedDoc.key.startsWith('untitled:')) {
     return saveAs(updatedDoc.key, authoritativeContent);
@@ -276,6 +282,11 @@ export async function saveAs(originalKey: string, _content: string): Promise<boo
     // 🔴 N03：目标等于原路径（规范化身份比较）→ 普通保存语义，
     //    避免重复标签与历史串线
     if (!originalKey.startsWith('untitled:') && samePathIdentity(selectedPath, originalKey)) {
+      // 冲突时“另存为”必须保留两份内容，不能选回原路径悄悄覆盖外部版本。
+      if (useDocumentStore.getState().getDocument(originalKey)?.externalStatus === 'modified') {
+        showToast('请选择新的文件名或位置，原文件包含外部修改', 'warning');
+        return false;
+      }
       return saveDocument(originalKey);
     }
 

@@ -425,7 +425,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
 
   // 当前可见模式负责呈现统一历史节点，另一内核会在下次切换时无历史地同步到同一内容
   useEffect(() => {
-    if (!editor) return;
+    // 源码首开和大文档不挂载 TipTap，仍必须注册适配器以支持重载磁盘正文。
     return registerDocumentHistoryAdapter(docKey, {
       applyEntry: (entry, navigation) => {
         if (viewModeRef.current === 'source') {
@@ -453,6 +453,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
           return;
         }
 
+        if (!editor) throw new Error('可视化编辑器尚未就绪');
         const previousVisualDocument = editor.state.doc;
         if (hasMarkdownContentChanged(editor, entry.content)) {
           // 统一历史应用属于导航而非新编辑，整篇替换明确排除出 TipTap 原生历史

@@ -50,6 +50,13 @@ export function createSplitEditorCapabilities(
       submitCapturedContent(docKey, { instanceId, revision: 0, content });
       return { docKey, instanceId, revision: 0, content };
     },
+    // 图表与信息图没有统一历史适配器，重载须直接更新源码内核，让预览随之刷新。
+    replaceContent: (content) => {
+      const view = getEditorView();
+      if (!view) return false;
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } });
+      return true;
+    },
     focus: () => {
       getEditorView()?.focus();
     },

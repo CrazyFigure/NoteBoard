@@ -25,7 +25,7 @@ vi.mock('@/core/ipc/commands', () => ({
   pathExists: (...args: unknown[]) => pathExistsMock(...args),
 }));
 
-import { watchDirectory } from '@/features/explorer/directoryWatcher';
+import { recheckDocument, watchDirectory } from '@/features/explorer/directoryWatcher';
 import { noteSelfWrite } from '@/features/explorer/directoryWatcher';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useWindowStore } from '@/stores/windowStore';
@@ -188,5 +188,48 @@ describe('🔴 N09 外部正文修改核对链', () => {
     expect(useDocumentStore.getState().getDocument(KEY)?.externalStatus).toBe('deleted');
     expect(useWindowStore.getState().getTab(KEY)?.externalStatus).toBe('deleted');
     release();
+  });
+
+  it('读取事件不反复触发正文核对，避免 Linux 监听读盘循环', async () => {
+    seedOpenDocument('base', 'base');
+    const release = watchDirectory(DIR);
+    await vi.advanceTimersByTimeAsync(10);
+    watchHandler?.({ type: { access: { kind: 'read' } }, paths: [KEY] } as never);
+    await vi.advanceTimersByTimeAsync(700);
+    expect(readDocumentMock).not.toHaveBeenCalled();
+    expect(readDirMock).not.toHaveBeenCalled();
+    release();
+  });
+
+  it('核对期间自身保存更新基线，不把迟到的旧读取误报为冲突', async () => {
+    seedOpenDocument('base', 'base');
+    const release = watchDirectory(DIR);
+    await vi.advanceTimersByTimeAsync(10);
+    let finish!: (value: { content: string }) => void;
+    readDocumentMock.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    watchHandler?.({ type: 'write', paths: [KEY] });
+    await vi.advanceTimersByTimeAsync(700);
+    useDocumentStore.getState().updateBaseline(KEY, 'saved', 2, 5);
+    finish({ content: 'base' });
+    await Promise.resolve();
+    expect(useDocumentStore.getState().getDocument(KEY)?.externalStatus).toBe('clean');
+    readDocumentMock.mockResolvedValue({ content: 'saved' });
+    await vi.advanceTimersByTimeAsync(700);
+    expect(readDocumentMock).toHaveBeenCalledTimes(2);
+    expect(useDocumentStore.getState().getDocument(KEY)?.externalStatus).toBe('clean');
+    release();
+  });
+
+  it('补查与监听读取乱序返回，旧 clean 结果不能解除新冲突', async () => {
+    seedOpenDocument('base', 'base');
+    let finishOld!: (value: { content: string }) => void;
+    readDocumentMock.mockReturnValueOnce(new Promise((resolve) => { finishOld = resolve; }));
+    const oldCheck = recheckDocument(KEY);
+    await vi.advanceTimersByTimeAsync(1);
+    readDocumentMock.mockResolvedValueOnce({ content: 'external edits' });
+    await recheckDocument(KEY);
+    finishOld({ content: 'base' });
+    await oldCheck;
+    expect(useDocumentStore.getState().getDocument(KEY)?.externalStatus).toBe('modified');
   });
 });

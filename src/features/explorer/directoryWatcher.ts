@@ -16,7 +16,7 @@ import { pathKey } from './pathUtils';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 // 🔴 R3-10：异步核对结果按会话代际条件提交（旧读取不误标同路径新会话）
-import { getSessionGeneration } from '../session/documentSession';
+import { drainDocumentWrites, getSessionGeneration } from '../session/documentSession';
 import { isRecreateOnSaveAllowed } from '../external/missingFileGuard';
 
 /** 目录监听记录 */
@@ -43,16 +43,17 @@ const SELF_WRITE_SILENCE_MS = 1500;
  * 以实际写入的路径识别，不用"最近 1 秒全部忽略"（会漏掉其它软件的修改）。
  */
 export function noteSelfWrite(path: string): void {
-  selfWrites.set(path, Date.now());
+  selfWrites.set(pathKey(path), Date.now());
 }
 
 /** 事件是否属于自身写入（在静默窗口内） */
 function isSelfWrite(path: string | undefined): boolean {
   if (!path) return false;
-  const at = selfWrites.get(path);
+  const key = pathKey(path);
+  const at = selfWrites.get(key);
   if (at === undefined) return false;
   if (Date.now() - at > SELF_WRITE_SILENCE_MS) {
-    selfWrites.delete(path);
+    selfWrites.delete(key);
     return false;
   }
   return true;
@@ -69,6 +70,9 @@ const pendingDocRechecks = new Set<string>();
 let docRecheckTimer: ReturnType<typeof setTimeout> | null = null;
 /** 自身写静默窗口内命中的文档路径（延迟到窗口结束后核对，不吞外部紧随修改） */
 const deferredDocRechecks = new Set<string>();
+/** 同一路径只接受最后发起的核对结果，防止焦点补查和监听事件乱序返回。 */
+const latestDocRechecks = new Map<string, number>();
+let nextDocRecheckId = 0;
 
 /** 🔴 R3-10：规范化路径身份（与 Rust key 归一一致——Windows 大小写不敏感，POSIX 平台大小写敏感） */
 function normalizeDocKey(path: string): string {
@@ -85,14 +89,14 @@ function findOpenDocKey(rawPath: string): string | null {
 }
 
 /** 为事件路径上的已打开文档登记一次外部修改核对（去抖合并） */
-function scheduleDocumentRecheck(rawPath: string): void {
+export function scheduleDocumentRecheck(rawPath: string): void {
   // 🔴 R3-10：按规范化身份匹配已打开文档（大小写/斜杠差异可命中）
   const docKey = findOpenDocKey(rawPath);
   if (!docKey) return;
   const doc = useDocumentStore.getState().getDocument(docKey);
   const tab = useWindowStore.getState().getTab(docKey);
   // 只核对已打开且已加载（非 lazy）的文档
-  if (!doc || !tab || tab.lazySource) return;
+  if (!doc || !tab || tab.lazySource || doc.content === null || doc.kind === 'image') return;
   // 🔴 R3-10：不再跳过已 modified/deleted 的文档——外部写回基线（内容恢复
   // 一致）时仍需复核恢复 clean；modified 期间重复核对幂等（内容比较）
   pendingDocRechecks.add(docKey);
@@ -114,33 +118,42 @@ function scheduleDocumentRecheck(rawPath: string): void {
  * 🔴 R3-10：异步结果按会话代际/基线身份条件提交——读取期间会话换代或自身保存
  * 完成时，不误标新会话/不与自身保存竞争（捕获读取时刻的代际与基线内容）。
  */
-async function recheckDocument(docKey: string): Promise<void> {
+export async function recheckDocument(docKey: string): Promise<void> {
   // 🔴 R3-10：捕获读取时刻的基线与会话代际——异步返回后校验（旧读取迟到不误标新会话）
   const docAtStart = useDocumentStore.getState().getDocument(docKey);
   if (!docAtStart) return;
-  const baselineAtStart = docAtStart.baselineContent ?? '';
   const generationAtStart = getSessionGeneration(docKey);
+  const checkId = ++nextDocRecheckId;
+  latestDocRechecks.set(docKey, checkId);
   try {
+    // 等待已排队的自身保存落盘，再捕获基线，避免把原子替换过程当作外部修改。
+    await drainDocumentWrites(docKey);
+    if (getSessionGeneration(docKey) !== generationAtStart || latestDocRechecks.get(docKey) !== checkId) return;
+    const baselineAtStart = useDocumentStore.getState().getDocument(docKey)?.baselineContent;
+    if (baselineAtStart == null) return;
     const payload = await ipc.readDocument(docKey);
     // 🔴 R3-10：读取返回后校验会话未换代（同路径重开——旧读取结果不适用于新会话）
-    if (getSessionGeneration(docKey) !== generationAtStart) return;
+    if (getSessionGeneration(docKey) !== generationAtStart || latestDocRechecks.get(docKey) !== checkId) return;
     const docNow = useDocumentStore.getState().getDocument(docKey);
     if (!docNow) return;
-    // 🔴 R3-10：基线在读取期间变化（自身保存完成）→ 按新基线重新比较（不吞也不误报）
-    const effectiveBaseline = docNow.baselineContent !== docAtStart.baselineContent
-      ? (docNow.baselineContent ?? '')
-      : baselineAtStart;
-    const nextStatus: 'modified' | 'clean' = payload.content !== effectiveBaseline ? 'modified' : 'clean';
+    // 读取期间又完成了保存：旧读盘结果不能与新基线比较，改为重新安排核对。
+    if (docNow.baselineContent !== baselineAtStart) {
+      scheduleDocumentRecheck(docKey);
+      return;
+    }
+    const nextStatus: 'modified' | 'clean' = payload.content !== baselineAtStart ? 'modified' : 'clean';
     if (docNow.externalStatus !== nextStatus) {
       useDocumentStore.getState().setExternalStatus(docKey, nextStatus);
       useWindowStore.getState().setTabExternalStatus(docKey, nextStatus);
     }
   } catch {
+    // 已有更新一轮核对时，不再消费旧读取的失败结果。
+    if (latestDocRechecks.get(docKey) !== checkId) return;
     // 读取失败：区分删除与权限（仅确认删除才标记；权限问题保持现状）
     try {
       const state = await ipc.pathExists(docKey);
       // 🔴 R3-10：同样按会话代际条件提交
-      if (getSessionGeneration(docKey) !== generationAtStart) return;
+      if (getSessionGeneration(docKey) !== generationAtStart || latestDocRechecks.get(docKey) !== checkId) return;
       const docNow = useDocumentStore.getState().getDocument(docKey);
       if (!docNow) return;
       // 被同步删除且等待保存重建的文档不标记删除（见 missingFileGuard.allowRecreateOnSave）
@@ -151,6 +164,9 @@ async function recheckDocument(docKey: string): Promise<void> {
     } catch {
       // 无法确认：保持现状
     }
+  } finally {
+    // 仅清理本轮记录；较旧请求不能删除后来核对的标识。
+    if (latestDocRechecks.get(docKey) === checkId) latestDocRechecks.delete(docKey);
   }
 }
 
@@ -158,6 +174,8 @@ async function recheckDocument(docKey: string): Promise<void> {
  *    （readDir + updateChildren；不经 mitt/Tauri 事件双总线）；
  *    同时给事件路径上的已打开文档登记外部修改核对 */
 function handleWatchEvent(dir: string, event: WatchEvent): void {
+  // Linux 等平台会报告读取事件；核对本身不能再次触发核对，避免形成读盘循环。
+  if (typeof event.type === 'object' && 'access' in event.type) return;
   // 自身写入静默窗口命中：不立即刷新，但登记复核（静默窗口结束后再拉一次，
   // 防止吞掉其它软件紧随其后对同文件的修改）；文档核对同样延迟
   const selfWriteHit = event.paths.some((path) => isSelfWrite(path));
