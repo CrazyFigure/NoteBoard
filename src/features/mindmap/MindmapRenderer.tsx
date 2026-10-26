@@ -1843,6 +1843,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   // 选中节点后：Tab 新增子节点，Enter 新增同级节点（两者均把光标移到新节点）
   useEffect(() => {
     const handleShortcut = (e: KeyboardEvent) => {
+      // 已由编辑框处理或用于输入法上屏的按键不能创建节点；长按 Enter 也不能越过刚结束的编辑态。
+      if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || (e.key === 'Enter' && e.repeat)) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
       // 输入类元素、按钮或弹层内的按键交还原生行为（大纲/备注/工具条/下拉框）
@@ -2421,11 +2423,17 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                     color={isRoot ? theme.rootText : 'inherit'}
                     textAlign={textAlign}
                     minHeight={n.titleLines.length * textStyle.lineHeight}
-                    onDraftChange={setEditDraft}
-                    // 编辑状态下继续用 Tab / Enter 连续新增，光标自动转移到新节点
+                    // 软键盘可能连续上屏并确认，同步草稿引用，保证确认时保存的是最新文字。
+                    onDraftChange={(draft) => {
+                      editDraftRef.current = draft;
+                      setEditDraft(draft);
+                    }}
+                    // 编辑时 Tab 仍新增子节点；Enter 只确认并选中当前节点，再按一次才新增同级节点。
                     onTab={() => createLinkedNode('child', n.node.id, true)}
-                    onEnter={() => createLinkedNode('sibling', n.node.id, true)}
-                    onConfirm={() => handleFinishEdit(n.node.id)}
+                    onConfirm={() => {
+                      handleFinishEdit(n.node.id);
+                      setSelectedNodeId(n.node.id);
+                    }}
                     onPasteImage={(file) => setNodeImageFromFile(n.node.id, file)}
                     onEscape={() => handleFinishEdit(n.node.id)}
                     onBlur={() => handleFinishEdit(n.node.id)}

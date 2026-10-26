@@ -42,8 +42,7 @@ interface MindmapTitleEditorProps {
   textAlign: 'left' | 'center';
   minHeight: number;
   onDraftChange: (draft: TextDraft) => void;
-  onEnter: () => void;
-  /** Ctrl / Cmd + Enter：确认输入并退出编辑 */
+  /** Enter 或 Ctrl / Cmd + Enter：确认输入并退出编辑，保留当前节点选中 */
   onConfirm: () => void;
   /** 粘贴图片：上传 / 替换节点图片 */
   onPasteImage: (file: File) => void;
@@ -256,11 +255,29 @@ export const MindmapTitleEditor = forwardRef<MindmapTitleEditorHandle, MindmapTi
       propsRef.current.onDraftChange(readDom(root));
     };
 
+    // 移动端软键盘可能只派发 beforeinput；统一把回车意图交给确认逻辑，避免插入换行或误建节点。
+    useEffect(() => {
+      const root = rootRef.current;
+      if (!root) return;
+      const handleBeforeInput = (e: InputEvent) => {
+        // 组字时的输入交给输入法；硬件键盘的组合键换行已在 keydown 中处理并阻止默认输入。
+        if (e.isComposing || composingRef.current) return;
+        if (e.inputType !== 'insertParagraph' && e.inputType !== 'insertLineBreak') return;
+        e.preventDefault();
+        e.stopPropagation();
+        propsRef.current.onConfirm();
+      };
+      root.addEventListener('beforeinput', handleBeforeInput);
+      return () => root.removeEventListener('beforeinput', handleBeforeInput);
+    }, []);
+
     const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-      // 输入法组字中的按键用于上屏，不触发快捷操作
-      if (e.nativeEvent.isComposing || composingRef.current) return;
+      // 输入法组字中的按键用于上屏；部分 WebView / Safari 在组字结束时仍用 229 标记该按键。
+      if (e.nativeEvent.isComposing || composingRef.current || e.nativeEvent.keyCode === 229) return;
       if (e.key === 'Enter') {
         e.preventDefault();
+        // 本次 Enter 只完成编辑，不再交给画布快捷键；再次按下时才允许新增节点。
+        e.stopPropagation();
         if (e.ctrlKey || e.metaKey) {
           // Ctrl / Cmd + Enter：确认输入
           propsRef.current.onConfirm();
@@ -268,7 +285,7 @@ export const MindmapTitleEditor = forwardRef<MindmapTitleEditorHandle, MindmapTi
           // Shift / Alt(Option) + Enter：节点内换行
           insertPlainText('\n');
         } else {
-          propsRef.current.onEnter();
+          propsRef.current.onConfirm();
         }
       } else if (e.key === 'Tab') {
         e.preventDefault();
