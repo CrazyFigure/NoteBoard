@@ -13,6 +13,10 @@ test('两个网页实例通过现有 WebDAV 协议双向同步，并能备份和
   const remote = new Map();
   // WebDAV 测试服务保留真实字节并支持引擎使用的目录、锁和清单操作。
   const dav = http.createServer(async (req, res) => {
+    // 模拟 Cloudflare Access 网关：所有方法都必须携带两项 Service Token 请求头。
+    if (req.headers['cf-access-client-id'] !== 'test-service-id' || req.headers['cf-access-client-secret'] !== 'test-gateway-secret') {
+      return res.writeHead(403).end();
+    }
     const key = decodeURIComponent(req.url);
     if (req.method === 'MKCOL') return res.writeHead(201).end();
     if (req.method === 'PUT') {
@@ -53,10 +57,17 @@ test('两个网页实例通过现有 WebDAV 协议双向同步，并能备份和
     config.sync.enabled = true; config.sync.rootDir = '/workspace'; config.sync.deviceName = name;
     config.sync.intervalEnabled = false; config.sync.syncOnStartup = false; config.sync.syncOnSave = false;
     config.sync.provider.kind = 'webdav';
-    config.sync.provider.webdav = { url: `http://127.0.0.1:${dav.address().port}/dav/`, username: 'test-user', password: 'test-secret', userAgent: '', remoteDir: 'Notes' };
+    config.sync.provider.webdav = {
+      url: `http://127.0.0.1:${dav.address().port}/dav/`, username: 'test-user', password: 'test-secret', remoteDir: 'Notes',
+      headers: [
+        { name: 'CF-Access-Client-Id', value: 'test-service-id' },
+        { name: 'CF-Access-Client-Secret', value: 'test-gateway-secret' },
+      ],
+    };
     const saved = await call('sync_save_config', { config });
     assert.equal(saved.sync.rootDir, '/workspace');
     assert.equal(saved.backup.localDir, '/backups');
+    assert.deepEqual(saved.sync.provider.webdav.headers, config.sync.provider.webdav.headers);
     async function run(kind) {
       const before = await call('sync_get_status');
       const field = kind === 'sync_now' ? 'lastSync' : 'lastBackup';
@@ -97,6 +108,7 @@ test('两个网页实例通过现有 WebDAV 协议双向同步，并能备份和
   assert.equal((await a.call('sync_trash_list')).length, 1);
   const stored = await fs.readFile(path.join(temp, 'server-a/native/sync/config.json'), 'utf8');
   assert.ok(!stored.includes('test-secret'));
+  assert.ok(!stored.includes('test-gateway-secret'));
 });
 
 test('未启用访问认证时仍提供文档历史记录，且不开放同步命令', { skip: !process.env.NOTEBOARD_SYNC_BINARY }, async (t) => {

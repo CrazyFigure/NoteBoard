@@ -9,6 +9,9 @@ struct Store {
     forced_get: BTreeMap<String, (u16, Vec<u8>)>,
     forced_listing: Option<Vec<u8>>,
     requests: Vec<(String, String)>,
+    /// 记录真实网络请求中的头，用于校验网关凭证覆盖全部 WebDAV 方法。
+    headers: Vec<(String, BTreeMap<String, String>)>,
+    redirects: BTreeMap<String, String>,
 }
 
 struct Dav {
@@ -67,6 +70,13 @@ impl Dav {
         let parent = path.rsplit_once('/').map(|(part, _)| part).unwrap_or("");
         let mut store = shared.lock().unwrap();
         store.requests.push((method.clone(), path.clone()));
+        store.headers.push((method.clone(), header.lines().skip(1).filter_map(|line| line.split_once(':'))
+            .map(|(key, value)| (key.to_ascii_lowercase(), value.trim().to_string())).collect()));
+        // 模拟网关重定向，验证自定义令牌不会被自动发送到其他源。
+        if let Some(target) = store.redirects.get(&path) {
+            write!(stream, "HTTP/1.1 302 Found\r\nLocation: {}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", target).unwrap();
+            return;
+        }
         let (status, body) = match method.as_str() {
             "GET" => {
                 if let Some(response) = store.forced_get.get(&path) { response.clone() }
@@ -133,6 +143,61 @@ impl Drop for Dav {
         self.stop.store(true, Ordering::SeqCst);
         let _ = self.worker.take().unwrap().join();
     }
+}
+
+/// 用真实回环请求验证读取、建目录、上传、列表和删除都携带 Service Token，同时保留 Basic 认证。
+#[test]
+fn custom_headers_reach_every_webdav_method() {
+    let dav = Dav::new();
+    let cfg: WebDavConfig = serde_json::from_value(serde_json::json!({
+        "url": dav.url, "username": "test-user", "password": "test-pass", "remoteDir": "notes",
+        "headers": [
+            { "name": "User-Agent", "value": "CustomDAV/1" },
+            { "name": "CF-Access-Client-Id", "value": "client-id" },
+            { "name": "CF-Access-Client-Secret", "value": "client-secret" }
+        ]
+    })).unwrap();
+    let client = reqwest::Client::builder().no_proxy().build().unwrap();
+    let mut backend = WebDav::new(client, &cfg).unwrap();
+    runtime::block_on(async {
+        backend.put("folder/note.md", b"hello".to_vec()).await.unwrap();
+        assert_eq!(backend.read("folder/note.md").await.unwrap().unwrap(), b"hello");
+        backend.list("folder").await.unwrap();
+        backend.delete("folder/note.md").await.unwrap();
+    });
+    let store = dav.store.lock().unwrap();
+    for method in ["GET", "MKCOL", "PUT", "PROPFIND", "DELETE"] {
+        assert!(store.headers.iter().any(|(actual, _)| actual == method));
+    }
+    for (_, headers) in &store.headers {
+        assert_eq!(headers["user-agent"], "CustomDAV/1");
+        assert_eq!(headers["cf-access-client-id"], "client-id");
+        assert_eq!(headers["cf-access-client-secret"], "client-secret");
+        assert!(headers["authorization"].starts_with("Basic "));
+    }
+}
+
+/// 同源跳转保留凭证，跨端口跳转视为跨源，必须在连接目标前停止。
+#[test]
+fn custom_headers_only_follow_same_origin_redirects() {
+    let dav = Dav::new();
+    let target = TcpListener::bind("127.0.0.1:0").unwrap();
+    target.set_nonblocking(true).unwrap();
+    {
+        let mut store = dav.store.lock().unwrap();
+        store.files.insert("notes/final.md".into(), b"hello".to_vec());
+        store.redirects.insert("notes/same.md".into(), format!("{}notes/final.md", dav.url));
+        store.redirects.insert("notes/cross.md".into(), format!("http://{}/", target.local_addr().unwrap()));
+    }
+    let cfg: super::config::ProviderConfig = serde_json::from_value(serde_json::json!({
+        "webdav": { "url": dav.url, "remoteDir": "notes", "headers": [{ "name": "X-Token", "value": "secret" }] }
+    })).unwrap();
+    let mut backend = Backend::new(&cfg).unwrap();
+    runtime::block_on(async {
+        assert_eq!(backend.read("same.md").await.unwrap().unwrap(), b"hello");
+        assert!(backend.read("cross.md").await.is_err());
+    });
+    assert_eq!(target.accept().unwrap_err().kind(), std::io::ErrorKind::WouldBlock);
 }
 
 /// 全部同步用例共用临时应用数据根目录，防止状态落入真实 NoteBoard 配置。

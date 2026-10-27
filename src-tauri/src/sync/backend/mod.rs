@@ -19,7 +19,7 @@ pub mod s3;
 pub mod webdav;
 pub mod xml;
 
-use super::config::{ProviderConfig, ProviderKind};
+use super::config::{HttpHeaders, ProviderConfig, ProviderKind};
 use super::error::{SyncError, SyncResult};
 use std::time::Duration;
 
@@ -67,9 +67,37 @@ pub fn max_file_size(kind: ProviderKind) -> u64 {
     }
 }
 
-/// 构建同步用 HTTP 客户端（读取系统代理；大文件传输放宽总超时）
-pub fn http_client() -> SyncResult<reqwest::Client> {
-    reqwest::Client::builder()
+/// 构建同步用 HTTP 客户端；携带自定义凭证时仅跟随同源重定向，避免将网关令牌转发到其他地址。
+pub fn http_client(cfg: &ProviderConfig) -> SyncResult<reqwest::Client> {
+    let custom: &[_] = match cfg.kind {
+        ProviderKind::Webdav => &cfg.webdav.http.headers,
+        ProviderKind::S3 => &cfg.s3.http.headers,
+        _ => &[][..],
+    };
+    let mut builder = reqwest::Client::builder();
+    // 单独自定义 UA 不包含网关凭证，保持旧版 UA 设置的重定向行为。
+    if custom.iter().any(|item| !item.name.trim().eq_ignore_ascii_case("user-agent")
+        && (!item.name.trim().is_empty() || !item.value.trim().is_empty()))
+    {
+        builder = builder.redirect(reqwest::redirect::Policy::custom(|attempt| {
+            let target = attempt.url();
+            let same_origin = attempt.previous().first().is_some_and(|source| {
+                source.scheme() == target.scheme()
+                    && source.host_str() == target.host_str()
+                    && source.port_or_known_default() == target.port_or_known_default()
+            });
+            if !same_origin {
+                attempt.error("自定义 Header 不允许跨源重定向，请直接填写最终服务地址")
+            } else if attempt.previous().len() >= 10 {
+                // 与 reqwest 的默认限制一致，防止同源重定向循环。
+                attempt.error("重定向次数过多")
+            } else {
+                attempt.follow()
+            }
+        }));
+    }
+    // 保留系统代理和大文件传输超时，其他服务沿用原有重定向策略。
+    builder
         .connect_timeout(Duration::from_secs(15))
         .read_timeout(Duration::from_secs(60))
         .timeout(Duration::from_secs(600))
@@ -80,6 +108,38 @@ pub fn http_client() -> SyncResult<reqwest::Client> {
 /// 默认 User-Agent
 pub fn default_user_agent() -> String {
     format!("NoteBoard/{}", env!("CARGO_PKG_VERSION"))
+}
+
+/// 构造并校验服务请求头：保留默认 UA，忽略空白草稿行，拒绝重名和协议托管字段。
+pub fn request_headers(cfg: &HttpHeaders, service: &str, reserved: &[&str]) -> SyncResult<reqwest::header::HeaderMap> {
+    use reqwest::header::{HeaderMap, HeaderName, HeaderValue, USER_AGENT};
+    let mut headers = HeaderMap::new();
+    headers.insert(USER_AGENT, HeaderValue::from_str(&default_user_agent()).unwrap());
+    let mut seen = std::collections::HashSet::new();
+    for (index, item) in cfg.headers.iter().enumerate() {
+        // 添加按钮产生的空行可以保存；只有填写了名称或值的行才参与请求。
+        let name = item.name.trim();
+        if name.is_empty() && item.value.trim().is_empty() {
+            continue;
+        }
+        let key = HeaderName::from_bytes(name.as_bytes())
+            .map_err(|_| SyncError::config(format!("{} 第 {} 个 Header 名称无效", service, index + 1)))?;
+        // 主机、消息长度和连接字段由 HTTP 客户端管理，避免破坏传输或签名。
+        if matches!(key.as_str(), "host" | "content-length" | "transfer-encoding" | "connection" | "trailer" | "te" | "upgrade")
+            || reserved.contains(&key.as_str())
+        {
+            return Err(SyncError::config(format!("{} Header {} 由程序管理，请移除该自定义项", service, name)));
+        }
+        if !seen.insert(key.clone()) {
+            return Err(SyncError::config(format!("{} Header {} 重复，请合并为一项", service, name)));
+        }
+        // 不修剪值，保留令牌中的有效空格；报错仅定位行号，禁止泄露凭证内容。
+        let mut value = HeaderValue::from_str(&item.value)
+            .map_err(|_| SyncError::config(format!("{} 第 {} 个 Header 值无效，不能包含换行等控制字符", service, index + 1)))?;
+        value.set_sensitive(true);
+        headers.insert(key, value);
+    }
+    Ok(headers)
 }
 
 /// URL 路径分段编码集合：仅保留 RFC 3986 非保留字符（S3 SigV4 规范 URI 同样要求此规则）
@@ -123,7 +183,7 @@ pub fn join_remote(dir: &str, rel: &str) -> String {
 impl Backend {
     /// 按配置创建后端（会先校验必填项，给出具体缺失提示）
     pub fn new(cfg: &ProviderConfig) -> SyncResult<Self> {
-        let client = http_client()?;
+        let client = http_client(cfg)?;
         Ok(match cfg.kind {
             ProviderKind::Webdav => Backend::WebDav(webdav::WebDav::new(client, &cfg.webdav)?),
             ProviderKind::S3 => Backend::S3(s3::S3::new(client, &cfg.s3)?),
@@ -260,6 +320,43 @@ mod tests {
         assert_eq!(join_remote("/NoteBoard/", "a/b.md"), "NoteBoard/a/b.md");
         assert_eq!(join_remote("", "a.md"), "a.md");
         assert_eq!(join_remote("dir", ""), "dir");
+    }
+
+    /// UA 默认值、覆盖、空草稿和凭证原值必须同时兼容，不能产生重复 UA。
+    #[test]
+    fn custom_headers_keep_defaults_and_exact_values() {
+        let defaults = request_headers(&HttpHeaders::default(), "WebDAV", &[]).unwrap();
+        assert_eq!(defaults["user-agent"], default_user_agent());
+        let cfg: HttpHeaders = serde_json::from_value(serde_json::json!({ "headers": [
+            { "name": "", "value": "" },
+            { "name": " User-Agent ", "value": "Custom/1" },
+            { "name": "CF-Access-Client-Secret", "value": " token with spaces " }
+        ] })).unwrap();
+        let headers = request_headers(&cfg, "WebDAV", &[]).unwrap();
+        assert_eq!(headers.get_all("user-agent").iter().count(), 1);
+        assert_eq!(headers["user-agent"], "Custom/1");
+        assert_eq!(headers["cf-access-client-secret"], " token with spaces ");
+        assert!(headers["cf-access-client-secret"].is_sensitive());
+    }
+
+    /// 请求头大小写等价；名称错误、控制字符和协议字段均须在发起网络请求前明确拒绝。
+    #[test]
+    fn invalid_headers_fail_without_disclosing_values() {
+        let cases = [
+            serde_json::json!([{ "name": "", "value": "private-token" }]),
+            serde_json::json!([{ "name": "Invalid Name", "value": "private-token" }]),
+            serde_json::json!([{ "name": "X-Token", "value": "private-token\r\nX-Evil: 1" }]),
+            serde_json::json!([{ "name": "X-Token", "value": "1" }, { "name": "x-token", "value": "private-token" }]),
+            serde_json::json!([{ "name": "Host", "value": "private-token" }]),
+            serde_json::json!([{ "name": "Content-Length", "value": "private-token" }]),
+            serde_json::json!([{ "name": "Authorization", "value": "private-token" }]),
+        ];
+        for items in cases {
+            let cfg: HttpHeaders = serde_json::from_value(serde_json::json!({ "headers": items })).unwrap();
+            let error = request_headers(&cfg, "S3", &["authorization"]).unwrap_err();
+            assert_eq!(error.kind, super::super::error::SyncErrorKind::Config);
+            assert!(!error.message.contains("private-token"));
+        }
     }
 }
 

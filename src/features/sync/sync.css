@@ -164,6 +164,48 @@ label.nb-sync-row {
   right: 3px;
 }
 
+/* Header 名称、密钥值与删除按钮共用现有输入样式，长值不撑开设置面板。 */
+.nb-sync-headers-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--editor-text);
+}
+
+.nb-sync-header-add {
+  margin-left: auto;
+}
+
+.nb-sync-header-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 26px;
+  align-items: center;
+  gap: 8px;
+}
+
+.nb-sync-header-row > .nb-sync-secret {
+  min-width: 0;
+}
+
+/* 手机与窄窗口将名称和值上下排列，保留删除按钮的完整点击区域。 */
+@media (max-width: 600px) {
+  .nb-sync-header-row {
+    grid-template-columns: minmax(0, 1fr) 34px;
+  }
+
+  .nb-sync-header-row > .nb-sync-secret {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .nb-sync-header-row > button {
+    grid-column: 2;
+    grid-row: 1 / 3;
+  }
+}
+
 .nb-sync-icon-btn {
   display: inline-flex;
   align-items: center;

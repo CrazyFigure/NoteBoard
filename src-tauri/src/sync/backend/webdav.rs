@@ -1,7 +1,7 @@
 // WebDAV 后端（坚果云、Nextcloud、群晖、Alist 等）
 // 远端目录结构与本地一致，可在网盘中直接浏览；父目录按需 MKCOL 并在会话内缓存。
 
-use super::{clean_dir, default_user_agent, encode_path, join_remote, xml, RemoteFile};
+use super::{clean_dir, encode_path, join_remote, request_headers, xml, RemoteFile};
 use crate::sync::config::WebDavConfig;
 use crate::sync::error::{from_reqwest, from_status, SyncError, SyncResult};
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -29,12 +29,14 @@ pub struct WebDav {
     base: String,
     dir: String,
     auth: Option<String>,
-    user_agent: String,
+    /// 所有 WebDAV 方法共用的请求头，包含网关认证及客户端标识。
+    headers: header::HeaderMap,
     /// 本次会话已确认存在的远端目录
     known_dirs: HashSet<String>,
 }
 
 impl WebDav {
+    /// 校验地址和自定义请求头；填写账号时由程序生成 Basic 认证，避免与自定义认证冲突。
     pub fn new(client: reqwest::Client, cfg: &WebDavConfig) -> SyncResult<Self> {
         let url = cfg.url.trim();
         if url.is_empty() {
@@ -49,17 +51,17 @@ impl WebDav {
             let raw = format!("{}:{}", cfg.username.trim(), cfg.password);
             Some(format!("Basic {}", STANDARD.encode(raw.as_bytes())))
         };
-        let user_agent = if cfg.user_agent.trim().is_empty() {
-            default_user_agent()
-        } else {
-            cfg.user_agent.trim().to_string()
-        };
+        let mut reserved = vec!["depth", "content-type"];
+        if auth.is_some() {
+            reserved.push("authorization");
+        }
+        let headers = request_headers(&cfg.http, SERVICE, &reserved)?;
         Ok(Self {
             client,
             base: format!("{}/", url.trim_end_matches('/')),
             dir: clean_dir(&cfg.remote_dir),
             auth,
-            user_agent,
+            headers,
             known_dirs: HashSet::new(),
         })
     }
@@ -68,8 +70,9 @@ impl WebDav {
         format!("{}{}", self.base, encode_path(full))
     }
 
+    /// 所有读写、建目录和列表请求统一携带自定义头，原有 WebDAV 认证另行补齐。
     fn request(&self, method: Method, url: &str) -> reqwest::RequestBuilder {
-        let mut rb = self.client.request(method, url).header(header::USER_AGENT, &self.user_agent);
+        let mut rb = self.client.request(method, url).headers(self.headers.clone());
         if let Some(auth) = &self.auth {
             rb = rb.header(header::AUTHORIZATION, auth);
         }

@@ -1,10 +1,10 @@
 // NoteBoard 同步设置通用控件：密钥输入、确认弹窗、远端服务配置表单与时间格式化
 
 import { useEffect, useId, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ChevronRight, ExternalLink, Eye, EyeOff, HelpCircle, Loader2, PlugZap, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronRight, ExternalLink, Eye, EyeOff, HelpCircle, Loader2, PlugZap, Plus, X } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 import * as ipc from '../../core/ipc/commands';
-import type { GitRepoConfig, SyncProviderConfig, SyncProviderKind } from '../../core/ipc/types';
+import type { GitRepoConfig, HttpHeader, SyncProviderConfig, SyncProviderKind } from '../../core/ipc/types';
 
 // ── 格式化 ──
 
@@ -162,10 +162,13 @@ export function SecretInput({
   value,
   onChange,
   placeholder,
+  ariaLabel,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  /** 同一表单存在多组密钥时，用名称区分输入框及明文切换按钮。 */
+  ariaLabel?: string;
 }) {
   const [visible, setVisible] = useState(false);
   return (
@@ -175,6 +178,7 @@ export function SecretInput({
         type={visible ? 'text' : 'password'}
         value={value}
         placeholder={placeholder}
+        aria-label={ariaLabel}
         autoComplete="new-password"
         spellCheck={false}
         onChange={(e) => onChange(e.target.value)}
@@ -183,12 +187,55 @@ export function SecretInput({
         <button
           type="button"
           className="nb-sync-icon-btn"
-          aria-label={visible ? '隐藏' : '显示明文'}
+          aria-label={ariaLabel ? `${visible ? '隐藏' : '显示'}${ariaLabel}` : visible ? '隐藏' : '显示明文'}
           onClick={() => setVisible((v) => !v)}
         >
           {visible ? <EyeOff size={14} /> : <Eye size={14} />}
         </button>
       </Tooltip>
+    </div>
+  );
+}
+
+/** WebDAV/S3 共用 Header 编辑器；逐行编辑名称和值，令牌默认隐藏，增删后仍由外层统一保存。 */
+function HeaderInputs({ value, onChange }: { value: HttpHeader[]; onChange: (next: HttpHeader[]) => void }) {
+  const id = useId();
+  /** 只替换当前行，保留其他请求头和输入中的空白，避免改写有效令牌。 */
+  const update = (index: number, patch: Partial<HttpHeader>) =>
+    onChange(value.map((item, row) => row === index ? { ...item, ...patch } : item));
+  return (
+    <div className="nb-sync-field nb-sync-headers is-wide" role="group" aria-labelledby={id}>
+      <div className="nb-sync-headers-head">
+        <span id={id}>Header（可选）</span>
+        <Tooltip content="按名称和值添加自定义请求头，例如 Cloudflare Access 的认证头。User-Agent 也可在此设置，未设置时使用 NoteBoard 默认标识。" side="top">
+          <button type="button" className="nb-sync-icon-btn" aria-label="Header 说明"><HelpCircle size={14} /></button>
+        </Tooltip>
+        <Tooltip content="添加 Header" side="top">
+          <button type="button" className="nb-sync-icon-btn nb-sync-header-add" aria-label="添加 Header" onClick={() => onChange([...value, { name: '', value: '' }])}>
+            <Plus size={15} />
+          </button>
+        </Tooltip>
+      </div>
+      {value.map((item, index) => (
+        // 行号保持正在编辑的输入框稳定；删除后重建后续行，避免复用其明文显示状态。
+        <div className="nb-sync-header-row" key={`${value.length}-${index}`}>
+          <input
+            className="nb-sync-input"
+            aria-label={`Header ${index + 1} 名称`}
+            placeholder="名称，如 User-Agent"
+            value={item.name}
+            autoComplete="off"
+            spellCheck={false}
+            onChange={(event) => update(index, { name: event.target.value })}
+          />
+          <SecretInput ariaLabel={`Header ${index + 1} 值`} value={item.value} onChange={(next) => update(index, { value: next })} placeholder="值" />
+          <Tooltip content="删除 Header" side="top">
+            <button type="button" className="nb-sync-icon-btn is-danger" aria-label={`删除 Header ${index + 1}`} onClick={() => onChange(value.filter((_, row) => row !== index))}>
+              <X size={14} />
+            </button>
+          </Tooltip>
+        </div>
+      ))}
     </div>
   );
 }
@@ -327,8 +374,14 @@ function WebDavHelp() {
       </div>
       <div>
         <strong>群晖 / Alist / 其他 NAS</strong>：在对应服务中开启 WebDAV，填写服务地址、账号和密码即可。
-        个别服务要求特定的客户端标识，此时才需要填写 User-Agent，一般留空。
       </div>
+      <div>
+        <strong>自定义 Header</strong>：点击「+」逐项填写名称和值；如需指定客户端标识，名称填 <code>User-Agent</code>，值填服务要求的标识，未设置时使用 NoteBoard 默认标识。
+      </div>
+      <div>
+        <strong>Cloudflare Access</strong>：使用 Service Token 时，分别添加 <code>CF-Access-Client-Id</code> 和 <code>CF-Access-Client-Secret</code>，值填写对应的 Client ID 与 Client Secret；WebDAV 用户名和密码仍填写原服务的账号凭证。
+      </div>
+      <div>请求头名称不能重复，值不能换行。Host、Content-Length、Content-Type 和 Depth 由程序管理；如需自定义 Authorization，请将用户名留空，避免与账号认证冲突。</div>
     </div>
   );
 }
@@ -357,6 +410,11 @@ function S3Help() {
           <strong>MinIO 等自建服务</strong>：填写服务地址（如 <code>http://192.168.1.10:9000</code>）并勾选「路径风格访问」。
         </li>
       </ul>
+      <div>
+        <strong>自定义 Header</strong>：需要网关认证或指定客户端标识时，点击「+」添加名称和值；客户端标识的名称填 <code>User-Agent</code>，未设置时使用 NoteBoard 默认标识。
+        Cloudflare Access 的 Service Token 需分别添加 <code>CF-Access-Client-Id</code> 和 <code>CF-Access-Client-Secret</code>；S3 访问密钥仍填写在上方对应字段中。
+      </div>
+      <div>请求头名称不能重复，值不能换行。Host、Content-Length 和 S3 的 Authorization 等由程序管理，无需自行添加。</div>
     </div>
   );
 }
@@ -562,13 +620,7 @@ export function ProviderForm({
               placeholder="NoteBoard"
             />
           </Field>
-          <Field label="User-Agent（可选）" hint="留空使用 NoteBoard 默认标识">
-            <TextInput
-              value={value.webdav.userAgent}
-              onChange={(v) => onChange({ ...value, webdav: { ...value.webdav, userAgent: v } })}
-              placeholder="NoteBoard"
-            />
-          </Field>
+          <HeaderInputs value={value.webdav.headers} onChange={(headers) => onChange({ ...value, webdav: { ...value.webdav, headers } })} />
         </div>
       )}
 
@@ -604,13 +656,7 @@ export function ProviderForm({
           <Field label="对象前缀（远端目录）" hint="留空表示存储桶根目录">
             <TextInput value={value.s3.prefix} onChange={(v) => onChange({ ...value, s3: { ...value.s3, prefix: v } })} placeholder="NoteBoard" />
           </Field>
-          <Field label="User-Agent（可选）" hint="留空使用 NoteBoard 默认标识">
-            <TextInput
-              value={value.s3.userAgent}
-              onChange={(v) => onChange({ ...value, s3: { ...value.s3, userAgent: v } })}
-              placeholder="NoteBoard"
-            />
-          </Field>
+          <HeaderInputs value={value.s3.headers} onChange={(headers) => onChange({ ...value, s3: { ...value.s3, headers } })} />
           <div className="nb-sync-field is-wide">
             <ToggleRow
               title="路径风格访问"

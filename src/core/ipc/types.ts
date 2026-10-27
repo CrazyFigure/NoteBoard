@@ -596,12 +596,18 @@ export interface PlatformInfo {
 /** 远端服务类型 */
 export type SyncProviderKind = 'webdav' | 's3' | 'github' | 'gitee' | 'gitcode' | 'gitlab';
 
+/** 自定义 HTTP 请求头；值可能包含网关令牌，按凭证保存。 */
+export interface HttpHeader {
+  name: string;
+  value: string;
+}
+
 export interface WebDavConfig {
   url: string;
   username: string;
   password: string;
-  /** 自定义 User-Agent，留空使用 NoteBoard/版本号 */
-  userAgent: string;
+  /** 自定义请求头；未设置 User-Agent 时沿用默认客户端标识。 */
+  headers: HttpHeader[];
   remoteDir: string;
 }
 
@@ -613,8 +619,8 @@ export interface S3Config {
   secretAccessKey: string;
   prefix: string;
   pathStyle: boolean;
-  /** 自定义 User-Agent，留空使用 NoteBoard/版本号 */
-  userAgent: string;
+  /** 自定义请求头；签名所需的 x-amz-* 由后端统一处理。 */
+  headers: HttpHeader[];
 }
 
 export interface GitRepoConfig {

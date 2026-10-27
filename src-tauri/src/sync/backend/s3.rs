@@ -1,7 +1,7 @@
 // S3 兼容对象存储后端（AWS S3、阿里云 OSS、腾讯云 COS、Cloudflare R2、MinIO 等）
 // 使用 AWS Signature V4 签名；对象键 = 前缀 + 与本地一致的相对路径。
 
-use super::{clean_dir, default_user_agent, encode_component, encode_path, join_remote, xml, RemoteFile};
+use super::{clean_dir, encode_component, encode_path, join_remote, request_headers, xml, RemoteFile};
 use crate::sync::config::S3Config;
 use crate::sync::error::{from_reqwest, from_status, SyncError, SyncErrorKind, SyncResult};
 use crate::sync::util::sha256_hex;
@@ -21,10 +21,12 @@ pub struct S3 {
     secret_key: String,
     prefix: String,
     path_style: bool,
-    user_agent: String,
+    /// 网关认证等自定义头；程序生成的签名字段不能被覆盖。
+    headers: header::HeaderMap,
 }
 
 impl S3 {
+    /// 校验存储桶、密钥与请求头，预先拒绝会覆盖 SigV4 或 HTTP 传输字段的配置。
     pub fn new(client: reqwest::Client, cfg: &S3Config) -> SyncResult<Self> {
         let region = if cfg.region.trim().is_empty() { "us-east-1".to_string() } else { cfg.region.trim().to_string() };
         let endpoint = if cfg.endpoint.trim().is_empty() {
@@ -59,8 +61,7 @@ impl S3 {
             secret_key: cfg.secret_access_key.trim().to_string(),
             prefix: clean_dir(&cfg.prefix),
             path_style: cfg.path_style,
-            // User-Agent 不参与 SigV4 签名，可自由替换
-            user_agent: if cfg.user_agent.trim().is_empty() { default_user_agent() } else { cfg.user_agent.trim().to_string() },
+            headers: request_headers(&cfg.http, SERVICE, &["authorization", "x-amz-date", "x-amz-content-sha256"])?,
         })
     }
 
@@ -75,7 +76,7 @@ impl S3 {
         }
     }
 
-    /// 构造带 SigV4 签名的请求
+    /// 构造带 SigV4 签名的请求；新增 x-amz-* 与内容描述头参与签名，网关头和 UA 保持独立。
     fn signed(&self, method: Method, key: &str, query: &[(String, String)], body: Vec<u8>) -> reqwest::RequestBuilder {
         let (host, uri) = self.locate(key);
         let now = chrono::Utc::now();
@@ -90,8 +91,21 @@ impl S3 {
         sorted.sort();
         let canonical_query = sorted.iter().map(|(k, v)| format!("{}={}", k, v)).collect::<Vec<_>>().join("&");
 
-        let canonical_headers = format!("host:{}\nx-amz-content-sha256:{}\nx-amz-date:{}\n", host, payload_hash, amz_date);
-        let signed_headers = "host;x-amz-content-sha256;x-amz-date";
+        // AWS 要求签入全部 x-amz-*，以及存在的 Content-Type / Content-MD5。
+        // 用排序表保证名称小写且顺序稳定；规范值压缩 ASCII 空白，实际发送仍保留原值。
+        let mut signing_headers = std::collections::BTreeMap::from([
+            ("host".to_string(), host.clone()),
+            ("x-amz-content-sha256".to_string(), payload_hash.clone()),
+            ("x-amz-date".to_string(), amz_date.clone()),
+        ]);
+        for (name, value) in &self.headers {
+            if name.as_str().starts_with("x-amz-") || matches!(name.as_str(), "content-type" | "content-md5") {
+                let normalized = String::from_utf8_lossy(value.as_bytes()).split_ascii_whitespace().collect::<Vec<_>>().join(" ");
+                signing_headers.insert(name.as_str().to_string(), normalized);
+            }
+        }
+        let canonical_headers = signing_headers.iter().map(|(name, value)| format!("{}:{}\n", name, value)).collect::<String>();
+        let signed_headers = signing_headers.keys().cloned().collect::<Vec<_>>().join(";");
         let canonical_request = format!(
             "{}\n{}\n{}\n{}\n{}\n{}",
             method.as_str(),
@@ -122,7 +136,7 @@ impl S3 {
         let mut rb = self
             .client
             .request(method, url)
-            .header(header::USER_AGENT, &self.user_agent)
+            .headers(self.headers.clone())
             .header("x-amz-date", amz_date)
             .header("x-amz-content-sha256", payload_hash)
             .header(header::AUTHORIZATION, authorization);
@@ -273,5 +287,54 @@ mod tests {
         let k_service = hmac_sha256(&k_region, b"iam");
         let k_signing = hmac_sha256(&k_service, b"aws4_request");
         assert_eq!(hex::encode(k_signing), "f4780e2d9f65fa895f9c67b32ce1baf0b0d8a43505a000a1a9e090d414db404d");
+    }
+
+    /// 新增头须真实发送，x-amz-* 和内容类型参与签名，网关头不影响源站签名。
+    #[test]
+    fn custom_headers_are_sent_and_required_headers_are_signed() {
+        let cfg: S3Config = serde_json::from_value(serde_json::json!({
+            "endpoint": "https://s3.example.com", "bucket": "notes", "region": "us-east-1",
+            "accessKeyId": "test-key", "secretAccessKey": "test-secret", "pathStyle": true,
+            "headers": [
+                { "name": "User-Agent", "value": "Custom/1" },
+                { "name": "CF-Access-Client-Secret", "value": "gateway-token" },
+                { "name": "X-Amz-Security-Token", "value": "session-token" },
+                { "name": "X-Amz-Meta-Label", "value": "  my   notes  " },
+                { "name": "Content-Type", "value": "text/plain" }
+            ]
+        })).unwrap();
+        let backend = S3::new(reqwest::Client::new(), &cfg).unwrap();
+        let request = backend.signed(Method::PUT, "note.md", &[], Vec::new()).build().unwrap();
+        let headers = request.headers();
+        assert_eq!(headers["cf-access-client-secret"], "gateway-token");
+        assert_eq!(headers["user-agent"], "Custom/1");
+        assert_eq!(headers.get_all("user-agent").iter().count(), 1);
+        assert_eq!(headers["content-length"], "0");
+        let amz_date = headers["x-amz-date"].to_str().unwrap();
+        let date = &amz_date[..8];
+        let payload = sha256_hex(b"");
+        let names = "content-type;host;x-amz-content-sha256;x-amz-date;x-amz-meta-label;x-amz-security-token";
+        // 独立重建服务端验签所需的规范请求，防止仅增加 SignedHeaders 名称却未实际签入值。
+        let canonical = format!("PUT\n/notes/note.md\n\ncontent-type:text/plain\nhost:s3.example.com\nx-amz-content-sha256:{}\nx-amz-date:{}\nx-amz-meta-label:my notes\nx-amz-security-token:session-token\n\n{}\n{}", payload, amz_date, names, payload);
+        let scope = format!("{}/us-east-1/s3/aws4_request", date);
+        let to_sign = format!("AWS4-HMAC-SHA256\n{}\n{}\n{}", amz_date, scope, sha256_hex(canonical.as_bytes()));
+        let key = hmac_sha256(b"AWS4test-secret", date.as_bytes());
+        let key = hmac_sha256(&key, b"us-east-1");
+        let key = hmac_sha256(&key, b"s3");
+        let key = hmac_sha256(&key, b"aws4_request");
+        let signature = hex::encode(hmac_sha256(&key, to_sign.as_bytes()));
+        assert_eq!(headers["authorization"], format!("AWS4-HMAC-SHA256 Credential=test-key/{}, SignedHeaders={}, Signature={}", scope, names, signature));
+    }
+
+    /// 所有由程序生成的签名字段均拒绝覆盖，避免保存后才出现难以定位的认证失败。
+    #[test]
+    fn signing_headers_cannot_be_overridden() {
+        for name in ["Authorization", "Host", "X-Amz-Date", "X-Amz-Content-Sha256"] {
+            let cfg: S3Config = serde_json::from_value(serde_json::json!({
+                "bucket": "notes", "accessKeyId": "test", "secretAccessKey": "test",
+                "headers": [{ "name": name, "value": "override" }]
+            })).unwrap();
+            assert!(S3::new(reqwest::Client::new(), &cfg).is_err());
+        }
     }
 }

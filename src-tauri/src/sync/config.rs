@@ -32,6 +32,41 @@ impl ProviderKind {
     }
 }
 
+/// 自定义请求头；值可能是网关令牌，落盘时与其他凭证一起保护。
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(default)]
+pub struct HttpHeader {
+    pub name: String,
+    pub value: String,
+}
+
+/// WebDAV/S3 共用的请求头配置，序列化时保持 headers 位于服务配置顶层。
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(from = "LegacyHttpHeaders")]
+pub struct HttpHeaders {
+    pub headers: Vec<HttpHeader>,
+}
+
+/// 只在读取时接收旧版 userAgent；后续保存统一使用 headers。
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+struct LegacyHttpHeaders {
+    headers: Vec<HttpHeader>,
+    user_agent: String,
+}
+
+impl From<LegacyHttpHeaders> for HttpHeaders {
+    /// 已有同名 Header 优先，防止旧配置覆盖用户的新设置；空 UA 沿用默认标识。
+    fn from(mut old: LegacyHttpHeaders) -> Self {
+        if !old.user_agent.trim().is_empty()
+            && !old.headers.iter().any(|item| item.name.trim().eq_ignore_ascii_case("user-agent"))
+        {
+            old.headers.push(HttpHeader { name: "User-Agent".into(), value: old.user_agent.trim().into() });
+        }
+        Self { headers: old.headers }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct WebDavConfig {
@@ -39,8 +74,9 @@ pub struct WebDavConfig {
     pub url: String,
     pub username: String,
     pub password: String,
-    /// 自定义 User-Agent（部分服务按 UA 限流或要求特定 UA）；留空使用 NoteBoard/版本号
-    pub user_agent: String,
+    /// 自定义请求头，与旧版 User-Agent 自动兼容。
+    #[serde(flatten)]
+    pub http: HttpHeaders,
     /// 远端目录（相对服务地址），例如 NoteBoard
     pub remote_dir: String,
 }
@@ -59,8 +95,9 @@ pub struct S3Config {
     pub prefix: String,
     /// 路径风格访问（MinIO 等自建服务通常需要开启）
     pub path_style: bool,
-    /// 自定义 User-Agent（部分网关/代理按 UA 放行或限流）；留空使用 NoteBoard/版本号
-    pub user_agent: String,
+    /// 自定义请求头；签名所需的 x-amz-* 由 S3 后端统一处理。
+    #[serde(flatten)]
+    pub http: HttpHeaders,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -96,6 +133,10 @@ impl ProviderConfig {
     fn map_secrets(&mut self, f: &dyn Fn(&str) -> String) {
         self.webdav.password = f(&self.webdav.password);
         self.s3.secret_access_key = f(&self.s3.secret_access_key);
+        // 请求头可能包含 Service Token，不根据名称猜测敏感性，所有值均沿用凭证保护流程。
+        for item in self.webdav.http.headers.iter_mut().chain(self.s3.http.headers.iter_mut()) {
+            item.value = f(&item.value);
+        }
         self.github.token = f(&self.github.token);
         self.gitee.token = f(&self.gitee.token);
         self.gitcode.token = f(&self.gitcode.token);
@@ -315,5 +356,48 @@ mod tests {
     fn provider_kind_serializes_lowercase() {
         let json = serde_json::to_string(&ProviderKind::Gitlab).unwrap();
         assert_eq!(json, "\"gitlab\"");
+    }
+
+    /// 旧版同步和备份的 UA 都要自动迁移，新 Header 中的同名设置优先且不区分大小写。
+    #[test]
+    fn legacy_user_agents_migrate_without_overwriting_headers() {
+        let cfg: SyncConfigFile = serde_json::from_value(serde_json::json!({
+            "sync": { "provider": {
+                "webdav": { "userAgent": " Old DAV " },
+                "s3": { "userAgent": "Old S3", "headers": [{ "name": "user-AGENT", "value": "New S3" }] }
+            } },
+            "backup": { "provider": { "s3": { "userAgent": "Backup S3" } } }
+        })).unwrap();
+        assert_eq!(cfg.sync.provider.webdav.http.headers[0].name, "User-Agent");
+        assert_eq!(cfg.sync.provider.webdav.http.headers[0].value, "Old DAV");
+        assert_eq!(cfg.sync.provider.s3.http.headers.len(), 1);
+        assert_eq!(cfg.sync.provider.s3.http.headers[0].value, "New S3");
+        assert_eq!(cfg.backup.provider.s3.http.headers[0].value, "Backup S3");
+        let json = serde_json::to_value(&cfg).unwrap();
+        assert!(json["sync"]["provider"]["webdav"].get("userAgent").is_none());
+        assert_eq!(json["sync"]["provider"]["webdav"]["headers"][0]["value"], "Old DAV");
+        let defaults: ProviderConfig = serde_json::from_str("{}").unwrap();
+        assert!(defaults.webdav.http.headers.is_empty());
+        assert!(defaults.s3.http.headers.is_empty());
+    }
+
+    /// 复用实际落盘和读取的凭证变换，保证同步、远端备份四组 Header 的值都能保护并恢复。
+    #[test]
+    fn header_secrets_round_trip_for_sync_and_backup() {
+        let mut cfg = SyncConfigFile::default();
+        for provider in [&mut cfg.sync.provider, &mut cfg.backup.provider] {
+            for http in [&mut provider.webdav.http, &mut provider.s3.http] {
+                http.headers.push(HttpHeader { name: "CF-Access-Client-Secret".into(), value: "gateway-secret 令牌".into() });
+            }
+            provider.map_secrets(&secret::protect);
+        }
+        let stored = serde_json::to_string(&cfg).unwrap();
+        assert!(!stored.contains("gateway-secret"));
+        let mut loaded: SyncConfigFile = serde_json::from_str(&stored).unwrap();
+        for provider in [&mut loaded.sync.provider, &mut loaded.backup.provider] {
+            provider.map_secrets(&secret::unprotect);
+            assert_eq!(provider.webdav.http.headers[0].value, "gateway-secret 令牌");
+            assert_eq!(provider.s3.http.headers[0].value, "gateway-secret 令牌");
+        }
     }
 }
