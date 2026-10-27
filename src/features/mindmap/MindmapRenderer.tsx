@@ -142,6 +142,13 @@ interface DragSession {
   sourceIds?: string[];
 }
 
+/** 仅保留最后一个指针采样，避免高频移动事件反复扫描导图和刷新预览。 */
+interface DragPoint {
+  pointerId: number;
+  x: number;
+  y: number;
+}
+
 /** 空 id 集合（多选 / 拖拽状态的初始值，保持引用稳定） */
 const NO_IDS: readonly string[] = [];
 
@@ -421,19 +428,19 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   const minimapRef = useRef<CanvasMinimapHandle>(null);
   // 判断内容是否已全部移出视野（每次渲染指向最新闭包，供命令式平移逐帧调用）
   const checkOffscreenRef = useRef<() => void>(() => undefined);
-  // 平移先更新图层变换；移动接近缓冲区边缘时才触发 React 补绘，不改原有灵敏度与坐标规则。
+  // 坐标立即累加，图层、缩略图和裁剪检查每帧只同步一次，避免触控板高频事件重复触发布局与绘制。
   const setPan = useCallback((next: React.SetStateAction<{ x: number; y: number }>) => {
     const value = typeof next === 'function' ? next(panRef.current) : next;
     panRef.current = value;
-    if (transformLayerRef.current) transformLayerRef.current.style.transform = `translate(${value.x}px, ${value.y}px) scale(${zoomRef.current})`;
-    // 缩略图视口框跟随每帧平移，只写 DOM 不触发渲染
-    minimapRef.current?.syncViewport();
-    checkOffscreenRef.current();
-    const committed = committedPanRef.current;
-    if (Math.max(Math.abs(value.x - committed.x), Math.abs(value.y - committed.y)) < 128) return;
     if (panFrameRef.current === null) panFrameRef.current = requestAnimationFrame(() => {
       panFrameRef.current = null;
-      commitPan(panRef.current);
+      const current = panRef.current;
+      if (transformLayerRef.current) transformLayerRef.current.style.transform = `translate3d(${current.x}px, ${current.y}px, 0) scale(${zoomRef.current})`;
+      minimapRef.current?.syncViewport();
+      checkOffscreenRef.current();
+      // 移动接近既有缓冲区边缘时才让 React 补绘，保留原有裁剪范围和坐标规则。
+      const committed = committedPanRef.current;
+      if (Math.max(Math.abs(current.x - committed.x), Math.abs(current.y - committed.y)) >= 128) commitPan(current);
     });
   }, []);
   const [viewportSize, setViewportSize] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
@@ -447,6 +454,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     return () => {
       observer?.disconnect();
       if (panFrameRef.current !== null) cancelAnimationFrame(panFrameRef.current);
+      panFrameRef.current = null;
     };
   }, []);
   const [isPanning, setIsPanning] = useState(false);
@@ -461,7 +469,6 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     worldX: number;
     worldY: number;
   } | null>(null);
-  const [isPinching, setIsPinching] = useState(false);
   // 最近一次触摸时间：用于忽略触屏点按后浏览器补发的兼容 mousedown，避免误入鼠标平移态
   const lastTouchAtRef = useRef(0);
 
@@ -471,14 +478,48 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   // 正在被拖动的节点（多选拖动时为多个）
   const [draggedIds, setDraggedIds] = useState<readonly string[]>(NO_IDS);
   const [dragPreview, setDragPreview] = useState<{
-    x: number;
-    y: number;
     node: MindNode;
     descendantCount: number;
     /** 一起拖动的节点数（多选拖动时 > 1） */
     count: number;
   } | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTargetState | null>(null);
+  // 预览位置和实际落点用 ref 保存；只有预览内容、落点变化时才需要重绘节点。
+  const dragPreviewElementRef = useRef<HTMLDivElement>(null);
+  const dragPointRef = useRef<DragPoint>({ pointerId: 0, x: 0, y: 0 });
+  const dropTargetRef = useRef<DropTargetState | null>(null);
+  const dragMoveFrameRef = useRef<number | null>(null);
+  const pendingDragPointRef = useRef<DragPoint | null>(null);
+  const applyDragPointRef = useRef<(point: DragPoint) => void>(() => undefined);
+
+  /** 消费最后一次移动；松手也同步调用，确保未到下一帧时仍按最新指针位置提交落点。 */
+  const flushNodeDrag = useCallback(() => {
+    if (dragMoveFrameRef.current !== null) cancelAnimationFrame(dragMoveFrameRef.current);
+    dragMoveFrameRef.current = null;
+    const point = pendingDragPointRef.current;
+    pendingDragPointRef.current = null;
+    if (point) applyDragPointRef.current(point);
+  }, []);
+
+  /** 结束或取消节点拖动时一并清除待绘帧，防止预览在松手、Esc 或捏合后重新出现。 */
+  const resetNodeDrag = useCallback(() => {
+    if (dragMoveFrameRef.current !== null) cancelAnimationFrame(dragMoveFrameRef.current);
+    dragMoveFrameRef.current = null;
+    pendingDragPointRef.current = null;
+    dragSessionRef.current = null;
+    dropTargetRef.current = null;
+    setIsDraggingNode(false);
+    setDraggedIds(NO_IDS);
+    setDragPreview(null);
+    setDropTarget(null);
+    document.body.style.cursor = 'default';
+  }, []);
+
+  // 卸载时不再提交状态，只撤销本组件的待绘任务及拖动光标。
+  useEffect(() => () => {
+    if (dragMoveFrameRef.current !== null) cancelAnimationFrame(dragMoveFrameRef.current);
+    if (dragSessionRef.current?.isDragging) document.body.style.cursor = 'default';
+  }, []);
 
   // 正在就地编辑标题的节点与草稿（文本 + 富文本格式）
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
@@ -1522,8 +1563,17 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       return;
     }
 
-    const deltaX = Math.abs(e.clientX - session.startX);
-    const deltaY = Math.abs(e.clientY - session.startY);
+    if (e.pointerId !== session.pointerId) return;
+    pendingDragPointRef.current = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
+    if (dragMoveFrameRef.current === null) dragMoveFrameRef.current = requestAnimationFrame(flushNodeDrag);
+  };
+
+  /** 按显示帧移动预览并判定落点；相同落点不触发 React 重绘，树结构仍只在松手时提交。 */
+  applyDragPointRef.current = (point) => {
+    const session = dragSessionRef.current;
+    if (!session || point.pointerId !== session.pointerId) return;
+    const deltaX = Math.abs(point.x - session.startX);
+    const deltaY = Math.abs(point.y - session.startY);
 
     // 位移超过 4px 正式激活拖拽状态
     if (!session.isDragging) {
@@ -1554,21 +1604,21 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       }
       session.descendantIds = ids;
     }
-    const descendantCount = session.descendantIds.size - sourceIds.length;
-    setDragPreview({
-      x: e.clientX,
-      y: e.clientY,
-      node: session.sourceNode,
-      descendantCount,
-      count: sourceIds.length,
-    });
+    dragPointRef.current = point;
+    const preview = dragPreviewElementRef.current;
+    if (preview) {
+      preview.style.transform = `translate3d(${point.x + 14}px, ${point.y + 14}px, 0) scale(1.04)`;
+    } else {
+      // 卡片内容在同一次拖动中不变，首次挂载后只移动合成层。
+      setDragPreview({ node: session.sourceNode, descendantCount: session.descendantIds.size - sourceIds.length, count: sourceIds.length });
+    }
 
     // 屏幕视口坐标转导图世界坐标系
     const containerEl = containerRef.current;
     if (!containerEl) return;
     const rect = containerEl.getBoundingClientRect();
-    const worldX = (e.clientX - rect.left - panRef.current.x) / zoom;
-    const worldY = (e.clientY - rect.top - panRef.current.y) / zoom;
+    const worldX = (point.x - rect.left - panRef.current.x) / zoomRef.current;
+    const worldY = (point.y - rect.top - panRef.current.y) / zoomRef.current;
 
     // 寻找最近有效落点目标 (严格过滤自身及所有子孙节点，防止成环)
     let closest: DropTargetState | null = null;
@@ -1644,7 +1694,11 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       }
     }
 
-    setDropTarget(closest);
+    const previous = dropTargetRef.current;
+    dropTargetRef.current = closest;
+    if (previous?.targetId !== closest?.targetId || previous?.pos !== closest?.pos || previous?.targetLayout !== closest?.targetLayout) {
+      setDropTarget(closest);
+    }
   };
 
   // 全局指针释放：提交树结构变更或重置状态
@@ -1654,7 +1708,11 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     }
 
     const session = dragSessionRef.current;
-    if (!session) return;
+    if (!session || e.pointerId !== session.pointerId) return;
+
+    // 最后一个 pointermove 可能尚在等待绘制；pointerup 的坐标作为最终落点采样。
+    pendingDragPointRef.current = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
+    flushNodeDrag();
 
     try {
       const el = e.currentTarget as HTMLElement;
@@ -1665,17 +1723,12 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       // ignore
     }
 
-    const currentDropTarget = dropTarget;
+    const currentDropTarget = dropTargetRef.current;
     const sourceId = session.sourceNode.id;
     const sourceIds = session.sourceIds ?? [sourceId];
     const wasDragging = session.isDragging;
 
-    dragSessionRef.current = null;
-    setIsDraggingNode(false);
-    setDraggedIds(NO_IDS);
-    setDragPreview(null);
-    setDropTarget(null);
-    document.body.style.cursor = 'default';
+    resetNodeDrag();
 
     // 若处于真实拖拽态且存在有效落点，执行整树转移
     if (wasDragging && currentDropTarget) {
@@ -1718,7 +1771,6 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     if (e.isPrimary && touchPointsRef.current.size > 0) {
       touchPointsRef.current.clear();
       pinchRef.current = null;
-      setIsPinching(false);
     }
     touchPointsRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const points = Array.from(touchPointsRef.current.values());
@@ -1756,15 +1808,9 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       worldX: (midX - panRef.current.x) / zoom,
       worldY: (midY - panRef.current.y) / zoom,
     };
-    setIsPinching(true);
     setIsPanning(false);
     if (dragSessionRef.current) {
-      dragSessionRef.current = null;
-      setIsDraggingNode(false);
-      setDraggedIds(NO_IDS);
-      setDragPreview(null);
-      setDropTarget(null);
-      document.body.style.cursor = 'default';
+      resetNodeDrag();
     }
     // 第一指按在手柄上时同样让位给捏合
     abortHandleSessions();
@@ -1779,7 +1825,6 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     touchPointsRef.current.delete(e.pointerId);
     if (pinchRef.current && touchPointsRef.current.size < 2) {
       pinchRef.current = null;
-      setIsPinching(false);
       const rest = Array.from(touchPointsRef.current.values())[0];
       if (rest) {
         setIsPanning(true);
@@ -1826,17 +1871,12 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
         setConnectPointer(null);
       }
       if (e.key === 'Escape' && dragSessionRef.current) {
-        dragSessionRef.current = null;
-        setIsDraggingNode(false);
-        setDraggedIds(NO_IDS);
-        setDragPreview(null);
-        setDropTarget(null);
-        document.body.style.cursor = 'default';
+        resetNodeDrag();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [resetNodeDrag]);
 
   // 选中节点后：Tab 新增子节点，Enter 新增同级节点（两者均把光标移到新节点）
   useEffect(() => {
@@ -1942,12 +1982,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
         // 系统取消触点（如来电、手势被接管）：只复位状态，不提交拖拽落点（触点表由 window 监听移除）
         setIsPanning(false);
         if (dragSessionRef.current) {
-          dragSessionRef.current = null;
-          setIsDraggingNode(false);
-          setDraggedIds(NO_IDS);
-          setDragPreview(null);
-          setDropTarget(null);
-          document.body.style.cursor = 'default';
+          resetNodeDrag();
         }
       }}
       style={{
@@ -1974,11 +2009,12 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       {/* 缩放与平移图层 */}
       <div
         ref={transformLayerRef}
+        className="nb-mindmap-transform"
         style={{
           position: 'absolute',
-          transform: `translate(${panRef.current.x}px, ${panRef.current.y}px) scale(${zoom})`,
+          // 统一用合成层平移；连续输入不叠加过渡插值，避免触控板平移时出现拖尾。
+          transform: `translate3d(${panRef.current.x}px, ${panRef.current.y}px, 0) scale(${zoom})`,
           transformOrigin: '0 0',
-          transition: isPanning || isDraggingNode || isPinching ? 'none' : 'transform 0.05s ease-out',
         }}
       >
         {/* SVG 贝塞尔曲线连接线图层 */}
@@ -1987,8 +2023,9 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
             position: 'absolute',
             left: 0,
             top: 0,
-            width: 8000,
-            height: 8000,
+            // 图形使用绝对坐标并允许溢出，无需为连线保留 8000² 的空白绘制表面。
+            width: 1,
+            height: 1,
             pointerEvents: 'none',
             overflow: 'visible',
           }}
@@ -2826,8 +2863,9 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
             position: 'absolute',
             left: 0,
             top: 0,
-            width: 8000,
-            height: 8000,
+            // 与底层连线共用最小 SVG 视口，实际线条继续通过 overflow 绘制和命中。
+            width: 1,
+            height: 1,
             pointerEvents: 'none',
             overflow: 'visible',
           }}
@@ -3291,10 +3329,12 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       {/* 跟随光标的半透明悬浮拖拽预览卡片 (Drag Ghost Preview) */}
       {dragPreview && (
         <div
+          ref={dragPreviewElementRef}
+          className="nb-mindmap-drag-preview"
           style={{
             position: 'fixed',
-            left: dragPreview.x + 14,
-            top: dragPreview.y + 14,
+            left: 0,
+            top: 0,
             minWidth: 100,
             maxWidth: 280,
             padding: '7px 12px',
@@ -3303,14 +3343,14 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
             border: '1.5px solid var(--editor-accent, #3b82f6)',
             borderRadius: 8,
             boxShadow: '0 14px 30px rgba(0, 0, 0, 0.18), 0 4px 12px rgba(59, 130, 246, 0.25)',
-            backdropFilter: 'blur(8px)',
             pointerEvents: 'none',
             zIndex: 100001,
             display: 'flex',
             alignItems: 'center',
             gap: 6,
-            transform: 'scale(1.04)',
-            transition: 'transform 0.08s ease-out',
+            // 实色预览不需要背景模糊；只变换位置，避免移动中重排和重复采样背景。
+            transform: `translate3d(${dragPointRef.current.x + 14}px, ${dragPointRef.current.y + 14}px, 0) scale(1.04)`,
+            willChange: 'transform',
           }}
         >
           <GripVertical size={13} style={{ color: 'var(--editor-accent, #3b82f6)', flexShrink: 0, opacity: 0.8 }} />
