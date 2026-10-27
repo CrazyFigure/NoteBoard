@@ -34,6 +34,16 @@ export interface LayoutNode {
   textAlign: MindmapTextAlign;
   /** 图片显示框（不含边框） */
   imageBox?: { fit: MindmapImageFit; width: number; height: number };
+  /** 多图网格（两张及以上图片时代替 imageBox） */
+  gallery?: {
+    columns: number;
+    cellWidth: number;
+    cellHeight: number;
+    gap: number;
+    visibleCount: number;
+    width: number;
+    height: number;
+  };
   /** 拉伸手柄所在的自由边（远离父节点的一侧） */
   freeEdge: 'left' | 'right';
   /** 子节点展开方向（折叠 / 添加按钮所在侧） */

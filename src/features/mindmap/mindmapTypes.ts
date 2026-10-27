@@ -17,8 +17,11 @@ export interface MindNode {
   icon?: string;
   // 节点文字备注
   note?: string;
-  // 节点挂载图片（Data URL Base64 或网络/本地路径）
-  image?: string;
+  // 节点挂载图片（Data URL Base64 或网络/本地路径），按顺序展示，最多 10 张；
+  // 旧版文档的单图字段 image 在解析时并入此处
+  images?: string[];
+  // 本地文件超链接（相对导图所在目录的路径或绝对路径），最多 10 个；Ctrl/Cmd + 单击在应用内打开
+  files?: string[];
   isExpanded?: boolean;
   color?: string;
   // 手动拉伸后的节点宽度（px）；未设置时按设置中的最大宽度自适应

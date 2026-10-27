@@ -18,6 +18,7 @@ import {
   type MindTextMark,
 } from './mindmapRichText';
 import type { ImageSize } from './mindmapImageSize';
+import { fileLinkName } from './mindmapAttachments';
 import {
   buildFont,
   createRangeMeasure,
@@ -27,6 +28,15 @@ import {
   getNodeTextStyle,
   measureNaturalWidth,
   wrapText,
+  FILE_FONT_SIZE,
+  FILE_LIST_TOP_GAP,
+  FILE_MIN_WIDTH,
+  FILE_ROW_CHROME,
+  FILE_ROW_GAP,
+  FILE_ROW_HEIGHT,
+  GALLERY_GAP,
+  GALLERY_MAX_VISIBLE,
+  GALLERY_MIN_WIDTH,
   IMAGE_BLOCK_HEIGHT,
   IMAGE_MIN_WIDTH,
   MAX_MANUAL_NODE_WIDTH,
@@ -111,6 +121,19 @@ export interface ImageBox {
   height: number;
 }
 
+/** 多图网格（两张及以上图片时使用，单元格统一裁切铺满） */
+export interface GalleryBox {
+  columns: number;
+  cellWidth: number;
+  cellHeight: number;
+  gap: number;
+  /** 直接展示的张数；总数超出时末格叠加 +N */
+  visibleCount: number;
+  /** 网格整体宽高 */
+  width: number;
+  height: number;
+}
+
 /** 节点盒尺寸与换行结果 */
 export interface NodeBox {
   width: number;
@@ -120,12 +143,15 @@ export interface NodeBox {
   marks?: MindTextMark[];
   textAlign: MindmapTextAlign;
   imageBox?: ImageBox;
+  gallery?: GalleryBox;
 }
 
 /** 宽度填充模式下缩略图的固定高度 */
 export const FILL_IMAGE_HEIGHT = 54;
 /** 图片框上边距 + 上下边框 */
 const IMAGE_FRAME_EXTRA = 4 + 2;
+/** 多图网格上边距（单元格各自带边框，网格本身无外框） */
+export const GALLERY_TOP_GAP = 4;
 
 /** 按格式取某字符的 canvas 字体 */
 export function createRichFontSpec(
@@ -146,10 +172,41 @@ export function createRichFontSpec(
   };
 }
 
-/** 手动宽度的合法区间（挂图片的节点最小宽度更大） */
-export function clampManualWidth(width: number, hasImage: boolean): number {
-  const min = hasImage ? IMAGE_MIN_WIDTH : MIN_MANUAL_NODE_WIDTH;
+/** 节点因附件所需的最小宽度：多图网格 > 单图 > 文件链接 */
+export function attachmentMinWidth(node: Pick<MindNode, 'images' | 'files'>): number {
+  const imageCount = node.images?.length ?? 0;
+  if (imageCount > 1) return GALLERY_MIN_WIDTH;
+  if (imageCount === 1) return IMAGE_MIN_WIDTH;
+  return node.files?.length ? FILE_MIN_WIDTH : 0;
+}
+
+/** 手动宽度的合法区间（挂图片 / 文件的节点最小宽度更大） */
+export function clampManualWidth(width: number, minWidth = 0): number {
+  const min = Math.max(MIN_MANUAL_NODE_WIDTH, minWidth);
   return Math.min(MAX_MANUAL_NODE_WIDTH, Math.max(min, Math.round(width)));
+}
+
+/** 多图网格排布：2 / 4 张两列，其余三列；三列为方格，两列为 4:3 */
+export function computeGalleryBox(imageCount: number, availableWidth: number): GalleryBox {
+  const columns = imageCount === 2 || imageCount === 4 ? 2 : 3;
+  const visibleCount = Math.min(imageCount, GALLERY_MAX_VISIBLE);
+  const rows = Math.ceil(visibleCount / columns);
+  const cellWidth = Math.max(1, Math.floor((availableWidth - GALLERY_GAP * (columns - 1)) / columns));
+  const cellHeight = columns === 3 ? cellWidth : Math.round(cellWidth * 0.75);
+  return {
+    columns,
+    cellWidth,
+    cellHeight,
+    gap: GALLERY_GAP,
+    visibleCount,
+    width: cellWidth * columns + GALLERY_GAP * (columns - 1),
+    height: cellHeight * rows + GALLERY_GAP * (rows - 1),
+  };
+}
+
+/** 文件链接列表占用高度（含上间距） */
+export function fileListHeight(count: number): number {
+  return count > 0 ? FILE_LIST_TOP_GAP + count * FILE_ROW_HEIGHT + (count - 1) * FILE_ROW_GAP : 0;
 }
 
 /** 节点标题区高度（不含内缩），多行时随行数增长 */
@@ -177,18 +234,23 @@ export function measureNodeBox(
   const rich = createRichFontSpec(text, marks, style.fontSize, style.fontWeight, family);
   const textAlign: MindmapTextAlign = node.textAlign ?? options.defaultTextAlign ?? 'left';
   const imageFit: MindmapImageFit = node.imageFit ?? options.defaultImageFit ?? 'original';
-  const imageSize = node.image && imageFit === 'original' ? options.imageSize?.(node.image) : undefined;
+  const images = node.images ?? [];
+  const files = node.files ?? [];
   const hasIcon = Boolean(node.icon);
   const hasNote = Boolean(node.note);
-  const hasImage = Boolean(node.image);
+  const hasImage = images.length > 0;
+  // 两张及以上图片改为网格展示，显示方式设置只作用于单图
+  const isGallery = images.length > 1;
+  const imageSize = images.length === 1 && imageFit === 'original' ? options.imageSize?.(images[0]) : undefined;
   const iconWidth = hasIcon ? style.iconWidth : 0;
   const maxWidth = clampNodeMaxWidth(options.maxNodeWidth);
+  const minAttachmentWidth = attachmentMinWidth(node);
 
   // 宽度：手动宽度优先；否则取「单行自然宽度」并以设置中的最大宽度封顶
   const manual = options.widthOverrides?.get(node.id) ?? node.width;
   let width: number;
   if (typeof manual === 'number' && Number.isFinite(manual) && manual > 0) {
-    width = clampManualWidth(manual, hasImage);
+    width = clampManualWidth(manual, minAttachmentWidth);
   } else {
     const minWidth = style.minWidth + (hasIcon ? 24 : 0);
     // 标题含手动换行时，自然宽度取最长一段
@@ -212,8 +274,14 @@ export function measureNodeBox(
     }
     // 原始比例：节点尽量撑到能完整展示图片固有宽度（仍以最大宽度封顶）
     if (imageSize) natural = Math.max(natural, imageSize.width + 2 + style.insetX * 2);
+    // 文件链接：尽量完整显示最长的文件名（超出最大宽度时由渲染层省略）
+    if (files.length > 0) {
+      const fileFont = buildFont(FILE_FONT_SIZE, 400, family);
+      const longest = Math.max(...files.map((path) => measure(fileLinkName(path), fileFont)));
+      natural = Math.max(natural, Math.ceil(longest) + FILE_ROW_CHROME + style.insetX * 2 + WIDTH_SLACK);
+    }
     width = Math.min(Math.max(maxWidth, minWidth), natural);
-    if (hasImage) width = Math.max(width, IMAGE_MIN_WIDTH);
+    width = Math.max(width, minAttachmentWidth);
   }
 
   // 标题换行（富文本按各字符实际字体测量）
@@ -238,7 +306,12 @@ export function measureNodeBox(
 
   // 图片区：原始比例按固有宽高等比缩放到内容宽度（小图不放大）；宽度填充固定高度裁切
   let imageBox: ImageBox | undefined;
-  if (hasImage) {
+  let gallery: GalleryBox | undefined;
+  if (isGallery) {
+    // 多图网格：铺满内容宽度（与单图外框同宽），上边距与单图一致
+    gallery = computeGalleryBox(images.length, width - style.insetX * 2);
+    height += GALLERY_TOP_GAP + gallery.height;
+  } else if (hasImage) {
     const contentWidth = width - style.insetX * 2 - 2;
     if (imageSize) {
       const displayWidth = Math.min(contentWidth, imageSize.width);
@@ -251,7 +324,10 @@ export function measureNodeBox(
     }
   }
 
-  return { width, height, titleLines, noteLines, marks, textAlign, imageBox };
+  // 文件链接列表：每个文件一行，位于图片之下
+  height += fileListHeight(files.length);
+
+  return { width, height, titleLines, noteLines, marks, textAlign, imageBox, gallery };
 }
 
 /** 自底向上度量：沿堆叠轴累加子树尺寸 */
@@ -280,6 +356,7 @@ function measureSubTree(
     marks: box.marks,
     textAlign: box.textAlign,
     imageBox: box.imageBox,
+    gallery: box.gallery,
     freeEdge: 'right',
     childSide: 'right',
     siblingFlow: 'down',

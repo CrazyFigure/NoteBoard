@@ -15,6 +15,7 @@ import {
   GripVertical,
   Spline,
   Pencil,
+  Link2,
 } from 'lucide-react';
 import type {
   MindNode,
@@ -27,9 +28,11 @@ import { generateNodeId, moveMindNodes } from './mindmapConverter';
 import { cloneMindmapTree, findMindNode, findMindNodeParent, getTopLevelMindNodeIds, walkMindNodes } from './mindmapTree';
 import { getMindmapViewport, isMindmapNodeVisible, isMindmapLinkVisible } from './mindmapViewport';
 import {
+  attachmentMinWidth,
   computeMindmapLayout,
   clampManualWidth,
   titleBlockHeight,
+  GALLERY_TOP_GAP,
   type LayoutNode,
   type NodeSide,
   type TextDraft,
@@ -37,6 +40,9 @@ import {
 import type { MindmapTheme } from './mindmapTheme';
 import { MindmapIconPicker } from './MindmapIconPicker';
 import { MindmapImagePreview } from './MindmapImagePreview';
+import { MindmapFileLink } from './MindmapFileLink';
+import { openFileLink, pickFileLinks } from './mindmapFileLinks';
+import { appendWithLimit, getNodeFiles, getNodeImages, MAX_NODE_FILES, MAX_NODE_IMAGES } from './mindmapAttachments';
 import { MindmapTitleEditor, type MindmapTitleEditorHandle, type TitleSelectionInfo } from './MindmapTitleEditor';
 import { MindmapTextFormatMenu, type FormatState } from './MindmapTextFormatMenu';
 import { MindmapNodeStylePopover } from './MindmapNodeStylePopover';
@@ -53,6 +59,8 @@ import {
 import { getImageSize, subscribeImageSizes } from './mindmapImageSize';
 import {
   FALLBACK_FONT_FAMILY,
+  FILE_LIST_TOP_GAP,
+  FILE_ROW_GAP,
   NOTE_LINE_HEIGHT,
   getNodeTextStyle,
   getSharedTextMeasurer,
@@ -109,6 +117,8 @@ interface MindmapRendererProps {
   onSelectionChange?: (selection: MindmapSelectionInfo) => void;
   /** 历史记录差异标记：节点 id → 新增 / 删除 / 修改 / 移动（渲染为 data-diff 属性，由历史查看样式着色） */
   diffMarks?: ReadonlyMap<string, string>;
+  /** 所属文档（解析节点文件链接的相对路径）；缺省时以当前激活文档为基准 */
+  docKey?: string;
 }
 
 /** 当前选中节点概况 */
@@ -171,7 +181,8 @@ interface ResizeSession {
   startWidth: number;
   /** 拖动的是哪条边：右边向右拉变宽，左边向左拉变宽 */
   edge: 'left' | 'right';
-  hasImage: boolean;
+  /** 附件（图片 / 文件链接）要求的最小宽度 */
+  minWidth: number;
   moved: boolean;
 }
 
@@ -411,6 +422,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   searchHighlight,
   onSelectionChange,
   diffMarks,
+  docKey,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -582,14 +594,38 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     y: number;
   } | null>(null);
 
-  // 图片大图预览
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  // 图片大图预览：记录节点与图片序号，预览中可左右切换节点内的多张图片
+  const [previewImage, setPreviewImage] = useState<{ nodeId: string; index: number } | null>(null);
 
   // 节点宽度拉伸：会话记录在 ref，实时预览宽度放在 state 参与排版
   const resizeSessionRef = useRef<ResizeSession | null>(null);
   const [resizePreview, setResizePreview] = useState<{ id: string; width: number } | null>(null);
   // 从折叠按钮上拖动调宽后，紧随松手的 click 不再触发折叠（记录截止时间）
   const suppressFoldClickUntilRef = useRef(0);
+
+  // 按住 Ctrl / Cmd 时文件链接呈可点击态：直接写容器属性，不触发重渲染
+  useEffect(() => {
+    if (IS_MOBILE_UI) return;
+    const sync = (e: KeyboardEvent | MouseEvent) => {
+      const held = USES_COMMAND_KEY ? e.metaKey : e.ctrlKey;
+      const el = containerRef.current;
+      if (el && (el.dataset.linkMod === 'true') !== held) el.dataset.linkMod = String(held);
+    };
+    const clear = () => {
+      if (containerRef.current) containerRef.current.dataset.linkMod = 'false';
+    };
+    window.addEventListener('keydown', sync, true);
+    window.addEventListener('keyup', sync, true);
+    // 在别处松开按键（如切换窗口）时，鼠标重新进入即可纠正状态
+    window.addEventListener('mousemove', sync, { passive: true });
+    window.addEventListener('blur', clear);
+    return () => {
+      window.removeEventListener('keydown', sync, true);
+      window.removeEventListener('keyup', sync, true);
+      window.removeEventListener('mousemove', sync);
+      window.removeEventListener('blur', clear);
+    };
+  }, []);
 
   // 图片固有尺寸测得后重新排版（原始比例显示依赖图片宽高）
   const [imageSizeVersion, setImageSizeVersion] = useState(0);
@@ -868,6 +904,16 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     },
     [root, onChange],
   );
+  // 异步操作（文件选择对话框、读取图片）结束时导图可能已变化，需基于最新的树修改
+  const rootRef = useRef(root);
+  rootRef.current = root;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const updateLatestTree = useCallback((mutator: (clonedRoot: MindNode) => void) => {
+    const cloned = cloneMindmapTree(rootRef.current);
+    mutator(cloned);
+    onChangeRef.current(cloned);
+  }, []);
 
   // 切换节点折叠
   const handleToggleExpand = (id: string) => {
@@ -1362,53 +1408,78 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     setEditNoteText('');
   };
 
-  // 上传/替换图片
+  // 上传图片（可多选，追加到节点已有图片之后）
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files ?? []);
     const targetNodeId = uploadTargetNodeIdRef.current;
-    if (!file || !targetNodeId) return;
-    setNodeImageFromFile(targetNodeId, file);
     e.target.value = '';
+    if (files.length === 0 || !targetNodeId) return;
+    addNodeImagesFromFiles(targetNodeId, files);
   };
 
-  /** 读取图片文件并设为节点图片（文件选择与编辑时粘贴共用） */
-  const setNodeImageFromFile = (targetNodeId: string, file: File) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        const imgData = reader.result;
-        updateTree((cloned) => {
-          function findAndSet(n: MindNode) {
-            if (n.id === targetNodeId) {
-              n.image = imgData;
-              return true;
-            }
-            for (const c of n.children || []) {
-              if (findAndSet(c)) return true;
-            }
-            return false;
-          }
-          findAndSet(cloned);
+  /** 读取图片文件并追加为节点图片（文件选择与编辑时粘贴共用），超出 10 张的部分忽略并提示 */
+  const addNodeImagesFromFiles = (targetNodeId: string, files: readonly File[]) => {
+    const imageFiles = files.filter((file) => file.type.startsWith('image/'));
+    if (imageFiles.length === 0) return;
+    void Promise.all(imageFiles.map((file) => new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    }))).then((results) => {
+      const sources = results.filter((src): src is string => Boolean(src));
+      if (sources.length === 0) return;
+      let dropped = 0;
+      updateLatestTree((cloned) => {
+        updateNodeById(cloned, targetNodeId, (node) => {
+          const result = appendWithLimit(node.images, sources, MAX_NODE_IMAGES);
+          node.images = result.next;
+          dropped = result.dropped;
         });
-      }
-    };
-    reader.readAsDataURL(file);
+      });
+      if (dropped > 0) showToast(`每个节点最多 ${MAX_NODE_IMAGES} 张图片，已忽略 ${dropped} 张`, 'warning');
+    });
   };
 
-  // 删除图片
-  const handleDeleteImage = (id: string) => {
+  // 删除节点中的某张图片
+  const handleDeleteImage = (id: string, index: number) => {
     updateTree((cloned) => {
-      function findAndSet(n: MindNode) {
-        if (n.id === id) {
-          n.image = undefined;
-          return true;
-        }
-        for (const c of n.children || []) {
-          if (findAndSet(c)) return true;
-        }
-        return false;
-      }
-      findAndSet(cloned);
+      updateNodeById(cloned, id, (node) => {
+        const next = (node.images ?? []).filter((_, i) => i !== index);
+        if (next.length > 0) node.images = next;
+        else delete node.images;
+      });
+    });
+  };
+
+  /** 选择本地文件并追加为节点文件链接（同一路径不重复添加） */
+  const handleAddFileLinks = async (id: string) => {
+    const target = findNodeById(rootRef.current, id);
+    if (target && getNodeFiles(target).length >= MAX_NODE_FILES) {
+      showToast(`每个节点最多链接 ${MAX_NODE_FILES} 个文件`, 'warning');
+      return;
+    }
+    const links = await pickFileLinks(docKey);
+    if (links.length === 0) return;
+    let dropped = 0;
+    updateLatestTree((cloned) => {
+      updateNodeById(cloned, id, (node) => {
+        const result = appendWithLimit(node.files, links, MAX_NODE_FILES, true);
+        node.files = result.next;
+        dropped = result.dropped;
+      });
+    });
+    if (dropped > 0) showToast(`每个节点最多链接 ${MAX_NODE_FILES} 个文件，已忽略 ${dropped} 个`, 'warning');
+  };
+
+  // 移除节点中的某个文件链接
+  const handleRemoveFileLink = (id: string, index: number) => {
+    updateTree((cloned) => {
+      updateNodeById(cloned, id, (node) => {
+        const next = (node.files ?? []).filter((_, i) => i !== index);
+        if (next.length > 0) node.files = next;
+        else delete node.files;
+      });
     });
   };
 
@@ -1440,7 +1511,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       startX: e.clientX,
       startWidth: layoutNode.width,
       edge: layoutNode.freeEdge,
-      hasImage: Boolean(layoutNode.node.image),
+      minWidth: attachmentMinWidth(layoutNode.node),
       moved: false,
     };
     document.body.style.cursor = 'ew-resize';
@@ -1456,7 +1527,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     session.moved = true;
     setResizePreview({
       id: session.nodeId,
-      width: clampManualWidth(session.startWidth + delta, session.hasImage),
+      width: clampManualWidth(session.startWidth + delta, session.minWidth),
     });
   };
 
@@ -1495,6 +1566,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       target.closest('input') ||
       target.closest('textarea') ||
       target.closest('[data-mindmap-image]') ||
+      target.closest('[data-mindmap-file]') ||
       target.closest('[data-resize-handle]')
     ) {
       return;
@@ -1973,6 +2045,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   return (
     <div
       ref={containerRef}
+      // 触屏界面没有修饰键，文件链接始终呈可点按的链接态
+      className={IS_MOBILE_UI ? 'nb-touch-links' : undefined}
       onMouseDown={handleMouseDown}
       onPointerDownCapture={handleTouchPointerDownCapture}
       onPointerMoveCapture={handleTouchPointerMoveCapture}
@@ -2002,6 +2076,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        multiple
         style={{ display: 'none' }}
         onChange={handleFileSelect}
       />
@@ -2271,7 +2346,10 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
             : 'var(--editor-surface, #ffffff)';
           const hasIcon = Boolean(n.node.icon);
           const hasNote = Boolean(n.node.note);
-          const hasImage = Boolean(n.node.image);
+          const nodeImages = getNodeImages(n.node);
+          const nodeFiles = getNodeFiles(n.node);
+          const hasImage = nodeImages.length > 0;
+          const hasFiles = nodeFiles.length > 0;
           // 标题排版参数与布局引擎共用，保证换行位置一致
           const textStyle = getNodeTextStyle(n.level);
           const titleHeight = titleBlockHeight(n.level, n.titleLines.length);
@@ -2295,6 +2373,10 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
               className="nb-mindmap-node"
               data-node-id={n.node.id}
               data-diff={diffMarks?.get(n.node.id)}
+              // 选中态供样式使用：触屏没有悬停，选中节点时显示图片 / 文件的移除按钮
+              data-selected={isSelected || undefined}
+              // 中心主题为主题色底，附件图标改用文字色保证对比度
+              data-root={isRoot || undefined}
               onPointerDown={(e) => handleNodePointerDown(e, n)}
               onClick={(e) => {
                 e.stopPropagation();
@@ -2311,9 +2393,13 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
               }}
               onDoubleClick={(e) => {
                 e.stopPropagation();
-                // 双击图片或拉伸手柄不进入标题编辑
+                // 双击图片、文件链接或拉伸手柄不进入标题编辑
                 const target = e.target as HTMLElement;
-                if (target.closest('[data-mindmap-image]') || target.closest('[data-resize-handle]')) return;
+                if (
+                  target.closest('[data-mindmap-image]') ||
+                  target.closest('[data-mindmap-file]') ||
+                  target.closest('[data-resize-handle]')
+                ) return;
                 if (!isDraggingNode) {
                   setEditingNodeId(n.node.id);
                   setEditDraft({ text: n.node.text, marks: n.node.marks });
@@ -2327,7 +2413,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                 height: n.height,
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: hasNote || hasImage ? 'flex-start' : 'center',
+                justifyContent: hasNote || hasImage || hasFiles ? 'flex-start' : 'center',
                 background: isDropTargetInside
                   ? isRoot
                     ? theme.rootBackground
@@ -2469,7 +2555,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                       handleFinishEdit(n.node.id);
                       setSelectedNodeId(n.node.id);
                     }}
-                    onPasteImage={(file) => setNodeImageFromFile(n.node.id, file)}
+                    onPasteImage={(file) => addNodeImagesFromFiles(n.node.id, [file])}
                     onEscape={() => handleFinishEdit(n.node.id)}
                     onBlur={() => handleFinishEdit(n.node.id)}
                     onSelectionChange={setFormatSelection}
@@ -2528,8 +2614,69 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                 </Tooltip>
               )}
 
-              {/* 挂载图片：原始比例按固有宽高等比显示；宽度填充为固定高度裁切 */}
-              {hasImage && n.node.image && n.imageBox && (
+              {/* 多图网格：单元格统一裁切铺满，超出展示张数时末格叠加 +N，点击进入可左右切换的大图预览 */}
+              {n.gallery && (
+                <div
+                  className="nb-mindmap-gallery"
+                  style={{
+                    marginTop: GALLERY_TOP_GAP,
+                    width: n.gallery.width,
+                    height: n.gallery.height,
+                    gridTemplateColumns: `repeat(${n.gallery.columns}, ${n.gallery.cellWidth}px)`,
+                    gridAutoRows: n.gallery.cellHeight,
+                    gap: n.gallery.gap,
+                  }}
+                >
+                  {nodeImages.slice(0, n.gallery.visibleCount).map((src, index) => {
+                    const hiddenCount = index === n.gallery!.visibleCount - 1 ? nodeImages.length - n.gallery!.visibleCount : 0;
+                    return (
+                      <div key={index} className="nb-mindmap-gallery-cell">
+                        <img
+                          data-mindmap-image
+                          draggable={false}
+                          src={src}
+                          alt={`节点图片 ${index + 1}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPreviewImage({ nodeId: n.node.id, index });
+                          }}
+                        />
+                        {hiddenCount > 0 ? (
+                          <Tooltip content={`还有 ${hiddenCount} 张，点击浏览全部`} side="top" sideOffset={4}>
+                            <div
+                              data-mindmap-image
+                              className="nb-mindmap-gallery-more"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPreviewImage({ nodeId: n.node.id, index });
+                              }}
+                            >
+                              +{hiddenCount}
+                            </div>
+                          </Tooltip>
+                        ) : (
+                          <Tooltip content="删除图片" side="top" sideOffset={4}>
+                            <button
+                              type="button"
+                              className="nb-mindmap-image-remove"
+                              aria-label="删除图片"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteImage(n.node.id, index);
+                              }}
+                            >
+                              <X size={10} />
+                            </button>
+                          </Tooltip>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* 挂载单张图片：原始比例按固有宽高等比显示；宽度填充为固定高度裁切 */}
+              {hasImage && !n.gallery && n.imageBox && (
                 <div
                   style={{
                     marginTop: 4,
@@ -2548,11 +2695,11 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                     <img
                       data-mindmap-image
                       draggable={false}
-                      src={n.node.image}
+                      src={nodeImages[0]}
                       alt="节点缩略图"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setPreviewImage(n.node.image!);
+                        setPreviewImage({ nodeId: n.node.id, index: 0 });
                       }}
                       style={{
                         width: n.imageBox.width,
@@ -2568,7 +2715,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDeleteImage(n.node.id);
+                        handleDeleteImage(n.node.id, 0);
                       }}
                       aria-label="删除图片"
                       style={{
@@ -2593,6 +2740,23 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                       <X size={10} />
                     </button>
                   </Tooltip>
+                </div>
+              )}
+
+              {/* 本地文件链接：每个文件一行，Ctrl/Cmd + 单击（触屏点按）在应用内打开 */}
+              {hasFiles && (
+                <div
+                  className="nb-mindmap-files"
+                  style={{ marginTop: FILE_LIST_TOP_GAP, gap: FILE_ROW_GAP }}
+                >
+                  {nodeFiles.map((path, index) => (
+                    <MindmapFileLink
+                      key={`${index}:${path}`}
+                      path={path}
+                      onOpen={() => openFileLink(path, docKey)}
+                      onRemove={() => handleRemoveFileLink(n.node.id, index)}
+                    />
+                  ))}
                 </div>
               )}
 
@@ -2659,19 +2823,46 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                       </button>
                     </Tooltip>
 
-                    {/* 上传/替换图片 */}
-                    <Tooltip content="上传/替换图片" side="top" sideOffset={4}>
+                    {/* 添加图片（可多选，最多 10 张） */}
+                    <Tooltip
+                      content={nodeImages.length >= MAX_NODE_IMAGES ? `已达 ${MAX_NODE_IMAGES} 张上限` : hasImage ? `添加图片（${nodeImages.length}/${MAX_NODE_IMAGES}）` : '添加图片'}
+                      side="top"
+                      sideOffset={4}
+                    >
                       <button
                         type="button"
                         className={`nb-mindmap-toolbar-btn${hasImage ? ' is-active-accent' : ''}`}
                         onClick={(e) => {
                           e.stopPropagation();
+                          if (nodeImages.length >= MAX_NODE_IMAGES) {
+                            showToast(`每个节点最多 ${MAX_NODE_IMAGES} 张图片`, 'warning');
+                            return;
+                          }
                           uploadTargetNodeIdRef.current = n.node.id;
                           fileInputRef.current?.click();
                         }}
-                        aria-label="上传/替换图片"
+                        aria-label="添加图片"
                       >
                         <ImageIcon size={12} />
+                      </button>
+                    </Tooltip>
+
+                    {/* 链接本地文件（可多选，最多 10 个） */}
+                    <Tooltip
+                      content={nodeFiles.length >= MAX_NODE_FILES ? `已达 ${MAX_NODE_FILES} 个上限` : hasFiles ? `链接文件（${nodeFiles.length}/${MAX_NODE_FILES}）` : '链接文件'}
+                      side="top"
+                      sideOffset={4}
+                    >
+                      <button
+                        type="button"
+                        className={`nb-mindmap-toolbar-btn${hasFiles ? ' is-active-accent' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleAddFileLinks(n.node.id);
+                        }}
+                        aria-label="链接文件"
+                      >
+                        <Link2 size={12} />
                       </button>
                     </Tooltip>
                   </>
@@ -3270,9 +3461,27 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       )}
 
       {/* 图片放大预览：Portal 到 body，滚轮缩放图片而不是导图 */}
-      {previewImage && (
-        <MindmapImagePreview src={previewImage} onClose={() => setPreviewImage(null)} />
-      )}
+      {previewImage && (() => {
+        // 从最新的树取图片列表：预览中删除图片后序号自动收敛到有效范围
+        const target = findNodeById(root, previewImage.nodeId);
+        const list = target ? getNodeImages(target) : [];
+        if (list.length === 0) return null;
+        const index = Math.min(previewImage.index, list.length - 1);
+        return (
+          <MindmapImagePreview
+            src={list[index]}
+            index={index}
+            count={list.length}
+            onNavigate={(next) => setPreviewImage({ nodeId: previewImage.nodeId, index: next })}
+            onDelete={() => {
+              handleDeleteImage(previewImage.nodeId, index);
+              // 删完最后一张时关闭预览，否则停留在原位置（自动显示下一张）
+              if (list.length === 1) setPreviewImage(null);
+            }}
+            onClose={() => setPreviewImage(null)}
+          />
+        );
+      })()}
 
       {/* 选中标题文字后的格式悬浮菜单 */}
       {editingNodeId && formatSelection && (() => {
@@ -3298,7 +3507,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
             position={{ x: nodeStylePopover.x, y: nodeStylePopover.y }}
             textAlign={target.textAlign}
             imageFit={target.imageFit}
-            hasImage={Boolean(target.image)}
+            // 显示方式只作用于单图，多图固定为网格裁切
+            hasImage={target.images?.length === 1}
             defaultTextAlign={defaultTextAlign}
             defaultImageFit={defaultImageFit}
             onTextAlignChange={(value) => setNodeStyleField(getActionTargetIds(target.id), 'textAlign', value)}

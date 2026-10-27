@@ -788,12 +788,14 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
             defaultTextAlign={defaultTextAlign}
             defaultImageFit={defaultImageFit}
             searchHighlight={searchHighlight}
+            docKey={docKey}
           />
         ) : (
           <OutlinerEditor
             root={displayedRoot}
             onChange={handleRootChange}
             searchHighlight={searchHighlight}
+            docKey={docKey}
           />
         )}
 

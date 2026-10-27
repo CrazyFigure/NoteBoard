@@ -1,17 +1,24 @@
 // NoteBoard 思维导图节点图片放大预览
 // Portal 到 body 的全屏浮层：滚轮 / Ctrl+滚轮以光标为中心缩放图片，拖动平移，双击在适应窗口与 100% 间切换，
 // Esc 或点击空白处关闭。滚轮用原生非 passive 监听拦截，避免缩放背后的导图或触发 WebView 页面缩放。
+// 节点挂多张图片时支持左右切换（按钮 / ← → 键）与删除当前图片。
 // 详见 docs/09-开发路线图.md
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Maximize2, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Maximize2, Trash2, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 import { stopReactPropagation } from '../bitable/bitableUtils';
 
 interface MindmapImagePreviewProps {
   src: string;
   onClose: () => void;
+  /** 多图浏览：当前序号（从 0 开始）与总数；总数大于 1 且提供 onNavigate 时显示左右切换 */
+  index?: number;
+  count?: number;
+  onNavigate?: (index: number) => void;
+  /** 删除当前图片；未提供时不显示删除按钮 */
+  onDelete?: () => void;
 }
 
 interface PreviewView {
@@ -39,7 +46,7 @@ function computeFitScale(width: number, height: number): number {
   return Math.min(1, availW / width, availH / height);
 }
 
-export function MindmapImagePreview({ src, onClose }: MindmapImagePreviewProps) {
+export function MindmapImagePreview({ src, onClose, index = 0, count = 1, onNavigate, onDelete }: MindmapImagePreviewProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
   const [view, setView] = useState<PreviewView>({ scale: 1, x: 0, y: 0 });
@@ -56,6 +63,21 @@ export function MindmapImagePreview({ src, onClose }: MindmapImagePreviewProps) 
   } | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const canNavigate = count > 1 && Boolean(onNavigate);
+  // 键盘监听只注册一次，通过 ref 读取最新的切换函数
+  const navigateRef = useRef<(step: number) => void>(() => undefined);
+  navigateRef.current = (step: number) => {
+    // 首尾循环切换
+    if (canNavigate) onNavigate!((index + step + count) % count);
+  };
+
+  // 切换图片后按新图片尺寸重新适应窗口（首次挂载跳过，避免清掉已先触发 onLoad 的尺寸）
+  const shownRef = useRef({ src, index });
+  useLayoutEffect(() => {
+    if (shownRef.current.src === src && shownRef.current.index === index) return;
+    shownRef.current = { src, index };
+    setNatural(null);
+  }, [src, index]);
 
   const fitScale = natural ? computeFitScale(natural.width, natural.height) : 1;
 
@@ -105,6 +127,9 @@ export function MindmapImagePreview({ src, onClose }: MindmapImagePreviewProps) 
       if (e.key === 'Escape') {
         e.preventDefault();
         onCloseRef.current();
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        navigateRef.current(e.key === 'ArrowLeft' ? -1 : 1);
       }
     };
     window.addEventListener('keydown', handleKeyDown, true);
@@ -216,6 +241,8 @@ export function MindmapImagePreview({ src, onClose }: MindmapImagePreviewProps) 
       }}
     >
       <img
+        // 切换到同一地址的图片时也重新挂载，保证 onLoad 触发并重新适应窗口
+        key={index}
         data-preview-image
         src={src}
         alt="大图预览"
@@ -242,8 +269,44 @@ export function MindmapImagePreview({ src, onClose }: MindmapImagePreviewProps) 
         }}
       />
 
+      {/* 多图左右切换 */}
+      {canNavigate && (
+        <>
+          <Tooltip content="上一张 (←)" side="right" sideOffset={6}>
+            <button
+              type="button"
+              data-preview-toolbar
+              className="nb-image-preview-nav is-prev"
+              aria-label="上一张"
+              onClick={() => navigateRef.current(-1)}
+            >
+              <ChevronLeft size={22} />
+            </button>
+          </Tooltip>
+          <Tooltip content="下一张 (→)" side="left" sideOffset={6}>
+            <button
+              type="button"
+              data-preview-toolbar
+              className="nb-image-preview-nav is-next"
+              aria-label="下一张"
+              onClick={() => navigateRef.current(1)}
+            >
+              <ChevronRight size={22} />
+            </button>
+          </Tooltip>
+        </>
+      )}
+
       {/* 底部缩放工具栏 */}
       <div data-preview-toolbar className="nb-image-preview-toolbar">
+        {count > 1 && (
+          <>
+            <span className="nb-image-preview-counter" aria-live="polite">
+              {index + 1} / {count}
+            </span>
+            <span className="nb-image-preview-divider" />
+          </>
+        )}
         <Tooltip content="缩小" side="top" sideOffset={6}>
           <button type="button" className="nb-image-preview-btn" aria-label="缩小" onClick={() => zoomByStep(1 / ZOOM_STEP)}>
             <ZoomOut size={15} />
@@ -270,6 +333,13 @@ export function MindmapImagePreview({ src, onClose }: MindmapImagePreviewProps) 
           </button>
         </Tooltip>
         <span className="nb-image-preview-divider" />
+        {onDelete && (
+          <Tooltip content="删除这张图片" side="top" sideOffset={6}>
+            <button type="button" className="nb-image-preview-btn is-danger" aria-label="删除这张图片" onClick={onDelete}>
+              <Trash2 size={14} />
+            </button>
+          </Tooltip>
+        )}
         <Tooltip content="关闭 (Esc)" side="top" sideOffset={6}>
           <button type="button" className="nb-image-preview-btn" aria-label="关闭" onClick={onClose}>
             <X size={15} />

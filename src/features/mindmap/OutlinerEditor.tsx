@@ -17,6 +17,7 @@ import {
   Braces,
   SquareDashed,
   Spline,
+  Link2,
 } from 'lucide-react';
 import type { MindNode } from './mindmapTypes';
 import { generateNodeId, moveMindNode, isMindNodeDescendant } from './mindmapConverter';
@@ -31,6 +32,11 @@ import {
 } from './mindmapStructures';
 import { MindmapIconPicker } from './MindmapIconPicker';
 import { MindmapImagePreview } from './MindmapImagePreview';
+import { MindmapFileLink } from './MindmapFileLink';
+import { openFileLink, pickFileLinks } from './mindmapFileLinks';
+import { appendWithLimit, getNodeFiles, getNodeImages, MAX_NODE_FILES, MAX_NODE_IMAGES } from './mindmapAttachments';
+import { showToast } from '../../stores/toastStore';
+import { IS_MOBILE_UI } from '../../core/platform';
 import { adjustMarksForTextChange, restoreLineBreaks, toSingleLineText } from './mindmapRichText';
 import { Tooltip } from '../../components/Tooltip';
 import type { MindmapSearchHighlight } from './mindmapSearch';
@@ -41,6 +47,8 @@ interface OutlinerEditorProps {
   onChange: (newRoot: MindNode) => void;
   /** 搜索匹配高亮与当前项定位 */
   searchHighlight?: MindmapSearchHighlight;
+  /** 所属文档（解析节点文件链接的相对路径） */
+  docKey?: string;
 }
 
 interface FlatItem {
@@ -113,7 +121,7 @@ function OutlineStructureChip({
   );
 }
 
-export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEditorProps) {
+export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: OutlinerEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
@@ -133,8 +141,8 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
     y: number;
   } | null>(null);
 
-  // 图片全屏预览弹窗
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  // 图片全屏预览弹窗：记录节点与图片序号，预览中可左右切换
+  const [previewImage, setPreviewImage] = useState<{ nodeId: string; index: number } | null>(null);
 
   // Pointer Events 拖拽会话状态
   const dragSessionRef = useRef<DragSession | null>(null);
@@ -286,6 +294,16 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
     },
     [root, onChange],
   );
+  // 异步操作（文件选择对话框、读取图片）结束时大纲可能已变化，需基于最新的树修改
+  const rootRef = useRef(root);
+  rootRef.current = root;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const updateLatestTree = useCallback((mutator: (clonedRoot: MindNode) => void) => {
+    const cloned = cloneMindmapTree(rootRef.current);
+    mutator(cloned);
+    onChangeRef.current(cloned);
+  }, []);
 
   // 更新指定节点的文本
   const handleTextChange = (id: string, text: string) => {
@@ -341,20 +359,69 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
     });
   };
 
-  // 更新指定节点的图片
-  const handleImageChange = (id: string, image?: string) => {
+  /** 读取图片文件并追加为节点图片（上传与粘贴共用），超出 10 张的部分忽略并提示 */
+  const addImagesFromFiles = (id: string, files: readonly File[]) => {
+    const imageFiles = files.filter((file) => file.type.startsWith('image/'));
+    if (imageFiles.length === 0) return;
+    void Promise.all(imageFiles.map((file) => new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    }))).then((results) => {
+      const sources = results.filter((src): src is string => Boolean(src));
+      if (sources.length === 0) return;
+      let dropped = 0;
+      updateLatestTree((cloned) => {
+        const node = findMindNode(cloned, id);
+        if (!node) return;
+        const result = appendWithLimit(node.images, sources, MAX_NODE_IMAGES);
+        node.images = result.next;
+        dropped = result.dropped;
+      });
+      if (dropped > 0) showToast(`每个节点最多 ${MAX_NODE_IMAGES} 张图片，已忽略 ${dropped} 张`, 'warning');
+    });
+  };
+
+  // 删除节点中的某张图片
+  const handleRemoveImage = (id: string, index: number) => {
     updateTree((cloned) => {
-      function findAndSet(n: MindNode) {
-        if (n.id === id) {
-          n.image = image;
-          return true;
-        }
-        for (const child of n.children || []) {
-          if (findAndSet(child)) return true;
-        }
-        return false;
-      }
-      findAndSet(cloned);
+      const node = findMindNode(cloned, id);
+      if (!node) return;
+      const next = (node.images ?? []).filter((_, i) => i !== index);
+      if (next.length > 0) node.images = next;
+      else delete node.images;
+    });
+  };
+
+  /** 选择本地文件并追加为节点文件链接（同一路径不重复添加） */
+  const handleAddFileLinks = async (id: string) => {
+    const target = findMindNode(rootRef.current, id);
+    if (target && getNodeFiles(target).length >= MAX_NODE_FILES) {
+      showToast(`每个节点最多链接 ${MAX_NODE_FILES} 个文件`, 'warning');
+      return;
+    }
+    const links = await pickFileLinks(docKey);
+    if (links.length === 0) return;
+    let dropped = 0;
+    updateLatestTree((cloned) => {
+      const node = findMindNode(cloned, id);
+      if (!node) return;
+      const result = appendWithLimit(node.files, links, MAX_NODE_FILES, true);
+      node.files = result.next;
+      dropped = result.dropped;
+    });
+    if (dropped > 0) showToast(`每个节点最多链接 ${MAX_NODE_FILES} 个文件，已忽略 ${dropped} 个`, 'warning');
+  };
+
+  // 移除节点中的某个文件链接
+  const handleRemoveFileLink = (id: string, index: number) => {
+    updateTree((cloned) => {
+      const node = findMindNode(cloned, id);
+      if (!node) return;
+      const next = (node.files ?? []).filter((_, i) => i !== index);
+      if (next.length > 0) node.files = next;
+      else delete node.files;
     });
   };
 
@@ -374,41 +441,24 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
     });
   };
 
-  // 上传图片处理 (转 Base64 Data URL)
+  // 上传图片处理（可多选，转 Base64 Data URL 后追加）
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files ?? []);
     const targetNodeId = uploadTargetNodeIdRef.current;
-    if (!file || !targetNodeId) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        handleImageChange(targetNodeId, reader.result);
-      }
-    };
-    reader.readAsDataURL(file);
     e.target.value = '';
+    if (files.length === 0 || !targetNodeId) return;
+    addImagesFromFiles(targetNodeId, files);
   };
 
-  // 粘贴图片处理
+  // 粘贴图片处理：剪贴板中的全部图片追加到节点
   const handlePasteInNote = (e: React.ClipboardEvent, nodeId: string) => {
-    const items = e.clipboardData.items;
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].type.indexOf('image') !== -1) {
-        const file = items[i].getAsFile();
-        if (file) {
-          e.preventDefault();
-          const reader = new FileReader();
-          reader.onload = () => {
-            if (typeof reader.result === 'string') {
-              handleImageChange(nodeId, reader.result);
-            }
-          };
-          reader.readAsDataURL(file);
-          return;
-        }
-      }
-    }
+    const files = Array.from(e.clipboardData.items)
+      .filter((item) => item.type.indexOf('image') !== -1)
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file));
+    if (files.length === 0) return;
+    e.preventDefault();
+    addImagesFromFiles(nodeId, files);
   };
 
   // 切换节点的展开/折叠
@@ -706,6 +756,7 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        multiple
         style={{ display: 'none' }}
         onChange={handleFileSelect}
       />
@@ -718,7 +769,10 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
           const dropPos = isTarget ? dropTarget?.pos : null;
           const isInsideTarget = isTarget && dropPos === 'inside';
           const hasNote = item.node.note !== undefined;
-          const hasImage = Boolean(item.node.image);
+          const nodeImages = getNodeImages(item.node);
+          const nodeFiles = getNodeFiles(item.node);
+          const hasImage = nodeImages.length > 0;
+          const hasFiles = nodeFiles.length > 0;
           // 搜索命中：标题底色标出命中行，当前项再加强调色描边
           const isSearchMatch = Boolean(searchHighlight?.ranges.has(item.node.id));
           const isSearchCurrent = searchHighlight?.currentId === item.node.id;
@@ -1091,15 +1145,23 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
                     </button>
                   </Tooltip>
 
-                  {/* 插入图片按钮 */}
-                  <Tooltip content="上传/添加图片" side="top" sideOffset={4}>
+                  {/* 插入图片按钮（可多选，最多 10 张） */}
+                  <Tooltip
+                    content={nodeImages.length >= MAX_NODE_IMAGES ? `已达 ${MAX_NODE_IMAGES} 张上限` : hasImage ? `添加图片（${nodeImages.length}/${MAX_NODE_IMAGES}）` : '添加图片'}
+                    side="top"
+                    sideOffset={4}
+                  >
                     <button
                       type="button"
                       onClick={() => {
+                        if (nodeImages.length >= MAX_NODE_IMAGES) {
+                          showToast(`每个节点最多 ${MAX_NODE_IMAGES} 张图片`, 'warning');
+                          return;
+                        }
                         uploadTargetNodeIdRef.current = item.node.id;
                         fileInputRef.current?.click();
                       }}
-                      aria-label="上传/添加图片"
+                      aria-label="添加图片"
                       style={{
                         background: 'transparent',
                         border: '1px solid transparent',
@@ -1126,6 +1188,22 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
                       }}
                     >
                       <ImageIcon size={13} />
+                    </button>
+                  </Tooltip>
+
+                  {/* 链接本地文件按钮（可多选，最多 10 个） */}
+                  <Tooltip
+                    content={nodeFiles.length >= MAX_NODE_FILES ? `已达 ${MAX_NODE_FILES} 个上限` : hasFiles ? `链接文件（${nodeFiles.length}/${MAX_NODE_FILES}）` : '链接文件'}
+                    side="top"
+                    sideOffset={4}
+                  >
+                    <button
+                      type="button"
+                      className={`nb-outliner-action-btn${hasFiles ? ' is-active' : ''}`}
+                      onClick={() => void handleAddFileLinks(item.node.id)}
+                      aria-label="链接文件"
+                    >
+                      <Link2 size={13} />
                     </button>
                   </Tooltip>
 
@@ -1225,8 +1303,8 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
                 </div>
               )}
 
-              {/* 节点备注区域（浅色小字多行输入 + 图片） */}
-              {(hasNote || hasImage) && (
+              {/* 节点备注区域（浅色小字多行输入 + 图片 + 文件链接） */}
+              {(hasNote || hasImage || hasFiles) && (
                 <div
                   style={{
                     paddingLeft: paddingLeft + 32,
@@ -1305,61 +1383,45 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
                     </div>
                   )}
 
-                  {/* 节点挂载图片缩略图 */}
-                  {hasImage && item.node.image && (
-                    <div
-                      style={{
-                        position: 'relative',
-                        display: 'inline-block',
-                        maxWidth: 320,
-                        borderRadius: 6,
-                        overflow: 'hidden',
-                        border: '1px solid var(--editor-border, #e2e8f0)',
-                        background: 'var(--editor-surface, #ffffff)',
-                      }}
-                    >
-                      <Tooltip content="点击全屏放大预览" side="top" sideOffset={4}>
-                        <img
-                          src={item.node.image}
-                          alt="节点图片"
-                          onClick={() => setPreviewImage(item.node.image!)}
-                          style={{
-                            display: 'block',
-                            maxWidth: '100%',
-                            maxHeight: 180,
-                            objectFit: 'contain',
-                            cursor: 'zoom-in',
-                            transition: 'transform 0.15s ease',
-                          }}
+                  {/* 节点挂载图片缩略图：单图保持较大预览，多图并排换行 */}
+                  {hasImage && (
+                    <div className="nb-outline-attachments nb-outline-images" data-multiple={nodeImages.length > 1 || undefined}>
+                      {nodeImages.map((src, index) => (
+                        <div key={index} className="nb-outline-image">
+                          <Tooltip content="点击全屏放大预览" side="top" sideOffset={4}>
+                            <img
+                              src={src}
+                              alt={`节点图片 ${index + 1}`}
+                              onClick={() => setPreviewImage({ nodeId: item.node.id, index })}
+                            />
+                          </Tooltip>
+                          <Tooltip content="删除图片" side="top" sideOffset={4}>
+                            <button
+                              type="button"
+                              className="nb-mindmap-image-remove"
+                              onClick={() => handleRemoveImage(item.node.id, index)}
+                              aria-label="删除图片"
+                            >
+                              <X size={11} />
+                            </button>
+                          </Tooltip>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 本地文件链接：Ctrl/Cmd + 单击（触屏点按）在应用内打开 */}
+                  {hasFiles && (
+                    <div className={`nb-outline-files${IS_MOBILE_UI ? ' nb-touch-links' : ''}`}>
+                      {nodeFiles.map((path, index) => (
+                        <MindmapFileLink
+                          key={`${index}:${path}`}
+                          variant="chip"
+                          path={path}
+                          onOpen={() => openFileLink(path, docKey)}
+                          onRemove={() => handleRemoveFileLink(item.node.id, index)}
                         />
-                      </Tooltip>
-                      <Tooltip content="删除图片" side="top" sideOffset={4}>
-                        <button
-                          type="button"
-                          onClick={() => handleImageChange(item.node.id, undefined)}
-                          aria-label="删除图片"
-                          style={{
-                            position: 'absolute',
-                            top: 4,
-                            right: 4,
-                            background: 'rgba(0, 0, 0, 0.65)',
-                            color: '#ffffff',
-                            border: 'none',
-                            borderRadius: '50%',
-                            width: 20,
-                            height: 20,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            transition: 'background 0.15s ease',
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.9)')}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(0, 0, 0, 0.65)')}
-                        >
-                          <X size={12} />
-                        </button>
-                      </Tooltip>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -1387,9 +1449,26 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
       )}
 
       {/* 图片放大预览：Portal 到 body，支持滚轮缩放与拖动 */}
-      {previewImage && (
-        <MindmapImagePreview src={previewImage} onClose={() => setPreviewImage(null)} />
-      )}
+      {previewImage && (() => {
+        // 从最新的树取图片列表：预览中删除图片后序号自动收敛到有效范围
+        const target = findMindNode(root, previewImage.nodeId);
+        const list = target ? getNodeImages(target) : [];
+        if (list.length === 0) return null;
+        const index = Math.min(previewImage.index, list.length - 1);
+        return (
+          <MindmapImagePreview
+            src={list[index]}
+            index={index}
+            count={list.length}
+            onNavigate={(next) => setPreviewImage({ nodeId: previewImage.nodeId, index: next })}
+            onDelete={() => {
+              handleRemoveImage(previewImage.nodeId, index);
+              if (list.length === 1) setPreviewImage(null);
+            }}
+            onClose={() => setPreviewImage(null)}
+          />
+        );
+      })()}
 
       {/* 浮动拖拽跟随胶囊 */}
       {isDragging && dragPreview && (

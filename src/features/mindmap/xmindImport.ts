@@ -300,7 +300,7 @@ export function prepareXmindSheet(archive: XmindArchive, sheet: XmindImportSheet
       if (!entry) warnings.add('部分包内图片资源缺失，无法显示');
       if (uncompressedSize(entry) > XMIND_IMPORT_WARNINGS.imageBytes) warnings.add('单张内嵌图片超过 10 MB，继续可能占用较多内存');
     }
-    const node: MindNode = { id, text: typeof topic.title === 'string' ? topic.title : '', note, icon: markerIcon(markers[0]?.markerId, warnings), image, isExpanded: topic.branch !== 'folded', children: [] };
+    const node: MindNode = { id, text: typeof topic.title === 'string' ? topic.title : '', note, icon: markerIcon(markers[0]?.markerId, warnings), images: image ? [image] : undefined, isExpanded: topic.branch !== 'folded', children: [] };
     if ((Array.isArray(topic.boundaries) && topic.boundaries.length > 0) || (Array.isArray(topic.summaries) && topic.summaries.length > 0)) rawOf.set(node, topic);
     return node;
   });
@@ -392,18 +392,25 @@ function convertXmindRelationships(root: MindNode, relationships: RawRelationshi
 export async function resolveXmindImages(archive: XmindArchive, root: MindNode): Promise<MindNode> {
   const images = new Map<string, string | undefined>();
   for (const node of walkMindNodes(root)) {
-    if (!node.image?.startsWith('xap:') && !node.image?.startsWith('resources/')) continue;
-    const path = resourcePath(node.image);
-    const entry = path ? archive.zip.file(path) : null;
-    if (!path || !entry) { delete node.image; continue; }
-    if (!images.has(path)) {
-      const base64 = await entry.async('base64');
-      const extension = path.split('.').at(-1)?.toLowerCase();
-      const types: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp' };
-      const mime = types[extension ?? ''] ?? (base64.startsWith('/9j/') ? 'image/jpeg' : 'image/png');
-      images.set(path, `data:${mime};base64,${base64}`);
+    if (!node.images) continue;
+    const resolved: string[] = [];
+    for (const src of node.images) {
+      if (!src.startsWith('xap:') && !src.startsWith('resources/')) { resolved.push(src); continue; }
+      const path = resourcePath(src);
+      const entry = path ? archive.zip.file(path) : null;
+      // 包内资源缺失的图片直接丢弃
+      if (!path || !entry) continue;
+      if (!images.has(path)) {
+        const base64 = await entry.async('base64');
+        const extension = path.split('.').at(-1)?.toLowerCase();
+        const types: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp' };
+        const mime = types[extension ?? ''] ?? (base64.startsWith('/9j/') ? 'image/jpeg' : 'image/png');
+        images.set(path, `data:${mime};base64,${base64}`);
+      }
+      resolved.push(images.get(path)!);
     }
-    node.image = images.get(path);
+    if (resolved.length > 0) node.images = resolved;
+    else delete node.images;
   }
   return root;
 }

@@ -13,17 +13,25 @@ import type {
 } from './mindmapTypes';
 import { boldWeight, splitStyledRuns } from './mindmapRichText';
 import type { MindmapTheme } from './mindmapTheme';
+import { fileLinkName } from './mindmapAttachments';
 import {
   computeMindmapLayout,
   titleBlockHeight,
+  GALLERY_TOP_GAP,
   type LayoutDecoration,
   type LayoutLink,
   type LayoutNode,
 } from './mindmapLayout';
 import {
   buildFont,
+  ellipsizeLine,
   getNodeTextStyle,
   getSharedTextMeasurer,
+  FILE_FONT_SIZE,
+  FILE_LIST_TOP_GAP,
+  FILE_ROW_CHROME,
+  FILE_ROW_GAP,
+  FILE_ROW_HEIGHT,
   NODE_BORDER_WIDTH,
   NOTE_FONT_SIZE,
   NOTE_LINE_HEIGHT,
@@ -374,7 +382,8 @@ function drawNode(
 
   const textColor = isRoot ? theme.rootText : resolveCssVars('var(--editor-text, #1e293b)');
   const hasNote = n.noteLines.length > 0;
-  const hasImage = Boolean(n.node.image);
+  const nodeImages = n.node.images ?? [];
+  const hasImage = nodeImages.length > 0;
   const contentLeft = n.x + style.insetX;
   const contentWidth = n.width - style.insetX * 2;
   const titleHeight = titleBlockHeight(n.level, n.titleLines.length);
@@ -454,9 +463,40 @@ function drawNode(
     cursorY = notesTop + n.noteLines.length * NOTE_LINE_HEIGHT;
   }
 
-  // 6. 图片：原始比例完整绘制，宽度填充裁切铺满
-  if (hasImage && n.imageBox) {
-    const img = images.get(n.node.image!);
+  // 6. 多图网格：单元格裁切铺满，超出展示张数时末格叠加 +N（与画布 DOM 一致）
+  if (n.gallery) {
+    const g = n.gallery;
+    const top = cursorY + GALLERY_TOP_GAP;
+    const borderColor = resolveCssVars('var(--editor-border, rgba(0,0,0,0.08))');
+    for (let index = 0; index < g.visibleCount; index += 1) {
+      const x = contentLeft + (index % g.columns) * (g.cellWidth + g.gap);
+      const y = top + Math.floor(index / g.columns) * (g.cellHeight + g.gap);
+      const img = images.get(nodeImages[index]);
+      ctx.save();
+      roundRectPath(ctx, x, y, g.cellWidth, g.cellHeight, 5);
+      ctx.clip();
+      if (img) drawImageCover(ctx, img, x, y, g.cellWidth, g.cellHeight);
+      const hidden = index === g.visibleCount - 1 ? nodeImages.length - g.visibleCount : 0;
+      if (hidden > 0) {
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.52)';
+        ctx.fillRect(x, y, g.cellWidth, g.cellHeight);
+        ctx.font = buildFont(15, 600, fontFamily);
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(`+${hidden}`, x + g.cellWidth / 2, y + g.cellHeight / 2);
+      }
+      ctx.restore();
+      roundRectPath(ctx, x + 0.5, y + 0.5, g.cellWidth - 1, g.cellHeight - 1, 5);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = borderColor;
+      ctx.stroke();
+    }
+    cursorY = top + g.height;
+  }
+
+  // 7. 单图：原始比例完整绘制，宽度填充裁切铺满
+  if (hasImage && !n.gallery && n.imageBox) {
+    const img = images.get(nodeImages[0]);
     const boxWidth = n.imageBox.width + 2;
     const boxHeight = n.imageBox.height + 2;
     const boxLeft = alignCenter ? contentLeft + (contentWidth - boxWidth) / 2 : contentLeft;
@@ -476,7 +516,59 @@ function drawNode(
     ctx.lineWidth = 1;
     ctx.strokeStyle = resolveCssVars('var(--editor-border, rgba(0,0,0,0.08))');
     ctx.stroke();
+    cursorY = boxTop + boxHeight;
   }
+
+  // 8. 文件链接：浅底圆角行 + 文档图标 + 文件名（超长省略）
+  const files = n.node.files ?? [];
+  if (files.length > 0) {
+    const fileFont = buildFont(FILE_FONT_SIZE, 400, fontFamily);
+    const measure = getSharedTextMeasurer();
+    const rowWidth = n.width - style.insetX * 2;
+    let rowTop = cursorY + FILE_LIST_TOP_GAP;
+    for (const path of files) {
+      ctx.save();
+      // 与 DOM 中 color-mix(currentColor 6%) 一致：以文字色低透明度铺底
+      ctx.globalAlpha = 0.06;
+      ctx.fillStyle = textColor;
+      roundRectPath(ctx, contentLeft, rowTop, rowWidth, FILE_ROW_HEIGHT, 6);
+      ctx.fill();
+      ctx.restore();
+      drawFileGlyph(ctx, contentLeft + 6, rowTop + (FILE_ROW_HEIGHT - 13) / 2, isRoot ? textColor : resolveCssVars('var(--editor-accent, #3b82f6)'));
+      const nameLeft = contentLeft + 6 + 13 + 6;
+      const maxNameWidth = rowWidth - FILE_ROW_CHROME;
+      const name = fileLinkName(path);
+      ctx.font = fileFont;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = textColor;
+      ctx.fillText(
+        measure(name, fileFont) <= maxNameWidth ? name : ellipsizeLine(name, maxNameWidth, measure, fileFont),
+        nameLeft,
+        rowTop + FILE_ROW_HEIGHT / 2,
+      );
+      rowTop += FILE_ROW_HEIGHT + FILE_ROW_GAP;
+    }
+  }
+}
+
+/** 绘制 13×13 的文档图标（折角纸张轮廓），与画布中的文件图标尺寸一致 */
+function drawFileGlyph(ctx: CanvasRenderingContext2D, x: number, y: number, color: string) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.2;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x + 2.5, y + 0.8);
+  ctx.lineTo(x + 7.8, y + 0.8);
+  ctx.lineTo(x + 10.8, y + 3.8);
+  ctx.lineTo(x + 10.8, y + 12.2);
+  ctx.lineTo(x + 2.5, y + 12.2);
+  ctx.closePath();
+  ctx.moveTo(x + 7.8, y + 0.8);
+  ctx.lineTo(x + 7.8, y + 3.8);
+  ctx.lineTo(x + 10.8, y + 3.8);
+  ctx.stroke();
+  ctx.restore();
 }
 
 /** 结构元素绘制阶段：外框在连线下方，概要在节点同层，联系线在节点上方 */
@@ -590,7 +682,7 @@ export async function exportMindmapImageBlob(options: MindmapImageExportOptions)
   const images = new Map<string, HTMLImageElement | null>();
   const sources = new Set<string>();
   const collect = (node: MindNode) => {
-    if (node.image) sources.add(node.image);
+    for (const src of node.images ?? []) sources.add(src);
     if (node.isExpanded !== false) node.children.forEach(collect);
   };
   collect(root);

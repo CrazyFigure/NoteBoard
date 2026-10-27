@@ -95,4 +95,62 @@ describe('MindmapImagePreview', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(windowKeydown).not.toHaveBeenCalled();
   });
+
+  it('单图不显示切换按钮与序号', () => {
+    expect(previewEl().querySelector('.nb-image-preview-nav')).toBeNull();
+    expect(previewEl().querySelector('.nb-image-preview-counter')).toBeNull();
+  });
+});
+
+describe('MindmapImagePreview 多图浏览', () => {
+  let host: HTMLDivElement;
+  let root: Root;
+  const onNavigate = vi.fn();
+  const onDelete = vi.fn();
+
+  beforeEach(() => {
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+    onNavigate.mockClear();
+    onDelete.mockClear();
+    act(() => {
+      root.render(
+        <TooltipProvider>
+          <MindmapImagePreview
+            src="data:image/png;base64,AAAA"
+            index={0}
+            count={3}
+            onNavigate={onNavigate}
+            onDelete={onDelete}
+            onClose={() => undefined}
+          />
+        </TooltipProvider>,
+      );
+    });
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  it('显示序号，← → 键与按钮首尾循环切换', () => {
+    expect(document.body.querySelector('.nb-image-preview-counter')?.textContent).toBe('1 / 3');
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
+    });
+    expect(onNavigate).toHaveBeenLastCalledWith(2);
+    act(() => {
+      (document.body.querySelector('.nb-image-preview-nav.is-next') as HTMLButtonElement).click();
+    });
+    expect(onNavigate).toHaveBeenLastCalledWith(1);
+  });
+
+  it('删除按钮删除当前图片', () => {
+    act(() => {
+      (document.body.querySelector('[aria-label="删除这张图片"]') as HTMLButtonElement).click();
+    });
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
 });

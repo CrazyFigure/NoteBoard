@@ -14,6 +14,7 @@ import type {
   XMindSheet,
 } from './mindmapTypes';
 import { normalizeMarks } from './mindmapRichText';
+import { appendWithLimit, fileLinkName, MAX_NODE_FILES, MAX_NODE_IMAGES, normalizeNodeFiles, normalizeNodeImages } from './mindmapAttachments';
 import { normalizeNodeStructures, pruneMindmapStructures, resolveRangeIndexes } from './mindmapStructures';
 import { cloneMindmapTree, findMindNode, findMindNodeParent, getMindmapTreeStats, getTopLevelMindNodeIds, mapMindmapTree, stringifyMindmapJson, walkMindNodes } from './mindmapTree';
 
@@ -134,7 +135,9 @@ function normalizeNode(node: Partial<MindNode>): MindNode {
     text: source.text || '',
     icon: source.icon,
     note: source.note,
-    image: source.image,
+    // 多图与文件链接：兼容旧版单图 image 字段，并按上限截断
+    images: normalizeNodeImages(source),
+    files: normalizeNodeFiles(source.files),
     color: source.color,
     // 仅保留合法的手动宽度
     width:
@@ -218,7 +221,7 @@ export function xmindTopicToMindNode(topic: XMindTopic): MindNode {
     text: typeof source.title === 'string' ? source.title : '分支',
     icon: source.markers?.[0]?.markerId,
     note: source.notes?.plain?.content ?? source.note?.plain?.content,
-    image: source.image?.src,
+    images: source.image?.src ? [source.image.src] : undefined,
     isExpanded: source.branch !== 'folded',
     children: [],
   }));
@@ -241,7 +244,8 @@ export function mindNodeToXmindTopic(node: MindNode): XMindTopic {
   const create = (source: MindNode): XMindTopic => {
     const topic: XMindTopic = { id: source.id, title: source.text };
     if (source.icon) topic.markers = [{ markerId: source.icon }];
-    if (source.image) topic.image = { src: source.image };
+    // XMind 每个主题只支持一张图片，导出第一张
+    if (source.images?.[0]) topic.image = { src: source.images[0] };
     if (source.note) {
       topic.notes = { plain: { content: source.note } };
       // 旧版 NoteBoard 读取 note，官方 XMind 读取 notes，同时写入以保留双方兼容。
@@ -369,10 +373,15 @@ export function markdownToMindNode(md: string): MindNode {
       const quoteContent = quoteMatch[2].trim();
       const targetNode = stack[stack.length - 1].node;
 
-      // 检查是否为 Markdown 图片语法 ![alt](url)
+      // 检查是否为 Markdown 图片语法 ![alt](url)：追加为节点图片（最多 10 张）
       const imgMatch = quoteContent.match(/^!\[.*?\]\((.*?)\)$/);
+      // 单独一行的非网络链接 [名称](路径) 视为本地文件链接（路径含空格时写作 <路径>）
+      const fileMatch = imgMatch ? null : quoteContent.match(/^\[(?:\\.|[^\]\\])*\]\((?:<([^>]+)>|([^)\s]+))\)$/);
+      const filePath = fileMatch ? (fileMatch[1] ?? fileMatch[2]) : undefined;
       if (imgMatch) {
-        targetNode.image = imgMatch[1];
+        targetNode.images = appendWithLimit(targetNode.images, [imgMatch[1]], MAX_NODE_IMAGES).next;
+      } else if (filePath && !/^[a-z][a-z\d+.-]*:\/\//i.test(filePath) && !/^(mailto|tel):/i.test(filePath)) {
+        targetNode.files = appendWithLimit(targetNode.files, [filePath], MAX_NODE_FILES, true).next;
       } else {
         targetNode.note = targetNode.note ? `${targetNode.note}\n${quoteContent}` : quoteContent;
       }
@@ -443,6 +452,17 @@ export function markdownToMindNode(md: string): MindNode {
   return root;
 }
 
+/** 节点图片与文件链接在 Markdown 大纲中的引用行（不含 > 前缀） */
+function markdownAttachmentLines(node: MindNode): string[] {
+  const lines = (node.images ?? []).map((src) => `![图片](${src})`);
+  for (const path of node.files ?? []) {
+    // 路径含空格或括号时用尖括号包裹，保持链接语法完整
+    const target = /[\s()]/.test(path) ? `<${path}>` : path;
+    lines.push(`[${fileLinkName(path).replace(/[[\]]/g, '\\$&')}](${target})`);
+  }
+  return lines;
+}
+
 /**
  * MindNode 树转换为 Markdown 大纲
  */
@@ -459,9 +479,9 @@ export function mindNodeToMarkdown(root: MindNode, depth = 0): string {
       }
       res += '\n';
     }
-    if (root.image) {
-      res += `> ![图片](${root.image})\n\n`;
-    }
+    const attachments = markdownAttachmentLines(root);
+    for (const line of attachments) res += `> ${line}\n`;
+    if (attachments.length > 0) res += '\n';
     for (const child of root.children) {
       res += mindNodeToMarkdown(child, depth + 1);
     }
@@ -474,9 +494,7 @@ export function mindNodeToMarkdown(root: MindNode, depth = 0): string {
         res += `${indent}  > ${nl}\n`;
       }
     }
-    if (root.image) {
-      res += `${indent}  > ![图片](${root.image})\n`;
-    }
+    for (const line of markdownAttachmentLines(root)) res += `${indent}  > ${line}\n`;
     for (const child of root.children) {
       res += mindNodeToMarkdown(child, depth + 1);
     }

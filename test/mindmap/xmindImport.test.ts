@@ -31,8 +31,8 @@ describe('XMind 兼容导入', () => {
 
   it('导出为真正的 ZIP 及资源文件，再导入仍保留备注、图片和折叠状态', async () => {
     const image = 'data:image/png;base64,iVBORw0KGgo=';
-    const blob = await exportToXmindZip({ id: 'r', text: '含图导图', note: '备注', image, isExpanded: false, children: [
-      { id: 'c', text: '共享图片', image, children: [] },
+    const blob = await exportToXmindZip({ id: 'r', text: '含图导图', note: '备注', images: [image], isExpanded: false, children: [
+      { id: 'c', text: '共享图片', images: [image], children: [] },
     ] });
     const buffer = await blob.arrayBuffer();
     const zip = await JSZip.loadAsync(buffer);
@@ -43,7 +43,7 @@ describe('XMind 兼容导入', () => {
     expect(zip.file(src.slice(4))).not.toBeNull();
     const root = await importFromXmindZip(buffer);
     expect(root.note).toBe('备注');
-    expect(root.image).toBe(image);
+    expect(root.images?.[0]).toBe(image);
     expect(root.isExpanded).toBe(false);
   });
 
@@ -64,7 +64,7 @@ describe('XMind 兼容导入', () => {
     expect(prepared.root.children[1].children[0].text).toBe('漂浮的子节点');
     expect(prepared.warnings.some((warning) => warning.includes('普通分支'))).toBe(true);
     const resolved = await resolveXmindImages(archive, prepared.root);
-    expect(resolved.image).toBe('data:image/png;base64,iVBORw0KGgo=');
+    expect(resolved.images?.[0]).toBe('data:image/png;base64,iVBORw0KGgo=');
   });
 
   it('经典 XML 完整解析多层节点、备注、命名空间图片与漂浮主题', async () => {
@@ -72,7 +72,7 @@ describe('XMind 兼容导入', () => {
     const root = await importFromXmindZip(await zipContent('content.xml', xml, { 'resources/image.png': 'iVBORw0KGgo=' }));
     expect(root.text).toBe('研发 <计划>');
     expect(root.note).toBe('备注 & 说明');
-    expect(root.image).toContain('data:image/png;base64,');
+    expect(root.images?.[0]).toContain('data:image/png;base64,');
     expect(root.children[0].text).toBe('一级');
     expect(root.children[0].isExpanded).toBe(false);
     expect(root.children[0].children[0].text).toBe('二级');

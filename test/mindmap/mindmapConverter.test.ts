@@ -126,7 +126,7 @@ describe('mindmapConverter 转换器测试', () => {
       text: '项目发布总览',
       icon: '🚀',
       note: '第一季度重要里程碑',
-      image: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      images: ['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='],
       isExpanded: true,
       children: [
         {
@@ -144,7 +144,7 @@ describe('mindmapConverter 转换器测试', () => {
     const fromJson = parseMindmapDocument(json);
     expect(fromJson.icon).toBe('🚀');
     expect(fromJson.note).toBe('第一季度重要里程碑');
-    expect(fromJson.image).toContain('data:image/png;base64');
+    expect(fromJson.images?.[0]).toContain('data:image/png;base64');
     expect(fromJson.children[0].icon).toBe('⭐️');
     expect(fromJson.children[0].note).toBe('重点保障性能与视觉适配');
 
@@ -160,7 +160,7 @@ describe('mindmapConverter 转换器测试', () => {
     expect(fromMd.text).toBe('项目发布总览');
     expect(fromMd.icon).toBe('🚀');
     expect(fromMd.note).toBe('第一季度重要里程碑');
-    expect(fromMd.image).toContain('data:image/png;base64');
+    expect(fromMd.images?.[0]).toContain('data:image/png;base64');
     expect(fromMd.children[0].text).toBe('核心功能研发');
     expect(fromMd.children[0].icon).toBe('⭐️');
     expect(fromMd.children[0].note).toBe('重点保障性能与视觉适配');
@@ -174,7 +174,7 @@ describe('mindmapConverter 转换器测试', () => {
     const fromXmind = xmindJsonToMindNode(xmindJson);
     expect(fromXmind.icon).toBe('🚀');
     expect(fromXmind.note).toBe('第一季度重要里程碑');
-    expect(fromXmind.image).toContain('data:image/png;base64');
+    expect(fromXmind.images?.[0]).toContain('data:image/png;base64');
   });
 
   test('moveMindNode 移动携带所有子节点、图标、备注与图片的完整子树', () => {
@@ -192,7 +192,7 @@ describe('mindmapConverter 转换器测试', () => {
               text: '待移动要点',
               icon: '🔥',
               note: '重要备注信息',
-              image: 'data:image/png;base64,123',
+              images: ['data:image/png;base64,123'],
               children: [
                 { id: 'sub-1', text: '子要点 1', children: [] },
                 { id: 'sub-2', text: '子要点 2', children: [{ id: 'sub-2-1', text: '深层子要点', children: [] }] },
@@ -226,7 +226,7 @@ describe('mindmapConverter 转换器测试', () => {
     expect(movedNode.text).toBe('待移动要点');
     expect(movedNode.icon).toBe('🔥');
     expect(movedNode.note).toBe('重要备注信息');
-    expect(movedNode.image).toBe('data:image/png;base64,123');
+    expect(movedNode.images?.[0]).toBe('data:image/png;base64,123');
 
     // 验证其完整多层子树完整保留
     expect(movedNode.children.length).toBe(2);
