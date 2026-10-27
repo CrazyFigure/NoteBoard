@@ -28,7 +28,8 @@ pub fn portable_data_root() -> Option<&'static Path> {
 }
 
 /// 按数据目录生成稳定的实例标识：同目录覆盖升级/改名仍合并实例，不同副本与安装版互不接管。
-#[cfg(any(windows, test))]
+// 网页服务也复用本模块，但不装配桌面路径模块；实例标识只由桌面宿主编译。
+#[cfg(all(desktop, any(windows, test)))]
 pub(crate) fn portable_identifier(identifier: &str, root: &Path) -> String {
     use sha2::{Digest, Sha256};
     let key = crate::path::normalize_key(&root.to_string_lossy());
@@ -227,6 +228,8 @@ mod tests {
     }
 
     /// 用独立测试进程实际保存设置、会话、草稿、收藏与同步配置，避免全局目录锁影响其他测试。
+    // 这些持久化模块属于桌面宿主，网页服务仅运行可独立复用的目录测试。
+    #[cfg(desktop)]
     #[test]
     fn portable_profile_keeps_persistent_data_and_resources_together() {
         const TEST_ROOT: &str = "NOTEBOARD_PORTABLE_TEST_ROOT";
@@ -301,6 +304,7 @@ mod tests {
     }
 
     /// 实例标识只绑定目录，不绑定版本或 EXE 文件名，不同便携副本可以同时运行。
+    #[cfg(desktop)]
     #[test]
     fn portable_instance_identity_is_stable_and_isolated() {
         let directory = tempfile::tempdir().unwrap();
@@ -321,7 +325,7 @@ mod tests {
     }
 
     /// Windows 的实例标识应与文件系统的大小写不敏感规则一致。
-    #[cfg(windows)]
+    #[cfg(all(desktop, windows))]
     #[test]
     fn portable_instance_identity_ignores_windows_path_case() {
         assert_eq!(
