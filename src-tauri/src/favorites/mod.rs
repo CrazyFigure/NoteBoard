@@ -1,12 +1,12 @@
 // NoteBoard 收藏夹 — IPC 与持久化
-// 存储在 %APPDATA%\NoteBoard\favorites.json
+// 存储在当前应用数据目录的 favorites.json，免安装版与安装版互不共享。
 // 常规安装/卸载与升级均保留该文件，仅在用户选择清理应用数据时删除
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-// 应用数据目录统一由 app_dirs 提供（桌面兼容 APPDATA 下的 NoteBoard 目录，移动端为应用私有目录）
+// 应用数据目录统一由 app_dirs 提供（安装版、免安装版及其他端遵循各自目录规则）。
 fn app_data_dir() -> PathBuf {
     crate::app_dirs::app_data_dir()
 }

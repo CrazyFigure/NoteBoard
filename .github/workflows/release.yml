@@ -132,7 +132,7 @@ jobs:
           # 规范产物文件命名
           assetNamePattern: NoteBoard_[version]_[platform]_[arch][setup][ext]
 
-      # 免安装版：前端资源已内嵌于主程序，直接复用上一步编译出的 exe；数据仍写入 %APPDATA%\NoteBoard，与安装版共享
+      # 免安装版复用同一 EXE；程序按旁边是否存在 NSIS uninstall.exe 区分，数据独立写入 EXE 同目录 data/NoteBoard。
       - name: Collect portable EXE
         id: portable
         shell: pwsh

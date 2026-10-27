@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-// 应用数据目录统一由 app_dirs 提供（桌面兼容 APPDATA 下的 NoteBoard 目录，移动端为应用私有目录）
+// 应用数据目录统一由 app_dirs 提供（安装版、免安装版及其他端遵循各自目录规则）。
 fn app_data_dir() -> PathBuf {
     crate::app_dirs::app_data_dir()
 }

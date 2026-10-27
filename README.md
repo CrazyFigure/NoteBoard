@@ -26,11 +26,15 @@
 | 平台 | 安装包（[最新 Release](https://github.com/CrazyFigure/NoteBoard/releases/latest)） | 说明 |
 |---|---|---|
 | **Windows** | `NoteBoard_x.y.z_windows_x64-setup.exe` | Win10 1809+，需 WebView2（Win11 已内置） |
-| **Windows 免安装** | `NoteBoard_x.y.z_windows_x64_portable.exe` | 双击即用，不注册文件关联；数据与安装版共用 `%APPDATA%\NoteBoard` |
+| **Windows 免安装** | `NoteBoard_x.y.z_windows_x64_portable.exe` | 双击即用，不注册文件关联；数据独立保存在 EXE 同目录的 `data/NoteBoard/` |
 | **安卓** | `NoteBoard_x.y.z_android_arm64.apk` | arm64 设备 |
 | **macOS** | `.dmg` | Apple Silicon / Intel 分别提供；未经 Apple 公证 |
 | **Linux** | `.deb` / `.AppImage` | x86_64；AppImage 需 `chmod +x`，可能需安装 FUSE |
 | **网页** | Docker 镜像 `crazyfigure/noteboard` | 见下方 [网页部署](#网页部署) |
+
+Windows 免安装版首次运行会自动创建 `data/NoteBoard/`，设置、会话、草稿、默认暂存、历史、同步配置、插件、字体和 WebView 数据均保存在其中；`data/` 中其他内容保持原样。同名 `NoteBoard/` 子目录若已有内容但没有应用归属标记，或目录不可写，会提示并停止，不会覆盖文件或回退到安装版目录。更新时替换 EXE，搬移时同时带上 `data/`；同目录的程序共用一份数据，不同目录的副本可以独立运行。
+
+旧版本的 `%APPDATA%\NoteBoard` 和 `%LOCALAPPDATA%\com.crazyfigure.noteboard` 数据保持原样，不会自动导入。需要迁移时先运行新免安装版生成目录并完全退出所有 NoteBoard 实例，再按需把旧设置、会话等复制到 `data/NoteBoard/`，把旧插件和字体复制到其 `plugins/`、`font-packs/` 子目录，保留新生成的 `.noteboard-portable` 标记。迁移的暂存自选路径和文档绝对路径仍需按实际位置调整；Windows 加密的同步密码/令牌换电脑后需重新填写。Windows 安装版和开发版保留原目录；macOS、Linux、Android/iOS 继续使用平台应用数据/缓存目录，网页端继续使用服务器数据卷。
 
 | 软件包管理器 | 安装 | 更新 |
 |---|---|---|

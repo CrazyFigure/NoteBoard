@@ -1,11 +1,11 @@
 // NoteBoard 设置模型
-// 持久化在 %APPDATA%\NoteBoard\settings.json
+// 持久化在 app_dirs 选择的应用数据目录中，免安装版与安装版互不读取设置。
 // 读取容错：任一字段缺失用默认值填充，不整体丢弃
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-// 应用数据目录统一由 app_dirs 提供（桌面兼容 APPDATA 下的 NoteBoard 目录，移动端为应用私有目录）
+// 应用数据目录统一由 app_dirs 提供（兼容 Windows 安装版、免安装版及其他端的平台目录）。
 pub(crate) fn app_data_dir() -> PathBuf {
     crate::app_dirs::app_data_dir()
 }
@@ -449,7 +449,7 @@ pub fn load() -> Settings {
 
 /// 保存设置（原子写 + revision 递增）
 pub fn save(settings: &mut Settings) -> Result<u64, String> {
-    // 确保 APPDATA 目录存在
+    // 确保当前运行模式选择的数据目录存在，不另行推导 APPDATA。
     let dir = app_data_dir();
     if !dir.exists() {
         std::fs::create_dir_all(&dir).map_err(|e| format!("创建数据目录失败: {}", e))?;
@@ -458,7 +458,7 @@ pub fn save(settings: &mut Settings) -> Result<u64, String> {
     // revision 递增
     settings.revision += 1;
 
-    let json = serde_json::to_string_pretty(settings)
+    let json = serialize_settings_for_disk(settings, crate::app_dirs::portable_data_root().is_some())
         .map_err(|e| format!("序列化设置失败: {}", e))?;
 
     let path = settings_path();
@@ -470,9 +470,46 @@ pub fn save(settings: &mut Settings) -> Result<u64, String> {
     Ok(settings.revision)
 }
 
+/// 免安装版的默认暂存目录随程序位置重新推导；仅磁盘存储省略默认值，IPC 仍返回完整路径。
+/// 用户自选目录必须原样保留，安装版及其他端的持久化格式保持兼容。
+fn serialize_settings_for_disk(settings: &Settings, portable: bool) -> Result<String, serde_json::Error> {
+    // 只有免安装默认暂存需要省略字段，其余情况沿用原序列化，避免无关平台的配置文件变化。
+    if !portable || !crate::path::same_key(&settings.file.staging_directory, &default_staging_directory()) {
+        return serde_json::to_string_pretty(settings);
+    }
+    let mut value = serde_json::to_value(settings)?;
+    if let Some(file) = value.get_mut("file").and_then(serde_json::Value::as_object_mut) {
+        file.remove("stagingDirectory");
+    }
+    serde_json::to_string_pretty(&value)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 默认暂存路径不绑定旧的盘符或程序位置，读取时补全到当前数据目录；普通版仍保留原字段。
+    #[test]
+    fn portable_default_staging_follows_the_current_data_directory() {
+        let settings = Settings::default();
+        let portable_json = serialize_settings_for_disk(&settings, true).unwrap();
+        let stored: serde_json::Value = serde_json::from_str(&portable_json).unwrap();
+        assert!(stored["file"].get("stagingDirectory").is_none());
+        let restored: Settings = serde_json::from_str(&portable_json).unwrap();
+        assert_eq!(restored.file.staging_directory, default_staging_directory());
+        assert_eq!(settings.file.staging_directory, restored.file.staging_directory);
+        let installed: serde_json::Value = serde_json::from_str(&serialize_settings_for_disk(&settings, false).unwrap()).unwrap();
+        assert_eq!(installed["file"]["stagingDirectory"], settings.file.staging_directory);
+    }
+
+    /// 用户明确指定的暂存位置不因免安装模式而被重写。
+    #[test]
+    fn portable_custom_staging_directory_is_preserved() {
+        let mut settings = Settings::default();
+        settings.file.staging_directory = "custom-staging".to_string();
+        let stored: Settings = serde_json::from_str(&serialize_settings_for_disk(&settings, true).unwrap()).unwrap();
+        assert_eq!(stored.file.staging_directory, "custom-staging");
+    }
 
     /// 旧版 settings.json 不含暂存字段时必须无损迁移到默认目录，不能导致整份设置解析失败。
     #[test]

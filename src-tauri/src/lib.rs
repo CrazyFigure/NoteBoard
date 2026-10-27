@@ -41,11 +41,30 @@ pub fn run() {
     #[cfg(windows)]
     let context = {
         let mut context = context;
+        // 免安装数据必须先于单实例插件与自动创建的主 WebView 初始化，setup 阶段已经太晚。
+        if let Err(error) = app_dirs::init_portable() {
+            use windows::core::HSTRING;
+            use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+            let message = HSTRING::from(format!(
+                "无法使用程序旁的 data/NoteBoard 目录。请确认该目录可写且没有其他程序的同名数据。\n\n{error}"
+            ));
+            // 发布版没有控制台，原生提示明确说明原因；此时不启动任何读写安装版数据的后台任务。
+            unsafe { MessageBoxW(None, &message, &HSTRING::from("NoteBoard"), MB_OK | MB_ICONERROR); }
+            return;
+        }
+        if let Some(root) = app_dirs::portable_data_root() {
+            let identifier = app_dirs::portable_identifier(&context.config().identifier, root);
+            context.config_mut().identifier = identifier;
+        }
         // 主窗口由 Tauri 根据配置自动创建，必须提前设置呈现参数，on_webview_ready 时已无法改变浏览器环境。
         // 后续新建窗口复用同一组参数，避免同一应用的窗口使用不同的呈现策略。
         for window_config in &mut context.config_mut().app.windows {
             window_config.additional_browser_args =
                 Some(window::render_recovery::WINDOWS_BROWSER_ARGS.to_string());
+            // localStorage / IndexedDB / 浏览器缓存也必须随免安装目录隔离，所有窗口共用同一资料目录。
+            if let Some(root) = app_dirs::portable_data_root() {
+                window_config.data_directory = Some(root.join("webview"));
+            }
         }
         context
     };
@@ -68,15 +87,21 @@ pub fn run() {
     // 不记忆窗口装饰：装饰由各平台配置决定，避免旧版本保存的系统标题栏状态被恢复
     // 不记忆可见性：窗口统一在前端壳就绪后由 window_shell_ready 显示，避免插件提前显示出白屏
     #[cfg(desktop)]
-    let builder = builder.plugin(
-        tauri_plugin_window_state::Builder::new()
+    let builder = {
+        let window_state = tauri_plugin_window_state::Builder::new()
             .with_state_flags(
                 tauri_plugin_window_state::StateFlags::all()
                     & !tauri_plugin_window_state::StateFlags::DECORATIONS
                     & !tauri_plugin_window_state::StateFlags::VISIBLE,
-            )
-            .build(),
-    );
+            );
+        // 插件默认使用系统配置目录；免安装版将状态文件显式写入同目录 data。
+        let window_state = if let Some(root) = app_dirs::portable_data_root() {
+            window_state.with_filename(root.join("window-state.json").to_string_lossy().into_owned())
+        } else {
+            window_state
+        };
+        builder.plugin(window_state.build())
+    };
 
     // WebView2 GPU/渲染进程异常后的画面自愈（逻辑仅 Windows 生效，其他平台为空插件）
     let builder = builder.plugin(window::render_recovery::plugin());

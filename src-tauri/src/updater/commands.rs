@@ -180,17 +180,6 @@ fn installer_asset_score(asset_name: &str) -> i32 {
     if name.ends_with(".appimage") { 20 } else { 10 }
 }
 
-/// 是否为 Windows 免安装版：NSIS 安装目录必有 uninstall.exe，免安装版 exe 旁边没有
-fn is_portable_build() -> bool {
-    if !cfg!(target_os = "windows") {
-        return false;
-    }
-    std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(|dir| !dir.join("uninstall.exe").is_file()))
-        .unwrap_or(false)
-}
-
 /// 从 Release 资产列表中挑选最优安装包
 fn select_update_installer_asset(assets: &[GitHubReleaseAsset]) -> Option<GitHubReleaseAsset> {
     assets
@@ -695,7 +684,7 @@ pub async fn check_for_updates(app: AppHandle) -> Result<UpdateCheckResult, Stri
     let latest_version = release.tag_name.trim_start_matches(['v', 'V']).to_string();
     let update_available = is_newer_version(&release.tag_name, &current_version);
     // 免安装版不下载运行安装包，避免在旁边另装一份安装版
-    let portable = is_portable_build();
+    let portable = crate::app_dirs::portable_data_root().is_some();
     let installer_asset = if portable {
         None
     } else {
@@ -778,7 +767,7 @@ pub async fn download_and_install_update(
     if !is_valid_update_download_url(normalized_url) {
         return Err("无效的更新安装包下载地址".to_string());
     }
-    if is_portable_build() {
+    if crate::app_dirs::portable_data_root().is_some() {
         return Err("免安装版请前往 Release 页面下载新版本".to_string());
     }
 
