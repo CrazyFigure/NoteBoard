@@ -96,6 +96,11 @@ const browserWindow = {
 };
 export function getCurrentWindow(): typeof browserWindow { return browserWindow; }
 
+// 极窄模式等桌面窗口能力在网页端不启用，仅补齐导出以通过打包时的具名导入检查。
+export async function availableMonitors(): Promise<never[]> { return []; }
+export class LogicalSize { constructor(public width: number, public height: number) {} }
+export class PhysicalPosition { constructor(public x: number, public y: number) {} }
+
 /** 浏览器不提供原生文件路径拖拽事件；图片粘贴/拖拽仍由编辑器现有逻辑处理。 */
 export function getCurrentWebview() { return { onDragDropEvent: async () => () => {} }; }
 export async function onBackButtonPress() { return () => {}; }
