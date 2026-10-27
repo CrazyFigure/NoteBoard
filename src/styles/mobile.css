@@ -644,6 +644,46 @@ html[data-platform='mobile'] body {
   line-height: 1.3;
 }
 
+/* 「更多格式」折叠行：展开后在下方追加一组网格 */
+.nb-m-create-more {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: calc(100% - 24px);
+  margin: 2px 12px 8px;
+  padding: 10px 12px;
+  border: 1px dashed var(--editor-border);
+  border-radius: var(--radius-xl);
+  background: transparent;
+  color: var(--editor-text-secondary, var(--editor-text));
+  font-size: 13px;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-m-create-more:active {
+  transform: scale(0.98);
+  background: var(--toolbar-active, rgba(0, 0, 0, 0.06));
+}
+
+.nb-m-create-more-count {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--toolbar-hover);
+  color: var(--editor-text-muted);
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.nb-m-create-more-chevron {
+  margin-left: auto;
+  color: var(--editor-text-muted);
+  transition: transform var(--transition-fast);
+}
+
+.nb-m-create-more.is-open .nb-m-create-more-chevron {
+  transform: rotate(180deg);
+}
+
 .nb-m-create-extra {
   border-top: 1px solid var(--editor-border);
   margin-top: 4px;

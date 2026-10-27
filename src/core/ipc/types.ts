@@ -423,9 +423,18 @@ export interface SessionSnapshot {
   windows: SessionWindowSnapshot[];
 }
 
+/** 新建格式入口布局（主页与「+」菜单共用）：各存格式 id 的有序列表 */
+export interface CreateFormatsLayout {
+  /** 直接展示 */
+  primary: string[];
+  /** 收进「更多」 */
+  more: string[];
+}
+
 export interface LayoutSettings {
   statusBarVisible: boolean;
   uiScale: number;
+  createFormats: CreateFormatsLayout;
 }
 
 /** 系统集成设置（仅桌面端生效） */

@@ -23,12 +23,8 @@ import {
   Home,
   Save,
   SaveAll,
-  FileText,
   File,
-  Database,
-  Braces,
   FileCode,
-  PencilRuler,
   AlertTriangle,
   Unlink,
   ExternalLink,
@@ -37,14 +33,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Trash2,
-  Network,
-  Layout,
-  Workflow,
-  GitMerge,
   GitCompare,
   Archive,
-  Table2,
-  ChartColumn,
   Star,
   FolderSync,
   History,
@@ -87,6 +77,8 @@ import { formatShortcut } from '../../core/shortcuts';
 import { dragTab } from '../../features/window/tabDrag';
 import { TabDropOverlay } from '../../features/window/TabDropOverlay';
 import { useArrivingTabKey, useNativeDraggedTabKey } from '../../features/window/tabDragFeedback';
+import { createFormatLabel, getCreateFormat, type CreateFormatId } from '../../features/welcome/createFormats';
+import { useCreateFormats } from '../../features/welcome/useCreateFormats';
 
 // ── 类型图标映射 ──
 
@@ -622,6 +614,22 @@ function handleMenuItemMouseUp(e: React.MouseEvent<HTMLButtonElement>) {
   }
 }
 
+// 「+」菜单各新建格式对应的动作
+const CREATE_FORMAT_ACTIONS: Record<CreateFormatId, () => void> = {
+  markdown: newMarkdown,
+  text: newText,
+  bitable: newBitable,
+  board: newBoard,
+  mindmap: newMindmap,
+  textdiff: newTextDiff,
+  drawio: newDrawio,
+  infographic: newInfographic,
+  mermaid: newMermaid,
+  plantuml: newPlantUml,
+  json: newJson,
+  sql: newSql,
+};
+
 // ── 自绘横向滚动条 ──
 
 // 滚动条轨道距 Tab 栏左右两端的内缩（与滚动容器 padding 对齐）
@@ -667,6 +675,8 @@ export function TabBar() {
   const [newMenuPos, setNewMenuPos] = useState<{ x: number; y: number } | null>(null);
   // 设置了同步文件夹时「+」菜单显示「打开同步文件夹」
   const syncRoot = useSyncStore((s) => s.config?.sync.rootDir?.trim() || null);
+  // 新建格式布局：与主页共用设置，决定直接展示与收进「更多」的格式及顺序
+  const createFormats = useCreateFormats();
   const [showMoreSubMenu, setShowMoreSubMenu] = useState(false);
   const [flipSubMenuLeft, setFlipSubMenuLeft] = useState(false);
   const subMenuTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -917,6 +927,31 @@ export function TabBar() {
     // 左侧不留内边距：应用图标容器自带 10px 留白，再叠加会让首个 Tab 离图标过远
     padding: '0 4px 0 0',
     boxSizing: 'border-box',
+  };
+
+  // 渲染单个新建格式菜单项：直接展示时带「新建」前缀，二级菜单中不带
+  const renderCreateMenuItem = (id: CreateFormatId, placement: 'primary' | 'more') => {
+    const meta = getCreateFormat(id);
+    const Icon = meta.menuIcon ?? meta.icon;
+    return (
+      <button
+        key={id}
+        type="button"
+        style={getMenuItemStyle(false)}
+        onClick={() => {
+          setNewMenuPos(null);
+          setShowMoreSubMenu(false);
+          CREATE_FORMAT_ACTIONS[id]();
+        }}
+        onMouseEnter={handleMenuItemMouseEnter}
+        onMouseLeave={handleMenuItemMouseLeave}
+        onMouseDown={handleMenuItemMouseDown}
+        onMouseUp={handleMenuItemMouseUp}
+      >
+        <Icon size={13} color={meta.color} />
+        <span>{createFormatLabel(meta, placement)}</span>
+      </button>
+    );
   };
 
   // 新建标签页按钮样式
@@ -1187,117 +1222,15 @@ export function TabBar() {
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* 新建 Markdown 笔记 */}
-          <button
-            type="button"
-            style={getMenuItemStyle(false)}
-            onClick={() => {
-              setNewMenuPos(null);
-              setShowMoreSubMenu(false);
-              newMarkdown();
-            }}
-            onMouseEnter={handleMenuItemMouseEnter}
-            onMouseLeave={handleMenuItemMouseLeave}
-            onMouseDown={handleMenuItemMouseDown}
-            onMouseUp={handleMenuItemMouseUp}
-          >
-            <FileText size={13} color="var(--editor-accent)" />
-            <span>新建 Markdown 笔记 (.md)</span>
-          </button>
+          {/* 直接展示的新建格式（顺序与主页共用设置「全局 → 新建入口」） */}
+          {createFormats.primary.map((id) => renderCreateMenuItem(id, 'primary'))}
 
-          {/* 新建文本文档 (.txt) */}
-          <button
-            type="button"
-            style={getMenuItemStyle(false)}
-            onClick={() => {
-              setNewMenuPos(null);
-              setShowMoreSubMenu(false);
-              newText();
-            }}
-            onMouseEnter={handleMenuItemMouseEnter}
-            onMouseLeave={handleMenuItemMouseLeave}
-            onMouseDown={handleMenuItemMouseDown}
-            onMouseUp={handleMenuItemMouseUp}
-          >
-            <FileText size={13} color="#64748b" />
-            <span>新建文本文档 (.txt)</span>
-          </button>
+          {createFormats.primary.length > 0 && createFormats.more.length > 0 && (
+            <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />
+          )}
 
-          {/* 新建多维表格 */}
-          <button
-            type="button"
-            style={getMenuItemStyle(false)}
-            onClick={() => {
-              setNewMenuPos(null);
-              setShowMoreSubMenu(false);
-              newBitable();
-            }}
-            onMouseEnter={handleMenuItemMouseEnter}
-            onMouseLeave={handleMenuItemMouseLeave}
-            onMouseDown={handleMenuItemMouseDown}
-            onMouseUp={handleMenuItemMouseUp}
-          >
-            <Table2 size={13} color="#2563eb" />
-            <span>新建多维表格 (.bitable)</span>
-          </button>
-
-          {/* 新建自由画板 */}
-          <button
-            type="button"
-            style={getMenuItemStyle(false)}
-            onClick={() => {
-              setNewMenuPos(null);
-              setShowMoreSubMenu(false);
-              newBoard();
-            }}
-            onMouseEnter={handleMenuItemMouseEnter}
-            onMouseLeave={handleMenuItemMouseLeave}
-            onMouseDown={handleMenuItemMouseDown}
-            onMouseUp={handleMenuItemMouseUp}
-          >
-            <PencilRuler size={13} color="var(--accent-strong)" />
-            <span>新建自由画板 (.excalidraw)</span>
-          </button>
-
-          {/* 新建思维导图 */}
-          <button
-            type="button"
-            style={getMenuItemStyle(false)}
-            onClick={() => {
-              setNewMenuPos(null);
-              setShowMoreSubMenu(false);
-              newMindmap();
-            }}
-            onMouseEnter={handleMenuItemMouseEnter}
-            onMouseLeave={handleMenuItemMouseLeave}
-            onMouseDown={handleMenuItemMouseDown}
-            onMouseUp={handleMenuItemMouseUp}
-          >
-            <Network size={13} color="#f97316" />
-            <span>新建思维导图 (.mindmap)</span>
-          </button>
-
-          {/* 文本对比（纯前端工具视图，不落盘） */}
-          <button
-            type="button"
-            style={getMenuItemStyle(false)}
-            onClick={() => {
-              setNewMenuPos(null);
-              setShowMoreSubMenu(false);
-              newTextDiff();
-            }}
-            onMouseEnter={handleMenuItemMouseEnter}
-            onMouseLeave={handleMenuItemMouseLeave}
-            onMouseDown={handleMenuItemMouseDown}
-            onMouseUp={handleMenuItemMouseUp}
-          >
-            <GitCompare size={13} color="#10b981" />
-            <span>文本对比</span>
-          </button>
-
-          <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />
-
-          {/* 更多格式新建（带二级菜单，防抖无缝悬停与自适应向左展开） */}
+          {/* 更多格式新建（带二级菜单，防抖无缝悬停与自适应向左展开；没有收进更多的格式时不渲染） */}
+          {createFormats.more.length > 0 && (
           <div
             ref={moreItemRef}
             style={{ position: 'relative' }}
@@ -1343,118 +1276,11 @@ export function TabBar() {
                   minWidth: 175,
                 }}
               >
-                {/* 新建 Draw.io 架构图 */}
-                <button
-                  type="button"
-                  style={getMenuItemStyle(false)}
-                  onClick={() => {
-                    setNewMenuPos(null);
-                    setShowMoreSubMenu(false);
-                    newDrawio();
-                  }}
-                  onMouseEnter={handleMenuItemMouseEnter}
-                  onMouseLeave={handleMenuItemMouseLeave}
-                  onMouseDown={handleMenuItemMouseDown}
-                  onMouseUp={handleMenuItemMouseUp}
-                >
-                  <Layout size={13} color="#ea580c" />
-                  <span>Draw.io 架构图 (.drawio)</span>
-                </button>
-
-                {/* 新建信息图（.infographic 声明式源码，与 md 内嵌信息图块同源） */}
-                <button
-                  type="button"
-                  style={getMenuItemStyle(false)}
-                  onClick={() => {
-                    setNewMenuPos(null);
-                    setShowMoreSubMenu(false);
-                    newInfographic();
-                  }}
-                  onMouseEnter={handleMenuItemMouseEnter}
-                  onMouseLeave={handleMenuItemMouseLeave}
-                  onMouseDown={handleMenuItemMouseDown}
-                  onMouseUp={handleMenuItemMouseUp}
-                >
-                  <ChartColumn size={13} color="#14b8a6" />
-                  <span>信息图 (.infographic)</span>
-                </button>
-
-                {/* 新建 Mermaid 图表 */}
-                <button
-                  type="button"
-                  style={getMenuItemStyle(false)}
-                  onClick={() => {
-                    setNewMenuPos(null);
-                    setShowMoreSubMenu(false);
-                    newMermaid();
-                  }}
-                  onMouseEnter={handleMenuItemMouseEnter}
-                  onMouseLeave={handleMenuItemMouseLeave}
-                  onMouseDown={handleMenuItemMouseDown}
-                  onMouseUp={handleMenuItemMouseUp}
-                >
-                  <Workflow size={13} color="#00bfb2" />
-                  <span>Mermaid 图表 (.mmd)</span>
-                </button>
-
-                {/* 新建 PlantUML / UML */}
-                <button
-                  type="button"
-                  style={getMenuItemStyle(false)}
-                  onClick={() => {
-                    setNewMenuPos(null);
-                    setShowMoreSubMenu(false);
-                    newPlantUml();
-                  }}
-                  onMouseEnter={handleMenuItemMouseEnter}
-                  onMouseLeave={handleMenuItemMouseLeave}
-                  onMouseDown={handleMenuItemMouseDown}
-                  onMouseUp={handleMenuItemMouseUp}
-                >
-                  <GitMerge size={13} color="#a855f7" />
-                  <span>PlantUML 建模 (.puml)</span>
-                </button>
-
-                <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />
-
-                {/* 新建 JSON 配置文件 */}
-                <button
-                  type="button"
-                  style={getMenuItemStyle(false)}
-                  onClick={() => {
-                    setNewMenuPos(null);
-                    setShowMoreSubMenu(false);
-                    newJson();
-                  }}
-                  onMouseEnter={handleMenuItemMouseEnter}
-                  onMouseLeave={handleMenuItemMouseLeave}
-                  onMouseDown={handleMenuItemMouseDown}
-                  onMouseUp={handleMenuItemMouseUp}
-                >
-                  <Braces size={13} color="#eab308" />
-                  <span>JSON 配置文件 (.json)</span>
-                </button>
-
-                {/* 新建 SQL 数据库脚本 */}
-                <button
-                  type="button"
-                  style={getMenuItemStyle(false)}
-                  onClick={() => {
-                    setNewMenuPos(null);
-                    setShowMoreSubMenu(false);
-                    newSql();
-                  }}
-                  onMouseEnter={handleMenuItemMouseEnter}
-                  onMouseLeave={handleMenuItemMouseLeave}
-                  onMouseDown={handleMenuItemMouseDown}
-                  onMouseUp={handleMenuItemMouseUp}
-                >
-                  <Database size={13} color="#3b82f6" />
-                  <span>SQL 数据库脚本 (.sql)</span>
-                </button>
+                {createFormats.more.map((id) => renderCreateMenuItem(id, 'more'))}
               </div>
             )}
           </div>
+          )}
 
           <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />
 

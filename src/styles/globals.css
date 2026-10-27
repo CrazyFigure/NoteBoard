@@ -7069,3 +7069,406 @@ input[type='number'] {
   gap: 8px;
   padding: 10px 16px;
 }
+
+/* ── 设置 · 全局 · 新建入口布局 ──
+   「直接展示」为实体卡片（与主页卡片同质感），「收进更多」为虚线折叠区，靠视觉层级区分两种去向 */
+.nb-cf {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.nb-cf-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.nb-cf-head-text {
+  min-width: 0;
+}
+
+.nb-cf-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.nb-cf-title-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  color: var(--accent-strong);
+}
+
+.nb-cf-hint {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--editor-text-muted);
+}
+
+.nb-cf-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--editor-bg);
+  color: var(--editor-text-secondary, var(--editor-text));
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-cf-reset:not(:disabled):hover {
+  background: var(--toolbar-hover);
+  border-color: var(--editor-border-focus, var(--accent-strong));
+  color: var(--editor-text);
+}
+
+.nb-cf-reset:not(:disabled):active {
+  background: var(--toolbar-active);
+  transform: scale(0.96);
+}
+
+.nb-cf-reset:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.nb-cf-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.nb-cf-board.is-stacked {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.nb-cf-bridge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nb-cf-board.is-stacked .nb-cf-bridge {
+  height: 30px;
+}
+
+.nb-cf-bridge > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid var(--editor-border);
+  background: var(--editor-bg);
+  color: var(--editor-text-muted);
+}
+
+.nb-cf-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border-radius: var(--radius-md, 8px);
+  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+}
+
+.nb-cf-zone.is-primary {
+  border: 1px solid color-mix(in srgb, var(--accent-strong) 26%, var(--editor-border));
+  background: color-mix(in srgb, var(--accent-strong) 5%, var(--editor-bg));
+}
+
+.nb-cf-zone.is-more {
+  border: 1px dashed var(--editor-border);
+  background: color-mix(in srgb, var(--editor-bg) 60%, transparent);
+}
+
+/* 拖动项当前所在分区：强调色描边 + 光晕 */
+.nb-cf-zone.is-target {
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-strong) 14%, transparent);
+}
+
+.nb-cf-zone-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  padding: 0 2px;
+  font-size: 12px;
+}
+
+.nb-cf-zone-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+}
+
+.nb-cf-zone-badge.is-primary {
+  background: var(--accent-strong);
+  color: #fff;
+}
+
+.nb-cf-zone-badge.is-more {
+  border: 1px dashed color-mix(in srgb, var(--editor-text-muted) 60%, transparent);
+  color: var(--editor-text-muted);
+}
+
+.nb-cf-zone-title {
+  font-weight: 600;
+}
+
+.nb-cf-zone-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--toolbar-hover);
+  color: var(--editor-text-muted);
+  font-size: 10.5px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.nb-cf-where {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-strong) 12%, transparent);
+  color: var(--accent-strong);
+}
+
+/* 仿「+」菜单里的「更多 ›」入口，示意这些格式折叠在它后面 */
+.nb-cf-where.is-more {
+  gap: 1px;
+  border: 1px solid var(--editor-border);
+  background: var(--editor-bg);
+  color: var(--editor-text-muted);
+  font-size: 10.5px;
+}
+
+.nb-cf-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 76px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nb-cf-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 4px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--editor-text);
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+}
+
+.nb-cf-chip.is-primary {
+  height: 36px;
+  border: 1px solid var(--control-border, var(--editor-border));
+  background: var(--editor-surface);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.04));
+}
+
+.nb-cf-chip.is-more {
+  height: 32px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--editor-text-secondary, var(--editor-text));
+}
+
+.nb-cf-chip:hover {
+  border-color: var(--editor-border-focus, var(--accent-strong));
+}
+
+.nb-cf-chip.is-more:hover {
+  background: var(--toolbar-hover);
+}
+
+.nb-cf-chip:active {
+  cursor: grabbing;
+}
+
+.nb-cf-chip:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 1px;
+}
+
+/* 原位占位：淡出并改为虚线，示意松手后的落点 */
+.nb-cf-chip.is-placeholder {
+  opacity: 0.35;
+  border-style: dashed;
+  border-color: var(--accent-strong);
+  box-shadow: none;
+}
+
+.nb-cf-chip.is-overlay {
+  border-color: var(--accent-strong);
+  background: var(--editor-surface);
+  box-shadow: var(--shadow-lg, 0 10px 30px rgba(0, 0, 0, 0.18));
+  transform: scale(1.03);
+  cursor: grabbing;
+  font-family: var(--ui-font-family, inherit);
+}
+
+.nb-cf-chip.is-flash {
+  animation: nb-cf-flash 700ms ease-out;
+}
+
+@keyframes nb-cf-flash {
+  0% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-strong) 35%, transparent);
+    background: color-mix(in srgb, var(--accent-strong) 14%, var(--editor-surface));
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.nb-cf-grip {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--editor-text-muted);
+  opacity: 0.55;
+  transition: opacity 120ms ease;
+}
+
+.nb-cf-chip:hover .nb-cf-grip,
+.nb-cf-chip.is-overlay .nb-cf-grip {
+  opacity: 1;
+}
+
+.nb-cf-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--nb-cf-color) 12%, transparent);
+}
+
+.nb-cf-chip.is-more .nb-cf-icon {
+  width: 22px;
+  height: 22px;
+  background: transparent;
+}
+
+.nb-cf-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 「新建」前缀用强调色淡显：跨区拖动时出现 / 消失，直观看到两处的显示差异 */
+.nb-cf-prefix {
+  color: color-mix(in srgb, var(--accent-strong) 80%, var(--editor-text-muted));
+}
+
+/* 空间不足时扩展名先于名称收缩，名称尽量完整 */
+.nb-cf-ext {
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--toolbar-hover);
+  color: var(--editor-text-muted);
+  font-family: var(--mono-font-family, monospace);
+  font-size: 10.5px;
+}
+
+.nb-cf-move {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--editor-text-muted);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, opacity 120ms ease, transform 120ms ease;
+}
+
+.nb-cf-move:hover {
+  background: var(--toolbar-hover);
+  color: var(--accent-strong);
+}
+
+.nb-cf-move:active {
+  background: var(--toolbar-active);
+  transform: scale(0.9);
+}
+
+/* 有悬停能力的设备上移动按钮平时淡显，悬停条目时再完整显示；触屏始终可见 */
+@media (hover: hover) {
+  .nb-cf-move {
+    opacity: 0.4;
+  }
+  .nb-cf-chip:hover .nb-cf-move,
+  .nb-cf-move:focus-visible {
+    opacity: 1;
+  }
+}
+
+.nb-cf-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 72px;
+  border: 1px dashed var(--editor-border);
+  border-radius: 8px;
+  color: var(--editor-text-muted);
+  font-size: 11.5px;
+}
+
+/* 移动端：加大条目与按钮点按区域 */
+[data-platform='mobile'] .nb-cf-chip.is-primary {
+  height: 42px;
+}
+
+[data-platform='mobile'] .nb-cf-chip.is-more {
+  height: 38px;
+}
+
+[data-platform='mobile'] .nb-cf-move {
+  width: 34px;
+  height: 34px;
+}

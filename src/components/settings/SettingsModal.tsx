@@ -29,6 +29,7 @@ import { PluginsPanel } from '../../features/plugins/PluginsPanel';
 // 历史记录设置随设置窗口加载（只含设置表单，不含查看界面）
 import { HistorySettingsPanel } from '../../features/versionHistory/HistorySettingsPanel';
 import { useLayoutStore } from '../../stores/layoutStore';
+import { CreateFormatsSettings } from './CreateFormatsSettings';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -227,15 +228,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               label="外观主题"
               onClick={() => setActiveTab('appearance')}
             />
-            {/* 全局：窗口行为等系统集成选项，网页与移动端没有托盘，隐藏该分组 */}
-            {SUPPORTS_SYSTEM_INTEGRATION && (
-              <NavBtn
-                active={activeTab === 'general'}
-                icon={<Monitor size={15} />}
-                label="全局"
-                onClick={() => setActiveTab('general')}
-              />
-            )}
+            {/* 全局：新建入口布局各端通用；窗口与托盘仅原生桌面端在页内展示 */}
+            <NavBtn
+              active={activeTab === 'general'}
+              icon={<Monitor size={15} />}
+              label="全局"
+              onClick={() => setActiveTab('general')}
+            />
             <NavBtn
               active={activeTab === 'typography'}
               icon={<Type size={15} />}
@@ -1418,13 +1417,19 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             {activeTab === 'history' && <HistorySettingsPanel />}
             {activeTab === 'plugins' && <PluginsPanel target={settingsTarget} />}
 
-            {/* 全局：仅原生桌面端展示，页级仅保留标题，托盘行为由设置项说明。 */}
-            {activeTab === 'general' && SUPPORTS_SYSTEM_INTEGRATION && (
+            {/* 全局：页级仅保留标题；新建入口各端通用，托盘行为仅原生桌面端展示。 */}
+            {activeTab === 'general' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                 <div>
                   <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>全局设置</h3>
                 </div>
 
+                {/* 新建入口：主页与「+」菜单中哪些格式直接展示、哪些收进更多 */}
+                <div style={{ padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                  <CreateFormatsSettings />
+                </div>
+
+                {SUPPORTS_SYSTEM_INTEGRATION && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
                     <Monitor size={15} color="var(--accent-strong)" />
@@ -1444,6 +1449,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     />
                   </div>
                 </div>
+                )}
               </div>
             )}
 

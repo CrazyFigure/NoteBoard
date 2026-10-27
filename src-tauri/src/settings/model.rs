@@ -304,6 +304,9 @@ pub struct LayoutSettings {
     pub status_bar_visible: bool,
     #[serde(default = "default_ui_scale")]
     pub ui_scale: u32,
+    // 新建格式入口布局（主页与「+」菜单共用）；前端负责剔除未知 id 并补齐新增格式
+    #[serde(default)]
+    pub create_formats: CreateFormatsLayout,
 }
 
 impl Default for LayoutSettings {
@@ -311,6 +314,29 @@ impl Default for LayoutSettings {
         Self {
             status_bar_visible: true,
             ui_scale: 100,
+            create_formats: CreateFormatsLayout::default(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateFormatsLayout {
+    // 直接展示的格式 id（有序）
+    #[serde(default)]
+    pub primary: Vec<String>,
+    // 收进「更多」的格式 id（有序）
+    #[serde(default)]
+    pub more: Vec<String>,
+}
+
+impl Default for CreateFormatsLayout {
+    // 默认值与前端 DEFAULT_CREATE_FORMATS 保持一致
+    fn default() -> Self {
+        let ids = |list: &[&str]| list.iter().map(|s| s.to_string()).collect();
+        Self {
+            primary: ids(&["markdown", "text", "bitable", "board", "mindmap", "textdiff"]),
+            more: ids(&["drawio", "infographic", "mermaid", "plantuml", "json", "sql"]),
         }
     }
 }
@@ -437,5 +463,14 @@ mod tests {
             .expect("旧版设置应能补全 system 分组");
         assert!(!settings.system.close_to_tray);
         assert!(settings.system.show_window_shortcut.is_empty());
+    }
+
+    /// 旧版 layout 不含新建格式布局时补齐默认分组
+    #[test]
+    fn old_settings_receive_default_create_formats() {
+        let settings: Settings = serde_json::from_str(r#"{"layout":{"uiScale":110}}"#)
+            .expect("旧版设置应能补全新建格式布局");
+        assert_eq!(settings.layout.create_formats.primary.first().map(String::as_str), Some("markdown"));
+        assert_eq!(settings.layout.create_formats.more.len(), 6);
     }
 }

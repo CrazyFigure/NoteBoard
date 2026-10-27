@@ -1,5 +1,5 @@
 // NoteBoard WelcomeScreen
-// 无 tab 时的欢迎页：主放核心 4 格式 (md, txt, 画板, 脑图) + 更多格式展开/二级弹窗
+// 无 tab 时的欢迎页：直接展示的新建格式卡片 + 更多格式展开（布局由设置「全局 → 新建入口」配置）
 // 详见 docs/07-UI布局与交互规范.md §11
 
 import React, { useEffect, useState } from 'react';
@@ -9,29 +9,19 @@ import React, { useEffect, useState } from 'react';
 import { prefetchEditor } from '../features/editor-host/editorLoaders';
 import {
   FolderOpen,
-  FilePlus,
-  PencilRuler,
   FileSearch,
-  FileText,
-  Network,
-  Layout,
-  Workflow,
-  GitMerge,
-  GitCompare,
-  Braces,
-  Database,
-  ChartColumn,
   ChevronDown,
   ChevronUp,
   Sparkles,
   Archive,
-  Table2,
   Star,
   FolderSync,
 } from 'lucide-react';
 import { useSyncStore } from '../stores/syncStore';
 import { formatRelative } from '../features/sync/syncFormat';
 import { formatShortcut } from '../core/shortcuts';
+import { createFormatLabel, getCreateFormat, type CreateFormatId } from '../features/welcome/createFormats';
+import { useCreateFormats } from '../features/welcome/useCreateFormats';
 
 interface WelcomeScreenProps {
   onOpenFile?: () => void;
@@ -108,57 +98,37 @@ export function WelcomeScreen({
     return () => { disposed = true; clearTimeout(timer); };
   }, []);
 
-  // 常用新建操作列表（5 大核心卡片，排入 3 列网格）
-  const primaryCreateActions = [
-    {
-      icon: FilePlus,
-      label: '新建 Markdown 笔记 (.md)',
-      desc: '富文本与源码双模笔记',
+  // 新建格式布局与「+」菜单共用一份设置：直接展示的排入核心卡片网格，其余收进「更多格式」
+  const createFormats = useCreateFormats();
+  const createHandlers: Record<CreateFormatId, (() => void) | undefined> = {
+    markdown: onNewMarkdown,
+    text: onNewText,
+    bitable: onNewBitable,
+    board: onNewBoard,
+    mindmap: onNewMindmap,
+    textdiff: onTextDiff,
+    drawio: onNewDrawio,
+    infographic: onNewInfographic,
+    mermaid: onNewMermaid,
+    plantuml: onNewPlantUml,
+    json: onNewJson,
+    sql: onNewSql,
+  };
+  const toCreateAction = (id: CreateFormatId, placement: 'primary' | 'more') => {
+    const meta = getCreateFormat(id);
+    return {
+      id,
+      icon: meta.icon,
+      label: createFormatLabel(meta, placement),
+      desc: meta.desc,
       shortcut: '',
-      color: 'var(--editor-accent, #3b82f6)',
-      onClick: onNewMarkdown,
-    },
-    {
-      icon: FileText,
-      label: '新建文本文档 (.txt)',
-      desc: '轻量纯文本记录与备忘',
-      shortcut: '',
-      color: '#64748b',
-      onClick: onNewText,
-    },
-    {
-      icon: Table2,
-      label: '新建多维表格 (.bitable)',
-      desc: '结构化数据与看板视图',
-      shortcut: '',
-      color: '#2563eb',
-      onClick: onNewBitable,
-    },
-    {
-      icon: PencilRuler,
-      label: '新建自由画板 (.excalidraw)',
-      desc: 'Excalidraw 自由手绘与白板',
-      shortcut: '',
-      color: 'var(--accent-strong, #8b5cf6)',
-      onClick: onNewBoard,
-    },
-    {
-      icon: Network,
-      label: '新建思维导图 (.mindmap)',
-      desc: '大纲 ⇄ 脑图双模切换',
-      shortcut: '',
-      color: '#f97316',
-      onClick: onNewMindmap,
-    },
-    {
-      icon: GitCompare,
-      label: '文本对比',
-      desc: '左右对照实时比对差异',
-      shortcut: '',
-      color: '#10b981',
-      onClick: onTextDiff,
-    },
-  ];
+      color: meta.color,
+      onClick: createHandlers[id],
+    };
+  };
+
+  // 常用新建操作列表（直接展示的格式，排入 3 列网格）
+  const primaryCreateActions = createFormats.primary.map((id) => toCreateAction(id, 'primary'));
 
   // 打开与常用操作列表（4 个操作，整齐排成 2x2 网格，配置多主题自适应微色调）
   const openActions = [
@@ -225,51 +195,8 @@ export function WelcomeScreen({
     },
   ];
 
-  // 更多格式列表（6 项：Draw.io, 信息图, Mermaid, PlantUML, JSON, SQL）
-  const moreFormats = [
-    {
-      icon: Layout,
-      label: 'Draw.io 架构图 (.drawio)',
-      desc: '专业系统架构与业务流程图',
-      color: '#ea580c',
-      onClick: onNewDrawio,
-    },
-    {
-      icon: ChartColumn,
-      label: '信息图 (.infographic)',
-      desc: '指标看板、时间线与漏斗等可视化',
-      color: '#14b8a6',
-      onClick: onNewInfographic,
-    },
-    {
-      icon: Workflow,
-      label: 'Mermaid 图表 (.mmd)',
-      desc: '时序图、流程图与状态机脚本',
-      color: '#00bfb2',
-      onClick: onNewMermaid,
-    },
-    {
-      icon: GitMerge,
-      label: 'PlantUML 建模 (.puml)',
-      desc: '类图、时序图与系统组件图',
-      color: '#a855f7',
-      onClick: onNewPlantUml,
-    },
-    {
-      icon: Braces,
-      label: 'JSON 配置文件 (.json)',
-      desc: 'JSON 数据、格式化与校验',
-      color: '#eab308',
-      onClick: onNewJson,
-    },
-    {
-      icon: Database,
-      label: 'SQL 数据库脚本 (.sql)',
-      desc: 'SQL 数据库查询与 DDL 语句',
-      color: '#3b82f6',
-      onClick: onNewSql,
-    },
-  ];
+  // 更多格式列表（收进「更多」的格式，不加「新建」前缀）
+  const moreFormats = createFormats.more.map((id) => toCreateAction(id, 'more'));
 
   return (
     <div
@@ -321,7 +248,8 @@ export function WelcomeScreen({
         </span>
       </div>
 
-      {/* 第一部分：常用新建核心卡片区（3 列网格） */}
+      {/* 第一部分：常用新建核心卡片区（3 列网格；全部收进更多时不渲染） */}
+      {primaryCreateActions.length > 0 && (
       <div
         style={{
           display: 'grid',
@@ -331,9 +259,9 @@ export function WelcomeScreen({
           maxWidth: 840,
         }}
       >
-        {primaryCreateActions.map((action, i) => (
+        {primaryCreateActions.map((action) => (
           <button
-            key={i}
+            key={action.id}
             type="button"
             className="nb-btn-card"
             onClick={action.onClick ?? (() => {})}
@@ -411,13 +339,15 @@ export function WelcomeScreen({
           </button>
         ))}
       </div>
+      )}
 
-      {/* 第二部分：横在中间的“更多格式”折叠通栏按钮 */}
+      {/* 第二部分：横在中间的“更多格式”折叠通栏按钮（没有收进更多的格式时不渲染） */}
+      {moreFormats.length > 0 && (
       <div
         style={{
           width: '100%',
           maxWidth: 840,
-          marginTop: 12,
+          marginTop: primaryCreateActions.length > 0 ? 12 : 0,
         }}
       >
         <button
@@ -467,9 +397,10 @@ export function WelcomeScreen({
           )}
         </button>
       </div>
+      )}
 
       {/* 第三部分：展开的更多格式卡片区（3 列网格） */}
-      {showMoreFormats && (
+      {showMoreFormats && moreFormats.length > 0 && (
         <div
           style={{
             marginTop: 10,
@@ -486,9 +417,9 @@ export function WelcomeScreen({
             boxSizing: 'border-box',
           }}
         >
-          {moreFormats.map((fmt, idx) => (
+          {moreFormats.map((fmt) => (
             <button
-              key={idx}
+              key={fmt.id}
               type="button"
               onClick={fmt.onClick ?? (() => {})}
               style={{

@@ -23,6 +23,7 @@ import {
   stopSystemThemeListener,
 } from '../core/theme/applyTheme';
 import { useFontPackStore } from './fontPackStore';
+import { DEFAULT_CREATE_FORMATS } from '../features/welcome/createFormats';
 
 // ── 默认值 ──
 
@@ -96,6 +97,10 @@ export const DEFAULT_SETTINGS: Settings = {
   layout: {
     statusBarVisible: true,
     uiScale: 100,
+    createFormats: {
+      primary: [...DEFAULT_CREATE_FORMATS.primary],
+      more: [...DEFAULT_CREATE_FORMATS.more],
+    },
   },
   system: {
     closeToTray: false,
