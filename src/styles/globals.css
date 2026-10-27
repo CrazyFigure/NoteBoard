@@ -7144,34 +7144,13 @@ input[type='number'] {
 
 .nb-cf-board {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 30px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
   align-items: stretch;
 }
 
 .nb-cf-board.is-stacked {
   grid-template-columns: minmax(0, 1fr);
-}
-
-.nb-cf-bridge {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.nb-cf-board.is-stacked .nb-cf-bridge {
-  height: 30px;
-}
-
-.nb-cf-bridge > span {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 999px;
-  border: 1px solid var(--editor-border);
-  background: var(--editor-bg);
-  color: var(--editor-text-muted);
 }
 
 .nb-cf-zone {
@@ -7241,26 +7220,6 @@ input[type='number'] {
   font-size: 10.5px;
   line-height: 16px;
   text-align: center;
-}
-
-.nb-cf-where {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  margin-left: auto;
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent-strong) 12%, transparent);
-  color: var(--accent-strong);
-}
-
-/* 仿「+」菜单里的「更多 ›」入口，示意这些格式折叠在它后面 */
-.nb-cf-where.is-more {
-  gap: 1px;
-  border: 1px solid var(--editor-border);
-  background: var(--editor-bg);
-  color: var(--editor-text-muted);
-  font-size: 10.5px;
 }
 
 .nb-cf-list {

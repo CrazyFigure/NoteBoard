@@ -28,8 +28,8 @@ describe('新建格式入口布局', () => {
     expect(new Set(all).size).toBe(CREATE_FORMATS.length);
     expect(all).toHaveLength(CREATE_FORMATS.length);
     // 未出现的默认直接展示项补在直接展示末尾，默认更多项补在更多末尾
-    expect(resolved.primary).toContain('bitable');
-    expect(resolved.more).toContain('drawio');
+    expect(resolved.primary).toContain('drawio');
+    expect(resolved.more).toContain('textdiff');
   });
 
   it('允许某一侧为空', () => {

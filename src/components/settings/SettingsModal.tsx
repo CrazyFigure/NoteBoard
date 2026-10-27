@@ -1424,11 +1424,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>全局设置</h3>
                 </div>
 
-                {/* 新建入口：主页与「+」菜单中哪些格式直接展示、哪些收进更多 */}
-                <div style={{ padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
-                  <CreateFormatsSettings />
-                </div>
-
                 {SUPPORTS_SYSTEM_INTEGRATION && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
@@ -1450,6 +1445,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </div>
                 )}
+
+                {/* 新建入口：主页与「+」菜单中哪些格式直接展示、哪些收进更多 */}
+                <div style={{ padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                  <CreateFormatsSettings />
+                </div>
               </div>
             )}
 

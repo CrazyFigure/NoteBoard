@@ -31,9 +31,6 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
-  ArrowLeftRight,
-  ArrowUpDown,
-  ChevronRight,
   ChevronsDown,
   ChevronsLeft,
   ChevronsRight,
@@ -215,18 +212,6 @@ function FormatZone({ zone, ids, stacked, activeZone, dragging, flashId, onMove 
         )}
         <span className="nb-cf-zone-title">{isPrimary ? '直接展示' : '收进更多'}</span>
         <span className="nb-cf-zone-count">{ids.length}</span>
-        {/* 图形化提示分区去向：直接展示出现在主页与「+」菜单首层；收进更多折叠在「更多 ›」之后 */}
-        {isPrimary ? (
-          <span className="nb-cf-where" aria-hidden="true">
-            <Home size={12} />
-            <Plus size={12} />
-          </span>
-        ) : (
-          <span className="nb-cf-where is-more" aria-hidden="true">
-            <span>更多</span>
-            <ChevronRight size={11} />
-          </span>
-        )}
       </header>
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         <ul ref={setNodeRef} className="nb-cf-list">
@@ -406,10 +391,6 @@ export function CreateFormatsSettings() {
             flashId={flashId}
             onMove={moveToOtherZone}
           />
-          {/* 两区之间的双向箭头，示意条目可在两侧之间移动 */}
-          <div className="nb-cf-bridge" aria-hidden="true">
-            <span>{stacked ? <ArrowUpDown size={14} /> : <ArrowLeftRight size={14} />}</span>
-          </div>
           <FormatZone
             zone="more"
             ids={items.more}

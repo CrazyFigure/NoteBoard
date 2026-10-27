@@ -335,8 +335,8 @@ impl Default for CreateFormatsLayout {
     fn default() -> Self {
         let ids = |list: &[&str]| list.iter().map(|s| s.to_string()).collect();
         Self {
-            primary: ids(&["markdown", "text", "bitable", "board", "mindmap", "textdiff"]),
-            more: ids(&["drawio", "infographic", "mermaid", "plantuml", "json", "sql"]),
+            primary: ids(&["markdown", "text", "bitable", "mindmap", "board", "drawio"]),
+            more: ids(&["textdiff", "infographic", "mermaid", "plantuml", "json", "sql"]),
         }
     }
 }

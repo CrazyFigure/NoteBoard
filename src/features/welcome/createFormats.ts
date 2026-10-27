@@ -67,10 +67,10 @@ export function getCreateFormat(id: CreateFormatId): CreateFormatMeta {
   return FORMAT_MAP.get(id)!;
 }
 
-/** 默认布局即历史上的固定布局：前 6 项直接展示，其余收进更多 */
+/** 默认布局：常用笔记与绘图格式直接展示，文本对比与脚本类格式收进更多 */
 export const DEFAULT_CREATE_FORMATS: CreateFormatsLayout = {
-  primary: ['markdown', 'text', 'bitable', 'board', 'mindmap', 'textdiff'],
-  more: ['drawio', 'infographic', 'mermaid', 'plantuml', 'json', 'sql'],
+  primary: ['markdown', 'text', 'bitable', 'mindmap', 'board', 'drawio'],
+  more: ['textdiff', 'infographic', 'mermaid', 'plantuml', 'json', 'sql'],
 };
 
 export interface ResolvedCreateFormats {
