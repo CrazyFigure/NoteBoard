@@ -803,15 +803,50 @@ export function TabBar() {
     ));
   }, []);
 
-  // 标签增删、改名、切换激活（字重变化）及窗口尺寸变化时都可能改变溢出量
+  // 标签增删、改名及切换激活（字重变化）都可能改变溢出量。
   useLayoutEffect(() => {
     updateScrollbar();
+  }, [tabs, activeKey, updateScrollbar]);
+
+  // 仅标签顺序或激活项变化时重新定位，避免脏状态等更新打断用户手动横向浏览。
+  const tabOrder = JSON.stringify(tabs.map((tab) => tab.key));
+  useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => updateScrollbar());
+    if (!el) return;
+
+    /** 布局完成后以最小横向位移展示激活标签，不改变编辑器焦点或页面纵向位置。 */
+    const syncViewport = () => {
+      // 逐项比较路径键，兼容文件名中的引号、反斜杠等 CSS 选择器特殊字符。
+      const activeTab = Array.from(el.querySelectorAll<HTMLElement>('[data-tab-key]'))
+        .find((tab) => tab.dataset.tabKey === activeKey);
+      // 隐藏容器尚无可视宽度，等待尺寸观察回调后再计算，避免写入错误的滚动位置。
+      if (activeTab && el.clientWidth > 0) {
+        const viewportLeft = el.getBoundingClientRect().left + el.clientLeft;
+        const viewportRight = viewportLeft + el.clientWidth;
+        const tabRect = activeTab.getBoundingClientRect();
+        // 极窄窗口装不下单个标签时优先展示文件名起点；其余情况只修正被裁切的一侧。
+        const delta = tabRect.width > el.clientWidth || tabRect.left < viewportLeft
+          ? tabRect.left - viewportLeft
+          : Math.max(0, tabRect.right - viewportRight);
+        if (delta !== 0) {
+          const maxScrollLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+          el.scrollLeft = Math.min(maxScrollLeft, Math.max(0, el.scrollLeft + delta));
+        }
+      }
+      // 自动定位后立即同步自绘滑块，不依赖各端 scroll 事件的派发时机。
+      updateScrollbar();
+    };
+
+    syncViewport();
+    // 桌面缩放、分屏与触屏设备横竖屏切换后，重新按容器实际宽度定位。
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', syncViewport);
+      return () => window.removeEventListener('resize', syncViewport);
+    }
+    const observer = new ResizeObserver(syncViewport);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [tabs, activeKey, updateScrollbar]);
+  }, [activeKey, tabOrder, updateScrollbar]);
 
   // 滚动条隐藏时 pointerleave 不会触发，需手动复位悬停态，避免下次出现时仍是高亮
   useEffect(() => {
