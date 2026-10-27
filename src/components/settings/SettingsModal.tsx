@@ -17,6 +17,7 @@ import { FontPackSettingsCard } from './FontPackSettingsCard';
 import { SettingsRange } from './SettingsRange';
 import { SettingsSelect } from './SettingsSelect';
 import { TabSizeSelect } from './TabSizeSelect';
+import { ReleaseNotes } from './ReleaseNotes';
 import { Tooltip } from '../Tooltip';
 import type { MarkdownNormalizationPolicy, TitleBarButtons } from '../../core/ipc/types';
 import { IS_MOBILE_UI, IS_NATIVE_MOBILE, IS_WEB } from '../../core/platform';
@@ -1764,6 +1765,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <span>GitHub 仓库</span>
                   </button>
                 </div>
+
+                {/* 最近版本更新日志，默认收起 */}
+                <ReleaseNotes />
               </div>
             )}
           </div>
