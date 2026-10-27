@@ -82,6 +82,10 @@ pub fn run() {
     let builder = builder.plugin(window::render_recovery::plugin());
 
     // 系统拖放落点在 Rust 同步登记，前端异步补充标签顺序。
+    // 极窄模式自动贴边：各窗口独立的贴边状态
+    #[cfg(desktop)]
+    let builder = builder.manage(window::edge_dock::EdgeDockRegistry::default());
+
     #[cfg(desktop)]
     let builder = builder.manage(window::tab_drag::TabDragState::default())
         .plugin(window::tab_drag::plugin());
@@ -128,6 +132,12 @@ pub fn run() {
             window::commands::set_show_window_shortcut,
             #[cfg(desktop)]
             window::tab_drag::start_tab_drag,
+            #[cfg(desktop)]
+            window::edge_dock::set_edge_dock,
+            #[cfg(desktop)]
+            window::edge_dock::begin_dock_drag,
+            #[cfg(desktop)]
+            window::edge_dock::end_dock_drag,
             #[cfg(desktop)]
             window::tab_drag::claim_tab_drop,
             window::print_pdf::print_window_to_pdf,

@@ -6,6 +6,7 @@ import React, { useState, useEffect, useRef, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight, Check } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 import { isTouchInteraction } from '../../core/inputModality';
+import { useViewportClamp } from '../../components/useViewportClamp';
 
 // ── 基础工具栏按钮 ──
 
@@ -146,6 +147,22 @@ export function ToolbarDivider() {
   );
 }
 
+// ── 下拉菜单内的水平分组线 ──
+
+export function ToolbarDropdownSeparator() {
+  return (
+    <div
+      role="separator"
+      style={{
+        height: 1,
+        margin: '3px 6px',
+        background: 'var(--editor-border, rgba(0,0,0,0.12))',
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
 // ── 下拉菜单容器 ──
 
 export interface ToolbarDropdownProps {
@@ -167,6 +184,8 @@ export function ToolbarDropdown({
 }: ToolbarDropdownProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [effectiveAlign, setEffectiveAlign] = useState<'left' | 'right'>(align ?? 'left');
+  // 窄窗口里左右对齐都可能越界，展开后整体平移回窗口内
+  const panelClamp = useViewportClamp<HTMLDivElement>(isOpen, effectiveAlign);
 
   // 计算下拉菜单对齐方式，防止超出编辑区右边界
   useEffect(() => {
@@ -206,6 +225,7 @@ export function ToolbarDropdown({
 
       {isOpen && (
         <div
+          ref={panelClamp.ref}
           className="nb-toolbar-dropdown-panel"
           onMouseDown={(e) => e.stopPropagation()}
           style={{
@@ -225,6 +245,7 @@ export function ToolbarDropdown({
             gap: 1,
             animation: 'nb-fade-in 120ms ease-out',
             ...style,
+            ...panelClamp.style,
           }}
         >
           {children}
@@ -268,6 +289,8 @@ export function ToolbarDropdownItem({
   const [flipLeft, setFlipLeft] = useState(false);
   const itemRef = useRef<HTMLDivElement>(null);
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 左右两侧都放不下子菜单时（极窄模式），平移回窗口内并允许覆盖父级菜单
+  const submenuClamp = useViewportClamp<HTMLDivElement>(submenuOpen, flipLeft);
 
   const hasSubmenu = Boolean(submenu);
 
@@ -408,6 +431,7 @@ export function ToolbarDropdownItem({
       {/* 二级 / 三级悬浮子菜单 */}
       {hasSubmenu && submenuOpen && (
         <div
+          ref={submenuClamp.ref}
           className="nb-toolbar-submenu"
           onMouseEnter={() => {
             if (closeTimeoutRef.current) {
@@ -435,6 +459,7 @@ export function ToolbarDropdownItem({
             flexDirection: 'column',
             gap: 1,
             animation: 'nb-fade-in 100ms ease-out',
+            ...submenuClamp.style,
           }}
         >
           {/* 透明悬停连桥：覆盖父子菜单间隙，确保鼠标移动不会产生盲区 */}

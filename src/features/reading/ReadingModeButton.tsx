@@ -6,6 +6,7 @@ import type { CSSProperties } from 'react';
 import { BookOpen, Minimize2 } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 import { requestReadingMode, useIsReading } from './readingMode';
+import { useLayoutStore } from '../../stores/layoutStore';
 
 interface ReadingModeButtonProps {
   docKey: string;
@@ -21,6 +22,9 @@ interface ReadingModeButtonProps {
 
 export function ReadingModeButton({ docKey, className, showLabel = false, iconSize = 13, escHint = true, style }: ReadingModeButtonProps) {
   const isReading = useIsReading(docKey);
+  // 沉浸阅读需要系统全屏，与极窄模式互斥：极窄模式下不显示入口
+  const compactMode = useLayoutStore((s) => s.compactMode);
+  if (compactMode && !isReading) return null;
   const label = isReading ? '退出沉浸阅读' : '沉浸阅读';
   const Icon = isReading ? Minimize2 : BookOpen;
 

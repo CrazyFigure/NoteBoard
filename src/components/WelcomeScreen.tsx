@@ -22,6 +22,8 @@ import { formatRelative } from '../features/sync/syncFormat';
 import { formatShortcut } from '../core/shortcuts';
 import { createFormatLabel, getCreateFormat, type CreateFormatId } from '../features/welcome/createFormats';
 import { useCreateFormats } from '../features/welcome/useCreateFormats';
+import { useLayoutStore } from '../stores/layoutStore';
+import { Tooltip } from './Tooltip';
 
 interface WelcomeScreenProps {
   onOpenFile?: () => void;
@@ -44,6 +46,11 @@ interface WelcomeScreenProps {
   onOpenSyncFolder?: () => void;
 }
 
+/** 极窄模式卡片较窄：去掉标题末尾的「(.md)」扩展名说明，避免截断 */
+function stripExtension(label: string): string {
+  return label.replace(/\s*[(（][^()（）]*[)）]\s*$/, '');
+}
+
 export function WelcomeScreen({
   onOpenFile,
   onOpenFolder,
@@ -64,6 +71,8 @@ export function WelcomeScreen({
   onOpenSyncFolder,
 }: WelcomeScreenProps) {
   const [showMoreFormats, setShowMoreFormats] = useState(false);
+  // 极窄模式：新建卡片改为图标在上的紧凑三列，描述移入 Tooltip，打开类卡片隐藏快捷键徽标
+  const compact = useLayoutStore((s) => s.compactMode);
   // 同步文件夹入口：路径与最近同步状态
   const syncRoot = useSyncStore((s) => s.config?.sync.rootDir?.trim() || null);
   const syncEnabled = useSyncStore((s) => s.config?.sync.enabled ?? false);
@@ -207,7 +216,7 @@ export function WelcomeScreen({
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '32px 24px',
+        padding: compact ? '20px 14px' : '32px 24px',
         boxSizing: 'border-box',
         background: 'var(--editor-bg)',
         color: 'var(--editor-text)',
@@ -221,20 +230,20 @@ export function WelcomeScreen({
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: 12,
-          marginBottom: 26,
+          gap: compact ? 8 : 12,
+          marginBottom: compact ? 18 : 26,
         }}
       >
         <img
           src="/logo.ico"
           alt="NoteBoard"
-          width={64}
-          height={64}
+          width={compact ? 44 : 64}
+          height={compact ? 44 : 64}
           style={{ filter: 'drop-shadow(0 4px 12px rgba(0, 0, 0, 0.12))' }}
         />
         <h1
           style={{
-            fontSize: 26,
+            fontSize: compact ? 20 : 26,
             fontWeight: 600,
             color: 'var(--editor-heading)',
             margin: 0,
@@ -243,7 +252,7 @@ export function WelcomeScreen({
         >
           NoteBoard
         </h1>
-        <span style={{ fontSize: 13, color: 'var(--editor-text-muted)' }}>
+        <span style={{ fontSize: compact ? 12 : 13, color: 'var(--editor-text-muted)', textAlign: 'center' }}>
           轻量双模笔记、思维导图与专业图表工作台
         </span>
       </div>
@@ -254,22 +263,24 @@ export function WelcomeScreen({
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-          gap: 12,
+          gap: compact ? 8 : 12,
           width: '100%',
           maxWidth: 840,
         }}
       >
         {primaryCreateActions.map((action) => (
+          <Tooltip key={action.id} content={action.desc} disabled={!compact} side="bottom" sideOffset={6}>
           <button
-            key={action.id}
             type="button"
             className="nb-btn-card"
             onClick={action.onClick ?? (() => {})}
             style={{
               display: 'flex',
+              flexDirection: compact ? 'column' : 'row',
               alignItems: 'center',
-              gap: 12,
-              padding: '10px 14px',
+              gap: compact ? 6 : 12,
+              padding: compact ? '10px 6px 8px' : '10px 14px',
+              minWidth: 0,
               border: '1px solid var(--control-border)',
               borderRadius: 8,
               background: 'var(--editor-surface)',
@@ -312,16 +323,18 @@ export function WelcomeScreen({
             >
               <action.icon size={18} color={action.color} />
             </div>
-            {/* 标题与描述 */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 500, lineHeight: 1.3, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                {action.label}
+            {/* 标题与描述（极窄模式只保留居中标题） */}
+            <div style={{ flex: 1, minWidth: 0, width: compact ? '100%' : undefined, textAlign: compact ? 'center' : undefined }}>
+              <div style={{ fontWeight: 500, lineHeight: 1.3, fontSize: compact ? 12 : undefined, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                {compact ? stripExtension(action.label) : action.label}
               </div>
-              <div style={{ fontSize: 11, color: 'var(--editor-text-muted)', marginTop: 2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                {action.desc}
-              </div>
+              {!compact && (
+                <div style={{ fontSize: 11, color: 'var(--editor-text-muted)', marginTop: 2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                  {action.desc}
+                </div>
+              )}
             </div>
-            {action.shortcut ? (
+            {action.shortcut && !compact ? (
               <span
                 style={{
                   color: 'var(--editor-text-muted)',
@@ -337,6 +350,7 @@ export function WelcomeScreen({
               </span>
             ) : null}
           </button>
+          </Tooltip>
         ))}
       </div>
       )}
@@ -408,8 +422,8 @@ export function WelcomeScreen({
             maxWidth: 840,
             display: 'grid',
             gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-            gap: 10,
-            padding: 12,
+            gap: compact ? 6 : 10,
+            padding: compact ? 8 : 12,
             background: 'var(--editor-surface)',
             border: '1px solid var(--editor-border)',
             borderRadius: 8,
@@ -418,15 +432,17 @@ export function WelcomeScreen({
           }}
         >
           {moreFormats.map((fmt) => (
+            <Tooltip key={fmt.id} content={fmt.desc} disabled={!compact} side="bottom" sideOffset={6}>
             <button
-              key={fmt.id}
               type="button"
               onClick={fmt.onClick ?? (() => {})}
               style={{
                 display: 'flex',
+                flexDirection: compact ? 'column' : 'row',
                 alignItems: 'center',
-                gap: 10,
-                padding: '8px 12px',
+                gap: compact ? 4 : 10,
+                padding: compact ? '8px 4px 6px' : '8px 12px',
+                minWidth: 0,
                 border: '1px solid var(--control-border)',
                 borderRadius: 6,
                 background: 'var(--editor-bg)',
@@ -454,15 +470,18 @@ export function WelcomeScreen({
               }}
             >
               <fmt.icon size={16} color={fmt.color} style={{ flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+              <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', width: compact ? '100%' : undefined, textAlign: compact ? 'center' : undefined }}>
                 <div style={{ fontWeight: 500, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                  {fmt.label}
+                  {compact ? stripExtension(fmt.label) : fmt.label}
                 </div>
-                <div style={{ fontSize: 10, color: 'var(--editor-text-muted)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                  {fmt.desc}
-                </div>
+                {!compact && (
+                  <div style={{ fontSize: 10, color: 'var(--editor-text-muted)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                    {fmt.desc}
+                  </div>
+                )}
               </div>
             </button>
+            </Tooltip>
           ))}
         </div>
       )}
@@ -472,10 +491,10 @@ export function WelcomeScreen({
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-          gap: 12,
+          gap: compact ? 8 : 12,
           width: '100%',
           maxWidth: 840,
-          marginTop: 12,
+          marginTop: compact ? 8 : 12,
         }}
       >
         {openActions.map((action, i) => (
@@ -487,8 +506,9 @@ export function WelcomeScreen({
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 12,
-              padding: '10px 14px',
+              gap: compact ? 8 : 12,
+              padding: compact ? '8px 10px' : '10px 14px',
+              minWidth: 0,
               border: `1px solid ${action.border}`,
               borderRadius: 8,
               background: action.bg,
@@ -544,7 +564,7 @@ export function WelcomeScreen({
                 {action.desc}
               </div>
             </div>
-            {action.shortcut ? (
+            {action.shortcut && !compact ? (
               <span
                 style={{
                   color: 'var(--editor-text-secondary, var(--editor-text-muted))',
@@ -572,8 +592,9 @@ export function WelcomeScreen({
               gridColumn: '1 / -1',
               display: 'flex',
               alignItems: 'center',
-              gap: 12,
-              padding: '10px 14px',
+              gap: compact ? 8 : 12,
+              padding: compact ? '8px 10px' : '10px 14px',
+              minWidth: 0,
               border: '1px solid rgba(14, 165, 233, 0.18)',
               borderRadius: 8,
               background: 'rgba(14, 165, 233, 0.05)',
@@ -621,7 +642,7 @@ export function WelcomeScreen({
                 {syncRoot}
               </div>
             </div>
-            <span style={{ fontSize: 11, color: 'var(--editor-text-muted)', flexShrink: 0 }}>{syncStatusText}</span>
+            {!compact && <span style={{ fontSize: 11, color: 'var(--editor-text-muted)', flexShrink: 0 }}>{syncStatusText}</span>}
           </button>
         ) : null}
       </div>

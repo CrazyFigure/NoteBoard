@@ -7426,3 +7426,165 @@ input[type='number'] {
   width: 34px;
   height: 34px;
 }
+
+/* ── 极窄模式格式提示条 ── */
+.nb-compact-notice-action {
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--accent-strong) 35%, transparent);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent-strong);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-compact-notice-action:hover {
+  background: color-mix(in srgb, var(--accent-strong) 12%, transparent);
+}
+
+.nb-compact-notice-action:active {
+  transform: scale(0.95);
+}
+
+.nb-compact-notice-close {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--editor-text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-compact-notice-close:hover {
+  background: var(--toolbar-hover);
+  color: var(--editor-text);
+}
+
+.nb-compact-notice-close:active {
+  background: var(--toolbar-active);
+  transform: scale(0.92);
+}
+
+/* ── 极窄模式：各格式自带的顶部工具栏 ──
+ * 沿用移动端思路：空间不足时换行而非横向滚动（工具栏内有绝对定位的下拉菜单，滚动容器会把它们裁掉）；
+ * 带图标的按钮只保留图标，文字说明由按钮自带的 Tooltip 承担。
+ */
+[data-compact='true'] .nb-editor-topbar {
+  height: auto !important;
+  min-height: 36px !important;
+  flex-wrap: wrap;
+  row-gap: 4px;
+  column-gap: 6px;
+  padding: 4px 8px !important;
+}
+
+[data-compact='true'] .nb-editor-topbar > div {
+  flex-wrap: wrap;
+  row-gap: 4px;
+  min-width: 0;
+}
+
+[data-compact='true'] .nb-editor-topbar-title {
+  display: none !important;
+}
+
+[data-compact='true'] .nb-editor-pill-btn {
+  padding: 4px 7px;
+}
+
+[data-compact='true'] .nb-editor-pill-btn:has(> svg) > span,
+[data-compact='true'] .nb-editor-toolbar-btn:has(> svg) > span,
+[data-compact='true'] .nb-editor-primary-btn:has(> svg) > span {
+  display: none;
+}
+
+/* 多维表格：视图 Tab 与操作分两行，导出 CSV 收起，分组 / 排序工具条单行横向滚动 */
+[data-compact='true'] .nb-bitable-toolbar {
+  height: auto !important;
+  min-height: 0 !important;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px !important;
+}
+
+[data-compact='true'] .nb-bitable-views {
+  flex: 1 1 100% !important;
+  min-width: 0;
+  scrollbar-width: none;
+}
+
+[data-compact='true'] .nb-bitable-views::-webkit-scrollbar,
+[data-compact='true'] .nb-bitable-subbar::-webkit-scrollbar {
+  display: none;
+}
+
+[data-compact='true'] .nb-bitable-actions {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+[data-compact='true'] .nb-bitable-search {
+  flex: 1;
+  width: auto !important;
+  min-width: 0;
+}
+
+[data-compact='true'] .nb-bitable-export {
+  display: none !important;
+}
+
+[data-compact='true'] .nb-bitable-btn-secondary,
+[data-compact='true'] .nb-bitable-btn-primary,
+[data-compact='true'] .nb-bitable-btn-ghost,
+[data-compact='true'] .nb-bitable-tab {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+[data-compact='true'] .nb-bitable-subbar {
+  flex-wrap: nowrap !important;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 6px 8px !important;
+}
+
+[data-compact='true'] .nb-bitable-subbar > *,
+[data-compact='true'] .nb-bitable-subbar span {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* 文本对比：按钮只留图标，文件名收起，放不下时换行 */
+[data-compact='true'] .nb-diff-toolbar {
+  flex-wrap: wrap;
+  row-gap: 2px;
+  padding: 4px 6px !important;
+}
+
+[data-compact='true'] .nb-diff-tbtn {
+  padding: 3px 6px !important;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+[data-compact='true'] .nb-diff-tbtn:has(> svg) > span,
+[data-compact='true'] .nb-diff-name {
+  display: none;
+}
+
+/* 信息图布局 / 模板按钮与图表复制导出按钮：极窄模式同样只留图标 */
+[data-compact='true'] .nb-ig-layout-btn:has(> svg) > span,
+[data-compact='true'] .nb-ig-icon-btn:has(> svg) > span,
+[data-compact='true'] .nb-chart-export-btn:has(> svg) > span {
+  display: none;
+}

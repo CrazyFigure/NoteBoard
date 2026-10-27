@@ -40,6 +40,7 @@ import {
   History,
 } from 'lucide-react';
 import { Tooltip } from '../Tooltip';
+import { useViewportClamp } from '../useViewportClamp';
 import { on, off } from '../../core/emitter';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
@@ -120,7 +121,11 @@ function TabItem({ tab, isActive, onActivate, onClose, nativeDragging, arriving 
     useSortable({ id: tab.key });
 
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
+  // 右键菜单按点击坐标展开，窄窗口靠右的标签会越出窗口，展开后平移回窗口内
+  const menuClamp = useViewportClamp<HTMLDivElement>(Boolean(menuPos), menuPos);
+  const menuRef = menuClamp.ref;
+  // 极窄模式：标签更窄、内边距更小，一屏多放几个标签
+  const compactMode = useLayoutStore((s) => s.compactMode);
   const { tabs, requestCloseOther, requestCloseLeft, requestCloseRight, requestCloseAll } = useWindowStore();
 
   // 计算当前标签页索引与各方向关闭操作可用状态
@@ -168,14 +173,14 @@ function TabItem({ tab, isActive, onActivate, onClose, nativeDragging, arriving 
     animation: arriving && !isDragging ? 'nb-tab-arrive 200ms ease-out' : undefined,
     display: 'flex',
     alignItems: 'center',
-    gap: 6,
-    // 短标题自动紧凑自适应，长标题限制在 200px 并在末端以省略号截断
-    minWidth: 80,
-    maxWidth: 200,
+    gap: compactMode ? 4 : 6,
+    // 短标题自动紧凑自适应，长标题限制在 200px（极窄模式 132px）并在末端以省略号截断
+    minWidth: compactMode ? 56 : 80,
+    maxWidth: compactMode ? 132 : 200,
     width: 'max-content',
     flex: '0 0 auto',
-    height: 28,
-    padding: '0 6px 0 10px',
+    height: compactMode ? 26 : 28,
+    padding: compactMode ? '0 4px 0 7px' : '0 6px 0 10px',
     // 左右留出间距，防止边缘遮挡（相邻 Tab 间缝隙为 4px）
     margin: '0 2px',
     borderRadius: 6,
@@ -342,6 +347,7 @@ function TabItem({ tab, isActive, onActivate, onClose, nativeDragging, arriving 
             boxShadow: 'var(--shadow-md)',
             padding: '4px',
             minWidth: 150,
+            ...menuClamp.style,
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -657,6 +663,8 @@ const HIDDEN_TAB_SCROLLBAR: TabScrollbarState = { visible: false, thumbLeft: 0, 
 
 export function TabBar() {
   const { tabs, activeKey, activateTab, requestCloseTab, reorderTabs } = useWindowStore();
+  // 极窄模式隐藏保存与回到主界面按钮（Ctrl+S 与状态栏仍可保存），只保留新建
+  const compactMode = useLayoutStore((s) => s.compactMode);
   const scrollRef = useRef<HTMLDivElement>(null);
   const nativeDraggedKey = useNativeDraggedTabKey();
   const arrivingKey = useArrivingTabKey();
@@ -681,7 +689,10 @@ export function TabBar() {
   const [flipSubMenuLeft, setFlipSubMenuLeft] = useState(false);
   const subMenuTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const moreItemRef = useRef<HTMLDivElement>(null);
-  const newMenuRef = useRef<HTMLDivElement>(null);
+  // 新建菜单及其子菜单在窄窗口里可能越出底部或两侧，展开后平移回窗口内
+  const newMenuClamp = useViewportClamp<HTMLDivElement>(Boolean(newMenuPos), newMenuPos);
+  const newMenuRef = newMenuClamp.ref;
+  const moreSubMenuClamp = useViewportClamp<HTMLDivElement>(showMoreSubMenu, flipSubMenuLeft);
   // 新建按钮引用，用于菜单点击外部区域判断
   const newBtnRef = useRef<HTMLButtonElement>(null);
 
@@ -987,7 +998,8 @@ export function TabBar() {
   };
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', height: '100%', minWidth: 0, flex: '0 1 auto', maxWidth: 'calc(100vw - 210px)' }}>
+    // 极窄模式按钮更少，不再预留常规模式的右侧宽度，标签栏随拖拽区按需收缩
+    <div style={{ display: 'flex', alignItems: 'center', height: '100%', minWidth: 0, flex: '0 1 auto', maxWidth: compactMode ? undefined : 'calc(100vw - 210px)' }}>
       {!IS_WEB && !IS_NATIVE_MOBILE && <TabDropOverlay />}
       {/* 滚动外壳：不随内容滚动，为自绘滚动条提供定位基准 */}
       <div style={{ position: 'relative', display: 'flex', height: '100%', minWidth: 0, flex: '0 1 auto' }}>
@@ -1060,6 +1072,7 @@ export function TabBar() {
         )}
       </div>
 
+      {!compactMode && (<>
       {/* 保存与另存为快捷按钮 */}
       <Tooltip content="保存与另存为" side="bottom" sideOffset={6} disabled={Boolean(saveMenuPos)}>
         <button
@@ -1152,6 +1165,8 @@ export function TabBar() {
         </button>
       </Tooltip>
 
+      </>)}
+
       {/* 新建标签按钮（+） */}
       <Tooltip content="新建或打开" side="bottom" sideOffset={6} disabled={Boolean(newMenuPos)}>
         <button
@@ -1219,6 +1234,7 @@ export function TabBar() {
             boxShadow: 'var(--shadow-md)',
             padding: '4px',
             minWidth: 175,
+            ...newMenuClamp.style,
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -1259,9 +1275,11 @@ export function TabBar() {
             {/* 二级菜单 */}
             {showMoreSubMenu && (
               <div
+                ref={moreSubMenuClamp.ref}
                 onMouseEnter={handleOpenSubMenu}
                 onMouseLeave={handleCloseSubMenuDelayed}
                 style={{
+                  ...moreSubMenuClamp.style,
                   position: 'absolute',
                   top: -4,
                   ...(flipSubMenuLeft

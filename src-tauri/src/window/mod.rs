@@ -11,6 +11,9 @@ pub mod tab_drag;
 pub mod tray;
 #[cfg(desktop)]
 pub mod global_shortcut;
+// 极窄模式自动贴边：依赖桌面窗口坐标与显示器信息
+#[cfg(desktop)]
+pub mod edge_dock;
 
 /// 按设置同步系统集成（托盘 + 全局快捷键）；启动与每次保存设置时调用，失败只记录日志
 #[cfg(desktop)]

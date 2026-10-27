@@ -161,6 +161,8 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
   const [liveElements, setLiveElements] = useState<ExcalidrawScene['elements']>([]);
   const boardPresentationMode = useLayoutStore((s) => s.boardPresentationMode);
   const setBoardPresentationMode = useLayoutStore((s) => s.setBoardPresentationMode);
+  // 极窄模式画布本就狭小，收起缩略图把空间留给画板
+  const compactMode = useLayoutStore((s) => s.compactMode);
   const storeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const diskTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** 串行化原生窗口全屏请求，避免快速连点造成较晚完成的旧请求覆盖最新状态 */
@@ -755,8 +757,8 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
             />
           </div>
         )}
-        {/* 右下角缩略图：避开 Excalidraw 底栏帮助按钮；演示模式与移动端不显示 */}
-        {!boardPresentationMode && !IS_MOBILE_UI && (
+        {/* 右下角缩略图：避开 Excalidraw 底栏帮助按钮；演示模式、极窄模式与移动端不显示 */}
+        {!boardPresentationMode && !IS_MOBILE_UI && !compactMode && (
           <CanvasMinimap
             storageKey="nb-minimap-visible:board"
             getScene={getMinimapScene}

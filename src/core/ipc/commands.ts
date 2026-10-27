@@ -188,6 +188,21 @@ export function setShowWindowShortcut(shortcut: string): Promise<void> {
   return invoke<void>('set_show_window_shortcut', { shortcut });
 }
 
+/** 开启 / 关闭当前窗口的自动贴边（极窄模式）；桌面环境不支持时抛出原因 */
+export function setEdgeDock(enabled: boolean): Promise<void> {
+  return invoke<void>('set_edge_dock', { enabled });
+}
+
+/** 极窄模式由 Rust 驱动标题栏拖动（避开系统贴靠 / 平铺），按下时开始；constrain 为真时不允许拖出桌面 */
+export function beginDockDrag(constrain: boolean): Promise<void> {
+  return invoke<void>('begin_dock_drag', { constrain });
+}
+
+/** 结束自动贴边的拖动（松开鼠标或失去指针捕获） */
+export function endDockDrag(): Promise<void> {
+  return invoke<void>('end_dock_drag');
+}
+
 // ── 文档注册表 ──
 
 export function registerDocument(

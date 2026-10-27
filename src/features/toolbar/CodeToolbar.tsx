@@ -18,12 +18,14 @@ import {
   CheckCircle2,
   Minimize2,
   Maximize2,
+  Ellipsis,
 } from 'lucide-react';
 import {
   ToolbarButton,
   ToolbarDivider,
   ToolbarDropdown,
   ToolbarDropdownItem,
+  ToolbarDropdownSeparator,
 } from './ToolbarComponents';
 import {
   undoDocumentHistory,
@@ -39,9 +41,13 @@ import type { LanguageId } from '../../core/ipc/types';
 interface CodeToolbarProps {
   docKey: string;
   language?: string;
+  /** 极窄模式：按钮只显示图标，次常用视图开关收进「更多」菜单 */
+  compact?: boolean;
+  /** 极窄模式「更多」菜单末尾追加的条目（如历史记录） */
+  moreItems?: React.ReactNode;
 }
 
-export function CodeToolbar({ docKey, language }: CodeToolbarProps) {
+export function CodeToolbar({ docKey, language, compact = false, moreItems }: CodeToolbarProps) {
   const lang = (language ?? 'plaintext') as LanguageId;
   const isJson = lang === 'json';
   const { canUndo, canRedo } = useDocumentHistory(docKey);
@@ -49,6 +55,12 @@ export function CodeToolbar({ docKey, language }: CodeToolbarProps) {
   // 下拉菜单开闭状态
   const [jsonDropdownOpen, setJsonDropdownOpen] = useState(false);
   const [textDropdownOpen, setTextDropdownOpen] = useState(false);
+  const [moreDropdownOpen, setMoreDropdownOpen] = useState(false);
+  /** 「更多」菜单内的操作执行后收起菜单 */
+  const runFromMore = (action: () => void) => () => {
+    setMoreDropdownOpen(false);
+    action();
+  };
 
   // 编辑器设置
   const { settings, setEditor } = useSettingsStore();
@@ -106,14 +118,14 @@ export function CodeToolbar({ docKey, language }: CodeToolbarProps) {
 
       <ToolbarDivider />
 
-      {/* ── JSON 工具组（二级菜单） ── */}
-      <ToolbarDropdown
+      {/* ── JSON 工具组（二级菜单）；极窄模式仅在 JSON 文件中显示，快捷键始终可用 ── */}
+      {(!compact || isJson) && <ToolbarDropdown
         isOpen={jsonDropdownOpen}
         onOpenChange={setJsonDropdownOpen}
         trigger={
           <ToolbarButton
             icon={<Braces size={15} />}
-            label="JSON 工具"
+            label={compact ? undefined : 'JSON 工具'}
             hasDropdown
             title="JSON 展开格式化、单行压缩与格式校验"
             active={isJson}
@@ -180,7 +192,7 @@ export function CodeToolbar({ docKey, language }: CodeToolbarProps) {
             </>
           }
         />
-      </ToolbarDropdown>
+      </ToolbarDropdown>}
 
       {/* ── 文本与代码增强工具组（二级菜单） ── */}
       <ToolbarDropdown
@@ -189,7 +201,7 @@ export function CodeToolbar({ docKey, language }: CodeToolbarProps) {
         trigger={
           <ToolbarButton
             icon={<Sparkles size={15} />}
-            label="文本工具"
+            label={compact ? undefined : '文本工具'}
             hasDropdown
             title="大小写转换与代码格式化"
           />
@@ -245,6 +257,7 @@ export function CodeToolbar({ docKey, language }: CodeToolbarProps) {
         active={editorSettings.softWrap}
         onClick={() => setEditor({ softWrap: !editorSettings.softWrap })}
       />
+      {!compact && (<>
       <ToolbarButton
         icon={<ListOrdered size={15} />}
         title="显示行号 (Line Numbers)"
@@ -257,6 +270,7 @@ export function CodeToolbar({ docKey, language }: CodeToolbarProps) {
         active={editorSettings.showWhitespace}
         onClick={() => setEditor({ showWhitespace: !editorSettings.showWhitespace })}
       />
+      </>)}
 
       <ToolbarDivider />
 
@@ -267,12 +281,59 @@ export function CodeToolbar({ docKey, language }: CodeToolbarProps) {
         shortcut="Ctrl+F"
         onClick={() => openSearch(undefined, 'search')}
       />
-      <ToolbarButton
-        icon={<Replace size={15} />}
-        title="替换文本"
-        shortcut="Ctrl+H"
-        onClick={() => openSearch(undefined, 'replace')}
-      />
+      {!compact && (
+        <ToolbarButton
+          icon={<Replace size={15} />}
+          title="替换文本"
+          shortcut="Ctrl+H"
+          onClick={() => openSearch(undefined, 'replace')}
+        />
+      )}
+
+      {/* ── 极窄模式「更多」菜单：行号、空白字符、替换与外部追加条目 ── */}
+      {compact && (
+        <ToolbarDropdown
+          isOpen={moreDropdownOpen}
+          onOpenChange={setMoreDropdownOpen}
+          align="right"
+          trigger={
+            <ToolbarButton
+              icon={<Ellipsis size={15} strokeWidth={2.2} />}
+              title="更多"
+              active={moreDropdownOpen}
+            />
+          }
+        >
+          <ToolbarDropdownItem
+            icon={<ListOrdered size={14} />}
+            label="显示行号"
+            active={editorSettings.showLineNumbers !== false}
+            onClick={runFromMore(() => setEditor({ showLineNumbers: !(editorSettings.showLineNumbers !== false) }))}
+          />
+          <ToolbarDropdownItem
+            icon={<Eye size={14} />}
+            label="显示空白字符"
+            active={editorSettings.showWhitespace}
+            onClick={runFromMore(() => setEditor({ showWhitespace: !editorSettings.showWhitespace }))}
+          />
+          <ToolbarDropdownSeparator />
+          <ToolbarDropdownItem
+            icon={<Replace size={14} />}
+            label="替换文本"
+            shortcut="Ctrl+H"
+            onClick={runFromMore(() => openSearch(undefined, 'replace'))}
+          />
+          {moreItems && (
+            <>
+              <ToolbarDropdownSeparator />
+              {/* 外部条目点击后同样收起菜单 */}
+              <div onClickCapture={() => setMoreDropdownOpen(false)} style={{ display: 'contents' }}>
+                {moreItems}
+              </div>
+            </>
+          )}
+        </ToolbarDropdown>
+      )}
     </div>
   );
 }

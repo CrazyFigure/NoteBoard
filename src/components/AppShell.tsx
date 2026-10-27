@@ -14,6 +14,7 @@ import { WikiLinkDialogHost } from '../features/wikilink/WikiLinkDialogHost';
 import { RailToggle } from './rail/RailToggle';
 import { FileDropOverlay } from './FileDropOverlay';
 import { EditorStack } from './shell/EditorStack';
+import { CompactModeNotice } from './shell/CompactModeNotice';
 import { useCloseGuardHandlers, useMarkdownEditorRegistry, useRestoredTabLoader } from './shell/shellHooks';
 import { useWindowStore } from '../stores/windowStore';
 import {
@@ -100,6 +101,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
     statusBarVisible,
     boardPresentationMode,
     readingMode,
+    compactMode,
     toggleExplorer,
     toggleOutline,
   } = useLayoutStore();
@@ -127,6 +129,15 @@ export function AppShell(_props: { children?: React.ReactNode }) {
   // 沉浸阅读同样接管外壳：隐藏标题栏、侧栏、操作栏与状态栏
   const isReadingMode = readingMode && supportsReadingMode(activeTab);
   const isShellHidden = isBoardPresentationMode || isReadingMode;
+  // 极窄模式只保留编辑区：侧栏与大纲按渲染条件隐藏，不改写各自的可见性记忆
+  const showSidePanels = !isShellHidden && !compactMode;
+
+  // 极窄模式标记写到根节点：各格式自带工具栏经全局样式统一切换为图标按钮、自动换行
+  useEffect(() => {
+    const root = document.documentElement;
+    if (compactMode) root.dataset.compact = 'true';
+    else delete root.dataset.compact;
+  }, [compactMode]);
 
   // 切换或关闭标签时退出沉浸阅读，避免窗口停留在全屏且外壳不可见
   useEffect(() => {
@@ -381,7 +392,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
           }}
         >
           {/* 资源管理器 */}
-          {!isShellHidden && explorerVisible && (
+          {showSidePanels && explorerVisible && (
             <>
               <Panel
                 id="nb-explorer"
@@ -427,7 +438,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
               }}
             >
               {/* 左折叠把手 */}
-              {!isShellHidden && (
+              {showSidePanels && (
                 <RailToggle
                   side="left"
                   visible={explorerVisible}
@@ -453,6 +464,9 @@ export function AppShell(_props: { children?: React.ReactNode }) {
                     activeEditor={activeEditor}
                   />
                 )}
+
+                {/* 极窄模式下适配受限的格式给出提示 */}
+                {compactMode && !isShellHidden && activeTab && <CompactModeNotice tab={activeTab} />}
 
                 {/* 🔴 N08：Home 与编辑器容器并存——显示 Home（无活动标签）不销毁 */}
                 {/* 已打开文档的会话/实例；不可回收类型（Markdown/Board 等）的实例保持挂载。 */}
@@ -487,7 +501,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
                 />
 
                 {/* 右折叠把手（仅 Markdown） */}
-                {!isShellHidden && tabs.length > 0 && (
+                {showSidePanels && tabs.length > 0 && (
                   <RailToggle
                     side="right"
                     visible={outlineVisible}
@@ -504,7 +518,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
           </Panel>
 
           {/* 大纲 */}
-          {!isShellHidden && outlineVisible && showOutline && (
+          {showSidePanels && outlineVisible && showOutline && (
             <>
               <ResizeHandle />
               <Panel

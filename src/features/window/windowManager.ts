@@ -40,6 +40,7 @@ import { saveViewState } from '../session/editorSuspension';
 import { reportWebSpans } from '../../core/perf/reportWebSpans';
 import { captureTextDiff, restoreTextDiff, clearTextDiffTransfer, type TextDiffSnapshot } from '../textdiff/textDiffTransfer';
 import { nativeTabInsertionAnchor } from './tabDropTarget';
+import { settleCompactModeBeforeClose } from './compactMode';
 import { IS_WEB, IS_NATIVE_MOBILE } from '../../core/platform';
 import { drainDocumentWrites } from '../session/documentSession';
 import { markTabArriving, resetTabDragFeedback, setNativeTabDragInfo, setNativeTabDragPoint } from './tabDragFeedback';
@@ -620,10 +621,13 @@ async function finishWindowClose(label: string, snapshotSaved: boolean): Promise
   // 通知 Rust 关闭本窗口并安全退出（不提前清空 store，避免出现全白空白画面滞留）
   // 🔴 性能诊断：窗口关闭前批量上报剩余 web spans（Rust 侧退出时统一落盘）
   await reportWebSpans('window-close');
+  // 极窄模式先还原窗口尺寸，避免 window-state 记下极窄尺寸
+  const hiddenForCompact = await settleCompactModeBeforeClose().catch(() => false);
   try {
     await ipc.closeWindow(label);
   } catch (e) {
     console.error('关闭窗口失败:', e);
+    if (hiddenForCompact) await getCurrentWindow().show().catch(() => {});
     showToast('关闭窗口失败，请重试', 'error');
   }
 }
@@ -746,8 +750,12 @@ export async function moveTabToWindow(docKey: string, target?: TabTransferTarget
 /** 拖走最后一个标签后关闭空源窗口；不触发普通关闭流程覆盖目标会话快照。 */
 async function closeEmptyDragSource(label: string): Promise<void> {
   if (useWindowStore.getState().tabs.length !== 0) return;
+  const hiddenForCompact = await settleCompactModeBeforeClose().catch(() => false);
   try { await ipc.closeWindow(label); }
-  catch (error) { console.warn('标签已移动，但空窗口关闭失败:', error); }
+  catch (error) {
+    console.warn('标签已移动，但空窗口关闭失败:', error);
+    if (hiddenForCompact) await getCurrentWindow().show().catch(() => {});
+  }
 }
 
 /** 迁移等待的权威终态（unknown = 后端状态不可知，必须保守处理） */

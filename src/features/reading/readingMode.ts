@@ -7,6 +7,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { IS_MOBILE_UI } from '../../core/platform';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
+import { showToast } from '../../stores/toastStore';
 
 /** 用户最新期望值：异步全屏请求排队执行，过期请求据此跳过 */
 let desiredReadingMode = false;
@@ -16,6 +17,11 @@ let fullscreenOperation: Promise<void> = Promise.resolve();
 /** 进入或退出沉浸阅读：先更新布局（即时生效），再排队切换系统全屏 */
 export function requestReadingMode(enabled: boolean): void {
   if (desiredReadingMode === enabled && useLayoutStore.getState().readingMode === enabled) return;
+  // 沉浸阅读需要系统全屏，与极窄模式互斥
+  if (enabled && useLayoutStore.getState().compactMode) {
+    showToast('极窄模式下不支持沉浸阅读', 'info');
+    return;
+  }
   desiredReadingMode = enabled;
   useLayoutStore.getState().setReadingMode(enabled);
 

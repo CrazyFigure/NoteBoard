@@ -8,11 +8,13 @@ import { Settings as SettingsIcon, RefreshCw } from 'lucide-react';
 import { TabBar } from './TabBar';
 import { WindowControls } from './WindowControls';
 import { ThemeMenu } from './ThemeMenu';
+import { CompactModeToggle, EdgeDockButton, PinWindowButton } from './CompactModeButtons';
+import { TitleBarDragRegion } from './TitleBarDragRegion';
 import { Tooltip } from '../Tooltip';
-import { emit } from '../../core/emitter';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { useUpdateStore } from '../../stores/updateStore';
 import { IS_WEB, USES_MAC_TRAFFIC_LIGHTS } from '../../core/platform';
+import { supportsCompactMode } from '../../features/window/compactMode';
 
 // macOS 红绿灯按钮占位宽度：左边距 14 + 三个按钮及间距约 54 + 右侧留白
 const MAC_TRAFFIC_LIGHTS_WIDTH = 76;
@@ -35,13 +37,11 @@ function MacTrafficLightsSpacer() {
   }, []);
 
   if (isFullscreen) return null;
-  return (
-    <div
-      data-tauri-drag-region=""
-      style={{ width: MAC_TRAFFIC_LIGHTS_WIDTH, height: '100%', flexShrink: 0 }}
-    />
-  );
+  return <TitleBarDragRegion width={MAC_TRAFFIC_LIGHTS_WIDTH} maximizeOnDoubleClick={false} />;
 }
+
+// 极窄模式标题栏按钮宽度：比常规 36px 更紧凑，提高信息密度
+const COMPACT_BUTTON_WIDTH = 30;
 
 // 应用图标长按判定时长与拖动判定位移
 const ICON_LONG_PRESS_MS = 250;
@@ -58,6 +58,8 @@ export function TitleBar() {
   const toggleSettingsModal = useLayoutStore((s) => s.toggleSettingsModal);
   const toggleExplorer = useLayoutStore((s) => s.toggleExplorer);
   const explorerVisible = useLayoutStore((s) => s.explorerVisible);
+  // 极窄模式：只保留标签、置顶、退出极窄与最小化/关闭，其余入口收起
+  const compactMode = useLayoutStore((s) => s.compactMode);
   // 应用图标按压状态：长按或按住移动即拖动窗口，此时不再触发点击切换侧栏
   const iconPressRef = useRef<{ x: number; y: number; timer: number; longPressed: boolean } | null>(null);
   const suppressIconClickRef = useRef(false);
@@ -113,9 +115,6 @@ export function TitleBar() {
     }
     toggleExplorer();
   };
-  // 当前是否有打开的标题栏/标签页菜单
-  const hasActiveMenu = useLayoutStore((s) => s.activeMenuCount > 0);
-
   const { hasUpdate, checking: checkingUpdate, checkForUpdates } = useUpdateStore();
 
   const titleBarStyle: React.CSSProperties = {
@@ -136,7 +135,8 @@ export function TitleBar() {
       {USES_MAC_TRAFFIC_LIGHTS && <MacTrafficLightsSpacer />}
 
       {/* 应用图标 16px，点击收起/展开左侧栏；长按或按住移动可拖动窗口（标签页占满标题栏时仍可移动窗口） */}
-      <Tooltip
+      {/* 极窄模式不显示侧栏，图标随之收起，拖动交给下方保底拖拽区 */}
+      {!compactMode && <Tooltip
         content={`${explorerVisible ? '收起侧栏' : '展开侧栏'}${IS_WEB ? '' : '，按住可拖动窗口'}`}
         side="bottom"
         sideOffset={6}
@@ -189,33 +189,21 @@ export function TitleBar() {
             style={{ pointerEvents: 'none' }}
           />
         </div>
-      </Tooltip>
+      </Tooltip>}
+
+      {/* 极窄模式左侧留白，避免首个标签紧贴窗口边缘（macOS 已有红绿灯占位） */}
+      {compactMode && !USES_MAC_TRAFFIC_LIGHTS && (
+        <TitleBarDragRegion width={6} />
+      )}
 
       {/* Tab 栏 */}
       <TabBar />
 
-      {/* 拖拽空白区：当有菜单打开时临时解除 drag-region，点击直接关闭菜单且避免触发原生窗口拖动；无菜单时保留原生拖拽，双击最大化 */}
-      <div
-        {...(!hasActiveMenu ? { 'data-tauri-drag-region': '' } : {})}
-        style={{
-          flex: 1,
-          height: '100%',
-          minWidth: 0,
-        }}
-        onMouseDown={(e) => {
-          // 若当前有菜单打开，阻止默认拖动行为并通知关闭所有标题栏浮层菜单
-          if (hasActiveMenu) {
-            e.preventDefault();
-            emit('close-titlebar-menus', undefined);
-          }
-        }}
-        onDoubleClick={() => {
-          if (!IS_WEB) getCurrentWindow().toggleMaximize();
-        }}
-      />
+      {/* 拖拽空白区：常规模式双击最大化；极窄模式标签可能占满，保留最小拖拽区确保窗口始终可移动 */}
+      <TitleBarDragRegion minWidth={compactMode ? 24 : 0} />
 
       {/* 检测更新按钮（主动检测更新，有新版本时标上小红点） */}
-      {!IS_WEB && <Tooltip content={hasUpdate ? '发现新版本 NoteBoard (点击查看)' : '检测更新'} side="bottom" sideOffset={6}>
+      {!IS_WEB && !compactMode && <Tooltip content={hasUpdate ? '发现新版本 NoteBoard (点击查看)' : '检测更新'} side="bottom" sideOffset={6}>
         <button
           type="button"
           onClick={() => checkForUpdates(false)}
@@ -287,11 +275,19 @@ export function TitleBar() {
         </button>
       </Tooltip>}
 
+      {/* 极窄模式：自动贴边 + 窗口置顶钉子 + 退出极窄 */}
+      {compactMode && <EdgeDockButton width={COMPACT_BUTTON_WIDTH} />}
+      {compactMode && <PinWindowButton width={COMPACT_BUTTON_WIDTH} />}
+      {compactMode && <CompactModeToggle width={COMPACT_BUTTON_WIDTH} />}
+
       {/* 快捷主题切换菜单 */}
-      <ThemeMenu />
+      {!compactMode && <ThemeMenu />}
+
+      {/* 极窄模式入口（位于主题与设置之间，仅桌面端） */}
+      {!compactMode && supportsCompactMode() && <CompactModeToggle />}
 
       {/* 设置中心按钮 */}
-      <Tooltip content="设置" side="bottom" sideOffset={6}>
+      {!compactMode && <Tooltip content="设置" side="bottom" sideOffset={6}>
         <button
           type="button"
           onClick={toggleSettingsModal}
@@ -330,10 +326,12 @@ export function TitleBar() {
         >
           <SettingsIcon size={15} />
         </button>
-      </Tooltip>
+      </Tooltip>}
 
-      {/* 窗口控制按钮 */}
-      {!IS_WEB && !USES_MAC_TRAFFIC_LIGHTS && <WindowControls />}
+      {/* 窗口控制按钮（极窄模式只保留最小化与关闭） */}
+      {!IS_WEB && !USES_MAC_TRAFFIC_LIGHTS && (
+        <WindowControls compact={compactMode} buttonWidth={compactMode ? COMPACT_BUTTON_WIDTH : 36} />
+      )}
     </div>
   );
 }

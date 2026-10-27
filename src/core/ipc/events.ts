@@ -53,6 +53,17 @@ export function onTransferCommitted(
 }
 
 /** 已有窗口接收迁移：只唤醒拉取，正文不通过广播传递。 */
+/** 自动贴边状态：吸附的边（未吸附为 null，底部不吸附）与是否已收起；所有窗口都会收到，按 label 过滤 */
+export interface EdgeDockEvent {
+  label: string;
+  edge: 'left' | 'right' | 'top' | null;
+  hidden: boolean;
+}
+
+export function onEdgeDock(cb: (event: EdgeDockEvent) => void): Promise<UnlistenFn> {
+  return listen<EdgeDockEvent>('nb://edge-dock', (e) => cb(e.payload));
+}
+
 export function onTransferAvailable(cb: (transferId: string) => void): Promise<UnlistenFn> {
   return listen<string>('nb://transfer-available', (e) => cb(e.payload));
 }

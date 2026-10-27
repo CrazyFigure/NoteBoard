@@ -26,6 +26,7 @@ import { activeBlockAlign, canChangeBlockIndent, canSetBlockAlign, changeBlockIn
 import { ALIGN_OPTIONS, AlignIcon, INDENT_OPTIONS, TextColorGrid, TextColorIcon } from './formatPickers';
 import { useWindowStore } from '../../stores/windowStore';
 import { Tooltip } from '../../components/Tooltip';
+import { useViewportClamp } from '../../components/useViewportClamp';
 import { promptLinkUrl } from '../../components/promptPresets';
 import { formatShortcut } from '../../core/shortcuts';
 
@@ -156,6 +157,8 @@ function BubbleDropdown({
   const rootRef = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
+  // 窄窗口中居中展开的面板可能越出编辑区两侧，展开后平移回可见区域
+  const panelClamp = useViewportClamp<HTMLDivElement>(open);
 
   useEffect(() => {
     if (!open) return;
@@ -217,8 +220,10 @@ function BubbleDropdown({
 
       {open && (
         <div
+          ref={panelClamp.ref}
           onMouseDown={(e) => e.stopPropagation()}
           style={{
+            ...panelClamp.style,
             position: 'absolute',
             top: 'calc(100% + 6px)',
             left: '50%',
@@ -860,6 +865,8 @@ function TableDropdown({
 
   // 危险项（删除）前加一条分隔线
   const dangerIndex = items.findIndex((item) => item.danger);
+  // 窄窗口中菜单可能越出编辑区右侧，展开后平移回可见区域
+  const menuClamp = useViewportClamp<HTMLDivElement>(open);
 
   return (
     <div ref={rootRef} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
@@ -902,8 +909,10 @@ function TableDropdown({
 
       {open && (
         <div
+          ref={menuClamp.ref}
           role="menu"
           style={{
+            ...menuClamp.style,
             position: 'absolute',
             top: 'calc(100% + 6px)',
             left: 0,

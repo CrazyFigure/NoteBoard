@@ -30,6 +30,14 @@ interface LayoutStore {
   boardPresentationMode: boolean;
   /** 当前活动文档是否处于沉浸阅读模式；仅为当前窗口临时 UI 状态，不参与布局持久化 */
   readingMode: boolean;
+  /** 当前窗口是否处于极窄模式；每个窗口独立，仅为临时 UI 状态，不参与布局持久化 */
+  compactMode: boolean;
+  /** 极窄模式下当前窗口是否置顶；退出极窄模式时自动取消 */
+  windowPinned: boolean;
+  /** 极窄模式下当前窗口是否开启自动贴边 */
+  edgeDockEnabled: boolean;
+  /** 自动贴边当前吸附的屏幕边（未吸附为 null）；吸附期间窗口保持置顶以便鼠标碰边唤出 */
+  dockedEdge: 'left' | 'right' | 'top' | null;
   /** 是否正在向窗口内拖拽文件 */
   isDraggingFile: boolean;
   /** 当前处于打开状态的标题栏/Tab 菜单数量（>0 表示有菜单浮层激活） */
@@ -53,6 +61,10 @@ interface LayoutStore {
   setEditorToolbarVisible: (visible: boolean) => void;
   setBoardPresentationMode: (enabled: boolean) => void;
   setReadingMode: (enabled: boolean) => void;
+  setCompactMode: (enabled: boolean) => void;
+  setWindowPinned: (pinned: boolean) => void;
+  setEdgeDockEnabled: (enabled: boolean) => void;
+  setDockedEdge: (edge: LayoutStore['dockedEdge']) => void;
   setIsDraggingFile: (dragging: boolean) => void;
 
   // ── 持久化 ──
@@ -88,6 +100,10 @@ export const useLayoutStore = create<LayoutStore>((set, get) => ({
   editorToolbarVisible: true,
   boardPresentationMode: false,
   readingMode: false,
+  compactMode: false,
+  windowPinned: false,
+  edgeDockEnabled: false,
+  dockedEdge: null,
   isDraggingFile: false,
   activeMenuCount: 0,
 
@@ -110,6 +126,10 @@ export const useLayoutStore = create<LayoutStore>((set, get) => ({
   setEditorToolbarVisible: (visible) => set({ editorToolbarVisible: visible }),
   setBoardPresentationMode: (enabled) => set({ boardPresentationMode: enabled }),
   setReadingMode: (enabled) => set({ readingMode: enabled }),
+  setCompactMode: (enabled) => set({ compactMode: enabled }),
+  setWindowPinned: (pinned) => set({ windowPinned: pinned }),
+  setEdgeDockEnabled: (enabled) => set({ edgeDockEnabled: enabled }),
+  setDockedEdge: (edge) => set({ dockedEdge: edge }),
   setIsDraggingFile: (dragging) => set({ isDraggingFile: dragging }),
 
   toLayout: () => {
