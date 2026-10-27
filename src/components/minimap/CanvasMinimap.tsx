@@ -7,6 +7,8 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import { Map as MapIcon, X } from 'lucide-react';
 import { Tooltip } from '../Tooltip';
+// 缩略图由画布编辑器按需引用，共享控件样式随实际使用场景一起装载。
+import '../../styles/canvasEditors.css';
 
 /** 世界坐标矩形 */
 export interface MinimapRect {

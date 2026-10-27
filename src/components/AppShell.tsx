@@ -3,6 +3,7 @@
 // 详见 docs/07-UI布局与交互规范.md §1
 
 import { useEffect, useRef } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import type { PanelSize } from 'react-resizable-panels';
 import { TitleBar } from './titlebar/TitleBar';
@@ -94,6 +95,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
   const activeKey = useWindowStore((s) => s.activeKey);
   // 🔴 迁移保护中的文档：阻断编辑输入（pointerEvents），避免迁移期间新修改无法同步到目标
   const transferringKeys = useWindowStore((s) => s.transferringKeys);
+  // 菜单计数、拖入高亮等局部状态不能使整组保活编辑器和侧栏跟着重绘。
   const {
     explorerVisible,
     explorerWidth,
@@ -105,7 +107,12 @@ export function AppShell(_props: { children?: React.ReactNode }) {
     compactMode,
     toggleExplorer,
     toggleOutline,
-  } = useLayoutStore();
+  } = useLayoutStore(useShallow((s) => ({
+    explorerVisible: s.explorerVisible, explorerWidth: s.explorerWidth,
+    outlineVisible: s.outlineVisible, outlineWidth: s.outlineWidth, statusBarVisible: s.statusBarVisible,
+    boardPresentationMode: s.boardPresentationMode, readingMode: s.readingMode, compactMode: s.compactMode,
+    toggleExplorer: s.toggleExplorer, toggleOutline: s.toggleOutline,
+  })));
 
   // Markdown 内核登记（大纲数据源）：桌面/移动外壳共用
   const { activeEditor, getMarkdownEditorReadyHandler } = useMarkdownEditorRegistry(tabs, activeKey);

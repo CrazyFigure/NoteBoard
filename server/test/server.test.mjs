@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import { brotliCompressSync, gzipSync } from 'node:zlib';
 import { createFiles } from '../files.mjs';
 import { createWebServer } from '../index.mjs';
 
@@ -21,7 +22,7 @@ async function fixture(t, options = {}) {
   async function call(command, args = {}, extra = {}) {
     return fetch(`${url}/api/command`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-NoteBoard-Request': '1', 'X-NoteBoard-Client': 'test-client-1234', ...extra }, body: JSON.stringify({ command, args }) });
   }
-  return { temp, dataDir, url, call };
+  return { temp, dataDir, staticDir, url, call };
 }
 
 test('共享笔记、收藏和设置在服务重启后仍可读取', async (t) => {
@@ -128,4 +129,48 @@ test('Linux 文件名大小写分别存储，附件脚本禁止同源执行', as
   assert.equal((await fetch(`${url}/api/upload?path=/workspace/test.svg`, { method: 'POST', headers: { 'X-NoteBoard-Request': '1' }, body: '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>' })).status, 200);
   const response = await fetch(`${url}/api/file?path=/workspace/test.svg`);
   assert.match(response.headers.get('content-security-policy'), /^sandbox;/);
+});
+
+test('构建资源按权重发送预压缩副本，HEAD 保留编码与长度', async (t) => {
+  const { staticDir, url } = await fixture(t);
+  const content = 'console.log("网页资源压缩回归");\n'.repeat(1000);
+  const raw = Buffer.from(content);
+  const gzip = gzipSync(raw);
+  const brotli = brotliCompressSync(raw);
+  await fs.writeFile(path.join(staticDir, 'entry.js'), raw);
+  await fs.writeFile(path.join(staticDir, 'entry.js.gz'), gzip);
+  await fs.writeFile(path.join(staticDir, 'entry.js.br'), brotli);
+  for (const [accept, expected] of [
+    ['gzip, br', 'br'], ['gzip;q=1, br;q=0.5', 'gzip'], ['br;q=0, gzip', 'gzip'],
+    ['*;q=1, br;q=0', 'gzip'], ['gzip;q=0, br;q=0', null], ['identity', null],
+  ]) {
+    const response = await fetch(`${url}/entry.js`, { headers: { 'Accept-Encoding': accept } });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-encoding'), expected);
+    assert.equal(response.headers.get('vary'), 'Accept-Encoding');
+    assert.match(response.headers.get('content-type'), /^text\/javascript/);
+    assert.equal(Number(response.headers.get('content-length')), expected === 'br' ? brotli.length : expected === 'gzip' ? gzip.length : raw.length);
+    // fetch 自动解压，核对最终脚本与原始字节一致，不能只检查压缩头。
+    assert.equal(await response.text(), content);
+  }
+  const head = await fetch(`${url}/entry.js`, { method: 'HEAD', headers: { 'Accept-Encoding': 'gzip' } });
+  assert.equal(head.headers.get('content-encoding'), 'gzip');
+  assert.equal(Number(head.headers.get('content-length')), gzip.length);
+  assert.equal((await head.arrayBuffer()).byteLength, 0);
+});
+
+test('缺少预压缩副本的旧构建回退原文件，API 与 HTML 仍禁止缓存', async (t) => {
+  const { staticDir, url, call } = await fixture(t);
+  const content = 'body { color: red; }\n'.repeat(100);
+  await fs.writeFile(path.join(staticDir, 'style.css'), content);
+  const response = await fetch(`${url}/style.css`, { headers: { 'Accept-Encoding': 'br,gzip' } });
+  assert.equal(response.headers.get('content-encoding'), null);
+  assert.equal(await response.text(), content);
+  const page = await fetch(url);
+  assert.equal(page.headers.get('cache-control'), 'no-store');
+  assert.match(page.headers.get('content-security-policy'), /sha256-/);
+  const api = await call('web_capabilities', {}, { 'Accept-Encoding': 'gzip' });
+  assert.equal(api.headers.get('content-encoding'), null);
+  assert.equal(api.headers.get('cache-control'), 'no-store');
+  assert.equal((await api.json()).result.authEnabled, false);
 });

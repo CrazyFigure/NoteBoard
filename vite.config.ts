@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from 'node:url';
+import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
 
 // Excalidraw zh-CN 语言包增补插件（补齐官方 zh-CN 语言包中遗漏的 fontList、quickSearch、commandPalette 等词条）
 function excalidrawLocalesPlugin() {
@@ -209,6 +210,31 @@ function moduleSourceManifestPlugin(): import('vite').Plugin {
   };
 }
 
+/** 网页构建时预压缩文本资源，部署后直接发送压缩副本，避免每次请求占用服务端 CPU。 */
+function webCompressionPlugin(): import('vite').Plugin {
+  return {
+    name: 'noteboard-web-compression',
+    apply: 'build',
+    // 等 Vite 完成动态导入预载与 CSS 注入后再压缩，副本必须与最终输出逐字节一致。
+    generateBundle: { order: 'post', handler(_options, bundle) {
+      for (const [fileName, item] of Object.entries(bundle)) {
+        // 小资源与字体、图片不重复压缩；点目录清单也不作为公开资源处理。
+        if (fileName.startsWith('.') || !/\.(js|css|json|svg)$/.test(fileName)) continue;
+        const bytes = Buffer.from(item.type === 'chunk' ? item.code : item.source);
+        if (bytes.length < 1024) continue;
+        // Brotli 使用中等压缩级别控制构建耗时；gzip 兼容普通 HTTP 和较旧客户端。
+        const compressed = {
+          br: brotliCompressSync(bytes, { params: { [constants.BROTLI_PARAM_QUALITY]: 5 } }),
+          gz: gzipSync(bytes),
+        };
+        for (const [extension, source] of Object.entries(compressed)) {
+          if (source.length < bytes.length) this.emitFile({ type: 'asset', fileName: `${fileName}.${extension}`, source });
+        }
+      }
+    } },
+  };
+}
+
 // Vite 配置
 // 注意：base 必须是 './'，Tauri 用 file:// 加载
 // 标准 Tauri 开发命令会注入系统分配的空闲端口；直接运行 Vite 时才使用 1421 作为起始端口。
@@ -221,7 +247,7 @@ const devPort = hasAllocatedDevPort ? configuredDevPort : 1421;
 // Vite 与 Tauri 必须使用同一端口；动态端口已预选完成时禁止 Vite 静默切换，避免 WebView 串线。
 export default defineConfig(({ command, mode }) => ({
   base: './',
-  plugins: [react(), tailwindcss(), excalidrawLocalesPlugin(), moduleSourceManifestPlugin()],
+  plugins: [react(), tailwindcss(), excalidrawLocalesPlugin(), moduleSourceManifestPlugin(), ...(mode === 'web' ? [webCompressionPlugin()] : [])],
   define: {
     // 构建目标平台（Tauri CLI 运行 beforeDev/BuildCommand 时注入 TAURI_ENV_PLATFORM），供前端同步判定桌面/移动端
     // 网页构建使用独立运行时；原生构建仍由 Tauri 注入真实平台。
@@ -265,6 +291,8 @@ export default defineConfig(({ command, mode }) => ({
     manifest: true,
     rollupOptions: {
       output: {
+        // 手动分包只接收明确归组的模块；共享 UI 依赖不能被画板/图表包吸走，反向拖入首屏。
+        onlyExplicitManualChunks: true,
         // 🔴 S05：函数式 manualChunks，切断「入口为拿 React 归宿而静态 import 重 chunk」的回边。
         //   之前的对象形式把 react/react-dom 卷进 excalidraw chunk（因为该包体积最大），
         //   导致入口静态闭包含整个 1.1 MiB 画板库。
@@ -276,7 +304,7 @@ export default defineConfig(({ command, mode }) => ({
           // 🔴 Vite 的动态 import 预载辅助（__vite__preloadHelper）默认会被放进
           //    首个创建的 chunk——此处即 mermaid 重 chunk，导致入口为拿这一个函数
           //    静态 import 3 MiB 的图表运行时。显式归入入口必需的 vendor-react。
-          if (id.includes('vite/preload-helper') || id.includes('\0vite/preload-helper')) {
+          if (id.includes('vite/preload-helper') || id.includes('\0commonjsHelpers')) {
             return 'vendor-react';
           }
           if (id.includes('node_modules')) {
@@ -286,7 +314,8 @@ export default defineConfig(({ command, mode }) => ({
             if (id.includes('mermaid')) return 'mermaid';
             if (id.includes('@excalidraw') || id.includes('excalidraw')) return 'excalidraw';
             if (id.includes('katex')) return 'katex';
-            if (/[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return 'vendor-react';
+            // 必须匹配独立 npm 包，不能把 @tiptap/react、@floating-ui/react-dom 当作 React 核心。
+            if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return 'vendor-react';
           }
           return undefined;
         },

@@ -6,7 +6,6 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import './styles/globals.css';
 import './styles/scrollbar.css';
-import './styles/mobile.css';
 import { applyCachedTheme, applyCachedTypography } from './core/theme/applyTheme';
 import { perfMark } from './core/perf/perfMarks';
 import { IS_MOBILE_UI, IS_WEB } from './core/platform';

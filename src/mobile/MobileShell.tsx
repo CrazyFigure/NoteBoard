@@ -3,6 +3,8 @@
 // 负责移动端系统集成：Android 返回键、进入后台自动保存、回到前台刷新与接收外部文件、"另存为"命名。
 
 import { useEffect, useRef } from 'react';
+// 移动端外壳就绪前由模块预载样式，桌面首页不再下载移动端专用规则。
+import '../styles/mobile.css';
 import { isMultiUser } from '../features/account/accountState';
 import { onBackButtonPress } from '@tauri-apps/api/app';
 import * as ipc from '../core/ipc/commands';

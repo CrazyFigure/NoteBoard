@@ -13,6 +13,18 @@ import { createSpaces, SHARED } from './spaces.mjs';
 const projectDir = fileURLToPath(new URL('../', import.meta.url));
 const SESSION_COOKIE = 'nb_session';
 
+/** 按客户端质量权重选择预压缩格式；显式 q=0 优先于通配符，同权重优先 Brotli。 */
+function acceptedStaticEncodings(header) {
+  const qualities = new Map(String(header ?? '').split(',').map((entry) => {
+    const [name, ...parameters] = entry.trim().toLowerCase().split(';');
+    const parameter = parameters.map((value) => value.trim()).find((value) => value.startsWith('q='));
+    const quality = parameter === undefined ? 1 : Number(parameter.slice(2));
+    return [name, Number.isFinite(quality) && quality >= 0 && quality <= 1 ? quality : 0];
+  }));
+  return ['br', 'gzip'].map((encoding) => ({ encoding, quality: qualities.get(encoding) ?? qualities.get('*') ?? 0 }))
+    .filter((item) => item.quality > 0).sort((a, b) => b.quality - a.quality).map((item) => item.encoding);
+}
+
 /** 创建服务，测试可传独立数据目录和端口，导入模块不会自动监听。 */
 export async function createWebServer(options = {}) {
   const dataDir = options.dataDir ?? process.env.NOTEBOARD_DATA_DIR ?? path.join(projectDir, '.web-data');
@@ -375,11 +387,34 @@ export async function createWebServer(options = {}) {
     if (decoded.split('/').some((part) => part.startsWith('.')) || decoded.includes('\\')) throw fail('资源不存在', 404);
     const target = path.resolve(staticDir, `.${decoded === '/' ? '/index.html' : decoded}`);
     if (!target.startsWith(staticDir + path.sep)) throw fail('资源不存在', 404);
-    const bytes = await fs.readFile(target);
     const ext = path.extname(target);
+    const stat = await fs.stat(target);
+    if (!stat.isFile()) throw fail('资源不存在', 404);
+    let bytes;
+    let encoding;
+    // 仅构建文本资源使用预压缩副本；旧构建未提供副本时回退原文件，不压缩私人 API 和附件。
+    const compressible = /\.(js|css|json|svg)$/.test(ext);
+    if (compressible && stat.size >= 1024) {
+      for (const candidate of acceptedStaticEncodings(req.headers['accept-encoding'])) {
+        try {
+          bytes = await fs.readFile(`${target}.${candidate === 'br' ? 'br' : 'gz'}`);
+          encoding = candidate;
+          break;
+        } catch (error) {
+          if (error.code !== 'ENOENT') throw error;
+        }
+      }
+    }
+    bytes ??= await fs.readFile(target);
     const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.woff': 'font/woff' }[ext] ?? 'application/octet-stream';
     // Vite 入口保留了两段固定引导脚本，按实际内容生成哈希，而不全局放开内联脚本。
-    res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': ext === '.html' ? 'no-store' : 'private, max-age=3600', 'Content-Security-Policy': contentSecurity(bytes, ext === '.html') });
+    res.writeHead(200, {
+      'Content-Type': mime, 'Content-Length': bytes.length,
+      'Cache-Control': ext === '.html' ? 'no-store' : 'private, max-age=3600',
+      'Content-Security-Policy': contentSecurity(bytes, ext === '.html'),
+      ...(compressible ? { Vary: 'Accept-Encoding' } : {}),
+      ...(encoding ? { 'Content-Encoding': encoding } : {}),
+    });
     res.end(req.method === 'HEAD' ? undefined : bytes);
   }
 

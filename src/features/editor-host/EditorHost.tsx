@@ -232,7 +232,8 @@ const unsupportedSnapshot = {
   error: null,
 };
 
-export function EditorHost({
+// 保活标签的描述与回调不变时复用宿主；活动上下文仍可唤醒切入/切出的编辑器，不重建内核。
+export const EditorHost = React.memo(function EditorHost({
   tab,
   fileSize,
   onEditorReady,
@@ -321,4 +322,4 @@ export function EditorHost({
       <LoadedEditor {...editorProps} />
     </EditorErrorBoundary>
   );
-}
+});

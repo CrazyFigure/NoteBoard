@@ -2,6 +2,7 @@
 // 深度还原多维表格多视图管理（多看板/多表格）+ 拖拽换列 + 树形子任务 + 各字段专有排序 + 撤销重做
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import '../../styles/canvasEditors.css';
 import {
   DEFAULT_DATE_TIME_CONFIG,
   type BitableDocument,

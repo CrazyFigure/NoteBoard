@@ -3,6 +3,7 @@
 // 详见 docs/09-开发路线图.md
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import '../../styles/canvasEditors.css';
 import { EditorView, keymap, lineNumbers, highlightActiveLineGutter } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import type { ViewUpdate } from '@codemirror/view';

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { lazy, Suspense } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { AppShell } from './components/AppShell';
 import { IS_MOBILE_UI, IS_WEB } from './core/platform';
 import { useShareStore } from './features/account/shareStore';
@@ -78,13 +79,16 @@ function useEverOpened(open: boolean): boolean {
 }
 
 export default function App() {
-  const { init, initialized } = useSettingsStore();
+  // 根组件只订阅启动与弹窗所需字段，设置中的其他变化由实际使用它的界面处理。
+  const { init, initialized } = useSettingsStore(useShallow((s) => ({ init: s.init, initialized: s.initialized })));
   const fontPackInitialized = useFontPackStore((s) => s.initialized);
   // 🔴 S04：启动失败状态（监听/握手异常时呈现可重试错误界面）
   const [bootError, setBootError] = useState<string | null>(null);
   // 🔴 R08：错误壳重试计数（驱动启动 effect 重跑；不整页 reload）
   const [bootRetryAttempt, setBootRetryAttempt] = useState(0);
-  const { settingsModalVisible, setSettingsModalVisible } = useLayoutStore();
+  const { settingsModalVisible, setSettingsModalVisible } = useLayoutStore(useShallow((s) => ({
+    settingsModalVisible: s.settingsModalVisible, setSettingsModalVisible: s.setSettingsModalVisible,
+  })));
   const activeKey = useWindowStore((s) => s.activeKey);
   const {
     modalOpen: updateModalOpen,
@@ -94,7 +98,10 @@ export default function App() {
     checking: checkingUpdate,
     checkForUpdates,
     initAutoUpdateTimer,
-  } = useUpdateStore();
+  } = useUpdateStore(useShallow((s) => ({
+    modalOpen: s.modalOpen, closeModal: s.closeModal, updateResult: s.updateResult, checkError: s.checkError,
+    checking: s.checking, checkForUpdates: s.checkForUpdates, initAutoUpdateTimer: s.initAutoUpdateTimer,
+  })));
 
   useEffect(() => {
     let disposed = false;

@@ -2,18 +2,21 @@
 // 负责协调 Markdown 与代码/纯文本格式工具集渲染、收起与悬浮恢复机制
 // 状态由 layoutStore 管理，与文档撤销/重做时间线完全隔离
 
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { BookOpen, ChevronUp, History } from 'lucide-react';
 import type { Editor } from '@tiptap/core';
 import type { Tab } from '../../stores/windowStore';
 import { useLayoutStore } from '../../stores/layoutStore';
-import { MarkdownToolbar } from './MarkdownToolbar';
 import { CodeToolbar } from './CodeToolbar';
 import { FloatingExpandHandle } from './FloatingExpandHandle';
-import { MarkdownExportMenu } from './MarkdownExportMenu';
 import { ToolbarButton, ToolbarDivider, ToolbarDropdownItem } from './ToolbarComponents';
 import { requestReadingMode } from '../reading/readingMode';
 import { openVersionHistory } from '../versionHistory/versionHistoryStore';
+
+// Markdown 专用按钮依赖富文本扩展与导出逻辑，只在该格式成为活动文档时装载。
+const MarkdownToolbar = lazy(() => import('./MarkdownToolbar').then((module) => ({ default: module.MarkdownToolbar })));
+const MarkdownExportMenu = lazy(() => import('./MarkdownExportMenu').then((module) => ({ default: module.MarkdownExportMenu })));
 
 interface EditorToolbarProps {
   activeTab: Tab | null;
@@ -21,7 +24,10 @@ interface EditorToolbarProps {
 }
 
 export function EditorToolbar({ activeTab, activeEditor }: EditorToolbarProps) {
-  const { editorToolbarVisible, setEditorToolbarVisible, compactMode } = useLayoutStore();
+  // 工具栏不跟随菜单计数或窗口停靠状态重绘，避免一次菜单操作刷新整套格式按钮。
+  const { editorToolbarVisible, setEditorToolbarVisible, compactMode } = useLayoutStore(useShallow((s) => ({
+    editorToolbarVisible: s.editorToolbarVisible, setEditorToolbarVisible: s.setEditorToolbarVisible, compactMode: s.compactMode,
+  })));
 
   // 若当前无激活标签页、非文本格式或为纯前端工具视图（如文本对比），不渲染操作栏
   // 恢复标签正文加载中也不渲染：编辑器尚未挂载，且未知扩展名（.lnk/.docx 等）
@@ -70,6 +76,7 @@ export function EditorToolbar({ activeTab, activeEditor }: EditorToolbarProps) {
       }}
     >
       {/* 格式针对性工具集 */}
+      <Suspense fallback={null}>
       {activeTab.kind === 'markdown' ? (
         <MarkdownToolbar
           docKey={activeTab.key}
@@ -86,12 +93,13 @@ export function EditorToolbar({ activeTab, activeEditor }: EditorToolbarProps) {
           moreItems={compactMoreItems}
         />
       ) : null}
+      </Suspense>
 
       {/* 右侧视图操作：导出（仅 Markdown）、沉浸阅读（Markdown、代码与 Mermaid / PlantUML / 信息图）与收起按钮 */}
       <div style={{ marginLeft: compactMode ? 2 : 8, display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
         {!compactMode && (
           <>
-            {activeTab.kind === 'markdown' && <MarkdownExportMenu tab={activeTab} editor={activeEditor} />}
+            {activeTab.kind === 'markdown' && <Suspense fallback={null}><MarkdownExportMenu tab={activeTab} editor={activeEditor} /></Suspense>}
             <ToolbarButton
               icon={<History size={15} strokeWidth={2.2} />}
               title="历史记录"

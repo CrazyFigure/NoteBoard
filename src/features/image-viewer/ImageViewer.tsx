@@ -3,6 +3,7 @@
 // 功能：平移拖拽、无级缩放（自适应/1:1/自定义）、旋转/翻转、棋盘网格背景切换、元数据展示及快捷操作
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import '../../styles/canvasEditors.css';
 // 🔴 S11：回收视图状态存取与能力注册
 import { takeViewState } from '../session/editorSuspension';
 import { registerEditorCapabilities } from '../../core/editor/editorRegistry';

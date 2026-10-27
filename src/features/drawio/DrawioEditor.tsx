@@ -3,6 +3,7 @@
 // 详见 docs/09-开发路线图.md
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import '../../styles/canvasEditors.css';
 import { Download, FileCode, RefreshCw, WifiOff } from 'lucide-react';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';

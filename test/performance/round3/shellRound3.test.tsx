@@ -7,11 +7,13 @@ import { act } from 'react';
 
 // ── 子组件替身（隔离 Tauri IPC 与编辑器内核；记录真实挂载/卸载生命周期） ──
 const hostLog: string[] = [];
+const renderLog: string[] = [];
 vi.mock('@/features/editor-host/EditorHost', async () => {
   const { useEffect } = await import('react');
   const { registerEditorCapabilities } = await import('@/core/editor/editorRegistry');
   return {
     EditorHost: ({ tab }: { tab: { key: string } }) => {
+      renderLog.push(tab.key);
       // 记录真实挂载/卸载（useEffect 生命周期），渲染重入不重复计数
       useEffect(() => {
         hostLog.push(`mount:${tab.key}`);
@@ -106,6 +108,11 @@ it('C15：已打开的四个标签切换及脏态更新均保持实例，关闭�
       await act(async () => { useWindowStore.getState().openTab(mockTab(key)); });
     }
     const afterSwitch = host.querySelectorAll('[data-host]').length;
+    // 打开/关闭菜单只修改计数，不能穿透外壳刷新全部保活宿主。
+    renderLog.length = 0;
+    await act(async () => { useLayoutStore.getState().incrementActiveMenu(); });
+    await act(async () => { useLayoutStore.getState().decrementActiveMenu(); });
+    expect(renderLog).toEqual([]);
     await act(async () => { useWindowStore.getState().setTabDirty('d', true); });
     const afterTyping = host.querySelectorAll('[data-host]').length;
     expect({ afterSwitch, afterTyping }).toEqual({ afterSwitch: 4, afterTyping: 4 });

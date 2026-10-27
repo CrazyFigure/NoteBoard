@@ -59,7 +59,9 @@ function openFile(dir: string, name: string): void {
   });
 }
 
+const revealRender = vi.fn();
 function RevealProbe() {
+  revealRender();
   useReveal();
   return null;
 }
@@ -119,5 +121,22 @@ describe('侧栏收起时打开文件夹', () => {
     openFile(DIR_B, 'b.md');
     await mountExplorer();
     expect(useExplorerStore.getState().root).toBe(DIR_B);
+  });
+
+  it('连续输入只更新正文，文件树跟随组件不随正文或脏态重绘', async () => {
+    openFile(DIR_A, 'typing.md');
+    await mountExplorer();
+    const key = useWindowStore.getState().activeKey!;
+    revealRender.mockClear();
+    readDirMock.mockClear();
+    for (let i = 0; i < 10; i += 1) {
+      await act(async () => {
+        useDocumentStore.getState().setDirty(key, true);
+        useDocumentStore.getState().setContent(key, `输入 ${i}`);
+      });
+    }
+    expect(revealRender).not.toHaveBeenCalled();
+    expect(readDirMock).not.toHaveBeenCalled();
+    expect(useExplorerStore.getState().root).toBe(DIR_A);
   });
 });
