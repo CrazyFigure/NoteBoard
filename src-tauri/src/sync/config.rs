@@ -41,6 +41,9 @@ pub struct WebDavConfig {
     pub password: String,
     /// 自定义 User-Agent（部分服务按 UA 限流或要求特定 UA）；留空使用 NoteBoard/版本号
     pub user_agent: String,
+    /// 自定义请求头，每条形如 `名称: 值`，附加到所有 WebDAV 请求上（反代、网关或定制服务需要时使用）；
+    /// 空行忽略，可覆盖 User-Agent / Authorization 等默认值
+    pub headers: Vec<String>,
     /// 远端目录（相对服务地址），例如 NoteBoard
     pub remote_dir: String,
 }
@@ -95,6 +98,8 @@ impl ProviderConfig {
     /// 对所有密钥字段执行同一变换（加密/解密）
     fn map_secrets(&mut self, f: &dyn Fn(&str) -> String) {
         self.webdav.password = f(&self.webdav.password);
+        // 自定义请求头可能携带令牌（如 Authorization、X-Api-Key），与密码同等对待
+        self.webdav.headers = self.webdav.headers.iter().map(|line| f(line)).collect();
         self.s3.secret_access_key = f(&self.s3.secret_access_key);
         self.github.token = f(&self.github.token);
         self.gitee.token = f(&self.gitee.token);
@@ -315,5 +320,26 @@ mod tests {
     fn provider_kind_serializes_lowercase() {
         let json = serde_json::to_string(&ProviderKind::Gitlab).unwrap();
         assert_eq!(json, "\"gitlab\"");
+    }
+
+    #[test]
+    fn webdav_headers_default_empty_and_round_trip_with_secrets() {
+        // 老配置文件没有 headers 字段时按空列表处理
+        let cfg: SyncConfigFile = serde_json::from_str(r#"{"sync":{"provider":{"kind":"webdav","webdav":{"url":"https://dav.example.com/dav/"}}}}"#).unwrap();
+        assert!(cfg.sync.provider.webdav.headers.is_empty());
+        let mut provider = ProviderConfig {
+            webdav: WebDavConfig {
+                password: "app-password".into(),
+                headers: vec!["X-Api-Key: token-123".into(), "X-Tenant: team-a".into()],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        // 自定义请求头可能带令牌，必须与密码一起加密后落盘
+        provider.map_secrets(&|plain| format!("enc({})", plain));
+        assert_eq!(provider.webdav.password, "enc(app-password)");
+        assert_eq!(provider.webdav.headers, vec!["enc(X-Api-Key: token-123)", "enc(X-Tenant: team-a)"]);
+        provider.map_secrets(&|stored| stored.trim_start_matches("enc(").trim_end_matches(')').to_string());
+        assert_eq!(provider.webdav.headers, vec!["X-Api-Key: token-123", "X-Tenant: team-a"]);
     }
 }

@@ -9,6 +9,8 @@ struct Store {
     forced_get: BTreeMap<String, (u16, Vec<u8>)>,
     forced_listing: Option<Vec<u8>>,
     requests: Vec<(String, String)>,
+    /// 最近一次请求的原始头部，用于验证自定义请求头确实发送
+    last_headers: Vec<(String, String)>,
 }
 
 struct Dav {
@@ -67,6 +69,8 @@ impl Dav {
         let parent = path.rsplit_once('/').map(|(part, _)| part).unwrap_or("");
         let mut store = shared.lock().unwrap();
         store.requests.push((method.clone(), path.clone()));
+        // 记录除首行外的全部头部，供自定义请求头用例断言
+        store.last_headers = header.lines().skip(1).filter_map(|line| line.split_once(':')).map(|(key, value)| (key.trim().to_ascii_lowercase(), value.trim().to_string())).collect();
         let (status, body) = match method.as_str() {
             "GET" => {
                 if let Some(response) = store.forced_get.get(&path) { response.clone() }
@@ -125,6 +129,20 @@ impl Dav {
         cfg.provider.webdav.remote_dir = "notes".into();
         runtime::block_on(engine::run_sync_with(&cfg, id, "review", Ok(self.backend())))
     }
+
+    /// 带自定义请求头的后端，用于验证请求头真正发送到服务端
+    fn backend_with_headers(&self, headers: &[&str]) -> Backend {
+        let client = reqwest::Client::builder().no_proxy().timeout(Duration::from_secs(10)).build().unwrap();
+        let cfg = WebDavConfig {
+            url: self.url.clone(),
+            username: "user".into(),
+            password: "secret".into(),
+            headers: headers.iter().map(|line| line.to_string()).collect(),
+            remote_dir: "notes".into(),
+            ..Default::default()
+        };
+        Backend::WebDav(WebDav::new(client, &cfg).unwrap())
+    }
 }
 
 impl Drop for Dav {
@@ -148,6 +166,59 @@ fn approve(dav: &Dav, root: &std::path::Path, approved: &[String]) -> engine::Sy
     cfg.provider.webdav.url = dav.url.clone();
     cfg.provider.webdav.remote_dir = "notes".into();
     runtime::block_on(engine::run_sync_with_approval(&cfg, "A", "manual", Ok(dav.backend()), approved))
+}
+
+#[test]
+fn custom_headers_are_sent_with_every_request_and_can_override_defaults() {
+    let dav = Dav::new();
+    let mut backend = dav.backend_with_headers(&["X-Api-Key: token-123", "  ", "X-Tenant: team-a"]);
+    // 读取时附带自定义头，并保留默认的 Basic 认证
+    assert!(runtime::block_on(backend.read("file.md")).unwrap().is_none());
+    let headers = dav.store.lock().unwrap().last_headers.clone();
+    assert_eq!(headers.iter().find(|(key, _)| key == "x-api-key").map(|(_, value)| value.as_str()), Some("token-123"));
+    assert_eq!(headers.iter().find(|(key, _)| key == "x-tenant").map(|(_, value)| value.as_str()), Some("team-a"));
+    assert_eq!(headers.iter().find(|(key, _)| key == "authorization").map(|(_, value)| value.as_str()), Some("Basic dXNlcjpzZWNyZXQ="));
+    // 空行被忽略，不影响请求
+    let counted = headers.iter().filter(|(key, _)| key == "x-api-key").count();
+    assert_eq!(counted, 1);
+}
+
+#[test]
+fn custom_headers_can_replace_user_agent_and_authorization() {
+    let dav = Dav::new();
+    let mut backend = dav.backend_with_headers(&["User-Agent: CustomClient/1.0", "Authorization: Bearer abc"]);
+    assert!(runtime::block_on(backend.read("file.md")).unwrap().is_none());
+    let headers = dav.store.lock().unwrap().last_headers.clone();
+    assert_eq!(headers.iter().find(|(key, _)| key == "user-agent").map(|(_, value)| value.as_str()), Some("CustomClient/1.0"));
+    assert_eq!(headers.iter().find(|(key, _)| key == "authorization").map(|(_, value)| value.as_str()), Some("Bearer abc"));
+}
+
+#[test]
+fn invalid_custom_headers_are_rejected_before_any_request() {
+    let dav = Dav::new();
+    let client = reqwest::Client::builder().no_proxy().timeout(Duration::from_secs(10)).build().unwrap();
+    let make = |lines: &[&str]| -> Result<(), String> {
+        let cfg = WebDavConfig {
+            url: dav.url.clone(),
+            headers: lines.iter().map(|line| line.to_string()).collect(),
+            remote_dir: "notes".into(),
+            ..Default::default()
+        };
+        WebDav::new(client.clone(), &cfg).map(|_| ()).map_err(|e| e.message)
+    };
+    // 缺少冒号
+    assert!(make(&["X-Api-Key token"]).unwrap_err().contains("缺少冒号"));
+    // 缺少名称
+    assert!(make(&[": value"]).unwrap_err().contains("缺少名称"));
+    // 名称含非法字符
+    assert!(make(&["X Api Key: value"]).unwrap_err().contains("名称不合法"));
+    // 值含非 ASCII 字符
+    assert!(make(&["X-Tenant: 团队"]).unwrap_err().contains("非法字符"));
+    // 由传输层自动计算的头不能覆盖
+    assert!(make(&["Content-Length: 10"]).unwrap_err().contains("不能手工指定"));
+    assert!(make(&["transfer-encoding: chunked"]).unwrap_err().contains("不能手工指定"));
+    // 空白行一律忽略，不影响创建
+    assert!(make(&["", "   "]).is_ok());
 }
 
 #[test]

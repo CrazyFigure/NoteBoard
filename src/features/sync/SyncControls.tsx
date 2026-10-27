@@ -305,6 +305,20 @@ function TextInput({ value, onChange, placeholder }: { value: string; onChange: 
   );
 }
 
+/** 多行「名称: 值」请求头输入；按行保存，空行在提交时由后端忽略 */
+function HeaderLines({ value, onChange }: { value: string[]; onChange: (next: string[]) => void }) {
+  return (
+    <textarea
+      className="nb-sync-textarea"
+      rows={3}
+      value={value.join('\n')}
+      spellCheck={false}
+      placeholder={'X-Api-Key: 令牌\nX-Custom-Header: 值'}
+      onChange={(e) => onChange(e.target.value.split('\n'))}
+    />
+  );
+}
+
 const HELP_TITLES: Record<SyncProviderKind, string> = {
   webdav: '如何获取 WebDAV 地址与应用密码（坚果云 / Nextcloud / NAS）',
   s3: '如何获取 S3 端点与访问密钥（OSS / COS / AWS / R2 / MinIO）',
@@ -567,6 +581,16 @@ export function ProviderForm({
               value={value.webdav.userAgent}
               onChange={(v) => onChange({ ...value, webdav: { ...value.webdav, userAgent: v } })}
               placeholder="NoteBoard"
+            />
+          </Field>
+          <Field
+            label="自定义请求头（可选）"
+            wide
+            hint="一行一个，格式「名称: 值」，例如 X-Api-Key: 令牌。会附加到所有同步请求上，可覆盖上面的 User-Agent 与账号密码认证；含令牌的请求头与本机密码一样加密保存。"
+          >
+            <HeaderLines
+              value={value.webdav.headers}
+              onChange={(v) => onChange({ ...value, webdav: { ...value.webdav, headers: v } })}
             />
           </Field>
         </div>

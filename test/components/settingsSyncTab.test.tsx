@@ -18,7 +18,7 @@ function createProvider(): SyncProviderConfig {
   const git = { baseUrl: '', owner: '', repo: '', branch: 'main', token: '', remoteDir: 'NoteBoard' };
   return {
     kind: 'webdav',
-    webdav: { url: '', username: '', password: '', userAgent: '', remoteDir: 'NoteBoard' },
+    webdav: { url: '', username: '', password: '', userAgent: '', headers: [], remoteDir: 'NoteBoard' },
     s3: { endpoint: '', region: '', bucket: '', accessKeyId: '', secretAccessKey: '', prefix: '', pathStyle: true, userAgent: '' },
     github: { ...git },
     gitee: { ...git },
@@ -112,5 +112,21 @@ describe('设置页同步与备份切换', () => {
     act(() => useSyncStore.setState({ config: createConfig(), initialized: true }));
     expect(host.textContent).toContain('开启多端同步');
     expect(host.textContent).not.toContain('正在加载同步设置');
+  });
+
+  it('WebDAV 自定义请求头按行编辑并回填已保存内容', () => {
+    switchTab('同步与备份');
+    const area = host.querySelector<HTMLTextAreaElement>('.nb-sync-textarea');
+    expect(area).not.toBeNull();
+    expect(host.textContent).toContain('自定义请求头');
+    // 空配置时控件不显示占位符以外的内容
+    expect(area!.value).toBe('');
+
+    // 已保存的两条请求头按行回填；空行不写入存储
+    const config = createConfig();
+    config.sync.provider.webdav.headers = ['X-Api-Key: token-123', 'X-Tenant: team-a'];
+    act(() => useSyncStore.setState({ config }));
+    const filled = host.querySelector<HTMLTextAreaElement>('.nb-sync-textarea');
+    expect(filled!.value).toBe('X-Api-Key: token-123\nX-Tenant: team-a');
   });
 });

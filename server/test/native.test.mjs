@@ -11,8 +11,11 @@ import { createWebServer } from '../index.mjs';
 test('两个网页实例通过现有 WebDAV 协议双向同步，并能备份和恢复', { skip: !process.env.NOTEBOARD_SYNC_BINARY }, async (t) => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'noteboard-sync-http-'));
   const remote = new Map();
+  // 记录请求携带的自定义头，验证配置的自定义请求头确实发到了服务端
+  const seenApiKeys = [];
   // WebDAV 测试服务保留真实字节并支持引擎使用的目录、锁和清单操作。
   const dav = http.createServer(async (req, res) => {
+    seenApiKeys.push(req.headers['x-api-key']);
     const key = decodeURIComponent(req.url);
     if (req.method === 'MKCOL') return res.writeHead(201).end();
     if (req.method === 'PUT') {
@@ -53,7 +56,7 @@ test('两个网页实例通过现有 WebDAV 协议双向同步，并能备份和
     config.sync.enabled = true; config.sync.rootDir = '/workspace'; config.sync.deviceName = name;
     config.sync.intervalEnabled = false; config.sync.syncOnStartup = false; config.sync.syncOnSave = false;
     config.sync.provider.kind = 'webdav';
-    config.sync.provider.webdav = { url: `http://127.0.0.1:${dav.address().port}/dav/`, username: 'test-user', password: 'test-secret', userAgent: '', remoteDir: 'Notes' };
+    config.sync.provider.webdav = { url: `http://127.0.0.1:${dav.address().port}/dav/`, username: 'test-user', password: 'test-secret', userAgent: '', headers: ['X-Api-Key: token-123'], remoteDir: 'Notes' };
     const saved = await call('sync_save_config', { config });
     assert.equal(saved.sync.rootDir, '/workspace');
     assert.equal(saved.backup.localDir, '/backups');
@@ -97,6 +100,10 @@ test('两个网页实例通过现有 WebDAV 协议双向同步，并能备份和
   assert.equal((await a.call('sync_trash_list')).length, 1);
   const stored = await fs.readFile(path.join(temp, 'server-a/native/sync/config.json'), 'utf8');
   assert.ok(!stored.includes('test-secret'));
+  // 自定义请求头确实随同步请求发送，且同样不落明文
+  assert.ok(seenApiKeys.length > 0);
+  assert.ok(seenApiKeys.every((value) => value === 'token-123'), JSON.stringify(seenApiKeys));
+  assert.ok(!stored.includes('token-123'));
 });
 
 test('未启用访问认证时仍提供文档历史记录，且不开放同步命令', { skip: !process.env.NOTEBOARD_SYNC_BINARY }, async (t) => {

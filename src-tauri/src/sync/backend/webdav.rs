@@ -5,10 +5,14 @@ use super::{clean_dir, default_user_agent, encode_path, join_remote, xml, Remote
 use crate::sync::config::WebDavConfig;
 use crate::sync::error::{from_reqwest, from_status, SyncError, SyncResult};
 use base64::{engine::general_purpose::STANDARD, Engine};
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::{header, Method, StatusCode};
 use std::collections::HashSet;
 
 const SERVICE: &str = "WebDAV";
+
+/// 由传输层自动计算、手工指定会破坏请求的头，禁止在自定义请求头中覆盖。
+const RESERVED_HEADERS: [&str; 2] = ["content-length", "transfer-encoding"];
 
 /// 单层目录元数据；首次配对需要保留子目录和原始修改时间。
 pub struct DavEntry {
@@ -28,10 +32,50 @@ pub struct WebDav {
     /// 以 `/` 结尾的服务地址
     base: String,
     dir: String,
-    auth: Option<String>,
-    user_agent: String,
+    /// 默认头（User-Agent、Basic 认证）与自定义请求头合并后的结果，每个名称只保留一个最终值
+    headers: HeaderMap,
     /// 本次会话已确认存在的远端目录
     known_dirs: HashSet<String>,
+}
+
+/// 解析 `名称: 值` 形式的自定义请求头；同名时后出现的覆盖先出现的，非法行给出具体位置。
+fn apply_custom_headers(headers: &mut HeaderMap, lines: &[String]) -> SyncResult<()> {
+    for (index, raw) in lines.iter().enumerate() {
+        let line = raw.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let position = index + 1;
+        let Some((name, value)) = line.split_once(':') else {
+            return Err(SyncError::config(format!("第 {} 条自定义请求头缺少冒号，格式应为「名称: 值」：{}", position, line)));
+        };
+        let name = name.trim();
+        let value = value.trim();
+        if name.is_empty() {
+            return Err(SyncError::config(format!("第 {} 条自定义请求头缺少名称：{}", position, line)));
+        }
+        if RESERVED_HEADERS.iter().any(|reserved| name.eq_ignore_ascii_case(reserved)) {
+            return Err(SyncError::config(format!(
+                "第 {} 条自定义请求头 {} 由程序自动计算，不能手工指定",
+                position, name
+            )));
+        }
+        let header_name = HeaderName::from_bytes(name.as_bytes())
+            .map_err(|_| SyncError::config(format!("第 {} 条自定义请求头名称不合法：{}", position, name)))?;
+        // 请求头值只能是可见 ASCII（含制表符）；中文、换行等会让服务端解析失败
+        let ascii_only = value.bytes().all(|byte| byte == b'\t' || (0x20..=0x7e).contains(&byte));
+        if !ascii_only {
+            return Err(SyncError::config(format!(
+                "第 {} 条自定义请求头的值含非法字符（不能包含换行、中文等非 ASCII 字符）：{}",
+                position, name
+            )));
+        }
+        let header_value = HeaderValue::from_str(value).map_err(|_| {
+            SyncError::config(format!("第 {} 条自定义请求头的值含非法字符（不能包含换行、中文等非 ASCII 字符）", position))
+        })?;
+        headers.insert(header_name, header_value);
+    }
+    Ok(())
 }
 
 impl WebDav {
@@ -43,23 +87,27 @@ impl WebDav {
         if !(url.starts_with("http://") || url.starts_with("https://")) {
             return Err(SyncError::config("WebDAV 地址需以 http:// 或 https:// 开头"));
         }
-        let auth = if cfg.username.trim().is_empty() {
-            None
-        } else {
-            let raw = format!("{}:{}", cfg.username.trim(), cfg.password);
-            Some(format!("Basic {}", STANDARD.encode(raw.as_bytes())))
-        };
+        let mut headers = HeaderMap::new();
         let user_agent = if cfg.user_agent.trim().is_empty() {
             default_user_agent()
         } else {
             cfg.user_agent.trim().to_string()
         };
+        let agent = HeaderValue::from_str(&user_agent)
+            .map_err(|_| SyncError::config("User-Agent 含非法字符（不能包含换行或中文），请修改后重试"))?;
+        headers.insert(header::USER_AGENT, agent);
+        if !cfg.username.trim().is_empty() {
+            let raw = format!("{}:{}", cfg.username.trim(), cfg.password);
+            let auth = format!("Basic {}", STANDARD.encode(raw.as_bytes()));
+            headers.insert(header::AUTHORIZATION, HeaderValue::from_str(&auth).expect("Basic 认证头总是合法"));
+        }
+        // 自定义请求头最后写入：可以覆盖 User-Agent、Authorization，用于网关鉴权或特殊服务
+        apply_custom_headers(&mut headers, &cfg.headers)?;
         Ok(Self {
             client,
             base: format!("{}/", url.trim_end_matches('/')),
             dir: clean_dir(&cfg.remote_dir),
-            auth,
-            user_agent,
+            headers,
             known_dirs: HashSet::new(),
         })
     }
@@ -69,11 +117,16 @@ impl WebDav {
     }
 
     fn request(&self, method: Method, url: &str) -> reqwest::RequestBuilder {
-        let mut rb = self.client.request(method, url).header(header::USER_AGENT, &self.user_agent);
-        if let Some(auth) = &self.auth {
-            rb = rb.header(header::AUTHORIZATION, auth);
+        self.client.request(method, url).headers(self.headers.clone())
+    }
+
+    /// 设置本次请求专有的头；用户已在自定义请求头中声明的名称不覆盖，保证「自定义优先」。
+    fn set(&self, rb: reqwest::RequestBuilder, name: HeaderName, value: HeaderValue) -> reqwest::RequestBuilder {
+        if self.headers.contains_key(&name) {
+            rb
+        } else {
+            rb.header(name, value)
         }
-        rb
     }
 
     async fn send(&self, rb: reqwest::RequestBuilder) -> SyncResult<reqwest::Response> {
@@ -136,15 +189,10 @@ impl WebDav {
         let full = join_remote(&self.dir, rel);
         self.ensure_dirs(&full).await?;
         let url = self.url_of(&full);
-        let len = data.len();
-        let resp = self
-            .send(
-                self.request(Method::PUT, &url)
-                    .header(header::CONTENT_TYPE, "application/octet-stream")
-                    .header(header::CONTENT_LENGTH, len)
-                    .body(data),
-            )
-            .await?;
+        let mut rb = self.request(Method::PUT, &url);
+        rb = self.set(rb, header::CONTENT_TYPE, HeaderValue::from_static("application/octet-stream"));
+        // Content-Length 由 reqwest 依据请求体自动补全，不手工写入
+        let resp = self.send(rb.body(data)).await?;
         if !resp.status().is_success() {
             return Err(Self::fail(resp, "上传失败，远端目录不存在").await);
         }
@@ -172,14 +220,10 @@ impl WebDav {
         let url = format!("{}/", self.url_of(&full).trim_end_matches('/'));
         let body = r#"<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getcontentlength/><d:getlastmodified/></d:prop></d:propfind>"#;
         let method = Method::from_bytes(b"PROPFIND").expect("PROPFIND");
-        let resp = self
-            .send(
-                self.request(method, &url)
-                    .header("Depth", "1")
-                    .header(header::CONTENT_TYPE, "application/xml; charset=utf-8")
-                    .body(body),
-            )
-            .await?;
+        let mut rb = self.request(method, &url);
+        rb = self.set(rb, HeaderName::from_static("depth"), HeaderValue::from_static("1"));
+        rb = self.set(rb, header::CONTENT_TYPE, HeaderValue::from_static("application/xml; charset=utf-8"));
+        let resp = self.send(rb.body(body)).await?;
         if resp.status() == StatusCode::NOT_FOUND {
             return Ok(Vec::new());
         }

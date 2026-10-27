@@ -136,6 +136,33 @@ label.nb-sync-row {
   text-align: center;
 }
 
+/* 多行自定义请求头：等宽字体便于对齐「名称: 值」 */
+.nb-sync-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 62px;
+  padding: 6px 10px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.6;
+  border: 1px solid var(--control-border, var(--editor-border));
+  border-radius: var(--radius-sm);
+  background: var(--editor-bg);
+  color: var(--editor-text);
+  outline: none;
+  resize: vertical;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.nb-sync-textarea:hover:not(:disabled):not(:read-only) {
+  border-color: var(--editor-border-focus);
+}
+
+.nb-sync-textarea:focus {
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-strong) 18%, transparent);
+}
+
 .nb-sync-path {
   display: flex;
   gap: 8px;

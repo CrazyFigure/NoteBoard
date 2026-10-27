@@ -602,6 +602,8 @@ export interface WebDavConfig {
   password: string;
   /** 自定义 User-Agent，留空使用 NoteBoard/版本号 */
   userAgent: string;
+  /** 自定义请求头，每条形如 `名称: 值`，附加到所有 WebDAV 请求；同名时优先于默认的 User-Agent / Authorization */
+  headers: string[];
   remoteDir: string;
 }
 
