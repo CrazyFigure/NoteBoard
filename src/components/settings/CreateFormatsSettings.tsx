@@ -112,11 +112,10 @@ interface FormatChipProps {
   flash?: boolean;
 }
 
-/** 条目外观：图标、名称（直接展示时带淡色「新建」前缀，直观体现两处显示差异）、扩展名 */
+/** 条目外观：拖动把手、图标、名称、扩展名 */
 function FormatChipBody({ id, zone }: { id: CreateFormatId; zone: Zone }) {
   const meta = getCreateFormat(id);
   const Icon = meta.icon;
-  const showPrefix = zone === 'primary' && !meta.isTool;
   return (
     <>
       <span className="nb-cf-grip" aria-hidden="true">
@@ -125,10 +124,7 @@ function FormatChipBody({ id, zone }: { id: CreateFormatId; zone: Zone }) {
       <span className="nb-cf-icon" style={{ '--nb-cf-color': meta.color } as CSSProperties}>
         <Icon size={zone === 'primary' ? 15 : 14} color={meta.color} />
       </span>
-      <span className="nb-cf-name">
-        {showPrefix && <span className="nb-cf-prefix">新建 </span>}
-        {meta.name}
-      </span>
+      <span className="nb-cf-name">{meta.name}</span>
       {meta.ext && <span className="nb-cf-ext">{meta.ext}</span>}
     </>
   );
@@ -299,7 +295,7 @@ export function CreateFormatsSettings() {
     updateDraft(saved);
   };
 
-  // 跨区拖动时实时移入目标分区，名称前缀随之变化，松手前即可看到效果
+  // 跨区拖动时实时移入目标分区，松手前即可看到落点
   const handleDragOver = ({ active, over }: DragOverEvent) => {
     const current = draftRef.current;
     if (!current || !over) return;

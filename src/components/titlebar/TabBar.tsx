@@ -929,8 +929,8 @@ export function TabBar() {
     boxSizing: 'border-box',
   };
 
-  // 渲染单个新建格式菜单项：直接展示时带「新建」前缀，二级菜单中不带
-  const renderCreateMenuItem = (id: CreateFormatId, placement: 'primary' | 'more') => {
+  // 渲染单个新建格式菜单项（首层与二级菜单同样式）
+  const renderCreateMenuItem = (id: CreateFormatId) => {
     const meta = getCreateFormat(id);
     const Icon = meta.menuIcon ?? meta.icon;
     return (
@@ -949,7 +949,7 @@ export function TabBar() {
         onMouseUp={handleMenuItemMouseUp}
       >
         <Icon size={13} color={meta.color} />
-        <span>{createFormatLabel(meta, placement)}</span>
+        <span>{createFormatLabel(meta)}</span>
       </button>
     );
   };
@@ -1223,7 +1223,7 @@ export function TabBar() {
           onClick={(e) => e.stopPropagation()}
         >
           {/* 直接展示的新建格式（顺序与主页共用设置「全局 → 新建入口」） */}
-          {createFormats.primary.map((id) => renderCreateMenuItem(id, 'primary'))}
+          {createFormats.primary.map(renderCreateMenuItem)}
 
           {createFormats.primary.length > 0 && createFormats.more.length > 0 && (
             <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />
@@ -1276,7 +1276,7 @@ export function TabBar() {
                   minWidth: 175,
                 }}
               >
-                {createFormats.more.map((id) => renderCreateMenuItem(id, 'more'))}
+                {createFormats.more.map(renderCreateMenuItem)}
               </div>
             )}
           </div>

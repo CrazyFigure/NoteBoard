@@ -7391,11 +7391,6 @@ input[type='number'] {
   text-overflow: ellipsis;
 }
 
-/* 「新建」前缀用强调色淡显：跨区拖动时出现 / 消失，直观看到两处的显示差异 */
-.nb-cf-prefix {
-  color: color-mix(in srgb, var(--accent-strong) 80%, var(--editor-text-muted));
-}
-
 /* 空间不足时扩展名先于名称收缩，名称尽量完整 */
 .nb-cf-ext {
   flex: 0 100 auto;

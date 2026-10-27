@@ -35,7 +35,7 @@ export type CreateFormatId =
 
 export interface CreateFormatMeta {
   id: CreateFormatId;
-  /** 不含「新建」前缀的名称，如「Markdown 笔记」 */
+  /** 显示名称，如「Markdown 笔记」 */
   name: string;
   /** 扩展名后缀，如「.md」；工具视图没有 */
   ext?: string;
@@ -44,18 +44,16 @@ export interface CreateFormatMeta {
   /** 「+」菜单与主页卡片图标不同时单独指定 */
   menuIcon?: LucideIcon;
   color: string;
-  /** 工具视图（文本对比）不是新建文件，直接展示时也不加「新建」 */
-  isTool?: boolean;
 }
 
 export const CREATE_FORMATS: readonly CreateFormatMeta[] = [
   { id: 'markdown', name: 'Markdown 笔记', ext: '.md', desc: '富文本与源码双模笔记', icon: FilePlus, menuIcon: FileText, color: 'var(--editor-accent, #3b82f6)' },
   { id: 'text', name: '文本文档', ext: '.txt', desc: '轻量纯文本记录与备忘', icon: FileText, color: '#64748b' },
   { id: 'bitable', name: '多维表格', ext: '.bitable', desc: '结构化数据与看板视图', icon: Table2, color: '#2563eb' },
-  { id: 'board', name: '自由画板', ext: '.excalidraw', desc: 'Excalidraw 自由手绘与白板', icon: PencilRuler, color: 'var(--accent-strong, #8b5cf6)' },
+  { id: 'board', name: '手绘风白板', ext: '.excalidraw', desc: 'Excalidraw 自由手绘与白板', icon: PencilRuler, color: 'var(--accent-strong, #8b5cf6)' },
   { id: 'mindmap', name: '思维导图', ext: '.mindmap', desc: '大纲 ⇄ 脑图双模切换', icon: Network, color: '#f97316' },
-  { id: 'textdiff', name: '文本对比', desc: '左右对照实时比对差异', icon: GitCompare, color: '#10b981', isTool: true },
-  { id: 'drawio', name: 'Draw.io 架构图', ext: '.drawio', desc: '专业系统架构与业务流程图', icon: Layout, color: '#ea580c' },
+  { id: 'textdiff', name: '文本对比', desc: '左右对照实时比对差异', icon: GitCompare, color: '#10b981' },
+  { id: 'drawio', name: '架构图', ext: '.drawio', desc: '专业系统架构与业务流程图', icon: Layout, color: '#ea580c' },
   { id: 'infographic', name: '信息图', ext: '.infographic', desc: '指标看板、时间线与漏斗等可视化', icon: ChartColumn, color: '#14b8a6' },
   { id: 'mermaid', name: 'Mermaid 图表', ext: '.mmd', desc: '时序图、流程图与状态机脚本', icon: Workflow, color: '#00bfb2' },
   { id: 'plantuml', name: 'PlantUML 建模', ext: '.puml', desc: '类图、时序图与系统组件图', icon: GitMerge, color: '#a855f7' },
@@ -108,8 +106,7 @@ export function isDefaultCreateFormats(layout: ResolvedCreateFormats): boolean {
   return same(layout.primary, DEFAULT_CREATE_FORMATS.primary) && same(layout.more, DEFAULT_CREATE_FORMATS.more);
 }
 
-/** 显示名：直接展示时加「新建」（工具视图除外），收进更多时不加 */
-export function createFormatLabel(meta: CreateFormatMeta, placement: 'primary' | 'more', withExt = true): string {
-  const base = withExt && meta.ext ? `${meta.name} (${meta.ext})` : meta.name;
-  return placement === 'primary' && !meta.isTool ? `新建 ${base}` : base;
+/** 显示名：名称后附扩展名，直接展示与收进更多均不加「新建」 */
+export function createFormatLabel(meta: CreateFormatMeta): string {
+  return meta.ext ? `${meta.name} (${meta.ext})` : meta.name;
 }

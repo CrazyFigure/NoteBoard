@@ -114,12 +114,12 @@ export function WelcomeScreen({
     json: onNewJson,
     sql: onNewSql,
   };
-  const toCreateAction = (id: CreateFormatId, placement: 'primary' | 'more') => {
+  const toCreateAction = (id: CreateFormatId) => {
     const meta = getCreateFormat(id);
     return {
       id,
       icon: meta.icon,
-      label: createFormatLabel(meta, placement),
+      label: createFormatLabel(meta),
       desc: meta.desc,
       shortcut: '',
       color: meta.color,
@@ -128,7 +128,7 @@ export function WelcomeScreen({
   };
 
   // 常用新建操作列表（直接展示的格式，排入 3 列网格）
-  const primaryCreateActions = createFormats.primary.map((id) => toCreateAction(id, 'primary'));
+  const primaryCreateActions = createFormats.primary.map(toCreateAction);
 
   // 打开与常用操作列表（4 个操作，整齐排成 2x2 网格，配置多主题自适应微色调）
   const openActions = [
@@ -195,8 +195,8 @@ export function WelcomeScreen({
     },
   ];
 
-  // 更多格式列表（收进「更多」的格式，不加「新建」前缀）
-  const moreFormats = createFormats.more.map((id) => toCreateAction(id, 'more'));
+  // 更多格式列表（收进「更多」的格式）
+  const moreFormats = createFormats.more.map(toCreateAction);
 
   return (
     <div

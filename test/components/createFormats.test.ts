@@ -38,10 +38,10 @@ describe('新建格式入口布局', () => {
     expect(resolved.more).toHaveLength(CREATE_FORMATS.length);
   });
 
-  it('直接展示加「新建」前缀（文本对比除外），收进更多不加', () => {
-    expect(createFormatLabel(getCreateFormat('markdown'), 'primary')).toBe('新建 Markdown 笔记 (.md)');
-    expect(createFormatLabel(getCreateFormat('markdown'), 'more')).toBe('Markdown 笔记 (.md)');
-    expect(createFormatLabel(getCreateFormat('drawio'), 'primary')).toBe('新建 Draw.io 架构图 (.drawio)');
-    expect(createFormatLabel(getCreateFormat('textdiff'), 'primary')).toBe('文本对比');
+  it('显示名不加「新建」，附带扩展名', () => {
+    expect(createFormatLabel(getCreateFormat('markdown'))).toBe('Markdown 笔记 (.md)');
+    expect(createFormatLabel(getCreateFormat('drawio'))).toBe('架构图 (.drawio)');
+    expect(createFormatLabel(getCreateFormat('board'))).toBe('手绘风白板 (.excalidraw)');
+    expect(createFormatLabel(getCreateFormat('textdiff'))).toBe('文本对比');
   });
 });

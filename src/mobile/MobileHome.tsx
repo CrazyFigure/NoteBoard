@@ -102,10 +102,10 @@ interface CreateItem {
 const CREATE_ITEMS: CreateItem[] = [
   { key: 'markdown', label: 'Markdown 笔记', desc: '富文本与源码双模', icon: <FilePlus size={22} color="var(--editor-accent, #3b82f6)" />, run: newMarkdown },
   { key: 'text', label: '文本文档', desc: '轻量纯文本', icon: <FileText size={22} color="#64748b" />, run: newText },
-  { key: 'board', label: '自由画板', desc: 'Excalidraw 手绘', icon: <PencilRuler size={22} color="var(--accent-strong, #8b5cf6)" />, run: newBoard },
+  { key: 'board', label: '手绘风白板', desc: 'Excalidraw 手绘', icon: <PencilRuler size={22} color="var(--accent-strong, #8b5cf6)" />, run: newBoard },
   { key: 'mindmap', label: '思维导图', desc: '大纲 ⇄ 脑图', icon: <Network size={22} color="#f97316" />, run: newMindmap },
   { key: 'bitable', label: '多维表格', desc: '表格 / 看板 / 甘特', icon: <Table2 size={22} color="#2563eb" />, run: newBitable },
-  { key: 'drawio', label: 'Draw.io', desc: '架构与流程图（需联网）', icon: <Layout size={22} color="#ea580c" />, run: newDrawio },
+  { key: 'drawio', label: '架构图', desc: '架构与流程图（需联网）', icon: <Layout size={22} color="#ea580c" />, run: newDrawio },
   { key: 'mermaid', label: 'Mermaid', desc: '时序 / 流程图脚本', icon: <Workflow size={22} color="#00bfb2" />, run: newMermaid },
   { key: 'plantuml', label: 'PlantUML', desc: 'UML 建模（需联网）', icon: <GitMerge size={22} color="#a855f7" />, run: newPlantUml },
   { key: 'infographic', label: '信息图', desc: '看板 / 时间线', icon: <ChartColumn size={22} color="#14b8a6" />, run: newInfographic },
