@@ -6,6 +6,7 @@ import { useDocumentStore } from '../stores/documentStore';
 import { installWebClipboardFallback } from './clipboard';
 import './web.css';
 import { browserSystemFonts } from './fonts';
+import { SHARED_ROOT, isMultiUser, setWebAccount, type WebAccount } from '../features/account/accountState';
 
 const ROOT = '/workspace';
 /** 普通 HTTP 部署也可生成随机标识；randomUUID 只在安全上下文中可用。 */
@@ -23,15 +24,16 @@ const events = new EventTarget();
 let sequence = 0;
 let syncAvailable = false;
 
-/** 启动时读取服务能力；未设账号或工作进程未构建时不给出可操作的同步入口。 */
+/** 启动时读取服务能力；未设账号、非管理员或工作进程未构建时不给出可操作的同步入口。 */
 export function canUseWebSync(): boolean { return syncAvailable; }
 
 /** 在 React 启动前连接同步事件，身份验证沿用页面 HTTP Basic 登录状态。 */
 export async function initializeWebRuntime(): Promise<void> {
   // 服务器 IP + HTTP 也能复制文本；图片复制和主动粘贴仍遵循浏览器 HTTPS 权限限制。
   installWebClipboardFallback();
-  const capabilities = await request<{ syncAvailable: boolean; authEnabled: boolean; historyAvailable?: boolean }>('web_capabilities');
+  const capabilities = await request<{ syncAvailable: boolean; authEnabled: boolean; historyAvailable?: boolean; account?: WebAccount | null }>('web_capabilities');
   syncAvailable = capabilities.syncAvailable;
+  setWebAccount(capabilities.authEnabled ? capabilities.account ?? null : null);
   // 未启用多端同步的部署仍可能提供历史记录：同样需要事件流刷新版本列表
   if (syncAvailable || capabilities.historyAvailable) {
     const stream = new EventSource('/api/events');
@@ -43,13 +45,27 @@ export async function initializeWebRuntime(): Promise<void> {
   }
 }
 
-/** HTTP 调用保留服务器错误，认证由同源浏览器会话处理，不把密码写入前端存储。 */
+let redirecting = false;
+/**
+ * 会话失效（被管理员停用、改密或过期）时回到登录页，登录后返回当前地址。
+ * 只跳转一次：有未保存内容时用户可在离开确认中取消，后台轮询不会反复弹出确认。
+ */
+function redirectToLogin(): never {
+  if (!redirecting) {
+    redirecting = true;
+    location.assign(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
+  }
+  throw new Error('登录已失效，请刷新页面重新登录');
+}
+
+/** HTTP 调用保留服务器错误，认证由同源会话 Cookie 处理，不把密码写入前端存储。 */
 async function request<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {
   const response = await fetch('/api/command', {
     method: 'POST', credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', 'X-NoteBoard-Request': '1', 'X-NoteBoard-Client': clientId },
     body: JSON.stringify({ command, args }),
   });
+  if (response.status === 401) redirectToLogin();
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: `请求失败（${response.status}）` }));
     throw new Error(error.error);
@@ -232,6 +248,7 @@ export async function invoke<T>(command: string, rawArgs: Record<string, unknown
 /** 浏览器中读取服务器二进制文件，继续支持 XMind 和图片等现有导入流程。 */
 export async function readFile(filePath: string): Promise<Uint8Array> {
   const response = await fetch(convertFileSrc(filePath), { credentials: 'same-origin' });
+  if (response.status === 401) redirectToLogin();
   if (!response.ok) throw new Error('读取文件失败');
   return new Uint8Array(await response.arrayBuffer());
 }
@@ -276,7 +293,16 @@ async function choose(options: DialogOptions, saving: boolean): Promise<string |
   const error = document.createElement('div'); error.className = 'nb-web-error'; error.setAttribute('role', 'alert');
   const filename = document.createElement('input'); filename.ariaLabel = '文件名'; filename.placeholder = '文件名';
   const actions = document.createElement('div'); actions.className = 'nb-web-actions';
-  let dir = options.defaultPath?.startsWith(ROOT + '/') ? options.defaultPath.split('/').slice(0, -1).join('/') : ROOT;
+  const inShared = (target?: string) => isMultiUser() && !!target && target.startsWith(SHARED_ROOT + '/');
+  let dir = options.defaultPath?.startsWith(ROOT + '/') || inShared(options.defaultPath) ? options.defaultPath!.split('/').slice(0, -1).join('/') : ROOT;
+  // 多用户时提供“我的笔记 / 共享给我”两个起点，共享内容仍受服务端权限约束。
+  const places = document.createElement('div'); places.className = 'nb-web-places';
+  let navigate: (target: string) => void = () => undefined;
+  const placeButtons = isMultiUser() ? [
+    { root: ROOT, element: button('我的笔记', () => navigate(ROOT)) },
+    { root: SHARED_ROOT, element: button('共享给我', () => navigate(SHARED_ROOT)) },
+  ] : [];
+  placeButtons.forEach(({ element }) => places.append(element));
   if (saving) filename.value = options.defaultPath?.split(/[/\\]/).pop() || '未命名.md';
   const selected = new Set<string>();
   return new Promise((resolve) => {
@@ -287,7 +313,9 @@ async function choose(options: DialogOptions, saving: boolean): Promise<string |
         const nodes = await request<FileTreeNode[]>('read_dir', { path: target, showHidden: true });
         if (!dialog.isConnected) return;
         dir = target; locationInput.value = dir; selected.clear(); list.replaceChildren(); error.textContent = '';
-        if (dir !== ROOT) list.append(button('↰ 上一级', () => void show(dir.split('/').slice(0, -1).join('/') || ROOT)));
+        placeButtons.forEach(({ root, element }) => element.setAttribute('aria-pressed', String(dir === root || dir.startsWith(root + '/'))));
+        if (dir !== ROOT && dir !== SHARED_ROOT) list.append(button('↰ 上一级', () => void show(dir.split('/').slice(0, -1).join('/') || ROOT)));
+        if (dir === SHARED_ROOT && !nodes.length) { const empty = document.createElement('p'); empty.className = 'nb-web-empty'; empty.textContent = '暂无共享给你的文件'; list.append(empty); }
         for (const node of nodes) {
           const item = button(`${node.isDir ? '📁' : '📄'} ${node.name}`, () => {
             if (node.isDir) { void show(node.path); return; }
@@ -304,6 +332,7 @@ async function choose(options: DialogOptions, saving: boolean): Promise<string |
         }
       } catch (cause) { error.textContent = String(cause); }
     }
+    navigate = (target) => void show(target);
     locationInput.onkeydown = (event) => { if (event.key === 'Enter') void show(locationInput.value.replace(/\/+$/, '') || ROOT); };
     const confirm = button(saving ? '保存' : '选择', () => void (async () => {
       try {
@@ -330,6 +359,7 @@ async function choose(options: DialogOptions, saving: boolean): Promise<string |
           for (const file of Array.from(upload.files || [])) {
             const target = `${dir}/${file.name}`;
             const response = await fetch(`/api/upload?path=${encodeURIComponent(target)}`, { method: 'POST', headers: { 'X-NoteBoard-Request': '1' }, body: file });
+            if (response.status === 401) redirectToLogin();
             if (!response.ok) throw new Error((await response.json()).error);
             paths.push(target);
           }
@@ -339,7 +369,9 @@ async function choose(options: DialogOptions, saving: boolean): Promise<string |
       actions.append(button('从本机上传', () => upload.click()), upload);
     }
     actions.append(button('取消', () => finish(null)), confirm);
-    dialog.append(title, locationInput, list);
+    dialog.append(title);
+    if (placeButtons.length) dialog.append(places);
+    dialog.append(locationInput, list);
     if (saving) dialog.append(filename);
     dialog.append(error, actions); document.body.append(dialog); dialog.showModal(); void show(dir);
   });

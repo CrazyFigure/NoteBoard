@@ -6,6 +6,7 @@ import { OFFICIAL_PLUGINS, isNewerPluginVersion, type PluginId } from './pluginT
 import { Tooltip } from '../../components/Tooltip';
 import { PluginFonts } from './PluginFonts';
 import { ProgressRing } from './ProgressRing';
+import { canManageInstance } from '../account/accountState';
 import './plugins.css';
 
 export const PLUGIN_ICONS = { word: FileText, excel: FileSpreadsheet, powerpoint: Presentation, pdf: FileType, cad: DraftingCompass, epub: BookOpen, workbench: LayoutDashboard };
@@ -16,6 +17,8 @@ export function PluginsPanel({ target }: { target?: string | null }) {
   const [tab, setTab] = useState<'all' | 'installed'>('all');
   const [removeId, setRemoveId] = useState<PluginId | null>(null);
   const [highlight, setHighlight] = useState<string | null>(null);
+  // 网页多用户部署中插件按实例共享，普通用户只能使用管理员安装并启用的插件。
+  const manage = canManageInstance();
   useEffect(() => { void initializePlugins(); }, []);
   useEffect(() => {
     if (!target || target === 'plugins') return;
@@ -34,6 +37,7 @@ export function PluginsPanel({ target }: { target?: string | null }) {
       <button type="button" role="tab" aria-selected={tab === 'all'} onClick={() => setTab('all')}>发现插件</button>
       <button type="button" role="tab" aria-selected={tab === 'installed'} onClick={() => setTab('installed')}>已安装{installed.length ? ` ${installed.length}` : ''}</button>
     </div>
+    {!manage && <p className="nb-plugin-managed">插件由管理员统一安装和启用</p>}
     {error && <div className="nb-plugin-error" role="alert">{error}</div>}
     <div className="nb-plugin-list">{OFFICIAL_PLUGINS.filter((item) => tab === 'all' || installed.some((p) => p.manifest.id === item.id)).map((item) => {
       const current = installed.find((p) => p.manifest.id === item.id);
@@ -51,7 +55,7 @@ export function PluginsPanel({ target }: { target?: string | null }) {
           {current?.invalid && <p className="nb-plugin-inline-error">插件文件损坏：{current.error}</p>}
         </div>
         <div className="nb-plugin-actions">
-          {removeId === item.id ? <>
+          {!manage ? <span className="nb-plugin-confirm-text">{current ? current.enabled && !current.invalid ? '已启用' : '未启用' : '未安装'}</span> : removeId === item.id ? <>
             <span className="nb-plugin-confirm-text">{item.id === 'workbench' ? '卸载？布局会保留' : '确定卸载？'}</span>
             <button type="button" className="nb-plugin-button" onClick={() => setRemoveId(null)}>取消</button>
             <button type="button" className="nb-plugin-button danger" disabled={!!busy} onClick={() => { void act('remove', item.id); setRemoveId(null); }}>卸载</button>

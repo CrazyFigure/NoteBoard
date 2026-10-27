@@ -3,7 +3,7 @@
 // 详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud, ChevronRight, Monitor, History, PanelTop } from 'lucide-react';
+import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud, ChevronRight, Monitor, History, PanelTop, UserRound, Users } from 'lucide-react';
 import { useSettingsStore, useTitleBarButtons } from '../../stores/settingsStore';
 import { THEMES } from '../../core/theme/themes';
 import { contentWidthToPercent, CONTENT_WIDTH_PERCENT_MAP } from '../../core/theme/applyTheme';
@@ -27,6 +27,10 @@ import { formatShortcut } from '../../core/shortcuts';
 import { SyncPanel } from '../../features/sync/SyncPanel';
 // 插件管理随设置窗口加载，查看器重库仍由已安装包按需提供。
 import { PluginsPanel } from '../../features/plugins/PluginsPanel';
+// 网页多用户：账号与用户管理面板（原生端与公开部署不显示入口）
+import { AccountPanel } from '../../features/account/AccountPanel';
+import { UserManagementPanel } from '../../features/account/UserManagementPanel';
+import { isAdmin, isMultiUser } from '../../features/account/accountState';
 // 历史记录设置随设置窗口加载（只含设置表单，不含查看界面）
 import { HistorySettingsPanel } from '../../features/versionHistory/HistorySettingsPanel';
 import { useLayoutStore } from '../../stores/layoutStore';
@@ -38,7 +42,11 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type TabType = 'appearance' | 'typography' | 'editor' | 'file' | 'sync' | 'history' | 'plugins' | 'shortcuts' | 'general' | 'about';
+type TabType = 'account' | 'users' | 'appearance' | 'typography' | 'editor' | 'file' | 'sync' | 'history' | 'plugins' | 'shortcuts' | 'general' | 'about';
+
+// 多端同步仅管理员可用：多用户部署中普通用户不显示同步页
+const SHOW_ACCOUNT = () => IS_WEB && isMultiUser();
+const SHOW_SYNC = () => !IS_WEB || !isMultiUser() || isAdmin();
 
 // 托盘与全局快捷键仅原生桌面端可用（网页与移动端没有系统托盘）
 const SUPPORTS_SYSTEM_INTEGRATION = !IS_NATIVE_MOBILE && !IS_WEB;
@@ -233,6 +241,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               flexShrink: 0,
             }}
           >
+            {SHOW_ACCOUNT() && (
+              <>
+                <NavBtn active={activeTab === 'account'} icon={<UserRound size={15} />} label="账号" onClick={() => setActiveTab('account')} />
+                {isAdmin() && <NavBtn active={activeTab === 'users'} icon={<Users size={15} />} label="用户管理" onClick={() => setActiveTab('users')} />}
+                <div className="nb-settings-nav-divider" style={{ height: 1, background: 'var(--editor-border)', margin: '2px 6px' }} />
+              </>
+            )}
             <NavBtn
               active={activeTab === 'appearance'}
               icon={<Palette size={15} />}
@@ -264,12 +279,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               label="文件与保存"
               onClick={() => setActiveTab('file')}
             />
-            <NavBtn
-              active={activeTab === 'sync'}
-              icon={<Cloud size={15} />}
-              label="同步与备份"
-              onClick={() => setActiveTab('sync')}
-            />
+            {SHOW_SYNC() && (
+              <NavBtn
+                active={activeTab === 'sync'}
+                icon={<Cloud size={15} />}
+                label="同步与备份"
+                onClick={() => setActiveTab('sync')}
+              />
+            )}
             <NavBtn
               active={activeTab === 'history'}
               icon={<History size={15} />}
@@ -1424,7 +1441,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             )}
 
             {/* 5. 同步与备份：与其他页签一样直接渲染，配置未就绪的提示由面板自身处理。 */}
-            {activeTab === 'sync' && <SyncPanel />}
+            {activeTab === 'account' && <AccountPanel />}
+            {activeTab === 'users' && isAdmin() && <UserManagementPanel />}
+            {activeTab === 'sync' && SHOW_SYNC() && <SyncPanel />}
             {activeTab === 'history' && <HistorySettingsPanel />}
             {activeTab === 'plugins' && <PluginsPanel target={settingsTarget} />}
 

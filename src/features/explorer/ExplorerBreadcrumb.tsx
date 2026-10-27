@@ -8,6 +8,7 @@ import { Tooltip } from '../../components/Tooltip';
 import { useExplorerStore } from './explorerStore';
 import { useTreeData } from './useTreeData';
 import { USES_WINDOWS_PATHS, IS_WEB } from '../../core/platform';
+import { SHARED_ROOT, isMultiUser } from '../account/accountState';
 
 export interface PathSegment {
   name: string;
@@ -30,7 +31,9 @@ export function parsePathSegments(rawPath: string): PathSegment[] {
     let current = '';
     for (let index = 0; index < parts.length; index += 1) {
       current += '/' + parts[index];
-      result.push({ name: parts[index], fullPath: current, isDrive: false, isLast: index === parts.length - 1 });
+      // 网页多用户的共享虚拟根目录显示为易懂的名称
+      const name = IS_WEB && current === SHARED_ROOT && isMultiUser() ? '共享给我' : parts[index];
+      result.push({ name, fullPath: current, isDrive: false, isLast: index === parts.length - 1 });
     }
     return result;
   }

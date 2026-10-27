@@ -86,3 +86,5 @@
   .nb-plugin-font-grid { grid-template-columns:1fr; }
   .nb-plugin-fonts-heading { align-items:flex-start; }
 }
+/* 网页多用户：普通用户只读查看插件状态 */
+.nb-plugin-managed { margin:0 0 14px; padding:9px 12px; border-radius:6px; font-size:12px; color:var(--editor-text-secondary); background:var(--toolbar-hover); }

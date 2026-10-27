@@ -14,6 +14,8 @@ import {
   FolderPlus,
   Download,
   AppWindow,
+  Share2,
+  Users,
 } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 import type { FileTreeNode } from '../../core/ipc/types';
@@ -29,6 +31,9 @@ import * as ipc from '../../core/ipc/commands';
 import { syncTrashPath, useSyncStore } from '../../stores/syncStore';
 import { sameKey, pathKey, dirnameOf, joinPath } from './pathUtils';
 import { IS_WEB } from '../../core/platform';
+// 网页多用户：共享入口、共享标记与共享路径内的操作限制
+import { isMultiUser, isSharedPath } from '../account/accountState';
+import { describeGrants, useShareStore } from '../account/shareStore';
 
 interface TreeNodeProps {
   node: FileTreeNode;
@@ -169,6 +174,14 @@ const TreeNodeImpl = memo(function TreeNodeImpl({
   const expand = useExplorerStore((s) => s.expand);
   // 文件树身份沿用平台路径语义，不能合并 Linux 下仅大小写不同的文件。
   const nodeKey = pathKey(node.path);
+
+  // 网页多用户：/shared/<所有者> 是虚拟目录，/shared/<所有者>/<共享项> 是共享项本身（不能改名或删除），
+  // 只读共享内的条目不能新建、改名或删除；最终权限仍由服务端逐请求校验。
+  const sharedDepth = isSharedPath(node.path) ? node.path.split('/').length - 2 : 0;
+  const canCreateInside = sharedDepth !== 1 && !node.readonly;
+  const canRenameOrDelete = sharedDepth === 0 || sharedDepth > 2 && !node.readonly;
+  const canShare = IS_WEB && isMultiUser() && node.path.startsWith('/workspace/') && !node.path.slice('/workspace/'.length).split('/').some((part) => part.startsWith('.'));
+  const share = useShareStore((state) => canShare ? state.byPath.get(node.path) : undefined);
 
   // 精确响应式订阅：当前节点的展开状态、子节点缓存、高亮状态以及定位滚动触发计数
   const isNodeExpanded = useExplorerStore((s) => s.expanded.has(nodeKey));
@@ -314,7 +327,8 @@ const TreeNodeImpl = memo(function TreeNodeImpl({
     e.stopPropagation();
     setRevealed(node.path, false);
     const menuWidth = 180;
-    const menuHeight = node.isDir ? 230 : 225;
+    // 网页共享菜单项多占一行
+    const menuHeight = (node.isDir ? 230 : 225) + (canShare ? 30 : 0);
     const x = e.clientX + menuWidth > window.innerWidth ? Math.max(8, e.clientX - menuWidth) : e.clientX;
     const y = e.clientY + menuHeight > window.innerHeight ? Math.max(8, e.clientY - menuHeight) : e.clientY;
     setMenuPos({ x, y });
@@ -322,7 +336,7 @@ const TreeNodeImpl = memo(function TreeNodeImpl({
 
   // 按键响应：支持 F2 快捷键直接进入重命名
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'F2') {
+    if (e.key === 'F2' && canRenameOrDelete) {
       e.preventDefault();
       e.stopPropagation();
       setIsRenaming(true);
@@ -371,6 +385,8 @@ const TreeNodeImpl = memo(function TreeNodeImpl({
       const linkPlan = await wikiLinks.planWikiLinkRenameSafely(node.path, node.isDir);
 
       await ipc.renamePath(node.path, newPath);
+      // 服务端会让共享随改名移动，刷新本地共享标记
+      if (IS_WEB && isMultiUser()) void useShareStore.getState().refresh().catch(() => undefined);
 
       if (!node.isDir) {
         // 单文件：同步迁移已打开文档 store 与 Tab 标签页
@@ -439,7 +455,7 @@ const TreeNodeImpl = memo(function TreeNodeImpl({
 
   return (
     <div role="treeitem" aria-expanded={node.isDir ? expanded : undefined} aria-level={depth + 1}>
-      <Tooltip content={node.path} disabled={Boolean(menuPos) || isRenaming} side="right" sideOffset={6}>
+      <Tooltip content={share ? <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span>{node.path}</span><span>{describeGrants(share)}</span></span> : node.path} disabled={Boolean(menuPos) || isRenaming} side="right" sideOffset={6}>
         <div
           ref={rowRef}
           style={rowStyle}
@@ -526,6 +542,13 @@ const TreeNodeImpl = memo(function TreeNodeImpl({
               {node.name}
             </span>
           )}
+
+          {/* 已共享标记（说明在整行 Tooltip 中） */}
+          {share && !isRenaming && (
+            <span className="nb-tree-share-mark" aria-label={describeGrants(share)}>
+              <Users size={12} />
+            </span>
+          )}
         </div>
       </Tooltip>
 
@@ -577,7 +600,7 @@ const TreeNodeImpl = memo(function TreeNodeImpl({
           )}
 
           {/* 目录特有菜单项：在此新建文件与新建文件夹 */}
-          {node.isDir && (
+          {node.isDir && canCreateInside && (
             <>
               <ContextMenuItem
                 icon={FilePlus}
@@ -610,7 +633,7 @@ const TreeNodeImpl = memo(function TreeNodeImpl({
           )}
 
           {/* 重命名 */}
-          <ContextMenuItem
+          {canRenameOrDelete && <ContextMenuItem
             icon={Edit2}
             label="重命名"
             shortcut="F2"
@@ -618,7 +641,7 @@ const TreeNodeImpl = memo(function TreeNodeImpl({
               setMenuPos(null);
               setIsRenaming(true);
             }}
-          />
+          />}
 
           {/* 在文件资源管理器中定位 */}
           <ContextMenuItem
@@ -637,6 +660,13 @@ const TreeNodeImpl = memo(function TreeNodeImpl({
             onClick={() => { setMenuPos(null); void ipc.openWithDefaultApp(node.path); }}
           />}
 
+          {/* 网页多用户：把自己的文件或文件夹共享给其他用户 */}
+          {canShare && <ContextMenuItem
+            icon={Share2}
+            label={share ? '管理共享…' : '共享…'}
+            onClick={() => { setMenuPos(null); useShareStore.getState().openDialog(node.path); }}
+          />}
+
           {/* 复制完整路径 */}
           <ContextMenuItem
             icon={Copy}
@@ -647,25 +677,30 @@ const TreeNodeImpl = memo(function TreeNodeImpl({
             }}
           />
 
-          <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />
+          {canRenameOrDelete && <>
+            <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />
 
-          {/* 移至回收站 */}
-          <ContextMenuItem
-            icon={Trash2}
-            label="移至回收站"
-            danger
-            onClick={async () => {
-              setMenuPos(null);
-              try {
-                await ipc.moveToTrash(node.path);
-                // 左侧栏删除已打开文件时立即标记，无需等待下一次焦点检查。
-                markOpenDocumentDeleted(node.path);
-                await refreshParent();
-              } catch (err) {
-                console.error('删除失败:', err);
-              }
-            }}
-          />
+            {/* 移至回收站 */}
+            <ContextMenuItem
+              icon={Trash2}
+              label="移至回收站"
+              danger
+              onClick={async () => {
+                setMenuPos(null);
+                try {
+                  await ipc.moveToTrash(node.path);
+                  // 左侧栏删除已打开文件时立即标记，无需等待下一次焦点检查。
+                  markOpenDocumentDeleted(node.path);
+                  await refreshParent();
+                  // 删除已共享的条目后服务端会移除其共享，同步刷新标记
+                  if (IS_WEB && isMultiUser()) void useShareStore.getState().refresh().catch(() => undefined);
+                } catch (err) {
+                  console.error('删除失败:', err);
+                  showToast(typeof err === 'string' ? err : err instanceof Error ? err.message : '删除失败', 'error');
+                }
+              }}
+            />
+          </>}
         </div>
       )}
 

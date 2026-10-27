@@ -37,8 +37,12 @@ test('两个网页实例通过现有 WebDAV 协议双向同步，并能备份和
     const server = await createWebServer({ dataDir: path.join(temp, name), username: 'admin', password: 'password' });
     servers.push(server);
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    // 管理员使用部署账号登录，后续请求携带会话 Cookie。
+    const login = await fetch(`http://127.0.0.1:${server.address().port}/api/login`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-NoteBoard-Request': '1' }, body: JSON.stringify({ username: 'admin', password: 'password' }) });
+    assert.equal(login.status, 200);
+    const session = login.headers.get('set-cookie').split(';')[0];
     async function call(command, args = {}) {
-      const response = await fetch(`http://127.0.0.1:${server.address().port}/api/command`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-NoteBoard-Request': '1', 'X-NoteBoard-Client': `browser-${name}-1234`, Authorization: `Basic ${Buffer.from('admin:password').toString('base64')}` }, body: JSON.stringify({ command, args }) });
+      const response = await fetch(`http://127.0.0.1:${server.address().port}/api/command`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-NoteBoard-Request': '1', 'X-NoteBoard-Client': `browser-${name}-1234`, Cookie: session }, body: JSON.stringify({ command, args }) });
       const result = await response.json();
       assert.equal(response.status, 200, `${command}: ${JSON.stringify(result)}`);
       return result.result;
@@ -65,6 +69,8 @@ test('两个网页实例通过现有 WebDAV 协议双向同步，并能备份和
       }
       assert.fail('同步任务未在预期时间完成');
     }
+    // 开启同步会异步执行首轮同步并持有远端锁；等它结束，避免另一台设备随后同步时撞锁。
+    for (let attempt = 0; attempt < 200 && (await call('sync_get_status')).syncing; attempt += 1) await delay(50);
     return { call, run, id: saved.deviceId };
   }
 
@@ -137,4 +143,74 @@ test('未启用访问认证时仍提供文档历史记录，且不开放同步�
   // 历史目录不出现在文件列表
   const names = (await call('read_dir', { path: '/workspace', showHidden: true })).map((n) => n.name);
   assert.ok(!names.includes('.nb-history'));
+});
+
+test('多用户：普通用户拥有独立历史记录，共享文件写入记录在所有者历史中，同步仅管理员可用', { skip: !process.env.NOTEBOARD_SYNC_BINARY }, async (t) => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'noteboard-multi-history-'));
+  const server = await createWebServer({ dataDir: path.join(temp, 'data'), username: 'admin', password: 'admin-password' });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => {
+    server.stopNoteboard(); server.closeAllConnections(); await new Promise((resolve) => server.close(resolve));
+    await fs.rm(temp, { recursive: true, force: true });
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  async function as(username, password) {
+    const login = await fetch(`${base}/api/login`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-NoteBoard-Request': '1' }, body: JSON.stringify({ username, password }) });
+    assert.equal(login.status, 200);
+    const cookie = login.headers.get('set-cookie').split(';')[0];
+    async function send(command, args = {}) {
+      const response = await fetch(`${base}/api/command`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-NoteBoard-Request': '1', 'X-NoteBoard-Client': `browser-${username}-1234`, Cookie: cookie }, body: JSON.stringify({ command, args }) });
+      return { status: response.status, body: await response.json() };
+    }
+    async function call(command, args = {}) {
+      const { status, body } = await send(command, args);
+      assert.equal(status, 200, `${command}: ${JSON.stringify(body)}`);
+      return body.result;
+    }
+    return { send, call };
+  }
+  const admin = await as('admin', 'admin-password');
+  await admin.call('users_create', { username: 'writer', password: 'writer-password' });
+  const writer = await as('writer', 'writer-password');
+  const capabilities = await writer.call('web_capabilities');
+  assert.equal(capabilities.syncAvailable, false);
+  assert.equal(capabilities.historyAvailable, true);
+  assert.equal((await writer.send('sync_get_config')).status, 403);
+  assert.equal((await writer.send('backup_list')).status, 403);
+  // 各自的历史配置独立
+  assert.equal((await writer.call('history_set_mode', { mode: 'local' })).mode, 'local');
+  assert.equal((await admin.call('history_get_config')).mode, 'off');
+  await admin.call('history_set_mode', { mode: 'local' });
+
+  const file = await admin.call('create_file', { dir: '/workspace', name: '共享历史.md' });
+  await admin.call('share_set', { path: file.key, grants: [{ userId: '*', permission: 'edit' }] });
+  const sharedKey = '/shared/admin/共享历史.md';
+  let revision = (await writer.call('read_document', { path: sharedKey })).webRevision;
+  for (const content of ['# 第一版', '# 第一版\n\nwriter 补充']) {
+    revision = (await writer.call('write_document', { path: sharedKey, content, encoding: 'utf8', eol: 'lf', expectedRevision: revision })).webRevision;
+  }
+  let list;
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    list = await admin.call('history_list', { path: file.key });
+    if (list.entries.length >= 1 && list.entries[0].size > 0) break;
+    await delay(50);
+  }
+  assert.ok(list.entries.length >= 1);
+  // 接收者通过共享路径读取所有者的历史，但不能删除版本
+  const shared = await writer.call('history_list', { path: sharedKey });
+  assert.equal(shared.entries.length, list.entries.length);
+  assert.equal((await writer.call('history_read', { path: sharedKey, entryId: list.entries[0].id })).content, '# 第一版\n\nwriter 补充');
+  assert.equal((await writer.send('history_delete_entry', { path: sharedKey, entryId: list.entries[0].id })).status, 403);
+  // 普通用户自己的文件记录在自己的历史中
+  const own = await writer.call('create_file', { dir: '/workspace', name: '自己的.md' });
+  await writer.call('write_document', { path: own.key, content: '自己的内容', encoding: 'utf8', eol: 'lf', expectedRevision: own.webRevision });
+  let ownList;
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    ownList = await writer.call('history_list', { path: own.key });
+    if (ownList.entries.length >= 1) break;
+    await delay(50);
+  }
+  assert.ok(ownList.entries.length >= 1);
+  assert.equal((await admin.send('history_list', { path: own.key })).status, 200);
+  assert.equal((await admin.call('history_list', { path: own.key })).entries.length, 0);
 });

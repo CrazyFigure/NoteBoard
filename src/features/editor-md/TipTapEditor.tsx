@@ -43,6 +43,7 @@ import { on, off, emit } from '../../core/emitter';
 import { MarkdownModeToggle } from './MarkdownModeToggle';
 import { ReadingModeOverlay } from '../reading/ReadingModeOverlay';
 import { requestReadingMode } from '../reading/readingMode';
+import { useSharedReadonly } from '../account/sharedReadonly';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { ExternalChangeBanner } from './ExternalChangeBanner';
 import { markdownPlainBracketExtension } from './sourcePlainBracket';
@@ -176,6 +177,8 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   const readingModeEnabled = useLayoutStore((s) => s.readingMode);
   const isActiveDocument = useWindowStore((s) => s.activeKey === docKey);
   const isReading = readingModeEnabled && isActiveDocument;
+  // 网页只读共享：正文不可编辑（不进入沉浸阅读外观）
+  const sharedReadonly = useSharedReadonly(docKey);
 
   /**
    * 🔴 S12：恢复回收前捕获的视图状态（选区/滚动；裁剪到合法范围，一次性消费）。
@@ -794,10 +797,10 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     if (!view) return;
     view.dispatch({
       effects: sourceReadOnlyCompartment.reconfigure(
-        isReading ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : [],
+        isReading || sharedReadonly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : [],
       ),
     });
-  }, [isReading, viewMode]);
+  }, [isReading, sharedReadonly, viewMode]);
 
   const exitReading = useCallback(() => requestReadingMode(false), []);
 
@@ -913,7 +916,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
           visualUndoDepthRef={visualUndoDepthRef}
           storeTimerRef={storeTimerRef}
           diskTimerRef={diskTimerRef}
-          readOnly={isReading}
+          readOnly={isReading || sharedReadonly}
         />
       )}
 

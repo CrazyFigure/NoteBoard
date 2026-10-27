@@ -19,6 +19,11 @@ import { useDocumentStore } from '../../stores/documentStore';
 import { ExplorerBreadcrumb } from './ExplorerBreadcrumb';
 import { Tooltip } from '../../components/Tooltip';
 import { pathKey } from './pathUtils';
+import { IS_WEB } from '../../core/platform';
+import { showToast } from '../../stores/toastStore';
+// 网页多用户：“我的笔记 / 共享给我”切换
+import { ExplorerSpaces } from '../account/ExplorerSpaces';
+import { SHARED_ROOT, isMultiUser, isSharedPath } from '../account/accountState';
 
 // ── Explorer 组件 ──
 
@@ -94,6 +99,8 @@ export function Explorer() {
       }
     } catch (err) {
       console.error('创建失败:', err);
+      // 只读共享等服务端拒绝的原因需要告知用户
+      showToast(typeof err === 'string' ? err : err instanceof Error ? err.message : '创建失败', 'error');
     }
 
     setCreatingType(null);
@@ -169,6 +176,10 @@ export function Explorer() {
     );
   }
 
+  // /shared 与 /shared/<所有者> 是虚拟目录，不能在其中新建
+  const showSpaces = IS_WEB && isMultiUser();
+  const virtualShared = isSharedPath(root) && (root ?? '').split('/').length < 4;
+
   return (
     <div style={containerStyle} role="tree">
       {/* 标题行 */}
@@ -208,7 +219,7 @@ export function Explorer() {
             </button>
           </Tooltip>
           {/* 新建文件 */}
-          <Tooltip content="新建文件">
+          {!virtualShared && <Tooltip content="新建文件">
             <button
               type="button"
               onClick={() => {
@@ -223,9 +234,9 @@ export function Explorer() {
             >
               <FilePlus size={15} />
             </button>
-          </Tooltip>
+          </Tooltip>}
           {/* 新建文件夹 */}
-          <Tooltip content="新建文件夹">
+          {!virtualShared && <Tooltip content="新建文件夹">
             <button
               type="button"
               onClick={() => {
@@ -240,7 +251,7 @@ export function Explorer() {
             >
               <FolderPlus size={15} />
             </button>
-          </Tooltip>
+          </Tooltip>}
           {/* 刷新目录 */}
           <Tooltip content="刷新目录">
             <button
@@ -271,6 +282,8 @@ export function Explorer() {
           </Tooltip>
         </div>
       </div>
+
+      {showSpaces && <ExplorerSpaces root={root} />}
 
       {/* 面包屑型路径导航栏 */}
       <ExplorerBreadcrumb root={root} onRefresh={handleRefresh} />
@@ -341,6 +354,8 @@ export function Explorer() {
               isLast={i === rootChildren.length - 1}
             />
           ))
+        ) : root === SHARED_ROOT && showSpaces ? (
+          <div className="nb-explorer-empty">暂无共享给你的文件<br />他人共享后会显示在这里</div>
         ) : (
           <div
             style={{

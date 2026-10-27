@@ -67,11 +67,13 @@ Windows 免安装版首次运行会自动创建 `data/NoteBoard/`，设置、会
 
 ```bash
 # 下载仓库中的 compose.yaml 和 .env.example 到同一目录
-cp .env.example .env    # 可选：设置 NOTEBOARD_USERNAME / NOTEBOARD_PASSWORD
+cp .env.example .env    # 可选：设置管理员账号 NOTEBOARD_USERNAME / NOTEBOARD_PASSWORD
 docker compose up -d    # 访问 http://服务器IP:18427
 ```
 
-- 一个实例共用一份笔记，不提供多用户隔离；**启用网页同步必须设置账号密码**。
+- **多用户**：设置管理员账号后启用登录页与多用户。管理员在「设置 → 用户管理」创建普通用户；每人的笔记、设置、草稿与历史彼此独立，可右键把文件或文件夹以「只读 / 可编辑」共享给指定用户。
+- 两项留空为公开模式：无需登录，所有访问者共用一份笔记。**网页同步仅管理员可用，需设置账号密码**。
+- 从旧版本升级无需改配置：原有笔记归管理员，登录方式由浏览器弹窗改为登录页。
 - 1Panel 用本机目录挂载时，**先执行 `sudo chown 1000:1000 /opt/noteboard/data`**，否则启动报 `EACCES`。
 
 1Panel 完整参数、反向代理与数据说明见 [docs/网页部署.md](docs/网页部署.md)。

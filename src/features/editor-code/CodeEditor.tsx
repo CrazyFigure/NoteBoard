@@ -59,6 +59,7 @@ import {
 import { discardPendingSourceSnapshot, flushPendingSourceSnapshot, hasPendingSourceSnapshot, stagePendingSourceSnapshot } from '../editor-md/visualSnapshot';
 import { ReadingModeOverlay } from '../reading/ReadingModeOverlay';
 import { isDocumentReading, requestReadingMode, useIsReading } from '../reading/readingMode';
+import { isSharedReadonly, useSharedReadonly } from '../account/sharedReadonly';
 
 /** 沉浸阅读时代码视图只读（compartment 仅作标识，可在多个实例间共享） */
 const readingReadOnlyCompartment = new Compartment();
@@ -96,16 +97,18 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
   const closeMenu = useCallback(() => setMenuPos(null), []);
   const rootRef = useRef<HTMLDivElement>(null);
   const isReading = useIsReading(docKey);
+  // 网页只读共享同样锁定编辑
+  const sharedReadonly = useSharedReadonly(docKey);
   const exitReading = useCallback(() => requestReadingMode(false), []);
 
   // 沉浸阅读期间只读，防止误触改动正文；退出后恢复编辑
   useEffect(() => {
     viewRef.current?.dispatch({
       effects: readingReadOnlyCompartment.reconfigure(
-        isReading ? readingLockExtension : [],
+        isReading || sharedReadonly ? readingLockExtension : [],
       ),
     });
-  }, [isReading]);
+  }, [isReading, sharedReadonly]);
 
   // 监听编辑器设置变化并热重配（空格、换行符、行号、软换行等）
   useEffect(() => {
@@ -358,7 +361,7 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
         jsonOperationsKeymap,
         // 重挂载时若已在阅读中，直接以只读创建
         readingReadOnlyCompartment.of(
-          isDocumentReading(docKey) ? readingLockExtension : [],
+          isDocumentReading(docKey) || isSharedReadonly(docKey) ? readingLockExtension : [],
         ),
       ],
     });

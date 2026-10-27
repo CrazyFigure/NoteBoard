@@ -7,12 +7,17 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fail } from './files.mjs';
 
+/** 工作进程程序位置；多用户空间据此判断能否提供历史记录。 */
+export function workerBinary() {
+  return process.env.NOTEBOARD_SYNC_BINARY || fileURLToPath(new URL('./noteboard-sync-server', import.meta.url));
+}
+
 /**
  * 工作进程只通过管道接收受控命令，不监听额外端口或暴露磁盘路径。
  * allowSync 为 false（部署未启用访问认证）时只提供文档历史记录：不启动同步调度、不执行同步钩子。
  */
 export async function startSyncWorker(files, dataDir, { allowSync = true } = {}) {
-  const binary = process.env.NOTEBOARD_SYNC_BINARY || fileURLToPath(new URL('./noteboard-sync-server', import.meta.url));
+  const binary = workerBinary();
   try { await fs.access(binary); } catch { return null; }
   const events = new EventEmitter();
   events.setMaxListeners(200);
@@ -93,5 +98,6 @@ export async function startSyncWorker(files, dataDir, { allowSync = true } = {})
     for (const [key, value] of Object.entries(args)) mapped[key] = await files.resolve(value);
     return call(name, mapped);
   }
-  return { command, hook, events, close: () => { worker.stdin.end(); worker.kill(); shutdown(); } };
+  // alive 供多用户空间判断工作进程是否意外退出，需要时重新拉起。
+  return { command, hook, events, alive: () => !stopped, close: () => { worker.stdin.end(); worker.kill(); shutdown(); } };
 }

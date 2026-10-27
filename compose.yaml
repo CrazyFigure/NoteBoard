@@ -6,7 +6,7 @@ services:
       # 仅调整宿主机访问端口；容器内保持 3000，与镜像健康检查一致。
       - "${NOTEBOARD_PORT:-18427}:3000"
     environment:
-      # 两项同时留空为公开共享；同时设置后浏览器会要求登录。
+      # 管理员账号密码：同时设置后启用登录页与多用户（普通用户在软件内管理）；同时留空为公开共享。
       NOTEBOARD_USERNAME: "${NOTEBOARD_USERNAME:-}"
       NOTEBOARD_PASSWORD: "${NOTEBOARD_PASSWORD:-}"
       # 反向代理保留原始 Host 时可留空；否则设置为浏览器访问的完整源地址。

@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { lazy, Suspense } from 'react';
 import { AppShell } from './components/AppShell';
-import { IS_MOBILE_UI } from './core/platform';
+import { IS_MOBILE_UI, IS_WEB } from './core/platform';
+import { useShareStore } from './features/account/shareStore';
+import { isMultiUser } from './features/account/accountState';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { TooltipProvider } from './components/Tooltip';
 import { useSettingsStore } from './stores/settingsStore';
@@ -59,6 +61,8 @@ const SyncTrashDialog = lazy(() =>
 
 // 自动同步也可能需要更新确认，弹窗挂在全局，不依赖用户是否打开设置页。
 const SyncUpdateDialog = lazy(() => import('./features/sync/SyncUpdateDialog').then((m) => ({ default: m.SyncUpdateDialog })));
+// 网页多用户的共享对话框：首次从右键菜单或账号页打开时装载
+const ShareDialogHost = lazy(() => import('./features/account/ShareDialog').then((m) => ({ default: m.ShareDialogHost })));
 // 移动端界面独立分包：桌面构建入口不加载移动端外壳
 const MobileShell = lazy(() =>
   import('./mobile/MobileShell').then((m) => ({ default: m.MobileShell })),
@@ -231,6 +235,11 @@ export default function App() {
   const addFavoriteEverOpened = useEverOpened(addFavoriteOpen);
   const syncTrashOpen = useSyncStore((s) => s.trashOpen);
   const syncUpdatePending = useSyncStore((s) => !!s.status?.updateConfirmation);
+  const shareDialogOpen = useShareStore((s) => !!s.dialogPath);
+  // 网页多用户：启动后读取自己已共享的路径，资源管理器据此显示共享标记
+  useEffect(() => {
+    if (IS_WEB && isMultiUser()) void useShareStore.getState().refresh().catch(() => undefined);
+  }, []);
   const syncTrashEverOpened = useEverOpened(syncTrashOpen);
 
   // Ctrl+Shift+S 另存为
@@ -378,6 +387,7 @@ export default function App() {
               <SyncTrashDialog />
             </Suspense>
           )}
+          {shareDialogOpen && <Suspense fallback={null}><ShareDialogHost /></Suspense>}
         </div>
       </TooltipProvider>
     </ErrorBoundary>

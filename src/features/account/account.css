@@ -1,0 +1,358 @@
+/* 网页多用户：账号页、用户管理与共享对话框。卡片、列表与弹窗沿用同步面板的 nb-sync-* 基础样式。 */
+
+.nb-account-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  font-weight: 600;
+  line-height: 1;
+  color: hsl(var(--avatar-hue, 212) 70% 38%);
+  background: hsl(var(--avatar-hue, 212) 85% 92%);
+  user-select: none;
+}
+
+:root[data-theme='mo-ye'] .nb-account-avatar {
+  color: hsl(var(--avatar-hue, 212) 85% 78%);
+  background: hsl(var(--avatar-hue, 212) 40% 22%);
+}
+
+.nb-account-avatar.is-group {
+  width: 26px;
+  height: 26px;
+  color: var(--accent-strong);
+  background: var(--editor-selection);
+}
+
+.nb-account-ellipsis {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nb-account-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px 0;
+  color: var(--editor-text-muted);
+  font-size: 12px;
+}
+
+.nb-account-error {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--error-600, #dc2626);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+:root[data-theme='mo-ye'] .nb-account-error {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.nb-account-btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.nb-account-btn.is-danger-text {
+  color: var(--error-500, #ef4444);
+}
+
+.nb-account-btn.is-danger-text:hover:not(:disabled) {
+  border-color: var(--error-500, #ef4444);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+/* 下拉弹层原本位于设置弹窗之上，账号类弹窗打开时再提一层，避免被遮挡。 */
+body:has(.nb-account-dialog) .nb-settings-select-menu {
+  z-index: 10020;
+}
+
+/* ── 账号页 ── */
+
+.nb-account-profile {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.nb-account-profile-main {
+  /* 窄屏换行时保留可读宽度，不被操作按钮挤成竖排 */
+  flex: 1 1 160px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.nb-account-profile-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--editor-text);
+}
+
+.nb-account-role {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--editor-text-secondary);
+  background: var(--toolbar-hover);
+}
+
+.nb-account-role.is-admin {
+  color: var(--accent-strong);
+  background: var(--editor-selection);
+}
+
+.nb-account-role.is-off {
+  color: var(--editor-text-muted);
+}
+
+.nb-account-role.is-warn {
+  color: var(--warning-600, #d97706);
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.nb-account-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.nb-account-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.nb-account-form-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.nb-account-form-foot .nb-sync-muted {
+  flex: 1;
+}
+
+.nb-account-field-error {
+  font-size: 11px;
+  color: var(--error-500, #ef4444);
+}
+
+/* ── 用户管理 ── */
+
+.nb-users-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nb-users-search {
+  position: relative;
+  flex: 1;
+  max-width: 260px;
+}
+
+.nb-users-search svg {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--editor-text-muted);
+  pointer-events: none;
+}
+
+.nb-users-search .nb-sync-input {
+  width: 100%;
+  padding-left: 28px;
+}
+
+.nb-users-item.is-disabled .nb-sync-list-name {
+  color: var(--editor-text-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--editor-border);
+}
+
+.nb-users-item .nb-sync-list-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nb-password-row {
+  display: flex;
+  gap: 6px;
+}
+
+.nb-password-row .nb-sync-secret {
+  flex: 1;
+}
+
+/* ── 共享对话框 ── */
+
+.nb-share-body {
+  gap: 14px;
+}
+
+.nb-share-path {
+  margin-top: -4px;
+  font-size: 11px;
+  color: var(--editor-text-muted);
+  word-break: break-all;
+}
+
+.nb-share-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nb-share-add-user {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.nb-share-add-user .nb-settings-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.nb-share-add-user .nb-settings-select-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nb-share-section-title {
+  margin-bottom: -6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--editor-text);
+}
+
+/* 选择框与“添加”按钮等高对齐 */
+.nb-share-add .nb-settings-select,
+.nb-share-add .nb-account-btn {
+  height: 32px;
+}
+
+.nb-share-grant .nb-settings-select {
+  min-width: 92px;
+}
+
+.nb-share-foot {
+  align-items: center;
+}
+
+/* ── 资源管理器：我的笔记 / 共享给我 ── */
+
+.nb-explorer-spaces {
+  display: flex;
+  gap: 2px;
+  margin: 6px 8px 2px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--toolbar-hover);
+  flex-shrink: 0;
+}
+
+.nb-explorer-space {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  height: 24px;
+  padding: 0 6px;
+  border: none;
+  border-radius: calc(var(--radius-sm) - 1px);
+  background: transparent;
+  color: var(--explorer-text-muted, var(--editor-text-muted));
+  font-family: inherit;
+  font-size: calc(var(--explorer-font-size, 13px) - 1px);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-explorer-space span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nb-explorer-space:hover:not(.is-active) {
+  color: var(--explorer-text, var(--editor-text));
+  background: var(--toolbar-active);
+}
+
+.nb-explorer-space:active {
+  transform: scale(0.97);
+}
+
+.nb-explorer-space.is-active {
+  color: var(--explorer-text, var(--editor-text));
+  font-weight: 600;
+  background: var(--editor-bg);
+  box-shadow: var(--shadow-sm);
+}
+
+.nb-explorer-empty {
+  padding: 28px 16px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--explorer-text-muted, var(--editor-text-muted));
+}
+
+.nb-tree-share-mark {
+  display: inline-flex;
+  margin-left: auto;
+  padding-left: 6px;
+  flex-shrink: 0;
+  color: var(--explorer-text-muted, var(--editor-text-muted));
+}
+
+@media (max-width: 760px) {
+  .nb-account-profile {
+    flex-wrap: wrap;
+  }
+  .nb-account-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .nb-account-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .nb-users-search {
+    max-width: none;
+  }
+  .nb-share-add {
+    flex-wrap: wrap;
+  }
+  .nb-share-add-user {
+    flex-basis: 100%;
+  }
+}
+
+[data-platform='mobile'] .nb-settings-nav-divider {
+  display: none;
+}

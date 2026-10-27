@@ -30,6 +30,7 @@ import { UnsavedGuardDialog } from '../features/editor-code/UnsavedGuardDialog';
 import { Explorer } from '../features/explorer/Explorer';
 import { SearchReplaceBar } from '../features/search/SearchReplaceBar';
 import { EditorToolbar } from '../features/toolbar/EditorToolbar';
+import { useSharedReadonly } from '../features/account/sharedReadonly';
 import { useSearchStore } from '../stores/searchStore';
 // 🔴 S03：快捷键与工具栏统一走 core 能力注册表，不再从编辑器组件导入实例 getter
 import { getEditorCapabilities } from '../core/editor/editorRegistry';
@@ -129,6 +130,8 @@ export function AppShell(_props: { children?: React.ReactNode }) {
   // 沉浸阅读同样接管外壳：隐藏标题栏、侧栏、操作栏与状态栏
   const isReadingMode = readingMode && supportsReadingMode(activeTab);
   const isShellHidden = isBoardPresentationMode || isReadingMode;
+  // 网页只读共享：隐藏格式操作栏，避免通过工具栏命令改动无法保存的正文
+  const sharedReadonlyActive = useSharedReadonly(activeTab?.key ?? '');
   // 极窄模式只保留编辑区：侧栏与大纲按渲染条件隐藏，不改写各自的可见性记忆
   const showSidePanels = !isShellHidden && !compactMode;
 
@@ -458,7 +461,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
                 }}
               >
                 {/* 顶部操作栏（针对 Markdown 与代码/纯文本格式，支持多级菜单与收起/悬浮恢复） */}
-                {!isShellHidden && tabs.length > 0 && activeTab && (
+                {!isShellHidden && tabs.length > 0 && activeTab && !sharedReadonlyActive && (
                   <EditorToolbar
                     activeTab={activeTab}
                     activeEditor={activeEditor}

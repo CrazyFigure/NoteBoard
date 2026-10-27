@@ -80,15 +80,29 @@ test('拒绝路径穿越、Windows 路径、根目录修改和符号链接', asy
 
 test('可选认证覆盖页面、API、附件；健康检查独立；拒绝跨站写入', async (t) => {
   const { url, call } = await fixture(t, { username: 'admin', password: '测试密码' });
-  const auth = `Basic ${Buffer.from('admin:测试密码').toString('base64')}`;
-  for (const route of ['/', '/api/file?path=/workspace/a.md']) assert.equal((await fetch(url + route)).status, 401);
+  for (const route of ['/', '/api/file?path=/workspace/a.md']) assert.equal((await fetch(url + route, { redirect: 'manual' })).status, 401);
+  // 浏览器页面请求转到登录页并带回原地址。
+  const redirect = await fetch(url + '/', { redirect: 'manual', headers: { Accept: 'text/html' } });
+  assert.equal(redirect.status, 302);
+  assert.equal(redirect.headers.get('location'), '/login?next=%2F');
   assert.equal((await call('read_dir', { path: '/workspace' })).status, 401);
   assert.equal((await fetch(url + '/api/health')).status, 200);
-  const page = await fetch(url + '/', { headers: { Authorization: auth } });
+  // 旧版 HTTP Basic 凭据不再被接受，避免浏览器缓存凭据导致无法退出登录。
+  assert.equal((await call('read_dir', { path: '/workspace' }, { Authorization: `Basic ${Buffer.from('admin:测试密码').toString('base64')}` })).status, 401);
+  const login = await fetch(url + '/login');
+  assert.equal(login.status, 200);
+  assert.match(login.headers.get('content-security-policy'), /sha256-/);
+  const signed = await fetch(url + '/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-NoteBoard-Request': '1' }, body: JSON.stringify({ username: 'admin', password: '测试密码' }) });
+  assert.equal(signed.status, 200);
+  const cookie = signed.headers.get('set-cookie');
+  assert.match(cookie, /HttpOnly/);
+  assert.match(cookie, /SameSite=Lax/);
+  const auth = cookie.split(';')[0];
+  const page = await fetch(url + '/', { headers: { Cookie: auth } });
   assert.equal(page.status, 200);
   assert.match(page.headers.get('content-security-policy'), /sha256-/);
-  assert.equal((await call('read_dir', { path: '/workspace' }, { Authorization: auth })).status, 200);
-  assert.equal((await call('read_dir', { path: '/workspace' }, { Authorization: auth, Origin: 'https://attacker.example' })).status, 403);
+  assert.equal((await call('read_dir', { path: '/workspace' }, { Cookie: auth })).status, 200);
+  assert.equal((await call('read_dir', { path: '/workspace' }, { Cookie: auth, Origin: 'https://attacker.example' })).status, 403);
 });
 
 test('暂存复用路径，删除进入回收目录，GBK 保存不丢字', async (t) => {

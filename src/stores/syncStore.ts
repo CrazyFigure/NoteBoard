@@ -62,7 +62,9 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
   init: async () => {
     // 未启用部署访问认证时不请求凭证接口，公开访客仍可使用共享笔记。
     if (IS_WEB && !(await import('../web/runtime')).canUseWebSync()) {
-      set({ initialized: true, unavailableReason: '网页同步需要设置部署访问账号密码，并使用包含同步引擎的镜像。' });
+      // 多用户部署中同步凭证可访问服务器所在网络，仅管理员可用。
+      const { isMultiUser, isAdmin } = await import('../features/account/accountState');
+      set({ initialized: true, unavailableReason: isMultiUser() && !isAdmin() ? '多端同步仅管理员可用。' : '网页同步需要设置部署访问账号密码，并使用包含同步引擎的镜像。' });
       return;
     }
     if (get().initialized) return;

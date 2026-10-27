@@ -9,6 +9,7 @@ import { saveDocument } from '../../features/editor-code/orchestration/saveDocum
 import { emit } from '../../core/emitter';
 import { Eye, Code } from 'lucide-react';
 import { Tooltip } from '../Tooltip';
+import { isSharedPath } from '../../features/account/accountState';
 import { formatShortcut } from '../../core/shortcuts';
 
 export function StatusBar() {
@@ -225,9 +226,11 @@ export function StatusBar() {
       {doc.readonly && (
         <>
           <div style={dividerStyle} />
-          <div style={sectionStyle}>
-            <span style={{ color: 'var(--warning-600)' }}>只读</span>
-          </div>
+          <Tooltip content={isSharedPath(doc.key) ? '只读共享，修改不会保存' : '文件为只读'} side="top" sideOffset={4}>
+            <div style={sectionStyle}>
+              <span style={{ color: 'var(--warning-600)' }}>只读</span>
+            </div>
+          </Tooltip>
         </>
       )}
     </div>

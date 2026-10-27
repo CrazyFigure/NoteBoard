@@ -8,6 +8,7 @@ import { resolveSystemFontFallbackPatch } from '../../app/fontPack';
 import { showToast } from '../../stores/toastStore';
 import { Tooltip } from '../../components/Tooltip';
 import { ProgressRing } from './ProgressRing';
+import { canManageInstance } from '../account/accountState';
 
 const FONTS = [
   { family:'Maple Mono Normal NF CN', label:'中文推荐', sample:'把想法写下来，让灵感慢慢生长。' },
@@ -44,7 +45,8 @@ export function PluginFonts() {
     <div className="nb-plugin-fonts-heading">
       <div><h3>字体</h3><p>字体增强包 v{status?.version || '1.0.0'} · 两款一起下载，约 19 MB</p></div>
       <div className="nb-plugin-actions">
-        {ready ? confirming ? <>
+        {/* 字体包按实例共享，普通用户只读状态。 */}
+        {!canManageInstance() ? <span className="nb-plugin-confirm-text">{ready ? '已安装' : '由管理员下载'}</span> : ready ? confirming ? <>
           <span className="nb-plugin-confirm-text">卸载字体包？</span>
           <button type="button" className="nb-plugin-button" onClick={() => setConfirming(false)}>取消</button>
           <button type="button" className="nb-plugin-button danger" disabled={!!action} onClick={() => void handleRemove()}>卸载</button>

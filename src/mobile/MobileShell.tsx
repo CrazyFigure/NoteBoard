@@ -3,6 +3,7 @@
 // 负责移动端系统集成：Android 返回键、进入后台自动保存、回到前台刷新与接收外部文件、"另存为"命名。
 
 import { useEffect, useRef } from 'react';
+import { isMultiUser } from '../features/account/accountState';
 import { onBackButtonPress } from '@tauri-apps/api/app';
 import * as ipc from '../core/ipc/commands';
 import { IS_NATIVE_MOBILE, IS_WEB } from '../core/platform';
@@ -61,7 +62,7 @@ async function initializeStorage(): Promise<void> {
   const workspace = await ipc.ensureDefaultWorkspace();
   useMobileStore.getState().setPlatform({ ...info, defaultWorkspace: workspace });
   const remembered = readRememberedLocation();
-  const location = remembered.location === 'device' && info.allFilesAccess && info.externalRoot ? 'device' : 'workspace';
+  const location = remembered.location === 'device' && info.allFilesAccess && info.externalRoot ? 'device' : remembered.location === 'shared' && isMultiUser() ? 'shared' : 'workspace';
   await switchLocation(location, remembered.folder);
 }
 

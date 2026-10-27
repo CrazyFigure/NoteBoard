@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>登录 · NoteBoard</title>
+<link rel="icon" href="/favicon.ico">
+<style>
+  /* 配色取自晨光（浅）与墨夜（深）主题，跟随系统深浅色。 */
+  :root {
+    --bg: #f4f6f9;
+    --card: #ffffff;
+    --text: #1e293b;
+    --muted: #64748b;
+    --faint: #94a3b8;
+    --border: #e5e7eb;
+    --input-bg: #ffffff;
+    --input-border: #d7dce3;
+    --input-hover: #b9c2cf;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --accent-active: #1d4ed8;
+    --accent-ring: rgba(59, 130, 246, 0.22);
+    --error: #dc2626;
+    --error-bg: rgba(239, 68, 68, 0.08);
+    --warning: #d97706;
+    --icon-hover: rgba(15, 23, 42, 0.06);
+    --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 32px -12px rgba(15, 23, 42, 0.16);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Noto Sans SC', Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0a0a0b;
+      --card: #111113;
+      --text: #e4e4e7;
+      --muted: #a1a1aa;
+      --faint: #71717a;
+      --border: #27272a;
+      --input-bg: #19191c;
+      --input-border: #34343a;
+      --input-hover: #4a4a52;
+      --accent: #3b82f6;
+      --accent-hover: #4f8ff7;
+      --accent-active: #2563eb;
+      --accent-ring: rgba(96, 165, 250, 0.28);
+      --error: #f87171;
+      --error-bg: rgba(239, 68, 68, 0.12);
+      --warning: #fbbf24;
+      --icon-hover: rgba(255, 255, 255, 0.06);
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 16px 40px -16px rgba(0, 0, 0, 0.6);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px 16px; background: var(--bg); color: var(--text);
+    font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased;
+  }
+  main { width: 100%; max-width: 360px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    box-shadow: var(--shadow); padding: 32px 28px 28px;
+  }
+  .brand { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 26px; }
+  .brand img { width: 48px; height: 48px; border-radius: 12px; }
+  .brand h1 { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: 0.2px; }
+  .brand p { margin: -4px 0 0; color: var(--muted); font-size: 13px; }
+  .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+  label { font-size: 13px; font-weight: 550; color: var(--text); }
+  .control { position: relative; display: flex; align-items: center; }
+  input {
+    width: 100%; height: 40px; padding: 0 12px; border-radius: 8px;
+    border: 1px solid var(--input-border); background: var(--input-bg); color: var(--text);
+    font: inherit; outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  input::placeholder { color: var(--faint); }
+  input:hover { border-color: var(--input-hover); }
+  input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+  input[aria-invalid="true"] { border-color: var(--error); }
+  .control input[type="password"], .control input.revealable { padding-right: 42px; }
+  .reveal {
+    position: absolute; right: 4px; width: 32px; height: 32px; border: 0; border-radius: 6px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; color: var(--muted); cursor: pointer; transition: background 0.15s, color 0.15s;
+  }
+  .reveal:hover { background: var(--icon-hover); color: var(--text); }
+  .reveal:active { transform: scale(0.94); }
+  .reveal:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .hint { min-height: 16px; margin: 0 0 -8px; font-size: 12px; line-height: 16px; color: var(--warning); }
+  .error {
+    display: none; align-items: flex-start; gap: 8px; margin: 0 0 16px; padding: 9px 12px;
+    border-radius: 8px; background: var(--error-bg); color: var(--error); font-size: 13px;
+  }
+  .error.show { display: flex; }
+  .error svg { flex: none; margin-top: 2px; }
+  .submit {
+    position: relative; width: 100%; height: 40px; margin-top: 4px; border: 0; border-radius: 8px;
+    background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer;
+    transition: background 0.15s, transform 0.08s, box-shadow 0.15s;
+  }
+  .submit:hover { background: var(--accent-hover); }
+  .submit:active { background: var(--accent-active); transform: translateY(1px); }
+  .submit:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); }
+  .submit[disabled] { cursor: default; opacity: 0.8; transform: none; }
+  .spinner {
+    display: none; width: 16px; height: 16px; margin-right: 8px; vertical-align: -3px;
+    border: 2px solid rgba(255, 255, 255, 0.45); border-top-color: #fff; border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  .submit[disabled] .spinner { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  footer { margin-top: 18px; text-align: center; color: var(--faint); font-size: 12px; }
+  @media (max-width: 420px) {
+    body { align-items: flex-start; padding-top: 12vh; }
+    .card { padding: 28px 20px 22px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation-duration: 1.5s !important; } }
+</style>
+</head>
+<body>
+<main>
+  <form class="card" id="form" novalidate>
+    <div class="brand">
+      <img src="/logo.png" alt="" width="48" height="48">
+      <h1>NoteBoard</h1>
+      <p>登录以继续</p>
+    </div>
+    <div class="error" id="error" role="alert">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 7v6M12 17h.01"/></svg>
+      <span id="error-text"></span>
+    </div>
+    <div class="field">
+      <label for="username">账号</label>
+      <input id="username" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="64" placeholder="请输入账号" required>
+    </div>
+    <div class="field">
+      <label for="password">密码</label>
+      <div class="control">
+        <input id="password" name="password" type="password" class="revealable" autocomplete="current-password" maxlength="256" placeholder="请输入密码" required>
+        <button type="button" class="reveal" id="reveal" aria-label="显示密码" aria-pressed="false">
+          <svg id="eye" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </div>
+      <div class="hint" id="caps" aria-live="polite"></div>
+    </div>
+    <button class="submit" id="submit" type="submit"><span class="spinner" aria-hidden="true"></span><span id="submit-text">登录</span></button>
+  </form>
+  <footer>忘记密码请联系管理员</footer>
+</main>
+<script>
+(() => {
+  const form = document.getElementById('form');
+  const username = document.getElementById('username');
+  const password = document.getElementById('password');
+  const submit = document.getElementById('submit');
+  const submitText = document.getElementById('submit-text');
+  const error = document.getElementById('error');
+  const errorText = document.getElementById('error-text');
+  const reveal = document.getElementById('reveal');
+  const caps = document.getElementById('caps');
+  const eyeOpen = '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>';
+  const eyeClosed = '<path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 8 10 8a17.6 17.6 0 0 1-2.16 3.19M6.6 6.6A17.3 17.3 0 0 0 2 12s3.5 8 10 8a9.7 9.7 0 0 0 5.4-1.6"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="M2 2l20 20"/>';
+  // 只接受站内路径，防止借 next 参数跳到外部网站。
+  const params = new URLSearchParams(location.search);
+  const raw = params.get('next') || '/';
+  const next = raw.startsWith('/') && !raw.startsWith('//') && !raw.startsWith('/\\') && !raw.startsWith('/login') ? raw : '/';
+  try { username.value = localStorage.getItem('nb-last-username') || ''; } catch { /* 隐私模式下忽略 */ }
+  (username.value ? password : username).focus();
+
+  function showError(message, field) {
+    errorText.textContent = message;
+    error.classList.add('show');
+    username.setAttribute('aria-invalid', String(field === username));
+    password.setAttribute('aria-invalid', String(field === password));
+    if (field) { field.focus(); field.select(); }
+  }
+  function clearError() {
+    error.classList.remove('show');
+    username.removeAttribute('aria-invalid');
+    password.removeAttribute('aria-invalid');
+  }
+  username.addEventListener('input', clearError);
+  password.addEventListener('input', clearError);
+
+  reveal.addEventListener('click', () => {
+    const visible = password.type === 'password';
+    password.type = visible ? 'text' : 'password';
+    reveal.setAttribute('aria-pressed', String(visible));
+    reveal.setAttribute('aria-label', visible ? '隐藏密码' : '显示密码');
+    document.getElementById('eye').innerHTML = visible ? eyeClosed : eyeOpen;
+    password.focus();
+  });
+  // 大写锁定提示，避免反复输错密码触发限流。
+  const capsCheck = (event) => { if (event.getModifierState) caps.textContent = event.getModifierState('CapsLock') ? '大写锁定已开启' : ''; };
+  password.addEventListener('keydown', capsCheck);
+  password.addEventListener('keyup', capsCheck);
+  password.addEventListener('blur', () => { caps.textContent = ''; });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (submit.disabled) return;
+    const name = username.value.trim();
+    if (!name) return showError('请输入账号', username);
+    if (!password.value) return showError('请输入密码', password);
+    clearError();
+    submit.disabled = true;
+    submitText.textContent = '正在登录';
+    try {
+      const response = await fetch('/api/login', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-NoteBoard-Request': '1' },
+        body: JSON.stringify({ username: name, password: password.value }),
+      });
+      if (response.ok) {
+        try { localStorage.setItem('nb-last-username', name); } catch { /* 忽略 */ }
+        location.replace(next);
+        return;
+      }
+      const result = await response.json().catch(() => ({}));
+      if (response.status === 401) showError(result.error || '账号或密码错误', password);
+      else showError(result.error || `登录失败（${response.status}）`, null);
+    } catch {
+      showError('无法连接服务器，请检查网络', null);
+    }
+    submit.disabled = false;
+    submitText.textContent = '登录';
+  });
+})();
+</script>
+</body>
+</html>

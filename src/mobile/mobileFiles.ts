@@ -3,6 +3,7 @@
 // 重命名与删除后与桌面资源管理器相同地同步已打开的文档与标签。
 
 import { open } from '@tauri-apps/plugin-dialog';
+import { SHARED_ROOT, isMultiUser } from '../features/account/accountState';
 import { readFile } from '@tauri-apps/plugin-fs';
 import { IS_WEB } from '../core/platform';
 import * as ipc from '../core/ipc/commands';
@@ -86,7 +87,7 @@ export async function navigateUp(): Promise<boolean> {
 export async function switchLocation(location: StorageLocation, preferredFolder?: string | null): Promise<void> {
   const platform = useMobileStore.getState().platform;
   if (!platform) return;
-  const root = location === 'device' ? platform.externalRoot : platform.defaultWorkspace;
+  const root = location === 'device' ? platform.externalRoot : location === 'shared' ? (isMultiUser() ? SHARED_ROOT : null) : platform.defaultWorkspace;
   if (!root) {
     showToast(location === 'device' ? '无法获取手机存储位置' : '无法获取工作区位置', 'error');
     return;
@@ -95,6 +96,8 @@ export async function switchLocation(location: StorageLocation, preferredFolder?
   // 记住的文件夹必须仍位于该存储位置下
   const folder = preferredFolder && isSubPath(root, preferredFolder) ? preferredFolder : root;
   await loadFolder(folder);
+  // 记住的文件夹已被删除、取消共享或属于同一浏览器上次登录的其他账号时，回到根目录
+  if (folder !== root && useMobileStore.getState().listError) await loadFolder(root);
 }
 
 /** 打开多端同步文件夹：按其所在存储位置（我的笔记 / 手机存储）切换后进入 */

@@ -65,6 +65,8 @@ export interface FileTreeNode {
   mtime: number | null;
   isHidden: boolean;
   isSymlink: boolean;
+  /** 网页多用户：只读共享内的条目（原生端不返回） */
+  readonly?: boolean;
 }
 
 // ── 窗口意图 ──

@@ -32,12 +32,14 @@ import {
   StarOff,
   Table2,
   Trash2,
+  Users,
   Workflow,
   X,
 } from 'lucide-react';
 import type { FileTreeNode, FavoriteNode } from '../core/ipc/types';
 import * as ipc from '../core/ipc/commands';
 import { IS_WEB } from '../core/platform';
+import { isMultiUser } from '../features/account/accountState';
 import { getExplorerFileIcon } from '../features/explorer/fileIcons';
 import { basenameOf, isSubPath, pathKey, PATH_SEP } from '../features/explorer/pathUtils';
 import { useFavoritesStore } from '../features/favorites/favoritesStore';
@@ -196,7 +198,7 @@ function Breadcrumb() {
 
   // 由根目录逐级拼出到当前文件夹的路径段
   const segments = useMemo(() => {
-    const rootLabel = location === 'device' ? '手机存储' : '我的笔记';
+    const rootLabel = location === 'device' ? '手机存储' : location === 'shared' ? '共享给我' : '我的笔记';
     const result: Array<{ label: string; path: string }> = [{ label: rootLabel, path: locationRoot }];
     if (!currentFolder || !locationRoot || !isSubPath(locationRoot, currentFolder)) return result;
     const relative = currentFolder.slice(locationRoot.length).split(/[/\\]/).filter(Boolean);
@@ -276,6 +278,16 @@ function FilesSection({ onEntryMenu }: { onEntryMenu: (node: FileTreeNode) => vo
             {!platform.allFilesAccess && <ShieldAlert size={14} className="nb-m-chip-warn" />}
           </button>
         )}
+        {/* 网页多用户：他人共享给自己的文件 */}
+        {IS_WEB && isMultiUser() && (
+          <button
+            type="button"
+            className={`nb-m-chip${location === 'shared' ? ' is-active' : ''}`}
+            onClick={() => void switchLocation('shared')}
+          >
+            <Users size={15} /> 共享给我
+          </button>
+        )}
         {/* 设置了多端同步文件夹时提供直达入口 */}
         {syncRoot && (
           <button type="button" className="nb-m-chip" onClick={() => void openSyncFolderOnMobile()}>
@@ -303,11 +315,19 @@ function FilesSection({ onEntryMenu }: { onEntryMenu: (node: FileTreeNode) => vo
             </button>
           </div>
         ) : entries.length === 0 && !loading ? (
-          <div className="nb-m-empty">
-            <FilePlus size={36} />
-            <div>这里还没有文件</div>
-            <div className="nb-m-empty-sub">点击右下角 ＋ 新建笔记，或导入文件</div>
-          </div>
+          location === 'shared' ? (
+            <div className="nb-m-empty">
+              <Users size={36} />
+              <div>暂无共享给你的文件</div>
+              <div className="nb-m-empty-sub">他人共享后会显示在这里</div>
+            </div>
+          ) : (
+            <div className="nb-m-empty">
+              <FilePlus size={36} />
+              <div>这里还没有文件</div>
+              <div className="nb-m-empty-sub">点击右下角 ＋ 新建笔记，或导入文件</div>
+            </div>
+          )
         ) : (
           entries.map((node) =>
             // 同步文件夹根下的回收站：显示为「回收站」，点开管理已删除文件（其中文件不能直接打开）
@@ -505,6 +525,8 @@ export function MobileHome() {
   const homeSection = useMobileStore((s) => s.homeSection);
   const setHomeSection = useMobileStore((s) => s.setHomeSection);
   const setSettingsOpen = useLayoutStore((s) => s.setSettingsModalVisible);
+  // “共享给我”根目录与所有者目录是虚拟目录，不能在其中新建
+  const inVirtualShared = useMobileStore((s) => s.location === 'shared' && (s.currentFolder ?? '').split('/').length < 4);
   const openCount = useWindowStore((s) => s.tabs.length);
   const favoriteRoots = useFavoritesStore((s) => s.data.roots);
   const openAddModal = useFavoritesStore((s) => s.openAddModal);
@@ -635,9 +657,11 @@ export function MobileHome() {
       </div>
 
       {/* 新建悬浮按钮 */}
-      <button type="button" className="nb-m-fab" aria-label="新建" onClick={() => setCreateOpen(true)}>
-        <Plus size={26} />
-      </button>
+      {!inVirtualShared && (
+        <button type="button" className="nb-m-fab" aria-label="新建" onClick={() => setCreateOpen(true)}>
+          <Plus size={26} />
+        </button>
+      )}
 
       {/* 新建面板：文档类型网格（含可展开的更多格式） + 文件夹 / 导入 */}
       <BottomSheet open={createOpen} onClose={() => setCreateOpen(false)} title="新建">
