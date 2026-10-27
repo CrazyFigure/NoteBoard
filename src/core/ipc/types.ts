@@ -431,10 +431,23 @@ export interface CreateFormatsLayout {
   more: string[];
 }
 
+/** 标题栏可选按钮是否展示（默认全部展示） */
+export interface TitleBarButtons {
+  /** 回到主界面 */
+  home: boolean;
+  /** 检查更新 */
+  checkUpdate: boolean;
+  /** 快捷切换主题 */
+  theme: boolean;
+  /** 极窄模式入口 */
+  compactMode: boolean;
+}
+
 export interface LayoutSettings {
   statusBarVisible: boolean;
   uiScale: number;
   createFormats: CreateFormatsLayout;
+  titleBarButtons: TitleBarButtons;
 }
 
 /** 系统集成设置（仅桌面端生效） */

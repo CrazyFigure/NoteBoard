@@ -13,6 +13,7 @@ import { TitleBarDragRegion } from './TitleBarDragRegion';
 import { Tooltip } from '../Tooltip';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { useUpdateStore } from '../../stores/updateStore';
+import { useTitleBarButtons } from '../../stores/settingsStore';
 import { IS_WEB, USES_MAC_TRAFFIC_LIGHTS } from '../../core/platform';
 import { supportsCompactMode } from '../../features/window/compactMode';
 
@@ -116,6 +117,8 @@ export function TitleBar() {
     toggleExplorer();
   };
   const { hasUpdate, checking: checkingUpdate, checkForUpdates } = useUpdateStore();
+  // 设置「全局 → 标题栏按钮」可隐藏的入口
+  const titleBarButtons = useTitleBarButtons();
 
   const titleBarStyle: React.CSSProperties = {
     height: 36,
@@ -203,7 +206,7 @@ export function TitleBar() {
       <TitleBarDragRegion minWidth={compactMode ? 24 : 0} />
 
       {/* 检测更新按钮（主动检测更新，有新版本时标上小红点） */}
-      {!IS_WEB && !compactMode && <Tooltip content={hasUpdate ? '发现新版本 NoteBoard (点击查看)' : '检测更新'} side="bottom" sideOffset={6}>
+      {!IS_WEB && !compactMode && titleBarButtons.checkUpdate && <Tooltip content={hasUpdate ? '发现新版本 NoteBoard (点击查看)' : '检测更新'} side="bottom" sideOffset={6}>
         <button
           type="button"
           onClick={() => checkForUpdates(false)}
@@ -281,10 +284,10 @@ export function TitleBar() {
       {compactMode && <CompactModeToggle width={COMPACT_BUTTON_WIDTH} />}
 
       {/* 快捷主题切换菜单 */}
-      {!compactMode && <ThemeMenu />}
+      {!compactMode && titleBarButtons.theme && <ThemeMenu />}
 
       {/* 极窄模式入口（位于主题与设置之间，仅桌面端） */}
-      {!compactMode && supportsCompactMode() && <CompactModeToggle />}
+      {!compactMode && titleBarButtons.compactMode && supportsCompactMode() && <CompactModeToggle />}
 
       {/* 设置中心按钮 */}
       {!compactMode && <Tooltip content="设置" side="bottom" sideOffset={6}>

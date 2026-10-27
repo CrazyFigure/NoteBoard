@@ -307,6 +307,9 @@ pub struct LayoutSettings {
     // 新建格式入口布局（主页与「+」菜单共用）；前端负责剔除未知 id 并补齐新增格式
     #[serde(default)]
     pub create_formats: CreateFormatsLayout,
+    // 标题栏可选按钮是否展示（默认全部展示）
+    #[serde(default)]
+    pub title_bar_buttons: TitleBarButtons,
 }
 
 impl Default for LayoutSettings {
@@ -315,7 +318,31 @@ impl Default for LayoutSettings {
             status_bar_visible: true,
             ui_scale: 100,
             create_formats: CreateFormatsLayout::default(),
+            title_bar_buttons: TitleBarButtons::default(),
         }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TitleBarButtons {
+    // 回到主界面
+    #[serde(default = "default_true")]
+    pub home: bool,
+    // 检查更新
+    #[serde(default = "default_true")]
+    pub check_update: bool,
+    // 快捷切换主题
+    #[serde(default = "default_true")]
+    pub theme: bool,
+    // 极窄模式入口
+    #[serde(default = "default_true")]
+    pub compact_mode: bool,
+}
+
+impl Default for TitleBarButtons {
+    fn default() -> Self {
+        Self { home: true, check_update: true, theme: true, compact_mode: true }
     }
 }
 
@@ -472,5 +499,19 @@ mod tests {
             .expect("旧版设置应能补全新建格式布局");
         assert_eq!(settings.layout.create_formats.primary.first().map(String::as_str), Some("markdown"));
         assert_eq!(settings.layout.create_formats.more.len(), 6);
+    }
+
+    /// 旧版 layout 不含标题栏按钮开关时默认全部展示，缺失的单项同样补为展示
+    #[test]
+    fn old_settings_show_all_title_bar_buttons() {
+        let settings: Settings = serde_json::from_str(r#"{"layout":{"uiScale":110}}"#)
+            .expect("旧版设置应能补全标题栏按钮开关");
+        let buttons = &settings.layout.title_bar_buttons;
+        assert!(buttons.home && buttons.check_update && buttons.theme && buttons.compact_mode);
+
+        let partial: Settings = serde_json::from_str(r#"{"layout":{"titleBarButtons":{"theme":false}}}"#)
+            .expect("部分字段应能补全");
+        assert!(!partial.layout.title_bar_buttons.theme);
+        assert!(partial.layout.title_bar_buttons.home);
     }
 }

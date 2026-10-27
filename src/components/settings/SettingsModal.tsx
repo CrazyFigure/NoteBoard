@@ -3,8 +3,8 @@
 // 详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud, ChevronRight, Monitor, History } from 'lucide-react';
-import { useSettingsStore } from '../../stores/settingsStore';
+import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud, ChevronRight, Monitor, History, PanelTop } from 'lucide-react';
+import { useSettingsStore, useTitleBarButtons } from '../../stores/settingsStore';
 import { THEMES } from '../../core/theme/themes';
 import { contentWidthToPercent, CONTENT_WIDTH_PERCENT_MAP } from '../../core/theme/applyTheme';
 import { FontSelect } from './FontSelect';
@@ -18,7 +18,7 @@ import { SettingsRange } from './SettingsRange';
 import { SettingsSelect } from './SettingsSelect';
 import { TabSizeSelect } from './TabSizeSelect';
 import { Tooltip } from '../Tooltip';
-import type { MarkdownNormalizationPolicy } from '../../core/ipc/types';
+import type { MarkdownNormalizationPolicy, TitleBarButtons } from '../../core/ipc/types';
 import { IS_MOBILE_UI, IS_NATIVE_MOBILE, IS_WEB } from '../../core/platform';
 import { GlobalShortcutRecorder } from './GlobalShortcutRecorder';
 import { formatShortcut } from '../../core/shortcuts';
@@ -30,6 +30,7 @@ import { PluginsPanel } from '../../features/plugins/PluginsPanel';
 import { HistorySettingsPanel } from '../../features/versionHistory/HistorySettingsPanel';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { CreateFormatsSettings } from './CreateFormatsSettings';
+import { supportsCompactMode } from '../../features/window/compactMode';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -41,6 +42,14 @@ type TabType = 'appearance' | 'typography' | 'editor' | 'file' | 'sync' | 'histo
 // 托盘与全局快捷键仅原生桌面端可用（网页与移动端没有系统托盘）
 const SUPPORTS_SYSTEM_INTEGRATION = !IS_NATIVE_MOBILE && !IS_WEB;
 
+// 标题栏可隐藏的按钮：检查更新仅桌面端，极窄模式仅桌面端支持时提供
+const TITLE_BAR_BUTTON_OPTIONS: { key: keyof TitleBarButtons; label: string; available: () => boolean }[] = [
+  { key: 'home', label: '回到主界面', available: () => true },
+  { key: 'checkUpdate', label: '检查更新', available: () => !IS_WEB },
+  { key: 'theme', label: '切换主题', available: () => true },
+  { key: 'compactMode', label: '极窄模式', available: supportsCompactMode },
+];
+
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('appearance');
   const settingsTarget = useLayoutStore((state) => state.settingsTarget);
@@ -48,7 +57,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   useEffect(() => { if (isOpen && settingsTarget) setActiveTab(settingsTarget === 'history' ? 'history' : 'plugins'); }, [isOpen, settingsTarget]);
   // 关闭后清除一次性定位，普通设置入口沿用上次查看的栏目。
   useEffect(() => { if (!isOpen && settingsTarget) useLayoutStore.setState({settingsTarget:null}); }, [isOpen, settingsTarget]);
-  const { settings, resolvedTheme, setThemeMode, setTypography, setEditor, setFile, setSystem } = useSettingsStore();
+  const { settings, resolvedTheme, setThemeMode, setTypography, setEditor, setFile, setLayout, setSystem } = useSettingsStore();
+  const titleBarButtons = useTitleBarButtons();
 
   // 使用全局更新状态 Store
   const { checking: checkingUpdate, checkForUpdates } = useUpdateStore();
@@ -1450,6 +1460,27 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <div style={{ padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <CreateFormatsSettings />
                 </div>
+
+                {/* 标题栏按钮：可选入口是否展示（移动端没有标题栏，不展示） */}
+                {!IS_MOBILE_UI && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
+                    <PanelTop size={15} color="var(--accent-strong)" />
+                    <span>标题栏按钮</span>
+                  </div>
+
+                  {TITLE_BAR_BUTTON_OPTIONS.filter((option) => option.available()).map((option) => (
+                    <div key={option.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
+                      <div>{option.label}</div>
+                      <input
+                        type="checkbox"
+                        checked={titleBarButtons[option.key]}
+                        onChange={(e) => setLayout({ titleBarButtons: { ...titleBarButtons, [option.key]: e.target.checked } })}
+                      />
+                    </div>
+                  ))}
+                </div>
+                )}
               </div>
             )}
 

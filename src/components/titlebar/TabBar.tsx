@@ -43,6 +43,7 @@ import { Tooltip } from '../Tooltip';
 import { useViewportClamp } from '../useViewportClamp';
 import { on, off } from '../../core/emitter';
 import { useLayoutStore } from '../../stores/layoutStore';
+import { useTitleBarButtons } from '../../stores/settingsStore';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useExplorerStore } from '../../features/explorer/explorerStore';
@@ -665,6 +666,7 @@ export function TabBar() {
   const { tabs, activeKey, activateTab, requestCloseTab, reorderTabs } = useWindowStore();
   // 极窄模式隐藏保存与回到主界面按钮（Ctrl+S 与状态栏仍可保存），只保留新建
   const compactMode = useLayoutStore((s) => s.compactMode);
+  const showHomeButton = useTitleBarButtons().home;
   const scrollRef = useRef<HTMLDivElement>(null);
   const nativeDraggedKey = useNativeDraggedTabKey();
   const arrivingKey = useArrivingTabKey();
@@ -1127,8 +1129,8 @@ export function TabBar() {
         </button>
       </Tooltip>
 
-      {/* 回到主界面 Home 按钮 */}
-      <Tooltip content="回到主界面" side="bottom" sideOffset={6}>
+      {/* 回到主界面 Home 按钮（可在设置「全局 → 标题栏按钮」中隐藏） */}
+      {showHomeButton && <Tooltip content="回到主界面" side="bottom" sideOffset={6}>
         <button
           type="button"
           style={newBtnStyle}
@@ -1163,7 +1165,7 @@ export function TabBar() {
         >
           <Home size={15} />
         </button>
-      </Tooltip>
+      </Tooltip>}
 
       </>)}
 

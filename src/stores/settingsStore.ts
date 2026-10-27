@@ -12,6 +12,7 @@ import type {
   FileSettings,
   LayoutSettings,
   SystemSettings,
+  TitleBarButtons,
 } from '../core/ipc/types';
 import * as ipc from '../core/ipc/commands';
 import { onSettingsChanged } from '../core/ipc/events';
@@ -26,6 +27,20 @@ import { useFontPackStore } from './fontPackStore';
 import { DEFAULT_CREATE_FORMATS } from '../features/welcome/createFormats';
 
 // ── 默认值 ──
+
+/** 标题栏可选按钮默认全部展示 */
+export const DEFAULT_TITLE_BAR_BUTTONS: TitleBarButtons = {
+  home: true,
+  checkUpdate: true,
+  theme: true,
+  compactMode: true,
+};
+
+/** 读取标题栏按钮开关：旧配置缺字段时按默认展示补齐 */
+export function useTitleBarButtons(): TitleBarButtons {
+  const saved = useSettingsStore((s) => s.settings.layout?.titleBarButtons);
+  return { ...DEFAULT_TITLE_BAR_BUTTONS, ...saved };
+}
 
 // 网页适配层复用同一套默认值，避免新部署和桌面端的设置模型逐渐分叉。
 export const DEFAULT_SETTINGS: Settings = {
@@ -101,6 +116,7 @@ export const DEFAULT_SETTINGS: Settings = {
       primary: [...DEFAULT_CREATE_FORMATS.primary],
       more: [...DEFAULT_CREATE_FORMATS.more],
     },
+    titleBarButtons: { ...DEFAULT_TITLE_BAR_BUTTONS },
   },
   system: {
     closeToTray: false,
