@@ -779,19 +779,25 @@ export function parseMarkdownToJson(editor: Editor, markdown: string): ReturnTyp
   return parsed;
 }
 
+/** 补齐只来自原文的文档级属性，后台准备与主线程装载必须沿用相同规则。 */
+export function withMarkdownSourceAttributes(parsed: ReturnType<Editor['getJSON']>, markdown: string): ReturnType<Editor['getJSON']> {
+  return { ...parsed, attrs: { ...parsed.attrs, trailingNewline: trailingNewlineOf(markdown), invisibleCharEntities: usesInvisibleCharacterEntities(markdown) } };
+}
+
 /**
  * 仅在进入可视化且回写有差异时验证一次：文字、标记或结构变化不能被“总是规范化”静默接受。
- * 不修改编辑器、不进入输入热路径；仅忽略已有的源码写法属性和解析器本就丢弃的行尾空白。
+ * 不修改编辑器、不进入输入热路径；后台准备可传入尚未装载的文档快照。
+ * 仅忽略已有的源码写法属性和解析器本就丢弃的行尾空白。
  * 这是回写稳定性检查，不能证明首次解析已经准确表达作者意图，弹窗仍需允许核对完整差异。
  */
-export function isMarkdownSerializationStable(editor: Editor, markdown: string): boolean {
+export function isMarkdownSerializationStable(editor: Editor, markdown: string, referenceDoc = editor.state.doc): boolean {
   try {
     const parsed = parseMarkdownToJson(editor, markdown);
     if (!parsed) return false;
     // 文档级换行 / 实体偏好属于加载属性，不由候选正文的词法解析产生。
-    parsed.attrs = { ...editor.state.doc.attrs };
+    parsed.attrs = { ...referenceDoc.attrs };
     const candidate = editor.schema.nodeFromJSON(parsed);
-    return editor.state.doc.eq(candidate) || sameIgnoringSourceFormat(editor.state.doc, candidate);
+    return referenceDoc.eq(candidate) || sameIgnoringSourceFormat(referenceDoc, candidate);
   } catch {
     // 无法验证的候选同样必须交给用户逐次确认，不能把异常当成格式等价。
     return false;

@@ -4479,6 +4479,27 @@ button.nb-callout-icon:active {
   color: var(--editor-text);
 }
 
+/* 可视化准备沿用主题色；仅装载阶段显示真实进度，后台解析使用不定进度。 */
+.nb-md-preparation-dialog { width: min(400px, calc(100vw - 32px)); text-align: center; padding: 28px; }
+.nb-md-preparation-icon { display: inline-flex; padding: 13px; border-radius: 50%; background: color-mix(in srgb, var(--accent-strong) 10%, transparent); color: var(--accent-strong); }
+.nb-md-preparation-icon svg { animation: nb-md-preparation-spin 1.2s linear infinite; }
+.nb-md-preparation-title { font-size: 16px; font-weight: 600; margin: 16px 0 6px; color: var(--editor-heading); }
+.nb-md-preparation-name { margin: 0 0 24px; font-size: 12px; color: var(--editor-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nb-md-preparation-stage { font-size: 13px; color: var(--editor-text-secondary); margin-bottom: 12px; }
+.nb-md-preparation-track { height: 4px; overflow: hidden; border-radius: 4px; background: var(--editor-border); }
+.nb-md-preparation-track span { display: block; height: 100%; border-radius: inherit; background: var(--accent-strong); transition: width 120ms ease; }
+.nb-md-preparation-track.is-indeterminate span { width: 36%; animation: nb-md-preparation-travel 1.5s ease-in-out infinite; }
+.nb-md-preparation-hint { min-height: 20px; margin: 12px 0 24px; font-size: 12px; line-height: 1.6; color: var(--editor-text-muted); }
+.nb-md-preparation-cancel { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 8px 14px; font-size: 13px; }
+.nb-md-preparation-cancel:hover { background: var(--editor-hover); }
+.nb-md-preparation-cancel:active { transform: translateY(1px); }
+@keyframes nb-md-preparation-spin { to { transform: rotate(360deg); } }
+@keyframes nb-md-preparation-travel { from { transform: translateX(-110%); } to { transform: translateX(380%); } }
+/* 大文档的离屏块跳过初次布局；仍保留真实 DOM、编辑与全文选择能力。 */
+.nb-md-large-visual .ProseMirror > * { content-visibility: auto; contain-intrinsic-size: auto 80px; }
+/* 单个列表也可能覆盖整篇文档，离屏项单独延后布局，原始层级和编号仍由同一列表管理。 */
+.nb-md-large-visual .ProseMirror li { content-visibility: auto; contain-intrinsic-size: auto 32px; }
+
 /* Markdown 规范化确认框 */
 .nb-md-normalize-summary {
   font-size: 13px;

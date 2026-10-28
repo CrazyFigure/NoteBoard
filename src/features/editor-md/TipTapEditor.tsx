@@ -27,6 +27,9 @@ import {
   isMarkdownSerializationStable,
 } from './serialize';
 import { MarkdownNormalizeDialog } from './MarkdownNormalizeDialog';
+import { VisualPreparationDialog, type VisualPreparationProgress } from './VisualPreparationDialog';
+import { mountVisualDocument, prepareVisualDocument, yieldVisualTask, VISUAL_PREPARATION_THRESHOLD } from './visualPreparation';
+import type { PreparedVisualDocument } from './visualPreparation.worker';
 import {
   rememberNormalizationChoice,
   resolveNormalizationPolicy,
@@ -152,6 +155,11 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   const [hasVisualKernel, setHasVisualKernel] = useState(false);
   // editor 实例由 VisualKernel onReady 回传（替代原 useEditor 返回值）
   const [editor, setEditorState] = useState<Editor | null>(null);
+  // 大文档的 CPU 准备与 DOM 装载分开；代际由取消信号保护，旧任务绝不能覆盖后来的源码。
+  const [visualProgress, setVisualProgress] = useState<VisualPreparationProgress | null>(null);
+  const visualTaskRef = useRef<AbortController | null>(null);
+  const preparedReferenceRef = useRef<{ doc: Editor['state']['doc']; serialized: string } | null>(null);
+  useEffect(() => () => { visualTaskRef.current?.abort(); visualTaskRef.current = null; }, [docKey]);
   const editorRef = useRef<HTMLDivElement>(null);
   // 持有最新 TipTap 实例，供仅按 docKey 注册的卸载清理读取，避免模式切换触发误清理
   const tipTapEditorRef = useRef<Editor | null>(null);
@@ -563,7 +571,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   }, [docKey, settings.editor.defaultViewMode, initSourceEditor]);
 
   // ── Markdown 规范化确认（进入可视化前"解析→序列化"与原文不同时由用户决定）──
-  const [normalizePrompt, setNormalizePrompt] = useState<{ original: string; normalized: string; mayChangeContent?: boolean } | null>(null);
+  const [normalizePrompt, setNormalizePrompt] = useState<{ original: string; normalized: string; mayChangeContent?: boolean; prepared?: PreparedVisualDocument } | null>(null);
 
   /**
    * 解析待进入可视化的源码并判定结果：
@@ -623,7 +631,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     visualUndoDepthRef.current = prosemirrorUndoDepth(targetEditor.state);
     setTimeout(() => {
       // 初始化或模式切换只交还焦点，保留文首或已恢复的滚动位置；移动端仍由聚焦守卫控制键盘。
-      if (!targetEditor.isDestroyed) targetEditor.commands.focus(undefined, { scrollIntoView: false });
+      if (!targetEditor.isDestroyed && viewModeRef.current === 'visual') targetEditor.commands.focus(undefined, { scrollIntoView: false });
     }, 20);
   }, [docKey]);
 
@@ -638,6 +646,95 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     useWindowStore.getState().setTabViewMode(docKey, 'source');
     emit('view-mode-changed', { key: docKey, mode: 'source' });
   }, [docKey, initSourceEditor]);
+
+  /** 取消只丢弃隐藏的准备结果；源码、文件基线与文件级撤销记录始终保留。 */
+  const cancelVisualPreparation = useCallback(() => {
+    visualTaskRef.current?.abort();
+    visualTaskRef.current = null;
+    const content = getCurrentDocumentHistoryContent(docKey) ?? sourceViewRef.current?.state.doc.toString()
+      ?? useDocumentStore.getState().getDocument(docKey)?.content ?? '';
+    pendingVisualContentRef.current = null;
+    visualSyncedRef.current = false;
+    preparedReferenceRef.current = null;
+    readingVisualEntryRef.current = false;
+    isInitializingRef.current = false;
+    setVisualProgress(null);
+    setHasVisualKernel(false);
+    stayInSourceMode(content);
+    sourceViewRef.current?.focus();
+  }, [docKey, stayInSourceMode]);
+
+  /** 装载、显示全部成功后才同步历史和脏态，取消或失败不会写入半篇规范化结果。 */
+  const finishPreparedVisual = useCallback(async (targetEditor: Editor, content: string, prepared: PreparedVisualDocument, controller: AbortController, normalized: boolean) => {
+    const assertCurrent = () => {
+      if (controller.signal.aborted || targetEditor.isDestroyed || initializedDocKeyRef.current !== docKey) throw new DOMException('已取消', 'AbortError');
+      const current = getCurrentDocumentHistoryContent(docKey) ?? useDocumentStore.getState().getDocument(docKey)?.content;
+      if (current !== content) throw new Error('准备期间原文已更新，请从最新源码重新进入可视化。');
+    };
+    assertCurrent();
+    setVisualProgress({ stage: 'mounting', loaded: 0 });
+    // 模态等待期间正文隐藏且只读，异步挂载的节点视图也属于程序初始化，不能物化或保存半篇正文。
+    isInitializingRef.current = true;
+    try {
+      await mountVisualDocument(targetEditor, prepared.document, controller.signal, (loaded, total) => setVisualProgress({ stage: 'mounting', loaded, total }), isInitializingRef);
+      assertCurrent();
+      setVisualProgress({ stage: 'revealing' });
+      // 保持等待面板直到首轮排版完成；离屏正文由浏览器按需布局，避免一次排完整篇长文档。
+      await yieldVisualTask(controller.signal);
+      assertCurrent();
+      preparedReferenceRef.current = { doc: targetEditor.state.doc, serialized: prepared.serialized };
+      commitVisualMode(targetEditor, prepared.serialized, normalized);
+      restoreMarkdownViewState();
+    } finally {
+      // 宣布可以编辑之前必须解锁，第一笔真实输入不能落入初始化忽略窗口。
+      isInitializingRef.current = false;
+    }
+  }, [docKey, commitVisualMode, restoreMarkdownViewState]);
+
+  /** 大文档不在点击回调中解析或创建整篇 DOM；规范化确认之前只准备数据。 */
+  const runPreparedVisualEntry = useCallback(async (targetEditor: Editor, content: string, accepted?: PreparedVisualDocument, remember = false) => {
+    visualTaskRef.current?.abort();
+    const controller = new AbortController();
+    visualTaskRef.current = controller;
+    setVisualProgress({ stage: accepted ? 'mounting' : 'starting' });
+    try {
+      await yieldVisualTask(controller.signal);
+      const prepared = accepted ?? await prepareVisualDocument(content, useSettingsStore.getState().settings, controller.signal, (stage) => {
+        if (!controller.signal.aborted) setVisualProgress({ stage });
+      });
+      if (controller.signal.aborted || targetEditor.isDestroyed || initializedDocKeyRef.current !== docKey) return;
+      // 文件监听、历史导航或其他窗口可能在准备期间更新原文；旧结果不能覆盖新内容或继续询问。
+      const current = getCurrentDocumentHistoryContent(docKey) ?? useDocumentStore.getState().getDocument(docKey)?.content;
+      if (current !== content) throw new Error('准备期间原文已更新，请从最新源码重新进入可视化。');
+      const changed = normalizeEol(prepared.serialized) !== normalizeEol(content);
+      const policy = resolveNormalizationPolicy(docKey, useSettingsStore.getState().settings.editor.markdownNormalization);
+      const readingEntry = readingVisualEntryRef.current;
+      readingVisualEntryRef.current = false;
+      if (!accepted && changed) {
+        stayInSourceMode(content);
+        if (readingEntry || policy === 'never') {
+          if (!readingEntry) useToastStore.getState().showToast('此文档的部分写法会被可视化模式规范化，已按设置保持源码模式', 'info');
+          return;
+        }
+        if (!prepared.stable || policy !== 'always') {
+          setNormalizePrompt({ original: content, normalized: prepared.serialized, mayChangeContent: !prepared.stable, prepared });
+          return;
+        }
+      }
+      await finishPreparedVisual(targetEditor, content, prepared, controller, changed);
+      if (remember) rememberNormalizationChoice(docKey, 'normalize');
+    } catch (error) {
+      if (!controller.signal.aborted && visualTaskRef.current === controller) {
+        cancelVisualPreparation();
+        useToastStore.getState().showToast(error instanceof Error ? error.message : '可视化准备失败，已保留源码。', 'warning');
+      }
+    } finally {
+      if (visualTaskRef.current === controller) {
+        visualTaskRef.current = null;
+        setVisualProgress(null);
+      }
+    }
+  }, [docKey, stayInSourceMode, finishPreparedVisual, cancelVisualPreparation]);
 
   /** 按判定结果应用：进入可视化、保持源码或弹出询问 */
   const applyVisualEntry = useCallback((
@@ -685,16 +782,20 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       useWindowStore.getState().requestCloseTab(docKey);
       return;
     }
-    if (remember) rememberNormalizationChoice(docKey, choice);
+    if (remember && (!prompt?.prepared || choice === 'source')) rememberNormalizationChoice(docKey, choice);
     if (!prompt || choice !== 'normalize') {
       sourceViewRef.current?.focus();
       return;
     }
     const targetEditor = tipTapEditorRef.current;
     if (!targetEditor) return;
+    if (prompt.prepared) {
+      void runPreparedVisualEntry(targetEditor, prompt.original, prompt.prepared, remember);
+      return;
+    }
     // 询问期间源码不可编辑（模态框遮挡）；编辑器文档仍为原文解析结果，可直接提交
     commitVisualMode(targetEditor, prompt.normalized, true);
-  }, [normalizePrompt, docKey, commitVisualMode]);
+  }, [normalizePrompt, docKey, commitVisualMode, runPreparedVisualEntry]);
 
   // ── S08 visual 内核内容填充（初始化或首次从 source 切入 visual 时执行一次）──
   useEffect(() => {
@@ -721,6 +822,11 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       baseline.setBaseline(content);
     }
 
+    if (content.length >= VISUAL_PREPARATION_THRESHOLD) {
+      void runPreparedVisualEntry(editor, content);
+      return;
+    }
+
     const outcome = resolveVisualEntry(editor, content, false);
     if (viewModeRef.current === 'visual') {
       applyVisualEntry(editor, content, outcome);
@@ -737,10 +843,26 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       applyVisualEntry(editor, content, outcome);
       restoreMarkdownViewState();
     }, 0);
-  }, [editor, docKey, restoreMarkdownViewState, applyVisualEntry, resolveVisualEntry]);
+  }, [editor, docKey, restoreMarkdownViewState, applyVisualEntry, resolveVisualEntry, runPreparedVisualEntry]);
 
   /** 请求进入可视化模式（切换按钮、快捷键、大文档"仍要可视化"共用） */
   const requestVisualMode = useCallback((md: string) => {
+    if (visualTaskRef.current || visualProgress) return;
+    if (md.length >= VISUAL_PREPARATION_THRESHOLD) {
+      if (editor) {
+        const reference = preparedReferenceRef.current;
+        // 未编辑的往返切换复用已确认的文档根，不重新解析，也不破坏可视化原生撤销栈。
+        if (reference?.doc === editor.state.doc && normalizeEol(md) === normalizeEol(reference.serialized)) {
+          commitVisualMode(editor, reference.serialized, false);
+        } else void runPreparedVisualEntry(editor, md);
+      } else {
+        setVisualProgress({ stage: 'starting' });
+        pendingVisualContentRef.current = md;
+        visualSyncedRef.current = false;
+        setHasVisualKernel(true);
+      }
+      return;
+    }
     if (!editor) {
       // 🔴 S08：内核尚未创建（source 初始模式）——惰性挂载 VisualKernel，
       //    规范化判定与内容填充由「visual 填充 effect」在内核 ready 后执行
@@ -751,8 +873,10 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     }
     // 编辑器文档已与源码一致时跳过整篇解析，保留撤销栈
     const skipParse = !hasMarkdownContentChanged(editor, md);
-    applyVisualEntry(editor, md, resolveVisualEntry(editor, md, skipParse));
-  }, [editor, applyVisualEntry, resolveVisualEntry]);
+    const outcome = resolveVisualEntry(editor, md, skipParse);
+    // 已有内核重新解析时也要等节点视图挂载后再显示，与惰性首开保持相同约束。
+    setTimeout(() => { if (!editor.isDestroyed && initializedDocKeyRef.current === docKey) applyVisualEntry(editor, md, outcome); }, 0);
+  }, [editor, applyVisualEntry, resolveVisualEntry, visualProgress, docKey, commitVisualMode, runPreparedVisualEntry]);
 
   // 切换可视化 / 源码模式（可指定目标模式 targetMode，只影响当前活动文档）
   const toggleViewMode = useCallback((targetMode?: 'visual' | 'source') => {
@@ -922,7 +1046,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
 
   return (
     <div
-      className={isReading ? 'nb-md-reading' : undefined}
+      className={[isReading ? 'nb-md-reading' : '', (largeVerdict?.charCount ?? 0) >= VISUAL_PREPARATION_THRESHOLD ? 'nb-md-large-visual' : ''].filter(Boolean).join(' ') || undefined}
       style={{ height: '100%', overflow: 'hidden', position: 'relative' }}
       ref={editorRef}
     >
@@ -931,13 +1055,13 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       {hasVisualKernel && (
         <VisualKernel
           docKey={docKey}
-          visible={viewMode === 'visual'}
+          visible={visualProgress?.stage === 'revealing' || (viewMode === 'visual' && !visualProgress)}
           onReady={handleKernelReady}
           isInitializingRef={isInitializingRef}
           visualUndoDepthRef={visualUndoDepthRef}
           storeTimerRef={storeTimerRef}
           diskTimerRef={diskTimerRef}
-          readOnly={isReading || sharedReadonly}
+          readOnly={isReading || sharedReadonly || !!visualProgress}
         />
       )}
 
@@ -983,9 +1107,11 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
           original={normalizePrompt.original}
           normalized={normalizePrompt.normalized}
           mayChangeContent={normalizePrompt.mayChangeContent}
+          preparedDiff={normalizePrompt.prepared?.diff ?? undefined}
           onChoose={handleNormalizeChoice}
         />
       )}
+      {visualProgress && <VisualPreparationDialog displayName={useWindowStore.getState().getTab(docKey)?.displayName ?? docKey} progress={visualProgress} onCancel={cancelVisualPreparation} />}
     </div>
   );
 }

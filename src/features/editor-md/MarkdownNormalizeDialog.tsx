@@ -52,18 +52,22 @@ export interface MarkdownNormalizeDialogProps {
   normalized: string;
   /** 回写未通过稳定性校验时明确提示，必须逐次手动确认。 */
   mayChangeContent?: boolean;
+  /** 大文档后台准备的差异，避免确认框在主线程重复计算。 */
+  preparedDiff?: NormalizationDiff;
   /** 用户选择回调：remember 表示本次会话内对该文档记住选择 */
   onChoose: (choice: NormalizationDialogChoice, remember: boolean) => void;
 }
 
-export function MarkdownNormalizeDialog({ displayName, original, normalized, mayChangeContent = false, onChoose }: MarkdownNormalizeDialogProps) {
-  const [diffResult, setDiffResult] = useState<NormalizationDiff | null>(null);
+export function MarkdownNormalizeDialog({ displayName, original, normalized, mayChangeContent = false, preparedDiff, onChoose }: MarkdownNormalizeDialogProps) {
+  const [diffResult, setDiffResult] = useState<NormalizationDiff | null>(preparedDiff ?? null);
   const [showDetails, setShowDetails] = useState(mayChangeContent);
   const [remember, setRemember] = useState(false);
 
   // 异步计算差异摘要（差异算法按需加载）
   useEffect(() => {
     let cancelled = false;
+    setDiffResult(preparedDiff ?? null);
+    if (preparedDiff) return;
     computeNormalizationDiff(original, normalized)
       .then((result) => {
         if (!cancelled) setDiffResult(result);
@@ -74,7 +78,7 @@ export function MarkdownNormalizeDialog({ displayName, original, normalized, may
     return () => {
       cancelled = true;
     };
-  }, [original, normalized]);
+  }, [original, normalized, preparedDiff]);
 
   // Esc 与取消按钮一致，中止本次打开且不记住策略，避免意外接受打开或规范化。
   useEffect(() => {
@@ -151,8 +155,10 @@ export function MarkdownNormalizeDialog({ displayName, original, normalized, may
                   第 {hunk.line} 行 · <span className="nb-md-normalize-hunk-category">{NORMALIZATION_CATEGORY_LABELS[hunk.category]}</span>
                   <span className="nb-md-normalize-hunk-reason">（{NORMALIZATION_CATEGORY_REASONS[hunk.category]}）</span>
                 </div>
-                <pre className="nb-md-normalize-before">{renderVisibleWhitespace(hunk.before, ['list-indent', 'whitespace'].includes(hunk.category))}</pre>
-                <pre className="nb-md-normalize-after">{renderVisibleWhitespace(hunk.after, ['list-indent', 'whitespace'].includes(hunk.category))}</pre>
+                {/* 粗粒度差异可能覆盖整篇文档，限制预览规模，避免生成数十万字符的 React 行节点。 */}
+                <pre className="nb-md-normalize-before">{renderVisibleWhitespace(hunk.before.slice(0, 8_000), ['list-indent', 'whitespace'].includes(hunk.category))}</pre>
+                <pre className="nb-md-normalize-after">{renderVisibleWhitespace(hunk.after.slice(0, 8_000), ['list-indent', 'whitespace'].includes(hunk.category))}</pre>
+                {(hunk.before.length > 8_000 || hunk.after.length > 8_000) && <p className="nb-md-normalize-hunk-reason">此处差异较长，预览各展示前 8,000 字符。无法确认时可保持源码模式。</p>}
               </div>
             ))}
             {totalChanges > diffResult.hunks.length && (

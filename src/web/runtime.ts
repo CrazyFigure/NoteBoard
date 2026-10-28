@@ -14,8 +14,9 @@ function randomId(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 const label = `web-${randomId()}`;
-const clientId = localStorage.getItem('nb-web-client') || randomId();
-localStorage.setItem('nb-web-client', clientId);
+// Worker 只复用 Markdown 扩展，不持有页面存储或发送 HTTP 请求，使用独立临时身份即可。
+const clientId = (typeof localStorage !== 'undefined' && localStorage.getItem('nb-web-client')) || randomId();
+if (typeof localStorage !== 'undefined') localStorage.setItem('nb-web-client', clientId);
 const revisions = new Map<string, string>();
 const readVersions = new Map<string, Array<{ content: string; revision: string }>>();
 const registrations = new Set<string>();
@@ -74,7 +75,8 @@ async function request<T>(command: string, args: Record<string, unknown> = {}): 
 }
 
 /** 浏览器关闭/刷新无法等待异步弹窗，使用原生离开确认并依靠已有增量暂存恢复。 */
-window.addEventListener('beforeunload', (event) => {
+// 后台 Markdown 准备也会加载共享扩展依赖；只有页面上下文注册离开确认。
+if (typeof window !== 'undefined') window.addEventListener('beforeunload', (event) => {
   if ([...useDocumentStore.getState().documents.values()].some((document) => document.isDirty || document.key.startsWith('untitled:') && !!document.content)) {
     event.preventDefault();
     event.returnValue = '';

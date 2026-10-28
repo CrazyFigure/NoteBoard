@@ -64,4 +64,13 @@ describe('Markdown 规范化弹窗', () => {
     await act(async () => confirm.click());
     expect(onChoose).toHaveBeenCalledExactlyOnceWith('normalize', false);
   });
+
+  it('复用后台差异，并对覆盖整篇长列表的单个差异限制预览', async () => {
+    const text = '* 长列表项\n'.repeat(10_000);
+    const preparedDiff = { hunks: [{ before: text, after: text.replaceAll('*', '-'), line: 1, category: 'list-marker' as const }], categories: [{ category: 'list-marker' as const, count: 1 }] };
+    await act(async () => root.render(<MarkdownNormalizeDialog displayName="长列表.md" original={text} normalized={text.replaceAll('*', '-')} preparedDiff={preparedDiff} onChoose={onChoose} />));
+    await act(async () => host.querySelector<HTMLButtonElement>('.nb-md-normalize-toggle')!.click());
+    expect(host.querySelector('.nb-md-normalize-before')!.textContent!.length).toBeLessThanOrEqual(8_000);
+    expect(host.textContent).toContain('预览各展示前 8,000 字符');
+  });
 });
