@@ -12,7 +12,44 @@
 
 import Underline from '@tiptap/extension-underline';
 import Highlight from '@tiptap/extension-highlight';
-import { Mark, mergeAttributes, type Attributes, type MarkdownLexerConfiguration, type MarkdownToken } from '@tiptap/core';
+import { Extension, Mark, mergeAttributes, type Attributes, type JSONContent, type MarkdownLexerConfiguration, type MarkdownToken } from '@tiptap/core';
+
+/** 解析器上与标记施加相关的最小接口；每个编辑器独立安装，避免重复包裹。 */
+interface InlineAtomMarkManager {
+  applyMarkToContent?: (markType: string, content: JSONContent[], attrs?: Record<string, unknown>) => JSONContent[];
+  nbInlineAtomMarksPatched?: boolean;
+}
+
+// 这两类原子节点可承载行内标记；图片、块级公式等继续遵循各自的结构与解析规则。
+const MARKED_INLINE_ATOMS = new Set(['wikiLink', 'mathInline']);
+
+/**
+ * @tiptap/markdown 默认只给文本节点加标记，双链与行内公式没有可递归的正文，标记会被丢掉。
+ * 将原有双链修复与公式共用：`**[[笔记]]**`、`**$T_0$**` 都保留原范围，回写见 serialize.ts。
+ */
+function applyMarksToInlineAtoms(manager: InlineAtomMarkManager | undefined): void {
+  if (!manager || manager.nbInlineAtomMarksPatched || typeof manager.applyMarkToContent !== 'function') return;
+  const original = manager.applyMarkToContent;
+  manager.applyMarkToContent = function (markType, content, attrs) {
+    const result = original.call(this, markType, content, attrs);
+    return result.map((node) => (MARKED_INLINE_ATOMS.has(node.type ?? '')
+      ? { ...node, marks: [...(node.marks ?? []), attrs ? { type: markType, attrs } : { type: markType }] }
+      : node));
+  };
+  manager.nbInlineAtomMarksPatched = true;
+}
+
+/**
+ * Markdown 在 onBeforeCreate 中创建解析器；最低优先级保证补充逻辑排在其后，
+ * 无头编辑器也能在首次解析前生效，且不依赖是否启用双向链接。
+ */
+export const MarkdownInlineAtomMarks = Extension.create({
+  name: 'markdownInlineAtomMarks',
+  priority: 1,
+  onBeforeCreate() {
+    applyMarksToInlineAtoms((this.editor.storage as unknown as { markdown?: { manager?: InlineAtomMarkManager } }).markdown?.manager);
+  },
+});
 
 const SAFE_UNDERLINE_PATTERN = /^\+\+(?!\s)([\s\S]*?\S)\+\+(?!\+)/;
 const SAFE_HIGHLIGHT_PATTERN = /^==(?!\s)([^=]*?[^=\s])==(?!=)/;

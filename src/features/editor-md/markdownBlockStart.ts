@@ -7,6 +7,21 @@ const contexts = new WeakMap<object, BlockContext>();
 // 只在调用方需要记录源码块间距时临时捕获根 token；会话结束即释放，不在解析器上长期保留整篇词法树。
 const sourceTokenCaptures = new WeakMap<object, { tokens?: Token[] }>();
 
+// 中文正文紧邻粗体闭合标记时，把标点视为可闭合边界，例如 **甲）**和**乙）**。
+// 只影响两颗星号；三颗星号、下划线及定界符自身仍遵循原规则，避免误拆嵌套标记。
+const CJK_BOLD_CLOSING_BOUNDARY = /[\p{P}\p{S}](?=\*\*(?!\*)\p{Script=Han})/gu;
+const EMPHASIS_DELIMITER_CHARACTERS = new Set(['*', '_', '\\', '`']);
+
+/**
+ * 在 Marked 已保护代码、链接目标与转义内容的判定遮罩中放宽中文粗体闭合边界。
+ * 只替换判定用字符，真实源码和 token.text 不变；保持 UTF-16 长度，避免补充平面符号导致位置偏移。
+ */
+function maskCjkBoldBoundaries(maskedSource: string): string {
+  return maskedSource.replace(CJK_BOLD_CLOSING_BOUNDARY, (character) =>
+    EMPHASIS_DELIMITER_CHARACTERS.has(character) ? character : 'a'.repeat(character.length),
+  );
+}
+
 /** 共用已经执行的词法分析结果，避免为了保留空行再解析一遍全文；嵌套会话结束后恢复外层。 */
 export function captureMarkdownBlockTokens<T>(parser: object | undefined, parse: () => T): { parsed: T; tokens?: Token[] } {
   if (!parser) return { parsed: parse() };
@@ -40,9 +55,26 @@ function preserveLocalDestination(raw: string | undefined, parsed: string): stri
 /** 独立解析器及嵌套块上下文；Marked 的 start 回调接收当前块原文的剩余后缀。 */
 export function createIsolatedMarkdownParser(): typeof marked {
   const instance = new Marked();
-  // 在链接 / 图片及引用定义的共同分词入口修复地址，避免各节点各自补救已丢失的字符。
+  // 统一安装中文强调边界兼容与本地地址保护，避免各节点事后补救已丢失的范围或字符。
   instance.use({
+    hooks: {
+      // 复用原生强调匹配与代码 / 链接保护，不通过改写正文或事后拆分 marks 猜测加粗范围。
+      emStrongMask: maskCjkBoldBoundaries,
+    },
     tokenizer: {
+      emStrong(source, maskedSource, previousCharacter = '') {
+        // 普通正文、斜体及三颗星号直接走原生快速路径，避免为无关内容执行额外字符分类。
+        if (!source.startsWith('**') || source[2] === '*') {
+          return Tokenizer.prototype.emStrong.call(this, source, maskedSource, previousCharacter) || false;
+        }
+        const firstCodePoint = source.codePointAt(2);
+        const firstCharacter = firstCodePoint === undefined ? '' : String.fromCodePoint(firstCodePoint);
+        // 与闭合边界配套：中文后可直接开始标点包裹的粗体，例如 和**（乙）**。
+        // 只放宽原生匹配的前侧判定，不插入空格，也不改动真实正文或其它强调定界符。
+        const cjkOpening = /\p{Script=Han}$/u.test(previousCharacter) && /[\p{P}\p{S}]/u.test(firstCharacter)
+          && !EMPHASIS_DELIMITER_CHARACTERS.has(firstCharacter);
+        return Tokenizer.prototype.emStrong.call(this, source, maskedSource, cjkOpening ? ' ' : previousCharacter) || false;
+      },
       link(source) {
         const token = Tokenizer.prototype.link.call(this, source);
         if (!token) return false;

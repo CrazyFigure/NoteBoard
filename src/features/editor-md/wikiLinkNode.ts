@@ -8,7 +8,7 @@
 //    嵌入卡片点击标题栏打开原笔记；
 // 3. 目标不存在（例如同步还没带来另一端）时显示为虚线弱化样式，文件到达后索引重建自动恢复。
 
-import { Extension, InputRule, mergeAttributes, Node, nodePasteRule, type JSONContent, type MarkdownToken, type MarkdownTokenizer } from '@tiptap/core';
+import { InputRule, mergeAttributes, Node, nodePasteRule, type MarkdownToken, type MarkdownTokenizer } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { EditorView, NodeView } from '@tiptap/pm/view';
 import { IS_MOBILE_UI } from '../../core/platform';
@@ -248,42 +248,6 @@ class WikiLinkNodeView implements NodeView {
     hideWikiLinkTooltip();
   }
 }
-
-/** 解析器上与标记施加相关的最小接口 */
-interface MarkManagerLike {
-  applyMarkToContent?: (markType: string, content: JSONContent[], attrs?: Record<string, unknown>) => JSONContent[];
-  nbWikiLinkMarksPatched?: boolean;
-}
-
-/**
- * @tiptap/markdown 解析 `**粗体**` 等行内标记时只给文本节点加标记，
- * `**[[笔记]]**` 中的双链会丢失粗体，进入可视化再保存就变成 `[[笔记]]`。
- * 这里为本编辑器独占的解析器补上：标记同样作用于双链节点（序列化见 serialize.ts 的双链原文片段）。
- */
-export function applyMarksToWikiLinks(manager: MarkManagerLike | undefined): void {
-  if (!manager || manager.nbWikiLinkMarksPatched || typeof manager.applyMarkToContent !== 'function') return;
-  const original = manager.applyMarkToContent;
-  manager.applyMarkToContent = function (markType, content, attrs) {
-    const result = original.call(this, markType, content, attrs);
-    return result.map((node) => (node.type === 'wikiLink'
-      ? { ...node, marks: [...(node.marks ?? []), attrs ? { type: markType, attrs } : { type: markType }] }
-      : node));
-  };
-  manager.nbWikiLinkMarksPatched = true;
-}
-
-/**
- * 解析器创建后补上「行内标记作用于双链」的能力。
- * Markdown 扩展在 onBeforeCreate 中创建解析器；本扩展优先级最低，onBeforeCreate 排在其后执行，
- * 无论编辑器是否挂载到页面（无头编辑器不触发 onCreate）都能在首次解析前完成。
- */
-export const WikiLinkMarkdownMarks = Extension.create({
-  name: 'wikiLinkMarkdownMarks',
-  priority: 1,
-  onBeforeCreate() {
-    applyMarksToWikiLinks((this.editor.storage as unknown as { markdown?: { manager?: MarkManagerLike } }).markdown?.manager);
-  },
-});
 
 /** 双链行内节点 */
 export const WikiLink = Node.create<WikiLinkOptions>({

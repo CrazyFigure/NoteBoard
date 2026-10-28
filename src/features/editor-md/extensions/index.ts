@@ -23,7 +23,7 @@ import { emitRawSegment } from '../rawMarkdownSegments';
 import { Link } from '@tiptap/extension-link';
 
 import { CodeBlockView } from '../codeBlockView';
-import { SafeMarkdownHighlight, SafeMarkdownUnderline, TextColor } from '../markdownInlineMarks';
+import { MarkdownInlineAtomMarks, SafeMarkdownHighlight, SafeMarkdownUnderline, TextColor } from '../markdownInlineMarks';
 import { BlockFormatSyntax, FormattedHeading, FormattedParagraph } from '../blockFormat';
 import { searchReplaceExtension } from '../searchReplace';
 import { MathInline, MathBlock } from '../katexExtensions';
@@ -36,7 +36,7 @@ import { ColumnBlock, ColumnsBlock } from '../columnsExtension';
 import { CalloutBlock } from '../calloutExtension';
 import { FootnoteDefinitionBlock, FootnoteReference, FrontMatterBlock, RawHtmlBlock, RawHtmlBlockMerge, RawHtmlInline } from '../markdownPreserveExtensions';
 import { slashSuggestion } from '../slashCommand';
-import { WikiLink, WikiLinkMarkdownMarks } from '../wikiLinkNode';
+import { WikiLink } from '../wikiLinkNode';
 import { WikiLinkSuggestion } from '../wikiLinkSuggestion';
 
 import { handleLinkClick } from '../linkHandler';
@@ -399,6 +399,8 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // 行内代码需允许与粗体/斜体共存，才能无损承载合法 Markdown 的嵌套结构
     MarkdownCompatibleCode,
+    // 双链与行内公式同样承载粗体等标记，禁用双链时公式也需要这条通用规则。
+    MarkdownInlineAtomMarks,
 
     // 段落与标题（支持对齐、缩进）
     MarkdownDocument,
@@ -544,7 +546,7 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // 双向链接 `[[笔记]]`：原子节点逐字保留原文，输入 `[[` 弹出仓库笔记补全
     ...(options?.wikiLinks !== false
-      ? [WikiLink.configure({ docKey }), WikiLinkMarkdownMarks, WikiLinkSuggestion.configure({ docKey })]
+      ? [WikiLink.configure({ docKey }), WikiLinkSuggestion.configure({ docKey })]
       : []),
 
     // 斜杠命令

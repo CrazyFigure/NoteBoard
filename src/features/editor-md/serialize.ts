@@ -508,28 +508,33 @@ function withoutEmptyRawHtmlBlocks(node: SerializableJsonNode): SerializableJson
 }
 
 /**
- * 双链节点转为「受保护原文片段」文本：
+ * 双链与带标记的行内公式转为「受保护原文片段」文本：
  * 1. 原文经 emitRawSegment 以占位符输出，实体还原、冗余转义清理等全文后处理不会改动链接内容（如 `&amp;`）；
- * 2. 作为文本节点携带原有标记，`**[[笔记]]**` 等粗体 / 斜体包裹按普通文字一样写回
+ * 2. 作为文本节点携带原有标记，`**[[笔记]]**`、`**$T_0$**` 等粗体 / 斜体包裹按普通文字一样写回
  *    （@tiptap/markdown 不会为非文本的行内节点输出标记）；
- * 3. 表格单元格内的 `|` 写成 `\|`。
+ * 3. 双链位于表格单元格内时，内容中的 `|` 写成 `\|`。
  * 须在序列化会话内调用（prepareJsonForSerialization 只在 produceRaw 中执行）。
  */
-function wikiLinksToRawText(node: SerializableJsonNode, inTableCell = false): SerializableJsonNode {
+function inlineAtomsToRawText(node: SerializableJsonNode, inTableCell = false): SerializableJsonNode {
   if (node.type === 'wikiLink') {
     const attrs = (node.attrs ?? {}) as { inner?: unknown; embed?: unknown };
     const text = emitRawSegment(formatWikiLinkMarkdown(String(attrs.inner ?? ''), attrs.embed === true, inTableCell));
     return node.marks ? { type: 'text', text, marks: node.marks } : { type: 'text', text };
   }
+  if (node.type === 'mathInline' && Array.isArray(node.marks) && node.marks.length > 0) {
+    // 公式没有文本子节点，直接序列化会在它前后关闭 / 重开粗体，导致原加粗范围被拆开。
+    const latex = String((node.attrs as { latex?: unknown } | undefined)?.latex ?? '');
+    return { type: 'text', text: emitRawSegment(`$${latex}$`), marks: node.marks };
+  }
   if (!node.content) return node;
   const isCell = inTableCell || node.type === 'tableCell' || node.type === 'tableHeader';
-  return { ...node, content: node.content.map((child) => wikiLinksToRawText(child, isCell)) };
+  return { ...node, content: node.content.map((child) => inlineAtomsToRawText(child, isCell)) };
 }
 
 /** 序列化前的 JSON 预处理：插入结构性必要转义哨兵（不修改编辑器中的真实文档）。 */
 function prepareJsonForSerialization(json: ReturnType<Editor['getJSON']>): ReturnType<Editor['getJSON']> {
   return markStructuralEscapes(
-    trimDroppedTrailingWhitespace(withoutEmptyRawHtmlBlocks(wikiLinksToRawText(json as SerializableJsonNode))),
+    trimDroppedTrailingWhitespace(withoutEmptyRawHtmlBlocks(inlineAtomsToRawText(json as SerializableJsonNode))),
     textWouldFormInlineMath,
   ) as ReturnType<Editor['getJSON']>;
 }
