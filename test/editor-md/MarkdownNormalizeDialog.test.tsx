@@ -51,4 +51,17 @@ describe('Markdown 规范化弹窗', () => {
     expect(key.defaultPrevented).toBe(true);
     expect(onChoose).toHaveBeenCalledExactlyOnceWith('cancel', false);
   });
+
+  it('内容风险明确提示且不能记住跳过，仍允许手动确认', async () => {
+    // 即便同一组件此前勾选过记忆，风险确认也必须强制传递 false。
+    await act(async () => host.querySelector<HTMLInputElement>('input')!.click());
+    await act(async () => root.render(<MarkdownNormalizeDialog displayName="测试.md" original="**甲**和**乙**" normalized="**甲和乙**" mayChangeContent onChoose={onChoose} />));
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('格式范围');
+    expect(host.querySelector('h2')?.textContent).toContain('可能改变内容或格式');
+    expect(host.querySelector('input')).toBeNull();
+    const confirm = host.querySelectorAll<HTMLButtonElement>('.nb-md-normalize-actions button')[2];
+    expect(confirm.textContent).toContain('确认差异并进入可视化');
+    await act(async () => confirm.click());
+    expect(onChoose).toHaveBeenCalledExactlyOnceWith('normalize', false);
+  });
 });

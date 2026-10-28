@@ -19,6 +19,7 @@ import { observe } from './viewportActivation';
 import { cancelTask, scheduleTask } from './viewportWorkScheduler';
 import { findInlineMathStart, matchInlineMath } from './mathSyntax';
 import { createIndexedBlockStart } from './markdownBlockStart';
+import { emitRawSegment } from './rawMarkdownSegments';
 
 // ── Markdown 公式语法 ──
 
@@ -341,7 +342,8 @@ export const MathInline = Node.create({
     });
   },
   renderMarkdown(node) {
-    return `$${String(node.attrs?.latex ?? '')}$`;
+    // LaTeX 内的实体和反斜杠都是公式源码，不能经过普通 Markdown 文本的全文清理。
+    return emitRawSegment(`$${String(node.attrs?.latex ?? '')}$`);
   },
   addCommands() {
     return {
@@ -394,7 +396,8 @@ export const MathBlock = Node.create({
     });
   },
   renderMarkdown(node) {
-    return `$$\n${String(node.attrs?.latex ?? '')}\n$$`;
+    // 逐行保护正文，位于引用或列表时仍由父节点正确添加每行前缀。
+    return emitRawSegment(`$$\n${String(node.attrs?.latex ?? '')}\n$$`);
   },
   addCommands() {
     return {

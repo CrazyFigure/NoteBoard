@@ -91,21 +91,21 @@ export const NORMALIZATION_CATEGORY_LABELS: Record<NormalizationCategory, string
   other: '其他格式调整',
 };
 
-/** 每类规范化的理由：说明为什么可视化编辑器会这样写回 */
+/** 分类仅来自文本启发式，不能用“显示不变 / 写法等价”替代对内容和格式范围的核对。 */
 export const NORMALIZATION_CATEGORY_REASONS: Record<NormalizationCategory, string> = {
   'trailing-whitespace': '解析时会丢弃',
   'list-indent': '请核对列表层级',
   whitespace: '请核对缩进与空行',
-  entity: '显示不变',
-  'list-marker': '写法等价',
-  'list-number': '显示不变',
-  emphasis: '写法等价',
-  heading: '写法等价',
-  'horizontal-rule': '写法等价',
+  entity: '请核对字面字符',
+  'list-marker': '统一列表标记',
+  'list-number': '请核对编号顺序',
+  emphasis: '请核对格式范围',
+  heading: '统一标题标记',
+  'horizontal-rule': '统一分隔线标记',
   'code-fence': '防止提前闭合',
-  table: '显示不变',
-  link: '写法等价',
-  'line-break': '写法等价',
+  table: '请核对单元格内容',
+  link: '请核对地址与标题',
+  'line-break': '请核对换行位置',
   escape: '请核对字面字符',
   other: '请核对差异',
 };

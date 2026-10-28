@@ -20,12 +20,12 @@ interface InlineAtomMarkManager {
   nbInlineAtomMarksPatched?: boolean;
 }
 
-// 这两类原子节点可承载行内标记；图片、块级公式等继续遵循各自的结构与解析规则。
-const MARKED_INLINE_ATOMS = new Set(['wikiLink', 'mathInline']);
+// 这些原子节点可承载行内标记；图片、块级公式等继续遵循各自的结构与解析规则。
+const MARKED_INLINE_ATOMS = new Set(['wikiLink', 'mathInline', 'footnoteReference', 'rawHtmlInline']);
 
 /**
- * @tiptap/markdown 默认只给文本节点加标记，双链与行内公式没有可递归的正文，标记会被丢掉。
- * 将原有双链修复与公式共用：`**[[笔记]]**`、`**$T_0$**` 都保留原范围，回写见 serialize.ts。
+ * @tiptap/markdown 默认只给文本节点加标记，行内原子节点没有可递归的正文，标记会被丢掉。
+ * 双链、公式、脚注及原始 HTML 共用补充逻辑，保留包裹它们的原范围，回写见 serialize.ts。
  */
 function applyMarksToInlineAtoms(manager: InlineAtomMarkManager | undefined): void {
   if (!manager || manager.nbInlineAtomMarksPatched || typeof manager.applyMarkToContent !== 'function') return;

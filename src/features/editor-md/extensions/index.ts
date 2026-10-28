@@ -19,6 +19,7 @@ import { TableHeader } from '@tiptap/extension-table';
 import { Markdown } from '@tiptap/markdown';
 import { createIsolatedMarkdownParser } from '../markdownBlockStart';
 import { MarkdownBlockSpacing, MarkdownBlockquote, MarkdownDocument } from '../markdownBlockSpacing';
+import { MarkdownTrailingNode } from '../markdownTrailingNode';
 import { emitRawSegment } from '../rawMarkdownSegments';
 import { Link } from '@tiptap/extension-link';
 
@@ -354,6 +355,8 @@ export interface BuildExtensionsOptions {
 // 会让合法的 **文字 `code`** 在解析时生成非法 marks，并触发整篇纯文本降级。
 const MarkdownCompatibleCode = Code.extend({
   excludes: '',
+  // 代码必须位于高亮、下划线等标记内层；否则 ==`code`== 会被回写为 `==code==`，丢失高亮。
+  priority: 50,
 });
 
 /**
@@ -370,6 +373,8 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
       // 根文档与引用块改为按原文记录的边界回写，避免无条件在独立块之间补空行。
       document: false,
       blockquote: false,
+      // 自动补齐的尾段需要记录辅助身份，避免被误当成作者空行写回文件。
+      trailingNode: false,
       // 改由允许 Markdown 标记嵌套的 Code 扩展注册，避免同名扩展和 schema 冲突
       code: false,
       codeBlock: false, // 用自定义的 CodeBlockView
@@ -399,13 +404,14 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // 行内代码需允许与粗体/斜体共存，才能无损承载合法 Markdown 的嵌套结构
     MarkdownCompatibleCode,
-    // 双链与行内公式同样承载粗体等标记，禁用双链时公式也需要这条通用规则。
+    // 双链、公式、脚注与原始 HTML 同样承载行内标记，禁用双链时其余节点仍需要这条规则。
     MarkdownInlineAtomMarks,
 
     // 段落与标题（支持对齐、缩进）
     MarkdownDocument,
     MarkdownBlockquote,
     MarkdownBlockSpacing,
+    MarkdownTrailingNode,
     FormattedParagraph,
     FormattedHeading,
 

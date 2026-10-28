@@ -24,6 +24,7 @@ import {
   getBaseline,
   hasMarkdownContentChanged,
   normalizeEol,
+  isMarkdownSerializationStable,
 } from './serialize';
 import { MarkdownNormalizeDialog } from './MarkdownNormalizeDialog';
 import {
@@ -559,19 +560,20 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   }, [docKey, settings.editor.defaultViewMode, initSourceEditor]);
 
   // ── Markdown 规范化确认（进入可视化前"解析→序列化"与原文不同时由用户决定）──
-  const [normalizePrompt, setNormalizePrompt] = useState<{ original: string; normalized: string } | null>(null);
+  const [normalizePrompt, setNormalizePrompt] = useState<{ original: string; normalized: string; mayChangeContent?: boolean } | null>(null);
 
   /**
    * 解析待进入可视化的源码并判定结果：
    * same（序列化与原文一致，可直接进入）/ normalize（策略为总是规范化）/
-   * keepSource（策略为保持源码）/ ask（需要询问）/ failed（解析降级，必须留在源码模式）。
+   * keepSource（策略为保持源码）/ ask（需要询问）/ unsafe（回写不稳定，必须逐次确认）/
+   * failed（解析降级，必须留在源码模式）。
    * skipParse 为 true 表示编辑器文档已与源码一致（避免整篇 setContent 破坏撤销栈）。
    */
   const resolveVisualEntry = useCallback((
     targetEditor: Editor,
     content: string,
     skipParse: boolean,
-  ): { kind: 'same' | 'normalize' | 'keepSource' | 'ask' | 'failed'; serialized: string } => {
+  ): { kind: 'same' | 'normalize' | 'keepSource' | 'ask' | 'unsafe' | 'failed'; serialized: string } => {
     if (!skipParse) {
       // 🔴 程序化内容设置：同步作用域初始化锁（显示即输入——无 50ms 忽略窗口）
       isInitializingRef.current = true;
@@ -587,8 +589,10 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     const serialized = serializeMarkdown(targetEditor);
     if (normalizeEol(serialized) === normalizeEol(content)) return { kind: 'same', serialized };
     const policy = resolveNormalizationPolicy(docKey, useSettingsStore.getState().settings.editor.markdownNormalization);
-    if (policy === 'always') return { kind: 'normalize', serialized };
     if (policy === 'never') return { kind: 'keepSource', serialized };
+    // 回写改变实际内容 / 标记 / 结构时，无论全局设置还是会话记忆都不能代替本次手动确认。
+    if (!isMarkdownSerializationStable(targetEditor, serialized)) return { kind: 'unsafe', serialized };
+    if (policy === 'always') return { kind: 'normalize', serialized };
     return { kind: 'ask', serialized };
   }, [docKey]);
 
@@ -658,8 +662,9 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
         useToastStore.getState().showToast('此文档的部分写法会被可视化模式规范化，已按设置保持源码模式', 'info');
         return;
       case 'ask':
+      case 'unsafe':
         stayInSourceMode(content);
-        setNormalizePrompt({ original: content, normalized: outcome.serialized });
+        setNormalizePrompt({ original: content, normalized: outcome.serialized, mayChangeContent: outcome.kind === 'unsafe' });
         return;
       case 'failed':
         stayInSourceMode(content);
@@ -961,6 +966,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
           displayName={useWindowStore.getState().getTab(docKey)?.displayName ?? docKey}
           original={normalizePrompt.original}
           normalized={normalizePrompt.normalized}
+          mayChangeContent={normalizePrompt.mayChangeContent}
           onChoose={handleNormalizeChoice}
         />
       )}

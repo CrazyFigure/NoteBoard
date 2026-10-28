@@ -323,7 +323,7 @@ function applyMarkdownCleanupCandidates(
 }
 
 /** 仅记录源码写法、不影响文档语义的节点属性：围栏、表格风格、列表原始缩进与块间距。 */
-const SOURCE_FORMAT_ATTRIBUTES = ['sourceFence', 'markdownStyle', 'sourceIndent', 'sourceContinuationIndents', 'sourceLeadingIndent', 'sourceCompactBefore'];
+const SOURCE_FORMAT_ATTRIBUTES = ['sourceFence', 'markdownStyle', 'sourceIndent', 'sourceContinuationIndents', 'sourceLeadingIndent', 'sourceCompactBefore', 'sourceTrailingPlaceholder'];
 
 /** 深拷贝 JSON 并去掉源码写法属性 */
 function withoutSourceFormatAttributes(json: unknown): unknown {
@@ -347,7 +347,7 @@ function sameIgnoringSourceFormat(reference: { toJSON?(): unknown }, other: unkn
   const otherJson = (other as { toJSON?(): unknown } | null)?.toJSON?.();
   if (typeof reference.toJSON !== 'function' || otherJson === undefined) return false;
   // 参考文档按序列化时同样的规则去掉会被解析器丢弃的行尾空白，再与重新解析的结果比较
-  const referenceJson = trimDroppedTrailingWhitespace(withoutEmptyRawHtmlBlocks(reference.toJSON() as SerializableJsonNode));
+  const referenceJson = trimDroppedTrailingWhitespace(withoutEmptyRawHtmlBlocks(withoutTrailingPlaceholder(reference.toJSON() as SerializableJsonNode)));
   return JSON.stringify(withoutSourceFormatAttributes(referenceJson))
     === JSON.stringify(withoutSourceFormatAttributes(otherJson));
 }
@@ -507,8 +507,17 @@ function withoutEmptyRawHtmlBlocks(node: SerializableJsonNode): SerializableJson
   return { ...node, content };
 }
 
+/** 仅移除明确由编辑器补出的、尚未编辑的文末辅助段；作者原有或手动插入的空段全部保留。 */
+function withoutTrailingPlaceholder(node: SerializableJsonNode): SerializableJsonNode {
+  const last = node.content?.[node.content.length - 1];
+  const attrs = last?.attrs as Record<string, unknown> | undefined;
+  if (node.type !== 'doc' || last?.type !== 'paragraph' || !attrs?.sourceTrailingPlaceholder
+    || last.content?.length || attrs.textAlign || Number(attrs.indent) > 0) return node;
+  return { ...node, content: node.content!.slice(0, -1) };
+}
+
 /**
- * 双链与带标记的行内公式转为「受保护原文片段」文本：
+ * 双链与带标记的行内原子节点转为「受保护原文片段」文本：
  * 1. 原文经 emitRawSegment 以占位符输出，实体还原、冗余转义清理等全文后处理不会改动链接内容（如 `&amp;`）；
  * 2. 作为文本节点携带原有标记，`**[[笔记]]**`、`**$T_0$**` 等粗体 / 斜体包裹按普通文字一样写回
  *    （@tiptap/markdown 不会为非文本的行内节点输出标记）；
@@ -521,10 +530,13 @@ function inlineAtomsToRawText(node: SerializableJsonNode, inTableCell = false): 
     const text = emitRawSegment(formatWikiLinkMarkdown(String(attrs.inner ?? ''), attrs.embed === true, inTableCell));
     return node.marks ? { type: 'text', text, marks: node.marks } : { type: 'text', text };
   }
-  if (node.type === 'mathInline' && Array.isArray(node.marks) && node.marks.length > 0) {
-    // 公式没有文本子节点，直接序列化会在它前后关闭 / 重开粗体，导致原加粗范围被拆开。
-    const latex = String((node.attrs as { latex?: unknown } | undefined)?.latex ?? '');
-    return { type: 'text', text: emitRawSegment(`$${latex}$`), marks: node.marks };
+  if (Array.isArray(node.marks) && node.marks.length > 0) {
+    // 原子节点没有文本子节点，直接序列化会在它前后关闭 / 重开标记，导致原范围被拆开。
+    const attrs = (node.attrs ?? {}) as { latex?: unknown; id?: unknown; raw?: unknown };
+    const raw = node.type === 'mathInline' ? `$${String(attrs.latex ?? '')}$`
+      : node.type === 'footnoteReference' ? `[^${String(attrs.id ?? '')}]`
+        : node.type === 'rawHtmlInline' ? String(attrs.raw ?? '') : null;
+    if (raw !== null) return { type: 'text', text: emitRawSegment(raw), marks: node.marks };
   }
   if (!node.content) return node;
   const isCell = inTableCell || node.type === 'tableCell' || node.type === 'tableHeader';
@@ -534,7 +546,7 @@ function inlineAtomsToRawText(node: SerializableJsonNode, inTableCell = false): 
 /** 序列化前的 JSON 预处理：插入结构性必要转义哨兵（不修改编辑器中的真实文档）。 */
 function prepareJsonForSerialization(json: ReturnType<Editor['getJSON']>): ReturnType<Editor['getJSON']> {
   return markStructuralEscapes(
-    trimDroppedTrailingWhitespace(withoutEmptyRawHtmlBlocks(inlineAtomsToRawText(json as SerializableJsonNode))),
+    trimDroppedTrailingWhitespace(withoutEmptyRawHtmlBlocks(inlineAtomsToRawText(withoutTrailingPlaceholder(json as SerializableJsonNode)))),
     textWouldFormInlineMath,
   ) as ReturnType<Editor['getJSON']>;
 }
@@ -765,6 +777,25 @@ export function parseMarkdownToJson(editor: Editor, markdown: string): ReturnTyp
   deduplicateParsedMarkdownMarks(parsed as ParsedMarkdownNode);
   editor.schema.nodeFromJSON(parsed);
   return parsed;
+}
+
+/**
+ * 仅在进入可视化且回写有差异时验证一次：文字、标记或结构变化不能被“总是规范化”静默接受。
+ * 不修改编辑器、不进入输入热路径；仅忽略已有的源码写法属性和解析器本就丢弃的行尾空白。
+ * 这是回写稳定性检查，不能证明首次解析已经准确表达作者意图，弹窗仍需允许核对完整差异。
+ */
+export function isMarkdownSerializationStable(editor: Editor, markdown: string): boolean {
+  try {
+    const parsed = parseMarkdownToJson(editor, markdown);
+    if (!parsed) return false;
+    // 文档级换行 / 实体偏好属于加载属性，不由候选正文的词法解析产生。
+    parsed.attrs = { ...editor.state.doc.attrs };
+    const candidate = editor.schema.nodeFromJSON(parsed);
+    return editor.state.doc.eq(candidate) || sameIgnoringSourceFormat(editor.state.doc, candidate);
+  } catch {
+    // 无法验证的候选同样必须交给用户逐次确认，不能把异常当成格式等价。
+    return false;
+  }
 }
 
 export function parseMarkdown(

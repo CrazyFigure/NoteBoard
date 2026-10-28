@@ -50,13 +50,15 @@ export interface MarkdownNormalizeDialogProps {
   original: string;
   /** 规范化后的文本 */
   normalized: string;
+  /** 回写未通过稳定性校验时明确提示，必须逐次手动确认。 */
+  mayChangeContent?: boolean;
   /** 用户选择回调：remember 表示本次会话内对该文档记住选择 */
   onChoose: (choice: NormalizationDialogChoice, remember: boolean) => void;
 }
 
-export function MarkdownNormalizeDialog({ displayName, original, normalized, onChoose }: MarkdownNormalizeDialogProps) {
+export function MarkdownNormalizeDialog({ displayName, original, normalized, mayChangeContent = false, onChoose }: MarkdownNormalizeDialogProps) {
   const [diffResult, setDiffResult] = useState<NormalizationDiff | null>(null);
-  const [showDetails, setShowDetails] = useState(false);
+  const [showDetails, setShowDetails] = useState(mayChangeContent);
   const [remember, setRemember] = useState(false);
 
   // 异步计算差异摘要（差异算法按需加载）
@@ -95,14 +97,20 @@ export function MarkdownNormalizeDialog({ displayName, original, normalized, onC
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
           <Wand2 size={20} color="var(--accent-strong)" />
           <h2 id="nb-md-normalize-title" style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--editor-heading)' }}>
-            进入可视化模式需要规范化格式
+            {mayChangeContent ? '进入可视化可能改变内容或格式' : '进入可视化模式需要规范化格式'}
           </h2>
         </div>
 
         <p style={{ margin: '0 0 12px', fontSize: 13, lineHeight: 1.6, color: 'var(--editor-text-secondary)' }}>
-          「{displayName}」中的部分 Markdown 写法在可视化编辑器中会以统一格式保存。
+          「{displayName}」{mayChangeContent ? '经过当前可视化编辑器回写后存在差异。' : '中的部分 Markdown 写法在可视化编辑器中会以统一格式保存。'}
           请查看差异后选择；保持源码模式可保留原文，取消则关闭此文档。
         </p>
+
+        {mayChangeContent && (
+          <p role="alert" style={{ margin: '0 0 12px', fontSize: 13, lineHeight: 1.6, color: 'var(--alert-warning-border)' }}>
+            检测到文字、格式范围或文档结构可能改变。请核对差异；这类变化每次都需要手动确认。
+          </p>
+        )}
 
         <div className="nb-md-normalize-summary">
           {diffResult === null ? (
@@ -155,10 +163,13 @@ export function MarkdownNormalizeDialog({ displayName, original, normalized, onC
           </div>
         )}
 
-        <label className="nb-md-normalize-remember">
-          <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
-          本次使用期间对此文档记住选择
-        </label>
+        {/* 内容风险不能被会话记忆跳过；普通格式调整仍沿用原有记忆行为。 */}
+        {!mayChangeContent && (
+          <label className="nb-md-normalize-remember">
+            <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />
+            本次使用期间对此文档记住选择
+          </label>
+        )}
 
         <div className="nb-md-normalize-actions">
           {/* 取消不记住任何策略；关闭流程由宿主统一执行并保护未保存修改。 */}
@@ -174,7 +185,7 @@ export function MarkdownNormalizeDialog({ displayName, original, normalized, onC
           <button
             type="button"
             className="nb-btn-secondary"
-            onClick={() => onChoose('source', remember)}
+            onClick={() => onChoose('source', !mayChangeContent && remember)}
             style={{ padding: '6px 14px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
           >
             <FileCode2 size={14} />
@@ -184,11 +195,11 @@ export function MarkdownNormalizeDialog({ displayName, original, normalized, onC
           <button
             type="button"
             className="nb-btn-primary"
-            onClick={() => onChoose('normalize', remember)}
+            onClick={() => onChoose('normalize', !mayChangeContent && remember)}
             style={{ padding: '6px 16px', fontSize: 13, fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 6 }}
           >
             <Wand2 size={14} />
-            规范化并进入可视化
+            {mayChangeContent ? '确认差异并进入可视化' : '规范化并进入可视化'}
           </button>
         </div>
       </div>

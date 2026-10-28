@@ -87,7 +87,7 @@ function normalizeAlign(value: unknown): CellAlign {
   return value === 'left' || value === 'right' || value === 'center' ? value : null;
 }
 
-/** 把表格节点渲染为单元格文本矩阵（与官方实现一致：单元格内多段以 <br> 连接，空白折叠） */
+/** 把表格节点渲染为单元格文本矩阵：多段以 <br> 连接，保留正文内部的连续空白。 */
 function renderCells(node: JSONContent, h: MarkdownRendererHelpers): RenderedCell[][] {
   return (node.content ?? []).map((rowNode) =>
     (rowNode.content ?? []).map((cellNode) => {
@@ -102,7 +102,7 @@ function renderCells(node: JSONContent, h: MarkdownRendererHelpers): RenderedCel
         .split(DEFAULT_CELL_LINE_SEPARATOR)
         .join('\n')
         .replace(/[ \t]*\r?\n[ \t]*/g, '<br>')
-        .replace(/\s+/g, ' ')
+        // 单元格两侧的排版空格可去除；词间空格、制表符和不间断空格属于正文，不能全局折叠。
         .trim();
       return { text, isHeader: cellNode.type === 'tableHeader', align: normalizeAlign(cellNode.attrs?.align) };
     }),
