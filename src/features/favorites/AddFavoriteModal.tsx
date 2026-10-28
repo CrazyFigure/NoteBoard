@@ -140,7 +140,7 @@ export function AddFavoriteModal() {
         alignItems: 'center',
         justifyContent: 'center',
         background: 'rgba(0, 0, 0, 0.45)',
-        backdropFilter: 'blur(4px)',
+        // 保留遮罩层次，取消覆盖整窗的实时背景虚化，避免悬停与表单编辑引发大面积合成。
       }}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) {

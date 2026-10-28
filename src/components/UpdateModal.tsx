@@ -204,7 +204,7 @@ export function UpdateModal({
         alignItems: 'center',
         justifyContent: 'center',
         background: 'rgba(0, 0, 0, 0.45)',
-        backdropFilter: 'blur(4px)',
+        // 下载进度和鼠标反馈只绘制弹窗本身，不重复虚化整窗背景。
       }}
       onClick={downloading ? undefined : onClose}
     >

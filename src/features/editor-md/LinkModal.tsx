@@ -105,7 +105,7 @@ export function LinkModal({
         alignItems: 'center',
         justifyContent: 'center',
         background: 'rgba(0, 0, 0, 0.45)',
-        backdropFilter: 'blur(4px)',
+        // 链接编辑与鼠标悬停只更新弹窗内容，不触发整窗背景虚化。
       }}
       onMouseDown={(e) => {
         // 点击遮罩空白区域关闭

@@ -3384,7 +3384,7 @@ button:not(:disabled) {
   justify-content: center;
   padding: 24px;
   background: rgb(0 0 0 / 48%);
-  backdrop-filter: blur(5px);
+  /* 字体加载进度变化时仅更新弹窗，避免反复虚化完整编辑区。 */
 }
 
 .nb-font-pack-prompt {
@@ -4461,7 +4461,7 @@ button.nb-callout-icon:active {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(2px);
+  /* 多端通用弹窗保持纯色遮罩，交互与滚动不再扩大成整窗背景合成。 */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4833,7 +4833,7 @@ button.nb-callout-icon:active {
   justify-content: center;
   padding: 16px;
   background: rgb(20 18 14 / .32);
-  backdrop-filter: blur(3px);
+  /* 输入与校验提示可高频变化，不让这些小更新触发全窗口虚化。 */
   animation: nb-prompt-fade 0.16s ease-out;
 }
 

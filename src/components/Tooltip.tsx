@@ -76,7 +76,11 @@ function FollowCursorTooltip({
   delayDuration: number;
   disabled: boolean;
 }) {
-  const [point, setPoint] = useState<{ x: number; y: number } | null>(null);
+  // 显隐才交给 React；高频指针坐标留在 ref，避免提示出现后每次移动都重绘触发元素。
+  const [visible, setVisible] = useState(false);
+  const pointRef = useRef({ x: 0, y: 0 });
+  const positionRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<number | null>(null);
   const timerRef = useRef<number | null>(null);
 
   const clearTimer = useCallback(() => {
@@ -86,15 +90,29 @@ function FollowCursorTooltip({
     }
   }, []);
 
-  // 卸载时清理未触发的延迟计时，避免对已卸载组件 setState
-  useEffect(() => clearTimer, [clearTimer]);
+  /** 每个显示帧只移动一次提示图层；沿用原有横向夹紧与向上偏移规则。 */
+  const syncPosition = useCallback(() => {
+    frameRef.current = null;
+    const point = pointRef.current;
+    const x = Math.min(Math.max(point.x, 90), window.innerWidth - 90);
+    if (positionRef.current) positionRef.current.style.transform = `translate3d(${x}px, ${point.y - 14}px, 0) translate(-50%, -100%)`;
+  }, []);
+
+  /** 取消尚未绘制的坐标，防止鼠标离开、禁用或卸载后再次移动已隐藏的提示。 */
+  const cancelFrame = useCallback(() => {
+    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    frameRef.current = null;
+  }, []);
+
+  useEffect(() => () => { clearTimer(); cancelFrame(); }, [clearTimer, cancelFrame]);
 
   useEffect(() => {
     if (disabled) {
       clearTimer();
-      setPoint(null);
+      cancelFrame();
+      setVisible(false);
     }
-  }, [disabled, clearTimer]);
+  }, [disabled, clearTimer, cancelFrame]);
 
   // 泛型参数用于确保 cloneElement 时追加的事件属性类型合法
   const child = React.isValidElement<Record<string, unknown>>(children) ? children : null;
@@ -108,29 +126,32 @@ function FollowCursorTooltip({
     originalProps.onMouseEnter?.(e);
     if (disabled) return;
     clearTimer();
-    const { clientX, clientY } = e;
+    pointRef.current = { x: e.clientX, y: e.clientY };
     timerRef.current = window.setTimeout(() => {
       timerRef.current = null;
-      setPoint({ x: clientX, y: clientY });
+      setVisible(true);
     }, delayDuration);
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     originalProps.onMouseMove?.(e);
-    // 已显示时实时跟随指针；尚未显示则不重置延迟计时，保证 100ms 后按时出现
-    setPoint((prev) => (prev ? { x: e.clientX, y: e.clientY } : prev));
+    // 尚未显示也记录最新坐标，但不重置 100ms 延迟；显示后按帧合并移动，不更新组件状态。
+    pointRef.current = { x: e.clientX, y: e.clientY };
+    if (!disabled && positionRef.current && frameRef.current === null) frameRef.current = requestAnimationFrame(syncPosition);
   };
 
   const handleMouseLeave = (e: React.MouseEvent) => {
     originalProps.onMouseLeave?.(e);
     clearTimer();
-    setPoint(null);
+    cancelFrame();
+    setVisible(false);
   };
 
   if (!child) return <>{children}</>;
 
   const hasContent = Boolean(content) || Boolean(shortcut);
-  const clampedX = point ? Math.min(Math.max(point.x, 90), window.innerWidth - 90) : 0;
+  const point = pointRef.current;
+  const clampedX = Math.min(Math.max(point.x, 90), window.innerWidth - 90);
 
   return (
     <>
@@ -139,16 +160,17 @@ function FollowCursorTooltip({
         onMouseMove: handleMouseMove,
         onMouseLeave: handleMouseLeave,
       })}
-      {point &&
+      {visible &&
         hasContent &&
         createPortal(
           // 外层负责定位，内层承载动画：动画 keyframes 会覆盖 transform，写在同一个节点上会让定位失效
           <div
+            ref={positionRef}
             style={{
               position: 'fixed',
-              left: clampedX,
-              top: point.y - 14,
-              transform: 'translate(-50%, -100%)',
+              left: 0,
+              top: 0,
+              transform: `translate3d(${clampedX}px, ${point.y - 14}px, 0) translate(-50%, -100%)`,
               zIndex: 1000001,
               pointerEvents: 'none',
             }}

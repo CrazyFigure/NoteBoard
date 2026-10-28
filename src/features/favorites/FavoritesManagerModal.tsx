@@ -40,6 +40,16 @@ import { open } from '@tauri-apps/plugin-dialog';
 // 指针移动超过该距离才视为拖拽，避免点击时轻微抖动误触发
 const DRAG_THRESHOLD = 4;
 
+// 整个弹窗共用并发额度，快速切换目录或连续搜索也不能叠加出大量 IPC / HTTP 请求。
+const MAX_EXISTENCE_CHECKS = 6;
+
+interface FileExistenceCheck {
+  paths: string[];
+  cursor: number;
+  remaining: number;
+  results: Record<string, boolean>;
+}
+
 // 拖拽落点：放入某文件夹，或插到某个节点的前/后
 type DropTarget =
   | { kind: 'into'; folderId: string }
@@ -52,8 +62,18 @@ interface DragVisual {
   sourceId: string;
   name: string;
   isFolder: boolean;
-  x: number;
-  y: number;
+}
+
+/** 落点语义不变时复用列表状态，避免仅坐标变化也重绘全部收藏与文件夹。 */
+function sameDropTarget(a: DropTarget | null, b: DropTarget | null): boolean {
+  if (!a || !b) return a === b;
+  return a.kind === 'into' && b.kind === 'into' ? a.folderId === b.folderId
+    : a.kind !== 'into' && b.kind !== 'into' && a.kind === b.kind && a.refId === b.refId;
+}
+
+/** 预览与指针保持原有的横向 12px、纵向 10px 间距，避免遮挡实际落点。 */
+function dragPreviewTransform(point: { x: number; y: number }): string {
+  return `translate3d(${point.x + 12}px, ${point.y + 10}px, 0)`;
 }
 
 export function FavoritesManagerModal() {
@@ -89,6 +109,8 @@ export function FavoritesManagerModal() {
 
   // 拖拽预览与当前落点（Tauri 开启了 dragDropEnabled，WebView 内原生 HTML5 拖放收不到 drop，改用指针事件实现）
   const [dragVisual, setDragVisual] = useState<DragVisual | null>(null);
+  const dragPreviewRef = useRef<HTMLDivElement>(null);
+  const dragPointRef = useRef({ x: 0, y: 0 });
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const dropTargetRef = useRef<DropTarget | null>(null);
   // 取消进行中拖拽的回调（Esc 或卸载时调用）
@@ -104,6 +126,8 @@ export function FavoritesManagerModal() {
 
   // 文件存在性探测缓存 (path -> boolean)
   const [fileExistenceMap, setFileExistenceMap] = useState<Record<string, boolean>>({});
+  const existenceJobRef = useRef<FileExistenceCheck | null>(null);
+  const existenceRunningRef = useRef(0);
 
   // 文件夹右键菜单状态
   const [folderContextMenu, setFolderContextMenu] = useState<{
@@ -169,33 +193,45 @@ export function FavoritesManagerModal() {
     return searchFavorites(data.roots, searchQuery);
   }, [data.roots, searchQuery]);
 
-  // 异步探测当前视图内所有文件的存在性
-  const checkFilesExistence = useCallback(async (files: FavoriteFileItem[]) => {
-    const nextMap: Record<string, boolean> = {};
-    for (const f of files) {
-      if (!f.path) {
-        nextMap[f.id] = false;
-        continue;
-      }
-      try {
-        const res = await ipc.pathExists(f.path);
-        nextMap[f.path] = res.exists && !res.isDir;
-      } catch {
-        nextMap[f.path] = false;
-      }
+  /** 只消费当前视图的探测队列；旧调用结束后释放额度，取消过的任务既不回写也不继续发起请求。 */
+  const pumpExistenceChecks = useCallback(function pumpExistenceChecks() {
+    const job = existenceJobRef.current;
+    if (!job) return;
+    while (existenceRunningRef.current < MAX_EXISTENCE_CHECKS && job.cursor < job.paths.length) {
+      const path = job.paths[job.cursor++];
+      existenceRunningRef.current += 1;
+      void Promise.resolve().then(() => {
+        // 提交微任务前视图也可能已切换，尚未发出的调用直接释放额度，不访问旧路径。
+        if (existenceJobRef.current === job) return ipc.pathExists(path);
+      }).then((res) => {
+        if (res) job.results[path] = res.exists && !res.isDir;
+      }).catch(() => {
+        job.results[path] = false;
+      }).finally(() => {
+        existenceRunningRef.current -= 1;
+        job.remaining -= 1;
+        if (existenceJobRef.current === job && job.remaining === 0) {
+          setFileExistenceMap((prev) => ({ ...prev, ...job.results }));
+        }
+        pumpExistenceChecks();
+      });
     }
-    setFileExistenceMap((prev) => ({ ...prev, ...nextMap }));
   }, []);
+
+  /** 去重当前路径并替换旧队列，不增加后台调用数量；返回清理函数使关闭、切换和卸载立即失效。 */
+  const checkFilesExistence = useCallback((files: FavoriteFileItem[]) => {
+    const paths = [...new Set(files.map((file) => file.path).filter(Boolean))];
+    const job: FileExistenceCheck = { paths, cursor: 0, remaining: paths.length, results: {} };
+    existenceJobRef.current = job;
+    pumpExistenceChecks();
+    return () => { if (existenceJobRef.current === job) existenceJobRef.current = null; };
+  }, [pumpExistenceChecks]);
 
   // 当当前文件夹切换或搜索词变化时探测文件存在性
   useEffect(() => {
     if (!managerModalOpen) return;
-    if (searchQuery.trim()) {
-      checkFilesExistence(searchResults);
-    } else {
-      const files = currentItems.filter((c) => c.type === 'file') as FavoriteFileItem[];
-      checkFilesExistence(files);
-    }
+    const files = searchQuery.trim() ? searchResults : currentItems.filter((c): c is FavoriteFileItem => c.type === 'file');
+    return checkFilesExistence(files);
   }, [managerModalOpen, searchQuery, currentItems, searchResults, checkFilesExistence]);
 
   // 点击打开文件
@@ -333,26 +369,38 @@ export function FavoritesManagerModal() {
 
     const startX = e.clientX;
     const startY = e.clientY;
+    const pointerId = e.pointerId;
     let started = false;
+    let frame: number | null = null;
+    let point = { x: startX, y: startY };
 
-    const onMove = (ev: PointerEvent) => {
+    // 命中检测与预览变换每帧只执行一次；只有真正开始拖动和落点变化才重绘列表。
+    const updateDrag = () => {
+      frame = null;
       if (!started) {
-        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_THRESHOLD) return;
+        if (Math.hypot(point.x - startX, point.y - startY) < DRAG_THRESHOLD) return;
         started = true;
+        setDragVisual({ sourceId: node.id, name: node.name, isFolder: node.type === 'folder' });
       }
-      const next = resolveDropTarget(node.id, ev.clientX, ev.clientY);
+      // 先读命中与几何，再写预览位置，避免一次移动中交错读写迫使浏览器同步刷新样式。
+      const next = resolveDropTarget(node.id, point.x, point.y);
+      dragPointRef.current = point;
+      if (dragPreviewRef.current) dragPreviewRef.current.style.transform = dragPreviewTransform(point);
+      const previous = dropTargetRef.current;
       dropTargetRef.current = next;
-      setDropTarget(next);
-      setDragVisual({
-        sourceId: node.id,
-        name: node.name,
-        isFolder: node.type === 'folder',
-        x: ev.clientX,
-        y: ev.clientY,
-      });
+      if (!sameDropTarget(previous, next)) setDropTarget(next);
+    };
+    const onMove = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      point = { x: ev.clientX, y: ev.clientY };
+      if (frame === null) frame = requestAnimationFrame(updateDrag);
     };
 
     const finish = (commit: boolean) => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      frame = null;
+      // 松手可能早于下一次显示帧，按最终指针位置同步确定落点，取消则直接丢弃待绘工作。
+      if (commit) updateDrag();
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
@@ -373,8 +421,12 @@ export function FavoritesManagerModal() {
 
       if (commit && target) void applyDrop(node.id, target);
     };
-    const onUp = () => finish(true);
-    const onCancel = () => finish(false);
+    const onUp = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      point = { x: ev.clientX, y: ev.clientY };
+      finish(true);
+    };
+    const onCancel = (ev: PointerEvent) => { if (ev.pointerId === pointerId) finish(false); };
 
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -394,6 +446,7 @@ export function FavoritesManagerModal() {
 
   return (
     <div
+      className="nb-favorites-manager-overlay"
       style={{
         position: 'fixed',
         top: 0,
@@ -404,8 +457,8 @@ export function FavoritesManagerModal() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        // 全窗口虚化会在悬停反馈和提示浮层变化时重复采样背景，所有平台统一使用原色遮罩。
         background: 'rgba(0, 0, 0, 0.45)',
-        backdropFilter: 'blur(4px)',
       }}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) {
@@ -1079,10 +1132,13 @@ export function FavoritesManagerModal() {
         {/* 跟随指针的拖拽预览 */}
         {dragVisual && (
           <div
+            ref={dragPreviewRef}
+            className="nb-favorites-drag-preview"
             style={{
               position: 'fixed',
-              left: dragVisual.x + 12,
-              top: dragVisual.y + 10,
+              left: 0,
+              top: 0,
+              transform: dragPreviewTransform(dragPointRef.current),
               zIndex: 9999,
               pointerEvents: 'none',
               display: 'flex',
