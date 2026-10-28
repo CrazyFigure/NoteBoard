@@ -11,6 +11,8 @@ import { textWouldFormInlineMath } from './mathSyntax';
 import { beginRawSegmentSession, emitRawSegment, endRawSegmentSession, restoreRawSegments } from './rawMarkdownSegments';
 import { formatWikiLinkMarkdown } from '../wikilink/wikiLinkSyntax';
 import { INVISIBLE_CHARACTER_ENTITIES, isDecodableEntitySuffix, usesInvisibleCharacterEntities } from './markdownHtmlEntities';
+import { captureMarkdownBlockTokens } from './markdownBlockStart';
+import { preserveSourceBlockSpacing } from './markdownBlockSpacing';
 
 // CommonMark 允许反斜杠转义的 ASCII 标点；这些字符前的双反斜杠不能擅自折叠，
 // 否则原本可见的反斜杠会在下一次解析时被当成转义符吞掉。
@@ -320,8 +322,8 @@ function applyMarkdownCleanupCandidates(
   return output;
 }
 
-/** 仅记录源码写法、不影响文档语义的节点属性：围栏、表格风格与列表原始缩进。 */
-const SOURCE_FORMAT_ATTRIBUTES = ['sourceFence', 'markdownStyle', 'sourceIndent', 'sourceContinuationIndents', 'sourceLeadingIndent'];
+/** 仅记录源码写法、不影响文档语义的节点属性：围栏、表格风格、列表原始缩进与块间距。 */
+const SOURCE_FORMAT_ATTRIBUTES = ['sourceFence', 'markdownStyle', 'sourceIndent', 'sourceContinuationIndents', 'sourceLeadingIndent', 'sourceCompactBefore'];
 
 /** 深拷贝 JSON 并去掉源码写法属性 */
 function withoutSourceFormatAttributes(json: unknown): unknown {
@@ -577,6 +579,8 @@ function trimDroppedTrailingWhitespace(node: SerializableJsonNode, atListEnd = f
 
 /** @tiptap/markdown 注入的 MarkdownManager（serialize/parse/escapeMarkdownSyntax） */
 export interface MarkdownManagerLike {
+  /** 当前编辑器独占的词法解析器，用于复用本次解析的根 token。 */
+  instance?: object;
   /** 对指定 JSON 模型序列化为 Markdown（J2 纯适配器的核心入口） */
   serialize?: (json: ReturnType<Editor['getJSON']>) => string;
   parse?: (markdown: string) => ReturnType<Editor['getJSON']>;
@@ -748,8 +752,11 @@ function deduplicateParsedMarkdownMarks(root: ParsedMarkdownNode): void {
  * 与整篇加载共用同一解析器与 mark 修复，并按 schema 显式校验；失败或未装配解析器时返回 null。
  */
 export function parseMarkdownToJson(editor: Editor, markdown: string): ReturnType<Editor['getJSON']> | null {
-  const parsed = getMarkdownManager(editor)?.parse?.(markdown);
+  const manager = getMarkdownManager(editor);
+  const { parsed, tokens } = captureMarkdownBlockTokens(manager?.instance, () => manager?.parse?.(markdown));
   if (!parsed) return null;
+  // 记录源文件块间距，与正文一同进入历史 / 快照；不重新分词，也不改动真实空段落。
+  if (tokens) preserveSourceBlockSpacing(parsed, tokens);
   deduplicateParsedMarkdownMarks(parsed as ParsedMarkdownNode);
   editor.schema.nodeFromJSON(parsed);
   return parsed;

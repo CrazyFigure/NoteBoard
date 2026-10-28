@@ -4,6 +4,24 @@ import { Marked, Tokenizer, type marked, type Token, type TokensList } from 'mar
 interface BlockContext { source: string; positions: Map<RegExp, number[]> }
 const contexts = new WeakMap<object, BlockContext>();
 
+// 只在调用方需要记录源码块间距时临时捕获根 token；会话结束即释放，不在解析器上长期保留整篇词法树。
+const sourceTokenCaptures = new WeakMap<object, { tokens?: Token[] }>();
+
+/** 共用已经执行的词法分析结果，避免为了保留空行再解析一遍全文；嵌套会话结束后恢复外层。 */
+export function captureMarkdownBlockTokens<T>(parser: object | undefined, parse: () => T): { parsed: T; tokens?: Token[] } {
+  if (!parser) return { parsed: parse() };
+  const previous = sourceTokenCaptures.get(parser);
+  const capture: { tokens?: Token[] } = {};
+  sourceTokenCaptures.set(parser, capture);
+  try {
+    const parsed = parse();
+    return { parsed, tokens: capture.tokens };
+  } finally {
+    if (previous) sourceTokenCaptures.set(parser, previous);
+    else sourceTokenCaptures.delete(parser);
+  }
+}
+
 /**
  * Windows 本地地址中的反斜杠是路径分隔符，不能按 Markdown 标点转义吞掉。
  * 识别规则与宿主系统无关：其他平台打开 Windows 文档时也必须完整保留地址；
@@ -44,6 +62,13 @@ export function createIsolatedMarkdownParser(): typeof marked {
   });
   const BaseLexer = instance.Lexer;
   class IndexedLexer<ParserOutput = string, RendererOutput = string> extends BaseLexer<ParserOutput, RendererOutput> {
+    override lex(source: string): TokensList {
+      const tokens = super.lex(source);
+      // 嵌套 lex 先完成，根 lex 最后覆盖捕获结果，保证取得的是当前文档的根 token。
+      const capture = sourceTokenCaptures.get(instance);
+      if (capture) capture.tokens = tokens;
+      return tokens;
+    }
     // 保留 Marked 的两种重载及泛型，普通 token 数组和带 links 的根列表都按原类型返回。
     override blockTokens(source: string, tokens?: Token[], lastParagraphClipped?: boolean): Token[];
     override blockTokens(source: string, tokens?: TokensList, lastParagraphClipped?: boolean): TokensList;

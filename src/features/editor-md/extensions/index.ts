@@ -18,6 +18,7 @@ import { TableCell } from '@tiptap/extension-table';
 import { TableHeader } from '@tiptap/extension-table';
 import { Markdown } from '@tiptap/markdown';
 import { createIsolatedMarkdownParser } from '../markdownBlockStart';
+import { MarkdownBlockSpacing, MarkdownBlockquote, MarkdownDocument } from '../markdownBlockSpacing';
 import { emitRawSegment } from '../rawMarkdownSegments';
 import { Link } from '@tiptap/extension-link';
 
@@ -366,6 +367,9 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
     // listItem, blockquote, horizontalRule, history, paragraph, text, document,
     // 但不含 codeBlock（我们用自定义的）
     StarterKit.configure({
+      // 根文档与引用块改为按原文记录的边界回写，避免无条件在独立块之间补空行。
+      document: false,
+      blockquote: false,
       // 改由允许 Markdown 标记嵌套的 Code 扩展注册，避免同名扩展和 schema 冲突
       code: false,
       codeBlock: false, // 用自定义的 CodeBlockView
@@ -397,6 +401,9 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
     MarkdownCompatibleCode,
 
     // 段落与标题（支持对齐、缩进）
+    MarkdownDocument,
+    MarkdownBlockquote,
+    MarkdownBlockSpacing,
     FormattedParagraph,
     FormattedHeading,
 
