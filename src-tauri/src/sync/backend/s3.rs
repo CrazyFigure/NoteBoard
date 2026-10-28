@@ -48,10 +48,13 @@ impl S3 {
             format!("https://{}", endpoint)
         };
         let parsed = url::Url::parse(&endpoint).map_err(|_| SyncError::config("S3 服务端点格式不正确，例如 https://s3.us-east-1.amazonaws.com"))?;
-        // Endpoint 只接受服务域名，避免静默丢弃路径、查询参数或嵌入凭证后签到另一个目标。
-        if !matches!(parsed.scheme(), "http" | "https") || !parsed.username().is_empty() || parsed.password().is_some()
+        // 旧版通用 S3 只使用端点的协议、主机和端口，已保存的路径等内容并不参与对象定位。
+        // 保留原解析规则且不改写配置，避免升级后拒绝原本可用的连接或改变同步目标身份。
+        // 新厂商入口及新增的自定义域名模式仍要求纯服务域名，防止新配置产生歧义。
+        let legacy_endpoint = kind == ProviderKind::S3 && !cfg.custom_domain;
+        if !legacy_endpoint && (!matches!(parsed.scheme(), "http" | "https") || !parsed.username().is_empty() || parsed.password().is_some()
             || !matches!(parsed.path(), "" | "/") || parsed.query().is_some() || parsed.fragment().is_some()
-        {
+        ) {
             return Err(SyncError::config("服务端点只能填写 http(s) 域名及可选端口，请将远端目录填入对象前缀"));
         }
         let host = parsed.host_str().ok_or_else(|| SyncError::config("S3 服务端点缺少主机名"))?.to_string();
@@ -359,16 +362,38 @@ mod tests {
         assert!(S3::new(client, &cfg, ProviderKind::Oss).is_err());
     }
 
-    /// 拒绝会被忽略的 URL 路径或凭证，厂商空地址也不能误连到 AWS 默认端点。
+    /// 新厂商入口拒绝会被忽略的 URL 路径或凭证，空地址也不能误连到 AWS 默认端点。
     #[test]
     fn invalid_endpoints_and_missing_vendor_region_are_rejected() {
-        let mut cfg = S3Config { bucket: "notes".into(), access_key_id: "key".into(), secret_access_key: "secret".into(), ..Default::default() };
+        let mut cfg = S3Config { region: "region".into(), bucket: "notes".into(), access_key_id: "key".into(), secret_access_key: "secret".into(), ..Default::default() };
         let client = reqwest::Client::new();
         assert!(S3::new(client.clone(), &cfg, ProviderKind::Obs).is_err());
         for endpoint in ["https://objects.example.com/bucket", "https://user:password@objects.example.com", "https://objects.example.com?prefix=notes", "https://objects.example.com#notes"] {
             cfg.endpoint = endpoint.into();
+            assert!(S3::new(client.clone(), &cfg, ProviderKind::Oss).is_err());
+            cfg.custom_domain = true;
             assert!(S3::new(client.clone(), &cfg, ProviderKind::S3).is_err());
+            cfg.custom_domain = false;
         }
+    }
+
+    /// 旧 S3 的缺省区域、路径风格及附带 URL 路径仍按原规则解析，升级不要求重新填写。
+    #[test]
+    fn legacy_s3_endpoints_keep_their_effective_target() {
+        let client = reqwest::Client::new();
+        for endpoint in ["https://objects.example.com", "https://objects.example.com/notes/?old=1#saved", "objects.example.com/notes/"] {
+            // 使用旧版字段反序列化，customDomain 缺省必须为 false。
+            let cfg: S3Config = serde_json::from_value(serde_json::json!({
+                "endpoint": endpoint, "bucket": "notes", "accessKeyId": "key", "secretAccessKey": "secret", "pathStyle": true, "prefix": "my-notes"
+            })).unwrap();
+            let backend = S3::new(client.clone(), &cfg, ProviderKind::S3).unwrap();
+            assert_eq!(backend.region, "us-east-1");
+            assert_eq!(backend.locate(&backend.key_of("a.md")), ("objects.example.com".into(), "/notes/my-notes/a.md".into()));
+            assert_eq!(cfg.endpoint, endpoint);
+        }
+        let cfg = S3Config { bucket: "notes".into(), access_key_id: "key".into(), secret_access_key: "secret".into(), ..Default::default() };
+        let backend = S3::new(client, &cfg, ProviderKind::S3).unwrap();
+        assert_eq!(backend.locate("a.md"), ("notes.s3.us-east-1.amazonaws.com".into(), "/a.md".into()));
     }
 
     /// RFC 4231 测试向量 2

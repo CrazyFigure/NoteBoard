@@ -120,6 +120,37 @@ describe('设置页同步与备份切换', () => {
     expect(host.textContent).not.toContain('正在加载同步设置');
   });
 
+  it.each(['webdav', 's3', 'github', 'gitee', 'gitcode', 'gitlab'] as const)('旧 %s 配置打开分组表单不会改写同步方式或原有输入', async (kind) => {
+    const provider = createProvider();
+    provider.kind = kind;
+    provider.s3.endpoint = 'https://objects.example.com/old-path/?saved=1';
+    provider.s3.bucket = 'old-bucket';
+    provider.s3.secretAccessKey = 'old-storage-key';
+    provider.gitlab.branch = 'old-branch';
+    provider.gitlab.token = 'old-gitlab-token';
+    const before = structuredClone(provider);
+    const change = vi.fn();
+    const testConnection = vi.spyOn(ipc, 'syncTestConnection').mockResolvedValue('连接成功');
+    act(() => root.render(<TooltipProvider><ProviderForm value={provider} onChange={change} /></TooltipProvider>));
+    const radios = Array.from(host.querySelectorAll<HTMLButtonElement>('[role="radio"]'));
+    const selected = kind === 'webdav' ? 'WebDAV' : kind === 's3' ? '对象存储' : 'Git 仓库';
+    expect(radios.find((radio) => radio.textContent === selected)!.getAttribute('aria-checked')).toBe('true');
+    if (kind === 's3') {
+      expect(host.querySelector('[aria-label="对象存储服务"]')!.textContent).toBe('通用 S3（AWS / R2 / MinIO）');
+      expect(host.querySelector<HTMLInputElement>('input[placeholder="https://s3.us-east-1.amazonaws.com"]')!.value).toBe(before.s3.endpoint);
+    } else if (kind !== 'webdav') {
+      const names = { github: 'GitHub', gitee: 'Gitee', gitcode: 'GitCode', gitlab: 'GitLab' };
+      expect(host.querySelector('[aria-label="Git 托管平台"]')!.textContent).toBe(names[kind]);
+    }
+    // 点击已经激活的分类也不能回退到通用 S3 或 GitHub，更不能清空原凭证。
+    act(() => radios.find((radio) => radio.textContent === selected)!.click());
+    expect(change).not.toHaveBeenCalled();
+    const test = Array.from(host.querySelectorAll('button')).find((button) => button.textContent?.includes('测试连接'))!;
+    await act(async () => test.click());
+    expect(testConnection).toHaveBeenCalledWith(before);
+    expect(provider).toEqual(before);
+  });
+
   it('配置确实尚未就绪时保留加载提示，缓存到达后展示表单', () => {
     // 单独控制启动初始化，避免测试向 Tauri 发出实际 IPC 请求。
     const init = vi.spyOn(useSyncStore.getState(), 'init').mockResolvedValue(undefined);

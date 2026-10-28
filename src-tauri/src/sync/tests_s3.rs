@@ -125,6 +125,28 @@ impl Drop for ObjectServer {
     }
 }
 
+/// 旧版 S3 配置没有新增厂商和域名字段；保留其有效 HTTP 目标，仍可直接读写已有对象。
+#[test]
+fn legacy_s3_configuration_still_reads_and_writes_over_http() {
+    let server = ObjectServer::new();
+    let endpoint = format!("{}/saved-path/?ignored=1#old", server.endpoint);
+    let provider: ProviderConfig = serde_json::from_value(serde_json::json!({
+        "kind": "s3", "s3": { "endpoint": endpoint, "bucket": "notes", "accessKeyId": "old-key",
+            "secretAccessKey": "old-secret", "prefix": "旧目录", "pathStyle": true }
+    })).unwrap();
+    assert_eq!(provider.s3.endpoint, endpoint);
+    assert_eq!(provider.kind, ProviderKind::S3);
+    assert!(!provider.s3.custom_domain);
+    runtime::block_on(async {
+        let mut backend = Backend::new(&provider).unwrap();
+        backend.put("旧笔记.md", "升级后继续同步".as_bytes().to_vec(), "test").await.unwrap();
+        assert_eq!(backend.read("旧笔记.md").await.unwrap().unwrap(), "升级后继续同步".as_bytes());
+        assert!(server.store.lock().unwrap().objects.contains_key("notes/旧目录/旧笔记.md"));
+        backend.delete("旧笔记.md", "test").await.unwrap();
+        assert!(backend.read("旧笔记.md").await.unwrap().is_none());
+    });
+}
+
 /// 六个入口均真实收发 HTTP，验证独立凭证、中文对象、空对象、连接探测和分页列举。
 #[test]
 fn all_storage_providers_round_trip_over_http() {

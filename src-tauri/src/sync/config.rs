@@ -127,7 +127,8 @@ pub struct GitRepoConfig {
     pub remote_dir: String,
 }
 
-/// 一套远端服务配置；所有类型的输入都保留，切换类型不丢失已填写的内容
+/// 一套远端服务配置；所有类型的输入都保留，切换类型不丢失已填写的内容。
+/// 界面分类不改变既有 kind；新增厂商字段补默认值，旧 S3 和 Git 配置仍使用原字段与远端身份。
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ProviderConfig {
@@ -416,6 +417,101 @@ mod tests {
             assert_eq!(selected.object_storage().unwrap().bucket, name);
             assert_eq!(selected.s3.bucket, "old");
             assert_eq!(selected.identity(), format!("s3|https://selected.example.com|{}|notes", name));
+        }
+    }
+
+    /// 构造旧版实际字段和本机保护凭证，包含未选中服务的缓存配置及历史 userAgent 字段。
+    fn legacy_provider(kind: &str) -> serde_json::Value {
+        let git = serde_json::json!({
+            "baseUrl": "https://git.example.com", "owner": "group/subgroup", "repo": "old-notes", "branch": "saved-branch",
+            "remoteDir": "保存的笔记", "token": secret::protect("legacy-git-token")
+        });
+        serde_json::json!({
+            "kind": kind,
+            "webdav": { "url": "https://dav.example.com/dav/", "username": "old-user", "password": secret::protect("旧密码"),
+                "remoteDir": "旧目录", "userAgent": "Legacy DAV/1", "headers": [{ "name": "X-Gateway-Key", "value": secret::protect("legacy-gateway") }] },
+            "s3": { "endpoint": "https://objects.example.com/ignored/?old=1#saved", "region": "", "bucket": "old-bucket", "prefix": "old-notes",
+                "accessKeyId": "legacy-access", "secretAccessKey": secret::protect("legacy-storage-secret"), "pathStyle": true, "userAgent": "Legacy S3/1" },
+            "github": git.clone(), "gitee": git.clone(), "gitcode": git.clone(), "gitlab": git
+        })
+    }
+
+    /// 真实执行旧配置读取、凭证解密、再次保存和基线绑定，保证六种既有服务升级后可继续使用。
+    #[test]
+    fn legacy_config_files_keep_credentials_targets_and_sync_baselines() {
+        // 应用数据根目录只初始化一次，因此在独立测试进程使用临时目录，绝不接触用户真实配置。
+        const TEST_ROOT: &str = "NOTEBOARD_LEGACY_SYNC_CONFIG_TEST_ROOT";
+        let Ok(root) = std::env::var(TEST_ROOT) else {
+            let directory = tempfile::tempdir().unwrap();
+            let result = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "sync::config::tests::legacy_config_files_keep_credentials_targets_and_sync_baselines", "--nocapture"])
+                .env(TEST_ROOT, directory.path()).output().unwrap();
+            assert!(result.status.success(), "旧配置升级回归失败：{}\n{}", String::from_utf8_lossy(&result.stdout), String::from_utf8_lossy(&result.stderr));
+            return;
+        };
+        crate::app_dirs::set_data_root(PathBuf::from(&root));
+        let kinds = ["webdav", "s3", "github", "gitee", "gitcode", "gitlab"];
+        let note_root = PathBuf::from(&root).join("旧笔记").to_string_lossy().to_string();
+        std::fs::create_dir_all(sync_data_dir()).unwrap();
+        for (index, kind) in kinds.iter().enumerate() {
+            // 同步与备份故意选择不同服务，覆盖备份配置独立加载与保存。
+            let backup_kind = kinds[(index + 1) % kinds.len()];
+            let old = serde_json::json!({
+                "version": 1, "deviceId": "old-device-123",
+                "sync": { "enabled": true, "rootDir": note_root, "deviceName": "原有设备", "provider": legacy_provider(kind),
+                    "syncOnSave": false, "intervalEnabled": true, "intervalMinutes": 47, "syncOnStartup": false,
+                    "notifyNoChange": true, "trashEnabled": false, "trashDays": 17 },
+                "backup": { "autoEnabled": true, "intervalHours": 37, "keepCount": 23, "target": "remote", "localDir": "原有备份目录", "provider": legacy_provider(backup_kind) }
+            });
+            let bytes = serde_json::to_vec_pretty(&old).unwrap();
+            std::fs::write(config_path(), &bytes).unwrap();
+            let cfg = load();
+            assert_eq!(std::fs::read(config_path()).unwrap(), bytes, "仅加载旧配置不得重写原文件");
+            assert_eq!(cfg.device_id, "old-device-123");
+            assert_eq!(cfg.version, 1);
+            assert_eq!(serde_json::to_value(cfg.sync.provider.kind).unwrap(), *kind);
+            assert_eq!(serde_json::to_value(cfg.backup.provider.kind).unwrap(), backup_kind);
+            let snapshot = serde_json::to_value(&cfg).unwrap();
+            // 除凭证解密、旧 UA 转为 Header 外，所有既有配置值必须保持原样。
+            for (name, settings) in [("sync", &old["sync"]), ("backup", &old["backup"])] {
+                for (key, value) in settings.as_object().unwrap() {
+                    if key != "provider" { assert_eq!(&snapshot[name][key], value); }
+                }
+                let provider = &snapshot[name]["provider"];
+                assert_eq!(provider["webdav"]["password"], "旧密码");
+                assert_eq!(provider["webdav"]["headers"][0]["value"], "legacy-gateway");
+                assert_eq!(provider["webdav"]["headers"][1]["value"], "Legacy DAV/1");
+                assert_eq!(provider["s3"]["secretAccessKey"], "legacy-storage-secret");
+                assert_eq!(provider["s3"]["endpoint"], old[name]["provider"]["s3"]["endpoint"]);
+                assert_eq!(provider["s3"]["pathStyle"], true);
+                assert_eq!(provider["s3"]["customDomain"], false);
+                for git in ["github", "gitee", "gitcode", "gitlab"] {
+                    assert_eq!(provider[git]["token"], "legacy-git-token");
+                    for key in ["baseUrl", "owner", "repo", "branch", "remoteDir"] {
+                        assert_eq!(provider[git][key], old[name]["provider"][git][key]);
+                    }
+                }
+                // 新厂商没有自动接管旧 S3；原有的 S3 数据和密钥继续留在原字段。
+                for vendor in ["oss", "zos", "oos", "obs", "cos"] { assert_eq!(provider[vendor]["secretAccessKey"], ""); }
+            }
+            let identity = match *kind {
+                "webdav" => "webdav|https://dav.example.com/dav|old-user|旧目录".to_string(),
+                "s3" => "s3|https://objects.example.com/ignored/?old=1#saved|old-bucket|old-notes".to_string(),
+                _ => format!("{}|https://git.example.com|group/subgroup/old-notes|saved-branch|保存的笔记", cfg.sync.provider.kind.label()),
+            };
+            assert_eq!(cfg.sync.provider.identity(), identity);
+            let mut baseline = super::super::state::LocalState { root: note_root.clone(), remote: identity, force_local: true, ..Default::default() };
+            baseline.deletes.insert("已删除.md".into(), 123);
+            super::super::state::swap_for_test(baseline);
+            super::super::state::write_base_content(&note_root, "legacy-base", Some(b"saved merge base"));
+            super::super::state::bind(&note_root, &cfg.sync.provider.identity());
+            assert!(super::super::state::snapshot().force_local);
+            assert_eq!(super::super::state::snapshot().deletes.get("已删除.md"), Some(&123));
+            assert_eq!(super::super::state::read_base_content(&note_root, "legacy-base").unwrap(), b"saved merge base");
+            save(&cfg).unwrap();
+            let stored = std::fs::read_to_string(config_path()).unwrap();
+            assert!(!stored.contains("legacy-storage-secret") && !stored.contains("legacy-git-token") && !stored.contains("legacy-gateway"));
+            assert_eq!(serde_json::to_value(load()).unwrap(), snapshot, "再次保存、重启读取后配置应完整保留");
         }
     }
 
