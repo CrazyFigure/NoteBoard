@@ -1,10 +1,11 @@
 // NoteBoard 同步设置通用控件：密钥输入、确认弹窗、远端服务配置表单与时间格式化
 
 import { useEffect, useId, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ChevronRight, ExternalLink, Eye, EyeOff, HelpCircle, Loader2, PlugZap, Plus, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronRight, Cloud, ExternalLink, Eye, EyeOff, GitBranch, HelpCircle, Loader2, Network, PlugZap, Plus, X } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
+import { SettingsSelect } from '../../components/settings/SettingsSelect';
 import * as ipc from '../../core/ipc/commands';
-import type { GitRepoConfig, HttpHeader, SyncProviderConfig, SyncProviderKind } from '../../core/ipc/types';
+import type { GitRepoConfig, HttpHeader, ObjectStorageKind, S3Config, SyncProviderConfig, SyncProviderKind } from '../../core/ipc/types';
 
 // ── 格式化 ──
 
@@ -310,14 +311,29 @@ export function ConfirmDialog({
 
 // ── 远端服务配置表单 ──
 
-const KIND_OPTIONS: { kind: SyncProviderKind; label: string }[] = [
-  { kind: 'webdav', label: 'WebDAV' },
-  { kind: 's3', label: 'S3 对象存储' },
-  { kind: 'github', label: 'GitHub' },
-  { kind: 'gitee', label: 'Gitee' },
-  { kind: 'gitcode', label: 'GitCode' },
-  { kind: 'gitlab', label: 'GitLab' },
-];
+/** 顶层只展示连接方式，具体厂商放入下拉，避免按钮数量随服务扩展不断增加。 */
+const PROVIDER_GROUPS = [
+  { group: 'webdav', label: 'WebDAV', icon: Network },
+  { group: 'storage', label: '对象存储', icon: Cloud },
+  { group: 'git', label: 'Git 仓库', icon: GitBranch },
+] as const;
+
+/** 通用 S3 保留在第一项，原有 AWS、R2 和 MinIO 配置可继续使用。 */
+const STORAGE_OPTIONS = [
+  { value: 's3', label: '通用 S3（AWS / R2 / MinIO）' },
+  { value: 'oss', label: '阿里云 OSS' },
+  { value: 'zos', label: '天翼云 ZOS' },
+  { value: 'oos', label: '天翼云 OOS' },
+  { value: 'obs', label: '华为云 OBS' },
+  { value: 'cos', label: '腾讯云 COS' },
+] as const;
+
+const GIT_OPTIONS = [
+  { value: 'github', label: 'GitHub' },
+  { value: 'gitee', label: 'Gitee' },
+  { value: 'gitcode', label: 'GitCode' },
+  { value: 'gitlab', label: 'GitLab' },
+] as const;
 
 function Field({
   label,
@@ -354,7 +370,12 @@ function TextInput({ value, onChange, placeholder }: { value: string; onChange: 
 
 const HELP_TITLES: Record<SyncProviderKind, string> = {
   webdav: '如何获取 WebDAV 地址与应用密码（坚果云 / Nextcloud / NAS）',
-  s3: '如何获取 S3 端点与访问密钥（OSS / COS / AWS / R2 / MinIO）',
+  s3: '如何获取 S3 端点与访问密钥（AWS / R2 / MinIO）',
+  oss: '如何配置阿里云 OSS 与访问密钥',
+  zos: '如何配置天翼云 ZOS 与访问密钥',
+  oos: '如何配置天翼云 OOS 与访问密钥',
+  obs: '如何配置华为云 OBS 与访问密钥',
+  cos: '如何配置腾讯云 COS 与访问密钥',
   github: '如何创建 GitHub 仓库与访问令牌',
   gitee: '如何创建 Gitee 仓库与私人令牌',
   gitcode: '如何创建 GitCode 仓库与访问令牌',
@@ -392,14 +413,6 @@ function S3Help() {
       <div>先在对象存储控制台创建一个<strong>私有</strong>存储桶，再创建只授予该存储桶读写权限的访问密钥：</div>
       <ul>
         <li>
-          <strong>阿里云 OSS</strong>：端点 <code>https://oss-cn-hangzhou.aliyuncs.com</code>（按存储桶地域替换），区域 <code>oss-cn-hangzhou</code>。
-          <HelpLink href="https://ram.console.aliyun.com/manage/ak">创建 AccessKey</HelpLink>
-        </li>
-        <li>
-          <strong>腾讯云 COS</strong>：端点 <code>https://cos.ap-guangzhou.myqcloud.com</code>，区域 <code>ap-guangzhou</code>。
-          <HelpLink href="https://console.cloud.tencent.com/cam/capi">API 密钥管理</HelpLink>
-        </li>
-        <li>
           <strong>AWS S3</strong>：端点 <code>https://s3.us-east-1.amazonaws.com</code>，区域 <code>us-east-1</code>。
           <HelpLink href="https://console.aws.amazon.com/iam/home#/security_credentials">IAM 安全凭证</HelpLink>
         </li>
@@ -410,11 +423,105 @@ function S3Help() {
           <strong>MinIO 等自建服务</strong>：填写服务地址（如 <code>http://192.168.1.10:9000</code>）并勾选「路径风格访问」。
         </li>
       </ul>
+      <div>阿里云 OSS、天翼云 ZOS / OOS、华为云 OBS、腾讯云 COS 可在「存储服务」下拉中选择，各服务独立保存配置。</div>
       <div>
         <strong>自定义 Header</strong>：需要网关认证或指定客户端标识时，点击「+」添加名称和值；客户端标识的名称填 <code>User-Agent</code>，未设置时使用 NoteBoard 默认标识。
         Cloudflare Access 的 Service Token 需分别添加 <code>CF-Access-Client-Id</code> 和 <code>CF-Access-Client-Secret</code>；S3 访问密钥仍填写在上方对应字段中。
       </div>
       <div>请求头名称不能重复，值不能换行。Host、Content-Length 和 S3 的 Authorization 等由程序管理，无需自行添加。</div>
+    </div>
+  );
+}
+
+/** 厂商差异只影响默认访问规则与填写示例，所有入口共用同一组字段及备份能力。 */
+const STORAGE_EXAMPLES: Record<ObjectStorageKind, { endpoint: string; region: string }> = {
+  s3: { endpoint: 'https://s3.us-east-1.amazonaws.com', region: 'us-east-1' },
+  oss: { endpoint: 'https://oss-cn-hangzhou.aliyuncs.com', region: 'oss-cn-hangzhou' },
+  zos: { endpoint: 'https://jiangsu-10.zos.ctyun.cn', region: 'us-east-1（按资源池文档填写）' },
+  oos: { endpoint: 'https://oos-cn.ctyunapi.cn', region: 'cn（按所用资源池填写）' },
+  obs: { endpoint: 'https://obs.cn-north-4.myhuaweicloud.com', region: 'cn-north-4' },
+  cos: { endpoint: 'https://cos.ap-guangzhou.myqcloud.com', region: 'ap-guangzhou' },
+};
+
+/** 显式判断对象存储入口，避免把 Git 或 WebDAV 凭证混入共用表单。 */
+function isObjectStorage(kind: SyncProviderKind): kind is ObjectStorageKind {
+  return kind === 's3' || kind === 'oss' || kind === 'zos' || kind === 'oos' || kind === 'obs' || kind === 'cos';
+}
+
+/** 根据厂商呈现必要的地址和凭证指引；切换入口后折叠状态由外层重新初始化。 */
+function ObjectStorageHelp({ kind }: { kind: Exclude<ObjectStorageKind, 's3'> }) {
+  const example = STORAGE_EXAMPLES[kind];
+  return (
+    <div className="nb-sync-help">
+      <div>先在对应云控制台创建私有存储桶，再创建仅允许该桶或指定前缀下对象读取、写入、列举和删除的访问密钥，无需授予删除存储桶的权限。</div>
+      {kind === 'oss' && <>
+        <div>在 OSS 控制台复制桶的公网 Endpoint，例如 <code>{example.endpoint}</code>；使用 S3 兼容接口时，杭州的签名区域填 <code>{example.region}</code>，其他地域按对应端点填写。</div>
+        <div>北京时间 2025 年 3 月 20 日起新开通 OSS 的账号，访问中国内地桶的数据接口需要绑定自定义域名。将已绑定的 HTTPS 域名填入端点，并开启「使用自定义域名」；端点中无需再添加桶名。</div>
+        <HelpLink href="https://ram.console.aliyun.com/manage/ak">创建 RAM AccessKey</HelpLink>
+        <HelpLink href="https://www.alibabacloud.com/help/zh/oss/user-guide/0048-00000401">查看自定义域名要求</HelpLink>
+      </>}
+      {kind === 'zos' && <>
+        <div>在天翼云对象存储 ZOS 控制台选择桶所在资源池，复制公网 Endpoint，例如 <code>{example.endpoint}</code>。官方 SDK 常用签名区域为 <code>us-east-1</code>，不同资源池请以对应接入文档为准。</div>
+        <div>ZOS 与 OOS 是不同的对象存储服务，请使用 ZOS 的桶、Endpoint 和对象存储访问密钥，不要填写天翼云开放平台管理 API 的地址或密钥。</div>
+        <HelpLink href="https://www.ctyun.cn/products/zos">打开天翼云 ZOS</HelpLink>
+      </>}
+      {kind === 'oos' && <>
+        <div>在天翼云 OOS 控制台查看桶所属对象存储网络或资源池。示例端点为 <code>{example.endpoint}</code>，该端点的区域为 <code>cn</code>；其他资源池需核对其对应签名区域。</div>
+        <div>请填写 OOS 数据访问 Endpoint 和对象存储 AK / SK，管理、统计或 IAM Endpoint 不能用于文件同步。这里使用 S3 V4 接口，旧服务需确认支持该签名版本。</div>
+        <HelpLink href="https://www.ctyun.cn/document/10026693/10027131">查看 OOS V4 认证说明</HelpLink>
+      </>}
+      {kind === 'obs' && <>
+        <div>在 OBS 控制台复制桶所在地域的 Endpoint，例如 <code>{example.endpoint}</code>，区域填 <code>{example.region}</code>。服务端点中不包含桶名，桶名在上方单独填写。</div>
+        <div>在「我的凭证 → 访问密钥」创建 AK / SK，并通过 IAM 授予该桶对象的读写、列举和删除权限；使用此入口会自动按 OBS 的 V4 要求处理请求签名。</div>
+        <HelpLink href="https://support.huaweicloud.com/obs_faq/obs_faq_0274.html">查看 OBS 接入说明</HelpLink>
+      </>}
+      {kind === 'cos' && <>
+        <div>在 COS 控制台复制桶所在地域的服务端点，例如 <code>{example.endpoint}</code>，区域填 <code>{example.region}</code>；桶名必须完整包含 APPID，例如 <code>notes-1250000000</code>。</div>
+        <div>在访问管理中创建受限子用户密钥，SecretId 填入访问密钥 ID，SecretKey 填入密钥。新建桶使用桶域名访问，服务端点中无需再添加桶名。</div>
+        <HelpLink href="https://console.cloud.tencent.com/cam/capi">打开 API 密钥管理</HelpLink>
+      </>}
+      <div>「对象前缀」用于限定远端目录；同步与远端备份分别保存配置，可使用不同的桶或前缀。建议选择标准存储，归档类型通常需要先解冻才能恢复；当前单个文件或备份包上限为 1 GiB。</div>
+      <div>自定义 Header 可填写网关认证或 <code>User-Agent</code>，未设置时使用 NoteBoard 默认标识；Host、Authorization 等签名字段由程序管理。使用 HTTPS，并先点击「测试连接」验证对象读写、列举与删除权限。</div>
+    </div>
+  );
+}
+
+/** 复用对象存储字段；自定义域名和路径风格互斥，厂商入口隐藏不支持的路径风格。 */
+function ObjectStorageFields({ kind, value, onChange }: {
+  kind: ObjectStorageKind;
+  value: S3Config;
+  onChange: (patch: Partial<S3Config>) => void;
+}) {
+  const example = STORAGE_EXAMPLES[kind];
+  return (
+    <div className="nb-sync-grid">
+      <Field label="服务端点（Endpoint）" wide>
+        <TextInput value={value.endpoint} onChange={(endpoint) => onChange({ endpoint })} placeholder={value.customDomain ? 'https://storage.example.com' : example.endpoint} />
+      </Field>
+      <Field label="区域（Region）">
+        <TextInput value={value.region} onChange={(region) => onChange({ region })} placeholder={example.region} />
+      </Field>
+      <Field label="存储桶（Bucket）">
+        <TextInput value={value.bucket} onChange={(bucket) => onChange({ bucket })} placeholder={kind === 'cos' ? 'notes-1250000000' : 'my-notes'} />
+      </Field>
+      <Field label={kind === 'cos' ? '访问密钥 ID（SecretId）' : 'Access Key ID'}>
+        <TextInput value={value.accessKeyId} onChange={(accessKeyId) => onChange({ accessKeyId })} placeholder="访问密钥 ID" />
+      </Field>
+      <Field label={kind === 'cos' ? '访问密钥（SecretKey）' : 'Secret Access Key'}>
+        <SecretInput value={value.secretAccessKey} onChange={(secretAccessKey) => onChange({ secretAccessKey })} placeholder="密钥" />
+      </Field>
+      <Field label="对象前缀（远端目录）" hint="留空表示存储桶根目录">
+        <TextInput value={value.prefix} onChange={(prefix) => onChange({ prefix })} placeholder="NoteBoard" />
+      </Field>
+      <HeaderInputs value={value.headers} onChange={(headers) => onChange({ headers })} />
+      <div className="nb-sync-field is-wide">
+        <ToggleRow title="使用自定义域名" desc="已在云控制台将此域名绑定到存储桶时开启" checked={value.customDomain ?? false}
+          onChange={(customDomain) => onChange({ customDomain, pathStyle: false })} />
+      </div>
+      {(kind === 's3' || kind === 'zos' || kind === 'oos') && !value.customDomain && <div className="nb-sync-field is-wide">
+        <ToggleRow title="路径风格访问" desc="MinIO 等自建服务通常需要开启，其他服务按其要求设置" checked={value.pathStyle}
+          onChange={(pathStyle) => onChange({ pathStyle })} />
+      </div>}
     </div>
   );
 }
@@ -551,6 +658,22 @@ export function ProviderForm({
 }) {
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  // 分类往返保留本次最后选中的服务；外部载入的已有配置直接定位到对应分类与厂商。
+  const [lastStorage, setLastStorage] = useState<ObjectStorageKind>(isObjectStorage(value.kind) ? value.kind : 's3');
+  const [lastGit, setLastGit] = useState<GitKind>(isGitKind(value.kind) ? value.kind : 'github');
+  const group = isObjectStorage(value.kind) ? 'storage' : isGitKind(value.kind) ? 'git' : 'webdav';
+
+  /** 仅切换当前类型，保留所有服务的输入，并记住离开分类前的具体服务。 */
+  const selectKind = (kind: SyncProviderKind) => {
+    if (isObjectStorage(value.kind)) setLastStorage(value.kind);
+    if (isGitKind(value.kind)) setLastGit(value.kind);
+    onChange({ ...value, kind });
+  };
+
+  /** 分类内再次点击保持当前厂商，分类间往返恢复最后选择。 */
+  const selectGroup = (next: typeof group) => {
+    if (next !== group) selectKind(next === 'storage' ? lastStorage : next === 'git' ? lastGit : 'webdav');
+  };
 
   // 切换类型或修改配置后清除旧的测试结果
   useEffect(() => {
@@ -575,20 +698,41 @@ export function ProviderForm({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div className="nb-sync-segment" role="radiogroup" aria-label="同步方式">
-        {KIND_OPTIONS.map((option) => (
+      <div className="nb-sync-segment nb-sync-provider-groups" role="radiogroup" aria-label="同步方式">
+        {PROVIDER_GROUPS.map((option, index) => (
           <button
-            key={option.kind}
+            key={option.group}
             type="button"
             role="radio"
-            aria-checked={value.kind === option.kind}
-            className={`nb-sync-segment-btn${value.kind === option.kind ? ' is-active' : ''}`}
-            onClick={() => onChange({ ...value, kind: option.kind })}
+            aria-checked={group === option.group}
+            tabIndex={group === option.group ? 0 : -1}
+            className={`nb-sync-segment-btn${group === option.group ? ' is-active' : ''}`}
+            onClick={() => selectGroup(option.group)}
+            onKeyDown={(event) => {
+              // 单选分组支持方向键与首尾跳转，下拉沿用设置页已有的键盘和 Esc 行为。
+              const next = event.key === 'Home' ? 0 : event.key === 'End' ? PROVIDER_GROUPS.length - 1
+                : event.key === 'ArrowRight' || event.key === 'ArrowDown' ? (index + 1) % PROVIDER_GROUPS.length
+                  : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? (index + PROVIDER_GROUPS.length - 1) % PROVIDER_GROUPS.length : -1;
+              if (next < 0) return;
+              event.preventDefault();
+              selectGroup(PROVIDER_GROUPS[next].group);
+              event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="radio"]')[next]?.focus();
+            }}
           >
+            <option.icon size={15} aria-hidden="true" />
             {option.label}
           </button>
         ))}
       </div>
+
+      {isObjectStorage(value.kind) && <div className="nb-sync-field nb-sync-service-picker">
+        <span>存储服务</span>
+        <SettingsSelect ariaLabel="对象存储服务" value={value.kind} options={STORAGE_OPTIONS} onChange={selectKind} />
+      </div>}
+      {isGitKind(value.kind) && <div className="nb-sync-field nb-sync-service-picker">
+        <span>托管平台</span>
+        <SettingsSelect ariaLabel="Git 托管平台" value={value.kind} options={GIT_OPTIONS} onChange={selectKind} />
+      </div>}
 
       {value.kind === 'webdav' && (
         <div className="nb-sync-grid">
@@ -624,48 +768,9 @@ export function ProviderForm({
         </div>
       )}
 
-      {value.kind === 's3' && (
-        <div className="nb-sync-grid">
-          <Field label="服务端点（Endpoint）" wide>
-            <TextInput
-              value={value.s3.endpoint}
-              onChange={(v) => onChange({ ...value, s3: { ...value.s3, endpoint: v } })}
-              placeholder="https://oss-cn-hangzhou.aliyuncs.com"
-            />
-          </Field>
-          <Field label="区域（Region）">
-            <TextInput value={value.s3.region} onChange={(v) => onChange({ ...value, s3: { ...value.s3, region: v } })} placeholder="us-east-1" />
-          </Field>
-          <Field label="存储桶（Bucket）">
-            <TextInput value={value.s3.bucket} onChange={(v) => onChange({ ...value, s3: { ...value.s3, bucket: v } })} placeholder="my-notes" />
-          </Field>
-          <Field label="Access Key ID">
-            <TextInput
-              value={value.s3.accessKeyId}
-              onChange={(v) => onChange({ ...value, s3: { ...value.s3, accessKeyId: v } })}
-              placeholder="AKIA…"
-            />
-          </Field>
-          <Field label="Secret Access Key">
-            <SecretInput
-              value={value.s3.secretAccessKey}
-              onChange={(v) => onChange({ ...value, s3: { ...value.s3, secretAccessKey: v } })}
-              placeholder="密钥"
-            />
-          </Field>
-          <Field label="对象前缀（远端目录）" hint="留空表示存储桶根目录">
-            <TextInput value={value.s3.prefix} onChange={(v) => onChange({ ...value, s3: { ...value.s3, prefix: v } })} placeholder="NoteBoard" />
-          </Field>
-          <HeaderInputs value={value.s3.headers} onChange={(headers) => onChange({ ...value, s3: { ...value.s3, headers } })} />
-          <div className="nb-sync-field is-wide">
-            <ToggleRow
-              title="路径风格访问"
-              desc="MinIO 等自建服务通常需要开启"
-              checked={value.s3.pathStyle}
-              onChange={(checked) => onChange({ ...value, s3: { ...value.s3, pathStyle: checked } })}
-            />
-          </div>
-        </div>
+      {isObjectStorage(value.kind) && (
+        <ObjectStorageFields key={`storage-${value.kind}`} kind={value.kind} value={value[value.kind]}
+          onChange={(patch) => onChange({ ...value, [value.kind]: { ...value[value.kind as ObjectStorageKind], ...patch } })} />
       )}
 
       {isGitKind(value.kind) && (
@@ -677,6 +782,7 @@ export function ProviderForm({
         <Collapsible key={value.kind} variant="help" icon={<HelpCircle size={14} />} title={HELP_TITLES[value.kind]}>
           {value.kind === 'webdav' && <WebDavHelp />}
           {value.kind === 's3' && <S3Help />}
+          {isObjectStorage(value.kind) && value.kind !== 's3' && <ObjectStorageHelp kind={value.kind} />}
           {isGitKind(value.kind) && <GitHelp kind={value.kind} baseUrl={value.gitlab.baseUrl} />}
         </Collapsible>
       )}

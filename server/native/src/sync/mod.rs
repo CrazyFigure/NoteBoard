@@ -41,5 +41,9 @@ pub mod runtime {
 #[cfg(test)]
 #[path = "../../../../src-tauri/src/sync/tests_webdav.rs"] mod tests_webdav;
 
+// Web 部署复用相同对象存储实现，同时复用真实 HTTP 与备份恢复回归。
+#[cfg(test)]
+#[path = "../../../../src-tauri/src/sync/tests_s3.rs"] mod tests_s3;
+
 #[cfg(test)]
 #[path = "../../../../src-tauri/src/sync/tests_history.rs"] mod tests_history;

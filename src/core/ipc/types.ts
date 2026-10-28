@@ -594,7 +594,10 @@ export interface PlatformInfo {
 // ── 多端同步与备份 ──
 
 /** 远端服务类型 */
-export type SyncProviderKind = 'webdav' | 's3' | 'github' | 'gitee' | 'gitcode' | 'gitlab';
+export type SyncProviderKind = 'webdav' | 's3' | 'oss' | 'zos' | 'oos' | 'obs' | 'cos' | 'github' | 'gitee' | 'gitcode' | 'gitlab';
+
+/** 对象存储入口独立保存配置，网络操作统一使用 S3 兼容接口。 */
+export type ObjectStorageKind = 's3' | 'oss' | 'zos' | 'oos' | 'obs' | 'cos';
 
 /** 自定义 HTTP 请求头；值可能包含网关令牌，按凭证保存。 */
 export interface HttpHeader {
@@ -619,6 +622,8 @@ export interface S3Config {
   secretAccessKey: string;
   prefix: string;
   pathStyle: boolean;
+  /** 直接使用已绑定存储桶的自定义域名，不再向地址中拼接桶名。 */
+  customDomain: boolean;
   /** 自定义请求头；签名所需的 x-amz-* 由后端统一处理。 */
   headers: HttpHeader[];
 }
@@ -638,6 +643,12 @@ export interface SyncProviderConfig {
   kind: SyncProviderKind;
   webdav: WebDavConfig;
   s3: S3Config;
+  /** 各厂商独立保留端点、桶和凭证，切换入口时不会覆盖其他服务。 */
+  oss: S3Config;
+  zos: S3Config;
+  oos: S3Config;
+  obs: S3Config;
+  cos: S3Config;
   github: GitRepoConfig;
   gitee: GitRepoConfig;
   gitcode: GitRepoConfig;

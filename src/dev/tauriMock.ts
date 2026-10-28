@@ -77,10 +77,17 @@ function mockUpdateResult() {
 
 /** 同步配置样例（保存后在内存中保留，便于预览交互） */
 const emptyGit = { baseUrl: '', owner: '', repo: '', branch: '', token: '', remoteDir: '' };
+/** 每个入口创建独立对象，便于浏览器预览验证切换后配置与密钥互不覆盖。 */
+const emptyStorage = () => ({ endpoint: '', region: '', bucket: '', accessKeyId: '', secretAccessKey: '', prefix: '', pathStyle: false, customDomain: false, headers: [] });
 const mockProvider = {
   kind: 'webdav',
   webdav: { url: 'https://dav.jianguoyun.com/dav/', username: 'me@example.com', password: 'app-password', headers: [], remoteDir: 'NoteBoard' },
-  s3: { endpoint: '', region: '', bucket: '', accessKeyId: '', secretAccessKey: '', prefix: '', pathStyle: false, headers: [] },
+  s3: emptyStorage(),
+  oss: emptyStorage(),
+  zos: emptyStorage(),
+  oos: emptyStorage(),
+  obs: emptyStorage(),
+  cos: emptyStorage(),
   github: { ...emptyGit },
   gitee: { ...emptyGit },
   gitcode: { ...emptyGit },

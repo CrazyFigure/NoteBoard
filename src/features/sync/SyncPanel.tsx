@@ -638,7 +638,8 @@ function BackupSection({ draft, update, flush }: { draft: SyncConfigFile; update
             </button>
           </div>
           <small>备份文件保存在远端目录下的 NoteBoard-Backups 文件夹中</small>
-          <ProviderForm value={backup.provider} onChange={(provider) => update((c) => (c.backup.provider = provider))} showHelp={false} />
+          {/* 备份可独立选择服务，同样提供默认收起的厂商配置说明。 */}
+          <ProviderForm value={backup.provider} onChange={(provider) => update((c) => (c.backup.provider = provider))} />
         </div>
       )}
 

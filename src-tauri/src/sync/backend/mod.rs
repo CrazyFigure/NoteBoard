@@ -71,8 +71,7 @@ pub fn max_file_size(kind: ProviderKind) -> u64 {
 pub fn http_client(cfg: &ProviderConfig) -> SyncResult<reqwest::Client> {
     let custom: &[_] = match cfg.kind {
         ProviderKind::Webdav => &cfg.webdav.http.headers,
-        ProviderKind::S3 => &cfg.s3.http.headers,
-        _ => &[][..],
+        _ => cfg.object_storage().map(|storage| storage.http.headers.as_slice()).unwrap_or(&[]),
     };
     let mut builder = reqwest::Client::builder();
     // 单独自定义 UA 不包含网关凭证，保持旧版 UA 设置的重定向行为。
@@ -186,7 +185,9 @@ impl Backend {
         let client = http_client(cfg)?;
         Ok(match cfg.kind {
             ProviderKind::Webdav => Backend::WebDav(webdav::WebDav::new(client, &cfg.webdav)?),
-            ProviderKind::S3 => Backend::S3(s3::S3::new(client, &cfg.s3)?),
+            ProviderKind::S3 | ProviderKind::Oss | ProviderKind::Zos | ProviderKind::Oos | ProviderKind::Obs | ProviderKind::Cos => {
+                Backend::S3(s3::S3::new(client, cfg.object_storage().expect("对象存储配置"), cfg.kind)?)
+            },
             ProviderKind::Github => Backend::GitHub(github::GitHub::new(client, &cfg.github)?),
             ProviderKind::Gitee => Backend::Gitee(gitee::Gitee::new(client, &cfg.gitee)?),
             ProviderKind::Gitcode => Backend::GitCode(gitcode::GitCode::new(client, &cfg.gitcode)?),
@@ -301,7 +302,22 @@ impl Backend {
         // Git 类后端每次写入都会产生提交，测试时只验证读权限，避免污染提交历史
         if is_plain(self) {
             self.put(&probe, b"NoteBoard connection test".to_vec(), "NoteBoard 连接测试").await?;
-            let _ = self.delete(&probe, "NoteBoard 连接测试").await;
+            if matches!(self, Backend::S3(_)) {
+                // 对象存储的列表权限与对象读写权限独立，备份列表及保留策略也必须可用。
+                // 无论校验结果如何都尝试移除探测对象，避免连接测试遗留临时文件。
+                let check = async {
+                    if self.read(&probe).await?.as_deref() != Some(b"NoteBoard connection test".as_slice()) {
+                        return Err(SyncError::server("对象存储写入后读取的内容不一致"));
+                    }
+                    self.list(super::util::META_DIR).await?;
+                    Ok(())
+                }.await;
+                let cleanup = self.delete(&probe, "NoteBoard 连接测试").await;
+                check?;
+                cleanup?;
+            } else {
+                let _ = self.delete(&probe, "NoteBoard 连接测试").await;
+            }
         }
         Ok(if manifest.is_some() {
             "连接成功，远端已有同步数据，开启同步后将与本机双向合并".to_string()

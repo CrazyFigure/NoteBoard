@@ -2,7 +2,7 @@
 // 使用 AWS Signature V4 签名；对象键 = 前缀 + 与本地一致的相对路径。
 
 use super::{clean_dir, encode_component, encode_path, join_remote, request_headers, xml, RemoteFile};
-use crate::sync::config::S3Config;
+use crate::sync::config::{ProviderKind, S3Config};
 use crate::sync::error::{from_reqwest, from_status, SyncError, SyncErrorKind, SyncResult};
 use crate::sync::util::sha256_hex;
 use reqwest::{header, Method, StatusCode};
@@ -21,13 +21,21 @@ pub struct S3 {
     secret_key: String,
     prefix: String,
     path_style: bool,
+    /// CNAME 已经绑定到桶，请求主机和路径均不再追加桶名。
+    custom_domain: bool,
+    /// OBS 的 V4 接口仅接受不签名请求体或指定的流式模式。
+    unsigned_payload: bool,
     /// 网关认证等自定义头；程序生成的签名字段不能被覆盖。
     headers: header::HeaderMap,
 }
 
 impl S3 {
     /// 校验存储桶、密钥与请求头，预先拒绝会覆盖 SigV4 或 HTTP 传输字段的配置。
-    pub fn new(client: reqwest::Client, cfg: &S3Config) -> SyncResult<Self> {
+    pub fn new(client: reqwest::Client, cfg: &S3Config, kind: ProviderKind) -> SyncResult<Self> {
+        // 只有通用 S3 可回退 AWS 默认值，厂商入口必须明确提供其资源池地址与签名区域。
+        if kind != ProviderKind::S3 && (cfg.endpoint.trim().is_empty() || cfg.region.trim().is_empty()) {
+            return Err(SyncError::config(format!("请填写 {} 的服务端点和区域（以存储桶控制台为准）", kind.label())));
+        }
         let region = if cfg.region.trim().is_empty() { "us-east-1".to_string() } else { cfg.region.trim().to_string() };
         let endpoint = if cfg.endpoint.trim().is_empty() {
             format!("https://s3.{}.amazonaws.com", region)
@@ -40,6 +48,12 @@ impl S3 {
             format!("https://{}", endpoint)
         };
         let parsed = url::Url::parse(&endpoint).map_err(|_| SyncError::config("S3 服务端点格式不正确，例如 https://s3.us-east-1.amazonaws.com"))?;
+        // Endpoint 只接受服务域名，避免静默丢弃路径、查询参数或嵌入凭证后签到另一个目标。
+        if !matches!(parsed.scheme(), "http" | "https") || !parsed.username().is_empty() || parsed.password().is_some()
+            || !matches!(parsed.path(), "" | "/") || parsed.query().is_some() || parsed.fragment().is_some()
+        {
+            return Err(SyncError::config("服务端点只能填写 http(s) 域名及可选端口，请将远端目录填入对象前缀"));
+        }
         let host = parsed.host_str().ok_or_else(|| SyncError::config("S3 服务端点缺少主机名"))?.to_string();
         let host = match parsed.port() {
             Some(p) => format!("{}:{}", host, p),
@@ -51,6 +65,14 @@ impl S3 {
         if cfg.access_key_id.trim().is_empty() || cfg.secret_access_key.trim().is_empty() {
             return Err(SyncError::config("请填写 S3 Access Key ID 与 Secret Access Key"));
         }
+        if cfg.custom_domain && cfg.path_style {
+            return Err(SyncError::config("自定义域名已绑定存储桶，不能同时开启路径风格访问"));
+        }
+        if cfg.path_style && matches!(kind, ProviderKind::Oss | ProviderKind::Obs | ProviderKind::Cos) {
+            return Err(SyncError::config(format!("{} 请使用桶域名访问或已绑定的自定义域名", kind.label())));
+        }
+        let unsigned_payload = kind == ProviderKind::Obs
+            || (host.starts_with("obs.") && host.ends_with(".myhuaweicloud.com"));
         Ok(Self {
             client,
             scheme: parsed.scheme().to_string(),
@@ -61,6 +83,8 @@ impl S3 {
             secret_key: cfg.secret_access_key.trim().to_string(),
             prefix: clean_dir(&cfg.prefix),
             path_style: cfg.path_style,
+            custom_domain: cfg.custom_domain,
+            unsigned_payload,
             headers: request_headers(&cfg.http, SERVICE, &["authorization", "x-amz-date", "x-amz-content-sha256"])?,
         })
     }
@@ -68,7 +92,9 @@ impl S3 {
     /// 计算请求的主机与规范 URI（key 为空表示存储桶根）
     fn locate(&self, key: &str) -> (String, String) {
         let encoded = encode_path(key);
-        if self.path_style {
+        if self.custom_domain {
+            (self.host.clone(), format!("/{}", encoded))
+        } else if self.path_style {
             let uri = if key.is_empty() { format!("/{}", self.bucket) } else { format!("/{}/{}", self.bucket, encoded) };
             (self.host.clone(), uri)
         } else {
@@ -82,7 +108,8 @@ impl S3 {
         let now = chrono::Utc::now();
         let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
         let date = now.format("%Y%m%d").to_string();
-        let payload_hash = sha256_hex(&body);
+        // 不签名请求体时，规范请求与实际 Header 必须使用同一标记，不能仅替换发送的请求头。
+        let payload_hash = if self.unsigned_payload { "UNSIGNED-PAYLOAD".to_string() } else { sha256_hex(&body) };
 
         let mut sorted: Vec<(String, String)> = query
             .iter()
@@ -155,17 +182,24 @@ impl S3 {
     async fn fail(resp: reqwest::Response) -> SyncError {
         let status = resp.status().as_u16();
         let body = resp.text().await.unwrap_or_default();
-        let code = xml::first_text(&body, "Code").unwrap_or_default();
+        Self::response_error(status, &body)
+    }
+
+    /// 错误体只读取一次，列表接口可先判断兼容性，再保留原有认证和配置错误提示。
+    fn response_error(status: u16, body: &str) -> SyncError {
+        let code = xml::first_text(body, "Code").unwrap_or_default();
         match code.as_str() {
             "NoSuchBucket" => SyncError::new(SyncErrorKind::NotFound, "S3 存储桶不存在，请检查 Bucket 名称与区域"),
             "InvalidAccessKeyId" => SyncError::new(SyncErrorKind::Auth, "S3 Access Key ID 不存在或已停用"),
             "SignatureDoesNotMatch" => SyncError::new(SyncErrorKind::Auth, "S3 签名校验失败：Secret Access Key 不正确，或区域（Region）填写有误"),
             "AccessDenied" => SyncError::new(SyncErrorKind::Forbidden, "S3 拒绝访问：该密钥没有此存储桶的读写权限"),
             "AuthorizationHeaderMalformed" => SyncError::new(SyncErrorKind::Config, "S3 区域（Region）填写不正确"),
+            "PublicEndpointForbidden" => SyncError::config("此 OSS 账号的中国内地存储桶需绑定自定义域名，请填写该域名并开启「使用自定义域名」"),
+            "RequestTimeTooSkewed" => SyncError::config("设备时间与对象存储服务器偏差过大，请校准系统时间后重试"),
             "PermanentRedirect" | "IllegalLocationConstraintException" => {
                 SyncError::new(SyncErrorKind::Config, "S3 存储桶不在当前端点/区域，请改用存储桶所在区域的端点")
             }
-            _ => from_status(status, SERVICE, "存储桶或对象不存在", &body),
+            _ => from_status(status, SERVICE, "存储桶或对象不存在", body),
         }
     }
 
@@ -210,20 +244,41 @@ impl S3 {
         let prefix = if prefix == "/" { String::new() } else { prefix };
         let mut files = Vec::new();
         let mut token: Option<String> = None;
+        // 老对象存储可能只支持 V1；只在明确不支持 V2 时回退，不吞掉权限或网络错误。
+        let mut use_v2 = true;
+        let mut seen_tokens = std::collections::HashSet::new();
         loop {
             let mut query = vec![
-                ("list-type".to_string(), "2".to_string()),
                 ("prefix".to_string(), prefix.clone()),
                 ("delimiter".to_string(), "/".to_string()),
             ];
+            if use_v2 {
+                query.push(("list-type".to_string(), "2".to_string()));
+            }
             if let Some(t) = &token {
-                query.push(("continuation-token".to_string(), t.clone()));
+                query.push((if use_v2 { "continuation-token" } else { "marker" }.to_string(), t.clone()));
             }
             let resp = self.send(self.signed(Method::GET, "", &query, Vec::new())).await?;
             if !resp.status().is_success() {
-                return Err(Self::fail(resp).await);
+                let status = resp.status();
+                let body = resp.text().await.map_err(|e| from_reqwest(e, SERVICE))?;
+                let code = xml::first_text(&body, "Code").unwrap_or_default();
+                if use_v2 && (status == StatusCode::NOT_IMPLEMENTED
+                    || matches!(code.as_str(), "NotImplemented" | "NotSupported" | "UnsupportedOperation")
+                    || (code == "InvalidArgument" && body.contains("list-type")))
+                {
+                    use_v2 = false;
+                    files.clear();
+                    token = None;
+                    seen_tokens.clear();
+                    continue;
+                }
+                return Err(Self::response_error(status.as_u16(), &body));
             }
             let text = resp.text().await.map_err(|e| from_reqwest(e, SERVICE))?;
+            if xml::elements(&text, "ListBucketResult").is_empty() {
+                return Err(SyncError::server("对象存储未返回有效文件列表，请检查服务端点是否为对象存储数据接口"));
+            }
             for item in xml::elements(&text, "Contents") {
                 let Some(key) = xml::first_text(&item, "Key") else { continue };
                 let name = key.rsplit('/').next().unwrap_or("").to_string();
@@ -234,9 +289,19 @@ impl S3 {
                 files.push(RemoteFile { name, size });
             }
             let truncated = xml::first_text(&text, "IsTruncated").map(|s| s == "true").unwrap_or(false);
-            token = xml::first_text(&text, "NextContinuationToken");
-            if !truncated || token.is_none() {
+            if !truncated {
                 break;
+            }
+            token = xml::first_text(&text, if use_v2 { "NextContinuationToken" } else { "NextMarker" }).filter(|s| !s.is_empty());
+            // 部分旧服务忽略 list-type 并直接返回 V1 响应，从首页按 V1 重取以免丢页。
+            if use_v2 && token.is_none() && xml::first_text(&text, "NextMarker").is_some() {
+                use_v2 = false;
+                files.clear();
+                seen_tokens.clear();
+                continue;
+            }
+            if token.as_ref().is_none_or(|next| !seen_tokens.insert(next.clone())) {
+                return Err(SyncError::server("对象存储文件列表缺少有效分页标记，已停止操作以避免遗漏备份"));
             }
         }
         Ok(files)
@@ -272,6 +337,40 @@ pub fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
 mod tests {
     use super::*;
 
+    /// 地址构造必须区分服务域名、路径风格和已绑定桶的 CNAME，且保留中文路径编码。
+    #[test]
+    fn addressing_and_obs_payload_follow_provider_rules() {
+        let mut cfg = S3Config { endpoint: "https://objects.example.com".into(), region: "region".into(), bucket: "notes".into(), access_key_id: "key".into(), secret_access_key: "secret".into(), ..Default::default() };
+        let client = reqwest::Client::new();
+        let virtual_host = S3::new(client.clone(), &cfg, ProviderKind::Cos).unwrap();
+        assert_eq!(virtual_host.locate("目录/a b.md"), ("notes.objects.example.com".into(), "/%E7%9B%AE%E5%BD%95/a%20b.md".into()));
+        cfg.path_style = true;
+        assert!(S3::new(client.clone(), &cfg, ProviderKind::Cos).is_err());
+        assert_eq!(S3::new(client.clone(), &cfg, ProviderKind::S3).unwrap().locate("a.md").1, "/notes/a.md");
+        cfg.path_style = false;
+        cfg.custom_domain = true;
+        for kind in [ProviderKind::S3, ProviderKind::Oss, ProviderKind::Zos, ProviderKind::Oos, ProviderKind::Obs, ProviderKind::Cos] {
+            let backend = S3::new(client.clone(), &cfg, kind).unwrap();
+            assert_eq!(backend.locate("a.md"), ("objects.example.com".into(), "/a.md".into()));
+            let request = backend.signed(Method::PUT, "a.md", &[], b"notes".to_vec()).build().unwrap();
+            assert_eq!(request.headers()["x-amz-content-sha256"], if kind == ProviderKind::Obs { "UNSIGNED-PAYLOAD".into() } else { sha256_hex(b"notes") });
+        }
+        cfg.path_style = true;
+        assert!(S3::new(client, &cfg, ProviderKind::Oss).is_err());
+    }
+
+    /// 拒绝会被忽略的 URL 路径或凭证，厂商空地址也不能误连到 AWS 默认端点。
+    #[test]
+    fn invalid_endpoints_and_missing_vendor_region_are_rejected() {
+        let mut cfg = S3Config { bucket: "notes".into(), access_key_id: "key".into(), secret_access_key: "secret".into(), ..Default::default() };
+        let client = reqwest::Client::new();
+        assert!(S3::new(client.clone(), &cfg, ProviderKind::Obs).is_err());
+        for endpoint in ["https://objects.example.com/bucket", "https://user:password@objects.example.com", "https://objects.example.com?prefix=notes", "https://objects.example.com#notes"] {
+            cfg.endpoint = endpoint.into();
+            assert!(S3::new(client.clone(), &cfg, ProviderKind::S3).is_err());
+        }
+    }
+
     /// RFC 4231 测试向量 2
     #[test]
     fn hmac_matches_rfc4231() {
@@ -303,7 +402,7 @@ mod tests {
                 { "name": "Content-Type", "value": "text/plain" }
             ]
         })).unwrap();
-        let backend = S3::new(reqwest::Client::new(), &cfg).unwrap();
+        let backend = S3::new(reqwest::Client::new(), &cfg, ProviderKind::S3).unwrap();
         let request = backend.signed(Method::PUT, "note.md", &[], Vec::new()).build().unwrap();
         let headers = request.headers();
         assert_eq!(headers["cf-access-client-secret"], "gateway-token");
@@ -334,7 +433,7 @@ mod tests {
                 "bucket": "notes", "accessKeyId": "test", "secretAccessKey": "test",
                 "headers": [{ "name": name, "value": "override" }]
             })).unwrap();
-            assert!(S3::new(reqwest::Client::new(), &cfg).is_err());
+            assert!(S3::new(reqwest::Client::new(), &cfg, ProviderKind::S3).is_err());
         }
     }
 }
