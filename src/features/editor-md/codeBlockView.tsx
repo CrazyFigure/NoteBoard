@@ -129,6 +129,8 @@ function CodeBlockComponent({ node, editor, getPos, updateAttributes }: NodeView
   return (
     <NodeViewWrapper
       className={`nb-code-block${expanded ? '' : ' is-collapsed'}`}
+      // 收起标记：拖选经过时由 collapsedBlockSelection 把选区对齐到整块
+      data-nb-collapsed={expanded ? undefined : ''}
       style={{
         position: 'relative',
         margin: '16px 0',

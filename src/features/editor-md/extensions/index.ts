@@ -51,6 +51,7 @@ import { ListEmptyItemBackspaceFix } from '../listItemBackspace';
 import { SelectionHighlight } from '../selectionHighlight';
 import { InlineEmojiRender } from '../inlineEmoji';
 import { MultiClickSelectionFix } from '../multiClickSelection';
+import { CollapsedBlockSelection } from '../collapsedBlockSelection';
 import { EnterKeyBehavior } from '../enterKeyBehavior';
 import { SelectAllBehavior } from '../selectAllBehavior';
 import { TabKeyBehavior } from '../tabKeyBehavior';
@@ -473,6 +474,8 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
     InlineEmojiRender,
     // 双击 / 三击选区不跨越段落边界：行尾空白双击不再选中换行，段落间隙判给更近的文本块
     MultiClickSelectionFix,
+    // 拖选经过收起的代码块 / 折叠块时整块选中，不被浏览器吸附到块外
+    CollapsedBlockSelection,
     // 回车类按键统一行为：Enter 换段落、Shift+Enter 段内换行、Ctrl+Enter 跳出到下方（支持 Enter 与 Shift+Enter 互换）
     EnterKeyBehavior,
     // 全选：Ctrl+A 第一次选中当前文本块，再按一次全选文档

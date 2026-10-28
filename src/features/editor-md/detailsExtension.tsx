@@ -191,6 +191,8 @@ function DetailsComponent({ node, editor, getPos, updateAttributes, selected }: 
     <NodeViewWrapper
       className={`nb-details${expanded ? ' is-open' : ''}${selected ? ' is-selected' : ''}`}
       data-details=""
+      // 收起标记：拖选经过时由 collapsedBlockSelection 把选区对齐到整块
+      data-nb-collapsed={expanded ? undefined : ''}
     >
       <div
         className="nb-details-summary"
