@@ -182,7 +182,7 @@ export function MobileEditorPage({ activeTab, activeEditor, getMarkdownEditorRea
             window.setTimeout(() => setOutlineOpen(false), 120);
           }}
         >
-          <OutlinePanel editor={activeEditor} />
+          <OutlinePanel editor={activeEditor} docKey={activeKey} />
         </div>
       </BottomSheet>
 

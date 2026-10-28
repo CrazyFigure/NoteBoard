@@ -154,18 +154,38 @@ const ORDERED_ITEM = new RegExp(`^([ \\t]*)(${ORDERED_LIST_MARKER_PATTERN})[.)][
 const LIST_PARAGRAPH_INTERRUPTER = /^(?:#{1,6}(?:\s|$)|[-+*](?:\s|$)|>|`{3,}|~{3,}|\$\$|(?:_[ \t]*){3,}$)/;
 
 /**
+ * 按需切行：结果与 `src.split('\n')` 一致，但只切到实际读取的行。
+ * 分词器收到的 src 是剩余全文，每个列表都整体拆分会让大文档退化为平方复杂度。
+ */
+function createLazyLines(src: string): { lines: string[]; has: (index: number) => boolean } {
+  const lines: string[] = [];
+  let offset = 0;
+  const has = (index: number): boolean => {
+    while (lines.length <= index && offset <= src.length) {
+      const end = src.indexOf('\n', offset);
+      const lineEnd = end < 0 ? src.length : end;
+      lines.push(src.slice(offset, lineEnd));
+      offset = lineEnd + 1;
+    }
+    return index < lines.length;
+  };
+  return { lines, has };
+}
+
+/**
  * 按列表项边界收集原文，再仅移除容器前缀后解析正文。
  * 保留旧文档的两格子列表；围栏内的 `1.` / `a.` 是代码，不能另拆为列表；
  * 正文不做 trim，防止代码首尾空白被吞掉。嵌套内容由同一块解析器递归处理。
  */
 function tokenizeOrderedList(src: string, lexer: MarkdownLexerConfiguration): MarkdownToken | undefined {
-  const lines = src.split('\n');
+  const { lines, has } = createLazyLines(src);
+  has(0);
   const first = ORDERED_ITEM.exec(lines[0]);
   if (!first) return undefined;
   const base = first[1].length;
   const items: MarkdownToken[] = [];
   let cursor = 0;
-  while (cursor < lines.length) {
+  while (has(cursor)) {
     const marker = ORDERED_ITEM.exec(lines[cursor]);
     if (!marker || marker[1].length !== base) break;
     const start = cursor;
@@ -173,7 +193,7 @@ function tokenizeOrderedList(src: string, lexer: MarkdownLexerConfiguration): Ma
     let sawBlank = false;
     let fence: { character: string; length: number } | null = null;
     cursor += 1;
-    for (; cursor < lines.length; cursor += 1) {
+    for (; has(cursor); cursor += 1) {
       const line = lines[cursor];
       const leading = /^[ \t]*/.exec(line)?.[0].length ?? 0;
       const body = line.slice(Math.min(leading, prefixWidth));

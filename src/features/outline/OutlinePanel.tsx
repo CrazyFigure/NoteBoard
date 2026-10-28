@@ -9,10 +9,15 @@ import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } fro
 import { ChevronRight } from 'lucide-react';
 import type { Editor } from '@tiptap/core';
 import { Tooltip } from '../../components/Tooltip';
+import { useWindowStore } from '../../stores/windowStore';
 import { useHeadings, type HeadingItem } from './useHeadings';
+import { jumpToSourceHeading, renameSourceHeading, useMdSourceView, useSourceHeadings } from './useSourceHeadings';
+import type { SourceHeadingItem } from './sourceHeadings';
 
 interface OutlinePanelProps {
   editor: Editor | null;
+  /** 当前文档：源码模式（含不挂载可视化内核的大文档）据此从源码视图提取大纲 */
+  docKey?: string | null;
 }
 
 // 反向链接面板按需加载：大纲随首屏装载，扫描笔记的代码只在切到「反向链接」时下载
@@ -34,8 +39,14 @@ function getIndent(level: number): number {
   return Math.min(level - 1, 5) * 12 + 8;
 }
 
-export function OutlinePanel({ editor }: OutlinePanelProps) {
-  const { headings, activeId, setActiveId } = useHeadings(editor);
+export function OutlinePanel({ editor, docKey = null }: OutlinePanelProps) {
+  const viewMode = useWindowStore((s) => (docKey ? s.tabs.find((t) => t.key === docKey)?.viewMode : undefined));
+  const sourceView = useMdSourceView(docKey);
+  // 源码模式，或可视化内核尚未挂载（源码首开、大文档）时，以源码为大纲数据源
+  const sourceMode = Boolean(sourceView) && (viewMode === 'source' || !editor);
+  const visualOutline = useHeadings(sourceMode ? null : editor);
+  const sourceOutline = useSourceHeadings(sourceMode ? sourceView : null);
+  const { headings, activeId, setActiveId } = sourceMode ? sourceOutline : visualOutline;
   const [tab, setTabState] = useState<OutlineTab>(lastOutlineTab);
   const setTab = useCallback((next: OutlineTab) => {
     lastOutlineTab = next;
@@ -107,6 +118,11 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
   // 点击跳转
   const handleHeadingClick = useCallback(
     (heading: HeadingItem) => {
+      if (sourceMode && sourceView) {
+        jumpToSourceHeading(sourceView, heading as SourceHeadingItem);
+        setActiveId(heading.id);
+        return;
+      }
       if (!editor) return;
       const { pos } = heading;
       const docSize = editor.state.doc.content.size;
@@ -131,7 +147,7 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
 
       setActiveId(heading.id);
     },
-    [editor, setActiveId],
+    [editor, setActiveId, sourceMode, sourceView],
   );
 
   // 双击编辑
@@ -146,6 +162,11 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
   // 提交重命名
   const handleRename = useCallback(
     (heading: HeadingItem) => {
+      if (sourceMode && sourceView) {
+        if (editValue.trim()) renameSourceHeading(sourceView, heading as SourceHeadingItem, editValue);
+        setEditingId(null);
+        return;
+      }
       if (!editor || !editValue.trim()) {
         setEditingId(null);
         return;
@@ -167,7 +188,7 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
 
       setEditingId(null);
     },
-    [editor, editValue],
+    [editor, editValue, sourceMode, sourceView],
   );
 
   // 大纲面板自身跟随当前项滚动

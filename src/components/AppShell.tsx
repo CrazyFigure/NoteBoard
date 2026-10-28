@@ -545,7 +545,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
                   overflow: 'hidden',
                 }}
               >
-                <OutlinePanel editor={activeEditor} />
+                <OutlinePanel editor={activeEditor} docKey={activeKey} />
               </Panel>
             </>
           )}

@@ -24,11 +24,11 @@ export interface HeadingItem {
 }
 
 /** 视口顶部判定阈值：标题顶部进入可视区顶端该距离内，即视为当前阅读章节 */
-const VIEWPORT_TOP_THRESHOLD = 40;
+export const VIEWPORT_TOP_THRESHOLD = 40;
 
 /** 取 pos <= targetPos 的最后一个标题 */
-function findHeadingBeforePos(headings: readonly HeadingItem[], targetPos: number): HeadingItem | null {
-  let active: HeadingItem | null = null;
+export function findHeadingBeforePos<T extends HeadingItem>(headings: readonly T[], targetPos: number): T | null {
+  let active: T | null = null;
   for (const h of headings) {
     if (h.pos <= targetPos) {
       active = h;

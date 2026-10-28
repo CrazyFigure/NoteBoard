@@ -81,6 +81,7 @@ import {
   registerMdSourceView,
   unregisterMdTipTapEditor,
   unregisterMdSourceView,
+  notifyMdSourceViewUpdate,
 } from './editorInstances';
 import { registerEditorCapabilities, bumpDocumentRevision, getDocumentRevision } from '../../core/editor/editorRegistry';
 import { createMarkdownEditorCapabilities } from './editorCapabilities';
@@ -328,6 +329,8 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
 
     // 源码模式输入监听与自动标脏
     const updateListener = EditorView.updateListener.of((update) => {
+      // 大纲等订阅者跟随源码的文档、选区与视口变化
+      notifyMdSourceViewUpdate(update);
       if (!update.docChanged) return;
       // 🔴 内容版本递增：源码模式真实修改同样推进 revision
       bumpDocumentRevision(docKey);
@@ -718,9 +721,22 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       baseline.setBaseline(content);
     }
 
-    applyVisualEntry(editor, content, resolveVisualEntry(editor, content, false));
-    // 🔴 S12：visual 内核重挂载（回收后）——恢复捕获的选区/滚动视图状态
-    restoreMarkdownViewState();
+    const outcome = resolveVisualEntry(editor, content, false);
+    if (viewModeRef.current === 'visual') {
+      applyVisualEntry(editor, content, outcome);
+      // 🔴 S12：visual 内核重挂载（回收后）——恢复捕获的选区/滚动视图状态
+      restoreMarkdownViewState();
+      return;
+    }
+    // 从源码切入时可视化容器仍隐藏。节点视图（代码块等）的 React 内容在微任务里批量挂载，
+    // 每挂载一个都会读取选区并强制同步布局：隐藏时几乎无开销，若与显示同批提交，
+    // 大文档会在可见的整篇 DOM 上重复布局数百次而长时间卡死。故挂载完成后（下一个宏任务）再显示。
+    // 不随 effect 清理取消：visualSyncedRef 已置位，取消会让切换永远停在源码。
+    setTimeout(() => {
+      if (editor.isDestroyed || initializedDocKeyRef.current !== docKey) return;
+      applyVisualEntry(editor, content, outcome);
+      restoreMarkdownViewState();
+    }, 0);
   }, [editor, docKey, restoreMarkdownViewState, applyVisualEntry, resolveVisualEntry]);
 
   /** 请求进入可视化模式（切换按钮、快捷键、大文档"仍要可视化"共用） */
