@@ -369,6 +369,9 @@ function insertSiblingNode(n: MindNode, anchorId: string, sibling: MindNode): bo
 /** 缩略图节点的最小像素尺寸，缩得很小时仍能看出分支走向 */
 const MINIMAP_MIN_NODE_PX = 1.5;
 
+/** 首次显示整图居中后，中心主题与画布边缘至少保留的距离 */
+const INITIAL_ROOT_MARGIN = 24;
+
 /** 联系线颜色：未选中为次级文字色，选中为强调色 */
 const RELATION_COLOR = 'var(--editor-text-secondary, #64748b)';
 const ACCENT_COLOR = 'var(--editor-accent, #3b82f6)';
@@ -854,10 +857,10 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     checkOffscreenRef.current();
   }, [nodes, zoom, viewportSize]);
 
-  // 内容居中的目标平移：整图放得下就居中整图，否则把中心主题移到画面中央
-  const getContentCenterPan = (width: number, height: number, z: number) => {
+  // 内容居中的目标平移：整图放得下（或指定 wholeContent）就居中整图，否则把中心主题移到画面中央
+  const getContentCenterPan = (width: number, height: number, z: number, wholeContent = false) => {
     if (!contentBounds) return null;
-    const fits = contentBounds.width * z <= width && contentBounds.height * z <= height;
+    const fits = wholeContent || (contentBounds.width * z <= width && contentBounds.height * z <= height);
     const rootNode = nodes.find((n) => n.level === 0);
     const target = fits || !rootNode
       ? { x: contentBounds.left + contentBounds.width / 2, y: contentBounds.top + contentBounds.height / 2 }
@@ -880,8 +883,24 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     if (auto && (panRef.current !== auto.pan || auto.zoom === zoom)) return;
     const container = containerRef.current;
     if (!container || container.clientWidth === 0 || container.clientHeight === 0) return;
-    const next = getContentCenterPan(container.clientWidth, container.clientHeight, zoom);
+    // 首次显示以整图居中为准，一屏放不下时也不改成以中心主题居中
+    const next = getContentCenterPan(container.clientWidth, container.clientHeight, zoom, true);
     if (!next) return;
+    // 但中心主题必须完整可见：超出画面时只平移到刚好露出（留边距）
+    const rootNode = nodes.find((n) => n.level === 0);
+    if (rootNode) {
+      const keepVisible = (offset: number, start: number, length: number, viewLength: number) => {
+        const size = length * zoom;
+        // 画面放不下边距时边距收窄，主题比画面还大时贴齐起始边
+        const margin = Math.min(INITIAL_ROOT_MARGIN, Math.max(0, (viewLength - size) / 2));
+        const screenStart = offset + start * zoom;
+        if (screenStart < margin) return offset + margin - screenStart;
+        const overflow = screenStart + size - (viewLength - margin);
+        return overflow > 0 ? offset - Math.min(overflow, screenStart - margin) : offset;
+      };
+      next.x = keepVisible(next.x, rootNode.x, rootNode.width, container.clientWidth);
+      next.y = keepVisible(next.y, rootNode.y, rootNode.height, container.clientHeight);
+    }
     autoCenterRef.current = { pan: next, zoom };
     // 同步提交而非走逐帧合并，保证首帧就是居中后的位置
     panRef.current = next;

@@ -45,10 +45,10 @@ describe('导图首次显示居中', () => {
     vi.unstubAllGlobals();
   });
 
-  const render = (layout: MindmapLayout, zoom = 1) => {
+  const render = (layout: MindmapLayout, zoom = 1, content = tree) => {
     const theme = getMindmapTheme();
     return act(async () => root.render(
-      <MindmapRenderer root={tree} onChange={() => {}} zoom={zoom} onZoomChange={() => {}} layout={layout}
+      <MindmapRenderer root={content} onChange={() => {}} zoom={zoom} onZoomChange={() => {}} layout={layout}
         theme={theme} edgeStyle={theme.edgeStyle} maxNodeWidth={300} defaultTextAlign="left" defaultImageFit="original" />,
     ));
   };
@@ -81,6 +81,28 @@ describe('导图首次显示居中', () => {
     const center = screenCenter();
     expect(center.x).toBeCloseTo(400, 0);
     expect(center.y).toBeCloseTo(300, 0);
+  });
+
+  it('一屏放不下时仍按整图居中，但中心主题被挤出画面时平移到完整可见', async () => {
+    size = { width: 320, height: 240 };
+    const wide: MindNode = {
+      id: 'root', text: '中心', isExpanded: true,
+      children: ['a', 'b'].map((id) => ({ id, text: `很长的分支标题 ${id} `.repeat(4), isExpanded: true, children: [] })),
+    };
+    await render('right', 1, wide);
+    const layer = host.querySelector('.nb-mindmap-transform') as HTMLElement;
+    const panX = Number(/translate3d\(([-\d.]+)px/.exec(layer.style.transform)![1]);
+    const rects = [...host.querySelectorAll<HTMLElement>('[data-node-id]')].map((el) => ({
+      id: el.dataset.nodeId, left: parseFloat(el.style.left), width: parseFloat(el.style.width),
+    }));
+    const rootRect = rects.find((rect) => rect.id === 'root')!;
+    const contentLeft = Math.min(...rects.map((rect) => rect.left));
+    const contentRight = Math.max(...rects.map((rect) => rect.left + rect.width));
+    // 前提：单纯整图居中会把中心主题挤出左边缘
+    expect(160 - (contentLeft + contentRight) / 2 + rootRect.left).toBeLessThan(0);
+    // 实际中心主题完整可见，并留出边距
+    expect(panX + rootRect.left).toBeCloseTo(24, 0);
+    expect(panX + rootRect.left + rootRect.width).toBeLessThanOrEqual(320);
   });
 
   it('未移动视图时恢复缩放后仍保持居中', async () => {
