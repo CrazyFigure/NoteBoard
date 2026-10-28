@@ -56,10 +56,26 @@ export async function loadLanguageExtension(lang: LanguageId): Promise<Extension
 }
 
 /**
+ * 按语言 ID 加载，纯文本再按文件名 / 内容细分配置方言（.conf / .ini / .env / nginx / toml 等）
+ */
+export async function loadEditorLanguage(
+  lang: LanguageId,
+  fileName: string,
+  content?: string | null,
+): Promise<Extension> {
+  if (lang === 'plaintext') {
+    const { resolveConfigDialect, loadConfigDialect } = await import('./configModes');
+    const dialect = resolveConfigDialect(fileName, content);
+    if (dialect) return loadConfigDialect(dialect);
+  }
+  return loadLanguageExtension(lang);
+}
+
+/**
  * 从文件路径推断语言并加载
  */
-export async function loadLanguageFromPath(path: string): Promise<Extension> {
+export async function loadLanguageFromPath(path: string, content?: string | null): Promise<Extension> {
   const { languageFromPath } = await import('../../core/docKind');
   const lang = languageFromPath(path);
-  return loadLanguageExtension(lang);
+  return loadEditorLanguage(lang, path, content);
 }

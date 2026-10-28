@@ -22,7 +22,7 @@ import {
   lineEndingCompartment,
   showLineEndingsExtension,
 } from './setup';
-import { loadLanguageExtension } from './languages';
+import { loadEditorLanguage } from './languages';
 import { getLinterForLanguage } from './lint';
 import {
   handleExpandJson,
@@ -444,8 +444,8 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
       effects: typographyCompartment.reconfigure(typographyExt),
     });
 
-    // 动态异步加载语言语法高亮与 Linter 扩展
-    loadLanguageExtension(lang as LanguageId).then((ext) => {
+    // 动态异步加载语言语法高亮与 Linter 扩展（纯文本按文件名细分配置方言）
+    loadEditorLanguage(lang as LanguageId, currentDoc.displayName, currentDoc.content).then((ext) => {
       const lintExt = getLinterForLanguage(lang as LanguageId);
       view.dispatch({
         effects: languageCompartment.reconfigure([
