@@ -854,17 +854,39 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     checkOffscreenRef.current();
   }, [nodes, zoom, viewportSize]);
 
-  // 回到内容：整图放得下就居中整图，否则把中心主题移到画面中央，缩放不变
-  const handleScrollBackToContent = () => {
-    if (!contentBounds) return;
-    const z = zoomRef.current;
-    const fits = contentBounds.width * z <= viewportSize.width && contentBounds.height * z <= viewportSize.height;
+  // 内容居中的目标平移：整图放得下就居中整图，否则把中心主题移到画面中央
+  const getContentCenterPan = (width: number, height: number, z: number) => {
+    if (!contentBounds) return null;
+    const fits = contentBounds.width * z <= width && contentBounds.height * z <= height;
     const rootNode = nodes.find((n) => n.level === 0);
     const target = fits || !rootNode
       ? { x: contentBounds.left + contentBounds.width / 2, y: contentBounds.top + contentBounds.height / 2 }
       : { x: rootNode.x + rootNode.width / 2, y: rootNode.y + rootNode.height / 2 };
-    setPan({ x: viewportSize.width / 2 - target.x * z, y: viewportSize.height / 2 - target.y * z });
+    return { x: width / 2 - target.x * z, y: height / 2 - target.y * z };
   };
+
+  // 回到内容：缩放不变，只平移
+  const handleScrollBackToContent = () => {
+    const next = getContentCenterPan(viewportSize.width, viewportSize.height, zoomRef.current);
+    if (next) setPan(next);
+  };
+
+  // 首次显示：首帧绘制前按画布实际尺寸居中，避免先停在默认偏移再跳到中央。
+  // 画布尚未布局（尺寸为 0，如隐藏的保活宿主）时等尺寸测得后再居中；
+  // 用户还没移动过视图时，恢复的缩放比例生效后也重新居中
+  const autoCenterRef = useRef<{ pan: { x: number; y: number }; zoom: number } | null>(null);
+  useLayoutEffect(() => {
+    const auto = autoCenterRef.current;
+    if (auto && (panRef.current !== auto.pan || auto.zoom === zoom)) return;
+    const container = containerRef.current;
+    if (!container || container.clientWidth === 0 || container.clientHeight === 0) return;
+    const next = getContentCenterPan(container.clientWidth, container.clientHeight, zoom);
+    if (!next) return;
+    autoCenterRef.current = { pan: next, zoom };
+    // 同步提交而非走逐帧合并，保证首帧就是居中后的位置
+    panRef.current = next;
+    commitPan(next);
+  }, [contentBounds, viewportSize, zoom]);
 
   // 画布容器虽是 overflow:hidden，编辑节点时浏览器仍会滚动它把光标露出来，
   // 导致缩略图等绝对定位控件整体上移；视图位置只由 pan 决定，滚动一律复位

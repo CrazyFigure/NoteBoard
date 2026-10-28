@@ -150,12 +150,11 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
   const isReading = useIsReading(docKey);
   const exitReading = useCallback(() => requestReadingMode(false), []);
   // 进入/退出阅读后画布尺寸变化（外壳隐藏与系统全屏动画），稍后把内容移回画面中央；首次挂载不触发，保留恢复的视图
-  const readingMountedRef = useRef(false);
+  // 按前后值比较而非「是否首次」标记：StrictMode 重放 effect 时标记已置位，会误判为切换并在挂载后跳动一次
+  const prevReadingRef = useRef(isReading);
   useEffect(() => {
-    if (!readingMountedRef.current) {
-      readingMountedRef.current = true;
-      return;
-    }
+    if (prevReadingRef.current === isReading) return;
+    prevReadingRef.current = isReading;
     const timer = setTimeout(() => rendererRef.current?.centerContent(), 360);
     return () => clearTimeout(timer);
   }, [isReading]);

@@ -71,10 +71,12 @@ describe('导图拖动按帧更新', () => {
 
   const node = (id: string) => host.querySelector(`[data-node-id="${id}"]`) as HTMLElement;
 
-  /** jsdom 不计算绝对定位，将实际节点布局加上画布初始平移，得到点击中心。 */
+  /** jsdom 不计算绝对定位，将实际节点布局加上画布当前平移（首次显示已自动居中），得到点击中心。 */
   const point = (id: string) => {
     const style = node(id).style;
-    return { x: 80 + parseFloat(style.left) + parseFloat(style.width) / 2, y: 160 + parseFloat(style.top) + parseFloat(style.height) / 2 };
+    const layer = host.querySelector('.nb-mindmap-transform') as HTMLElement;
+    const [panX, panY] = /translate3d\(([-\d.]+)px, ([-\d.]+)px/.exec(layer.style.transform)!.slice(1).map(Number);
+    return { x: panX + parseFloat(style.left) + parseFloat(style.width) / 2, y: panY + parseFloat(style.top) + parseFloat(style.height) / 2 };
   };
 
   const pointer = (target: Element, type: string, position: { x: number; y: number }, pointerId = 1) => {
@@ -94,6 +96,7 @@ describe('导图拖动按帧更新', () => {
   it('触控板同一帧多次平移只写一次变换，且累加全部增量', async () => {
     const layer = host.querySelector('.nb-mindmap-transform') as HTMLElement;
     const initial = layer.style.transform;
+    const [startX, startY] = initial.match(/\(([^)]+)\)/)![1].split(',').map(parseFloat);
     const transform = vi.spyOn(layer.style, 'transform', 'set');
     await act(async () => {
       for (let i = 0; i < 20; i += 1) canvas.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaX: 1, deltaY: 2 }));
@@ -102,10 +105,10 @@ describe('导图拖动按帧更新', () => {
     expect(transform).not.toHaveBeenCalled();
     await nextFrame();
     expect(transform).toHaveBeenCalledTimes(1);
-    // 只检查实际位移，允许浮点累加在不同运行时产生末位误差。
+    // 只检查相对首次居中位置的实际位移，允许浮点累加在不同运行时产生末位误差。
     const [x, y] = layer.style.transform.match(/\(([^)]+)\)/)![1].split(',').map(parseFloat);
-    expect(x).toBeCloseTo(64);
-    expect(y).toBeCloseTo(128);
+    expect(startX - x).toBeCloseTo(16);
+    expect(startY - y).toBeCloseTo(32);
     expect(onChange).not.toHaveBeenCalled();
   });
 
