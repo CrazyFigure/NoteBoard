@@ -47,6 +47,8 @@ jobs:
           # 未配置 Apple 开发者证书时使用 ad-hoc 签名，不宣称已通过 Apple 公证。
           APPLE_SIGNING_IDENTITY: '-'
           NO_STRIP: 'true'
+          # macOS 运行器上 Node 默认堆上限约 2 GB，前端打包已接近上限，放宽以免偶发内存溢出
+          NODE_OPTIONS: --max-old-space-size=6144
         run: pnpm tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
       - uses: actions/upload-artifact@v4
         with:
@@ -68,7 +70,10 @@ jobs:
             if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then break; fi
             sleep 20
           done
-          find src-tauri/target/${{ matrix.target }}/release/bundle -type f \( -name '*.dmg' -o -name '*.deb' -o -name '*.AppImage' \) -exec gh release upload "$RELEASE_TAG" {} --clobber \;
+          # 等待超时或上传失败都要让任务失败，find -exec 会吞掉子命令的错误
+          gh release view "$RELEASE_TAG" >/dev/null
+          find src-tauri/target/${{ matrix.target }}/release/bundle -type f \( -name '*.dmg' -o -name '*.deb' -o -name '*.AppImage' \) -print0 \
+            | xargs -0 -r -n1 gh release upload "$RELEASE_TAG" --clobber
 
   # Unix 安装包上传后补充同步到腾讯云 CNB 镜像（已同步的 Windows / 安卓附件按哈希跳过）。
   sync-cnb:

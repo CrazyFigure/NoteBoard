@@ -118,6 +118,30 @@ jobs:
           $body | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           '__NOTEBOARD_RELEASE_BODY__' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
+      # 先建好 Release，tauri-action 只负责上传附件：0.7.2 起 GITHUB_TOKEN 创建 Release 被拒（上传附件仍可用），
+      # 被拒时改用仓库拥有者的 PACKAGE_PUBLISH_TOKEN 创建。
+      - name: Ensure release exists
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PACKAGE_PUBLISH_TOKEN }}
+          RELEASE_BODY: ${{ steps.release_notes.outputs.body }}
+        run: |
+          gh release view $env:GITHUB_REF_NAME *> $null
+          if ($LASTEXITCODE -eq 0) { exit 0 }
+          $notes = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          $env:RELEASE_BODY | Set-Content -Encoding utf8 $notes
+          $createArgs = @('release', 'create', $env:GITHUB_REF_NAME, '--verify-tag', '--title', "NoteBoard $env:GITHUB_REF_NAME", '--notes-file', $notes)
+          if ($env:GITHUB_REF_NAME -like '*-*') { $createArgs += '--prerelease' }
+          gh @createArgs
+          if ($LASTEXITCODE -ne 0 -and $env:FALLBACK_TOKEN) {
+            Write-Host '::warning::GITHUB_TOKEN 创建 Release 被拒，改用 PACKAGE_PUBLISH_TOKEN'
+            $env:GH_TOKEN = $env:FALLBACK_TOKEN
+            gh @createArgs
+          }
+          if ($LASTEXITCODE -ne 0) { throw '创建 Release 失败' }
+
       # 使用 tauri-action 构建 Windows NSIS 安装包并发布到 Release
       - name: Build and publish Tauri release
         uses: tauri-apps/tauri-action@v0
