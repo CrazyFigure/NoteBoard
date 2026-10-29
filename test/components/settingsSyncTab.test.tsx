@@ -104,6 +104,44 @@ describe('设置页同步与备份切换', () => {
     act(() => option!.click());
   }
 
+  it('新 ZOS 预填签名区域与路径风格，往返分类保留手动修改的访问方式', () => {
+    /** 使用真实受控表单，确保只在首次选择全空配置时写入预设值。 */
+    function Form() {
+      const [provider, setProvider] = useState<SyncProviderConfig>({ ...createProvider(), kind: 's3' });
+      return <ProviderForm value={provider} onChange={setProvider} />;
+    }
+    act(() => root.render(<TooltipProvider><Form /></TooltipProvider>));
+    chooseStorage('天翼云 ZOS');
+    expect(host.querySelector<HTMLInputElement>('input[placeholder="us-east-1"]')!.value).toBe('us-east-1');
+    expect(host.textContent).toContain('不是天翼云资源池 ID');
+    const toggle = () => Array.from(host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')).find((input) =>
+      host.querySelector(`#${input.getAttribute('aria-labelledby')}`)?.textContent?.startsWith('路径风格访问'))!;
+    expect(toggle().checked).toBe(true);
+    act(() => toggle().click());
+    chooseStorage('通用 S3（AWS / R2 / MinIO）');
+    chooseStorage('天翼云 ZOS');
+    expect(toggle().checked).toBe(false);
+  });
+
+  it('已有 ZOS 配置切换服务时保留区域、访问模式、凭证和同步目标', async () => {
+    const provider = createProvider();
+    provider.kind = 's3';
+    provider.zos = { ...provider.zos, endpoint: 'https://hunan-4.zos.ctyun.cn', region: 'saved-region',
+      bucket: 'saved-bucket', prefix: 'saved-prefix', accessKeyId: 'saved-key', secretAccessKey: 'saved-secret', pathStyle: false };
+    const before = structuredClone(provider.zos);
+    const testConnection = vi.spyOn(ipc, 'syncTestConnection').mockResolvedValue('连接成功');
+    /** 模拟加载旧配置后重新选择 ZOS，不能以预设覆盖已有区域和模式。 */
+    function Form() {
+      const [value, setValue] = useState(provider);
+      return <ProviderForm value={value} onChange={setValue} />;
+    }
+    act(() => root.render(<TooltipProvider><Form /></TooltipProvider>));
+    chooseStorage('天翼云 ZOS');
+    const test = Array.from(host.querySelectorAll('button')).find((button) => button.textContent?.includes('测试连接'))!;
+    await act(async () => test.click());
+    expect(testConnection.mock.calls[0][0].zos).toEqual(before);
+  });
+
   it('首次点击直接提交完整面板，不闪现模块加载占位', () => {
     expect(host.querySelector('.nb-sync-panel')).toBeNull();
     switchTab('同步与备份');

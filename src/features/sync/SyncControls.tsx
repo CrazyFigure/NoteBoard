@@ -437,7 +437,7 @@ function S3Help() {
 const STORAGE_EXAMPLES: Record<ObjectStorageKind, { endpoint: string; region: string }> = {
   s3: { endpoint: 'https://s3.us-east-1.amazonaws.com', region: 'us-east-1' },
   oss: { endpoint: 'https://oss-cn-hangzhou.aliyuncs.com', region: 'oss-cn-hangzhou' },
-  zos: { endpoint: 'https://jiangsu-10.zos.ctyun.cn', region: 'us-east-1（按资源池文档填写）' },
+  zos: { endpoint: 'https://jiangsu-10.zos.ctyun.cn', region: 'us-east-1' },
   oos: { endpoint: 'https://oos-cn.ctyunapi.cn', region: 'cn（按所用资源池填写）' },
   obs: { endpoint: 'https://obs.cn-north-4.myhuaweicloud.com', region: 'cn-north-4' },
   cos: { endpoint: 'https://cos.ap-guangzhou.myqcloud.com', region: 'ap-guangzhou' },
@@ -461,7 +461,8 @@ function ObjectStorageHelp({ kind }: { kind: Exclude<ObjectStorageKind, 's3'> })
         <HelpLink href="https://www.alibabacloud.com/help/zh/oss/user-guide/0048-00000401">查看自定义域名要求</HelpLink>
       </>}
       {kind === 'zos' && <>
-        <div>在天翼云对象存储 ZOS 控制台选择桶所在资源池，复制公网 Endpoint，例如 <code>{example.endpoint}</code>。官方 SDK 常用签名区域为 <code>us-east-1</code>，不同资源池请以对应接入文档为准。</div>
+        <div>在天翼云对象存储 ZOS 控制台复制桶所在资源池的公网 Endpoint，例如 <code>{example.endpoint}</code>。S3 签名区域通常填 <code>us-east-1</code>，不要填写控制台中的资源池 ID（长串数字或字母）；文件的实际存储地域由 Endpoint 和桶决定。</div>
+        <div>首次配置建议开启「路径风格访问」，直接使用 Endpoint 和桶名访问；已绑定自定义域名时改用上方的自定义域名选项。</div>
         <div>ZOS 与 OOS 是不同的对象存储服务，请使用 ZOS 的桶、Endpoint 和对象存储访问密钥，不要填写天翼云开放平台管理 API 的地址或密钥。</div>
         <HelpLink href="https://www.ctyun.cn/products/zos">打开天翼云 ZOS</HelpLink>
       </>}
@@ -498,7 +499,7 @@ function ObjectStorageFields({ kind, value, onChange }: {
       <Field label="服务端点（Endpoint）" wide>
         <TextInput value={value.endpoint} onChange={(endpoint) => onChange({ endpoint })} placeholder={value.customDomain ? 'https://storage.example.com' : example.endpoint} />
       </Field>
-      <Field label="区域（Region）">
+      <Field label="区域（Region）" hint={kind === 'zos' ? 'S3 签名区域通常填 us-east-1，不是天翼云资源池 ID' : undefined}>
         <TextInput value={value.region} onChange={(region) => onChange({ region })} placeholder={example.region} />
       </Field>
       <Field label="存储桶（Bucket）">
@@ -519,7 +520,7 @@ function ObjectStorageFields({ kind, value, onChange }: {
           onChange={(customDomain) => onChange({ customDomain, pathStyle: false })} />
       </div>
       {(kind === 's3' || kind === 'zos' || kind === 'oos') && !value.customDomain && <div className="nb-sync-field is-wide">
-        <ToggleRow title="路径风格访问" desc="MinIO 等自建服务通常需要开启，其他服务按其要求设置" checked={value.pathStyle}
+        <ToggleRow title="路径风格访问" desc={kind === 'zos' ? 'ZOS 建议开启，直接使用服务端点与桶名访问' : 'MinIO 等自建服务通常需要开启，其他服务按其要求设置'} checked={value.pathStyle}
           onChange={(pathStyle) => onChange({ pathStyle })} />
       </div>}
     </div>
@@ -667,7 +668,16 @@ export function ProviderForm({
   const selectKind = (kind: SyncProviderKind) => {
     if (isObjectStorage(value.kind)) setLastStorage(value.kind);
     if (isGitKind(value.kind)) setLastGit(value.kind);
-    onChange({ ...value, kind });
+    if (kind === 'zos') {
+      // 只为从未填写过的 ZOS 配置预填官方示例参数，已有区域和访问方式均不覆盖。
+      const storage = value.zos;
+      const fresh = !storage.endpoint.trim() && !storage.region.trim() && !storage.bucket.trim()
+        && !storage.accessKeyId.trim() && !storage.secretAccessKey && !storage.prefix.trim()
+        && !storage.headers.length && !storage.customDomain && !storage.pathStyle;
+      onChange(fresh ? { ...value, kind, zos: { ...storage, region: 'us-east-1', pathStyle: true } } : { ...value, kind });
+    } else {
+      onChange({ ...value, kind });
+    }
   };
 
   /** 分类内再次点击保持当前厂商，分类间往返恢复最后选择。 */

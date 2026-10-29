@@ -125,6 +125,43 @@ impl Drop for ObjectServer {
     }
 }
 
+/// 使用应用相同的代理与 TLS 配置只读探测公开端点，不携带密钥，也不创建或读取桶内对象。
+#[test]
+#[ignore = "需要显式提供 NOTEBOARD_S3_DIAGNOSTIC_ENDPOINT，仅检查公开端点 HTTPS 连通性"]
+fn live_s3_endpoint_https_connectivity() {
+    let endpoint = std::env::var("NOTEBOARD_S3_DIAGNOSTIC_ENDPOINT").expect("请提供公开 HTTPS 服务端点");
+    let parsed = url::Url::parse(&endpoint).unwrap();
+    assert!(parsed.scheme() == "https" && parsed.username().is_empty() && parsed.password().is_none() && parsed.query().is_none());
+    runtime::block_on(async {
+        let client = super::backend::http_client(&ProviderConfig::default()).unwrap();
+        match client.head(endpoint).send().await {
+            Ok(response) => println!("HTTPS 连接成功，HTTP {}", response.status()),
+            // 此测试只接受无凭证端点，移除 URL 后保留底层错误供判断 DNS、代理或证书原因。
+            Err(error) => panic!("HTTPS 连接失败：{:#?}", error.without_url()),
+        }
+    });
+}
+
+/// ZOS 网络失败展示厂商和实际主机，不能把同步目录或密钥拼入报错。
+#[test]
+fn connection_errors_identify_provider_and_host_without_object_path() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    drop(listener);
+    let mut provider = ProviderConfig { kind: ProviderKind::Zos, ..Default::default() };
+    provider.zos = S3Config { endpoint, region: "us-east-1".into(), bucket: "notes".into(), access_key_id: "hidden-key".into(),
+        secret_access_key: "hidden-secret".into(), prefix: "hidden-directory".into(), custom_domain: true, ..Default::default() };
+    runtime::block_on(async {
+        let mut backend = Backend::new(&provider).unwrap();
+        let error = backend.read("private.md").await.unwrap_err();
+        assert_eq!(error.kind, super::error::SyncErrorKind::Network);
+        assert!(error.message.contains("天翼云 ZOS") && error.message.contains("请求主机：127.0.0.1"));
+        for value in ["hidden-key", "hidden-secret", "hidden-directory", "private.md"] {
+            assert!(!error.message.contains(value));
+        }
+    });
+}
+
 /// 旧版 S3 配置没有新增厂商和域名字段；保留其有效 HTTP 目标，仍可直接读写已有对象。
 #[test]
 fn legacy_s3_configuration_still_reads_and_writes_over_http() {

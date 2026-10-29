@@ -25,6 +25,8 @@ pub struct S3 {
     custom_domain: bool,
     /// OBS 的 V4 接口仅接受不签名请求体或指定的流式模式。
     unsigned_payload: bool,
+    /// 网络错误显示实际厂商，避免 ZOS 用户只看到无法区分来源的“S3”提示。
+    service: &'static str,
     /// 网关认证等自定义头；程序生成的签名字段不能被覆盖。
     headers: header::HeaderMap,
 }
@@ -32,8 +34,8 @@ pub struct S3 {
 impl S3 {
     /// 校验存储桶、密钥与请求头，预先拒绝会覆盖 SigV4 或 HTTP 传输字段的配置。
     pub fn new(client: reqwest::Client, cfg: &S3Config, kind: ProviderKind) -> SyncResult<Self> {
-        // 只有通用 S3 可回退 AWS 默认值，厂商入口必须明确提供其资源池地址与签名区域。
-        if kind != ProviderKind::S3 && (cfg.endpoint.trim().is_empty() || cfg.region.trim().is_empty()) {
+        // 通用 S3 和 ZOS 的空签名区域使用 us-east-1；其他厂商仍要求明确指定区域。
+        if kind != ProviderKind::S3 && (cfg.endpoint.trim().is_empty() || (cfg.region.trim().is_empty() && kind != ProviderKind::Zos)) {
             return Err(SyncError::config(format!("请填写 {} 的服务端点和区域（以存储桶控制台为准）", kind.label())));
         }
         let region = if cfg.region.trim().is_empty() { "us-east-1".to_string() } else { cfg.region.trim().to_string() };
@@ -88,6 +90,7 @@ impl S3 {
             path_style: cfg.path_style,
             custom_domain: cfg.custom_domain,
             unsigned_payload,
+            service: kind.label(),
             headers: request_headers(&cfg.http, SERVICE, &["authorization", "x-amz-date", "x-amz-content-sha256"])?,
         })
     }
@@ -178,7 +181,13 @@ impl S3 {
     }
 
     async fn send(&self, rb: reqwest::RequestBuilder) -> SyncResult<reqwest::Response> {
-        rb.send().await.map_err(|e| from_reqwest(e, SERVICE))
+        rb.send().await.map_err(|e| {
+            // 只保留实际主机，不输出对象路径、签名查询参数或密钥，方便定位桶域名的 DNS/TLS 问题。
+            let host = e.url().and_then(url::Url::host_str).map(str::to_string);
+            let mut error = from_reqwest(e, self.service);
+            if let Some(host) = host { error.message.push_str(&format!("（请求主机：{}）", host)); }
+            error
+        })
     }
 
     /// S3 错误响应带 <Code>，翻译常见错误码
@@ -339,6 +348,23 @@ pub fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ZOS 空签名区域可直接沿用官方默认值；已有非空区域与访问方式必须原样保留，不能因升级重定向。
+    #[test]
+    fn zos_region_defaults_without_overwriting_existing_configuration() {
+        let mut cfg = S3Config { endpoint: "https://hunan-4.zos.ctyun.cn".into(), bucket: "notes".into(),
+            access_key_id: "key".into(), secret_access_key: "secret".into(), ..Default::default() };
+        let client = reqwest::Client::new();
+        let backend = S3::new(client.clone(), &cfg, ProviderKind::Zos).unwrap();
+        assert_eq!(backend.region, "us-east-1");
+        assert!(!backend.path_style);
+        assert!(cfg.region.is_empty());
+        cfg.region = "saved-region".into();
+        cfg.path_style = true;
+        let backend = S3::new(client, &cfg, ProviderKind::Zos).unwrap();
+        assert_eq!(backend.region, "saved-region");
+        assert_eq!(backend.locate("a.md"), ("hunan-4.zos.ctyun.cn".into(), "/notes/a.md".into()));
+    }
 
     /// 地址构造必须区分服务域名、路径风格和已绑定桶的 CNAME，且保留中文路径编码。
     #[test]
