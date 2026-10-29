@@ -39,6 +39,8 @@ jobs:
           fi
           # origin/HEAD 是符号引用，不能当作分支推送
           git remote set-head origin -d 2>/dev/null || true
+          # tag 事件的 checkout 会把附注标签改写为轻量标签，推送前强制取回原标签对象
+          git fetch --force --tags origin
           git remote add cnb "https://cnb:${CNB_TOKEN}@cnb.cool/crazy-figure/NoteBoard.git"
           # 强制与 GitHub 一致；--prune 同步删除 GitHub 上已不存在的分支和标签
           git push cnb --prune '+refs/remotes/origin/*:refs/heads/*' '+refs/tags/*:refs/tags/*'
