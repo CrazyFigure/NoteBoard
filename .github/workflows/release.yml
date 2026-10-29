@@ -161,6 +161,18 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${env:GITHUB_REF_NAME}" "${{ steps.portable.outputs.path }}" --clobber
 
+  # Windows 与安卓安装包上传后同步到腾讯云 CNB 镜像；macOS / Linux 包由各自工作流上传后再补同步。
+  sync-cnb:
+    name: Sync release to CNB
+    needs: [build-windows, build-android]
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') && needs.build-windows.result == 'success' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/cnb-release.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit
+
   # 正式标签的 Windows 安装包上传后，以仓库拥有者的跨仓库令牌提交 WinGet 更新申请。
   # 与 APK 构建并行；预发布和仅验证安卓的手动运行不向官方软件源提交。
   publish-winget:

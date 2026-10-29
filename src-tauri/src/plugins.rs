@@ -1,8 +1,9 @@
-//! 官方插件服务：固定 GitHub 来源、版本协议、摘要校验与原子激活。
+//! 官方插件服务：固定 GitHub 来源（可切换到 CNB 镜像）、版本协议、摘要校验与原子激活。
 use std::{fs, io::Write, path::{Path, PathBuf}, sync::OnceLock, time::{Duration, Instant}};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 use sha2::{Digest, Sha256};
+use crate::release_channel::ReleaseChannel;
 
 const IDS: &[&str] = &["word", "excel", "powerpoint", "pdf", "cad", "epub", "workbench"];
 const BASE: &str = "https://github.com/CrazyFigure/NoteBoard/releases/download/plugins/";
@@ -35,10 +36,11 @@ fn validate(pkg: &Value, id: &str) -> Result<(), String> {
 }
 
 /// 每次下载均限制响应总量，错误和中断不改变已安装版本；进度回调按固定间隔节流。
-async fn download(url: &str, limit: usize, mut progress: impl FnMut(u64, Option<u64>)) -> Result<Vec<u8>, String> {
+/// 目录登记的是 GitHub 地址，先校验官方前缀，再按渠道换成镜像中的同名文件。
+async fn download(url: &str, channel: ReleaseChannel, limit: usize, mut progress: impl FnMut(u64, Option<u64>)) -> Result<Vec<u8>, String> {
     if !url.starts_with(BASE) || url[BASE.len()..].contains('/') { return Err("插件下载来源无效".into()); }
     let client = crate::updater::commands::build_update_http_client(Duration::from_secs(180))?;
-    let mut response = client.get(url).send().await.map_err(|e| format!("插件下载失败：{e}"))?;
+    let mut response = client.get(channel.rewrite_download_url(url)).send().await.map_err(|e| format!("插件下载失败：{e}"))?;
     if response.status() == reqwest::StatusCode::NOT_FOUND { return Err("官方插件尚未发布，请稍后检查更新".into()); }
     if !response.status().is_success() || response.content_length().unwrap_or(0) > limit as u64 { return Err("插件下载失败或文件过大".into()); }
     let total = response.content_length();
@@ -166,14 +168,15 @@ pub async fn plugin_command(app: AppHandle, operation: String, id: Option<String
     let id = id.unwrap_or_default();
     let mut package = None;
     if operation == "catalog" || operation == "install" {
+        let channel = ReleaseChannel::current();
         // catalog.json 留给旧版本；新目录可能包含本版本未知的插件，忽略而不是整体拒绝。
-        let mut catalog: Value = serde_json::from_slice(&download(&format!("{BASE}catalog-v2.json"), 1024 * 1024, |_, _| {}).await?).map_err(|e| e.to_string())?;
+        let mut catalog: Value = serde_json::from_slice(&download(&format!("{BASE}catalog-v2.json"), channel, 1024 * 1024, |_, _| {}).await?).map_err(|e| e.to_string())?;
         if catalog["schemaVersion"] != 1 || catalog["plugins"].as_array().map_or(true, |p| p.len() > 64) { return Err("插件目录格式无效".into()); }
         if let Some(plugins) = catalog["plugins"].as_array_mut() { plugins.retain(|p| p["id"].as_str().is_some_and(|id| IDS.contains(&id))); }
         if operation == "catalog" { return Ok(catalog); }
         let entry = catalog["plugins"].as_array().unwrap().iter().find(|p| p["id"].as_str() == Some(&id)).ok_or("插件暂不可下载")?;
         // 只广播插件包下载进度；目录体积很小，不单独显示。
-        let bytes = download(entry["url"].as_str().ok_or("插件地址缺失")?, MAX_BYTES, |downloaded, total| {
+        let bytes = download(entry["url"].as_str().ok_or("插件地址缺失")?, channel, MAX_BYTES, |downloaded, total| {
             let _ = app.emit(PROGRESS_EVENT, json!({"id":id,"downloaded":downloaded,"total":total}));
         }).await?;
         if entry["sha256"].as_str() != Some(format!("{:x}", Sha256::digest(&bytes)).as_str()) { return Err("插件下载校验失败".into()); }

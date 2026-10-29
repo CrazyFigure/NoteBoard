@@ -3,9 +3,12 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { fail } from './files.mjs';
+import { channelUrl } from './releaseChannel.mjs';
 
 const IDS = new Set(['word', 'excel', 'powerpoint', 'pdf', 'cad', 'epub', 'workbench']);
 const BASE = 'https://github.com/CrazyFigure/NoteBoard/releases/download/plugins/';
+// 官方插件只允许来自 GitHub Release 或其 CNB 镜像的同名文件
+const SOURCES = [BASE, channelUrl(BASE, 'cnb')];
 const MAX_BYTES = 32 * 1024 * 1024;
 const semver = /^\d{1,5}\.\d{1,5}\.\d{1,5}$/;
 
@@ -27,7 +30,7 @@ export function validatePackage(pkg, id, appVersion) {
 
 /** 下载有大小与超时硬上限，错误响应不能写入已安装版本。 */
 async function download(url, limit) {
-  if (!url.startsWith(BASE) || url.slice(BASE.length).includes('/')) throw fail('插件下载来源无效');
+  if (!SOURCES.some((base) => url.startsWith(base) && !url.slice(base.length).includes('/'))) throw fail('插件下载来源无效');
   const response = await fetch(url, { signal: AbortSignal.timeout(180000) });
   if (response.status === 404) throw fail('官方插件尚未发布，请稍后检查更新', 404);
   if (!response.ok || Number(response.headers.get('content-length')) > limit) throw fail('插件下载失败或文件过大');
@@ -65,14 +68,14 @@ export async function createPlugins(dataDir, appVersion, { downloadBytes = downl
   async function read(id, version) {
     return validatePackage(JSON.parse(await fs.readFile(packagePath(id, version), 'utf8')), id, appVersion);
   }
-  async function catalog() {
+  async function catalog(channel) {
     // catalog.json 留给旧版本；新目录可能包含本版本未知的插件，忽略而不是整体拒绝。
-    const c = JSON.parse((await downloadBytes(`${BASE}catalog-v2.json`, 1024 * 1024)).toString('utf8'));
+    const c = JSON.parse((await downloadBytes(channelUrl(`${BASE}catalog-v2.json`, channel), 1024 * 1024)).toString('utf8'));
     if (c.schemaVersion !== 1 || !Array.isArray(c.plugins) || c.plugins.length > 64) throw fail('插件目录格式无效');
     return { ...c, plugins: c.plugins.filter((p) => IDS.has(p?.id)) };
   }
   async function command(name, args) {
-    if (name === 'plugin_catalog') return catalog();
+    if (name === 'plugin_catalog') return catalog(args?.channel);
     if (name === 'plugin_list') {
       const s = await state(); const result = [];
       for (const id of IDS) if (s[id]) {
@@ -97,10 +100,12 @@ export async function createPlugins(dataDir, appVersion, { downloadBytes = downl
       return read(id, s[id].version);
     }
     if (name === 'plugin_install') {
-      const entry = (await catalog()).plugins.find((p) => p.id === id);
+      const entry = (await catalog(args.channel)).plugins.find((p) => p.id === id);
       if (!entry || !/^[a-f0-9]{64}$/.test(entry.sha256)) throw fail('插件暂不可下载');
       if (s[id] && compareVersions(entry.version, s[id].version) < 0) return null;
-      const bytes = await downloadBytes(entry.url, MAX_BYTES);
+      // 目录登记 GitHub 地址，按所选渠道换成镜像中的同名文件
+      if (!entry.url?.startsWith(BASE)) throw fail('插件下载来源无效');
+      const bytes = await downloadBytes(channelUrl(entry.url, args.channel), MAX_BYTES);
       if (createHash('sha256').update(bytes).digest('hex') !== entry.sha256) throw fail('插件下载校验失败');
       const pkg = validatePackage(JSON.parse(bytes.toString('utf8')), id, appVersion);
       if (pkg.manifest.version !== entry.version) throw fail('插件版本与目录不一致');

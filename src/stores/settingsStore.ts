@@ -121,6 +121,7 @@ export const DEFAULT_SETTINGS: Settings = {
   system: {
     closeToTray: false,
     showWindowShortcut: '',
+    updateChannel: 'github',
   },
 };
 

@@ -1,0 +1,44 @@
+name: Mirror to CNB
+
+# 以 GitHub 为唯一源头，把全部分支与标签镜像到腾讯云 CNB（cnb.cool/crazy-figure/NoteBoard）。
+# CNB 仓库只读：分支保护仅允许负责人推送，合并请求无法合并，问题反馈与 PR 统一走 GitHub。
+on:
+  push:
+    branches: ['**']
+    tags: ['**']
+  delete:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 同一镜像的强制推送不能并发，分支、标签与删除事件依次执行
+concurrency:
+  group: cnb-mirror
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    name: Push refs to CNB
+    # Fork 即使配置了同名 Secret 也不得覆盖官方镜像
+    if: github.repository == 'CrazyFigure/NoteBoard'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push branches and tags
+        env:
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CNB_TOKEN}" ]; then
+            echo '请配置 CNB_TOKEN（CNB 访问令牌，需 repo-code 与 repo-release 读写权限）' >&2
+            exit 1
+          fi
+          # origin/HEAD 是符号引用，不能当作分支推送
+          git remote set-head origin -d 2>/dev/null || true
+          git remote add cnb "https://cnb:${CNB_TOKEN}@cnb.cool/crazy-figure/NoteBoard.git"
+          # 强制与 GitHub 一致；--prune 同步删除 GitHub 上已不存在的分支和标签
+          git push cnb --prune '+refs/remotes/origin/*:refs/heads/*' '+refs/tags/*:refs/tags/*'

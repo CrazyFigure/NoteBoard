@@ -70,6 +70,18 @@ jobs:
           done
           find src-tauri/target/${{ matrix.target }}/release/bundle -type f \( -name '*.dmg' -o -name '*.deb' -o -name '*.AppImage' \) -exec gh release upload "$RELEASE_TAG" {} --clobber \;
 
+  # Unix 安装包上传后补充同步到腾讯云 CNB 镜像（已同步的 Windows / 安卓附件按哈希跳过）。
+  sync-cnb:
+    name: Sync release to CNB
+    needs: package
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/cnb-release.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit
+
   # 两种 Mac 安装包上传完成后立即唤起现有 Tap 更新流程，沿用下载校验和安装验证。
   # 直接衔接标签工作流，不依赖机器人创建 Release 后不会继续触发的 release 事件。
   publish-homebrew:

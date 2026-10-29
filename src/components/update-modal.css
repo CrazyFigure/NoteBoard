@@ -467,8 +467,43 @@
   order: -1;
 }
 
+/* 检测失败时的渠道切换建议 */
+.nb-update-channel-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-md);
+  background: var(--editor-surface);
+  font-size: 13px;
+}
+
+.nb-update-channel-switch-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.nb-update-channel-switch-hint {
+  font-size: 12px;
+  color: var(--editor-text-muted);
+}
+
+.nb-update-channel-switch-btn {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
 /* 窄屏：概览改为上下排列；版本摘要换到第二行，与版本号左对齐 */
 @media (max-width: 480px) {
+  .nb-update-channel-switch {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .nb-update-hero {
     flex-direction: column;
     align-items: stretch;

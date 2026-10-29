@@ -13,6 +13,7 @@ import {
   AlertCircle,
   Sparkles,
   ArrowRight,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { Tooltip } from './Tooltip';
 import { UpdateReleaseNotes } from './UpdateReleaseNotes';
@@ -21,6 +22,8 @@ import * as ipc from '../core/ipc/commands';
 import { IS_MOBILE_UI, IS_NATIVE_MOBILE, USES_MANUAL_UPDATE_INSTALL } from '../core/platform';
 import { useBackDismiss } from '../mobile/components';
 import { resumeSnapshotTracking, saveCurrentWindowSnapshot } from '../features/session/closedWindowSession';
+import { RELEASE_CHANNELS, alternateUpdateChannel, useUpdateChannel } from '../core/releaseChannel';
+import { useSettingsStore } from '../stores/settingsStore';
 import './update-modal.css';
 
 interface UpdateModalProps {
@@ -66,6 +69,11 @@ export function UpdateModal({
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<UpdateDownloadProgress | null>(null);
   const [installError, setInstallError] = useState<string | null>(null);
+  // 当前更新渠道；检测失败时可一键切换到另一渠道重试
+  const channel = useUpdateChannel();
+  const channelLabel = RELEASE_CHANNELS[channel].label;
+  const alternateChannel = alternateUpdateChannel(channel);
+  const setSystem = useSettingsStore((state) => state.setSystem);
 
   // 移动端返回键关闭弹窗（下载中不响应，避免中断进度展示）
   useBackDismiss(IS_MOBILE_UI && isOpen && !downloading, onClose);
@@ -183,10 +191,16 @@ export function UpdateModal({
     });
   };
 
+  // 切换更新渠道：设置落盘后再重试，后端检查时读取的是已保存的渠道
+  const handleSwitchChannel = async () => {
+    await setSystem({ updateChannel: alternateChannel });
+    onRecheck?.();
+  };
+
   if (!isOpen) return null;
 
   const showDetail = Boolean(result?.updateAvailable && !checkError && !checking);
-  // 免安装版不在应用内下载安装，主按钮改为前往 GitHub Release 页面
+  // 免安装版不在应用内下载安装，主按钮改为前往当前渠道的 Release 页面
   const portableUpdate = Boolean(showDetail && result?.portable);
   const latestDate = formatDate(result?.publishedAt);
 
@@ -330,7 +344,7 @@ export function UpdateModal({
                 color="var(--accent-strong)"
               />
               <span style={{ fontSize: 13, color: 'var(--editor-text-secondary)' }}>
-                正在连接 GitHub 检查最新版本
+                正在连接 {channelLabel} 检查最新版本
               </span>
             </div>
           )}
@@ -355,6 +369,21 @@ export function UpdateModal({
                 <AlertCircle size={18} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />
                 <div>{checkError}</div>
               </div>
+              {/* 可选：切换到另一更新渠道重试，安装包、字体与插件下载随之切换 */}
+              {onRecheck && (
+                <div className="nb-update-channel-switch">
+                  <div className="nb-update-channel-switch-text">
+                    <span>当前渠道：{channelLabel}</span>
+                    <span className="nb-update-channel-switch-hint">网络不通时可换用 {RELEASE_CHANNELS[alternateChannel].label}</span>
+                  </div>
+                  <Tooltip content="之后的更新、字体与插件下载也走该渠道，可在「关于」中改回" side="top" sideOffset={4}>
+                    <button type="button" className="nb-btn-secondary nb-update-channel-switch-btn" onClick={handleSwitchChannel}>
+                      <ArrowLeftRight size={14} />
+                      <span>切换到 {RELEASE_CHANNELS[alternateChannel].label} 并重试</span>
+                    </button>
+                  </Tooltip>
+                </div>
+              )}
             </div>
           )}
 
@@ -538,7 +567,7 @@ export function UpdateModal({
             </button>
           )}
 
-          {/* 免安装版：前往 GitHub 下载 */}
+          {/* 免安装版：前往当前渠道的 Release 页面下载 */}
           {portableUpdate && result && (
             <button
               type="button"
@@ -554,7 +583,7 @@ export function UpdateModal({
               }}
             >
               <ExternalLink size={14} />
-              <span>前往 GitHub 下载</span>
+              <span>前往 {channelLabel} 下载</span>
             </button>
           )}
 

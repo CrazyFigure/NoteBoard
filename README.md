@@ -32,6 +32,8 @@
 | **Linux** | `.deb` / `.AppImage` | x86_64；AppImage 需 `chmod +x`，可能需安装 FUSE |
 | **网页** | Docker 镜像 `crazyfigure/noteboard` | 见下方 [网页部署](#网页部署) |
 
+国内访问 GitHub 较慢时，可从腾讯云 CNB 镜像 [cnb.cool/crazy-figure/NoteBoard](https://cnb.cool/crazy-figure/NoteBoard/-/releases) 下载同名安装包；镜像由 GitHub 自动同步，只读，问题反馈与 PR 请提交到 GitHub。
+
 Windows 免安装版首次运行会自动创建 `data/NoteBoard/`，设置、会话、草稿、默认暂存、历史、同步配置、插件、字体和 WebView 数据均保存在其中；`data/` 中其他内容保持原样。同名 `NoteBoard/` 子目录若已有内容但没有应用归属标记，或目录不可写，会提示并停止，不会覆盖文件或回退到安装版目录。更新时替换 EXE，搬移时同时带上 `data/`；同目录的程序共用一份数据，不同目录的副本可以独立运行。
 
 旧版本的 `%APPDATA%\NoteBoard` 和 `%LOCALAPPDATA%\com.crazyfigure.noteboard` 数据保持原样，不会自动导入。需要迁移时先运行新免安装版生成目录并完全退出所有 NoteBoard 实例，再按需把旧设置、会话等复制到 `data/NoteBoard/`，把旧插件和字体复制到其 `plugins/`、`font-packs/` 子目录，保留新生成的 `.noteboard-portable` 标记。迁移的暂存自选路径和文档绝对路径仍需按实际位置调整；Windows 加密的同步密码/令牌换电脑后需重新填写。Windows 安装版和开发版保留原目录；macOS、Linux、Android/iOS 继续使用平台应用数据/缓存目录，网页端继续使用服务器数据卷。
@@ -56,7 +58,8 @@ Windows 免安装版首次运行会自动创建 `data/NoteBoard/`，设置、会
 
 ## 更新须知
 
-- **应用**：Windows 支持应用内更新，免安装版检查到新版本后跳转 GitHub 手动下载替换；安卓应用内检查后跳转下载 APK；macOS / Linux 手动下载或使用包管理器；网页执行 `docker compose pull && docker compose up -d`。
+- **更新渠道**：「设置 → 关于」可选 GitHub（默认）或腾讯云 CNB，检测更新、安装包、插件和字体均从所选渠道下载；检测失败时弹窗可一键切换渠道重试。
+- **应用**：Windows 支持应用内更新，免安装版检查到新版本后跳转所选渠道的 Release 页面手动下载替换；安卓应用内检查后跳转下载 APK；macOS / Linux 手动下载或使用包管理器；网页执行 `docker compose pull && docker compose up -d`。
 - **插件独立更新**：升级应用不会更新插件，请到「设置 → 插件」检查更新。
 - **版本要求**：插件需 NoteBoard **0.5.8+**；EPUB 阅读等新插件需 **0.6.0+**，旧版本看不到。
 - **macOS 首次打开**被拦截时，到「系统设置 → 隐私与安全性」允许打开。

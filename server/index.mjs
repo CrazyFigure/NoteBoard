@@ -7,6 +7,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { fail, ROOT, MAX_FILE_BYTES, classify } from './files.mjs';
 import { createPlugins } from './plugins.mjs';
 import { createFonts } from './fonts.mjs';
+import { normalizeChannel } from './releaseChannel.mjs';
 import { createAccounts, ADMIN_ID } from './accounts.mjs';
 import { createSpaces, SHARED } from './spaces.mjs';
 
@@ -124,13 +125,16 @@ export async function createWebServer(options = {}) {
   /** 明确列出网页支持的业务命令；未知原生命令拒绝执行，避免暴露服务器系统能力。 */
   async function command(cmd, args, req, user) {
     const own = () => spaces.space(user.id);
+    // 下载渠道取发起操作用户自己的「设置 → 关于 → 更新渠道」
+    const channel = async () => normalizeChannel((await (await own()).files.loadState('settings', null))?.system?.updateChannel);
     if (cmd === 'plugin_command') {
       // 插件程序按实例共享，安装、启用和卸载会影响所有用户。
       if (!['catalog', 'list', 'load'].includes(args.operation)) requireAdmin(user, '仅管理员可管理插件');
-      return pluginCommand(`plugin_${args.operation}`, args);
+      const networked = ['catalog', 'install'].includes(args.operation);
+      return pluginCommand(`plugin_${args.operation}`, networked ? { ...args, channel: await channel() } : args);
     }
     if (cmd === 'get_font_pack_status' || cmd === 'refresh_font_pack_status') return fonts.status();
-    if (cmd === 'download_font_pack') { requireAdmin(user, '仅管理员可管理字体包'); return fonts.download(); }
+    if (cmd === 'download_font_pack') { requireAdmin(user, '仅管理员可管理字体包'); return fonts.download(await channel()); }
     if (cmd === 'remove_font_pack') { requireAdmin(user, '仅管理员可管理字体包'); return fonts.remove(); }
     const key = () => clientKey(req);
     if (cmd === 'web_capabilities') {

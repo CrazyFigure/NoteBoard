@@ -17,6 +17,8 @@ pub mod font_pack;
 pub mod plugins;
 pub mod bootstrap;
 pub mod updater;
+// 发布渠道（GitHub / 腾讯云 CNB 镜像）
+pub mod release_channel;
 pub mod staging;
 pub mod favorites;
 pub mod perf;

@@ -18,6 +18,8 @@ import { SettingsRange } from './SettingsRange';
 import { SettingsSelect } from './SettingsSelect';
 import { TabSizeSelect } from './TabSizeSelect';
 import { ReleaseNotes } from './ReleaseNotes';
+import { UPDATE_CHANNEL_ORDER, UpdateChannelSelector } from './UpdateChannelSelector';
+import { RELEASE_CHANNELS } from '../../core/releaseChannel';
 import { Tooltip } from '../Tooltip';
 import type { MarkdownNormalizationPolicy, TitleBarButtons } from '../../core/ipc/types';
 import { IS_MOBILE_UI, IS_NATIVE_MOBILE, IS_WEB } from '../../core/platform';
@@ -77,10 +79,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     checkForUpdates(false);
   };
 
-  // 在系统默认浏览器打开 GitHub 仓库
-  const handleOpenGithub = () => {
-    ipc.openExternalUrl('https://github.com/CrazyFigure/NoteBoard').catch((err) => {
-      console.error('无法打开 GitHub 链接:', err);
+  // 在系统默认浏览器打开 GitHub / 腾讯云 CNB 仓库
+  const handleOpenRepo = (url: string) => {
+    ipc.openExternalUrl(url).catch((err) => {
+      console.error('无法打开仓库链接:', err);
     });
   };
 
@@ -1681,8 +1683,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   版本 v{APP_VERSION} · AGPL-3.0 License
                 </div>
 
-                {/* 快捷操作：检测更新与 GitHub 仓库 */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
+                {/* 快捷操作：检测更新与 GitHub / 腾讯云 CNB 仓库 */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 12, marginTop: 8 }}>
                   <button
                     type="button"
                     className="nb-btn-secondary"
@@ -1738,10 +1740,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <span>{checkingUpdate ? '正在检查' : '检测更新'}</span>
                   </button>
 
+                  {UPDATE_CHANNEL_ORDER.map((id) => (
+                  <Tooltip key={id} content={RELEASE_CHANNELS[id].repoUrl} side="top" sideOffset={4}>
                   <button
                     type="button"
                     className="nb-btn-secondary"
-                    onClick={handleOpenGithub}
+                    onClick={() => handleOpenRepo(RELEASE_CHANNELS[id].repoUrl)}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -1781,9 +1785,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     }}
                   >
                     <ExternalLink size={15} />
-                    <span>GitHub 仓库</span>
+                    <span>{RELEASE_CHANNELS[id].label} 仓库</span>
                   </button>
+                  </Tooltip>
+                  ))}
                 </div>
+
+                {/* 更新渠道：检测更新、安装包、字体与插件的下载来源 */}
+                <UpdateChannelSelector />
 
                 {/* 最近版本更新日志，默认收起 */}
                 <ReleaseNotes />

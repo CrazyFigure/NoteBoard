@@ -458,7 +458,12 @@ export interface SystemSettings {
   closeToTray: boolean;
   /** 全局唤起窗口快捷键（默认留空不注册），格式如 Ctrl+Alt+N */
   showWindowShortcut: string;
+  /** 更新渠道（默认 github）：同时决定安装包、字体包与插件的下载来源；旧设置文件可能缺失 */
+  updateChannel?: UpdateChannel;
 }
+
+/** 发布渠道：GitHub 主仓库或腾讯云 CNB 镜像 */
+export type UpdateChannel = 'github' | 'cnb';
 
 // ── 事件载荷 ──
 

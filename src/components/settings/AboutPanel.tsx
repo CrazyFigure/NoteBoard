@@ -8,6 +8,28 @@ import * as ipc from '../../core/ipc/commands';
 import { useUpdateStore } from '../../stores/updateStore';
 import { APP_VERSION } from '../../core/version';
 import { IS_WEB } from '../../core/platform';
+import { RELEASE_CHANNELS, type ReleaseChannelInfo } from '../../core/releaseChannel';
+import { Tooltip } from '../Tooltip';
+import { UPDATE_CHANNEL_ORDER, UpdateChannelSelector } from './UpdateChannelSelector';
+
+/** 仓库外链按钮：显示仓库路径，悬停提示完整地址 */
+function RepoLinkButton({ channel }: { channel: ReleaseChannelInfo }) {
+  // 在系统默认浏览器打开仓库主页
+  const handleOpen = () => {
+    ipc.openExternalUrl(channel.repoUrl).catch((err) => {
+      console.error(`无法打开 ${channel.label} 链接:`, err);
+    });
+  };
+  return (
+    <Tooltip content={channel.repoUrl} side="top" sideOffset={4}>
+      <button type="button" className="nb-about-repo-link" onClick={handleOpen}>
+        <span className="nb-about-repo-source">{channel.label}</span>
+        <span>{channel.repoPath}</span>
+        <ExternalLink size={13} />
+      </button>
+    </Tooltip>
+  );
+}
 
 export function AboutPanel() {
   const shortcuts = getRegisteredShortcuts();
@@ -20,12 +42,6 @@ export function AboutPanel() {
     checkForUpdates(false);
   };
 
-  // 在系统默认浏览器打开 GitHub 仓库
-  const handleOpenGithub = () => {
-    ipc.openExternalUrl('https://github.com/CrazyFigure/NoteBoard').catch((err) => {
-      console.error('无法打开 GitHub 链接:', err);
-    });
-  };
 
   const sectionStyle: React.CSSProperties = {
     marginBottom: 24,
@@ -118,40 +134,10 @@ export function AboutPanel() {
           </button>}
         </div>
         <p style={{ margin: '4px 0' }}>许可证: AGPL-3.0</p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '4px 0' }}>
+        <UpdateChannelSelector />
+        <div className="nb-about-row">
           <span>开源仓库:</span>
-          <button
-            type="button"
-            onClick={handleOpenGithub}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: 0,
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--accent-strong)',
-              fontSize: 13,
-              cursor: 'pointer',
-              textDecoration: 'underline',
-              transition: 'all var(--transition-fast)',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'scale(1.03)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'scale(1)';
-            }}
-            onMouseDown={(e) => {
-              e.currentTarget.style.transform = 'scale(0.96)';
-            }}
-            onMouseUp={(e) => {
-              e.currentTarget.style.transform = 'scale(1.03)';
-            }}
-          >
-            <span>CrazyFigure/NoteBoard</span>
-            <ExternalLink size={13} />
-          </button>
+          {UPDATE_CHANNEL_ORDER.map((id) => <RepoLinkButton key={id} channel={RELEASE_CHANNELS[id]} />)}
         </div>
       </div>
 

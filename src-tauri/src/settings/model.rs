@@ -368,7 +368,7 @@ impl Default for CreateFormatsLayout {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SystemSettings {
     // 关闭按钮最小化到托盘（默认 false）：开启后关闭仅隐藏窗口，不再弹出未保存确认
@@ -377,6 +377,19 @@ pub struct SystemSettings {
     // 全局唤起窗口快捷键（默认留空不注册），格式如 Ctrl+Alt+N
     #[serde(default)]
     pub show_window_shortcut: String,
+    // 更新渠道：github（默认）或 cnb；同时决定安装包、字体包与插件的下载来源
+    #[serde(default = "default_update_channel")]
+    pub update_channel: String,
+}
+
+impl Default for SystemSettings {
+    fn default() -> Self {
+        Self {
+            close_to_tray: false,
+            show_window_shortcut: String::new(),
+            update_channel: default_update_channel(),
+        }
+    }
 }
 
 // 默认值函数
@@ -418,6 +431,7 @@ pub fn default_staging_directory() -> String {
     app_data_dir().join("staging").to_string_lossy().to_string()
 }
 fn default_ui_scale() -> u32 { 100 }
+fn default_update_channel() -> String { "github".to_string() }
 
 /// 读取设置（容错：缺字段填默认，损坏文件不 panic）
 pub fn load() -> Settings {

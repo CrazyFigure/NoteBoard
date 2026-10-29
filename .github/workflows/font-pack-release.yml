@@ -85,3 +85,13 @@ jobs:
           } else {
             gh release create $tag $assetPath --prerelease --title "NoteBoard Font Pack $tag" --notes "NoteBoard 应用内字体资源包；不会安装到 Windows。普通应用更新可持续复用。"
           }
+
+  # 字体包发布后同步到腾讯云 CNB 镜像
+  sync-cnb:
+    needs: publish-font-pack
+    permissions:
+      contents: read
+    uses: ./.github/workflows/cnb-release.yml
+    with:
+      tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    secrets: inherit

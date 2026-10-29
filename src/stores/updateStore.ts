@@ -6,6 +6,7 @@ import type { UpdateCheckResult } from '../core/ipc/types';
 import * as ipc from '../core/ipc/commands';
 import { translateUpdateCheckError } from '../core/updates';
 import { IS_WEB } from '../core/platform';
+import { RELEASE_CHANNELS, currentUpdateChannel } from '../core/releaseChannel';
 
 interface UpdateStore {
   /** 是否正在执行更新检查 */
@@ -59,7 +60,7 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
         ...(silent ? {} : { modalOpen: true, updateResult: null }),
       });
 
-      // 调用后端 IPC 接口请求 GitHub Release
+      // 调用后端 IPC 接口请求当前渠道（GitHub / 腾讯云 CNB）的 Release
       const result = await ipc.checkForUpdates();
 
       set({
@@ -68,7 +69,7 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      const friendlyError = translateUpdateCheckError(msg);
+      const friendlyError = translateUpdateCheckError(msg, RELEASE_CHANNELS[currentUpdateChannel()].label);
 
       // 主动检查时记录错误展示给用户，静默检查时不打扰用户
       if (!silent) {

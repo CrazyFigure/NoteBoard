@@ -404,8 +404,11 @@ async fn download_archive(
     client: &reqwest::Client,
     archive_path: &Path,
 ) -> Result<(), String> {
+    // 登记地址固定为 GitHub，选择 CNB 渠道时替换为镜像中同名附件
+    let download_url = crate::release_channel::ReleaseChannel::current()
+        .rewrite_download_url(FONT_PACK_DOWNLOAD_URL);
     let mut response = client
-        .get(FONT_PACK_DOWNLOAD_URL)
+        .get(download_url)
         .header(reqwest::header::USER_AGENT, "NoteBoard")
         .send()
         .await
@@ -604,7 +607,7 @@ pub async fn refresh_font_pack_status(app_handle: AppHandle) -> Result<FontPackS
     Ok(status_snapshot("verifying"))
 }
 
-/// 从固定 GitHub Release 下载并启用字体包；系统代理失败或返回 403 时回退直连。
+/// 从固定 GitHub Release（或其 CNB 镜像）下载并启用字体包；系统代理失败或返回 403 时回退直连。
 #[tauri::command]
 pub async fn download_font_pack(app_handle: AppHandle) -> Result<FontPackStatus, String> {
     let root = font_packs_root_dir();
