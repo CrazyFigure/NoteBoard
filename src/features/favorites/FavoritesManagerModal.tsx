@@ -36,6 +36,7 @@ import { openDocument } from '../editor-code/orchestration/openDocument';
 import * as ipc from '../../core/ipc/commands';
 import { showToast } from '../../stores/toastStore';
 import { open } from '@tauri-apps/plugin-dialog';
+import './favoritesManager.css';
 
 // 指针移动超过该距离才视为拖拽，避免点击时轻微抖动误触发
 const DRAG_THRESHOLD = 4;
@@ -507,25 +508,16 @@ export function FavoritesManagerModal() {
               type="button"
               onClick={closeFavoritesModal}
               aria-label="关闭"
+              className="nb-favorites-close-button"
               style={{
-                background: 'transparent',
                 border: 'none',
                 cursor: 'pointer',
-                color: 'var(--editor-text-muted, #64748b)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 padding: 4,
                 borderRadius: 'var(--radius-sm, 4px)',
                 transition: 'all var(--transition-fast)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--toolbar-hover, rgba(0, 0, 0, 0.06))';
-                e.currentTarget.style.color = 'var(--editor-text, #0f172a)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = 'var(--editor-text-muted, #64748b)';
               }}
             >
               <X size={16} />
@@ -610,6 +602,9 @@ export function FavoritesManagerModal() {
             >
               {/* 根目录/全部收藏节点 */}
               <div
+                className="nb-favorites-tree-node"
+                data-active={isRootActive}
+                data-drop-target={dragOverFolderId === 'root'}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -617,12 +612,6 @@ export function FavoritesManagerModal() {
                   padding: '6px 8px',
                   borderRadius: 6,
                   cursor: 'pointer',
-                  background: dragOverFolderId === 'root'
-                    ? 'var(--accent-surface, rgba(59, 130, 246, 0.15))'
-                    : isRootActive
-                    ? 'var(--toolbar-active, rgba(0, 0, 0, 0.08))'
-                    : 'transparent',
-                  border: dragOverFolderId === 'root' ? '1px dashed var(--editor-accent)' : '1px solid transparent',
                   color: isRootActive ? 'var(--editor-accent)' : 'var(--editor-text)',
                   fontWeight: isRootActive ? 600 : 400,
                   transition: 'all var(--transition-fast)',
@@ -632,16 +621,6 @@ export function FavoritesManagerModal() {
                 onClick={() => {
                   setSearchQuery('');
                   setActiveFolder('root');
-                }}
-                onMouseEnter={(e) => {
-                  if (!isRootActive && dragOverFolderId !== 'root') {
-                    e.currentTarget.style.background = 'var(--toolbar-hover, rgba(0, 0, 0, 0.04))';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isRootActive && dragOverFolderId !== 'root') {
-                    e.currentTarget.style.background = 'transparent';
-                  }
                 }}
               >
                 <Star
@@ -724,11 +703,11 @@ export function FavoritesManagerModal() {
                     <button
                       type="button"
                       onClick={() => setActiveFolder('root')}
+                      className="nb-favorites-breadcrumb"
                       style={{
                         background: 'transparent',
                         border: 'none',
                         cursor: 'pointer',
-                        color: 'var(--editor-text-muted)',
                         fontSize: 13,
                         padding: '2px 4px',
                         borderRadius: 4,
@@ -736,8 +715,6 @@ export function FavoritesManagerModal() {
                         alignItems: 'center',
                         gap: 4,
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--editor-accent)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--editor-text-muted)')}
                     >
                       <Star size={13} style={{ color: '#f97316', fill: '#f97316' }} />
                       <span>收藏夹</span>
@@ -764,27 +741,18 @@ export function FavoritesManagerModal() {
                   <button
                     type="button"
                     onClick={handlePickAndAddFavorite}
+                    className="nb-favorites-action-button"
                     style={{
                       display: 'flex',
                       alignItems: 'center',
                       gap: 4,
                       padding: '5px 10px',
                       borderRadius: 'var(--radius-md, 6px)',
-                      border: '1px solid var(--control-border)',
-                      background: 'var(--editor-surface)',
                       color: 'var(--editor-text)',
                       fontSize: 12,
                       fontWeight: 500,
                       cursor: 'pointer',
                       transition: 'all var(--transition-fast)',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'var(--toolbar-hover)';
-                      e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'var(--editor-surface)';
-                      e.currentTarget.style.borderColor = 'var(--control-border)';
                     }}
                   >
                     <FilePlus size={13} style={{ color: 'var(--editor-accent)' }} />
@@ -793,6 +761,7 @@ export function FavoritesManagerModal() {
 
                   <button
                     type="button"
+                    className="nb-favorites-action-button"
                     onClick={() => {
                       setIsCreatingFolder(true);
                       setTimeout(() => newFolderInputRef.current?.focus(), 50);
@@ -803,21 +772,11 @@ export function FavoritesManagerModal() {
                       gap: 4,
                       padding: '5px 10px',
                       borderRadius: 'var(--radius-md, 6px)',
-                      border: '1px solid var(--control-border)',
-                      background: 'var(--editor-surface)',
                       color: 'var(--editor-text)',
                       fontSize: 12,
                       fontWeight: 500,
                       cursor: 'pointer',
                       transition: 'all var(--transition-fast)',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'var(--toolbar-hover)';
-                      e.currentTarget.style.borderColor = 'var(--editor-border-focus)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'var(--editor-surface)';
-                      e.currentTarget.style.borderColor = 'var(--control-border)';
                     }}
                   >
                     <FolderPlus size={13} style={{ color: '#eab308' }} />
@@ -1066,8 +1025,7 @@ export function FavoritesManagerModal() {
                 setIsCreatingFolder(true);
                 setTimeout(() => newFolderInputRef.current?.focus(), 50);
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--toolbar-hover)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              className="nb-favorites-hover-button"
             >
               <FolderPlus size={13} style={{ color: '#eab308' }} />
               <span>新建子文件夹</span>
@@ -1087,8 +1045,7 @@ export function FavoritesManagerModal() {
                       setEditingName(folder.name);
                     }
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--toolbar-hover)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  className="nb-favorites-hover-button"
                 >
                   <Edit2 size={13} />
                   <span>重命名</span>
@@ -1102,8 +1059,7 @@ export function FavoritesManagerModal() {
                       setFolderContextMenu(null);
                       void ipc.revealInExplorer(contextMenuRevealDir);
                     }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--toolbar-hover)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    className="nb-favorites-hover-button"
                   >
                     <FolderOpen size={13} />
                     <span>在文件管理器中定位</span>
@@ -1118,8 +1074,7 @@ export function FavoritesManagerModal() {
                     setFolderContextMenu(null);
                     removeFavorite(targetId);
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--error-surface, rgba(239, 68, 68, 0.1))')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  className="nb-favorites-hover-button nb-favorites-danger-button"
                 >
                   <Trash2 size={13} />
                   <span>删除文件夹</span>
@@ -1201,6 +1156,9 @@ function FolderTreeNode({
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       <div
+        className="nb-favorites-tree-node"
+        data-active={isActive}
+        data-drop-target={isDragOver}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -1209,12 +1167,6 @@ function FolderTreeNode({
           paddingLeft: 8 + depth * 14,
           borderRadius: 6,
           cursor: 'pointer',
-          background: isDragOver
-            ? 'var(--accent-surface, rgba(59, 130, 246, 0.15))'
-            : isActive
-            ? 'var(--toolbar-active, rgba(0, 0, 0, 0.08))'
-            : 'transparent',
-          border: isDragOver ? '1px dashed var(--editor-accent)' : '1px solid transparent',
           color: isActive ? 'var(--editor-accent)' : 'var(--editor-text)',
           fontWeight: isActive ? 600 : 400,
           transition: 'all var(--transition-fast)',
@@ -1222,16 +1174,6 @@ function FolderTreeNode({
         data-fav-tree-folder={node.id}
         onClick={() => onSelectFolder(node.id)}
         onContextMenu={(e) => onContextMenu(e, node.id)}
-        onMouseEnter={(e) => {
-          if (!isActive && !isDragOver) {
-            e.currentTarget.style.background = 'var(--toolbar-hover, rgba(0, 0, 0, 0.04))';
-          }
-        }}
-        onMouseLeave={(e) => {
-          if (!isActive && !isDragOver) {
-            e.currentTarget.style.background = 'transparent';
-          }
-        }}
       >
         {/* 展开/收起箭头 */}
         <span
@@ -1333,8 +1275,10 @@ function FavoriteFolderRow({
 }: FavoriteFolderRowProps) {
   return (
     <div
+      className="nb-favorites-row"
       data-fav-row-id={folder.id}
       data-fav-row-folder="1"
+      data-drop-target={isDragOver}
       onPointerDown={isEditing ? undefined : onPointerDown}
       onClick={onOpenFolder}
       style={{
@@ -1345,27 +1289,9 @@ function FavoriteFolderRow({
         justifyContent: 'space-between',
         padding: '8px 12px',
         borderRadius: 'var(--radius-md, 6px)',
-        border: isDragOver
-          ? '1px dashed var(--editor-accent, #3b82f6)'
-          : '1px solid var(--editor-border, rgba(0, 0, 0, 0.06))',
-        background: isDragOver
-          ? 'var(--accent-surface, rgba(59, 130, 246, 0.08))'
-          : 'var(--editor-surface, #ffffff)',
         cursor: 'pointer',
         transition: 'all var(--transition-fast)',
         userSelect: 'none',
-      }}
-      onMouseEnter={(e) => {
-        if (!isDragOver) {
-          e.currentTarget.style.background = 'var(--toolbar-hover, rgba(0, 0, 0, 0.03))';
-          e.currentTarget.style.borderColor = 'var(--editor-border-focus, rgba(0, 0, 0, 0.15))';
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!isDragOver) {
-          e.currentTarget.style.background = 'var(--editor-surface, #ffffff)';
-          e.currentTarget.style.borderColor = 'var(--editor-border, rgba(0, 0, 0, 0.06))';
-        }
       }}
     >
       <DropIndicatorLine position={dropIndicator} />
@@ -1413,8 +1339,7 @@ function FavoriteFolderRow({
                 aria-label="在文件管理器中定位"
                 onClick={() => void ipc.revealInExplorer(revealDir)}
                 style={iconBtnStyle}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--toolbar-hover)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                className="nb-favorites-hover-button"
               >
                 <FolderOpen size={13} />
               </button>
@@ -1426,8 +1351,7 @@ function FavoriteFolderRow({
               aria-label="重命名"
               onClick={onStartRename}
               style={iconBtnStyle}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--toolbar-hover)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              className="nb-favorites-hover-button"
             >
               <Edit2 size={13} />
             </button>
@@ -1438,8 +1362,7 @@ function FavoriteFolderRow({
               aria-label="删除文件夹"
               onClick={onRemove}
               style={{ ...iconBtnStyle, color: 'var(--error-500)' }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--error-surface, rgba(239, 68, 68, 0.1))')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              className="nb-favorites-hover-button nb-favorites-danger-button"
             >
               <X size={14} />
             </button>
@@ -1487,7 +1410,9 @@ function FavoriteFileRow({
 }: FavoriteFileRowProps) {
   return (
     <div
+      className="nb-favorites-row"
       data-fav-row-id={item.id}
+      data-missing={!exists}
       onPointerDown={isEditing ? undefined : onPointerDown}
       onClick={onOpen}
       style={{
@@ -1497,20 +1422,10 @@ function FavoriteFileRow({
         justifyContent: 'space-between',
         padding: '8px 12px',
         borderRadius: 'var(--radius-md, 6px)',
-        border: '1px solid var(--editor-border, rgba(0, 0, 0, 0.06))',
-        background: exists ? 'var(--editor-surface, #ffffff)' : 'var(--editor-bg, #f8fafc)',
         cursor: 'pointer',
         transition: 'all var(--transition-fast)',
         userSelect: 'none',
         opacity: isDragSource ? 0.45 : exists ? 1 : 0.75,
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = 'var(--toolbar-hover, rgba(0, 0, 0, 0.03))';
-        e.currentTarget.style.borderColor = 'var(--editor-border-focus, rgba(0, 0, 0, 0.15))';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = exists ? 'var(--editor-surface, #ffffff)' : 'var(--editor-bg, #f8fafc)';
-        e.currentTarget.style.borderColor = 'var(--editor-border, rgba(0, 0, 0, 0.06))';
       }}
     >
       <DropIndicatorLine position={dropIndicator} />
@@ -1613,8 +1528,7 @@ function FavoriteFileRow({
                 aria-label="在文件管理器中定位"
                 onClick={() => ipc.revealInExplorer(item.path)}
                 style={iconBtnStyle}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--toolbar-hover)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                className="nb-favorites-hover-button"
               >
                 <FolderOpen size={13} />
               </button>
@@ -1627,8 +1541,7 @@ function FavoriteFileRow({
               aria-label="编辑"
               onClick={onEdit}
               style={iconBtnStyle}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--toolbar-hover)')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              className="nb-favorites-hover-button"
             >
               <Edit2 size={13} />
             </button>
@@ -1640,8 +1553,7 @@ function FavoriteFileRow({
               aria-label="移除收藏"
               onClick={onRemove}
               style={{ ...iconBtnStyle, color: 'var(--error-500)' }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--error-surface, rgba(239, 68, 68, 0.1))')}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              className="nb-favorites-hover-button nb-favorites-danger-button"
             >
               <X size={14} />
             </button>
@@ -1675,7 +1587,6 @@ function DropIndicatorLine({ position }: { position: DropIndicator }) {
 // ── 基础复用样式 ──
 
 const iconBtnStyle: React.CSSProperties = {
-  background: 'transparent',
   border: 'none',
   padding: 5,
   borderRadius: 4,
@@ -1703,7 +1614,6 @@ const menuItemStyle: React.CSSProperties = {
   gap: 8,
   width: '100%',
   padding: '6px 10px',
-  background: 'transparent',
   border: 'none',
   borderRadius: 4,
   textAlign: 'left',
