@@ -713,7 +713,8 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       if (!accepted && changed) {
         stayInSourceMode(content);
         if (readingEntry || policy === 'never') {
-          if (!readingEntry) useToastStore.getState().showToast('此文档的部分写法会被可视化模式规范化，已按设置保持源码模式', 'info');
+          // 与普通文档共用分组键，连续切换时只保留最新一条规范化提示。
+          if (!readingEntry) useToastStore.getState().showToast('此文档的部分写法会被可视化模式规范化，已按设置保持源码模式', 'info', undefined, 'md-visual-normalization');
           return;
         }
         if (!prepared.stable || policy !== 'always') {
@@ -759,7 +760,8 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
         return;
       case 'keepSource':
         stayInSourceMode(content);
-        useToastStore.getState().showToast('此文档的部分写法会被可视化模式规范化，已按设置保持源码模式', 'info');
+        // 与大文档共用分组键，连续切换时只保留最新一条规范化提示。
+        useToastStore.getState().showToast('此文档的部分写法会被可视化模式规范化，已按设置保持源码模式', 'info', undefined, 'md-visual-normalization');
         return;
       case 'ask':
       case 'unsafe':
