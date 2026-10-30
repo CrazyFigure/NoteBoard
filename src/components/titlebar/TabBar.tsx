@@ -122,6 +122,8 @@ function TabItem({ tab, isActive, onActivate, onClose, nativeDragging, arriving 
     useSortable({ id: tab.key });
 
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+  // 记录同一标签内的中键按压，松开时复用安全关闭流程，兼容不派发 auxclick 的 WebView。
+  const middlePressedRef = useRef(false);
   // 右键菜单按点击坐标展开，窄窗口靠右的标签会越出窗口，展开后平移回窗口内
   const menuClamp = useViewportClamp<HTMLDivElement>(Boolean(menuPos), menuPos);
   const menuRef = menuClamp.ref;
@@ -236,16 +238,37 @@ function TabItem({ tab, isActive, onActivate, onClose, nativeDragging, arriving 
           {...listeners}
           data-tab-key={tab.key}
           data-tab-arriving={arriving || undefined}
-          onClick={onActivate}
+          onClick={(e) => {
+            // 中键只走关闭流程；主键及键盘触发的点击才激活标签。
+            if (e.button === 0) onActivate();
+          }}
           onContextMenu={(e) => {
             e.preventDefault();
             e.stopPropagation();
             setMenuPos({ x: e.clientX, y: e.clientY });
           }}
-          onAuxClick={(e) => {
+          onMouseDown={(e) => {
+            if (e.button === 1) {
+              // 中键按下即阻止默认滚动或粘贴；左键拖动与右键菜单保持原行为。
+              e.preventDefault();
+              e.stopPropagation();
+              middlePressedRef.current = true;
+            }
+          }}
+          onMouseUp={(e) => {
             if (e.button === 1) {
               e.preventDefault();
-              onClose();
+              e.stopPropagation();
+              const shouldClose = middlePressedRef.current;
+              middlePressedRef.current = false;
+              if (shouldClose) onClose();
+            }
+          }}
+          onAuxClick={(e) => {
+            // 关闭已在松开中键时处理；此处仅抑制默认行为，避免重复触发未保存确认。
+            if (e.button === 1) {
+              e.preventDefault();
+              e.stopPropagation();
             }
           }}
           role="tab"
@@ -261,6 +284,8 @@ function TabItem({ tab, isActive, onActivate, onClose, nativeDragging, arriving 
             }
           }}
           onMouseLeave={(e) => {
+            // 移出标签取消本次中键点击，避免在其他标签上松开时误关。
+            middlePressedRef.current = false;
             if (!isActive) {
               e.currentTarget.style.background = 'var(--tab-inactive-bg)';
               e.currentTarget.style.color = 'var(--editor-text-secondary)';
@@ -308,7 +333,8 @@ function TabItem({ tab, isActive, onActivate, onClose, nativeDragging, arriving 
             style={closeBtnStyle}
             onClick={(e) => {
               e.stopPropagation();
-              onClose();
+              // 中键统一交给标签的松开事件，避免额外的 click 重复发起关闭。
+              if (e.button === 0) onClose();
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = 'var(--toolbar-hover)';
