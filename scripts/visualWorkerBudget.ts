@@ -1,6 +1,8 @@
 // 后台解析必须保持独立：检查整个 Worker 输出，而非只看入口文件或压缩后的名称。
-import type { Plugin } from 'vite';
-import type { OutputBundle } from 'rollup';
+// rollup 不是直接依赖，pnpm 严格安装下无法直接引用，改用 vite 重新导出的类型。
+import type { Plugin, Rollup } from 'vite';
+
+type OutputBundle = Rollup.OutputBundle;
 
 /** 正式构建实测约 566 kB，留约 24% 余量；原始字节预算避免压缩率掩盖依赖回流。 */
 export const VISUAL_WORKER_MAX_BYTES = 700_000;

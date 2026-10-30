@@ -1,15 +1,15 @@
 // 构建门禁按模块来源检查所有分包，防止改名或动态导入绕过限制。
 import { expect, it } from 'vitest';
-import type { OutputBundle } from 'rollup';
+import type { Rollup } from 'vite';
 import { inspectVisualWorker, visualWorkerBudgetPlugin, VISUAL_WORKER_MAX_BYTES } from '../../scripts/visualWorkerBudget';
 
 /** 提供门禁实际读取的最小输出；模拟的分包名故意不包含任何库名。 */
-function output(bytes = 100): OutputBundle {
+function output(bytes = 100): Rollup.OutputBundle {
   return {
     'entry.js': { type: 'chunk', fileName: 'entry.js', isEntry: true, facadeModuleId: '/src/visualPreparation.worker.ts', code: 'x'.repeat(bytes) },
     'extra.js': { type: 'chunk', fileName: 'extra.js', code: '动态加载的资源' },
     'font.bin': { type: 'asset', fileName: 'font.bin', source: new Uint8Array(50) },
-  } as unknown as OutputBundle;
+  } as unknown as Rollup.OutputBundle;
 }
 
 it('分包改名、pnpm 路径和 Windows 路径均按真实来源拦截', () => {
