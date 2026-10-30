@@ -63,7 +63,9 @@
           "epub"
         ],
         "name": "NoteBoard.DocumentPreview",
-        "description": "NoteBoard 只读文档预览"
+        "description": "NoteBoard 只读文档预览",
+        "role": "Viewer",
+        "rank": "Alternate"
       },
       {
         "ext": [
@@ -71,28 +73,32 @@
           "markdown"
         ],
         "name": "NoteBoard.Markdown",
-        "description": "NoteBoard Markdown 笔记"
+        "description": "NoteBoard Markdown 笔记",
+        "rank": "Alternate"
       },
       {
         "ext": [
           "txt"
         ],
         "name": "NoteBoard.Text",
-        "description": "NoteBoard 文本文件"
+        "description": "NoteBoard 文本文件",
+        "rank": "Alternate"
       },
       {
         "ext": [
           "sql"
         ],
         "name": "NoteBoard.Sql",
-        "description": "NoteBoard SQL 文件"
+        "description": "NoteBoard SQL 文件",
+        "rank": "Alternate"
       },
       {
         "ext": [
           "json"
         ],
         "name": "NoteBoard.Json",
-        "description": "NoteBoard JSON 文件"
+        "description": "NoteBoard JSON 文件",
+        "rank": "Alternate"
       },
       {
         "ext": [
@@ -100,14 +106,16 @@
           "yml"
         ],
         "name": "NoteBoard.Yaml",
-        "description": "NoteBoard YAML 文件"
+        "description": "NoteBoard YAML 文件",
+        "rank": "Alternate"
       },
       {
         "ext": [
           "xml"
         ],
         "name": "NoteBoard.Xml",
-        "description": "NoteBoard XML 文件"
+        "description": "NoteBoard XML 文件",
+        "rank": "Alternate"
       },
       {
         "ext": [
@@ -116,7 +124,8 @@
           "canvas"
         ],
         "name": "NoteBoard.Board",
-        "description": "NoteBoard 画板"
+        "description": "NoteBoard 画板",
+        "rank": "Alternate"
       },
       {
         "ext": [
@@ -130,7 +139,8 @@
           "bmp"
         ],
         "name": "NoteBoard.Image",
-        "description": "NoteBoard 图片"
+        "description": "NoteBoard 图片",
+        "rank": "Alternate"
       }
     ],
     "windows": {
