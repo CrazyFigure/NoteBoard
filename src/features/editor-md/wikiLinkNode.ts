@@ -8,7 +8,7 @@
 //    嵌入卡片点击标题栏打开原笔记；
 // 3. 目标不存在（例如同步还没带来另一端）时显示为虚线弱化样式，文件到达后索引重建自动恢复。
 
-import { InputRule, mergeAttributes, Node, nodePasteRule, type MarkdownToken, type MarkdownTokenizer } from '@tiptap/core';
+import { InputRule, nodePasteRule } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { EditorView, NodeView } from '@tiptap/pm/view';
 import { IS_MOBILE_UI } from '../../core/platform';
@@ -16,40 +16,14 @@ import { useWindowStore } from '../../stores/windowStore';
 import { subscribeNoteIndex } from '../wikilink/noteIndex';
 import { openWikiLink, resolveWikiLinkNow } from '../wikilink/wikiLinkNavigation';
 import { editWikiLinkNode } from '../wikilink/wikiLinkActions';
-import {
-  EMBED_IMAGE_EXTENSIONS,
-  findWikiLinkStart,
-  formatWikiLinkMarkdown,
-  formatWikiLinkInner,
-  matchWikiLinkAtStart,
-  parseWikiLinkInner,
-  wikiLinkLabel,
-  WIKI_LINK_MAX_LENGTH,
-} from '../wikilink/wikiLinkSyntax';
+import { EMBED_IMAGE_EXTENSIONS, formatWikiLinkInner, parseWikiLinkInner, wikiLinkLabel, WIKI_LINK_MAX_LENGTH } from '../wikilink/wikiLinkSyntax';
 import { hideWikiLinkTooltip, scheduleWikiLinkTooltip } from './wikiLinkTooltip';
 import { EMBED_HEIGHT_VAR, embedHeightOf, embedIdentity, renderWikiEmbed } from './wikiLinkEmbed';
 import { placeEmbedAsBlock } from './wikiLinkBlock';
-import { emitRawSegment } from './rawMarkdownSegments';
+import { WikiLinkCore } from './wikiLinkCore';
 
-export interface WikiLinkOptions {
-  /** 所在文档 key（解析相对目标、同名优先级用）；为空时使用活动标签 */
-  docKey: string;
-}
-
-/** tokenizer 附加在 marked token 上的内部文字与嵌入标记 */
-type WikiLinkMarkdownToken = MarkdownToken & { inner?: string; embed?: boolean };
-
-/** 行内 `[[...]]` / `![[...]]` tokenizer：不跨行、内部不含方括号 */
-const wikiLinkTokenizer: MarkdownTokenizer = {
-  name: 'wikiLink',
-  level: 'inline',
-  start: findWikiLinkStart,
-  tokenize(source) {
-    const match = matchWikiLinkAtStart(source);
-    if (!match) return undefined;
-    return { type: 'wikiLink', raw: match.raw, inner: match.inner, embed: match.embed };
-  },
-};
+// 保留既有导出入口，界面和调用方继续使用同一份核心规则。
+export type { WikiLinkOptions } from './wikiLinkCore';
 
 /** 输入 / 粘贴识别用的模式：可选的 `!` 前缀 + `[[...]]` */
 const WIKI_LINK_BODY = `(!?)\\[\\[([^\\[\\]\\r\\n]{1,${WIKI_LINK_MAX_LENGTH}})\\]\\]`;
@@ -250,65 +224,12 @@ class WikiLinkNodeView implements NodeView {
 }
 
 /** 双链行内节点 */
-export const WikiLink = Node.create<WikiLinkOptions>({
-  name: 'wikiLink',
-  group: 'inline',
-  inline: true,
-  atom: true,
-  selectable: true,
-
-  addOptions() {
-    return { docKey: '' };
-  },
-
-  addAttributes() {
-    return {
-      inner: {
-        default: '',
-        parseHTML: (element) => element.getAttribute('data-wiki-link') ?? '',
-        renderHTML: (attributes) => ({ 'data-wiki-link': attributes.inner }),
-      },
-      embed: {
-        default: false,
-        parseHTML: (element) => element.hasAttribute('data-wiki-embed'),
-        renderHTML: (attributes) => (attributes.embed ? { 'data-wiki-embed': '' } : {}),
-      },
-    };
-  },
-
-  parseHTML() {
-    return [{ tag: 'span[data-wiki-link]' }];
-  },
-
-  renderHTML({ node, HTMLAttributes }) {
-    return [
-      'span',
-      mergeAttributes(HTMLAttributes, { class: node.attrs.embed ? 'nb-wikiembed' : 'nb-wikilink' }),
-      wikiLinkLabel(parseWikiLinkInner(String(node.attrs.inner ?? ''))),
-    ];
-  },
-
-  renderText({ node }) {
-    // 复制为纯文本、搜索辅助文本等通道保留原始写法
-    return `${node.attrs.embed ? '!' : ''}[[${String(node.attrs.inner ?? '')}]]`;
-  },
+export const WikiLink = WikiLinkCore.extend({
 
   addNodeView() {
     const options = this.options;
     const getDocKey = () => options.docKey || useWindowStore.getState().activeKey || '';
     return ({ node, view, getPos }) => new WikiLinkNodeView(node, view, getPos, getDocKey);
-  },
-
-  markdownTokenName: 'wikiLink',
-  markdownTokenizer: wikiLinkTokenizer,
-  parseMarkdown(token, helpers) {
-    const wikiToken = token as WikiLinkMarkdownToken;
-    return helpers.createNode('wikiLink', { inner: wikiToken.inner ?? '', embed: wikiToken.embed === true });
-  },
-  renderMarkdown(node) {
-    // 正常保存时 serialize.ts 已把双链转为受保护的原文片段（携带粗体等标记）；这里只服务其它直接序列化的通道。
-    // 原文同样经 emitRawSegment 登记，全文后处理（实体还原、冗余转义清理）不会改动链接内容
-    return emitRawSegment(formatWikiLinkMarkdown(String(node.attrs?.inner ?? ''), node.attrs?.embed === true));
   },
 
   addInputRules() {
@@ -336,5 +257,5 @@ export const WikiLink = Node.create<WikiLinkOptions>({
         getAttributes: (match) => (match[2].trim() ? { inner: match[2], embed: match[1] === '!' } : false),
       }),
     ];
-  },
+  }
 });

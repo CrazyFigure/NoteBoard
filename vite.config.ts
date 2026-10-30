@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from 'node:url';
 import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
+import { visualWorkerBudgetPlugin } from './scripts/visualWorkerBudget';
 
 // Excalidraw zh-CN 语言包增补插件（补齐官方 zh-CN 语言包中遗漏的 fontList、quickSearch、commandPalette 等词条）
 function excalidrawLocalesPlugin() {
@@ -324,5 +325,7 @@ export default defineConfig(({ command, mode }) => ({
   },
   worker: {
     format: 'es', // sectionWorker 需要
+    // Worker 单独构建，必须在自己的完整模块图上执行依赖与体积检查。
+    plugins: () => [visualWorkerBudgetPlugin()],
   },
 }));

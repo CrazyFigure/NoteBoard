@@ -699,7 +699,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     setVisualProgress({ stage: accepted ? 'mounting' : 'starting' });
     try {
       await yieldVisualTask(controller.signal);
-      const prepared = accepted ?? await prepareVisualDocument(content, useSettingsStore.getState().settings, controller.signal, (stage) => {
+      const prepared = accepted ?? await prepareVisualDocument(content, controller.signal, (stage) => {
         if (!controller.signal.aborted) setVisualProgress({ stage });
       });
       if (controller.signal.aborted || targetEditor.isDestroyed || initializedDocKeyRef.current !== docKey) return;

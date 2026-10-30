@@ -1,19 +1,16 @@
-// 主线程与后台线程共用完整 Markdown 扩展，避免为了加速而使用语法不同的简化解析器。
+// 两端共用完整 Markdown 核心规则；后台准备不创建节点视图，也不读取或改写应用 store。
 import { Editor } from '@tiptap/core';
-import { buildExtensions } from './extensions';
+import { buildCoreExtensions } from './extensions/core';
 import { getMarkdownManager, isMarkdownSerializationStable, parseMarkdownToJson, serializeMarkdownFromDoc, withMarkdownSourceAttributes } from './serialize';
 import { computeNormalizationDiff } from './markdownNormalization';
-import type { Settings } from '../../core/ipc/types';
 import type { PreparedVisualDocument, PreparationStage } from './visualPreparation.worker';
-import { useSettingsStore } from '../../stores/settingsStore';
 
 /** 只创建 schema 与 MarkdownManager，不创建 DOM；各阶段间交还事件循环。 */
-export async function prepareVisualDocumentData(content: string, settings: Settings, onStage: (stage: PreparationStage) => Promise<void>): Promise<PreparedVisualDocument> {
+export async function prepareVisualDocumentData(content: string, onStage: (stage: PreparationStage) => Promise<void>): Promise<PreparedVisualDocument> {
   let editor: Editor | undefined;
   try {
-    if (useSettingsStore.getState().settings !== settings) useSettingsStore.setState({ settings });
     await onStage('parsing');
-    editor = new Editor({ element: null, extensions: buildExtensions(), content: { type: 'doc', content: [{ type: 'paragraph' }] } });
+    editor = new Editor({ element: null, extensions: buildCoreExtensions(), content: { type: 'doc', content: [{ type: 'paragraph' }] } });
     const parsed = parseMarkdownToJson(editor, content);
     if (!parsed) throw new Error('Markdown 解析器不可用');
     const document = withMarkdownSourceAttributes(parsed, content);

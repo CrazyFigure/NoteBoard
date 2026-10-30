@@ -3,14 +3,17 @@
 // 详见 docs/09-开发路线图.md
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
 import { Maximize2, Edit2, AlertCircle } from 'lucide-react';
 import { renderPlantUmlToSvg } from './plantumlEncoder';
 import { observe } from '../editor-md/viewportActivation';
-import { diagramFenceMarkdown } from '../editor-md/markdownFence';
 import { scheduleTask, cancelTask } from '../editor-md/viewportWorkScheduler';
 import { useEditorActive } from '../../core/editor/EditorActivityContext';
+import { ChartExportMenu } from '../export/ChartExportMenu';
+import { DiagramFullscreenModal } from '../editor-md/DiagramFullscreenModal';
+import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
+import { Tooltip } from '../../components/Tooltip';
+import { PlantUmlBlockCore } from './plantumlCore';
 
 /** 🔴 S14：任务身份 = editor 实例（文档）+ 节点位置——不同节点互不覆盖 */
 const editorTaskIds = new WeakMap<object, number>();
@@ -23,10 +26,6 @@ function editorTaskId(editor: object): number {
   }
   return id;
 }
-import { ChartExportMenu } from '../export/ChartExportMenu';
-import { DiagramFullscreenModal } from '../editor-md/DiagramFullscreenModal';
-import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
-import { Tooltip } from '../../components/Tooltip';
 
 function PlantUmlComponent({ node, updateAttributes, selected, editor, getPos }: NodeViewProps) {
   const active = useEditorActive();
@@ -382,32 +381,7 @@ function PlantUmlComponent({ node, updateAttributes, selected, editor, getPos }:
 }
 
 /** PlantUML 块级节点 */
-export const PlantUmlBlock = Node.create({
-  name: 'plantumlBlock',
-  // Markdown 序列化为 ```plantuml 围栏；打开时不自动转换为远程渲染预览，保持普通代码块
-  ...diagramFenceMarkdown('plantumlBlock', 'plantuml'),
-  group: 'block',
-  atom: true,
-  selectable: true,
-  isolating: true,
-  addAttributes() {
-    return {
-      code: {
-        default: '',
-      },
-    };
-  },
-  parseHTML() {
-    return [
-      { tag: 'div[data-plantuml]' },
-      { tag: 'pre[data-language="plantuml"]' },
-      { tag: 'pre[data-language="uml"]' },
-      { tag: 'pre[data-language="puml"]' },
-    ];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ['div', mergeAttributes(HTMLAttributes, { 'data-plantuml': '' })];
-  },
+export const PlantUmlBlock = PlantUmlBlockCore.extend({
   addNodeView() {
     return ReactNodeViewRenderer(PlantUmlComponent);
   },
@@ -422,5 +396,5 @@ export const PlantUmlBlock = Node.create({
           });
         },
     } as never;
-  },
+  }
 });

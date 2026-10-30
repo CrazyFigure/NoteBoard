@@ -3,25 +3,18 @@
 // 信息图是纯 DOM 渲染，对外只产出图片：复制/导出 SVG 矢量图或 PNG 位图
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
-import {
-  Maximize2,
-  Edit2,
-  AlertCircle,
-  Sparkles,
-  ChevronDown,
-} from 'lucide-react';
+import { Maximize2, Edit2, AlertCircle, Sparkles, ChevronDown } from 'lucide-react';
 import { parseInfographicCode } from '../infographic/infographicParser';
 import { InfographicRenderer } from '../infographic/infographicRenderer';
 import { InfographicTemplateIcon } from '../infographic/infographicTemplateIcon';
 import { INFOGRAPHIC_TEMPLATES } from '../infographic/infographicTemplates';
 import { observe } from './viewportActivation';
-import { diagramFenceMarkdown } from './markdownFence';
 import { ChartExportMenu } from '../export/ChartExportMenu';
 import { DiagramFullscreenModal } from './DiagramFullscreenModal';
 import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
 import { Tooltip } from '../../components/Tooltip';
+import { InfographicBlockCore } from './infographicCore';
 
 /** Infographic 交互微反馈样式注入（支持 Hover 与 Active 动效反馈） */
 const INFOGRAPHIC_STYLES = `
@@ -529,31 +522,7 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
 }
 
 /** Infographic 块节点定义 */
-export const InfographicBlock = Node.create({
-  name: 'infographicBlock',
-  // Markdown 往返：序列化为 ```infographic 围栏，打开时同语言围栏还原为预览块
-  ...diagramFenceMarkdown('infographicBlock', 'infographic'),
-  group: 'block',
-  atom: true,
-  selectable: true,
-  isolating: true,
-  addAttributes() {
-    return {
-      code: {
-        default: '',
-      },
-    };
-  },
-  parseHTML() {
-    return [
-      { tag: 'div[data-infographic]' },
-      { tag: 'pre[data-language="infographic"]' },
-      { tag: 'pre[data-language="info"]' },
-    ];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ['div', mergeAttributes(HTMLAttributes, { 'data-infographic': '' })];
-  },
+export const InfographicBlock = InfographicBlockCore.extend({
   addNodeView() {
     return ReactNodeViewRenderer(InfographicComponent);
   },
@@ -568,5 +537,5 @@ export const InfographicBlock = Node.create({
           });
         },
     } as never;
-  },
+  }
 });

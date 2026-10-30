@@ -1,6 +1,5 @@
 /// <reference types="vite/client" />
 // 可视化准备任务的生命周期：正式构建中的大文档只在 Worker 中处理，取消、超时或失败都保留源码。
-import type { Settings } from '../../core/ipc/types';
 import type { PreparedVisualDocument, PreparationStage } from './visualPreparation.worker';
 import type { Editor, JSONContent } from '@tiptap/core';
 import { Selection } from '@tiptap/pm/state';
@@ -12,15 +11,8 @@ const PREPARATION_TIMEOUT_MS = 60_000;
 export const VISUAL_PREPARATION_THRESHOLD = 50_000;
 
 /** 创建独占 Worker；所有结束分支都释放线程、计时器及取消监听。 */
-export function prepareVisualDocument(content: string, settings: Settings, signal: AbortSignal, onStage: (stage: PreparationStage) => void): Promise<PreparedVisualDocument> {
-  // Vite 开发模式会为共享 React 节点视图注入依赖 window/document 的热更新代码；
-  // 仅开发预览在分阶段调度中复用同一准备函数，正式构建始终使用可强制终止的独立线程。
-  if (import.meta.env.DEV) {
-    return import('./visualPreparationData').then(({ prepareVisualDocumentData }) => prepareVisualDocumentData(content, settings, async (stage) => {
-      onStage(stage);
-      await yieldVisualTask(signal);
-    }));
-  }
+export function prepareVisualDocument(content: string, signal: AbortSignal, onStage: (stage: PreparationStage) => void): Promise<PreparedVisualDocument> {
+  // 核心扩展不依赖 React 热更新；开发与正式环境均使用可终止的独占线程，不缓存解析器或整篇文档。
   return new Promise((resolve, reject) => {
     if (signal.aborted) { reject(new DOMException('已取消', 'AbortError')); return; }
     const worker = new Worker(new URL('./visualPreparation.worker.ts', import.meta.url), { type: 'module' });
@@ -29,6 +21,10 @@ export function prepareVisualDocument(content: string, settings: Settings, signa
       if (settled) return;
       settled = true;
       worker.terminate();
+      // 释放事件闭包对正文和回调的引用，任务完成或取消后不留下常驻 Worker 状态。
+      worker.onmessage = null;
+      worker.onerror = null;
+      worker.onmessageerror = null;
       clearTimeout(timer);
       signal.removeEventListener('abort', cancel);
       if (error) reject(error);
@@ -45,7 +41,8 @@ export function prepareVisualDocument(content: string, settings: Settings, signa
     };
     worker.onerror = (event) => { event.preventDefault(); finish(new Error('无法准备可视化文档，已保留源码。')); };
     worker.onmessageerror = () => finish(new Error('无法读取可视化准备结果，已保留源码。'));
-    try { worker.postMessage({ content, settings }); }
+    // 解析不依赖界面设置；只复制正文，避免向线程克隆整个应用配置。
+    try { worker.postMessage({ content }); }
     catch { finish(new Error('无法启动可视化准备任务，已保留源码。')); }
   });
 }

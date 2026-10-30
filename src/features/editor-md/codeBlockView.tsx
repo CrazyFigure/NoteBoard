@@ -5,16 +5,16 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react';
 import { contentReactNodeViewRenderer } from './contentNodeView';
-import CodeBlock from '@tiptap/extension-code-block';
 import { Copy, Check, ChevronDown, ChevronRight, Search, X } from 'lucide-react';
-// 语言标签是纯元数据，不让普通 Markdown 首开加载全部高亮语法。
 import { normalizeLanguage, CODE_LANGUAGES } from './codeLanguages';
-import { PREVIEW_FENCE_LANGUAGES, fenceLanguageOf, isBlockCodeToken, renderFencedCode, sourceFenceOf } from './markdownFence';
 import { Tooltip } from '../../components/Tooltip';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useCollapsibleState } from './collapsibleState';
 import { codeHighlightPlugin } from './codeHighlightPlugin';
 import { handleCodeBlockTab } from './tabKeyBehavior';
+import { CodeBlockViewCore } from './codeBlockCore';
+
+// 语言标签是纯元数据，不让普通 Markdown 首开加载全部高亮语法。
 
 /** 支持的代码语言完整列表及检索别名（与斜杠命令共用 codeLanguages 中的定义） */
 const LANGUAGES = CODE_LANGUAGES;
@@ -424,7 +424,7 @@ function CodeBlockComponent({ node, editor, getPos, updateAttributes }: NodeView
 }
 
 // 导出扩展：基于 @tiptap/extension-code-block + React 节点视图（contentReactNodeViewRenderer）
-export const CodeBlockView = CodeBlock.extend({
+export const CodeBlockView = CodeBlockViewCore.extend({
   /** 保留原有回车等快捷键，Tab 单独采用实时设置并保持多行选区与内容完整。 */
   addKeyboardShortcuts() {
     return {
@@ -432,13 +432,6 @@ export const CodeBlockView = CodeBlock.extend({
       Tab: ({ editor }) => handleCodeBlockTab(editor, false),
       'Shift-Tab': ({ editor }) => handleCodeBlockTab(editor, true),
     };
-  },
-  addOptions() {
-    const parent = (this.parent?.() ?? {}) as Record<string, unknown>;
-    return {
-      ...parent,
-      lowlight: null,
-    } as unknown as ReturnType<NonNullable<typeof this.parent>>;
   },
 
   addNodeView() {
@@ -448,34 +441,5 @@ export const CodeBlockView = CodeBlock.extend({
   // 保留父扩展插件，并追加按需加载 lowlight 的 Decoration 高亮插件
   addProseMirrorPlugins() {
     return [...(this.parent?.() ?? []), codeHighlightPlugin()];
-  },
-
-  // sourceFence：原文的开围栏（``` / ```` / ~~~），仅用于序列化时沿用原写法，不参与渲染
-  addAttributes() {
-    return {
-      ...this.parent?.(),
-      sourceFence: {
-        default: null,
-        rendered: false,
-      },
-    };
-  },
-
-  // 解析：Mermaid / Infographic 围栏交给对应预览块节点（返回空数组即让出 token），其余照常生成代码块
-  parseMarkdown: (token, helpers) => {
-    if (!isBlockCodeToken(token)) return [];
-    if (PREVIEW_FENCE_LANGUAGES[fenceLanguageOf(token)]) return [];
-    return helpers.createNode(
-      'codeBlock',
-      { language: token.lang || null, sourceFence: sourceFenceOf(token) },
-      token.text ? [helpers.createTextNode(token.text)] : [],
-    );
-  },
-
-  // 序列化：优先沿用原文围栏；内容会提前闭合它时，围栏长度随行首最长反引号串自适应
-  renderMarkdown: (node, helpers) => {
-    const language = (node.attrs?.language as string | null) || '';
-    const code = node.content ? helpers.renderChildren(node.content) : '';
-    return renderFencedCode(language, code, node.attrs?.sourceFence as string | null | undefined);
-  },
+  }
 });

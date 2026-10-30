@@ -5,7 +5,6 @@ import { buildExtensions } from '../../src/features/editor-md/extensions';
 import { parseMarkdown, serializeMarkdown } from '../../src/features/editor-md/serialize';
 import { mountVisualDocument, prepareVisualDocument } from '../../src/features/editor-md/visualPreparation';
 import { prepareVisualDocumentData } from '../../src/features/editor-md/visualPreparationData';
-import { DEFAULT_SETTINGS } from '../../src/stores/settingsStore';
 
 const editors: Editor[] = [];
 /** 使用真实 schema 与事务的 headless 内核验证内容；DOM 布局与交互另在真实浏览器验证。 */
@@ -22,7 +21,7 @@ describe('大文档可视化准备', () => {
   it('后台数据与正式编辑器的完整语法、原文属性及序列化结果一致', async () => {
     const content = '# 标题\n\n* 列表一\n* 列表二\n\n| 项目 | 说明 |\n| --- | --- |\n| 一 | **重点** |\n\n> [!TIP]\n> 提示\n\n```ts\nconst x = 1\n```\n\n[[笔记]] 与 $x$\n';
     const stages: string[] = [];
-    const prepared = await prepareVisualDocumentData(content, DEFAULT_SETTINGS, async (stage) => { stages.push(stage); });
+    const prepared = await prepareVisualDocumentData(content, async (stage) => { stages.push(stage); });
     const editor = createEditor();
     expect(parseMarkdown(editor, content)).toBe(true);
     expect(prepared.serialized).toBe(serializeMarkdown(editor));
@@ -34,7 +33,7 @@ describe('大文档可视化准备', () => {
 
   it('分批装载列表和表格，完成后与一次性解析一致，事务始终处于程序锁内', async () => {
     const content = Array.from({ length: 80 }, (_, index) => `## 标题 ${index}\n\n- 一\n- 二\n\n| 项目 | 说明 |\n| --- | --- |\n| 一 | 二 |`).join('\n\n');
-    const prepared = await prepareVisualDocumentData(content, DEFAULT_SETTINGS, async () => {});
+    const prepared = await prepareVisualDocumentData(content, async () => {});
     const editor = createEditor();
     const initializing = { current: false };
     const progress: number[] = [];
@@ -52,7 +51,7 @@ describe('大文档可视化准备', () => {
 
   it('取消后停止后续批次，不把部分正文当作完成', async () => {
     const content = Array.from({ length: 1_000 }, (_, index) => `段落 ${index}`).join('\n\n');
-    const prepared = await prepareVisualDocumentData(content, DEFAULT_SETTINGS, async () => {});
+    const prepared = await prepareVisualDocumentData(content, async () => {});
     const editor = createEditor();
     const controller = new AbortController();
     const progress = vi.fn(() => controller.abort());
@@ -65,7 +64,7 @@ describe('大文档可视化准备', () => {
     const container = kind === 'list'
       ? Array.from({ length: 1_000 }, (_, index) => `${index + 7}. 条目 ${index}`).join('\n')
       : '| 项目 | 说明 |\n| --- | --- |\n' + Array.from({ length: 1_000 }, (_, index) => `| ${index} | 正文 |`).join('\n');
-    const prepared = await prepareVisualDocumentData(`开头\n\n${container}\n\n结尾\n`, DEFAULT_SETTINGS, async () => {});
+    const prepared = await prepareVisualDocumentData(`开头\n\n${container}\n\n结尾\n`, async () => {});
     const editor = createEditor();
     const progress = vi.fn();
     await mountVisualDocument(editor, prepared.document, new AbortController().signal, progress, { current: false });
@@ -101,14 +100,20 @@ describe('正式构建的后台线程生命周期', () => {
     vi.stubGlobal('Worker', WorkerStub);
     const controller = new AbortController();
     const onStage = vi.fn();
-    const promise = prepareVisualDocument('原文', DEFAULT_SETTINGS, controller.signal, onStage);
+    const promise = prepareVisualDocument('原文', controller.signal, onStage);
     return { controller, promise, onStage, worker: WorkerStub.instances.at(-1)! };
   }
   it('取消会终止线程，迟到的结果不会继续处理', async () => {
-    const { controller, promise, worker } = start();
+    const { controller, promise, worker, onStage } = start();
+    const lateMessage = worker.onmessage!;
     controller.abort();
     await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
     expect(worker.terminate).toHaveBeenCalledTimes(1);
+    // 即使浏览器已经排入一条消息，取消后也不能继续持有回调或接受结果。
+    expect(worker.onmessage).toBeNull();
+    expect(worker.onerror).toBeNull();
+    lateMessage({ data: { stage: 'checking' } });
+    expect(onStage).not.toHaveBeenCalled();
   });
   it('超时会终止线程并给出源码回退说明', async () => {
     vi.useFakeTimers();
@@ -126,6 +131,8 @@ describe('正式构建的后台线程生命周期', () => {
     task.worker.onmessage!({ data: { result: { serialized: '完成' } } });
     await expect(task.promise).resolves.toMatchObject({ serialized: '完成' });
     expect(task.worker.terminate).toHaveBeenCalledOnce();
+    expect(task.worker.onmessage).toBeNull();
+    expect(task.worker.postMessage).toHaveBeenCalledWith({ content: '原文' });
     expect(vi.getTimerCount()).toBe(0);
     const failed = start();
     failed.worker.onerror!({ preventDefault() {} });
