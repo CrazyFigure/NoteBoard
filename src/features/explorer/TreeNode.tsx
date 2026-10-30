@@ -26,6 +26,7 @@ import { markOpenDocumentDeleted } from '../external/missingFileGuard';
 import { getExplorerFileIcon } from './fileIcons';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { showToast } from '../../stores/toastStore';
 import * as ipc from '../../core/ipc/commands';
 import { syncTrashPath, useSyncStore } from '../../stores/syncStore';
@@ -191,6 +192,8 @@ const TreeNodeImpl = memo(function TreeNodeImpl({
   const setRevealed = useExplorerStore((s) => s.setRevealed);
   const root = useExplorerStore((s) => s.root);
   const setRoot = useExplorerStore((s) => s.setRoot);
+  // 设置「全局 → 资源管理器」：文件单击打开还是双击打开（默认双击）
+  const singleClickOpen = useSettingsStore((s) => s.settings.file.explorerOpenMode === 'single');
 
   // 重命名状态
   const [isRenaming, setIsRenaming] = useState(false);
@@ -296,20 +299,22 @@ const TreeNodeImpl = memo(function TreeNodeImpl({
     }
   };
 
-  // 单击条目：文件则仅选中高亮（不打开文件）；文件夹则选中并展开/收起目录
+  // 单击条目：文件默认仅选中高亮，「单击打开」时直接打开；文件夹则选中并展开/收起目录
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     // 用户手动点击条目本身已在可视区域内，仅设置高亮不触发额外滚动
     setRevealed(node.path, false);
     if (node.isDir) {
       toggle(node.path);
+    } else if (singleClickOpen) {
+      openDocument(node.path);
     }
   };
 
-  // 双击条目：文件则打开文档并激活 Tab
+  // 双击条目：文件则打开文档并激活 Tab（单击打开模式下单击已处理，不重复打开）
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!node.isDir) {
+    if (!node.isDir && !singleClickOpen) {
       openDocument(node.path);
     }
   };

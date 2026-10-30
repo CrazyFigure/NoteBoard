@@ -21,7 +21,7 @@ import { ReleaseNotes } from './ReleaseNotes';
 import { UPDATE_CHANNEL_ORDER, UpdateChannelSelector } from './UpdateChannelSelector';
 import { RELEASE_CHANNELS } from '../../core/releaseChannel';
 import { Tooltip } from '../Tooltip';
-import type { MarkdownNormalizationPolicy, TitleBarButtons } from '../../core/ipc/types';
+import type { ExplorerOpenMode, MarkdownNormalizationPolicy, TitleBarButtons } from '../../core/ipc/types';
 import { IS_MOBILE_UI, IS_NATIVE_MOBILE, IS_WEB } from '../../core/platform';
 import { GlobalShortcutRecorder } from './GlobalShortcutRecorder';
 import { formatShortcut } from '../../core/shortcuts';
@@ -1503,6 +1503,30 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   ))}
                 </div>
                 )}
+
+                {/* 资源管理器：文件树中打开文件的方式（默认双击） */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
+                    <Folder size={15} color="var(--accent-strong)" />
+                    <span>资源管理器</span>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                    <div>
+                      <div>打开文件的方式</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>在左侧文件树中打开文件</div>
+                    </div>
+                    <SettingsSelect<ExplorerOpenMode>
+                      ariaLabel="打开文件的方式"
+                      value={settings.file.explorerOpenMode ?? 'double'}
+                      options={[
+                        { value: 'double', label: '双击打开' },
+                        { value: 'single', label: '单击打开' },
+                      ]}
+                      onChange={(v) => setFile({ explorerOpenMode: v })}
+                    />
+                  </div>
+                </div>
               </div>
             )}
 

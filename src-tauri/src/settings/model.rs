@@ -275,6 +275,9 @@ pub struct FileSettings {
     // 暂存目录使用绝对路径；旧版设置缺失该字段时自动补为应用数据目录下的 staging。
     #[serde(default = "default_staging_directory")]
     pub staging_directory: String,
+    // 资源管理器打开文件的方式：double（双击打开）/ single（单击打开）
+    #[serde(default = "default_explorer_open_mode")]
+    pub explorer_open_mode: String,
 }
 
 impl Default for FileSettings {
@@ -293,6 +296,7 @@ impl Default for FileSettings {
             image_dir_name: "img".to_string(),
             large_file_confirm_mb: 50,
             staging_directory: default_staging_directory(),
+            explorer_open_mode: default_explorer_open_mode(),
         }
     }
 }
@@ -426,6 +430,7 @@ fn default_mindmap_text_align() -> String { "left".to_string() }
 fn default_mindmap_image_fit() -> String { "original".to_string() }
 fn default_image_dir() -> String { "img".to_string() }
 fn default_large_file_mb() -> u32 { 50 }
+fn default_explorer_open_mode() -> String { "double".to_string() }
 // 默认暂存目录与设置文件同属应用数据区，避免依赖用户是否存在“文档”库。
 pub fn default_staging_directory() -> String {
     app_data_dir().join("staging").to_string_lossy().to_string()
@@ -532,6 +537,8 @@ mod tests {
             .expect("旧版设置应能补全新字段");
         assert_eq!(settings.file.image_dir_name, "images");
         assert_eq!(settings.file.staging_directory, default_staging_directory());
+        // 旧版设置缺失打开方式时保持双击打开
+        assert_eq!(settings.file.explorer_open_mode, "double");
     }
 
     /// 旧版设置不含 system 分组时，托盘与全局快捷键均保持关闭

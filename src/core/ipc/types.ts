@@ -376,7 +376,12 @@ export interface FileSettings {
   largeFileConfirmMb: number;
   // 未保存文件的用户可见暂存目录（绝对路径）
   stagingDirectory: string;
+  // 资源管理器打开文件的方式（缺省视为 double 双击打开）
+  explorerOpenMode?: ExplorerOpenMode;
 }
+
+/** 资源管理器打开文件的方式：双击 / 单击 */
+export type ExplorerOpenMode = 'double' | 'single';
 
 // ── 暂存 ──
 
