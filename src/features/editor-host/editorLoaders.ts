@@ -33,6 +33,7 @@ export type EditorLoaderKind =
   | 'preview'
   | 'diagram'
   | 'infographic'
+  | 'html'
   | 'textdiff';
 
 /** 按 kind + language 解析编辑器入口；unsupported 由轻量常驻视图处理（不懒加载） */
@@ -42,6 +43,8 @@ export function resolveEditorKind(tab: Pick<Tab, 'kind' | 'language' | 'toolKind
   if (tab.kind === 'code') {
     // 信息图 / Mermaid / PlantUML 是独立图表编辑入口（kind=code + 专属 language）
     if (tab.language === 'infographic') return 'infographic';
+    // HTML 网页：源码 + 安全预览分屏编辑器
+    if (tab.language === 'html') return 'html';
     if (tab.language === 'mermaid' || tab.language === 'plantuml') return 'diagram';
     return 'code';
   }

@@ -109,6 +109,7 @@ export const DEFAULT_SETTINGS: Settings = {
     // Rust 不可用时以空值降级；桌面端正常加载后会得到绝对默认路径。
     stagingDirectory: '',
     explorerOpenMode: 'double',
+    htmlOpenMode: 'browser',
   },
   layout: {
     statusBarVisible: true,

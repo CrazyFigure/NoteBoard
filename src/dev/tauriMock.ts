@@ -30,6 +30,38 @@ seed(`${WORKSPACE}/读书/摘录.md`, '# 摘录\n', 2000);
 seed(`${WORKSPACE}/任务看板.bitable`, serializeBitableDocument(createDefaultBitableDocument('任务看板')), 30);
 // 预览插件和跨文件工作台的开发样例，二进制由测试目录按需提供。
 seed(`${WORKSPACE}/快捷笔记.bitable`, serializeBitableDocument(createDefaultBitableDocument('快捷笔记')), 15);
+// HTML 分屏预览样例：外链样式表验证本地样式内联
+seed(`${WORKSPACE}/产品介绍.html`, `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>产品介绍</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 32px; color: #1e293b; }
+    .card { padding: 16px 20px; border-radius: 12px; background: #eff6ff; border: 1px solid #bfdbfe; }
+  </style>
+</head>
+<body>
+  <h1>NoteBoard</h1>
+  <p class="lead">一站式笔记、画板与图表工具。</p>
+  <div class="card">
+    <h2>功能</h2>
+    <ul>
+      <li>Markdown 笔记</li>
+      <li>思维导图</li>
+      <li><a href="#more">了解更多</a></li>
+    </ul>
+  </div>
+  <script>document.body.innerHTML = "脚本不应执行";</script>
+  <h2 id="more">更多</h2>
+  <p>预览不运行脚本。</p>
+</body>
+</html>
+`, 8);
+seed(`${WORKSPACE}/style.css`, `h1 { color: #2563eb; }
+.lead { font-size: 18px; color: #475569; }
+`, 8);
 for(const name of ['sample.doc','sample.docx','sample.xls','sample.xlsx','sample.ppt','sample.pptx','sample.pdf','sample.dwg','sample.dxf','sample.epub'])seed(`${WORKSPACE}/${name}`,'',10);
 
 let mockFontPackState: 'ready' | 'missing' = 'ready';
@@ -339,6 +371,7 @@ function languageOf(name: string): string {
   if (ext === 'md') return 'markdown';
   if (ext === 'json' || ext === 'excalidraw') return 'json';
   if (ext === 'sql') return 'sql';
+  if (ext === 'html' || ext === 'htm') return 'html';
   return 'plaintext';
 }
 
@@ -604,6 +637,12 @@ export function installTauriMock(): void {
           dirs.add(to);
         }
         return null;
+      }
+      // 插件 fs 读取文本文件（HTML 预览内联样式表等）
+      case 'plugin:fs|read_file': {
+        const file = files.get(String(args.path));
+        if (!file) throw new Error(`文件不存在: ${String(args.path)}`);
+        return new TextEncoder().encode(file.content).buffer;
       }
       case 'move_to_trash':
         files.delete(String(args.path));

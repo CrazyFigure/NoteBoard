@@ -309,7 +309,15 @@ pub fn open_with_default_app(path: String) -> Result<(), String> {
             .spawn()
             .map_err(|e| format!("无法打开文件: {}", e))?;
     }
-    #[cfg(all(not(windows), desktop))]
+    // macOS 没有 xdg-open，使用系统自带的 open
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("无法打开文件: {}", e))?;
+    }
+    #[cfg(all(not(windows), not(target_os = "macos"), desktop))]
     {
         std::process::Command::new("xdg-open")
             .arg(&path)

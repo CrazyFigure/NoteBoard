@@ -3,7 +3,7 @@
 // 详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud, ChevronRight, Monitor, History, PanelTop, UserRound, Users } from 'lucide-react';
+import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud, ChevronRight, Monitor, History, PanelTop, UserRound, Users, Globe } from 'lucide-react';
 import { useSettingsStore, useTitleBarButtons } from '../../stores/settingsStore';
 import { THEMES } from '../../core/theme/themes';
 import { contentWidthToPercent, CONTENT_WIDTH_PERCENT_MAP } from '../../core/theme/applyTheme';
@@ -21,7 +21,7 @@ import { ReleaseNotes } from './ReleaseNotes';
 import { UPDATE_CHANNEL_ORDER, UpdateChannelSelector } from './UpdateChannelSelector';
 import { RELEASE_CHANNELS } from '../../core/releaseChannel';
 import { Tooltip } from '../Tooltip';
-import type { ExplorerOpenMode, MarkdownNormalizationPolicy, TitleBarButtons } from '../../core/ipc/types';
+import type { ExplorerOpenMode, HtmlOpenMode, MarkdownNormalizationPolicy, TitleBarButtons } from '../../core/ipc/types';
 import { IS_MOBILE_UI, IS_NATIVE_MOBILE, IS_WEB } from '../../core/platform';
 import { GlobalShortcutRecorder } from './GlobalShortcutRecorder';
 import { formatShortcut } from '../../core/shortcuts';
@@ -1527,6 +1527,33 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     />
                   </div>
                 </div>
+
+                {/* HTML 链接：笔记等文档中点击本地 HTML 链接时交给系统浏览器还是在本软件中分屏预览
+                    （仅桌面端；资源管理器、拖入等入口始终在本软件打开，网页端与移动端始终应用内预览） */}
+                {SUPPORTS_SYSTEM_INTEGRATION && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
+                    <Globe size={15} color="var(--accent-strong)" />
+                    <span>HTML 链接</span>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                    <div>
+                      <div>打开方式</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>点击文档中的本地 HTML 链接</div>
+                    </div>
+                    <SettingsSelect<HtmlOpenMode>
+                      ariaLabel="HTML 链接打开方式"
+                      value={settings.file.htmlOpenMode ?? 'browser'}
+                      options={[
+                        { value: 'browser', label: '系统浏览器' },
+                        { value: 'app', label: '本软件' },
+                      ]}
+                      onChange={(v) => setFile({ htmlOpenMode: v })}
+                    />
+                  </div>
+                </div>
+                )}
               </div>
             )}
 

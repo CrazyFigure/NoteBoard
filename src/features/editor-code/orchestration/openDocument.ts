@@ -11,6 +11,8 @@ import { useLayoutStore } from '../../../stores/layoutStore';
 import { kindFromPath, languageFromPath } from '../../../core/docKind';
 import { prefetchEditor, resolveEditorKind } from '../../editor-host/editorLoaders';
 import { showToast } from '../../../stores/toastStore';
+import { useSettingsStore } from '../../../stores/settingsStore';
+import { IS_NATIVE_MOBILE, IS_WEB } from '../../../core/platform';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
 // ── 打开文件 ──
@@ -69,6 +71,35 @@ function buildTab(key: string, displayName: string, kind: Tab['kind'], language:
     externalStatus: null,
     isDetached: false,
   };
+}
+
+/**
+ * 链接指向的本地 HTML 是否按设置交给系统默认浏览器：仅桌面端生效（网页端与移动端没有可转交的本地浏览器，
+ * 始终应用内预览），缺省设置为系统浏览器。
+ */
+export function shouldOpenHtmlInBrowser(path: string): boolean {
+  if (IS_WEB || IS_NATIVE_MOBILE) return false;
+  if (!/\.html?$/i.test(path)) return false;
+  return useSettingsStore.getState().settings.file.htmlOpenMode !== 'app';
+}
+
+/**
+ * 打开链接指向的本地文件（笔记、思维导图、HTML 预览中的链接）。
+ * 只有跟随链接时 HTML 才按「HTML 链接打开方式」交给系统浏览器；
+ * 资源管理器、拖入、系统转交等入口是用户明确要用本软件打开，直接走 openDocument。
+ */
+export async function openLinkedDocument(path: string): Promise<OpenDocumentResult> {
+  if (shouldOpenHtmlInBrowser(path)) {
+    try {
+      await ipc.openWithDefaultApp(path);
+      return 'opened';
+    } catch (e) {
+      // 系统没有可用的默认程序时退回应用内预览，不让文件打不开
+      console.error('用系统浏览器打开 HTML 失败:', e);
+      showToast('无法唤起系统浏览器，已在本软件中打开', 'warning');
+    }
+  }
+  return openDocument(path);
 }
 
 /** 打开文档（对外入口；already-open 重试经 openDocumentInternal 受限递归） */

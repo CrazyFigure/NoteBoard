@@ -93,9 +93,11 @@ export function StatusBar() {
               ? 'YAML'
               : doc.language === 'xml'
                 ? 'XML'
-                : doc.language === 'markdown'
-                  ? 'Markdown'
-                  : '纯文本';
+                : doc.language === 'html'
+                  ? 'HTML'
+                  : doc.language === 'markdown'
+                    ? 'Markdown'
+                    : '纯文本';
 
   return (
     <div

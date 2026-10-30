@@ -228,6 +228,12 @@ export async function saveAs(originalKey: string, _content: string): Promise<boo
       { name: '信息图源码 (*.infographic)', extensions: ['infographic', 'ig'] },
       { name: '全部文件 (*.*)', extensions: ['*'] },
     ];
+  } else if (doc?.language === 'html') {
+    defaultExtension = 'html';
+    filters = [
+      { name: 'HTML 网页 (*.html)', extensions: ['html', 'htm'] },
+      { name: '全部文件 (*.*)', extensions: ['*'] },
+    ];
   } else if (doc?.language === 'plantuml' || originalKey.includes('plantuml')) {
     defaultExtension = 'puml';
     filters = [

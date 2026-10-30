@@ -5,7 +5,7 @@
 // preview 为插件提供的二进制只读查看，禁止混入文本保存链路。
 export type DocumentKind = 'markdown' | 'code' | 'board' | 'image' | 'mindmap' | 'drawio' | 'bitable' | 'preview' | 'unsupported';
 // infographic：NoteBoard 自研信息图声明式源码（YAML/JSON），与 md 内嵌 ```infographic 块同源
-export type LanguageId = 'markdown' | 'sql' | 'json' | 'yaml' | 'xml' | 'mermaid' | 'plantuml' | 'infographic' | 'plaintext';
+export type LanguageId = 'markdown' | 'sql' | 'json' | 'yaml' | 'xml' | 'mermaid' | 'plantuml' | 'infographic' | 'html' | 'plaintext';
 export type SavePolicy = 'auto' | 'manual';
 export type ViewMode = 'visual' | 'source';
 export type Encoding = 'utf8' | 'utf8-bom' | 'gbk';
@@ -20,7 +20,7 @@ export type ContentWidth = 'narrow' | 'standard' | 'wide' | 'full' | (string & {
 export const ALL_DOCUMENT_KINDS: DocumentKind[] = ['markdown', 'code', 'board', 'image', 'mindmap', 'drawio', 'bitable', 'preview', 'unsupported'];
 export const ALL_ENCODINGS: Encoding[] = ['utf8', 'utf8-bom', 'gbk'];
 export const ALL_EOLS: Eol[] = ['crlf', 'lf'];
-export const ALL_LANGUAGE_IDS: LanguageId[] = ['markdown', 'sql', 'json', 'yaml', 'xml', 'mermaid', 'plantuml', 'infographic', 'plaintext'];
+export const ALL_LANGUAGE_IDS: LanguageId[] = ['markdown', 'sql', 'json', 'yaml', 'xml', 'mermaid', 'plantuml', 'infographic', 'html', 'plaintext'];
 export const ALL_THEME_IDS: ThemeId[] = ['chen-guang', 'hu-po', 'mo-ye'];
 
 // ── 文档载荷 ──
@@ -378,10 +378,15 @@ export interface FileSettings {
   stagingDirectory: string;
   // 资源管理器打开文件的方式（缺省视为 double 双击打开）
   explorerOpenMode?: ExplorerOpenMode;
+  // 文档中本地 HTML 链接的打开方式（缺省视为 browser 系统默认浏览器；仅桌面端生效）
+  htmlOpenMode?: HtmlOpenMode;
 }
 
 /** 资源管理器打开文件的方式：双击 / 单击 */
 export type ExplorerOpenMode = 'double' | 'single';
+
+/** HTML 链接打开方式：系统默认浏览器 / 本软件分屏预览 */
+export type HtmlOpenMode = 'browser' | 'app';
 
 // ── 暂存 ──
 

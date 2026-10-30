@@ -51,5 +51,7 @@
   "dxf": "preview",
   "epub": "preview",
   "infographic": "code",
-  "ig": "code"
+  "ig": "code",
+  "html": "code",
+  "htm": "code"
 }

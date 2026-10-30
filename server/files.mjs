@@ -24,7 +24,7 @@ export function classify(name) {
   if (['bitable', 'table'].includes(ext)) return ['bitable', 'plaintext'];
   if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pdf', 'dwg', 'dxf', 'epub'].includes(ext)) return ['preview', 'plaintext'];
   if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'svg', 'bmp', 'avif'].includes(ext)) return ['image', 'plaintext'];
-  const language = { sql: 'sql', json: 'json', yaml: 'yaml', yml: 'yaml', xml: 'xml', mmd: 'mermaid', mermaid: 'mermaid', puml: 'plantuml', plantuml: 'plantuml', infographic: 'infographic', ig: 'infographic' }[ext] ?? 'plaintext';
+  const language = { sql: 'sql', json: 'json', yaml: 'yaml', yml: 'yaml', xml: 'xml', mmd: 'mermaid', mermaid: 'mermaid', puml: 'plantuml', plantuml: 'plantuml', infographic: 'infographic', ig: 'infographic', html: 'html', htm: 'html' }[ext] ?? 'plaintext';
   return ['code', language];
 }
 

@@ -157,6 +157,20 @@
   transform: scale(0.94);
 }
 
+/* HTML 双栏编辑器分隔条：悬停浅色提示，拖动中强调色 */
+.nb-html-split-sash {
+  background: transparent;
+  transition: background var(--transition-fast, 120ms ease);
+}
+
+.nb-html-split-sash:hover {
+  background: var(--toolbar-hover, rgba(59, 130, 246, 0.2));
+}
+
+.nb-html-split-sash[data-resizing='true'] {
+  background: var(--editor-accent, #3b82f6);
+}
+
 /* 图片查看器悬浮工具栏的无边框图标按钮 */
 .nb-image-toolbar-btn {
   display: flex;
