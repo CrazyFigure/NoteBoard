@@ -5,15 +5,16 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { Editor } from '@tiptap/core';
+import type { PluginKey } from '@tiptap/pm/state';
 import { EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { EditorBubbleMenu } from '../../src/features/editor-md/bubbleMenu';
 
-const bubbleProps = vi.hoisted(() => [] as Array<{ shouldShow: unknown; options: unknown }>);
+const bubbleProps = vi.hoisted(() => [] as Array<{ shouldShow: unknown; options: unknown; pluginKey: unknown }>);
 
 vi.mock('@tiptap/react/menus', () => ({
-  BubbleMenu: (props: { shouldShow: unknown; options: unknown; children: React.ReactNode }) => {
-    bubbleProps.push({ shouldShow: props.shouldShow, options: props.options });
+  BubbleMenu: (props: { shouldShow: unknown; options: unknown; pluginKey: unknown; children: React.ReactNode }) => {
+    bubbleProps.push({ shouldShow: props.shouldShow, options: props.options, pluginKey: props.pluginKey });
     return props.children;
   },
 }));
@@ -89,6 +90,48 @@ it('菜单先于正文渲染时应使用挂载后的滚动容器作为定位边�
     expect(options.flip.boundary).toBe(scrollContainer);
     expect(options.shift.boundary).toBe(scrollContainer);
     expect(options.scrollTarget).toBe(scrollContainer);
+  } finally {
+    await act(async () => root.unmount());
+    editor.destroy();
+    host.remove();
+  }
+});
+
+it('鼠标按住拖选期间不显示菜单，松开后按最终选区显示', async () => {
+  const editor = new Editor({ extensions: [StarterKit], content: '<p>选中文字</p>' });
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => {
+      root.render(
+        <div style={{ overflowY: 'auto' }}>
+          <EditorBubbleMenu editor={editor} />
+          <EditorContent editor={editor} />
+        </div>
+      );
+    });
+    const { shouldShow, pluginKey } = bubbleProps.at(-1) as {
+      shouldShow: (props: { editor: Editor; state: Editor['state'] }) => boolean;
+      pluginKey: PluginKey;
+    };
+    const metas: unknown[] = [];
+    editor.on('transaction', ({ transaction }) => metas.push(transaction.getMeta(pluginKey)));
+    editor.commands.setTextSelection({ from: 1, to: 3 });
+
+    // jsdom 无 elementFromPoint，让 ProseMirror 自身的按下处理跳过坐标定位
+    vi.spyOn(editor.view, 'posAtCoords').mockReturnValue(null);
+    editor.view.dom.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+    expect(shouldShow({ editor, state: editor.state })).toBe(false);
+
+    await act(async () => {
+      window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+    });
+    expect(shouldShow({ editor, state: editor.state })).toBe(true);
+    // 松开后主动通知插件显示并重新定位
+    expect(metas).toContain('show');
+    expect(metas).toContain('updatePosition');
   } finally {
     await act(async () => root.unmount());
     editor.destroy();

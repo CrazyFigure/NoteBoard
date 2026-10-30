@@ -5,7 +5,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback, type CSSProperties, type ReactNode } from 'react';
 import { type Editor } from '@tiptap/core';
 import { BubbleMenu } from '@tiptap/react/menus';
-import { NodeSelection, type Selection } from '@tiptap/pm/state';
+import { NodeSelection, PluginKey, type Selection } from '@tiptap/pm/state';
 import {
   Bold,
   Italic,
@@ -416,6 +416,12 @@ export function EditorBubbleMenu({
   }, [editor]);
   const scrollParent = mountedContainer?.editor === editor ? mountedContainer.scrollParent : undefined;
 
+  // 鼠标按住拖选期间不弹出菜单，避免浮层挡住正在选择的文本；松开后再按最终选区显示。
+  // 用 ref 记录而非 state，保持 shouldShow 引用稳定
+  const pointerSelectingRef = useRef(false);
+  // 自定义插件键，供松开鼠标时派发 show 事务（默认键每个实例自动生成，外部无法引用）
+  const [pluginKey] = useState(() => new PluginKey('nbBubbleMenu'));
+
   // TipTap 3.30 的 BubbleMenu 会在 shouldShow/options 引用变化时派发更新事务。
   // 选区变化期间若每次渲染都创建新对象，会形成 React → TipTap 事务 → React 的
   // 无限更新闭环（React #185）；按 editor 身份稳定所有配置引用。
@@ -428,6 +434,8 @@ export function EditorBubbleMenu({
   }) => {
     const { selection } = state;
     if (selection.empty) return false;
+    // 鼠标仍按住（正在拖选）时暂不显示
+    if (pointerSelectingRef.current) return false;
     // 不在代码块中显示浮层菜单
     if (currentEditor.isActive('codeBlock')) return false;
     // 跨单元格多选时不弹出行内文本气泡菜单，交由表格工具栏处理
@@ -437,6 +445,44 @@ export function EditorBubbleMenu({
     if (selection instanceof NodeSelection && selection.node.isAtom) return false;
     return true;
   }, []);
+
+  useEffect(() => {
+    const editorDom = editor.view.dom;
+    let frame = 0;
+    const handleMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      pointerSelectingRef.current = true;
+    };
+    const handleMouseUp = () => {
+      if (!pointerSelectingRef.current) return;
+      pointerSelectingRef.current = false;
+      // 等 ProseMirror 处理完松开时的选区同步后，再按最终选区决定是否显示
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (editor.isDestroyed) return;
+        if (!shouldShow({ editor, state: editor.state })) return;
+        // 插件处理 show 时先定位后显示，隐藏态下定位会被跳过，显示后需再补一次定位
+        editor.view.dispatch(editor.state.tr.setMeta(pluginKey, 'show'));
+        editor.view.dispatch(editor.state.tr.setMeta(pluginKey, 'updatePosition'));
+      });
+    };
+    // 窗口失焦（如拖选中切走）时收不到 mouseup，复位标记避免菜单再也不出现
+    const handleBlur = () => {
+      pointerSelectingRef.current = false;
+    };
+    editorDom.addEventListener('mousedown', handleMouseDown);
+    // 松开位置可能在编辑器外，监听窗口捕获阶段
+    window.addEventListener('mouseup', handleMouseUp, true);
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      cancelAnimationFrame(frame);
+      pointerSelectingRef.current = false;
+      editorDom.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mouseup', handleMouseUp, true);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [editor, shouldShow, pluginKey]);
+
   const menuElementRef = useRef<HTMLDivElement>(null);
   const bubbleMenuOptions = useMemo(() => ({
     // 首次弹出定位修正：插件在算完第一次位置后才给浮层写入 position: fixed 与 width: max-content，
@@ -472,6 +518,7 @@ export function EditorBubbleMenu({
     <BubbleMenu
       ref={menuElementRef}
       editor={editor}
+      pluginKey={pluginKey}
       shouldShow={shouldShow}
       options={bubbleMenuOptions}
     >
