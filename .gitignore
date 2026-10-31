@@ -35,6 +35,7 @@ blob-report/
 !.vscode/extensions.json
 !.vscode/settings.shared.json
 .idea/
+.openidea/
 .workbuddy/
 .agents/
 .claude/
