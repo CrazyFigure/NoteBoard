@@ -44,7 +44,8 @@ import {
 import { queuedAutoSave } from '../session/documentSession';
 import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
 // 🔴 S11：回收前的视图状态在重挂载时恢复（选区/滚动/折叠）
-import { takeViewState } from '../session/editorSuspension';
+import { takeReadingViewState } from '../session/editorSuspension';
+import { restoreTextScroll } from '../reading/restoreTextPosition';
 import { foldEffect } from '@codemirror/language';
 import { createCodeEditorCapabilities } from './editorCapabilities';
 import { CodeEditorContextMenu } from './CodeEditorContextMenu';
@@ -87,6 +88,8 @@ interface CodeEditorProps {
 export function CodeEditor({ docKey }: CodeEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+  // StrictMode 会重放挂载 effect；一次性读取的恢复点须交给同一次挂载产生的每个内核。
+  const initialViewStateRef = useRef<{ docKey: string; state: unknown } | null>(null);
   const doc = useDocumentStore((s) => s.documents.get(docKey));
   const setContent = useDocumentStore((s) => s.setContent);
   const setTabDirty = useWindowStore((s) => s.setTabDirty);
@@ -389,7 +392,10 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
     perfMarkEditorInstanceReady(docKey, instanceId);
 
     // 🔴 S11：恢复回收前保存的视图状态（选区/滚动/折叠；一次性消费）
-    const restoredState = takeViewState(docKey) as {
+    if (initialViewStateRef.current?.docKey !== docKey) {
+      initialViewStateRef.current = { docKey, state: takeReadingViewState(docKey) };
+    }
+    const restoredState = initialViewStateRef.current.state as {
       kind: 'code';
       selection: { anchor: number; head: number } | null;
       scrollTop: number;
@@ -398,7 +404,8 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
     if (restoredState?.kind === 'code') {
       if (restoredState.foldedRanges.length > 0) {
         view.dispatch({
-          effects: restoredState.foldedRanges.map((range) => foldEffect.of(range)),
+          // 文件在关闭期间可能被外部缩短，越界折叠不能使重新打开失败。
+          effects: restoredState.foldedRanges.filter((range) => range.to <= view.state.doc.length).map((range) => foldEffect.of(range)),
         });
       }
       if (restoredState.selection) {
@@ -410,9 +417,7 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
           },
         });
       }
-      if (restoredState.scrollTop > 0 && view.scrollDOM) {
-        view.scrollDOM.scrollTop = restoredState.scrollTop;
-      }
+      restoreTextScroll(view, restoredState.scrollTop);
     }
 
     // 将统一历史节点应用到当前代码编辑器；程序化替换明确不进入原生历史

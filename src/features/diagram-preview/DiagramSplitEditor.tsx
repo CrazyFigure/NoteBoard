@@ -21,7 +21,8 @@ import {
 import { useDocumentStore } from '../../stores/documentStore';
 import { useLayoutStore } from '../../stores/layoutStore';
 // 🔴 S12：回收能力注册与视图状态恢复
-import { takeViewState } from '../session/editorSuspension';
+import { takeReadingViewState } from '../session/editorSuspension';
+import { restoreSplitReadingPosition } from '../reading/restoreTextPosition';
 import { registerEditorCapabilities } from '../../core/editor/editorRegistry';
 import { createSplitEditorCapabilities } from './splitEditorCapabilities';
 import { useWindowStore } from '../../stores/windowStore';
@@ -94,7 +95,7 @@ export function DiagramSplitEditor({ docKey }: DiagramSplitEditorProps) {
 
   useEffect(() => {
     // 重挂载恢复回收前保存的视图状态（布局模式/预览变换；一次性消费）
-    const restored = takeViewState(docKey) as {
+    const restored = takeReadingViewState(docKey) as {
       kind: 'split-diagram';
       layoutMode: LayoutMode;
       zoom: number;
@@ -271,6 +272,7 @@ export function DiagramSplitEditor({ docKey }: DiagramSplitEditorProps) {
     });
 
     editorViewRef.current = view;
+    restoreSplitReadingPosition(docKey, view);
     renderDiagram(initialContent);
 
     return () => {

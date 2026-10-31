@@ -18,7 +18,8 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
 // 🔴 S12：回收能力注册与视图状态恢复（与图表双栏编辑器共用能力实现）
-import { takeViewState } from '../session/editorSuspension';
+import { takeReadingViewState } from '../session/editorSuspension';
+import { restoreSplitReadingPosition } from '../reading/restoreTextPosition';
 import { registerEditorCapabilities } from '../../core/editor/editorRegistry';
 import { createSplitEditorCapabilities } from '../diagram-preview/splitEditorCapabilities';
 import { scheduleAutoSave } from '../session/documentSession';
@@ -131,7 +132,7 @@ export function HtmlSplitEditor({ docKey }: HtmlSplitEditorProps) {
 
   useEffect(() => {
     // 重挂载恢复回收前保存的布局模式（一次性消费）
-    const restored = takeViewState(docKey) as { kind: 'split-diagram'; layoutMode: LayoutMode } | null;
+    const restored = takeReadingViewState(docKey) as { kind: 'split-diagram'; layoutMode: LayoutMode } | null;
     if (restored?.kind === 'split-diagram') setLayoutMode(restored.layoutMode);
     const dispose = registerEditorCapabilities(
       createSplitEditorCapabilities({
@@ -208,6 +209,7 @@ export function HtmlSplitEditor({ docKey }: HtmlSplitEditorProps) {
 
     const view = new EditorView({ state, parent: editorContainerRef.current });
     editorViewRef.current = view;
+    restoreSplitReadingPosition(docKey, view);
 
     // HTML 语法包（含内嵌 CSS / JS）为动态包，加载完成后再注入，避免阻塞首屏
     void loadLanguageExtension('html').then((ext) => {

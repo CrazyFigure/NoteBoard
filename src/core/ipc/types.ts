@@ -372,6 +372,8 @@ export interface FileSettings {
   forceManualSave: boolean;
   showHiddenFiles: boolean;
   restoreSession: boolean;
+  // 重新打开 Markdown / 文本文件时恢复阅读位置；旧配置缺失时默认开启。
+  restoreReadingPosition?: boolean;
   imageDirName: string;
   largeFileConfirmMb: number;
   // 未保存文件的用户可见暂存目录（绝对路径）

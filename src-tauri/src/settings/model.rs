@@ -268,6 +268,9 @@ pub struct FileSettings {
     pub show_hidden_files: bool,
     #[serde(default = "default_true")]
     pub restore_session: bool,
+    // 阅读位置与恢复标签列表独立；旧配置缺失时默认启用。
+    #[serde(default = "default_true")]
+    pub restore_reading_position: bool,
     #[serde(default = "default_image_dir")]
     pub image_dir_name: String,
     #[serde(default = "default_large_file_mb")]
@@ -296,6 +299,7 @@ impl Default for FileSettings {
             force_manual_save: false,
             show_hidden_files: false,
             restore_session: true,
+            restore_reading_position: true,
             image_dir_name: "img".to_string(),
             large_file_confirm_mb: 50,
             staging_directory: default_staging_directory(),
@@ -546,6 +550,16 @@ mod tests {
         assert_eq!(settings.file.explorer_open_mode, "double");
         // 旧版设置缺失 HTML 链接打开方式时保持系统浏览器打开
         assert_eq!(settings.file.html_open_mode, "browser");
+        assert!(settings.file.restore_reading_position);
+    }
+
+    /// 阅读位置开关显式关闭后，保存和重新加载不能被默认开启覆盖。
+    #[test]
+    fn reading_position_can_be_disabled_and_round_tripped() {
+        let settings: Settings = serde_json::from_str(r#"{"file":{"restoreReadingPosition":false}}"#).unwrap();
+        assert!(!settings.file.restore_reading_position);
+        let restored: Settings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+        assert!(!restored.file.restore_reading_position);
     }
 
     /// 旧版设置不含 system 分组时，托盘与全局快捷键均保持关闭

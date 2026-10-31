@@ -12,9 +12,12 @@
 
 import { getEditorCapabilities } from '../../core/editor/editorRegistry';
 import { useWindowStore } from '../../stores/windowStore';
+import { readReadingPosition, flushReadingPositions } from '../reading/readingPosition';
 
 /** 恢复状态存储：docKey → 编辑器视图状态（挂载恢复后取走） */
 const suspendedViewStates = new Map<string, unknown>();
+/** 每次文件生命周期只消费一次持久位置，避免模式切换再次覆盖用户刚刚滚动的位置。 */
+const loadedReadingPositions = new Set<string>();
 
 /** 最近 1 个验证可回收的轻量实例（保活） */
 let keepAliveKey: string | null = null;
@@ -26,11 +29,19 @@ export function saveViewState(docKey: string, state: unknown): void {
 
 /**
  * 取走保存的视图状态（挂载恢复后调用，一次性消费）。
- * 同路径文档关闭再打开是新的文档生命周期，旧状态不再适用。
+ * 会话内快照与独立保存的阅读位置分开，关闭清理不会删除持久记录。
  */
 export function takeViewState(docKey: string): unknown | null {
   const state = suspendedViewStates.get(docKey) ?? null;
   if (state !== null) suspendedViewStates.delete(docKey);
+  return state;
+}
+
+/** 文本类编辑器优先恢复回收快照；新生命周期只补读一次持久阅读位置。 */
+export function takeReadingViewState(docKey: string): unknown | null {
+  const state = takeViewState(docKey)
+    ?? (loadedReadingPositions.has(docKey) ? null : readReadingPosition(docKey));
+  loadedReadingPositions.add(docKey);
   return state;
 }
 
@@ -41,7 +52,10 @@ export function clearViewState(docKey: string): void {
 
 /** 标签关闭时清恢复状态与保活标记 */
 export function markClosed(docKey: string): void {
+  // tracker 在活动标签切走前捕获位置；这里只落盘，避免隐藏内核的零滚动覆盖真实阅读点。
+  flushReadingPositions();
   suspendedViewStates.delete(docKey);
+  loadedReadingPositions.delete(docKey);
   if (keepAliveKey === docKey) keepAliveKey = null;
 }
 
@@ -118,5 +132,6 @@ export async function suspendEditorInstance(docKey: string, options?: { keep?: b
 /** 仅测试：重置全部回收状态 */
 export function resetSuspensionForTest(): void {
   suspendedViewStates.clear();
+  loadedReadingPositions.clear();
   keepAliveKey = null;
 }

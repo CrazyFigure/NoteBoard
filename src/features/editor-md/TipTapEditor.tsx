@@ -89,7 +89,9 @@ import {
 import { registerEditorCapabilities, bumpDocumentRevision, getDocumentRevision } from '../../core/editor/editorRegistry';
 import { createMarkdownEditorCapabilities } from './editorCapabilities';
 // 🔴 S12：回收恢复——挂载时一次性消费捕获的选区/滚动视图状态
-import { takeViewState } from '../session/editorSuspension';
+import { takeReadingViewState } from '../session/editorSuspension';
+import { readReadingPosition } from '../reading/readingPosition';
+import { restoreTextScroll } from '../reading/restoreTextPosition';
 // 🔴 N10.2：实例就绪终点标记（requestId 与打开请求对齐）
 import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
 import { findVisualScrollContainer } from './visualScroller';
@@ -195,7 +197,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
    * visual 内核重挂载在填充 effect 末尾调用；source 内核在 initSourceEditor 后调用。
    */
   const restoreMarkdownViewState = useCallback(() => {
-    const restored = takeViewState(docKey) as RestoredMarkdownViewState | null;
+    const restored = takeReadingViewState(docKey) as RestoredMarkdownViewState | null;
     if (!restored || restored.kind !== 'markdown' || !restored.selection) return;
     const { anchor, head } = restored.selection;
     const scrollTop = restored.scrollTop ?? 0;
@@ -207,7 +209,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       const clampedAnchor = Math.max(0, Math.min(anchor, docLength));
       const clampedHead = Math.max(0, Math.min(head, docLength));
       view.dispatch({ selection: { anchor: clampedAnchor, head: clampedHead } });
-      view.scrollDOM.scrollTop = scrollTop;
+      restoreTextScroll(view, scrollTop);
       return;
     }
 
@@ -270,7 +272,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   useEffect(() => {
     const instanceId = `md-${(nextTipTapInstanceId += 1)}`;
     const disposeCapabilities = registerEditorCapabilities(
-      createMarkdownEditorCapabilities(docKey, instanceId),
+      createMarkdownEditorCapabilities(docKey, instanceId, () => viewModeRef.current),
     );
     // 🔴 N10.2：Markdown 实例就绪终点（会话能力注册完成；source/visual 均适用）
     perfMarkEditorInstanceReady(docKey, instanceId);
@@ -287,7 +289,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       registerMdTipTapEditor(docKey, editor);
       const instanceId = `md-${(nextTipTapInstanceId += 1)}`;
       const disposeCapabilities = registerEditorCapabilities(
-        createMarkdownEditorCapabilities(docKey, instanceId),
+        createMarkdownEditorCapabilities(docKey, instanceId, () => viewModeRef.current),
       );
       // 🔴 N10.2：visual 内核就绪（更精确的可交互终点——实例+能力注册完成）
       perfMarkEditorInstanceReady(docKey, instanceId);
@@ -519,15 +521,16 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     setLargeVerdict(verdict);
     // 先确定初始模式，文件历史的首节点必须采用当前权威内核实际展示的内容
     const tab = useWindowStore.getState().getTab(docKey);
-    const requestedMode = tab?.viewMode ?? (verdict.isLarge ? 'source' : settings.editor.defaultViewMode);
-    // 🔴 R4-03/D02：resolvedMode 单次决策——"用户意图（标签/设置）+ 大文档限制"
-    //    合并后只应用一次，分支间不得互相覆盖。大文档强制 source（visual 内核
-    //    不挂载）；resolvedMode 决定后续全部初始化（内核/历史/基线），不再被
-    //    tab 恢复的 initialMode 二次改写。
-    const resolvedMode: 'visual' | 'source' = verdict.isLarge ? 'source' : requestedMode;
+    // 选区坐标和像素位置属于具体模式；重新打开时先沿用记录的模式，避免源码/可视化错用坐标。
+    const savedReading = readReadingPosition(docKey);
+    const requestedMode = tab?.viewMode ?? (savedReading?.kind === 'markdown' ? savedReading.mode : settings.editor.defaultViewMode);
+    // 大文档首次打开仍默认源码；已有可视化阅读记录时沿用用户上次选择，
+    // 后续仍走后台准备/分批装载和取消回退，避免位置恢复绕过大文档保护。
+    const restoreLargeVisual = savedReading?.kind === 'markdown' && savedReading.mode === 'visual' && requestedMode === 'visual';
+    const resolvedMode: 'visual' | 'source' = verdict.isLarge && !restoreLargeVisual ? 'source' : requestedMode;
     const historyInitialContent = content;
 
-    if (verdict.isLarge) {
+    if (verdict.isLarge && resolvedMode === 'source') {
       setShowLargeBanner(true);
       // 强制 source 模式；大文档不设置内容到 TipTap（太大会卡）→ visual 内核保持未挂载
       setViewMode('source');
@@ -558,6 +561,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     //    历史与 source 内核按 resolvedMode 初始化——不再被 initialMode 覆盖）
     viewModeRef.current = resolvedMode;
     setViewMode(resolvedMode);
+    useWindowStore.getState().setTabViewMode(docKey, resolvedMode);
     initializeDocumentHistory(docKey, historyInitialContent, resolvedMode);
     if (resolvedMode === 'source') {
       // 延迟确保源码容器完成挂载；历史本身已独立于编辑器模式初始化

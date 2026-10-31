@@ -47,6 +47,7 @@ export function EditorStack({
         return (
           <div
             key={tab.key}
+            data-reading-document={tab.key}
             style={{
               display: 'flex',
               flexDirection: 'column',

@@ -65,6 +65,8 @@ function currentTarget(docKey: string): EditorTarget {
 export function createMarkdownEditorCapabilities(
   docKey: string,
   instanceId: string,
+  // 标签先从 store 移除再卸载内核；关闭时仍须按内核最后的真实模式捕获阅读位置。
+  getViewMode?: () => 'visual' | 'source',
 ): EditorCapabilities {
   // 🔴 N04：捕获能力创建（编辑器挂载）时的会话代际——flush 迟到返回时
   //    同路径会话已换代（关闭重开）则提交被丢弃
@@ -147,7 +149,7 @@ export function createMarkdownEditorCapabilities(
     // 🔴 N01：可迁移类型的真实视图捕获——`?? null` 的缺省不再让迁移载荷
     //    假装带上了 Markdown 视图（选区/滚动随迁移传递，目标侧经 saveViewState 恢复）
     captureViewState: () => {
-      if (currentMode(docKey) === 'source') {
+      if ((getViewMode?.() ?? currentMode(docKey)) === 'source') {
         const view = getMdSourceView(docKey);
         if (!view) return undefined;
         const sel = view.state.selection.main;

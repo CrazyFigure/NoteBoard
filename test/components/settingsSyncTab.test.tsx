@@ -10,6 +10,7 @@ import type { SyncConfigFile, SyncProviderConfig } from '../../src/core/ipc/type
 import { useSyncStore } from '../../src/stores/syncStore';
 import { ProviderForm } from '../../src/features/sync/SyncControls';
 import * as ipc from '../../src/core/ipc/commands';
+import { DEFAULT_SETTINGS, useSettingsStore } from '../../src/stores/settingsStore';
 
 // 字体设置与本次页签切换无关，不触发原生字体接口或字体包检查。
 vi.mock('../../src/components/settings/FontSelect', () => ({ FontSelect: () => null }));
@@ -94,6 +95,24 @@ describe('设置页同步与备份切换', () => {
     expect(button).toBeDefined();
     act(() => button!.click());
   }
+
+  it('全局最后一项默认开启阅读位置恢复，并允许手动关闭', async () => {
+    const previous = useSettingsStore.getState().settings;
+    const setFile = vi.spyOn(useSettingsStore.getState(), 'setFile').mockResolvedValue(undefined);
+    try {
+      await act(async () => useSettingsStore.setState({ settings: structuredClone(DEFAULT_SETTINGS) }));
+      switchTab('全局');
+      const checkboxes = host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
+      const toggle = host.querySelector<HTMLInputElement>('[aria-label="重新打开时恢复上次阅读位置"]')!;
+      expect(toggle).not.toBeNull();
+      expect(checkboxes[checkboxes.length - 1]).toBe(toggle);
+      expect(toggle.checked).toBe(true);
+      await act(async () => toggle.click());
+      expect(setFile).toHaveBeenCalledWith({ restoreReadingPosition: false });
+    } finally {
+      await act(async () => useSettingsStore.setState({ settings: previous }));
+    }
+  });
 
   /** 厂商下拉弹层挂在 body；通过角色和可见文字操作，覆盖真实门户渲染。 */
   function chooseStorage(label: string, index = 0) {

@@ -24,7 +24,8 @@ import {
 import { useDocumentStore } from '../../stores/documentStore';
 import { useLayoutStore } from '../../stores/layoutStore';
 // 🔴 S12：回收能力注册与视图状态恢复
-import { takeViewState } from '../session/editorSuspension';
+import { takeReadingViewState } from '../session/editorSuspension';
+import { restoreSplitReadingPosition } from '../reading/restoreTextPosition';
 import { registerEditorCapabilities } from '../../core/editor/editorRegistry';
 import { createSplitEditorCapabilities } from '../diagram-preview/splitEditorCapabilities';
 import { useWindowStore } from '../../stores/windowStore';
@@ -87,7 +88,7 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
   }, [layoutMode, zoom, pan]);
 
   useEffect(() => {
-    const restored = takeViewState(docKey) as {
+    const restored = takeReadingViewState(docKey) as {
       kind: 'split-diagram';
       layoutMode: LayoutMode;
       zoom: number;
@@ -216,6 +217,7 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
     });
 
     editorViewRef.current = view;
+    restoreSplitReadingPosition(docKey, view);
 
     // 语法高亮为动态包，加载完成后再注入，避免阻塞首屏
     void loadLanguageExtension('infographic').then((ext) => {

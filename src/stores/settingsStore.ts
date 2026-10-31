@@ -104,6 +104,7 @@ export const DEFAULT_SETTINGS: Settings = {
     forceManualSave: false,
     showHiddenFiles: false,
     restoreSession: true,
+    restoreReadingPosition: true,
     imageDirName: 'img',
     largeFileConfirmMb: 50,
     // Rust 不可用时以空值降级；桌面端正常加载后会得到绝对默认路径。

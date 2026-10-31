@@ -1554,6 +1554,17 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </div>
                 )}
+
+                {/* 阅读位置各端通用，与启动时是否恢复文件标签独立，默认开启。 */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)', fontSize: 13 }}>
+                  <div>重新打开时恢复上次阅读位置</div>
+                  <input
+                    type="checkbox"
+                    aria-label="重新打开时恢复上次阅读位置"
+                    checked={settings.file.restoreReadingPosition ?? true}
+                    onChange={(e) => setFile({ restoreReadingPosition: e.target.checked })}
+                  />
+                </div>
               </div>
             )}
 

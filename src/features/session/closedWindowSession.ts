@@ -17,6 +17,7 @@ import { useDocumentStore } from '../../stores/documentStore';
 import type { Tab } from '../../stores/windowStore';
 import { hasUnsavedWork } from '../staging/stagingPolicy';
 import { showToast } from '../../stores/toastStore';
+import { captureCurrentReadingPosition, startReadingPositionTracker } from '../reading/readingPositionTracker';
 
 let windowHadTabs = false;
 
@@ -42,6 +43,7 @@ let persistQueue: Promise<void> = Promise.resolve();
  * 同时在标签变化、失焦、定时核对时增量写入快照，覆盖来不及走关闭流程的退出方式。
  */
 export function startClosedWindowSessionTracker(): () => void {
+  const stopReadingPositionTracker = startReadingPositionTracker();
   windowHadTabs = useWindowStore.getState().tabs.length > 0;
   startupRestoreSettled = false;
   snapshotFrozen = false;
@@ -71,6 +73,7 @@ export function startClosedWindowSessionTracker(): () => void {
   document.addEventListener('visibilitychange', handleVisibilityChange);
 
   return () => {
+    stopReadingPositionTracker();
     unsubscribe();
     clearInterval(intervalTimer);
     if (persistTimer) clearTimeout(persistTimer);
@@ -218,6 +221,8 @@ async function persistSnapshotIncrementally(): Promise<void> {
  * excludeKeys 用于“不保存”分支，明确丢弃的标签不会再次出现在恢复列表中。
  */
 export async function saveCurrentWindowSnapshot(excludeKeys: string[] = []): Promise<boolean> {
+  // 即使不恢复启动标签，阅读位置也独立保存；必须先于 await 和关闭卸载捕获。
+  captureCurrentReadingPosition();
   // 最终写入：先冻结增量写入并等待在途写入结束，关闭流程随后移除标签也不会清空快照
   snapshotFrozen = true;
   if (persistTimer) clearTimeout(persistTimer);
