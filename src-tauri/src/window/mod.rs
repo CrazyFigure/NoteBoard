@@ -3,6 +3,9 @@ pub mod intent;
 pub mod commands;
 pub mod print_pdf;
 pub mod render_recovery;
+// GTK 原生打开对话框显式展开路径输入框，仅 Linux 装配。
+#[cfg(target_os = "linux")]
+pub mod path_dialog;
 // 原生标签拖放只在桌面端装配，移动端继续使用窗口内排序。
 #[cfg(desktop)]
 pub mod tab_drag;

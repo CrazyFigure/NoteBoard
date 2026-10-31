@@ -3,6 +3,7 @@
 // 详见 docs/01-需求规格说明.md FR-105 ~ FR-108
 
 import { open } from '@tauri-apps/plugin-dialog';
+import { TARGET_PLATFORM } from '../../core/platform';
 import * as ipc from '../../core/ipc/commands';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
@@ -43,8 +44,8 @@ function showRootInExplorer(root: string, nodes: FileTreeNode[]): void {
  * 选中后逐个打开为 tab
  */
 export async function openFileDialog(): Promise<void> {
-  const paths = await open({
-    multiple: true,
+  const options = {
+    multiple: true as const,
     filters: [
       { name: '全部文件', extensions: ['*'] },
       { name: 'Markdown', extensions: ['md', 'markdown'] },
@@ -55,7 +56,11 @@ export async function openFileDialog(): Promise<void> {
       { name: '画板与绘图', extensions: ['excalidraw', 'drawio', 'dio', 'board'] },
       { name: '图表与信息图脚本', extensions: ['mmd', 'mermaid', 'puml', 'plantuml', 'uml', 'infographic', 'ig'] },
     ],
-  });
+  };
+  // GTK 原生选择器默认隐藏地址栏；Linux 使用显式展开路径输入框的系统对话框。
+  const paths = TARGET_PLATFORM === 'linux'
+    ? await ipc.openLinuxPathDialog(false, options.filters)
+    : await open(options);
   if (!paths || paths.length === 0) return;
 
   for (const path of paths) {
@@ -68,10 +73,10 @@ export async function openFileDialog(): Promise<void> {
  * 将所选目录设为资源管理器根，不自动打开任何文件
  */
 export async function openFolderDialog(): Promise<void> {
-  const selected = await open({
-    directory: true,
-    multiple: false,
-  });
+  // 文件夹选择同样展开 GTK 路径输入框，返回后继续沿用资源管理器与最近打开逻辑。
+  const selected = TARGET_PLATFORM === 'linux'
+    ? (await ipc.openLinuxPathDialog(true))?.[0]
+    : await open({ directory: true, multiple: false });
   if (!selected || Array.isArray(selected)) return;
 
   const root = selected;

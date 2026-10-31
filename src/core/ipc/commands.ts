@@ -3,6 +3,7 @@
 // 详见 docs/08-数据契约与持久化.md §2
 
 import { invoke } from '@tauri-apps/api/core';
+import type { DialogFilter } from '@tauri-apps/plugin-dialog';
 import type {
   DocumentPayload,
   FileTreeNode,
@@ -49,6 +50,11 @@ import type {
 } from './types';
 
 // ── 窗口（S04 打开队列 + 迁移协议） ──
+
+/** Linux 打开文件/文件夹时显式显示 GTK 路径输入框；取消返回 null。 */
+export function openLinuxPathDialog(directory: boolean, filters: DialogFilter[] = []): Promise<string[] | null> {
+  return invoke<string[] | null>('open_linux_path_dialog', { directory, filters });
+}
 
 /** 监听就绪握手：返回 consumer 代际与启动模式；不显示窗口、不消费请求 */
 export function windowListenersReady(label: string): Promise<WindowBootDto> {

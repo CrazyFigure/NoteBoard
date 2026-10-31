@@ -141,6 +141,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            #[cfg(target_os = "linux")]
+            window::path_dialog::open_linux_path_dialog,
             // window（S04 打开队列 + 迁移协议）
             window::commands::window_listeners_ready,
             window::commands::window_shell_ready,
