@@ -5,6 +5,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { EditorView } from '@codemirror/view';
 import { Copy, Clipboard } from 'lucide-react';
+import { columnClipboardText, pasteIntoSelection } from './columnEdit';
 
 interface CodeEditorContextMenuProps {
   view: EditorView;
@@ -15,7 +16,7 @@ interface CodeEditorContextMenuProps {
 /** 读取当前所有非空选区的文本（多光标选区按行分隔符拼接） */
 function getSelectedText(view: EditorView): string {
   const { state } = view;
-  return state.selection.ranges
+  return columnClipboardText(state) ?? state.selection.ranges
     .filter((range) => !range.empty)
     .map((range) => state.sliceDoc(range.from, range.to))
     .join(state.lineBreak);
@@ -84,7 +85,7 @@ export function CodeEditorContextMenu({ view, position, onClose }: CodeEditorCon
     try {
       const text = await navigator.clipboard.readText();
       if (!text) return;
-      view.dispatch(view.state.replaceSelection(text), {
+      view.dispatch(pasteIntoSelection(view.state, text), {
         userEvent: 'input.paste',
         scrollIntoView: true,
       });

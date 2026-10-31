@@ -339,6 +339,8 @@ export interface EditorSettings {
   showWhitespace: boolean;
   // 显示换行符号（↵）
   showLineEndings: boolean;
+  // 允许进入列编辑模式（缺省视为 true；关闭时已进入的编辑器立即退出）
+  enableColumnEdit?: boolean;
   // Markdown 进入可视化模式时的格式规范化策略（缺省视为 ask）
   markdownNormalization?: MarkdownNormalizationPolicy;
   // 可视化模式中代码块默认展开（缺省视为 true；仅影响显示，不写入文件）

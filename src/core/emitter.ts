@@ -23,6 +23,8 @@ export type AppEvents = {
   'open-link-modal': { key?: string };
   // 请求关闭标题栏所有弹出菜单（新建菜单、保存菜单、主题菜单及标签页右键菜单）
   'close-titlebar-menus': void;
+  // 列编辑模式进入或退出（工具栏据此刷新按钮高亮）
+  'column-edit-changed': void;
   // mitt 要求的索引签名
   [key: string]: unknown;
 };

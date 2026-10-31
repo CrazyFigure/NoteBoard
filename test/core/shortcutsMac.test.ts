@@ -6,7 +6,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 // 模拟 Mac：主修饰键为 Command
 vi.mock('@/core/platform', () => ({ USES_COMMAND_KEY: true }));
 
-import { formatShortcut, initShortcuts, registerShortcut } from '@/core/shortcuts';
+import { formatShortcut, initShortcuts, registerShortcut, shouldPreventBrowserDefault } from '@/core/shortcuts';
 
 describe('formatShortcut（Mac）', () => {
   test('Ctrl 显示为 Cmd，Alt 显示为 Option', () => {
@@ -23,6 +23,13 @@ describe('formatShortcut（Mac）', () => {
   test('无修饰键的文本保持不变', () => {
     expect(formatShortcut('Shift + Tab')).toBe('Shift + Tab');
     expect(formatShortcut('Esc')).toBe('Esc');
+  });
+});
+
+describe('浏览器默认快捷键拦截（Mac）', () => {
+  test('Option+←/→ 留给编辑器按词移动', () => {
+    expect(shouldPreventBrowserDefault(new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true }))).toBe(false);
+    expect(shouldPreventBrowserDefault(new KeyboardEvent('keydown', { key: 'ArrowRight', altKey: true }))).toBe(false);
   });
 });
 

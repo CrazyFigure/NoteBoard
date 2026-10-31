@@ -35,6 +35,7 @@ import {
 import { nbSyntaxHighlighting } from './highlightStyle';
 import { nbEditorTheme } from './theme';
 import { tripleClickLineSelection } from './tripleClickLine';
+import { createColumnEditExtension } from './columnEdit';
 import { createIndentationExtension } from './indentation';
 
 // ── 热重配 Compartment ──
@@ -152,6 +153,8 @@ export function createBaseExtensions(options?: BaseExtensionsOptions): Extension
     highlightActiveLine(),
     // 三击选行不带换行符，避免活动行高亮跳到下一行
     tripleClickLineSelection,
+    // 列编辑模式（可在设置中关闭）
+    createColumnEditExtension(),
     // 特殊字符高亮
     highlightSpecialChars(),
     // 括号匹配

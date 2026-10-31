@@ -193,6 +193,9 @@ pub struct EditorSettings {
     // 显示换行符号（默认 false）
     #[serde(default)]
     pub show_line_endings: bool,
+    // 允许进入列编辑模式（默认 true；关闭时已进入的编辑器立即退出）
+    #[serde(default = "default_true")]
+    pub enable_column_edit: bool,
     // Markdown 进入可视化模式时的格式规范化策略：ask（每次询问）/ always（总是规范化）/ never（保持源码模式）
     #[serde(default = "default_markdown_normalization")]
     pub markdown_normalization: String,
@@ -231,6 +234,7 @@ impl Default for EditorSettings {
             enable_block_handle: true,
             show_whitespace: false,
             show_line_endings: false,
+            enable_column_edit: true,
             markdown_normalization: default_markdown_normalization(),
             code_block_default_expanded: true,
             details_default_expanded: false,
@@ -560,6 +564,16 @@ mod tests {
         assert!(!settings.file.restore_reading_position);
         let restored: Settings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
         assert!(!restored.file.restore_reading_position);
+    }
+
+    /// 旧版设置缺少列编辑开关时默认开启；显式关闭后保存和重新加载不被默认值覆盖。
+    #[test]
+    fn column_edit_defaults_on_and_can_be_disabled() {
+        let legacy: Settings = serde_json::from_str(r#"{"editor":{"softWrap":false}}"#).unwrap();
+        assert!(legacy.editor.enable_column_edit);
+        let disabled: Settings = serde_json::from_str(r#"{"editor":{"enableColumnEdit":false}}"#).unwrap();
+        let restored: Settings = serde_json::from_str(&serde_json::to_string(&disabled).unwrap()).unwrap();
+        assert!(!restored.editor.enable_column_edit);
     }
 
     /// 旧版设置不含 system 分组时，托盘与全局快捷键均保持关闭

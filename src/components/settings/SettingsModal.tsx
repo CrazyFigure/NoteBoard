@@ -1042,6 +1042,19 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       onChange={(e) => setEditor({ showIndentGuides: e.target.checked })}
                     />
                   </div>
+
+                  {/* 列编辑模式：关闭时已进入的编辑器立即退出 */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
+                    <div>
+                      <div>列编辑模式</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>{formatShortcut('Alt')} + 拖动或中键拖动，多行同时编辑</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.editor.enableColumnEdit !== false}
+                      onChange={(e) => setEditor({ enableColumnEdit: e.target.checked })}
+                    />
+                  </div>
                 </div>
 
                 {/* ── 3.2 缩进与编辑参数 ── */}

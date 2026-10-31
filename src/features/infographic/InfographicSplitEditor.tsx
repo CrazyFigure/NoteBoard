@@ -40,6 +40,7 @@ import { Tooltip } from '../../components/Tooltip';
 import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
 import { codeMirrorSearchSupport } from '../search/searchController';
 import { tripleClickLineSelection } from '../editor-code/tripleClickLine';
+import { createColumnEditExtension } from '../editor-code/columnEdit';
 import { ReadingModeOverlay } from '../reading/ReadingModeOverlay';
 import { requestReadingMode, useIsReading } from '../reading/readingMode';
 
@@ -169,6 +170,8 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
         highlightActiveLineGutter(),
         // 三击选行不带换行符，避免行号高亮跳到下一行
         tripleClickLineSelection,
+        // 与普通文本文档共用列编辑模式
+        createColumnEditExtension(),
         history(),
         // 信息图源码与普通文本文档共用缩进宽度、制表符偏好和 Tab 按键规则。
         createIndentationExtension(),

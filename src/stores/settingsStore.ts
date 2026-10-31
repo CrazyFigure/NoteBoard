@@ -86,6 +86,7 @@ export const DEFAULT_SETTINGS: Settings = {
     enableBlockHandle: true,
     showWhitespace: false,
     showLineEndings: false,
+    enableColumnEdit: true,
     markdownNormalization: 'ask',
     codeBlockDefaultExpanded: true,
     detailsDefaultExpanded: false,

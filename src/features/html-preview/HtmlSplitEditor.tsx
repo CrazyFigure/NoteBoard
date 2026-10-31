@@ -27,6 +27,7 @@ import { saveDocument } from '../editor-code/orchestration/saveDocument';
 import { Tooltip } from '../../components/Tooltip';
 import { codeMirrorSearchSupport } from '../search/searchController';
 import { tripleClickLineSelection } from '../editor-code/tripleClickLine';
+import { createColumnEditExtension } from '../editor-code/columnEdit';
 import { createIndentationExtension } from '../editor-code/indentation';
 import { loadLanguageExtension } from '../editor-code/languages';
 import { nbSyntaxHighlighting } from '../editor-code/highlightStyle';
@@ -163,6 +164,8 @@ export function HtmlSplitEditor({ docKey }: HtmlSplitEditorProps) {
         highlightActiveLineGutter(),
         // 三击选行不带换行符，避免行号高亮跳到下一行
         tripleClickLineSelection,
+        // 与普通文本文档共用列编辑模式
+        createColumnEditExtension(),
         history(),
         // 与普通文本文档共用缩进宽度、制表符偏好和 Tab 按键规则
         createIndentationExtension(),

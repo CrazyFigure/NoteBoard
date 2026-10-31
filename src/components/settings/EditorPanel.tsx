@@ -90,6 +90,16 @@ export function EditorPanel() {
         />
       </div>
 
+      {/* 列编辑模式：关闭时已进入的编辑器立即退出 */}
+      <div style={rowStyle}>
+        <span style={labelStyle}>列编辑模式</span>
+        <input
+          type="checkbox"
+          checked={settings.editor.enableColumnEdit !== false}
+          onChange={(e) => setEditor({ enableColumnEdit: e.target.checked })}
+        />
+      </div>
+
       {/* Tab 宽度与设置中心共用选项，兼容旧配置中的自定义宽度。 */}
       <div style={rowStyle}>
         <span style={labelStyle}>Tab 大小</span>

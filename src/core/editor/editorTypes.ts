@@ -78,6 +78,9 @@ export interface CodeOpsCapabilities {
   validateJson(scope?: 'all' | 'selection'): void;
   transformCase(mode: 'upper' | 'lower' | 'title'): void;
   formatXml(scope?: 'all' | 'selection'): void;
+  /** 切换列编辑模式（仅 code 编辑器提供，Markdown 工具栏不展示此入口） */
+  toggleColumnEdit?(): void;
+  isColumnEditActive?(): boolean;
 }
 
 /**
