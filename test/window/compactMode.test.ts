@@ -138,7 +138,7 @@ describe('极窄模式', () => {
     expect(nativeWindow.setPosition).not.toHaveBeenCalled();
   });
 
-  it('沉浸阅读等全屏状态下不进入极窄模式', async () => {
+  it('沉浸阅读与画板演示期间不进入极窄模式', async () => {
     layout.getState().setReadingMode(true);
     await compact.requestCompactMode(true);
 

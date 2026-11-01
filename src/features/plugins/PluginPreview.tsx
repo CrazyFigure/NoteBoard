@@ -13,8 +13,12 @@ import { showToast } from '../../stores/toastStore';
 import { getDocumentRevision, registerEditorCapabilities } from '../../core/editor/editorRegistry';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { isDocumentReading, requestReadingMode, useIsReading, useReadingEscape } from '../reading/readingMode';
+import { ReadingWindowControls } from '../reading/ReadingWindowControls';
+import { IS_MOBILE_UI } from '../../core/platform';
 import type { PluginReadingApi } from './pluginTypes';
 import './plugins.css';
+
+const exitPluginReading = () => requestReadingMode(false);
 
 export function PluginPreview({ docKey }: { docKey: string }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -89,5 +93,7 @@ export function PluginPreview({ docKey }: { docKey: string }) {
         : `安装「${pluginName}」插件后即可直接阅读此文件。`} />}
     {loading && !error && <div className="nb-plugin-loading" role="status"><ProgressRing percent={null} size={22} />正在打开文档…</div>}
     <div ref={ref} hidden={!current?.enabled || !!error} style={{ height:'100%', minHeight:0 }} />
+    {/* 窗口控件层级低于插件工具栏：工具栏展开时其末尾按钮仍可点击；移动端由插件工具栏提供退出 */}
+    {isReading && !IS_MOBILE_UI && <ReadingWindowControls onExit={exitPluginReading} belowToolbar />}
   </div>;
 }

@@ -30,6 +30,9 @@ import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './Bita
 import { usePointerReorder } from './usePointerReorder';
 import { Tooltip } from '../../components/Tooltip';
 import { ReadingModeButton } from '../reading/ReadingModeButton';
+import { ReadingWindowControls } from '../reading/ReadingWindowControls';
+import { requestReadingMode, useIsReading, useWindowFullscreen } from '../reading/readingMode';
+import { IS_MOBILE_UI, IS_WEB } from '../../core/platform';
 import {
   areCellValuesEqual,
   coerceCellValue,
@@ -87,8 +90,15 @@ interface BitableEditorProps {
 /** 🔴 S12：实例代际序号（同 docKey 重挂载递增；注册表删除保护） */
 let nextBitableInstanceId = 0;
 
+const exitReading = () => requestReadingMode(false);
+
 export function BitableEditor({ docKey }: BitableEditorProps) {
   const doc = useDocumentStore((s) => s.documents.get(docKey));
+  // 沉浸阅读保留工具栏：桌面与网页显示窗口控件；拖动窗口改用工具栏空白处（全屏窗口不可移动）
+  const isReading = useIsReading(docKey);
+  const readingWindowChrome = isReading && !IS_MOBILE_UI;
+  const readingFullscreen = useWindowFullscreen(readingWindowChrome);
+  const readingDragRegion = readingWindowChrome && !IS_WEB && !readingFullscreen ? { 'data-tauri-drag-region': '' } : undefined;
   const setContent = useDocumentStore((s) => s.setContent);
   const setDirty = useDocumentStore((s) => s.setDirty);
   const setTabDirty = useWindowStore((s) => s.setTabDirty);
@@ -1128,18 +1138,24 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
         flexDirection: 'column',
         background: 'var(--editor-bg, #ffffff)',
         overflow: 'hidden',
+        position: 'relative',
       }}
     >
+      {/* 沉浸阅读：工具栏兼作退出入口，这里补窗口控件；表格内 Esc 用于关闭浮层，提示不显示 Esc */}
+      {readingWindowChrome && <ReadingWindowControls onExit={exitReading} escHint={false} dragStrip={false} />}
+
       {/* 顶部多视图 Tab 栏 + 搜索 + 导出 + 添加行（移动端由样式改为两行：视图 Tab / 搜索与新建） */}
       <div
         className="nb-bitable-toolbar"
+        {...readingDragRegion}
         style={{
           height: 42,
           minHeight: 42,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0 12px',
+          // 沉浸阅读时右侧让出窗口控件胶囊的宽度，展开时不遮挡「新建记录」
+          padding: readingWindowChrome ? '0 190px 0 12px' : '0 12px',
           borderBottom: '1px solid var(--editor-border, #e2e8f0)',
           background: 'var(--editor-surface, #f8fafc)',
           userSelect: 'none',
@@ -1147,7 +1163,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
         }}
       >
         {/* 左侧：多视图 Tab 标签列表 */}
-        <div className="nb-bitable-views" style={{ display: 'flex', alignItems: 'center', gap: 4, overflowX: 'auto', flex: 1 }}>
+        <div className="nb-bitable-views" {...readingDragRegion} style={{ display: 'flex', alignItems: 'center', gap: 4, overflowX: 'auto', flex: 1 }}>
           {data.views.map((v, viewIdx) => {
             const isActive = v.id === activeView.id;
             const isEditingThis = editingViewId === v.id;

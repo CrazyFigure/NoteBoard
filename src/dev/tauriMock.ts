@@ -410,6 +410,7 @@ function payloadOf(path: string) {
 }
 
 let listenerId = 0;
+let mockFullscreen = false;
 
 /** 安装模拟（必须在应用首次 invoke 之前调用） */
 export function installTauriMock(): void {
@@ -421,6 +422,14 @@ export function installTauriMock(): void {
       case 'plugin_command': return import('./pluginMock').then((m)=>m.mockPluginCommand(args));
       case 'read_preview_file': return fetch(`/test-results/plugin-fixtures/${nameOf(String(args.path))}`).then((r)=>{if(!r.ok)throw new Error('请先准备插件查看测试文件');return r.arrayBuffer();});
       case 'plugin:dialog|open': return `${WORKSPACE}/快捷笔记.bitable`;
+      // 窗口全屏：只记录状态，mock 不改变实际视口，也不发原生 resize 事件
+      case 'plugin:window|is_fullscreen': return mockFullscreen;
+      case 'plugin:window|set_fullscreen':
+        mockFullscreen = Boolean(args.value);
+        return null;
+      case 'plugin:window|minimize':
+      case 'set_traffic_lights_hidden':
+        return null;
       // ── 事件与插件 ──
       case 'plugin:event|listen':
       case 'plugin:app|register_listener':

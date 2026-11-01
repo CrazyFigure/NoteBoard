@@ -28,7 +28,7 @@ import { showToast } from '../../stores/toastStore';
 import { Tooltip } from '../../components/Tooltip';
 import { ReadingModeButton } from '../reading/ReadingModeButton';
 import { ReadingModeOverlay } from '../reading/ReadingModeOverlay';
-import { requestReadingMode, useIsReading } from '../reading/readingMode';
+import { requestReadingMode, useIsReading, useWindowFullscreen } from '../reading/readingMode';
 
 interface ImageViewerProps {
   docKey: string;
@@ -146,6 +146,7 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
   const imgRef = useRef<HTMLImageElement>(null);
   // 沉浸阅读：隐藏工具栏与信息条，只留图片
   const isReading = useIsReading(docKey);
+  const readingFullscreen = useWindowFullscreen(isReading);
   const exitReading = useCallback(() => requestReadingMode(false), []);
 
   // 自适应窗口缩放
@@ -174,7 +175,7 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
     setTranslate({ x: 0, y: 0 });
   }, [naturalSize, rotation]);
 
-  // 进入/退出阅读后视口尺寸变化（外壳隐藏与系统全屏动画），稍后重新自适应；首次挂载不触发，保留恢复的视图
+  // 进入/退出阅读或阅读内切换全屏后视口尺寸变化（外壳隐藏与系统全屏动画），稍后重新自适应；首次挂载不触发，保留恢复的视图
   const fitToWindowRef = useRef(fitToWindow);
   fitToWindowRef.current = fitToWindow;
   const readingMountedRef = useRef(false);
@@ -185,7 +186,7 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
     }
     const timer = setTimeout(() => fitToWindowRef.current(), 320);
     return () => clearTimeout(timer);
-  }, [isReading]);
+  }, [isReading, readingFullscreen]);
 
   // 当图片首次加载完成时
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {

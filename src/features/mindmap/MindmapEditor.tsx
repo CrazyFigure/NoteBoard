@@ -74,7 +74,7 @@ import { takeViewState } from '../session/editorSuspension';
 import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
 import { ReadingModeButton } from '../reading/ReadingModeButton';
 import { ReadingModeOverlay } from '../reading/ReadingModeOverlay';
-import { requestReadingMode, useIsReading } from '../reading/readingMode';
+import { requestReadingMode, useIsReading, useWindowFullscreen } from '../reading/readingMode';
 import type { EditorCapabilities } from '../../core/editor/editorTypes';
 import {
   createMindmapSearchCapabilities,
@@ -149,15 +149,17 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
   // 沉浸阅读：隐藏顶部工具栏与撤销栏，画布独占屏幕
   const isReading = useIsReading(docKey);
   const exitReading = useCallback(() => requestReadingMode(false), []);
-  // 进入/退出阅读后画布尺寸变化（外壳隐藏与系统全屏动画），稍后把内容移回画面中央；首次挂载不触发，保留恢复的视图
+  const readingFullscreen = useWindowFullscreen(isReading);
+  // 进入/退出阅读或阅读内切换全屏后画布尺寸变化（外壳隐藏与系统全屏动画），稍后把内容移回画面中央；首次挂载不触发，保留恢复的视图
   // 按前后值比较而非「是否首次」标记：StrictMode 重放 effect 时标记已置位，会误判为切换并在挂载后跳动一次
-  const prevReadingRef = useRef(isReading);
+  const prevReadingViewRef = useRef({ isReading, readingFullscreen });
   useEffect(() => {
-    if (prevReadingRef.current === isReading) return;
-    prevReadingRef.current = isReading;
+    const prev = prevReadingViewRef.current;
+    if (prev.isReading === isReading && prev.readingFullscreen === readingFullscreen) return;
+    prevReadingViewRef.current = { isReading, readingFullscreen };
     const timer = setTimeout(() => rendererRef.current?.centerContent(), 360);
     return () => clearTimeout(timer);
-  }, [isReading]);
+  }, [isReading, readingFullscreen]);
   // 导出默认文件名：已保存的文档用文件名，未保存的新文档统一叫「思维导图」
   const exportBaseName = docKey.startsWith('untitled:')
     ? '思维导图'

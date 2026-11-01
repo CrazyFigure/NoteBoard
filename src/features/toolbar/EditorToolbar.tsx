@@ -46,7 +46,7 @@ export function EditorToolbar({ activeTab, activeEditor }: EditorToolbarProps) {
     return <FloatingExpandHandle onExpand={() => setEditorToolbarVisible(true)} />;
   }
 
-  // 极窄模式：历史记录收进各格式的「更多」菜单，导出与沉浸阅读（需全屏）不提供
+  // 极窄模式：历史记录收进各格式的「更多」菜单，导出与沉浸阅读（与极窄模式互斥）不提供
   const compactMoreItems = compactMode ? (
     <ToolbarDropdownItem
       icon={<History size={14} />}

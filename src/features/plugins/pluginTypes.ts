@@ -27,7 +27,7 @@ export interface PluginCatalog { schemaVersion: number; plugins: CatalogPlugin[]
 export interface PluginReadingApi {
   /** 当前文档是否处于沉浸阅读 */
   get: () => boolean;
-  /** 进入或退出沉浸阅读（外壳隐藏与系统全屏由主程序处理） */
+  /** 进入或退出沉浸阅读（外壳隐藏与窗口控件由主程序处理） */
   set: (enabled: boolean) => void;
   /** 订阅阅读状态变化，返回取消订阅函数 */
   subscribe: (listener: (active: boolean) => void) => () => void;

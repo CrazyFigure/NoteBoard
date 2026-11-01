@@ -159,6 +159,7 @@ pub fn run() {
             window::commands::focus_window,
             window::commands::close_window,
             window::commands::set_show_window_shortcut,
+            window::commands::set_traffic_lights_hidden,
             #[cfg(desktop)]
             window::tab_drag::start_tab_drag,
             #[cfg(desktop)]

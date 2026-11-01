@@ -5194,7 +5194,7 @@ button.nb-callout-icon:active {
 
 /* ═════════════════════════════════════════════════════════
  * 沉浸阅读
- * Markdown 收窄行宽、加大上下留白，隐藏编辑辅助标记；进度条与退出胶囊（各格式共用）浮在正文之上
+ * Markdown 收窄行宽、加大上下留白，隐藏编辑辅助标记；进度条与窗口控件（各格式共用）浮在正文之上
  * ═════════════════════════════════════════════════════════ */
 
 /* 正文列：约 46 字一行的舒适阅读宽度，内联样式需 !important 覆盖 */
@@ -5233,15 +5233,47 @@ button.nb-callout-icon:active {
   transition: transform 120ms linear;
 }
 
+/* 顶部拖动条：外壳隐藏后窗口靠它移动；层级低于格式自带的浮动工具栏 */
+.nb-reading-drag {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 16px;
+  z-index: 15;
+  display: flex;
+}
+
+/* 胶囊展开时的透明遮罩：指针一离开热区就收起并移除，不影响正文点击；层级低于两种热区 */
+.nb-reading-hover-shield {
+  position: fixed;
+  inset: 0;
+  z-index: 14;
+}
+
+/* 右上角热区：常驻但不显示，胶囊是其子元素，指针移入胶囊不算离开 */
+.nb-reading-corner {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 40;
+  width: 120px;
+  height: 48px;
+}
+
+.nb-reading-corner[data-below-toolbar='true'] {
+  z-index: 15;
+}
+
 .nb-reading-capsule {
   position: absolute;
   top: 14px;
   right: 18px;
-  z-index: 40;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 4px 4px 12px;
+  gap: 2px;
+  padding: 4px;
+  white-space: nowrap;
   border-radius: 999px;
   border: 1px solid var(--editor-border);
   background: color-mix(in srgb, var(--editor-surface, var(--editor-bg)) 84%, transparent);
@@ -5253,14 +5285,36 @@ button.nb-callout-icon:active {
   animation: nb-reading-capsule-in 320ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* 指针静止时淡出但不完全消失，退出入口始终可被找到 */
+/* 平时完全隐藏，不遮挡正文也不拦截指针 */
 .nb-reading-capsule[data-visible='false'] {
-  opacity: 0.45;
-  transform: translateY(-2px);
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+}
+
+/* 键盘聚焦到按钮时同样展开；单独成条，避免不支持 :has 时连带其它选择器失效 */
+.nb-reading-capsule:has(:focus-visible) {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+/* 触屏没有悬停：胶囊常驻低透明度，退出入口始终可被找到，热区不拦截正文触摸 */
+@media (hover: none) {
+  .nb-reading-corner {
+    pointer-events: none;
+  }
+
+  .nb-reading-capsule[data-visible='false'] {
+    opacity: 0.45;
+    transform: translateY(-2px);
+    pointer-events: auto;
+  }
 }
 
 .nb-reading-percent {
   min-width: 30px;
+  margin-left: 8px;
   text-align: right;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
@@ -5270,7 +5324,36 @@ button.nb-callout-icon:active {
 .nb-reading-divider {
   width: 1px;
   height: 14px;
+  margin: 0 6px;
   background: var(--editor-border);
+}
+
+.nb-reading-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--editor-text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-reading-icon-btn:hover,
+.nb-reading-icon-btn:focus-visible {
+  background: var(--toolbar-hover);
+  color: var(--accent-strong);
+  outline: none;
+}
+
+.nb-reading-icon-btn:active,
+.nb-reading-icon-btn[data-pressed='true'] {
+  background: var(--toolbar-active);
+  transform: scale(0.92);
 }
 
 .nb-reading-exit {

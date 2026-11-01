@@ -187,9 +187,9 @@ export function requestCompactMode(enabled: boolean, options: { restoreMaximized
   if (!supportsCompactMode()) return Promise.resolve();
   const layout = useLayoutStore.getState();
   if (desiredCompactMode === enabled && layout.compactMode === enabled) return windowOperation;
-  // 沉浸阅读与画板演示占用系统全屏，与缩窄窗口互斥
+  // 沉浸阅读与画板演示会使用系统全屏，与缩窄窗口互斥
   if (enabled && (layout.readingMode || layout.boardPresentationMode)) {
-    showToast('请先退出全屏', 'info');
+    showToast('请先退出沉浸阅读或演示', 'info');
     return Promise.resolve();
   }
 

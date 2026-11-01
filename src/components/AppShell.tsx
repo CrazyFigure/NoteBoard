@@ -60,7 +60,9 @@ import { useFavoritesStore } from '../features/favorites/favoritesStore';
 import { MissingFileDialog } from '../features/external/MissingFileDialog';
 import { ExternalChangeDialog } from '../features/external/ExternalChangeDialog';
 import { checkActiveDocumentStillExists } from '../features/external/missingFileGuard';
-import { isDocumentReading, requestReadingMode, supportsReadingMode } from '../features/reading/readingMode';
+import { isDocumentReading, requestReadingMode, supportsReadingMode, useWindowFullscreen } from '../features/reading/readingMode';
+import { USES_MAC_TRAFFIC_LIGHTS } from '../core/platform';
+import { setTrafficLightsHidden } from '../core/ipc/commands';
 // 历史记录：挂载点只订阅开关，查看界面按需懒加载
 import { HistoryHost } from '../features/versionHistory/HistoryHost';
 import { openVersionHistory, useVersionHistoryStore } from '../features/versionHistory/versionHistoryStore';
@@ -153,6 +155,14 @@ export function AppShell(_props: { children?: React.ReactNode }) {
   useEffect(() => {
     if (useLayoutStore.getState().readingMode) requestReadingMode(false);
   }, [activeKey]);
+
+  // macOS 红绿灯叠加在页面上：窗口大小的阅读没有系统全屏代为隐藏，由这里隐藏；
+  // 挂载时也同步一次，页面进程重载后不会残留隐藏状态；全屏切换后重新应用，防止系统恢复按钮
+  const readingFullscreen = useWindowFullscreen(isReadingMode && USES_MAC_TRAFFIC_LIGHTS);
+  useEffect(() => {
+    if (!USES_MAC_TRAFFIC_LIGHTS) return;
+    void setTrafficLightsHidden(isReadingMode).catch((error) => console.warn('切换红绿灯显示失败:', error));
+  }, [isReadingMode, readingFullscreen]);
 
   // 历史记录查看属于当前文档：切换或关闭标签时退出
   useEffect(() => {

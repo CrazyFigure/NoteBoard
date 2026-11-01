@@ -209,6 +209,11 @@ export function endDockDrag(): Promise<void> {
   return invoke<void>('end_dock_drag');
 }
 
+/** 显示 / 隐藏当前窗口的 macOS 红绿灯（沉浸阅读隐藏外壳时使用，其它平台为空操作） */
+export function setTrafficLightsHidden(hidden: boolean): Promise<void> {
+  return invoke<void>('set_traffic_lights_hidden', { hidden });
+}
+
 // ── 文档注册表 ──
 
 export function registerDocument(

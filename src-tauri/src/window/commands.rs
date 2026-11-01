@@ -17,6 +17,54 @@ use crate::window::{intent, manager};
 use std::sync::Mutex;
 use tauri::{Emitter, Manager, State};
 
+/// 隐藏或恢复 macOS 红绿灯：窗口大小的沉浸阅读没有系统全屏代为隐藏，否则会压在内容左上角。
+/// AppKit 只能在主线程操作，其它平台为空操作。
+#[tauri::command]
+pub fn set_traffic_lights_hidden(window: tauri::WebviewWindow, hidden: bool) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let target = window.clone();
+        window
+            .run_on_main_thread(move || match target.ns_window() {
+                Ok(ns_window) => unsafe { set_standard_buttons_hidden(ns_window, hidden) },
+                Err(e) => log::warn!("读取 NSWindow 失败: {}", e),
+            })
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = (window, hidden);
+    Ok(())
+}
+
+/// 对关闭、最小化、缩放三个标准按钮调用 `-[NSButton setHidden:]`。
+/// 调用方须在主线程执行，且 `ns_window` 为有效的 NSWindow 指针。
+#[cfg(target_os = "macos")]
+unsafe fn set_standard_buttons_hidden(ns_window: *mut std::ffi::c_void, hidden: bool) {
+    use std::ffi::{c_char, c_void};
+
+    extern "C" {
+        fn sel_registerName(name: *const c_char) -> *mut c_void;
+        fn objc_msgSend();
+    }
+    // objc_msgSend 必须按目标方法的真实签名转型后调用
+    type StandardButtonFn = unsafe extern "C" fn(*mut c_void, *mut c_void, usize) -> *mut c_void;
+    type SetHiddenFn = unsafe extern "C" fn(*mut c_void, *mut c_void, bool);
+
+    let msg_send = objc_msgSend as unsafe extern "C" fn() as *const ();
+    let standard_button: StandardButtonFn = std::mem::transmute(msg_send);
+    let set_hidden: SetHiddenFn = std::mem::transmute(msg_send);
+    let standard_button_sel = sel_registerName(c"standardWindowButton:".as_ptr());
+    let set_hidden_sel = sel_registerName(c"setHidden:".as_ptr());
+
+    // NSWindowCloseButton = 0，NSWindowMiniaturizeButton = 1，NSWindowZoomButton = 2
+    for kind in 0..3usize {
+        let button = standard_button(ns_window, standard_button_sel, kind);
+        if !button.is_null() {
+            set_hidden(button, set_hidden_sel, hidden);
+        }
+    }
+}
+
 /// 监听就绪握手：分配 consumer 并返回启动信息（不显示窗口、不消费请求、不确认迁移）
 #[tauri::command]
 pub fn window_listeners_ready(
