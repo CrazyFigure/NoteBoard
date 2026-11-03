@@ -20,6 +20,19 @@
   ; 清理旧版指向不存在 ProgID 的候选项；有效候选项由配置中的 NoteBoard.* 类型提供。
   !insertmacro NB_REMOVE_LEGACY_OPENWITH
 
+  ; 同步运行新程序的保守恢复，覆盖备份丢失且 Office/WPS 仅为当前用户注册的情况。
+  ; 内部参数在单实例和窗口创建前处理，未勾选“安装后启动”也会完成恢复。
+  Push $0
+  ClearErrors
+  ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --repair-file-associations' $0
+  ${If} ${Errors}
+  ${OrIf} $0 != 0
+    WriteRegDWORD HKCU "${NB_REPAIR_STATE_ROOT}" "PendingShellRefresh" 1
+    WriteRegDWORD HKCU "${NB_REPAIR_STATE_ROOT}" "PartialRecovery" 1
+    DetailPrint "部分文件类型缺少原关联，启动 NoteBoard 后可查看恢复提示。"
+  ${EndIf}
+  Pop $0
+
   ; 刷新 Shell 缓存
   !insertmacro NB_INVALIDATE_ASSOCIATION_CACHE
   System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x1000, i 0, i 0)'

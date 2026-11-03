@@ -48,6 +48,18 @@ it.skipIf(process.platform !== 'win32')('Windows 真实注册表回归：新增�
       Goto cleanup
       assert_${id}:`;
   };
+  // 通知标记为 DWORD，不能用字符串读取断言冒充存在性检查。
+  const pending = () => {
+    const id = ++assertion;
+    return `ClearErrors
+      ReadRegDWORD $0 HKCU "${registryRoot}\\RepairState" "PendingShellRefresh"
+      IfErrors fail_${id}
+      StrCmp $0 "1" assert_${id}
+      fail_${id}:
+      StrCpy $9 ${id}
+      Goto cleanup
+      assert_${id}:`;
+  };
   const cases = entries.map(({ name, extension }, index) => {
     const key = `.${extension}`;
     return `
@@ -59,6 +71,7 @@ it.skipIf(process.platform !== 'win32')('Windows 真实注册表回归：新增�
       ${missing(key)}
       !insertmacro NB_INVALIDATE_ASSOCIATION_CACHE
       ${equal('ShellNewCache', 'Classes', 'cached-list')}
+      ${missing('RepairState', 'PendingShellRefresh')}
 
       ; 新装及用户已改用其他程序：只新增有效候选，保留默认值、历史备份和第三方新建菜单。
       WriteRegStr HKCU "${registryRoot}\\${key}" "" "Other.App"
@@ -79,6 +92,8 @@ it.skipIf(process.platform !== 'win32')('Windows 真实注册表回归：新增�
       !insertmacro NB_INVALIDATE_ASSOCIATION_CACHE
       ${missing('ShellNewCache', 'Classes')}
       ${missing('ShellNewCache', '~reserved~')}
+      ${pending()}
+      DeleteRegValue HKCU "${registryRoot}\\RepairState" "PendingShellRefresh"
       ${install(extension, name)}
       ${equal(key, '', 'Original.App')}
 
@@ -134,6 +149,7 @@ it.skipIf(process.platform !== 'win32')('Windows 真实注册表回归：新增�
     !macroend
     !define NB_CLASSES_ROOT "${registryRoot}"
     !define NB_SHELLNEW_CACHE "${registryRoot}\\ShellNewCache"
+    !define NB_REPAIR_STATE_ROOT "${registryRoot}\\RepairState"
     !define MAINBINARYNAME "noteboard"
     !include "${resolve('src-tauri/resources/nsis/file-associations.nsh')}"
     OutFile "${exePath}"

@@ -14,6 +14,9 @@
 !ifndef NB_SHELLNEW_CACHE
   !define NB_SHELLNEW_CACHE "Software\Microsoft\Windows\CurrentVersion\Explorer\Discardable\PostSetup\ShellNew"
 !endif
+!ifndef NB_REPAIR_STATE_ROOT
+  !define NB_REPAIR_STATE_ROOT "Software\crazyfigure\NoteBoard\FileAssociationRepair"
+!endif
 ; 只在实际恢复旧覆盖后失效菜单缓存，新装或用户已改用其他程序时不碰该缓存。
 Var NB_AssociationsRepaired
 
@@ -58,6 +61,8 @@ Var NB_AssociationsRepaired
 ; 这里只删除 Explorer 可重建的列表和时间戳，不修改任何应用的 ShellNew 模板，也不强制重启 Explorer。
 !macro NB_INVALIDATE_ASSOCIATION_CACHE
   ${If} $NB_AssociationsRepaired == 1
+    ; 安装器恢复后由应用首次启动提示重启 Explorer，避免用户一直看到旧的进程菜单缓存。
+    WriteRegDWORD HKCU "${NB_REPAIR_STATE_ROOT}" "PendingShellRefresh" 1
     DeleteRegValue HKCU "${NB_SHELLNEW_CACHE}" "Classes"
     DeleteRegValue HKCU "${NB_SHELLNEW_CACHE}" "~reserved~"
     StrCpy $NB_AssociationsRepaired 0

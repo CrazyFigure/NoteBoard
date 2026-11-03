@@ -40,6 +40,11 @@ pub fn run() {
     perf::init();
 
     let context = tauri::generate_context!();
+    // 安装器调用同一套原生恢复，不创建窗口，也不被运行中的单实例截走；未勾选安装后启动也能修复。
+    #[cfg(windows)]
+    if bootstrap::file_associations::is_installer_repair(std::env::args_os().skip(1)) {
+        std::process::exit(bootstrap::file_associations::run_from_installer(context.config()));
+    }
     #[cfg(windows)]
     let context = {
         let mut context = context;
