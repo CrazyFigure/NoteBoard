@@ -22,5 +22,5 @@ it('原生文件关联保持 Viewer，插件要求新增格式识别版本', () 
   expect(viewer.role).toBe('Viewer');
   expect(viewer.ext).toEqual(expect.arrayContaining(['note', 'goodnotes']));
   const metadata = JSON.parse(readFileSync('plugins/versions.json', 'utf8'));
-  for (const id of ['notability', 'goodnotes']) expect(metadata.find((item: { id: string }) => item.id === id).minAppVersion).toBe('0.7.4');
+  for (const id of ['notability', 'goodnotes']) expect(metadata.find((item: { id: string }) => item.id === id).minAppVersion).toBe('0.7.5');
 });
