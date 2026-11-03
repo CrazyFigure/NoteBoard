@@ -18,6 +18,7 @@ import {
 import { BitableCellEditor } from './BitableCellEditor';
 import { SelectOptionsPanel, OptionBadge } from './BitableOptions';
 import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
+import { BitableContextMenu } from './BitableContextMenu';
 import { usePointerReorder } from './usePointerReorder';
 import { getFieldTypeMeta, FieldSelectButton } from './BitableFieldMeta';
 import { SortRulesPanel } from './BitableSortPanel';
@@ -73,6 +74,8 @@ import {
   Copy,
   Pin,
   PinOff,
+  Rows3,
+  Columns3,
 } from 'lucide-react';
 import { formatShortcut } from '../../core/shortcuts';
 
@@ -3267,235 +3270,185 @@ export function BitableGridView({
         </DragGhost>
       )}
 
-      {/* 单元格与选区悬浮右键上下文菜单 */}
+      {/* 单元格与选区悬浮右键上下文菜单：行、列相关操作分别收进二级菜单 */}
       {cellContextMenu && (
-        <div
-          ref={contextMenuRef}
-          data-no-drag
-          style={{
-            position: 'fixed',
-            left: Math.min(cellContextMenu.x, window.innerWidth - 180),
-            top: Math.min(cellContextMenu.y, window.innerHeight - 380),
-            zIndex: 9999,
-            background: 'var(--editor-surface, #ffffff)',
-            border: '1px solid var(--editor-border, #cbd5e1)',
-            borderRadius: 8,
-            boxShadow: '0 10px 25px rgba(15,23,42,0.15)',
-            padding: 4,
-            minWidth: 160,
-            fontSize: 12,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 2,
-          }}
-          // 阻止 mousedown 冒泡，防止外部监听提前关闭菜单导致按钮 onClick 无法触发
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            className="nb-bitable-menu-item"
-            onClick={() => {
-              const payload = buildClipboardPayload();
-              if (payload !== null) {
-                if (navigator.clipboard?.writeText) {
-                  navigator.clipboard.writeText(payload).catch(() => {});
+        <BitableContextMenu
+          x={cellContextMenu.x}
+          y={cellContextMenu.y}
+          menuRef={contextMenuRef}
+          onClose={() => setCellContextMenu(null)}
+          entries={[
+            {
+              kind: 'item',
+              key: 'copy',
+              icon: <Copy size={13} color="var(--editor-text-muted, #64748b)" />,
+              label: '复制',
+              shortcut: formatShortcut('Ctrl+C'),
+              onSelect: () => {
+                const payload = buildClipboardPayload();
+                if (payload !== null) {
+                  if (navigator.clipboard?.writeText) {
+                    navigator.clipboard.writeText(payload).catch(() => {});
+                  }
+                  showToast(
+                    normalizedSelection?.isSingleCell
+                      ? '已复制单元格数据'
+                      : '已复制选区数据',
+                  );
                 }
-                showToast(
-                  normalizedSelection?.isSingleCell
-                    ? '已复制单元格数据'
-                    : '已复制选区数据',
-                );
-              }
-              setCellContextMenu(null);
-            }}
-          >
-            <Copy size={13} color="var(--editor-text-muted, #64748b)" />
-            <span style={{ flex: 1 }}>复制</span>
-            <span style={{ fontSize: 10, opacity: 0.5 }}>{formatShortcut('Ctrl+C')}</span>
-          </button>
-
-          <button
-            type="button"
-            className="nb-bitable-menu-item"
-            onClick={() => {
-              const payload = buildClipboardPayload();
-              if (payload !== null) {
-                if (navigator.clipboard?.writeText) {
-                  navigator.clipboard.writeText(payload).catch(() => {});
-                }
-              }
-              clearSelectedRange();
-              setCellContextMenu(null);
-            }}
-          >
-            <Scissors size={13} color="var(--editor-text-muted, #64748b)" />
-            <span style={{ flex: 1 }}>剪切</span>
-            <span style={{ fontSize: 10, opacity: 0.5 }}>{formatShortcut('Ctrl+X')}</span>
-          </button>
-
-          <button
-            type="button"
-            className="nb-bitable-menu-item"
-            onClick={async () => {
-              setCellContextMenu(null);
-              try {
-                if (navigator.clipboard?.readText) {
-                  const text = await navigator.clipboard.readText();
-                  if (text) {
-                    applyPaste(text);
-                    return;
+              },
+            },
+            {
+              kind: 'item',
+              key: 'cut',
+              icon: <Scissors size={13} color="var(--editor-text-muted, #64748b)" />,
+              label: '剪切',
+              shortcut: formatShortcut('Ctrl+X'),
+              onSelect: () => {
+                const payload = buildClipboardPayload();
+                if (payload !== null) {
+                  if (navigator.clipboard?.writeText) {
+                    navigator.clipboard.writeText(payload).catch(() => {});
                   }
                 }
-              } catch {
-                // fallback
-              }
-              showToast(formatShortcut('请使用快捷键 Ctrl+V 粘贴'));
-            }}
-          >
-            <Clipboard size={13} color="var(--editor-text-muted, #64748b)" />
-            <span style={{ flex: 1 }}>粘贴</span>
-            <span style={{ fontSize: 10, opacity: 0.5 }}>{formatShortcut('Ctrl+V')}</span>
-          </button>
-
-          <button
-            type="button"
-            className="nb-bitable-menu-item"
-            onClick={() => {
-              clearSelectedRange();
-              setCellContextMenu(null);
-            }}
-          >
-            <Eraser size={13} color="var(--editor-text-muted, #64748b)" />
-            <span style={{ flex: 1 }}>清空选区</span>
-            <span style={{ fontSize: 10, opacity: 0.5 }}>Del</span>
-          </button>
-
-          <div style={{ height: 1, background: 'var(--editor-border, #e2e8f0)', margin: '3px 0' }} />
-
-          {onInsertRowAbove && (
-            <button
-              type="button"
-              className="nb-bitable-menu-item"
-              onClick={() => {
-                onInsertRowAbove(cellContextMenu.targetRowId);
-                setCellContextMenu(null);
-                showToast('已在上方插入行');
-              }}
-            >
-              <ArrowUp size={13} color="var(--editor-text-muted, #64748b)" />
-              <span>在上方插入行</span>
-            </button>
-          )}
-
-          {onInsertRowBelow && (
-            <button
-              type="button"
-              className="nb-bitable-menu-item"
-              onClick={() => {
-                onInsertRowBelow(cellContextMenu.targetRowId);
-                setCellContextMenu(null);
-                showToast('已在下方插入行');
-              }}
-            >
-              <ArrowDown size={13} color="var(--editor-text-muted, #64748b)" />
-              <span>在下方插入行</span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            className="nb-bitable-menu-item"
-            style={{ color: '#ef4444' }}
-            onClick={() => {
-              if (normalizedSelection && selection.type === 'row') {
-                normalizedSelection.selectedRowIds.forEach((id) => onDeleteRow(id));
-              } else {
-                onDeleteRow(cellContextMenu.targetRowId);
-              }
-              setSelection({ type: 'none' });
-              setCellContextMenu(null);
-              showToast('已删除行');
-            }}
-          >
-            <Trash2 size={13} color="#ef4444" />
-            <span>删除行</span>
-          </button>
-
-          <div style={{ height: 1, background: 'var(--editor-border, #e2e8f0)', margin: '3px 0' }} />
-
-          <button
-            type="button"
-            className="nb-bitable-menu-item"
-            onClick={() => {
-              onAddColumn('left', cellContextMenu.targetColId);
-              setCellContextMenu(null);
-              showToast('已在左侧插入列');
-            }}
-          >
-            <MoveLeft size={13} color="var(--editor-text-muted, #64748b)" />
-            <span>在左侧插入列</span>
-          </button>
-
-          <button
-            type="button"
-            className="nb-bitable-menu-item"
-            onClick={() => {
-              onAddColumn('right', cellContextMenu.targetColId);
-              setCellContextMenu(null);
-              showToast('已在右侧插入列');
-            }}
-          >
-            <MoveRight size={13} color="var(--editor-text-muted, #64748b)" />
-            <span>在右侧插入列</span>
-          </button>
-
-          {onClearColumn && (
-            <button
-              type="button"
-              className="nb-bitable-menu-item"
-              onClick={() => {
-                onClearColumn(cellContextMenu.targetColId);
-                setCellContextMenu(null);
-                showToast('已清空整列数据');
-              }}
-            >
-              <Eraser size={13} color="var(--editor-text-muted, #64748b)" />
-              <span>清空整列数据</span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            className="nb-bitable-menu-item"
-            style={{ color: '#ef4444' }}
-            onClick={() => {
-              onDeleteColumn(cellContextMenu.targetColId);
-              setSelection({ type: 'none' });
-              setCellContextMenu(null);
-            }}
-          >
-            <Trash2 size={13} color="#ef4444" />
-            <span>删除列</span>
-          </button>
-
-          {onOpenRecord && cellContextMenu.targetRowId && (
-            <>
-              <div style={{ height: 1, background: 'var(--editor-border, #e2e8f0)', margin: '3px 0' }} />
-              <button
-                type="button"
-                className="nb-bitable-menu-item"
-                onClick={() => {
-                  onOpenRecord(cellContextMenu.targetRowId);
-                  setCellContextMenu(null);
-                }}
-              >
-                <Maximize2 size={13} color="var(--editor-accent, #3b82f6)" />
-                <span>展开记录详情</span>
-              </button>
-            </>
-          )}
-        </div>
+                clearSelectedRange();
+              },
+            },
+            {
+              kind: 'item',
+              key: 'paste',
+              icon: <Clipboard size={13} color="var(--editor-text-muted, #64748b)" />,
+              label: '粘贴',
+              shortcut: formatShortcut('Ctrl+V'),
+              onSelect: async () => {
+                try {
+                  if (navigator.clipboard?.readText) {
+                    const text = await navigator.clipboard.readText();
+                    if (text) {
+                      applyPaste(text);
+                      return;
+                    }
+                  }
+                } catch {
+                  // fallback
+                }
+                showToast(formatShortcut('请使用快捷键 Ctrl+V 粘贴'));
+              },
+            },
+            {
+              kind: 'item',
+              key: 'clear-range',
+              icon: <Eraser size={13} color="var(--editor-text-muted, #64748b)" />,
+              label: '清空选区',
+              shortcut: 'Del',
+              onSelect: clearSelectedRange,
+            },
+            { kind: 'divider', key: 'd1' },
+            {
+              kind: 'submenu',
+              key: 'row',
+              icon: <Rows3 size={13} color="var(--editor-text-muted, #64748b)" />,
+              label: '行操作',
+              children: [
+                onInsertRowAbove && {
+                  kind: 'item',
+                  key: 'row-above',
+                  icon: <ArrowUp size={13} color="var(--editor-text-muted, #64748b)" />,
+                  label: '在上方插入行',
+                  onSelect: () => {
+                    onInsertRowAbove(cellContextMenu.targetRowId);
+                    showToast('已在上方插入行');
+                  },
+                },
+                onInsertRowBelow && {
+                  kind: 'item',
+                  key: 'row-below',
+                  icon: <ArrowDown size={13} color="var(--editor-text-muted, #64748b)" />,
+                  label: '在下方插入行',
+                  onSelect: () => {
+                    onInsertRowBelow(cellContextMenu.targetRowId);
+                    showToast('已在下方插入行');
+                  },
+                },
+                { kind: 'divider', key: 'row-d' },
+                {
+                  kind: 'item',
+                  key: 'row-delete',
+                  icon: <Trash2 size={13} color="#ef4444" />,
+                  label: '删除行',
+                  danger: true,
+                  onSelect: () => {
+                    if (normalizedSelection && selection.type === 'row') {
+                      normalizedSelection.selectedRowIds.forEach((id) => onDeleteRow(id));
+                    } else {
+                      onDeleteRow(cellContextMenu.targetRowId);
+                    }
+                    setSelection({ type: 'none' });
+                    showToast('已删除行');
+                  },
+                },
+              ],
+            },
+            {
+              kind: 'submenu',
+              key: 'col',
+              icon: <Columns3 size={13} color="var(--editor-text-muted, #64748b)" />,
+              label: '列操作',
+              children: [
+                {
+                  kind: 'item',
+                  key: 'col-left',
+                  icon: <MoveLeft size={13} color="var(--editor-text-muted, #64748b)" />,
+                  label: '在左侧插入列',
+                  onSelect: () => {
+                    onAddColumn('left', cellContextMenu.targetColId);
+                    showToast('已在左侧插入列');
+                  },
+                },
+                {
+                  kind: 'item',
+                  key: 'col-right',
+                  icon: <MoveRight size={13} color="var(--editor-text-muted, #64748b)" />,
+                  label: '在右侧插入列',
+                  onSelect: () => {
+                    onAddColumn('right', cellContextMenu.targetColId);
+                    showToast('已在右侧插入列');
+                  },
+                },
+                onClearColumn && {
+                  kind: 'item',
+                  key: 'col-clear',
+                  icon: <Eraser size={13} color="var(--editor-text-muted, #64748b)" />,
+                  label: '清空整列数据',
+                  onSelect: () => {
+                    onClearColumn(cellContextMenu.targetColId);
+                    showToast('已清空整列数据');
+                  },
+                },
+                { kind: 'divider', key: 'col-d' },
+                {
+                  kind: 'item',
+                  key: 'col-delete',
+                  icon: <Trash2 size={13} color="#ef4444" />,
+                  label: '删除列',
+                  danger: true,
+                  onSelect: () => {
+                    onDeleteColumn(cellContextMenu.targetColId);
+                    setSelection({ type: 'none' });
+                  },
+                },
+              ],
+            },
+            { kind: 'divider', key: 'd2' },
+            onOpenRecord && cellContextMenu.targetRowId ? {
+              kind: 'item',
+              key: 'open-record',
+              icon: <Maximize2 size={13} color="var(--editor-accent, #3b82f6)" />,
+              label: '展开记录详情',
+              onSelect: () => onOpenRecord(cellContextMenu.targetRowId),
+            } : null,
+          ]}
+        />
       )}
     </div>
   );
