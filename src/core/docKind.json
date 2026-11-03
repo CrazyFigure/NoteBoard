@@ -50,6 +50,8 @@
   "dwg": "preview",
   "dxf": "preview",
   "epub": "preview",
+  "note": "preview",
+  "goodnotes": "preview",
   "infographic": "code",
   "ig": "code",
   "html": "code",

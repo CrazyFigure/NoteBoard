@@ -5,7 +5,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { fail } from './files.mjs';
 import { channelUrl } from './releaseChannel.mjs';
 
-const IDS = new Set(['word', 'excel', 'powerpoint', 'pdf', 'cad', 'epub', 'workbench']);
+const IDS = new Set(['word', 'excel', 'powerpoint', 'pdf', 'cad', 'epub', 'notability', 'goodnotes', 'workbench']);
 const BASE = 'https://github.com/CrazyFigure/NoteBoard/releases/download/plugins/';
 // 官方插件只允许来自 GitHub Release 或其 CNB 镜像的同名文件
 const SOURCES = [BASE, channelUrl(BASE, 'cnb')];

@@ -5,7 +5,7 @@ use tauri::{AppHandle, Emitter};
 use sha2::{Digest, Sha256};
 use crate::release_channel::ReleaseChannel;
 
-const IDS: &[&str] = &["word", "excel", "powerpoint", "pdf", "cad", "epub", "workbench"];
+const IDS: &[&str] = &["word", "excel", "powerpoint", "pdf", "cad", "epub", "notability", "goodnotes", "workbench"];
 const BASE: &str = "https://github.com/CrazyFigure/NoteBoard/releases/download/plugins/";
 const MAX_BYTES: usize = 32 * 1024 * 1024;
 static OPERATIONS: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();

@@ -62,7 +62,7 @@ seed(`${WORKSPACE}/产品介绍.html`, `<!DOCTYPE html>
 seed(`${WORKSPACE}/style.css`, `h1 { color: #2563eb; }
 .lead { font-size: 18px; color: #475569; }
 `, 8);
-for(const name of ['sample.doc','sample.docx','sample.xls','sample.xlsx','sample.ppt','sample.pptx','sample.pdf','sample.dwg','sample.dxf','sample.epub'])seed(`${WORKSPACE}/${name}`,'',10);
+for(const name of ['sample.doc','sample.docx','sample.xls','sample.xlsx','sample.ppt','sample.pptx','sample.pdf','sample.dwg','sample.dxf','sample.epub','sample.note','sample.goodnotes'])seed(`${WORKSPACE}/${name}`,'',10);
 
 let mockFontPackState: 'ready' | 'missing' = 'ready';
 
@@ -361,7 +361,7 @@ function kindOf(name: string): string | null {
   if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) return 'image';
   if (['mindmap', 'xmind'].includes(ext)) return 'mindmap';
   if (['bitable', 'table'].includes(ext)) return 'bitable';
-  if (['doc','docx','xls','xlsx','ppt','pptx','pdf','dwg','dxf','epub'].includes(ext))return 'preview';
+  if (['doc','docx','xls','xlsx','ppt','pptx','pdf','dwg','dxf','epub','note','goodnotes'].includes(ext))return 'preview';
   if (['drawio', 'dio'].includes(ext)) return 'drawio';
   return 'code';
 }

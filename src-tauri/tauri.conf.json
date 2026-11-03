@@ -61,7 +61,9 @@
           "pdf",
           "dwg",
           "dxf",
-          "epub"
+          "epub",
+          "note",
+          "goodnotes"
         ],
         "name": "NoteBoard.DocumentPreview",
         "description": "NoteBoard 只读文档预览",

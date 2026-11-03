@@ -1,5 +1,5 @@
 // 官方插件协议独立于 React 和编辑器内核，插件更新不要求重新构建主程序。
-export type PluginId = 'word' | 'excel' | 'powerpoint' | 'pdf' | 'cad' | 'epub' | 'workbench';
+export type PluginId = 'word' | 'excel' | 'powerpoint' | 'pdf' | 'cad' | 'epub' | 'notability' | 'goodnotes' | 'workbench';
 
 export interface PluginManifest {
   id: PluginId;
@@ -54,6 +54,9 @@ export const OFFICIAL_PLUGINS: Array<{ id: PluginId; name: string; description: 
   { id: 'pdf', name: 'PDF 查看', description: '分页阅读、缩放与文字选择', formats: 'PDF' },
   { id: 'cad', name: 'CAD 查看', description: '本地图纸阅读、平移缩放与文字复制', formats: 'DWG · DXF' },
   { id: 'epub', name: 'EPUB 阅读', description: '目录跳转、字号调节与阅读进度', formats: 'EPUB' },
+  // 私有笔记只读兼容解析，复杂内容可能不完整。
+  { id: 'notability', name: 'Notability 阅读', description: '只读查看笔迹、内嵌预览与附件，复杂内容可能不完整', formats: 'NOTE' },
+  { id: 'goodnotes', name: 'Goodnotes 阅读', description: '只读查看笔迹、内嵌预览与附件，复杂内容可能不完整', formats: 'GOODNOTES' },
   { id: 'workbench', name: '多维表格工作台', description: '自由组合数据、任务、日程与笔记', formats: '多维表格视图' },
 ];
 
@@ -65,6 +68,8 @@ export function previewPluginFor(path: string): PluginId | null {
   if (ext === 'ppt' || ext === 'pptx') return 'powerpoint';
   if (ext === 'dwg' || ext === 'dxf') return 'cad';
   if (ext === 'epub') return 'epub';
+  if (ext === 'note') return 'notability';
+  if (ext === 'goodnotes') return 'goodnotes';
   return ext === 'pdf' ? 'pdf' : null;
 }
 

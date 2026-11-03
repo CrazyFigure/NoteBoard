@@ -51,6 +51,7 @@ export async function openFileDialog(): Promise<void> {
       { name: 'Markdown', extensions: ['md', 'markdown'] },
       // 官方插件只读查看 Office 和 PDF；未安装时在查看页提供安装入口。
       { name: 'Office、PDF、CAD 与电子书', extensions: ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pdf', 'dwg', 'dxf', 'epub'] },
+      { name: 'Notability 与 Goodnotes 笔记', extensions: ['note', 'goodnotes'] },
       { name: '多维表格', extensions: ['bitable', 'table'] },
       { name: '思维导图', extensions: ['mindmap', 'xmind', 'mm'] },
       { name: '画板与绘图', extensions: ['excalidraw', 'drawio', 'dio', 'board'] },

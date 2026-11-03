@@ -227,23 +227,25 @@ mod plugin_preview_tests {
     use std::io::Write;
 
     #[test]
-    fn cad_and_epub_open_in_plugin_viewers() {
-        // 与前端 docKind.json 一致，桌面端 CAD 与电子书不能落回纯文本编辑器。
-        for ext in ["dwg", "dxf", "epub"] { assert_eq!(crate::dto::kind_by_ext(ext).0, DocumentKind::Preview); }
+    fn binary_formats_open_in_plugin_viewers() {
+        // 与前端 docKind.json 一致，二进制笔记、CAD 与电子书不能落回纯文本编辑器。
+        for ext in ["dwg", "dxf", "epub", "note", "goodnotes"] { assert_eq!(crate::dto::kind_by_ext(ext).0, DocumentKind::Preview); }
     }
 
     #[test]
     fn binary_preview_never_produces_writable_text() {
-        let mut file = tempfile::Builder::new().suffix(".pdf").tempfile().unwrap();
-        file.write_all(b"%PDF-1.7\0binary").unwrap();
-        let path = file.path().to_str().unwrap();
-        match prepare_on_worker(path, path).unwrap() {
-            PreparedDocument::Text { payload } => {
-                assert_eq!(payload.kind, DocumentKind::Preview);
-                assert!(payload.readonly);
-                assert!(payload.content.is_none());
+        for extension in [".pdf", ".note", ".goodnotes"] {
+            let mut file = tempfile::Builder::new().suffix(extension).tempfile().unwrap();
+            file.write_all(b"%PDF-1.7\0binary").unwrap();
+            let path = file.path().to_str().unwrap();
+            match prepare_on_worker(path, path).unwrap() {
+                PreparedDocument::Text { payload } => {
+                    assert_eq!(payload.kind, DocumentKind::Preview);
+                    assert!(payload.readonly);
+                    assert!(payload.content.is_none());
+                }
+                _ => panic!("预览文件应返回只读元信息"),
             }
-            _ => panic!("预览文件应返回只读元信息"),
         }
     }
 }

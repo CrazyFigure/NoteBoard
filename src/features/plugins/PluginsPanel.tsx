@@ -9,7 +9,7 @@ import { ProgressRing } from './ProgressRing';
 import { canManageInstance } from '../account/accountState';
 import './plugins.css';
 
-export const PLUGIN_ICONS = { word: FileText, excel: FileSpreadsheet, powerpoint: Presentation, pdf: FileType, cad: DraftingCompass, epub: BookOpen, workbench: LayoutDashboard };
+export const PLUGIN_ICONS = { word: FileText, excel: FileSpreadsheet, powerpoint: Presentation, pdf: FileType, cad: DraftingCompass, epub: BookOpen, notability: BookOpen, goodnotes: BookOpen, workbench: LayoutDashboard };
 
 /** target 来自一次性跳转：字体区或某个插件卡片，定位后短暂高亮。 */
 export function PluginsPanel({ target }: { target?: string | null }) {

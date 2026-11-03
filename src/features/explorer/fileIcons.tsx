@@ -75,6 +75,8 @@ export function getExplorerFileIcon(
     case 'dxf':
       return <FileText {...iconProps} color="var(--editor-accent)" />;
     case 'epub':
+    case 'note':
+    case 'goodnotes':
       return <BookOpen {...iconProps} color="var(--editor-accent)" />;
     case 'xls':
     case 'xlsx':

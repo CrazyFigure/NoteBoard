@@ -392,7 +392,7 @@ pub fn kind_by_ext(ext: &str) -> (DocumentKind, LanguageId) {
         "drawio" | "dio" => (DocumentKind::Drawio, LanguageId::Xml),
         "bitable" | "table" => (DocumentKind::Bitable, LanguageId::Json),
         // 只读查看插件格式，须与前端 docKind.json 保持一致。
-        "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "pdf" | "dwg" | "dxf" | "epub" => (DocumentKind::Preview, LanguageId::Plaintext),
+        "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "pdf" | "dwg" | "dxf" | "epub" | "note" | "goodnotes" => (DocumentKind::Preview, LanguageId::Plaintext),
         "mmd" | "mermaid" => (DocumentKind::Code, LanguageId::Mermaid),
         "puml" | "plantuml" | "iuml" | "uml" => (DocumentKind::Code, LanguageId::Plantuml),
         "infographic" | "ig" => (DocumentKind::Code, LanguageId::Infographic),
