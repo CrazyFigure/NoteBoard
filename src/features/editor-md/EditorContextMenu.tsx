@@ -1,5 +1,5 @@
 // NoteBoard Markdown 编辑器右键双模上下文菜单
-// 1. 选中文本：浮现缩进和对齐(二级菜单)、加粗、斜体、代码、字体颜色(二级菜单)、多色高亮(二级菜单)、标题转换(H1~H6二级菜单)、转为代码块/提示块/高亮块/引用块/折叠块、复制剪切
+// 1. 选中文本：浮现缩进和对齐(二级菜单)、文字格式(加粗/斜体/下划线/删除线二级菜单)、行内代码、字体颜色(二级菜单)、多色高亮(二级菜单)、标题转换(H1~H6二级菜单)、转为代码块/提示块/高亮块/引用块/折叠块、复制剪切
 // 2. 未选中文本：浮现标题(H1~H6二级菜单)、提示块(二级菜单)、高亮块(二级菜单)、列表(二级菜单)、代码块、引用块、折叠块、分栏(二级菜单)、表格(二级菜单)、公式与图表(二级菜单)、图片(二级菜单)、表情(二级面板)等
 // 详见 docs/07-UI布局与交互规范.md
 
@@ -64,6 +64,7 @@ import {
   Smile,
   Waypoints,
   X,
+  Type,
 } from 'lucide-react';
 import { formatShortcut } from '../../core/shortcuts';
 
@@ -85,6 +86,51 @@ const HIGHLIGHT_COLOR_OPTIONS = [
   { name: '暖阳橙', color: '#fed7aa', border: '#fb923c' },
   { name: '珊瑚红', color: '#fecaca', border: '#f87171' },
   { name: '湖水青', color: '#a5f3fc', border: '#22d3ee' },
+];
+
+/**
+ * 「文字格式」二级子菜单的候选项（加粗 / 斜体 / 下划线 / 删除线）。
+ * 收进二级菜单是为了压缩选中文本时的主菜单高度；顺序与浮层工具栏保持一致。
+ * label 内的快捷键统一交给 formatShortcut 做平台适配，isActive 用于在子菜单里标出已生效的格式。
+ */
+const TEXT_FORMAT_ITEMS: Array<{
+  key: string;
+  /** 菜单文案，含快捷键占位（如 (Ctrl+B)） */
+  label: string;
+  Icon: typeof Bold;
+  /** 选区内是否已应用该格式 */
+  isActive: (editor: Editor) => boolean;
+  /** 切换该格式（有选区时作用于选区） */
+  run: (editor: Editor) => void;
+}> = [
+  {
+    key: 'bold',
+    label: '加粗 (Ctrl+B)',
+    Icon: Bold,
+    isActive: (editor) => editor.isActive('bold'),
+    run: (editor) => void editor.chain().focus().toggleBold().run(),
+  },
+  {
+    key: 'italic',
+    label: '斜体 (Ctrl+I)',
+    Icon: Italic,
+    isActive: (editor) => editor.isActive('italic'),
+    run: (editor) => void editor.chain().focus().toggleItalic().run(),
+  },
+  {
+    key: 'underline',
+    label: '下划线 (Ctrl+U)',
+    Icon: Underline,
+    isActive: (editor) => editor.isActive('underline'),
+    run: (editor) => void editor.chain().focus().toggleUnderline().run(),
+  },
+  {
+    key: 'strike',
+    label: '删除线',
+    Icon: Strikethrough,
+    isActive: (editor) => editor.isActive('strike'),
+    run: (editor) => void editor.chain().focus().toggleStrike().run(),
+  },
 ];
 
 export function EditorContextMenu({
@@ -317,80 +363,24 @@ export function EditorContextMenu({
               <ChevronRight size={14} style={{ opacity: 0.6 }} />
             </button>
 
+            {/* ── 文字格式 (加粗 / 斜体 / 下划线 / 删除线，二级子菜单) ── */}
             <button
               type="button"
-              style={btnStyle}
-              onClick={() => {
-                onClose();
-                editor.chain().focus().toggleBold().run();
+              style={{
+                ...btnStyle,
+                background:
+                  activeSubmenu === 'selection-text-format'
+                    ? 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))'
+                    : 'transparent',
               }}
-              onMouseEnter={(e) => {
-                setActiveSubmenu(null);
-                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
-              }}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              onMouseEnter={(e) => handleOpenSubmenu('selection-text-format', e)}
+              onClick={(e) => handleOpenSubmenu('selection-text-format', e)}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Bold size={15} color="var(--accent-500, #3b82f6)" />
-                <span>{formatShortcut('加粗 (Ctrl+B)')}</span>
+                <Type size={15} color="var(--accent-500, #3b82f6)" />
+                <span>文字格式</span>
               </div>
-            </button>
-
-            <button
-              type="button"
-              style={btnStyle}
-              onClick={() => {
-                onClose();
-                editor.chain().focus().toggleItalic().run();
-              }}
-              onMouseEnter={(e) => {
-                setActiveSubmenu(null);
-                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
-              }}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Italic size={15} />
-                <span>{formatShortcut('斜体 (Ctrl+I)')}</span>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              style={btnStyle}
-              onClick={() => {
-                onClose();
-                editor.chain().focus().toggleUnderline().run();
-              }}
-              onMouseEnter={(e) => {
-                setActiveSubmenu(null);
-                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
-              }}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Underline size={15} />
-                <span>{formatShortcut('下划线 (Ctrl+U)')}</span>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              style={btnStyle}
-              onClick={() => {
-                onClose();
-                editor.chain().focus().toggleStrike().run();
-              }}
-              onMouseEnter={(e) => {
-                setActiveSubmenu(null);
-                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
-              }}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Strikethrough size={15} />
-                <span>删除线</span>
-              </div>
+              <ChevronRight size={14} style={{ opacity: 0.6 }} />
             </button>
 
             <button
@@ -1105,6 +1095,42 @@ export function EditorContextMenu({
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <Icon size={15} />
                       <span>{label}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </>
+          )}
+
+          {/* 二级：文字格式（加粗 / 斜体 / 下划线 / 删除线），已生效的格式以强调色标出 */}
+          {activeSubmenu === 'selection-text-format' && (
+            <>
+              {TEXT_FORMAT_ITEMS.map((item) => {
+                const active = item.isActive(editor);
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    style={{
+                      ...btnStyle,
+                      background: active ? 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))' : 'transparent',
+                      color: active ? 'var(--accent-500, #3b82f6)' : btnStyle.color,
+                    }}
+                    onClick={() => {
+                      // 切换行内标记，保持选区后关闭菜单
+                      item.run(editor);
+                      onClose();
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!active) e.currentTarget.style.background = 'var(--editor-hover-background, rgba(0, 0, 0, 0.06))';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!active) e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <item.Icon size={15} />
+                      <span>{formatShortcut(item.label)}</span>
                     </div>
                   </button>
                 );
