@@ -206,6 +206,8 @@ interface FlatTreeRow {
  * 用于把落点夹在本组内——跨组拖动等价于改写分组字段的值，不属于「换顺序」。
  */
 interface RowSlot {
+  /** 渲染实例键（同 GridItem.instanceKey）：多选分组下同一行会出现在多个分组里，不能只用行 ID 定位 */
+  key: string;
   rowId: string;
   parentId?: string;
   groupStart: number;
@@ -215,7 +217,17 @@ interface RowSlot {
 /** 表格视图渲染项：分组标题行或普通数据行 */
 type GridItem =
   | { type: 'group'; key: string; label: string; count: number; color?: SelectOptionColor }
-  | { type: 'row'; treeNode: FlatTreeRow };
+  | {
+      type: 'row';
+      treeNode: FlatTreeRow;
+      groupKey: string | null;
+      /**
+       * 渲染实例键：行首次出现用行 ID，多选分组下的重复出现再带上分组键。
+       * 首次出现保持行 ID 的好处：行因改值换到别的分组时 React 只是挪动 DOM 而不是重挂载，
+       * 单元格里打开着的选项面板不会因此被关掉（连续点选多个标签时尤其明显）。
+       */
+      instanceKey: string;
+    };
 
 // 表头 / 行头的选中与拖拽高亮色（半透明蓝色叠加层，透明度即高亮强度）
 const HEADER_SELECTED_TINT = 'rgba(59, 130, 246, 0.12)';
@@ -469,12 +481,20 @@ export function BitableGridView({
 
   const gridItems = useMemo(() => {
     if (!groupByColumnId || !groupColumn) {
-      return flatTreeRows.map<GridItem>((node) => ({ type: 'row', treeNode: node }));
+      return flatTreeRows.map<GridItem>((node) => ({
+        type: 'row',
+        treeNode: node,
+        groupKey: null,
+        instanceKey: node.row.id,
+      }));
     }
 
-    const groups = groupFlatTreeRows(flatTreeRows, groupColumn);
+    // 多选字段展开为「每个选项一组」：同一行选了几个标签就出现在几个分组下
+    const groups = groupFlatTreeRows(flatTreeRows, groupColumn, { expandMultiSelect: true });
     const items: GridItem[] = [];
     let visibleCounter = 0;
+    // 已渲染过的行 ID：再次出现时实例键改用「分组键 + 行 ID」，保证同一 tbody 内键唯一
+    const renderedRowIds = new Set<string>();
 
     groups.forEach((group) => {
       items.push({
@@ -488,9 +508,14 @@ export function BitableGridView({
       if (!collapsed) {
         group.rows.forEach((node) => {
           visibleCounter += 1;
+          const rowId = node.row.id;
+          const instanceKey = renderedRowIds.has(rowId) ? `${group.meta.key}::${rowId}` : rowId;
+          renderedRowIds.add(rowId);
           items.push({
             type: 'row',
             treeNode: { ...node, rowNumber: visibleCounter },
+            groupKey: group.meta.key,
+            instanceKey,
           });
         });
       }
@@ -523,17 +548,14 @@ export function BitableGridView({
    * 两趟构造：先按分组划出连续区间，再把区间回填到每一行上。
    */
   const rowSlots = useMemo<RowSlot[]>(() => {
-    const raw: Array<{ rowId: string; parentId?: string; groupKey: string | null }> = [];
-    let currentKey: string | null = null;
+    const raw: Array<{ key: string; rowId: string; parentId?: string; groupKey: string | null }> = [];
     gridItems.forEach((item) => {
-      if (item.type === 'group') {
-        currentKey = item.key;
-        return;
-      }
+      if (item.type === 'group') return;
       raw.push({
+        key: item.instanceKey,
         rowId: item.treeNode.row.id,
         parentId: item.treeNode.row.parentId,
-        groupKey: currentKey,
+        groupKey: item.groupKey,
       });
     });
 
@@ -546,13 +568,19 @@ export function BitableGridView({
 
     return raw.map((slot) => {
       const range = ranges.get(slot.groupKey)!;
-      return { rowId: slot.rowId, parentId: slot.parentId, groupStart: range.start, groupEnd: range.end };
+      return {
+        key: slot.key,
+        rowId: slot.rowId,
+        parentId: slot.parentId,
+        groupStart: range.start,
+        groupEnd: range.end,
+      };
     });
   }, [gridItems]);
 
-  /** 行 ID → 槽位索引，供渲染层按行取用拖拽状态 */
+  /** 行实例键 → 槽位索引，供渲染层按行取用拖拽状态 */
   const rowSlotIndex = useMemo(
-    () => new Map(rowSlots.map((slot, idx) => [slot.rowId, idx])),
+    () => new Map(rowSlots.map((slot, idx) => [slot.key, idx])),
     [rowSlots],
   );
 
@@ -579,8 +607,9 @@ export function BitableGridView({
       const before = rest[cursor] ?? null;
 
       const restWithoutSubtree = rest.filter((slot) => !descendants.has(slot.rowId));
+      // 按槽位对象定位而不是按行 ID：多选分组下同一行可能在别的分组里也有槽位
       const insertIdx = before
-        ? restWithoutSubtree.findIndex((slot) => slot.rowId === before.rowId)
+        ? restWithoutSubtree.indexOf(before)
         : restWithoutSubtree.length;
 
       // 插入位置与子树原起点重合 → 顺序不变，按无效落点处理，避免产生空撤销记录
@@ -1506,7 +1535,7 @@ export function BitableGridView({
     consumeDraggedFlag: consumeRowDraggedFlag,
   } = usePointerReorder<RowSlot>({
     items: rowSlots,
-    getElement: (slot) => rowRefs.current.get(slot.rowId),
+    getElement: (slot) => rowRefs.current.get(slot.key),
     axis: 'y',
     disabled: !rowDragEnabled,
     // 把落点夹在本组范围内，越界时贴到组边界
@@ -2719,7 +2748,8 @@ export function BitableGridView({
             }
 
             const { row, depth, hasChildren, isCollapsed, rowNumber } = item.treeNode;
-            const rowSlotIdx = rowSlotIndex.get(row.id) ?? -1;
+            const { instanceKey } = item;
+            const rowSlotIdx = rowSlotIndex.get(instanceKey) ?? -1;
             const rIdx = rowSlotIdx >= 0 ? rowSlotIdx : (rowIdxMap.get(row.id) ?? -1);
             const isRowSelected =
               normalizedSelection !== null &&
@@ -2741,10 +2771,10 @@ export function BitableGridView({
 
             return (
               <tr
-                key={row.id}
+                key={instanceKey}
                 ref={(el) => {
-                  if (el) rowRefs.current.set(row.id, el);
-                  else rowRefs.current.delete(row.id);
+                  if (el) rowRefs.current.set(instanceKey, el);
+                  else rowRefs.current.delete(instanceKey);
                 }}
                 style={{
                   // 存在全显示多行文本列时，height 退化为最小高度，实际行高由内容撑开

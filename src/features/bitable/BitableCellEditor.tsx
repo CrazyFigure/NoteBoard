@@ -563,7 +563,10 @@ export function BitableCellEditor({
   // ── 4. 多选标签 (MultiSelect) ──
   if (column.type === 'multiSelect') {
     const selectedIds = Array.isArray(value) ? (value as string[]) : [];
-    const selectedOptions = (column.options || []).filter((opt) => selectedIds.includes(opt.id));
+    // 按选中先后排列（值数组即点选顺序），而不是按选项定义顺序
+    const selectedOptions = selectedIds
+      .map((id) => (column.options || []).find((opt) => opt.id === id))
+      .filter((opt): opt is NonNullable<typeof opt> => Boolean(opt));
 
     const handleToggleSelect = (optId: string) => {
       const next = selectedIds.includes(optId)

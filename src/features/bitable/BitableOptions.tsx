@@ -2,7 +2,7 @@
 // 单元格选择面板与表头字段配置面板共用同一套「增 / 改名 / 改色 / 删除 / 排序」逻辑
 // 面板统一走 Portal 浮层，避免被单元格与表头的 overflow 裁剪
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { SelectOption, SelectOptionColor } from './bitableTypes';
 import { getOptionColor, BITABLE_PALETTE } from './bitableConverter';
 import { FloatingPanel, type AnchorRect } from './BitableFloating';
@@ -153,6 +153,13 @@ export function SelectOptionsPanel({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState('');
   const [editColor, setEditColor] = useState<SelectOptionColor>('blue');
+  const editBlockRef = useRef<HTMLDivElement>(null);
+
+  // 进入编辑后把整块编辑区（含色板）滚进可视范围：列表限高滚动，
+  // 靠下的选项展开编辑时色板会被裁在滚动区外，用户只能看到下方「新建选项」的色板而误以为改不了颜色
+  useEffect(() => {
+    if (editingId) editBlockRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [editingId]);
 
   const handleAdd = () => {
     const label = newLabel.trim();
@@ -201,6 +208,7 @@ export function SelectOptionsPanel({
             return (
               <div
                 key={opt.id}
+                ref={editBlockRef}
                 style={{
                   padding: '6px 8px',
                   borderRadius: 6,
@@ -245,7 +253,14 @@ export function SelectOptionsPanel({
                     保存
                   </button>
                 </div>
-                <ColorPickerRow value={editColor} onChange={setEditColor} />
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, rowGap: 4 }}>
+                  {/* 色板整行不收缩，标签名过长时预览徽章自动换到下一行 */}
+                  <div style={{ flexShrink: 0 }}>
+                    <ColorPickerRow value={editColor} onChange={setEditColor} size={18} />
+                  </div>
+                  {/* 实时预览改色效果，明确色板作用于当前编辑的选项 */}
+                  <OptionBadge option={{ id: opt.id, label: editLabel.trim() || opt.label, color: editColor }} />
+                </div>
               </div>
             );
           }
@@ -376,8 +391,8 @@ export function SelectOptionsPanel({
         )}
       </div>
 
-      {/* 新建选项表单 */}
-      {manageable && onAddOption && (
+      {/* 新建选项表单：编辑已有选项时收起，避免两套色板并存时点错 */}
+      {manageable && onAddOption && !editingId && (
         <div
           style={{
             borderTop: '1px solid var(--editor-border, #f1f5f9)',
