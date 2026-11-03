@@ -40,6 +40,7 @@ import {
 } from './features/session/closedWindowSession';
 import { startSyncEffects } from './features/sync/syncEffects';
 import { useSyncStore } from './stores/syncStore';
+import { installAnchorNavigationGuard } from './core/anchorNavigation';
 
 // 🔴 S05：全局弹窗首次触发才装载（E 节 6）——未打开时不渲染即不加载，
 //    装载后保持挂载以保留关闭动画；安全关闭保护（UnsavedGuardDialog）仍轻量常驻
@@ -164,16 +165,8 @@ export default function App() {
     };
     window.addEventListener('contextmenu', handleContextMenu);
 
-    // 全局捕获阶段拦截所有 a 标签的原生默认行为，防止 WebView2 底层触发新窗口或导航
-    const handleGlobalAnchorClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      const anchor = target?.closest('a');
-      if (anchor) {
-        e.preventDefault();
-      }
-    };
-    window.addEventListener('click', handleGlobalAnchorClick, true);
-    window.addEventListener('auxclick', handleGlobalAnchorClick, true);
+    // 普通链接继续禁止原生导航；导出下载按浏览器或原生文件系统分别处理。
+    const stopAnchorNavigationGuard = installAnchorNavigationGuard();
 
     // 从其他软件或任务切回 NoteBoard 时检查活动文件是否在运行期间被删除，
     // 并重新消费打开队列（窗口重新获得焦点时的恢复机制）。
@@ -222,8 +215,7 @@ export default function App() {
       stopClosedWindowSessionTracker();
       stopSyncEffects();
       window.removeEventListener('contextmenu', handleContextMenu);
-      window.removeEventListener('click', handleGlobalAnchorClick, true);
-      window.removeEventListener('auxclick', handleGlobalAnchorClick, true);
+      stopAnchorNavigationGuard();
       window.removeEventListener('focus', handleWindowFocus);
       disposeWindowManager();
       unregNewWindow();

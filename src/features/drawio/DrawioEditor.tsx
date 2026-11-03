@@ -10,6 +10,7 @@ import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
 import { saveDocument } from '../editor-code/orchestration/saveDocument';
 import { buildExportFileName, exportBlobWithDialog } from '../export/chartExport';
+import { dataUrlToBlob } from '../../core/dataUrl';
 import { Tooltip } from '../../components/Tooltip';
 // 🔴 S12：回收接入——能力注册表（flush 经导出回包确认）与内容版本
 import {
@@ -191,9 +192,12 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
         return;
       }
 
+      // 仅图片导出的失败显示导出错误，其他引擎协议异常保留原有处理。
+      let imageExport = false;
       try {
         const msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
         if (!msg || typeof msg !== 'object') return;
+        imageExport = msg.event === 'export' && msg.format !== 'xml';
 
         // 1. 处理配置请求 (若服务端发送 configure)
         if (msg.event === 'configure') {
@@ -265,8 +269,8 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
             const format = msg.format === 'svg' ? 'svg' : 'png';
             let blob: Blob;
             if (typeof msg.data === 'string' && msg.data.startsWith('data:')) {
-              const resp = await fetch(msg.data);
-              blob = await resp.blob();
+              // 原生 CSP 不允许 fetch(data:)；直接解码图片字节，保留中文 SVG 与 PNG 二进制。
+              blob = dataUrlToBlob(msg.data);
             } else if (typeof msg.data === 'string' && format === 'svg') {
               blob = new Blob([msg.data], { type: 'image/svg+xml;charset=utf-8' });
             } else {
@@ -295,6 +299,10 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
         }
       } catch (err) {
         console.error('解析 Draw.io 消息失败:', err);
+        // 图片生成、解码或写盘失败时给出反馈，不能只记录在用户看不到的控制台。
+        if (imageExport) {
+          showToast(`导出失败：${err instanceof Error ? err.message : String(err)}`, 'error');
+        }
       }
     };
 

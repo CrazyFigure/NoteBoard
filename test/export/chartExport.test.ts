@@ -197,7 +197,11 @@ describe('exportBlobWithDialog 与 saveBlobToFile 导出保存', () => {
   test.each([
     ['png', 'image/png', ['png']],
     ['jpg', 'image/jpeg', ['jpg', 'jpeg']],
-  ])('安卓导出 %s：通过 fs 插件向 content URI 写入原始图片字节', async (extension, mime, extensions) => {
+    ['svg', 'image/svg+xml', ['svg']],
+    ['xmind', 'application/zip', ['xmind']],
+    ['md', 'text/markdown', ['md']],
+    ['csv', 'text/csv', ['csv']],
+  ])('安卓导出 %s：通过 fs 插件向 content URI 写入原始字节', async (extension, mime, extensions) => {
     vi.stubGlobal('isTauri', true);
     const target = `content://com.android.providers.downloads.documents/document/导图%3A1.${extension}`;
     vi.mocked(invoke).mockImplementation(async (command) => {
@@ -218,9 +222,9 @@ describe('exportBlobWithDialog 与 saveBlobToFile 导出保存', () => {
     });
   });
 
-  test('Windows 导出仍通过既有 Rust 命令写入普通文件路径', async () => {
+  test.each(['C:\\Users\\测试\\导图.png', '/Users/test/导图.png', '/home/test/导图.png'])(
+    'Windows / macOS / Linux 普通路径导出继续使用既有 Rust 命令：%s', async (target) => {
     vi.stubGlobal('isTauri', true);
-    const target = 'C:\\Users\\测试\\导图.png';
     vi.mocked(invoke).mockImplementation(async (command) => {
       if (command === 'plugin:dialog|save') return target;
       if (command === 'save_binary_file') return { ok: true };
@@ -230,6 +234,13 @@ describe('exportBlobWithDialog 与 saveBlobToFile 导出保存', () => {
     await expect(exportBlobWithDialog(imageBlob(), '导图.png', filters)).resolves.toBe(true);
     expect(invoke).toHaveBeenCalledTimes(2);
     expect(invoke).toHaveBeenLastCalledWith('save_binary_file', { path: target, data: Array.from(bytes) }, undefined);
+  });
+
+  test('浏览器缺少下载能力时报告失败，不能返回成功', async () => {
+    const UnsupportedURL = class extends URL {};
+    Object.defineProperty(UnsupportedURL, 'createObjectURL', { value: undefined });
+    vi.stubGlobal('URL', UnsupportedURL);
+    await expect(exportBlobWithDialog(imageBlob(), '导图.png', filters)).rejects.toThrow('当前环境不支持下载文件');
   });
 
   test('取消系统保存对话框时不读取图片或写入文件', async () => {

@@ -332,7 +332,7 @@ export async function copyImage(blob: Blob): Promise<void> {
 /** 浏览器环境（非 Tauri）下的兜底下载：必须挂到 DOM 上，否则 WebView 不触发 */
 function downloadBlob(blob: Blob, filename: string): void {
   if (typeof URL.createObjectURL !== 'function') {
-    return;
+    throw new Error('当前环境不支持下载文件');
   }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
