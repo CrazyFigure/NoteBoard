@@ -13,6 +13,8 @@ import { matchInlineMath } from '../editor-md/mathSyntax';
 import { ALERT_META, type AlertKind } from '../editor-md/alertExtension';
 import { sanitizeRenderedMarkdown } from '../editor-md/rawHtmlRender';
 import { resolveDocumentImageSrc } from '../editor-md/rawHtmlBlockView';
+import { handleLinkClick } from '../editor-md/linkHandler';
+import { useWindowStore } from '../../stores/windowStore';
 // 公式排版样式（KaTeX 运行时本身按需懒加载）
 import 'katex/dist/katex.min.css';
 
@@ -24,7 +26,7 @@ interface BitableMarkdownProps {
   source: string;
   /** 排版密度，默认 normal */
   density?: MarkdownDensity;
-  /** 点击链接时的回调；未提供时链接不可跳转，避免 WebView 内部导航破坏应用 */
+  /** 点击链接时的回调；未提供时复用文档链接路由及全局 HTML 打开方式 */
   onOpenLink?: (href: string) => void;
 }
 
@@ -470,15 +472,19 @@ export function BitableMarkdown({
     return typesetMathPlaceholders(root);
   }, [html]);
 
-  // 拦截链接点击：默认阻止 WebView 内部导航，交由上层决定打开方式
+  // 只读单元格/看板中的链接可直接单击或中键打开，同时阻止 WebView 原生导航与卡片点击。
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const anchor = (e.target as HTMLElement | null)?.closest('a');
     if (!anchor) return;
     const href = anchor.getAttribute('href');
-    if (!href) return;
     e.preventDefault();
     e.stopPropagation();
-    if (onOpenLink) onOpenLink(href);
+    if (!href || (e.button !== 0 && e.button !== 1)) return;
+    if (onOpenLink) {
+      onOpenLink(href);
+    } else {
+      void handleLinkClick(href, useWindowStore.getState().activeKey ?? '');
+    }
   };
 
   if (!source) return null;
@@ -488,6 +494,7 @@ export function BitableMarkdown({
       ref={containerRef}
       className={`nb-bitable-md${density === 'compact' ? ' compact' : ''}`}
       onClick={handleClick}
+      onAuxClick={handleClick}
       dangerouslySetInnerHTML={innerHtml}
     />
   );

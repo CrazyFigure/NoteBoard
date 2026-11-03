@@ -19,6 +19,18 @@ import { BitableRichTextEditor, type RichTextMode } from './BitableRichTextEdito
 import { BitableLongTextPopover } from './BitableLongTextPopover';
 import { DateTimeFieldEditor } from './BitableDateTimePicker';
 import { Star, Check, ExternalLink } from 'lucide-react';
+import { handleLinkClick } from '../editor-md/linkHandler';
+import { useWindowStore } from '../../stores/windowStore';
+
+/** 超链接字段统一走文档链接路由：网页唤起系统浏览器，本地 HTML 遵循全局打开方式。 */
+function openCellLink(event: React.MouseEvent<HTMLAnchorElement>): void {
+  // 左键和中键都禁止 WebView 原生导航，避免打开应用内空窗口或离开编辑页。
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.button !== 0 && event.button !== 1) return;
+  const href = event.currentTarget.getAttribute('href');
+  if (href) void handleLinkClick(href, useWindowStore.getState().activeKey ?? '');
+}
 
 /** 表单形态（记录详情侧边栏）下输入控件的统一样式 */
 const FORM_INPUT_STYLE: React.CSSProperties = {
@@ -886,10 +898,12 @@ export function BitableCellEditor({
               href={inputValue}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={openCellLink}
+              onAuxClick={openCellLink}
               className="nb-bitable-btn"
               style={{ fontSize: 11, color: 'var(--editor-accent, #3b82f6)', display: 'inline-flex', width: 'fit-content' }}
             >
-              在新窗口打开链接
+              打开链接
             </a>
           )}
         </div>
@@ -966,7 +980,9 @@ export function BitableCellEditor({
             href={String(value)}
             target="_blank"
             rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
+            onClick={openCellLink}
+            onAuxClick={openCellLink}
+            aria-label="打开链接"
             className="nb-bitable-btn-ghost"
             style={{ padding: 2, color: 'var(--editor-accent, #3b82f6)' }}
           >
