@@ -501,6 +501,15 @@ export async function createWebServer(options = {}) {
         const key = url.searchParams.get('path');
         const target = await spaces.route(user, key, 'read');
         if (target.virtual) throw fail('文件不存在', 404);
+        // 大 PDF 只允许有界的分块读取，权限检查与普通附件共用，不能借此扩大完整下载上限。
+        if (url.searchParams.has('pdfRange')) {
+          const match = /^bytes=(\d+)-(\d+)$/.exec(String(req.headers.range ?? ''));
+          if (!match || !['GET', 'HEAD'].includes(req.method)) throw fail('需要有效的 PDF 读取范围', 416);
+          const begin = Number(match[1]), end = Number(match[2]) + 1, size = Number(url.searchParams.get('size'));
+          const bytes = await target.space.files.readPdfRange(target.key, begin, end, size);
+          res.writeHead(206, { 'Content-Type':'application/pdf', 'Cache-Control':'no-store', 'Content-Range':`bytes ${begin}-${end - 1}/${size}`, 'Content-Length':bytes.length, 'Accept-Ranges':'bytes', 'Content-Disposition':'attachment' });
+          return res.end(req.method === 'HEAD' ? undefined : bytes);
+        }
         const { bytes } = await target.space.files.readBytes(target.key);
         const ext = path.posix.extname(key).toLowerCase();
         const mime = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.avif': 'image/avif', '.bmp': 'image/bmp', '.ico': 'image/x-icon', '.svg': 'image/svg+xml' }[ext] ?? 'application/octet-stream';

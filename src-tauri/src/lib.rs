@@ -187,6 +187,7 @@ pub fn run() {
             // XMind 直接打开保留二进制正文，不能走普通文本解码。
             fsio::commands::read_xmind_file,
             fsio::commands::read_preview_file,
+            fsio::commands::read_pdf_file_range,
             fsio::commands::probe_document,
             // 🔴 S07：统一文件准备（读盘前归属查询 + 在途去重 + blocking 读取）
             fsio::prepare::prepare_document,

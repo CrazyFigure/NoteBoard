@@ -65,6 +65,33 @@ test('二进制插件查看不解码正文，文本保存被拒绝且原始字�
   assert.equal(write.status,400);assert.deepEqual(await fs.readFile(disk),original);
 });
 
+test('大 PDF 元信息与分块端点支持 512 MiB，其他读取和上传仍保持 50 MiB', async (t) => {
+  const {dataDir,url,call}=await fixture(t);
+  const disk=path.join(dataDir,'workspace','large.PDF'),size=512*1024*1024;
+  const handle=await fs.open(disk,'w');
+  await handle.truncate(size);await handle.write(Buffer.from('%PDF-1.7'),0,8,0);await handle.close();
+  const prepared=await call('prepare_document',{path:'/workspace/large.PDF'});
+  assert.equal(prepared.status,200);
+  const payload=(await prepared.json()).result.payload;
+  assert.equal(payload.size,size);assert.equal(payload.content,null);assert.equal(payload.readonly,true);
+  const route=`${url}/api/file?path=/workspace/large.PDF&pdfRange=1&size=${size}`;
+  const first=await fetch(route,{headers:{Range:'bytes=0-7'}});
+  assert.equal(first.status,206);assert.equal(first.headers.get('content-range'),`bytes 0-7/${size}`);
+  assert.equal(await first.text(),'%PDF-1.7');
+  const tail=await fetch(route,{headers:{Range:`bytes=${size-8}-${size-1}`}});
+  assert.equal(tail.status,206);assert.equal((await tail.arrayBuffer()).byteLength,8);
+  for(const range of ['bytes=0-1048576','bytes=-1-8',`bytes=${size-1}-${size}`,'bytes=9-3']) assert.equal((await fetch(route,{headers:{Range:range}})).status,416);
+  assert.equal((await fetch(route)).status,416);
+  assert.equal((await fetch(route.replace(`size=${size}`,'size=10'),{headers:{Range:'bytes=0-7'}})).status,409);
+  assert.equal((await fetch(`${url}/api/file?path=/workspace/large.PDF`)).status,413);
+  await fs.rename(disk,disk.replace('.PDF','.docx'));
+  assert.equal((await call('read_document',{path:'/workspace/large.docx'})).status,413);
+  assert.equal((await fetch(route.replace('large.PDF','large.docx'),{headers:{Range:'bytes=0-7'}})).status,400);
+  await fs.rename(disk.replace('.PDF','.docx'),disk);await fs.truncate(disk,size+1);
+  assert.equal((await call('read_document',{path:'/workspace/large.PDF'})).status,413);
+  assert.equal((await fetch(route.replace(`size=${size}`,`size=${size+1}`),{headers:{Range:'bytes=0-7'}})).status,413);
+});
+
 test('拒绝路径穿越、Windows 路径、根目录修改和符号链接', async (t) => {
   const { call, dataDir, temp } = await fixture(t);
   for (const key of ['/etc/passwd', '/workspace/../secret', '/workspace\\secret', '/workspace/NUL.txt']) {

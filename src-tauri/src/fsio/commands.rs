@@ -76,6 +76,14 @@ pub async fn read_preview_file(path: String) -> Result<tauri::ipc::Response, Str
     Ok(tauri::ipc::Response::new(bytes))
 }
 
+/// PDF 分块只在工作线程读盘；二进制响应避免逐字节 JSON 序列化。
+#[tauri::command]
+pub async fn read_pdf_file_range(path: String, begin: u64, end: u64, size: u64) -> Result<tauri::ipc::Response, String> {
+    let bytes = tauri::async_runtime::spawn_blocking(move || super::pdf::read_range(Path::new(&path), begin, end, size))
+        .await.map_err(|e| e.to_string())??;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 /// 探测文件（读盘前）
 #[tauri::command]
 pub fn probe_document(path: String) -> Result<ProbeResult, String> {

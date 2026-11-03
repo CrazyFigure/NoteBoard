@@ -38,11 +38,15 @@ export interface PluginContext {
   container: HTMLElement;
   name: string;
   bytes?: Uint8Array;
+  /** 新版 PDF 按需读取；旧宿主与内嵌 PDF 仍可提供 bytes。 */
+  source?: { size: number; read: (begin: number, end: number) => Promise<Uint8Array> };
   signal: AbortSignal;
   notify: (message: string) => void;
   reading?: PluginReadingApi;
 }
 export interface PluginModule {
+  /** 仅声明支持时才传入分块源，旧插件继续使用原有 50 MiB 字节入口。 */
+  supportsRangeRead?: boolean;
   mount: (context: PluginContext) => Promise<(() => void) | void>;
 }
 

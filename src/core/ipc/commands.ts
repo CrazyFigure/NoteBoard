@@ -258,6 +258,11 @@ export async function readPreviewFile(path: string): Promise<Uint8Array> {
   return new Uint8Array(await invoke<ArrayBuffer>('read_preview_file', { path }));
 }
 
+/** PDF 每次最多读取 1 MiB，避免大文件在宿主与插件间完整复制。 */
+export async function readPdfFileRange(path: string, begin: number, end: number, size: number): Promise<Uint8Array> {
+  return new Uint8Array(await invoke<ArrayBuffer>('read_pdf_file_range', { path, begin, end, size }));
+}
+
 export function probeDocument(path: string): Promise<ProbeResult> {
   return invoke<ProbeResult>('probe_document', { path });
 }

@@ -7,6 +7,8 @@ import { TextDecoder } from 'node:util';
 
 /** 文本读取上限；避免多个大文件同时耗尽容器内存。 */
 export const MAX_FILE_BYTES = 50 * 1024 * 1024;
+// 仅 PDF 的分块查看放宽至 512 MiB，写入与其他格式仍沿用 50 MiB。
+export const MAX_PDF_BYTES = 512 * 1024 * 1024;
 export const ROOT = '/workspace';
 
 /** 将异常转换为带 HTTP 状态的业务错误。 */
@@ -84,8 +86,36 @@ export async function createFiles(dataDir) {
     return { bytes: await fs.readFile(target), stat };
   }
 
+  /** 复用工作区路径校验，每次最多读取 1 MiB；从同一文件句柄核对大小并读取。 */
+  async function readPdfRange(key, begin, end, size) {
+    if (path.posix.extname(key).toLowerCase() !== '.pdf') throw fail('分块读取仅支持 PDF 文件');
+    if (![begin, end, size].every(Number.isSafeInteger) || begin < 0 || begin >= end || end > size || end - begin > 1024 * 1024) throw fail('PDF 读取范围无效或超过 1 MB', 416);
+    const handle = await fs.open(await resolve(key), 'r');
+    try {
+      const stat = await handle.stat();
+      if (!stat.isFile() || stat.size > MAX_PDF_BYTES) throw fail('PDF 须为 512 MB 以内的普通文件', 413);
+      if (stat.size !== size) throw fail('PDF 已发生变化，请重新打开', 409);
+      const bytes = Buffer.alloc(end - begin);
+      // 文件系统允许短读，分段补齐；中途截断时明确失败，不能把零填充当成 PDF 内容。
+      let offset = 0;
+      while (offset < bytes.length) {
+        const { bytesRead } = await handle.read(bytes, offset, bytes.length - offset, begin + offset);
+        if (!bytesRead) throw fail('PDF 已发生变化，请重新打开', 409);
+        offset += bytesRead;
+      }
+      return bytes;
+    } finally { await handle.close(); }
+  }
+
   /** 保留 UTF-8 BOM / GBK 与原有换行风格，内容模型统一使用 LF。 */
   async function read(key) {
+    // PDF 打开阶段只读元信息，避免为正文为空的只读文档读入整文件和计算哈希。
+    if (path.posix.extname(key).toLowerCase() === '.pdf') {
+      const stat = await fs.stat(await resolve(key));
+      if (!stat.isFile()) throw fail('只能读取普通文件');
+      if (stat.size > MAX_PDF_BYTES) throw fail('PDF 须为 512 MB 以内的普通文件', 413);
+      return { key, displayName:path.posix.basename(key), dirPath:path.posix.dirname(key), kind:'preview', language:'plaintext', content:null, encoding:'utf8', eol:'lf', size:stat.size, mtime:Math.trunc(stat.mtimeMs), readonly:true };
+    }
     const { bytes, stat } = await readBytes(key);
     // Office 和 PDF 返回空正文，查看器单独读取原始字节。
     if (classify(key)[0] === 'preview') return { key, displayName:path.posix.basename(key), dirPath:path.posix.dirname(key), kind:'preview', language:'plaintext', content:null, encoding:'utf8', eol:'lf', size:stat.size, mtime:Math.trunc(stat.mtimeMs), readonly:true, webRevision:revision(bytes) };
@@ -170,5 +200,5 @@ export async function createFiles(dataDir) {
     });
   }
 
-  return { resolve, read, readBytes, list, write, encode, loadState, saveState, trash, serialize, revision };
+  return { resolve, read, readBytes, readPdfRange, list, write, encode, loadState, saveState, trash, serialize, revision };
 }

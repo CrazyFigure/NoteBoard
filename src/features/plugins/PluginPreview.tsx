@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Download, Power } from 'lucide-react';
 import { useDocumentStore } from '../../stores/documentStore';
 import { initializePlugins, usePluginStore } from '../../stores/pluginStore';
-import { readPreviewFile } from '../../core/ipc/commands';
+import { readDocument, readPdfFileRange, readPreviewFile } from '../../core/ipc/commands';
 import { loadPlugin } from './pluginService';
 import { OFFICIAL_PLUGINS, previewPluginFor } from './pluginTypes';
 import { openPluginSettings } from './openPluginSettings';
@@ -15,7 +15,7 @@ import { useLayoutStore } from '../../stores/layoutStore';
 import { isDocumentReading, requestReadingMode, useIsReading, useReadingEscape } from '../reading/readingMode';
 import { ReadingWindowControls } from '../reading/ReadingWindowControls';
 import { IS_MOBILE_UI } from '../../core/platform';
-import type { PluginReadingApi } from './pluginTypes';
+import type { PluginContext, PluginReadingApi } from './pluginTypes';
 import './plugins.css';
 
 const exitPluginReading = () => requestReadingMode(false);
@@ -56,9 +56,23 @@ export function PluginPreview({ docKey }: { docKey: string }) {
     setError(''); setLoading(true);
     void (async () => {
       try {
-        const [module, bytes] = await Promise.all([loadPlugin(id, current.manifest.version), readPreviewFile(docKey)]);
+        const module = await loadPlugin(id, current.manifest.version);
         if (controller.signal.aborted) return;
-        dispose = await module.mount({ container:target, name:doc?.displayName ?? docKey, bytes, signal:controller.signal, notify:(text) => showToast(text), reading });
+        let bytes: Uint8Array | undefined, source: PluginContext['source'];
+        if (id === 'pdf' && module.supportsRangeRead) {
+          // 只取最新元信息；大文件正文留在磁盘，分块接口还会再次校验大小。
+          const metadata = await readDocument(docKey);
+          if (metadata.size > 512 * 1024 * 1024) throw new Error('PDF 须为 512 MB 以内的普通文件');
+          source = { size: metadata.size, read: (begin, end) => {
+            if (controller.signal.aborted) return Promise.reject(new Error('PDF 读取已取消'));
+            return readPdfFileRange(docKey, begin, end, metadata.size);
+          } };
+        } else {
+          if (id === 'pdf' && (doc?.size ?? 0) > 50 * 1024 * 1024) throw new Error('请更新 PDF 查看插件后打开大于 50 MB 的文件');
+          bytes = await readPreviewFile(docKey);
+        }
+        if (controller.signal.aborted) return;
+        dispose = await module.mount({ container:target, name:doc?.displayName ?? docKey, bytes, source, signal:controller.signal, notify:(text) => showToast(text), reading });
         if (controller.signal.aborted) { dispose?.(); target.replaceChildren(); }
       } catch (e) { if (!controller.signal.aborted) setError(String(e)); }
       finally { if (!controller.signal.aborted) setLoading(false); }

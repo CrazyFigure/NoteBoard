@@ -209,6 +209,22 @@ export async function invoke<T>(command: string, rawArgs: Record<string, unknown
       // 二进制端点继续受到服务器工作区与 50 MB 上限约束。
       const bytes = await readFile(String(args.path)); result = bytes.buffer; break;
     }
+    case 'read_pdf_file_range': {
+      // 只接受精确的 206 响应，防止代理忽略 Range 后意外下载整份大文件。
+      const { path, begin, end, size } = args as { path: string; begin: number; end: number; size: number };
+      const response = await fetch(`/api/file?path=${encodeURIComponent(path)}&pdfRange=1&size=${size}`, {
+        credentials: 'same-origin', headers: { Range: `bytes=${begin}-${end - 1}` },
+      });
+      if (response.status === 401) redirectToLogin();
+      if (response.status !== 206 || response.headers.get('Content-Range') !== `bytes ${begin}-${end - 1}/${size}`) {
+        await response.body?.cancel();
+        throw new Error('PDF 分块读取失败，请重新打开文件');
+      }
+      const buffer = await response.arrayBuffer();
+      if (buffer.byteLength !== end - begin) throw new Error('PDF 分块长度不完整，请重新打开文件');
+      result = buffer;
+      break;
+    }
     case 'load_settings': {
       const saved = await request<Partial<Settings> | null>(command);
       result = { ...DEFAULT_SETTINGS, ...saved, appearance: { ...DEFAULT_SETTINGS.appearance, ...saved?.appearance }, typography: { ...DEFAULT_SETTINGS.typography, ...saved?.typography }, editor: { ...DEFAULT_SETTINGS.editor, ...saved?.editor }, file: { ...DEFAULT_SETTINGS.file, stagingDirectory: `${ROOT}/.staging`, ...saved?.file }, layout: { ...DEFAULT_SETTINGS.layout, ...saved?.layout }, system: { ...DEFAULT_SETTINGS.system, ...saved?.system } };
