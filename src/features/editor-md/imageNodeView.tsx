@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
-import { ZoomIn, ZoomOut, Maximize2, AlignLeft, AlignCenter, AlignRight, Trash2, ExternalLink, FolderOpen, RotateCw, X, AlertCircle, RefreshCw, Link2 } from 'lucide-react';
+import { Maximize2, AlignLeft, AlignCenter, AlignRight, Trash2, AlertCircle, RefreshCw, Link2 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import * as ipc from '../../core/ipc/commands';
 import { useDocumentStore } from '../../stores/documentStore';
@@ -13,222 +13,10 @@ import { handleLinkClick, isAbsoluteLocalPath, resolveRelativeDocPath } from './
 import { openDocument } from '../editor-code/orchestration/openDocument';
 import { Tooltip } from '../../components/Tooltip';
 import { EnhancedImageBlockCore } from './imageCore';
+import { ImagePreviewOverlay } from '../image-viewer/ImagePreviewOverlay';
 
 // 保留既有导出入口，界面和调用方继续使用同一份核心规则。
 export { parseLinkedImageToken, normalizeImageWidth, normalizeImageAlign, renderImageMarkdown, formatMarkdownDestination } from './imageCore';
-
-/** 大图预览 Lightbox 模态框组件 */
-function ImageLightboxModal({
-  src,
-  alt,
-  onClose,
-  onOpenInTab,
-  onRevealInDir,
-}: {
-  src: string;
-  alt?: string;
-  onClose: () => void;
-  onOpenInTab?: () => void;
-  onRevealInDir?: () => void;
-}) {
-  const [scale, setScale] = useState(1);
-  const [rotate, setRotate] = useState(0);
-
-  // 监听 Esc 键快速关闭
-  // 捕获阶段处理并标记 defaultPrevented：外层弹层（如多维表格单元格编辑弹层）据此不再随之关闭
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      e.preventDefault();
-      onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown, true);
-    return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [onClose]);
-
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 9999,
-        background: 'rgba(0, 0, 0, 0.82)',
-        backdropFilter: 'blur(6px)',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        userSelect: 'none',
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      {/* 顶部悬浮控制栏 */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 16,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          background: 'rgba(30, 41, 59, 0.85)',
-          padding: '6px 14px',
-          borderRadius: 24,
-          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
-          color: '#ffffff',
-          zIndex: 10000,
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <Tooltip content="缩小 (Zoom Out)" side="bottom" sideOffset={6}>
-          <button
-            type="button"
-            aria-label="缩小"
-            onClick={() => setScale((s) => Math.max(0.2, s - 0.2))}
-            style={modalBtnStyle}
-          >
-            <ZoomOut size={16} />
-          </button>
-        </Tooltip>
-        <span style={{ fontSize: 12, minWidth: 44, textAlign: 'center' }}>
-          {Math.round(scale * 100)}%
-        </span>
-        <Tooltip content="放大 (Zoom In)" side="bottom" sideOffset={6}>
-          <button
-            type="button"
-            aria-label="放大"
-            onClick={() => setScale((s) => Math.min(4, s + 0.2))}
-            style={modalBtnStyle}
-          >
-            <ZoomIn size={16} />
-          </button>
-        </Tooltip>
-        <Tooltip content="顺时针旋转 90°" side="bottom" sideOffset={6}>
-          <button
-            type="button"
-            aria-label="顺时针旋转 90°"
-            onClick={() => setRotate((r) => (r + 90) % 360)}
-            style={modalBtnStyle}
-          >
-            <RotateCw size={16} />
-          </button>
-        </Tooltip>
-        <Tooltip content="还原 100%" side="bottom" sideOffset={6}>
-          <button
-            type="button"
-            aria-label="还原 100%"
-            onClick={() => {
-            setScale(1);
-            setRotate(0);
-          }}
-            style={modalBtnStyle}
-          >
-            <Maximize2 size={16} />
-          </button>
-        </Tooltip>
-
-        {onOpenInTab && (
-          <Tooltip content="在独立图片标签页中打开" side="bottom" sideOffset={6}>
-            <button
-              type="button"
-              aria-label="在独立图片标签页中打开"
-              onClick={onOpenInTab}
-              style={modalBtnStyle}
-            >
-              <ExternalLink size={16} />
-            </button>
-          </Tooltip>
-        )}
-
-        {onRevealInDir && (
-          <Tooltip content="在文件夹中显示原图" side="bottom" sideOffset={6}>
-            <button
-              type="button"
-              aria-label="在文件夹中显示原图"
-              onClick={onRevealInDir}
-              style={modalBtnStyle}
-            >
-              <FolderOpen size={16} />
-            </button>
-          </Tooltip>
-        )}
-
-        <Tooltip content="关闭 (Esc)" side="bottom" sideOffset={6}>
-          <button
-            type="button"
-            aria-label="关闭预览"
-            onClick={onClose}
-            style={{ ...modalBtnStyle, color: '#f87171' }}
-          >
-            <X size={18} />
-          </button>
-        </Tooltip>
-      </div>
-
-      {/* 图片主视图 */}
-      <div
-        style={{
-          maxWidth: '90vw',
-          maxHeight: '85vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          overflow: 'hidden',
-          transition: 'transform 120ms ease',
-          transform: `scale(${scale}) rotate(${rotate}deg)`,
-        }}
-      >
-        {/* 禁用 Referer 携带，防止防盗链拦截 */}
-        <img
-          src={src}
-          alt={alt || 'Image Preview'}
-          referrerPolicy="no-referrer"
-          style={{
-            maxWidth: '100%',
-            maxHeight: '85vh',
-            objectFit: 'contain',
-            borderRadius: 4,
-            boxShadow: '0 12px 36px rgba(0, 0, 0, 0.5)',
-          }}
-        />
-      </div>
-
-      {/* 底部信息 */}
-      {alt && (
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 20,
-            color: 'rgba(255, 255, 255, 0.75)',
-            fontSize: 13,
-            background: 'rgba(0, 0, 0, 0.5)',
-            padding: '4px 12px',
-            borderRadius: 12,
-          }}
-        >
-          {alt}
-        </div>
-      )}
-    </div>
-  );
-}
-
-const modalBtnStyle: React.CSSProperties = {
-  background: 'transparent',
-  border: 'none',
-  color: '#ffffff',
-  cursor: 'pointer',
-  padding: '4px 6px',
-  borderRadius: 4,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  transition: 'background 120ms ease',
-};
 
 /** TipTap 图片 NodeView 组件 */
 export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewProps) {
@@ -622,9 +410,9 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
         )}
       </div>
 
-      {/* 大图预览 Lightbox 模态框 */}
+      {/* 大图预览：与思维导图图片共用浮层，支持滚轮滚动、Ctrl/⌘+滚轮缩放、拖动平移 */}
       {lightboxOpen && resolvedDisplaySrc && (
-        <ImageLightboxModal
+        <ImagePreviewOverlay
           src={resolvedDisplaySrc}
           alt={alt}
           onClose={() => setLightboxOpen(false)}

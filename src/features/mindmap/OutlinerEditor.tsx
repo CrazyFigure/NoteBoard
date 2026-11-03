@@ -31,7 +31,7 @@ import {
   type MindStructureRef,
 } from './mindmapStructures';
 import { MindmapIconPicker } from './MindmapIconPicker';
-import { MindmapImagePreview } from './MindmapImagePreview';
+import { ImagePreviewOverlay } from '../image-viewer/ImagePreviewOverlay';
 import { MindmapFileLink } from './MindmapFileLink';
 import { openFileLink, pickFileLinks } from './mindmapFileLinks';
 import { appendWithLimit, getNodeFiles, getNodeImages, MAX_NODE_FILES, MAX_NODE_IMAGES } from './mindmapAttachments';
@@ -1456,7 +1456,7 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
         if (list.length === 0) return null;
         const index = Math.min(previewImage.index, list.length - 1);
         return (
-          <MindmapImagePreview
+          <ImagePreviewOverlay
             src={list[index]}
             index={index}
             count={list.length}
