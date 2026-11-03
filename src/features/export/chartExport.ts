@@ -4,7 +4,8 @@
 //
 // 设计要点：
 // 1. Tauri WebView2 不会接管 blob URL 下载，直接构造游离 <a download> 会静默失效，
-//    因此保存统一走「系统另存为对话框 + Rust save_binary_file」，浏览器环境才回退到 <a> 下载。
+//    因此保存统一走系统另存为对话框；普通路径用 Rust 写盘，安卓 content URI 用 fs 插件写入，
+//    浏览器环境才回退到 <a> 下载。
 // 2. 图表来源分两类：现成的 SVG 字符串（Mermaid / PlantUML）与已渲染的 DOM 节点（Infographic）。
 //    DOM 节点走 foreignObject 包裹方案：foreignObject 内不继承页面样式表与 CSS 变量，
 //    必须逐个把 computedStyle 内联到克隆节点上，否则导出结果是一片白。
@@ -356,7 +357,7 @@ export interface DialogFilter {
 
 /**
  * 弹系统另存为对话框并保存二进制 Blob 文件
- * 支持 Tauri WebView2 本地文件系统直写，以及浏览器环境下的 Blob 链接下载兜底
+ * 普通路径由 Rust 写盘，安卓 content URI 通过 fs 插件交给系统内容提供器写入；浏览器使用 Blob 下载
  * @returns 用户取消时返回 false，成功保存返回 true
  */
 export async function exportBlobWithDialog(
@@ -374,8 +375,17 @@ export async function exportBlobWithDialog(
   const selectedPath = await save({ defaultPath: defaultFilename, filters });
   if (!selectedPath) return false;
 
-  // 将 Blob 转为二进制数组并通过 Rust IPC 写入本地文件
+  // 安卓系统选择器返回的是授权 URI，不能传给只接受磁盘路径的 save_binary_file。
+  // fs 插件会通过 ContentResolver 打开目标并写入原始字节，无需解析 URI 或扩大存储权限。
   const bytes = new Uint8Array(await blob.arrayBuffer());
+  if (selectedPath.startsWith('content://')) {
+    // 仅原生 URI 保存需要此能力；按需加载，避免网页适配层被要求提供安卓写入接口。
+    const { writeFile } = await import('@tauri-apps/plugin-fs');
+    await writeFile(selectedPath, bytes);
+    return true;
+  }
+
+  // 桌面等普通文件路径保留既有写盘流程与错误提示。
   const result = await ipc.saveBinaryFile(selectedPath, bytes);
   if (!result.ok) {
     throw new Error(result.error ? describeWriteError(result.error) : '写入文件失败');
