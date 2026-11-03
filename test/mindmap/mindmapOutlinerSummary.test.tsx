@@ -71,6 +71,9 @@ describe('大纲模式编辑概要主题', () => {
     });
   };
   const latest = () => onChange.mock.lastCall![0];
+  /** 确认框 Portal 到 body，按文字找按钮 */
+  const confirmButton = (label: string) =>
+    [...document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')].find((b) => b.textContent?.trim() === label)!;
   const topicOf = (tree: MindNode) => tree.summaries![0].topic;
 
   it('概要主题排在所概括内容（含子树）之后，子节点逐层缩进显示', () => {
@@ -128,7 +131,40 @@ describe('大纲模式编辑概要主题', () => {
     await act(async () => { (rowOf('小结').querySelector('button[aria-label="收起"], button svg.lucide-chevron-down')?.closest('button') as HTMLButtonElement).click(); });
     expect(titles()).toEqual(['中心', 'A', 'A1', 'B', '小结', 'C']);
     await act(async () => { (rowOf('小结').querySelector('button[aria-label="删除此概要"]') as HTMLButtonElement).click(); });
+    // 概要下还有子要点，先二次确认
+    expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain('3 个子要点');
+    await act(async () => { confirmButton('删除').click(); });
     expect(latest().summaries).toBeUndefined();
     expect(titles()).toEqual(['中心', 'A', 'A1', 'B', 'C']);
+  });
+
+  it('删除按钮可删除有文字的要点；无子要点直接删除，有子要点先确认，取消则不变', async () => {
+    const deleteButtonOf = (text: string) => rowOf(text).querySelector('button[aria-label="删除此要点及子要点"]') as HTMLButtonElement;
+    await act(async () => { deleteButtonOf('C').click(); });
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(latest().children.map((n) => n.id)).toEqual(['a', 'b']);
+
+    onChange.mockClear();
+    await act(async () => { deleteButtonOf('A').click(); });
+    expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain('1 个子要点');
+    await act(async () => { confirmButton('取消').click(); });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(titles()).toContain('A1');
+
+    await act(async () => { deleteButtonOf('A').click(); });
+    await act(async () => { confirmButton('删除').click(); });
+    expect(latest().children.map((n) => n.id)).toEqual(['b']);
+    // 概要的一端仍在，概要保留
+    expect(latest().summaries).toHaveLength(1);
+
+    // 概要覆盖的节点全部删除后，概要随之清理
+    await act(async () => { deleteButtonOf('B').click(); });
+    expect(latest().children).toEqual([]);
+    expect(latest().summaries).toBeUndefined();
+  });
+
+  it('概要子树内的要点也可用删除按钮删除', async () => {
+    await act(async () => { (rowOf('要点 2').querySelector('button[aria-label="删除此要点及子要点"]') as HTMLButtonElement).click(); });
+    expect(topicOf(latest()).children.map((n) => n.id)).toEqual(['t1']);
   });
 });

@@ -23,6 +23,7 @@ import type { MindNode } from './mindmapTypes';
 import { generateNodeId, moveMindNode, isMindNodeDescendant } from './mindmapConverter';
 import { cloneMindmapTree, findMindNode, findMindNodeParent, walkMindNodes } from './mindmapTree';
 import {
+  pruneMindmapStructures,
   removeStructure,
   resolveRangeNodes,
   setStructureText,
@@ -31,6 +32,7 @@ import {
   type MindStructureRef,
 } from './mindmapStructures';
 import { MindmapIconPicker } from './MindmapIconPicker';
+import { MindmapConfirmDialog } from './MindmapConfirmDialog';
 import { ImagePreviewOverlay } from '../image-viewer/ImagePreviewOverlay';
 import { MindmapFileLink } from './MindmapFileLink';
 import { openFileLink, pickFileLinks } from './mindmapFileLinks';
@@ -145,6 +147,9 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
 
   // 图片全屏预览弹窗：记录节点与图片序号，预览中可左右切换
   const [previewImage, setPreviewImage] = useState<{ nodeId: string; index: number } | null>(null);
+
+  // 删除按钮的二次确认：要删的行下还有子要点时弹出，记录目标行与子孙数量
+  const [deleteConfirm, setDeleteConfirm] = useState<{ item: FlatItem; index: number; descendantCount: number } | null>(null);
 
   // Pointer Events 拖拽会话状态
   const dragSessionRef = useRef<DragSession | null>(null);
@@ -541,13 +546,9 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
     handleStructureRemove(item.summary.ref);
   };
 
-  // Backspace：空行时删除并跳到前一个节点；没有子节点的空白概要主题按删除概要处理
-  const handleBackspaceKey = (item: FlatItem, currentIdx: number) => {
-    if (item.summary) {
-      if (item.node.text.length === 0 && item.node.children.length === 0) removeSummaryRow(item, currentIdx);
-      return;
-    }
-    if (item.node.text.length > 0 || !item.parent) return;
+  /** 删除一个要点（连同子要点），焦点回到上一行 */
+  const removeNodeRow = (item: FlatItem, currentIdx: number) => {
+    if (!item.parent) return;
 
     const prevItem = flatItems[currentIdx - 1];
     if (prevItem) {
@@ -557,7 +558,32 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
     updateTree((cloned) => {
       const parent = findMindNode(cloned, item.parent!.id);
       if (parent?.children[item.indexInParent]?.id === item.node.id) parent.children.splice(item.indexInParent, 1);
+      // 所覆盖节点全部被删的概要 / 外框、指向被删节点的联系线随之清理，与导图模式删除一致
+      pruneMindmapStructures(cloned);
     });
+  };
+
+  // Backspace：空行时删除并跳到前一个节点；没有子节点的空白概要主题按删除概要处理
+  const handleBackspaceKey = (item: FlatItem, currentIdx: number) => {
+    if (item.summary) {
+      if (item.node.text.length === 0 && item.node.children.length === 0) removeSummaryRow(item, currentIdx);
+      return;
+    }
+    if (item.node.text.length > 0) return;
+    removeNodeRow(item, currentIdx);
+  };
+
+  // 删除按钮：不论有无文字都删除该行（概要行删除整个概要）；下面还有子要点时先二次确认
+  const requestDeleteRow = (item: FlatItem, currentIdx: number) => {
+    if (!item.parent && !item.summary) return;
+    let descendantCount = -1;
+    for (const _node of walkMindNodes(item.node)) descendantCount += 1;
+    if (descendantCount > 0) {
+      setDeleteConfirm({ item, index: currentIdx, descendantCount });
+      return;
+    }
+    if (item.summary) removeSummaryRow(item, currentIdx);
+    else removeNodeRow(item, currentIdx);
   };
 
   // ── Pointer Events 拖拽核心实现 ──
@@ -1239,7 +1265,7 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
                     <Tooltip content={isSummaryRow ? '删除此概要' : '删除此要点及子要点'} side="top" sideOffset={4}>
                       <button
                         type="button"
-                        onClick={() => (isSummaryRow ? removeSummaryRow(item, idx) : handleBackspaceKey(item, idx))}
+                        onClick={() => requestDeleteRow(item, idx)}
                         aria-label={isSummaryRow ? '删除此概要' : '删除此要点及子要点'}
                         style={{
                           background: 'transparent',
@@ -1461,6 +1487,22 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
           />
         );
       })()}
+
+      {/* 删除含子要点的行前二次确认（文案与导图模式一致） */}
+      {deleteConfirm && (
+        <MindmapConfirmDialog
+          title={deleteConfirm.item.summary ? '删除概要' : '删除要点'}
+          message={formatShortcut(`该${deleteConfirm.item.summary ? '概要' : '要点'}下还有 ${deleteConfirm.descendantCount} 个子要点，将一并删除。删除后可用 Ctrl+Z 撤销。`)}
+          confirmLabel="删除"
+          onCancel={() => setDeleteConfirm(null)}
+          onConfirm={() => {
+            const { item, index } = deleteConfirm;
+            setDeleteConfirm(null);
+            if (item.summary) removeSummaryRow(item, index);
+            else removeNodeRow(item, index);
+          }}
+        />
+      )}
 
       {/* 浮动拖拽跟随胶囊 */}
       {isDragging && dragPreview && (
