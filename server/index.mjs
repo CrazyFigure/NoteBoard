@@ -1,5 +1,6 @@
 // NoteBoard 网页入口：同源 API、可选多用户登录与共享授权、静态资源托管。
 import http from 'node:http';
+import { pipeline } from 'node:stream/promises';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -501,6 +502,16 @@ export async function createWebServer(options = {}) {
         const key = url.searchParams.get('path');
         const target = await spaces.route(user, key, 'read');
         if (target.virtual) throw fail('文件不存在', 404);
+        // Office 完整解析仍需全部字节；服务器按流发送并遵守背压，避免额外驻留百兆 Buffer。
+        if (url.searchParams.has('preview')) {
+          const { handle, stat } = await target.space.files.openPreview(target.key);
+          try {
+            res.writeHead(200, { 'Content-Type':'application/octet-stream', 'Content-Length':stat.size, 'Cache-Control':'no-store', 'Content-Disposition':'attachment', 'Content-Security-Policy':"sandbox; default-src 'none'" });
+            if (req.method === 'HEAD' || !stat.size) return res.end();
+            await pipeline(handle.createReadStream({start:0,end:stat.size-1,autoClose:false}), res);
+          } finally { await handle.close(); }
+          return;
+        }
         // 大 PDF 只允许有界的分块读取，权限检查与普通附件共用，不能借此扩大完整下载上限。
         if (url.searchParams.has('pdfRange')) {
           const match = /^bytes=(\d+)-(\d+)$/.exec(String(req.headers.range ?? ''));

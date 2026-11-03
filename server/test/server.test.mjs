@@ -92,6 +92,27 @@ test('大 PDF 元信息与分块端点支持 512 MiB，其他读取和上传仍�
   assert.equal((await fetch(route.replace(`size=${size}`,`size=${size+1}`),{headers:{Range:'bytes=0-7'}})).status,413);
 });
 
+test('Office 只读预览按格式允许 100/512 MiB，元信息与 HEAD 不读取正文，写入和普通附件不放宽', async (t) => {
+  const {dataDir,url,call}=await fixture(t);
+  for(const [ext,mb] of [['doc',100],['DOCX',100],['xls',100],['XLSX',100],['ppt',512],['PPTX',512],['epub',50]]){
+    const key=`/workspace/limit.${ext}`,disk=path.join(dataDir,'workspace',`limit.${ext}`),size=mb*1024*1024;
+    const handle=await fs.open(disk,'w');await handle.truncate(size);await handle.close();
+    const route=`${url}/api/file?path=${encodeURIComponent(key)}&preview=1`;
+    const prepared=await call('prepare_document',{path:key});assert.equal(prepared.status,200,ext);
+    const payload=(await prepared.json()).result.payload;
+    assert.equal(payload.size,size);assert.equal(payload.content,null);assert.equal(payload.readonly,true);
+    const head=await fetch(route,{method:'HEAD'});assert.equal(head.status,200,ext);assert.equal(head.headers.get('content-length'),String(size));
+    if(mb>50)assert.equal((await fetch(`${url}/api/file?path=${encodeURIComponent(key)}`)).status,413);
+    assert.equal((await call('write_document',{path:key,content:'',encoding:'utf8',eol:'lf'})).status,400);
+    await fs.truncate(disk,size+1);
+    assert.equal((await fetch(route,{method:'HEAD'})).status,413,ext);
+    assert.equal((await call('read_document',{path:key})).status,413,ext);
+    const bytes=Buffer.from([80,75,0,255]);await fs.writeFile(disk,bytes);
+    assert.deepEqual(Buffer.from(await (await fetch(route)).arrayBuffer()),bytes);
+  }
+  assert.equal((await fetch(`${url}/api/file?path=/workspace/limit.txt&preview=1`)).status,400);
+});
+
 test('拒绝路径穿越、Windows 路径、根目录修改和符号链接', async (t) => {
   const { call, dataDir, temp } = await fixture(t);
   for (const key of ['/etc/passwd', '/workspace/../secret', '/workspace\\secret', '/workspace/NUL.txt']) {

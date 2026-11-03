@@ -64,15 +64,11 @@ pub async fn read_xmind_file(path: String) -> Result<tauri::ipc::Response, Strin
     Ok(tauri::ipc::Response::new(bytes))
 }
 
-/// 插件查看仅允许 Office、PDF、CAD、EPUB 等明确格式和 50 MiB 普通文件，原始字节走二进制 IPC。
+/// 插件查看按格式执行大小限制；磁盘读取放入工作线程，原始字节走二进制 IPC。
 #[tauri::command]
 pub async fn read_preview_file(path: String) -> Result<tauri::ipc::Response, String> {
-    let bytes = tauri::async_runtime::spawn_blocking(move || {
-        if crate::dto::kind_from_path(&path).0 != crate::dto::DocumentKind::Preview { return Err("此入口仅用于插件查看的文档".to_string()); }
-        let metadata = std::fs::metadata(&path).map_err(|e| e.to_string())?;
-        if !metadata.is_file() || metadata.len() > 50 * 1024 * 1024 { return Err("查看文件须为 50 MB 以内的普通文件".into()); }
-        std::fs::read(path).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())??;
+    let bytes = tauri::async_runtime::spawn_blocking(move || read::read_preview_bytes(Path::new(&path)))
+        .await.map_err(|e| e.to_string())??;
     Ok(tauri::ipc::Response::new(bytes))
 }
 

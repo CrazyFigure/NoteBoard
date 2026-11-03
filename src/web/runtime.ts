@@ -206,8 +206,8 @@ export async function invoke<T>(command: string, rawArgs: Record<string, unknown
       break;
     }
     case 'read_preview_file': {
-      // 二进制端点继续受到服务器工作区与 50 MB 上限约束。
-      const bytes = await readFile(String(args.path)); result = bytes.buffer; break;
+      // 专用查看端点按格式限额且流式发送，普通附件与上传的限制保持不变。
+      const bytes = await readFile(String(args.path), { preview:true }); result = bytes.buffer; break;
     }
     case 'read_pdf_file_range': {
       // 只接受精确的 206 响应，防止代理忽略 Range 后意外下载整份大文件。
@@ -265,8 +265,8 @@ export async function invoke<T>(command: string, rawArgs: Record<string, unknown
 }
 
 /** 浏览器中读取服务器二进制文件，继续支持 XMind 和图片等现有导入流程。 */
-export async function readFile(filePath: string): Promise<Uint8Array> {
-  const response = await fetch(convertFileSrc(filePath), { credentials: 'same-origin' });
+export async function readFile(filePath: string, options?: { preview?: boolean }): Promise<Uint8Array> {
+  const response = await fetch(convertFileSrc(filePath) + (options?.preview ? '&preview=1' : ''), { credentials: 'same-origin' });
   if (response.status === 401) redirectToLogin();
   if (!response.ok) throw new Error('读取文件失败');
   return new Uint8Array(await response.arrayBuffer());

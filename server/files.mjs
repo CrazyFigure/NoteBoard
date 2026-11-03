@@ -7,9 +7,16 @@ import { TextDecoder } from 'node:util';
 
 /** 文本读取上限；避免多个大文件同时耗尽容器内存。 */
 export const MAX_FILE_BYTES = 50 * 1024 * 1024;
-// 仅 PDF 的分块查看放宽至 512 MiB，写入与其他格式仍沿用 50 MiB。
+// PDF 的分块查看上限；写入仍沿用 50 MiB，Office 只读上限由格式决定。
 export const MAX_PDF_BYTES = 512 * 1024 * 1024;
 export const ROOT = '/workspace';
+
+/** 与原生端保持一致；PDF 整文件兼容入口和其他查看格式保持 50 MiB。 */
+export function previewFileLimit(key) {
+  const ext = path.posix.extname(key).toLowerCase();
+  if (['.doc','.docx','.xls','.xlsx'].includes(ext)) return 100 * 1024 * 1024;
+  return ['.ppt','.pptx'].includes(ext) ? 512 * 1024 * 1024 : MAX_FILE_BYTES;
+}
 
 /** 将异常转换为带 HTTP 状态的业务错误。 */
 export function fail(message, status = 400) {
@@ -86,6 +93,17 @@ export async function createFiles(dataDir) {
     return { bytes: await fs.readFile(target), stat };
   }
 
+  /** 专用查看入口返回已校验的文件句柄，HTTP 层流式传输，不在服务器攒整份 Office。 */
+  async function openPreview(key) {
+    if (classify(key)[0] !== 'preview') throw fail('此入口仅用于插件查看的文档');
+    const handle = await fs.open(await resolve(key), 'r');
+    try {
+      const stat = await handle.stat(), limit = previewFileLimit(key);
+      if (!stat.isFile() || stat.size > limit) throw fail(`查看文件须为 ${limit / 1024 / 1024} MB 以内的普通文件`, 413);
+      return { handle, stat };
+    } catch (error) { await handle.close(); throw error; }
+  }
+
   /** 复用工作区路径校验，每次最多读取 1 MiB；从同一文件句柄核对大小并读取。 */
   async function readPdfRange(key, begin, end, size) {
     if (path.posix.extname(key).toLowerCase() !== '.pdf') throw fail('分块读取仅支持 PDF 文件');
@@ -109,16 +127,15 @@ export async function createFiles(dataDir) {
 
   /** 保留 UTF-8 BOM / GBK 与原有换行风格，内容模型统一使用 LF。 */
   async function read(key) {
-    // PDF 打开阶段只读元信息，避免为正文为空的只读文档读入整文件和计算哈希。
-    if (path.posix.extname(key).toLowerCase() === '.pdf') {
+    // 查看器打开阶段只读元信息，避免为正文为空的只读文档重复读整文件和计算哈希。
+    if (classify(key)[0] === 'preview') {
       const stat = await fs.stat(await resolve(key));
       if (!stat.isFile()) throw fail('只能读取普通文件');
-      if (stat.size > MAX_PDF_BYTES) throw fail('PDF 须为 512 MB 以内的普通文件', 413);
+      const limit = path.posix.extname(key).toLowerCase() === '.pdf' ? MAX_PDF_BYTES : previewFileLimit(key);
+      if (stat.size > limit) throw fail(`查看文件须为 ${limit / 1024 / 1024} MB 以内的普通文件`, 413);
       return { key, displayName:path.posix.basename(key), dirPath:path.posix.dirname(key), kind:'preview', language:'plaintext', content:null, encoding:'utf8', eol:'lf', size:stat.size, mtime:Math.trunc(stat.mtimeMs), readonly:true };
     }
     const { bytes, stat } = await readBytes(key);
-    // Office 和 PDF 返回空正文，查看器单独读取原始字节。
-    if (classify(key)[0] === 'preview') return { key, displayName:path.posix.basename(key), dirPath:path.posix.dirname(key), kind:'preview', language:'plaintext', content:null, encoding:'utf8', eol:'lf', size:stat.size, mtime:Math.trunc(stat.mtimeMs), readonly:true, webRevision:revision(bytes) };
     let encoding = 'utf8';
     let content;
     if (bytes.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf]))) {
@@ -200,5 +217,5 @@ export async function createFiles(dataDir) {
     });
   }
 
-  return { resolve, read, readBytes, readPdfRange, list, write, encode, loadState, saveState, trash, serialize, revision };
+  return { resolve, read, readBytes, openPreview, readPdfRange, list, write, encode, loadState, saveState, trash, serialize, revision };
 }
