@@ -4667,7 +4667,30 @@ button.nb-callout-icon:active {
   color: transparent;
 }
 
-/* 大纲中的概要 / 外框 / 联系线小标签 */
+/* 大纲中概要主题行前的标签（标明概括了几项） */
+.nb-outliner-summary-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  height: 20px;
+  padding: 0 7px;
+  margin-right: 2px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--editor-accent, #3b82f6) 10%, transparent);
+  color: var(--editor-accent, #3b82f6);
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+  transition: background var(--transition-fast, 120ms ease);
+}
+
+.nb-outliner-summary-tag:hover {
+  background: color-mix(in srgb, var(--editor-accent, #3b82f6) 18%, transparent);
+}
+
+/* 大纲中的外框 / 联系线小标签 */
 .nb-outliner-structure-chip {
   display: inline-flex;
   align-items: center;

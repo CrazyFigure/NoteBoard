@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import type { MindNode } from './mindmapTypes';
 import { generateNodeId, moveMindNode, isMindNodeDescendant } from './mindmapConverter';
-import { cloneMindmapTree, findMindNode, walkMindNodes } from './mindmapTree';
+import { cloneMindmapTree, findMindNode, findMindNodeParent, walkMindNodes } from './mindmapTree';
 import {
   removeStructure,
   resolveRangeNodes,
@@ -59,6 +59,8 @@ interface FlatItem {
   depth: number;
   hasChildren: boolean;
   isExpanded: boolean;
+  /** 概要主题行：所属概要与说明（覆盖项数）；普通行为空 */
+  summary?: { ref: MindStructureRef; caption: string };
 }
 
 type DropPosition = 'before' | 'inside' | 'after';
@@ -151,14 +153,33 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
   const [dropTarget, setDropTarget] = useState<{ targetId: string; pos: DropPosition } | null>(null);
 
   // 展平节点树（用于顺序键盘导航与渲染）
+  // 概要主题作为一行排在所覆盖的末尾节点（及其子树）之后，与被概括的节点同级缩进，其子节点照常逐层缩进
   const flatItems = React.useMemo(() => {
     const list: FlatItem[] = [];
+    // 范围末尾节点 id → 排在它之后的概要主题
+    const summariesAfter = new Map<string, Array<{ topic: MindNode; ref: MindStructureRef; caption: string }>>();
+    for (const owner of walkMindNodes(root)) {
+      for (const summary of owner.summaries ?? []) {
+        const covered = resolveRangeNodes(owner, summary);
+        if (!covered) continue;
+        const lastId = covered[covered.length - 1].id;
+        const entry = {
+          topic: summary.topic,
+          ref: { kind: 'summary' as const, ownerId: owner.id, id: summary.id },
+          caption: covered.length > 1 ? `概要 ${covered.length} 项` : '概要',
+        };
+        const after = summariesAfter.get(lastId);
+        if (after) after.push(entry);
+        else summariesAfter.set(lastId, [entry]);
+      }
+    }
 
-    const stack: Array<{ node: MindNode; parent: MindNode | null; parentArray: MindNode[]; indexInParent: number; depth: number }> = [
+    type StackEntry = { node: MindNode; parent: MindNode | null; parentArray: MindNode[]; indexInParent: number; depth: number; summary?: FlatItem['summary'] };
+    const stack: StackEntry[] = [
       { node: root, parent: null, parentArray: [], indexInParent: 0, depth: 0 },
     ];
     while (stack.length > 0) {
-      const { node, parent, parentArray, indexInParent, depth } = stack.pop()!;
+      const { node, parent, parentArray, indexInParent, depth, summary } = stack.pop()!;
       const hasChildren = Boolean(node.children && node.children.length > 0);
       const isExpanded = node.isExpanded !== false;
 
@@ -170,8 +191,17 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
         depth,
         hasChildren,
         isExpanded,
+        summary,
       });
 
+      // 先压概要主题再压子节点：出栈时本节点的整棵子树在前，概要主题紧随其后
+      const after = summariesAfter.get(node.id);
+      if (after) {
+        for (let index = after.length - 1; index >= 0; index -= 1) {
+          const { topic, ref, caption } = after[index];
+          stack.push({ node: topic, parent: null, parentArray: [], indexInParent: 0, depth, summary: { ref, caption } });
+        }
+      }
       if (hasChildren && isExpanded && node.children) {
         for (let index = node.children.length - 1; index >= 0; index -= 1) {
           stack.push({ node: node.children[index], parent: node, parentArray: node.children, indexInParent: index, depth: depth + 1 });
@@ -182,7 +212,7 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
     return list;
   }, [root]);
 
-  // 结构元素在大纲中的挂载行：概要挂在范围末尾节点下，外框挂在范围首个节点下，联系线挂在起点节点下
+  // 结构元素在大纲中的挂载行：外框挂在范围首个节点下，联系线挂在起点节点下（概要主题本身就是大纲中的一行）
   const structureItems = React.useMemo(() => {
     const result = new Map<string, OutlineStructureItem[]>();
     const push = (rowId: string, item: OutlineStructureItem) => {
@@ -195,16 +225,6 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
     for (const node of walkMindNodes(root)) {
       textOf.set(node.id, node.text);
       // 范围可能跨父节点（同层后代），按覆盖节点列表取首尾
-      for (const summary of node.summaries ?? []) {
-        const covered = resolveRangeNodes(node, summary);
-        if (!covered) continue;
-        const count = covered.length;
-        // 概要主题的子节点大纲中不展开，只在说明里提示数量（导图视图可查看与编辑）
-        let descendants = -1;
-        for (const _item of walkMindNodes(summary.topic)) descendants += 1;
-        const caption = `${count > 1 ? `概要 ${count} 项` : '概要'}${descendants > 0 ? ` · 子节点 ${descendants}` : ''}`;
-        push(covered[count - 1].id, { kind: 'summary', ownerId: node.id, id: summary.id, text: summary.topic.text, caption });
-      }
       for (const boundary of node.boundaries ?? []) {
         const covered = resolveRangeNodes(node, boundary);
         if (!covered) continue;
@@ -309,57 +329,31 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
     onChangeRef.current(cloned);
   }, []);
 
-  // 更新指定节点的文本
+  // 更新指定节点的文本（节点查找覆盖概要主题及其子树）
   const handleTextChange = (id: string, text: string) => {
     updateTree((cloned) => {
-      function findAndSet(n: MindNode) {
-        if (n.id === id) {
-          // 大纲模式编辑纯文本时，导图中设置的格式随文字平移
-          n.marks = adjustMarksForTextChange(n.text, text, n.marks);
-          if (!n.marks) delete n.marks;
-          n.text = text;
-          return true;
-        }
-        for (const child of n.children || []) {
-          if (findAndSet(child)) return true;
-        }
-        return false;
-      }
-      findAndSet(cloned);
+      const n = findMindNode(cloned, id);
+      if (!n) return;
+      // 大纲模式编辑纯文本时，导图中设置的格式随文字平移
+      n.marks = adjustMarksForTextChange(n.text, text, n.marks);
+      if (!n.marks) delete n.marks;
+      n.text = text;
     });
   };
 
   // 更新指定节点的图标
   const handleIconChange = (id: string, icon?: string) => {
     updateTree((cloned) => {
-      function findAndSet(n: MindNode) {
-        if (n.id === id) {
-          n.icon = icon;
-          return true;
-        }
-        for (const child of n.children || []) {
-          if (findAndSet(child)) return true;
-        }
-        return false;
-      }
-      findAndSet(cloned);
+      const n = findMindNode(cloned, id);
+      if (n) n.icon = icon;
     });
   };
 
   // 更新指定节点的备注文字
   const handleNoteChange = (id: string, note?: string) => {
     updateTree((cloned) => {
-      function findAndSet(n: MindNode) {
-        if (n.id === id) {
-          n.note = note;
-          return true;
-        }
-        for (const child of n.children || []) {
-          if (findAndSet(child)) return true;
-        }
-        return false;
-      }
-      findAndSet(cloned);
+      const n = findMindNode(cloned, id);
+      if (n) n.note = note;
     });
   };
 
@@ -468,21 +462,12 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
   // 切换节点的展开/折叠
   const handleToggleExpand = (id: string) => {
     updateTree((cloned) => {
-      function findAndToggle(n: MindNode) {
-        if (n.id === id) {
-          n.isExpanded = !n.isExpanded;
-          return true;
-        }
-        for (const child of n.children || []) {
-          if (findAndToggle(child)) return true;
-        }
-        return false;
-      }
-      findAndToggle(cloned);
+      const n = findMindNode(cloned, id);
+      if (n) n.isExpanded = !n.isExpanded;
     });
   };
 
-  // 回车：在当前行下方创建新的同级兄弟节点
+  // 回车：在当前行下方创建新的同级兄弟节点；根节点与概要主题没有同级，改为插入第一个子节点
   const handleEnterKey = (item: FlatItem) => {
     const newNode: MindNode = {
       id: generateNodeId(),
@@ -493,22 +478,16 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
 
     updateTree((cloned) => {
       if (!item.parent) {
-        if (!cloned.children) cloned.children = [];
-        cloned.children.unshift(newNode);
-        cloned.isExpanded = true;
+        const target = findMindNode(cloned, item.node.id);
+        if (!target) return;
+        if (!target.children) target.children = [];
+        target.children.unshift(newNode);
+        target.isExpanded = true;
       } else {
-        function findParentAndInsert(n: MindNode): boolean {
-          if (n.id === item.parent?.id) {
-            if (!n.children) n.children = [];
-            n.children.splice(item.indexInParent + 1, 0, newNode);
-            return true;
-          }
-          for (const c of n.children || []) {
-            if (findParentAndInsert(c)) return true;
-          }
-          return false;
-        }
-        findParentAndInsert(cloned);
+        const parent = findMindNode(cloned, item.parent.id);
+        if (!parent) return;
+        if (!parent.children) parent.children = [];
+        parent.children.splice(item.indexInParent + 1, 0, newNode);
       }
     });
 
@@ -519,57 +498,55 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
   const handleTabKey = (item: FlatItem) => {
     if (!item.parent || item.indexInParent === 0) return;
 
-    const prevSibling = item.parentArray[item.indexInParent - 1];
-    if (!prevSibling) return;
+    const prevSiblingId = item.parentArray[item.indexInParent - 1]?.id;
+    if (!prevSiblingId) return;
 
     updateTree((cloned) => {
-      function doIndent(n: MindNode): boolean {
-        if (n.id === item.parent?.id) {
-          const [extracted] = n.children.splice(item.indexInParent, 1);
-          if (!prevSibling.children) prevSibling.children = [];
-          prevSibling.children.push(extracted);
-          prevSibling.isExpanded = true;
-          return true;
-        }
-        for (const c of n.children || []) {
-          if (doIndent(c)) return true;
-        }
-        return false;
-      }
-      doIndent(cloned);
+      const parent = findMindNode(cloned, item.parent!.id);
+      const prevSibling = parent?.children[item.indexInParent - 1];
+      if (!parent || !prevSibling || prevSibling.id !== prevSiblingId) return;
+      const [extracted] = parent.children.splice(item.indexInParent, 1);
+      if (!prevSibling.children) prevSibling.children = [];
+      prevSibling.children.push(extracted);
+      prevSibling.isExpanded = true;
     });
 
     focusTargetIdRef.current = item.node.id;
   };
 
-  // Shift+Tab：升级（提升到父节点的同级）
+  // Shift+Tab：升级（提升到父节点的同级）；概要主题的直接子节点没有更上一级，保持不动
   const handleShiftTabKey = (item: FlatItem) => {
     if (!item.parent || item.depth <= 1) return;
+    // 父节点是概要主题（没有上一级）时不提交，避免产生空的撤销步
+    if (!findMindNodeParent(root, item.parent.id)) return;
 
     updateTree((cloned) => {
-      function findParentAndLift(n: MindNode, grandParent: MindNode | null): boolean {
-        if (n.id === item.parent?.id && grandParent) {
-          const idx = n.children.findIndex((c) => c.id === item.node.id);
-          if (idx !== -1) {
-            const [extracted] = n.children.splice(idx, 1);
-            const parentIdx = grandParent.children.findIndex((c) => c.id === n.id);
-            grandParent.children.splice(parentIdx + 1, 0, extracted);
-            return true;
-          }
-        }
-        for (const c of n.children || []) {
-          if (findParentAndLift(c, n)) return true;
-        }
-        return false;
-      }
-      findParentAndLift(cloned, null);
+      const parentInfo = findMindNodeParent(cloned, item.parent!.id);
+      if (!parentInfo) return;
+      const parent = parentInfo.parent.children[parentInfo.index];
+      const idx = parent.children.findIndex((c) => c.id === item.node.id);
+      if (idx === -1) return;
+      const [extracted] = parent.children.splice(idx, 1);
+      parentInfo.parent.children.splice(parentInfo.index + 1, 0, extracted);
     });
 
     focusTargetIdRef.current = item.node.id;
   };
 
-  // Backspace：空行时删除并跳到前一个节点
+  /** 删除概要（连同概要主题及其子节点），焦点回到上一行 */
+  const removeSummaryRow = (item: FlatItem, currentIdx: number) => {
+    if (!item.summary) return;
+    const prevItem = flatItems[currentIdx - 1];
+    if (prevItem) focusTargetIdRef.current = prevItem.node.id;
+    handleStructureRemove(item.summary.ref);
+  };
+
+  // Backspace：空行时删除并跳到前一个节点；没有子节点的空白概要主题按删除概要处理
   const handleBackspaceKey = (item: FlatItem, currentIdx: number) => {
+    if (item.summary) {
+      if (item.node.text.length === 0 && item.node.children.length === 0) removeSummaryRow(item, currentIdx);
+      return;
+    }
     if (item.node.text.length > 0 || !item.parent) return;
 
     const prevItem = flatItems[currentIdx - 1];
@@ -578,24 +555,16 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
     }
 
     updateTree((cloned) => {
-      function doDelete(n: MindNode): boolean {
-        if (n.id === item.parent?.id) {
-          n.children.splice(item.indexInParent, 1);
-          return true;
-        }
-        for (const c of n.children || []) {
-          if (doDelete(c)) return true;
-        }
-        return false;
-      }
-      doDelete(cloned);
+      const parent = findMindNode(cloned, item.parent!.id);
+      if (parent?.children[item.indexInParent]?.id === item.node.id) parent.children.splice(item.indexInParent, 1);
     });
   };
 
   // ── Pointer Events 拖拽核心实现 ──
 
   const handlePointerDownHandle = (e: React.PointerEvent, item: FlatItem) => {
-    if (e.button !== 0 || item.depth === 0) return;
+    // 根节点与概要主题不能拖动
+    if (e.button !== 0 || item.depth === 0 || item.summary) return;
     e.preventDefault();
     e.stopPropagation();
 
@@ -656,7 +625,8 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
         const offsetY = e.clientY - rect.top;
         let pos: DropPosition = 'after';
 
-        if (item.depth === 0) {
+        if (item.depth === 0 || item.summary) {
+          // 根节点与概要主题没有同级，只能挂为子节点
           pos = 'inside';
         } else if (offsetY < rect.height * 0.35) {
           pos = 'before';
@@ -768,6 +738,8 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
       <div style={{ maxWidth: 860, margin: '0 auto', position: 'relative', height: virtualized ? virtualizer.getTotalSize() : undefined }}>
         {renderedItems.map(({ item, idx, virtualRow }) => {
           const isRoot = item.depth === 0;
+          // 概要主题行：不能拖动、没有同级，Enter 新增子要点
+          const isSummaryRow = Boolean(item.summary);
           const paddingLeft = item.depth * 28;
           const isTarget = dropTarget?.targetId === item.node.id;
           const dropPos = isTarget ? dropTarget?.pos : null;
@@ -870,8 +842,11 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
                   position: 'relative',
                 }}
               >
+                {/* 概要主题不能拖动：留出与把手等宽的空位，保持与同级行对齐 */}
+                {isSummaryRow && <div style={{ width: 18, marginRight: 2, flexShrink: 0 }} />}
+
                 {/* 拖拽把手 */}
-                {!isRoot && (
+                {!isRoot && !isSummaryRow && (
                   <Tooltip content="按住拖拽整行换到其他行或调整层级" side="left" sideOffset={4}>
                     <div
                       className="nb-drag-handle"
@@ -949,6 +924,9 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
                     >
                       {item.isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     </button>
+                  ) : isSummaryRow ? (
+                    // 无子节点的概要主题用大括号代替圆点
+                    <Braces size={13} style={{ color: 'var(--editor-accent, #3b82f6)' }} />
                   ) : (
                     <div
                       style={{
@@ -960,6 +938,16 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
                     />
                   )}
                 </div>
+
+                {/* 概要主题标签：标明概括了几项，悬停说明来源 */}
+                {item.summary && (
+                  <Tooltip content="概要：概括上方的同级要点" side="top" sideOffset={4}>
+                    <span className="nb-outliner-summary-tag">
+                      <Braces size={11} />
+                      {item.summary.caption}
+                    </span>
+                  </Tooltip>
+                )}
 
                 {/* 节点前置图标按钮（有图标则直接渲染，点击可修改或移除） */}
                 {item.node.icon && (
@@ -1008,7 +996,7 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
                   className="nb-outliner-title"
                   // 单行输入框：导图中的节点内换行显示为空格，编辑时未改动处的换行保留
                   value={toSingleLineText(item.node.text)}
-                  placeholder={isRoot ? '输入中心主题' : '输入大纲要点 (按 Enter 换行，Shift+Enter 添加备注)'}
+                  placeholder={isRoot ? '输入中心主题' : isSummaryRow ? '输入概要 (Enter 添加子要点)' : '输入大纲要点 (按 Enter 换行，Shift+Enter 添加备注)'}
                   onChange={(e) => handleTextChange(item.node.id, restoreLineBreaks(item.node.text, e.target.value))}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
@@ -1212,11 +1200,11 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
                   </Tooltip>
 
                   {/* 添加同级要点按钮 */}
-                  <Tooltip content="添加同级要点 (Enter)" side="top" sideOffset={4}>
+                  <Tooltip content={isSummaryRow ? '添加子要点 (Enter)' : '添加同级要点 (Enter)'} side="top" sideOffset={4}>
                     <button
                       type="button"
                       onClick={() => handleEnterKey(item)}
-                      aria-label="添加同级要点 (Enter)"
+                      aria-label={isSummaryRow ? '添加子要点 (Enter)' : '添加同级要点 (Enter)'}
                       style={{
                         background: 'transparent',
                         border: '1px solid transparent',
@@ -1248,11 +1236,11 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
 
                   {/* 删除此要点 */}
                   {!isRoot && (
-                    <Tooltip content="删除此要点及子要点" side="top" sideOffset={4}>
+                    <Tooltip content={isSummaryRow ? '删除此概要' : '删除此要点及子要点'} side="top" sideOffset={4}>
                       <button
                         type="button"
-                        onClick={() => handleBackspaceKey(item, idx)}
-                        aria-label="删除此要点及子要点"
+                        onClick={() => (isSummaryRow ? removeSummaryRow(item, idx) : handleBackspaceKey(item, idx))}
+                        aria-label={isSummaryRow ? '删除此概要' : '删除此要点及子要点'}
                         style={{
                           background: 'transparent',
                           border: '1px solid transparent',
