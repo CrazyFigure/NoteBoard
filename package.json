@@ -22,6 +22,7 @@
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "test:contract": "vitest run test/core/editorRegistry.test.ts test/session test/window test/staging",
     "gate:budget": "node scripts/check-budget.mjs --check",
+    "generate:icons": "node scripts/generate-icons.mjs",
     "verify:ico": "node scripts/verify-ico.mjs"
   },
   "dependencies": {
