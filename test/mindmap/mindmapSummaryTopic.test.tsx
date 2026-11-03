@@ -176,8 +176,8 @@ describe('树操作覆盖概要子树', () => {
     expect(getSiblingRangeForSelection(root, ['st'])).toEqual({ ok: true, parentId: 'root', startId: 'a', endId: 'b' });
     // 概要子树节点 + 主树节点：概要主题占据 a..b 的位置，与 c 合并
     expect(getSiblingRangeForSelection(root, ['t11', 'c'])).toEqual({ ok: true, parentId: 'root', startId: 'a', endId: 'c' });
-    // 概要子树内的不同层级仍按同层规则提示
-    expect(getSiblingRangeForSelection(root, ['t11', 't2'])).toEqual({ ok: false, reason: '请选择同一层级的节点' });
+    // 概要子树内的不同层级：提升到概要主题下概括
+    expect(getSiblingRangeForSelection(root, ['t11', 't2'])).toEqual({ ok: true, parentId: 'st', startId: 't1', endId: 't2' });
     expect(getSiblingRangeForSelection(root, ['root', 'st'])).toEqual({ ok: false, reason: '中心主题不能添加' });
   });
 

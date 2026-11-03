@@ -82,11 +82,11 @@ describe('范围与数据操作', () => {
     expect(root.boundaries).toBeUndefined();
   });
 
-  test('选中同级节点得到首尾范围，层级不同或选中根节点给出原因', () => {
+  test('选中同级节点得到首尾范围，层级不同时提升到共同上级，选中根节点给出原因', () => {
     const root = sample();
     expect(getSiblingRangeForSelection(root, ['c', 'a'])).toEqual({ ok: true, parentId: 'root', startId: 'a', endId: 'c' });
     expect(getSiblingRangeForSelection(root, ['a1'])).toEqual({ ok: true, parentId: 'a', startId: 'a1', endId: 'a1' });
-    expect(getSiblingRangeForSelection(root, ['a1', 'b']).ok).toBe(false);
+    expect(getSiblingRangeForSelection(root, ['a1', 'b'])).toEqual({ ok: true, parentId: 'root', startId: 'a', endId: 'b' });
     expect(getSiblingRangeForSelection(root, ['root']).ok).toBe(false);
   });
 
@@ -293,10 +293,11 @@ describe('跨父节点的同层范围', () => {
   const overlaps = (a: ReturnType<typeof rectOf>, b: ReturnType<typeof rectOf>) =>
     a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 
-  test('同层不同父的选中挂在共同祖先上，层级不同时给出原因', () => {
+  test('同层不同父的选中挂在共同祖先上，层级不同时提升到共同上级', () => {
     const root = cousins();
     expect(getSiblingRangeForSelection(root, ['b1', 'a2'])).toEqual({ ok: true, parentId: 'root', startId: 'a2', endId: 'b1' });
-    expect(getSiblingRangeForSelection(root, ['a1', 'b'])).toEqual({ ok: false, reason: '请选择同一层级的节点' });
+    expect(getSiblingRangeForSelection(root, ['a1', 'b'])).toEqual({ ok: true, parentId: 'root', startId: 'a', endId: 'b' });
+    expect(getSiblingRangeForSelection(root, ['a3', 'b', 'c'])).toEqual({ ok: true, parentId: 'root', startId: 'a', endId: 'c' });
   });
 
   test('范围覆盖首尾之间的全部同层节点，不含中间的父节点；XMind 导出提升为子主题区间', () => {

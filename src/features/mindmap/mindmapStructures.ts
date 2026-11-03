@@ -215,13 +215,13 @@ export type SiblingRangeResult =
   | { ok: false; reason: string };
 
 /**
- * 概要主题自成一棵子树，不在所属节点的 children 中，同层规则无法覆盖它。
- * 选中项含概要主题，或分属不同的树（主树 / 各概要子树）时：把概要主题视作挂在所属节点下、
- * 占据其所概括的那段子节点的位置，逐级上溯到全部选中项的最近共同上级，
- * 概括该上级下包含它们的连续子节点（例如分属两个一级分支时，概括这两个一级分支）。
- * 不涉及概要子树时返回 null，交由同层规则处理
+ * 选中项无法按同层规则概括时（层级不同、含概要主题、分属主树与概要子树），提升到共同上级再概括：
+ * 逐级上溯到全部选中项的最近共同上级，概括该上级下包含它们的连续子节点
+ * （例如分属两个一级分支时，概括这两个一级分支）。
+ * 概要主题自成一棵子树，不在所属节点的 children 中：视作挂在所属节点下、占据其所概括的那段子节点的位置。
+ * @param always false 时只处理涉及概要子树的选择，其余返回 null 交由同层规则处理
  */
-function liftRangeAcrossSummaryTopics(root: MindNode, ids: readonly string[]): SiblingRangeResult | null {
+function liftRangeToCommonAncestor(root: MindNode, ids: readonly string[], always: boolean): SiblingRangeResult | null {
   const selected = new Set(ids);
   if (selected.size === 0 || selected.has(root.id)) return null;
   // 每个节点的上级：普通子节点为父节点及自身下标；概要主题为所属节点及所概括子节点的下标区间
@@ -262,7 +262,7 @@ function liftRangeAcrossSummaryTopics(root: MindNode, ids: readonly string[]): S
   }
   if (items.length === 0) return null;
   const crossesTrees = new Set(items.map((item) => treeOf.get(item.id))).size > 1;
-  if (!crossesTrees && !items.some((item) => topicIds.has(item.id))) return null;
+  if (!always && !crossesTrees && !items.some((item) => topicIds.has(item.id))) return null;
   // 最近共同上级：各上溯链的最长公共前缀的末端（链首都是根节点）
   let common = items[0].chain.length;
   for (const item of items) {
@@ -284,13 +284,15 @@ function liftRangeAcrossSummaryTopics(root: MindNode, ids: readonly string[]): S
 
 /**
  * 由选中节点求出连续的同层范围（中间未选中的同层节点一并纳入，与 XMind 一致）。
- * 同父时挂在父节点上；父节点不同但层级相同时挂在最近共同祖先上，只覆盖选中层级，不含中间的父节点
+ * 同父时挂在父节点上；父节点不同但层级相同时挂在最近共同祖先上，只覆盖选中层级，不含中间的父节点；
+ * 层级不同时提升到最近共同上级，概括其下包含选中项的连续子节点
  */
 export function getSiblingRangeForSelection(root: MindNode, ids: Iterable<string>): SiblingRangeResult {
   const selected = [...ids];
   // 选中概要主题，或选中项分属主树与概要子树（不在同一棵树里）时，提升到共同上级再概括
-  const lifted = liftRangeAcrossSummaryTopics(root, selected);
+  const lifted = liftRangeToCommonAncestor(root, selected, false);
   if (lifted) return lifted;
+  const sameLevelError: SiblingRangeResult = { ok: false, reason: '请选择同一层级的节点' };
   // 顶层 id 已按先序排列，首尾即范围两端（根节点与概要主题不会出现在其中）
   const topIds = getTopLevelMindNodeIds(root, selected);
   if (topIds.length === 0) return { ok: false, reason: '中心主题不能添加' };
@@ -309,12 +311,13 @@ export function getSiblingRangeForSelection(root: MindNode, ids: Iterable<string
   }
   if (topIds.some((id) => !parentOf.has(id))) return { ok: false, reason: '节点不存在' };
   const depth = depthOf.get(topIds[0]);
-  if (topIds.some((id) => depthOf.get(id) !== depth)) return { ok: false, reason: '请选择同一层级的节点' };
-  // 同层节点逐级上溯直到汇合：同父时第一步即汇合于父节点；分属主树与概要子树时无法汇合
+  // 层级不同：提升到共同上级概括
+  if (topIds.some((id) => depthOf.get(id) !== depth)) return liftRangeToCommonAncestor(root, selected, true) ?? sameLevelError;
+  // 同层节点逐级上溯直到汇合：同父时第一步即汇合于父节点（跨树的选择已在前面提升处理）
   let ancestors = topIds.map((id) => parentOf.get(id)!);
   while (ancestors.some((node) => node !== ancestors[0])) {
     const next = ancestors.map((node) => parentOf.get(node.id));
-    if (next.some((node) => !node)) return { ok: false, reason: '请选择同一层级的节点' };
+    if (next.some((node) => !node)) return liftRangeToCommonAncestor(root, selected, true) ?? sameLevelError;
     ancestors = next as MindNode[];
   }
   return { ok: true, parentId: ancestors[0].id, startId: topIds[0], endId: topIds[topIds.length - 1] };
