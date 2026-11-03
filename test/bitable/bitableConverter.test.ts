@@ -18,10 +18,11 @@ describe('Bitable 多维表格转换与序列化测试', () => {
     expect(doc.rows.length).toBeGreaterThanOrEqual(4);
     // 默认包含子行
     expect(doc.rows.some((r) => r.parentId !== undefined)).toBe(true);
-    // 默认包含多个看板视图
+    // 默认包含表格、按状态看板与甘特图三种视图
     expect(doc.views.length).toBeGreaterThanOrEqual(3);
     expect(doc.views.some((v) => v.type === 'grid')).toBe(true);
-    expect(doc.views.filter((v) => v.type === 'kanban').length).toBeGreaterThanOrEqual(2);
+    expect(doc.views.filter((v) => v.type === 'kanban').length).toBe(1);
+    expect(doc.views.some((v) => v.type === 'gantt')).toBe(true);
   });
 
   test('JSON 双向序列化与反序列化保真（包含 parentId 与多视图）', () => {

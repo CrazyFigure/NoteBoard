@@ -77,6 +77,7 @@ import {
   Plus,
   X,
   FileSpreadsheet,
+  Download,
   Edit2,
   Copy,
   Trash2,
@@ -128,6 +129,11 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
     trigger: HTMLElement;
   } | null>(null);
   const [customRowCount, setCustomRowCount] = useState<string>('3');
+  // 导出下拉菜单状态
+  const [exportMenu, setExportMenu] = useState<{
+    anchor: AnchorRect;
+    trigger: HTMLElement;
+  } | null>(null);
 
   // 右侧记录详情侧边栏：以「收集单」形式编辑单条记录
   const [recordPanelRowId, setRecordPanelRowId] = useState<string | null>(null);
@@ -1252,11 +1258,11 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                     </span>
                   )}
 
-                  {/* 视图下拉更多菜单按钮 */}
+                  {/* 视图下拉更多菜单按钮：仿导航标签，仅当前视图、悬浮或菜单展开时显示（占位保留，避免悬浮时标签宽度跳动） */}
                   <button
                     type="button"
                     data-no-drag
-                    className="nb-bitable-btn-ghost"
+                    className={`nb-bitable-btn-ghost nb-bitable-tab-more${isMenuOpen ? ' is-open' : ''}`}
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1272,7 +1278,6 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                     style={{
                       padding: 2,
                       color: 'inherit',
-                      opacity: 0.75,
                     }}
                   >
                     <ChevronDown size={11} />
@@ -1440,18 +1445,53 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
               表格内 Esc 用于关闭各类浮层，因此不以 Esc 退出 */}
           <ReadingModeButton docKey={docKey} className="nb-bitable-btn-secondary" escHint={false} style={{ padding: '4px 6px' }} />
 
-          {/* 导出按钮（移动端隐藏：使用频率低，且挤占窄屏工具栏空间） */}
-          <Tooltip content="导出为 CSV 表格" side="bottom" sideOffset={4}>
+          {/* 导出下拉按钮（移动端隐藏：使用频率低，且挤占窄屏工具栏空间；收纳为菜单便于后续扩展格式） */}
+          <div
+            className="nb-bitable-export"
+            style={{ position: 'relative', display: activeView.type === 'workbench' ? 'none' : undefined }}
+          >
             <button
               type="button"
-              className="nb-bitable-btn-secondary nb-bitable-export"
-              style={{ display: activeView.type === 'workbench' ? 'none' : undefined }}
-              onClick={handleExportCsv}
+              className="nb-bitable-btn-secondary"
+              onClick={(e) => {
+                if (exportMenu) {
+                  setExportMenu(null);
+                  return;
+                }
+                const anchor = getAnchorRect(e.currentTarget);
+                if (anchor) {
+                  setExportMenu({ anchor, trigger: e.currentTarget as HTMLElement });
+                }
+              }}
+              style={{ gap: 4, background: exportMenu ? 'var(--editor-bg, #f1f5f9)' : undefined }}
             >
-              <FileSpreadsheet size={13} />
-              <span>导出 CSV</span>
+              <Download size={13} />
+              <span>导出</span>
+              <ChevronDown size={11} style={{ opacity: 0.8 }} />
             </button>
-          </Tooltip>
+
+            {exportMenu && (
+              <FloatingPanel
+                anchor={exportMenu.anchor}
+                trigger={exportMenu.trigger}
+                align="right"
+                width={140}
+                onClose={() => setExportMenu(null)}
+              >
+                <button
+                  type="button"
+                  className="nb-bitable-menu-item"
+                  onClick={() => {
+                    setExportMenu(null);
+                    void handleExportCsv();
+                  }}
+                >
+                  <FileSpreadsheet size={13} />
+                  <span>导出 CSV</span>
+                </button>
+              </FloatingPanel>
+            )}
+          </div>
 
           {/* 新增记录按钮及下拉菜单 */}
           <div style={{ position: 'relative' }}>

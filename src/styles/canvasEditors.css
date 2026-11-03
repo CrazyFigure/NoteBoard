@@ -1585,6 +1585,26 @@
   transform: scale(0.98);
 }
 
+/* 视图下拉按钮仿导航标签：默认隐藏但保留占位，仅当前视图、悬浮或菜单展开时显示 */
+.nb-bitable-tab-more {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast), background var(--transition-fast);
+}
+
+.nb-bitable-tab:hover .nb-bitable-tab-more,
+.nb-bitable-tab.is-active .nb-bitable-tab-more,
+.nb-bitable-tab-more.is-open,
+.nb-bitable-tab-more:focus-visible {
+  opacity: 0.75;
+  pointer-events: auto;
+}
+
+.nb-bitable-tab .nb-bitable-tab-more:hover,
+.nb-bitable-tab-more.is-open {
+  opacity: 1;
+}
+
 /* 看板卡片悬浮与点击反馈 */
 .nb-bitable-kanban-card {
   transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
