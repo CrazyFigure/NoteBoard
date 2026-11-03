@@ -55,6 +55,7 @@ import type {
   LayoutPlacement,
   LinkSpec,
   MindmapLayoutResult,
+  NodeSide,
 } from './layouts/layoutTypes';
 import { INDENT_ANCHOR, layoutIndented } from './layouts/indented';
 import { layoutTimeline } from './layouts/timeline';
@@ -83,6 +84,24 @@ export const NODE_V_GAP = 18;
 const TREE_LEVEL_GAP = 46;
 /** 垂直布局中同级节点横向间距 */
 const TREE_SIBLING_GAP = 26;
+/** 概要大括号尖端到概要主题的间距 */
+export const SUMMARY_TOPIC_GAP = 10;
+
+/** 子树沿同级排列方向占用的尺寸：子树本身 + 为概要主题预留的前后空间 */
+function slotSize(node: LayoutNode): number {
+  return node.totalSubHeight + (node.leadPad ?? 0) + (node.trailPad ?? 0);
+}
+
+/** 后代相对 node 的层级（直接子节点为 1）；不在子树内返回 -1 */
+function depthUnder(node: MindNode, id: string): number {
+  const stack: Array<{ node: MindNode; depth: number }> = [{ node, depth: 0 }];
+  while (stack.length > 0) {
+    const item = stack.pop()!;
+    if (item.depth > 0 && item.node.id === id) return item.depth;
+    for (const child of item.node.children) stack.push({ node: child, depth: item.depth + 1 });
+  }
+  return -1;
+}
 /** 文字测量的取整余量，避免亚像素误差导致渲染时意外折行 */
 const WIDTH_SLACK = 2;
 
@@ -368,8 +387,41 @@ function measureSubTree(
 
   const measuredChildren = node.children.map((c) => measureSubTree(c, level + 1, isVertical, options));
   const siblingGap = isVertical ? TREE_SIBLING_GAP : NODE_V_GAP;
+
+  // 概要主题子树：与所覆盖节点同层级排版；同父范围的概要子树比所覆盖内容更宽时，
+  // 在范围首尾两侧留出空间，避免与相邻分支重叠（跨父范围不预留）
+  if (node.summaries && node.summaries.length > 0) {
+    const topics = new Map<string, LayoutNode>();
+    for (const summary of node.summaries) {
+      const start = node.children.findIndex((child) => child.id === summary.startId);
+      const end = node.children.findIndex((child) => child.id === summary.endId);
+      const sameParent = start >= 0 && end >= 0;
+      // 所覆盖节点相对本节点的层级：跨父范围取仍有效的一端；两端都失效时概要不显示
+      let depth = 1;
+      if (!sameParent) {
+        depth = depthUnder(node, summary.startId);
+        if (depth < 0) depth = depthUnder(node, summary.endId);
+        if (depth < 0) continue;
+      }
+      const topic = measureSubTree(summary.topic, level + depth, isVertical, options);
+      topic.summaryOf = { ownerId: node.id, id: summary.id };
+      topics.set(summary.id, topic);
+      if (!sameParent) continue;
+      const [lo, hi] = start <= end ? [start, end] : [end, start];
+      // 范围内容沿同级方向的尺寸：首尾之间（含内部已有的预留空间），不含首前、尾后的预留
+      let extent = (hi - lo) * siblingGap - (measuredChildren[lo].leadPad ?? 0) - (measuredChildren[hi].trailPad ?? 0);
+      for (let i = lo; i <= hi; i += 1) extent += slotSize(measuredChildren[i]);
+      const pad = (topic.totalSubHeight - extent) / 2;
+      if (pad > 0) {
+        measuredChildren[lo].leadPad = Math.max(measuredChildren[lo].leadPad ?? 0, pad);
+        measuredChildren[hi].trailPad = Math.max(measuredChildren[hi].trailPad ?? 0, pad);
+      }
+    }
+    if (topics.size > 0) layoutNode.summaryTopics = topics;
+  }
+
   const totalChildrenExtent =
-    measuredChildren.reduce((sum, c) => sum + c.totalSubHeight, 0) +
+    measuredChildren.reduce((sum, c) => sum + slotSize(c), 0) +
     (measuredChildren.length - 1) * siblingGap;
 
   layoutNode.children = measuredChildren;
@@ -402,9 +454,9 @@ function assignHorizontal(
   const childStartX = dir === 1 ? startX + node.width + NODE_H_GAP : startX - node.width - NODE_H_GAP;
   let cursor = startY;
   for (const child of node.children) {
-    assignHorizontal(child, childStartX, cursor, dir, branchIndex, out);
+    assignHorizontal(child, childStartX, cursor + (child.leadPad ?? 0), dir, branchIndex, out);
     out.specs.push({ kind: 'horizontal', from: node, to: child });
-    cursor += child.totalSubHeight + NODE_V_GAP;
+    cursor += slotSize(child) + NODE_V_GAP;
   }
 }
 
@@ -429,9 +481,9 @@ function assignVertical(
   const childStartY = startY + node.height + TREE_LEVEL_GAP;
   let cursor = startX;
   for (const child of node.children) {
-    assignVertical(child, cursor, childStartY, branchIndex, out);
+    assignVertical(child, cursor + (child.leadPad ?? 0), childStartY, branchIndex, out);
     out.specs.push({ kind: 'vertical', from: node, to: child, dir: 1 });
-    cursor += child.totalSubHeight + TREE_SIBLING_GAP;
+    cursor += slotSize(child) + TREE_SIBLING_GAP;
   }
 }
 
@@ -455,7 +507,7 @@ function normalizeToOrigin(nodes: LayoutNode[]) {
 function layoutOrgDown(root: LayoutNode, colorCount: number): LayoutPlacement {
   const out: LayoutPlacement = { nodes: [], specs: [] };
   const childrenExtent =
-    root.children.reduce((sum, c) => sum + c.totalSubHeight, 0) +
+    root.children.reduce((sum, c) => sum + slotSize(c), 0) +
     Math.max(0, root.children.length - 1) * TREE_SIBLING_GAP;
   root.branchIndex = 0;
   root.y = 0;
@@ -467,9 +519,9 @@ function layoutOrgDown(root: LayoutNode, colorCount: number): LayoutPlacement {
   const childStartY = root.height + TREE_LEVEL_GAP;
   let cursor = 0;
   root.children.forEach((child, idx) => {
-    assignVertical(child, cursor, childStartY, idx % colorCount, out);
+    assignVertical(child, cursor + (child.leadPad ?? 0), childStartY, idx % colorCount, out);
     out.specs.push({ kind: 'vertical', from: root, to: child, dir: 1 });
-    cursor += child.totalSubHeight + TREE_SIBLING_GAP;
+    cursor += slotSize(child) + TREE_SIBLING_GAP;
   });
   return out;
 }
@@ -500,7 +552,7 @@ function layoutBalanced(root: LayoutNode, colorCount: number): LayoutPlacement {
   const groupExtent = (group: LayoutNode[]) =>
     group.length === 0
       ? 0
-      : group.reduce((sum, c) => sum + c.totalSubHeight, 0) + (group.length - 1) * NODE_V_GAP;
+      : group.reduce((sum, c) => sum + slotSize(c), 0) + (group.length - 1) * NODE_V_GAP;
 
   const rightExtent = groupExtent(rightGroup);
   const leftExtent = groupExtent(leftGroup);
@@ -516,17 +568,17 @@ function layoutBalanced(root: LayoutNode, colorCount: number): LayoutPlacement {
   let cursor = (totalExtent - rightExtent) / 2;
   for (const child of rightGroup) {
     const branchIndex = children.indexOf(child) % colorCount;
-    assignHorizontal(child, root.width / 2 + NODE_H_GAP, cursor, 1, branchIndex, out);
+    assignHorizontal(child, root.width / 2 + NODE_H_GAP, cursor + (child.leadPad ?? 0), 1, branchIndex, out);
     out.specs.push({ kind: 'horizontal', from: root, to: child });
-    cursor += child.totalSubHeight + NODE_V_GAP;
+    cursor += slotSize(child) + NODE_V_GAP;
   }
 
   cursor = (totalExtent - leftExtent) / 2;
   for (const child of leftGroup) {
     const branchIndex = children.indexOf(child) % colorCount;
-    assignHorizontal(child, -root.width / 2 - NODE_H_GAP, cursor, -1, branchIndex, out);
+    assignHorizontal(child, -root.width / 2 - NODE_H_GAP, cursor + (child.leadPad ?? 0), -1, branchIndex, out);
     out.specs.push({ kind: 'horizontal', from: root, to: child });
-    cursor += child.totalSubHeight + NODE_V_GAP;
+    cursor += slotSize(child) + NODE_V_GAP;
   }
   return out;
 }
@@ -545,9 +597,9 @@ function layoutLogic(root: LayoutNode, dir: 1 | -1, colorCount: number): LayoutP
   const childStartX = dir === 1 ? root.width + NODE_H_GAP : -root.width - NODE_H_GAP;
   let cursor = 0;
   root.children.forEach((child, idx) => {
-    assignHorizontal(child, childStartX, cursor, dir, idx % colorCount, out);
+    assignHorizontal(child, childStartX, cursor + (child.leadPad ?? 0), dir, idx % colorCount, out);
     out.specs.push({ kind: 'horizontal', from: root, to: child });
-    cursor += child.totalSubHeight + NODE_V_GAP;
+    cursor += slotSize(child) + NODE_V_GAP;
   });
   return out;
 }
@@ -678,4 +730,85 @@ export function getLayoutBounds(nodes: LayoutNode[]): {
     maxY = Math.max(maxY, n.y + n.height);
   }
   return { minX, minY, maxX, maxY };
+}
+
+/**
+ * 定位一棵概要主题子树：概要主题贴在大括号尖端外侧，子孙沿大括号开口方向展开
+ * （右 / 左侧按逻辑图，下 / 上侧按组织图）。返回新的排版节点（不改写度量结果），连线路径已生成。
+ * @param topic 排版阶段度量好的概要主题子树
+ * @param side 大括号所在侧（即概要子树的展开方向）
+ * @param tip 大括号尖端
+ * @param branchIndex 分支配色序号（跟随所覆盖的首个节点）
+ * @param summaryOf 所属概要
+ */
+export function placeSummaryTopicTree(
+  topic: LayoutNode,
+  side: NodeSide,
+  tip: { x: number; y: number },
+  branchIndex: number,
+  edgeStyle: MindmapEdgeStyle,
+  summaryOf: { ownerId: string; id: string },
+): { root: LayoutNode; nodes: LayoutNode[]; links: LayoutLink[] } {
+  const vertical = side === 'top' || side === 'bottom';
+  const dir: 1 | -1 = side === 'right' || side === 'bottom' ? 1 : -1;
+  const levelGap = vertical ? TREE_LEVEL_GAP : NODE_H_GAP;
+  const siblingGap = vertical ? TREE_SIBLING_GAP : NODE_V_GAP;
+  // 沿同级方向的子树尺寸按实际展开方向重新累计（主树为横向布局时，下 / 上侧的概要子树需要按宽度堆叠）
+  const cross = new Map<LayoutNode, number>();
+  const measureCross = (n: LayoutNode): number => {
+    let sum = n.children.length > 0 ? (n.children.length - 1) * siblingGap : 0;
+    for (const child of n.children) sum += measureCross(child) + (child.leadPad ?? 0) + (child.trailPad ?? 0);
+    const size = Math.max(vertical ? n.width : n.height, sum);
+    cross.set(n, size);
+    return size;
+  };
+  measureCross(topic);
+
+  const nodes: LayoutNode[] = [];
+  const links: LayoutLink[] = [];
+  /** 复制并定位：along 为同级方向起点，depth 为层级方向起点（dir = -1 时为远端边缘） */
+  const place = (src: LayoutNode, along: number, depth: number): LayoutNode => {
+    const size = cross.get(src)!;
+    const copy: LayoutNode = {
+      ...src,
+      branchIndex,
+      children: [],
+      freeEdge: vertical ? 'right' : dir === 1 ? 'right' : 'left',
+      childSide: side,
+      siblingFlow: vertical ? 'right' : 'down',
+      x: 0,
+      y: 0,
+    };
+    if (vertical) {
+      copy.x = along + (size - src.width) / 2;
+      copy.y = dir === 1 ? depth : depth - src.height;
+    } else {
+      copy.x = dir === 1 ? depth : depth - src.width;
+      copy.y = along + (size - src.height) / 2;
+    }
+    nodes.push(copy);
+    const extentAlong = vertical ? src.height : src.width;
+    const childDepth = depth + dir * (extentAlong + levelGap);
+    // 子节点整体在本节点的同级方向上居中
+    let sum = src.children.length > 0 ? (src.children.length - 1) * siblingGap : 0;
+    for (const child of src.children) sum += cross.get(child)! + (child.leadPad ?? 0) + (child.trailPad ?? 0);
+    let cursor = along + (size - sum) / 2;
+    for (const child of src.children) {
+      const placed = place(child, cursor + (child.leadPad ?? 0), childDepth);
+      copy.children.push(placed);
+      links.push({
+        from: copy,
+        to: placed,
+        path: vertical ? verticalLinkPath(copy, placed, edgeStyle, dir) : horizontalLinkPath(copy, placed, edgeStyle),
+      });
+      cursor += cross.get(child)! + (child.leadPad ?? 0) + (child.trailPad ?? 0) + siblingGap;
+    }
+    return copy;
+  };
+  const size = cross.get(topic)!;
+  const root = vertical
+    ? place(topic, tip.x - size / 2, tip.y + dir * SUMMARY_TOPIC_GAP)
+    : place(topic, tip.y - size / 2, tip.x + dir * SUMMARY_TOPIC_GAP);
+  root.summaryOf = summaryOf;
+  return { root, nodes, links };
 }

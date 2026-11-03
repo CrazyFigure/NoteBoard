@@ -148,8 +148,8 @@ function normalizeNode(node: Partial<MindNode>): MindNode {
     marks: normalizeMarks(source.marks, (source.text || '').length),
     textAlign: source.textAlign === 'left' || source.textAlign === 'center' ? source.textAlign : undefined,
     imageFit: source.imageFit === 'original' || source.imageFit === 'fill' ? source.imageFit : undefined,
-    // 概要 / 外框 / 联系线只保留结构合法的条目
-    ...normalizeNodeStructures(source),
+    // 概要 / 外框 / 联系线只保留结构合法的条目；概要主题子树按同一规则规范化
+    ...normalizeNodeStructures(source, normalizeNode),
     isExpanded: source.isExpanded !== false,
     children: [],
   }));
@@ -173,8 +173,20 @@ export function serializeMindmapDocument(
   if (meta?.edgeStyle) doc.edgeStyle = meta.edgeStyle;
   // 大图/深图使用用户确认的紧凑格式；显式栈同时避免合法深层树触发原生 stringify 栈溢出。
   const stats = getMindmapTreeStats(root);
-  return stats.maxDepth > 100 ? stringifyMindmapJson(doc, false)
-    : JSON.stringify(doc, null, stats.nodeCount <= 500 ? 2 : undefined);
+  return stats.maxDepth > 100 ? stringifyMindmapJson(doc, false, withLegacySummaryText)
+    : JSON.stringify(doc, (_key, value) => withLegacySummaryText(value), stats.nodeCount <= 500 ? 2 : undefined);
+}
+
+/**
+ * 概要写入文件时额外带上概要主题的标题 text：旧版 NoteBoard 只认 text 字段，
+ * 用旧版打开新文档时概要文字仍然可见（概要主题的子节点旧版无法显示）
+ */
+function withLegacySummaryText(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const item = value as { topic?: unknown; startId?: unknown; endId?: unknown };
+  if (typeof item.startId !== 'string' || typeof item.endId !== 'string' || !item.topic || typeof item.topic !== 'object') return value;
+  const topic = item.topic as MindNode;
+  return { ...item, text: topic.text ?? '' };
 }
 
 /**
@@ -259,14 +271,14 @@ export function mindNodeToXmindTopic(node: MindNode): XMindTopic {
       return [{ id: boundary.id, range: `(${indexes[0]},${indexes[1]})`, ...(boundary.title ? { title: boundary.title } : {}) }];
     });
     if (boundaries.length > 0) topic.boundaries = boundaries;
-    // 概要：范围 + 指向 children.summary 中的概要主题
+    // 概要：范围 + 指向 children.summary 中的概要主题（概要主题整棵子树一并导出）
     const summaryTopics: XMindTopic[] = [];
     const summaries = (source.summaries ?? []).flatMap((summary) => {
       const indexes = resolveRangeIndexes(source, summary);
       if (!indexes) return [];
-      const topicId = `${summary.id}-topic`;
-      summaryTopics.push({ id: topicId, title: summary.text });
-      return [{ id: summary.id, range: `(${indexes[0]},${indexes[1]})`, topicId }];
+      const summaryTopic = mindNodeToXmindTopic(summary.topic);
+      summaryTopics.push(summaryTopic);
+      return [{ id: summary.id, range: `(${indexes[0]},${indexes[1]})`, topicId: summaryTopic.id }];
     });
     if (summaries.length > 0) {
       topic.summaries = summaries;
@@ -517,6 +529,8 @@ export async function exportToXmindZip(root: MindNode): Promise<Blob> {
   while (topics.length > 0) {
     const topic = topics.pop()!;
     for (const child of topic.children?.attached ?? []) topics.push(child);
+    // 概要主题中的图片同样打包
+    for (const child of topic.children?.summary ?? []) topics.push(child);
     const src = topic.image?.src;
     const embedded = src?.match(/^data:(image\/[\w.+-]+);base64,([\s\S]+)$/);
     if (!src || !embedded) continue;

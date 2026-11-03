@@ -50,6 +50,13 @@ export interface LayoutNode {
   childSide: NodeSide;
   /** 同级节点排列走向 */
   siblingFlow: SiblingFlow;
+  /** 同级排列方向上，本节点子树之前 / 之后额外留出的空间（为概要主题子树让位） */
+  leadPad?: number;
+  trailPad?: number;
+  /** 本节点上各概要的主题子树（已度量、未定位），键为概要 id；定位在结构元素计算中完成 */
+  summaryTopics?: Map<string, LayoutNode>;
+  /** 本节点是概要主题时，所属概要（挂载节点 id + 概要 id） */
+  summaryOf?: { ownerId: string; id: string };
 }
 
 export interface LayoutLink {

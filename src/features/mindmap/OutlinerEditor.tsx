@@ -199,7 +199,11 @@ export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: Outl
         const covered = resolveRangeNodes(node, summary);
         if (!covered) continue;
         const count = covered.length;
-        push(covered[count - 1].id, { kind: 'summary', ownerId: node.id, id: summary.id, text: summary.text, caption: count > 1 ? `概要 ${count} 项` : '概要' });
+        // 概要主题的子节点大纲中不展开，只在说明里提示数量（导图视图可查看与编辑）
+        let descendants = -1;
+        for (const _item of walkMindNodes(summary.topic)) descendants += 1;
+        const caption = `${count > 1 ? `概要 ${count} 项` : '概要'}${descendants > 0 ? ` · 子节点 ${descendants}` : ''}`;
+        push(covered[count - 1].id, { kind: 'summary', ownerId: node.id, id: summary.id, text: summary.topic.text, caption });
       }
       for (const boundary of node.boundaries ?? []) {
         const covered = resolveRangeNodes(node, boundary);

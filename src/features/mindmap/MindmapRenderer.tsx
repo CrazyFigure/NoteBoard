@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import type {
   MindNode,
+  MindSummary,
   MindmapLayout,
   MindmapEdgeStyle,
   MindmapImageFit,
@@ -81,13 +82,12 @@ import {
   getSiblingRangeForSelection,
   getStructureText,
   removeStructure,
+  pruneMindmapStructures,
   setStructureText,
   BOUNDARY_TITLE_FONT_SIZE,
   BOUNDARY_TITLE_HEIGHT,
   RELATION_FONT_SIZE,
   RELATION_LINE_HEIGHT,
-  SUMMARY_FONT_SIZE,
-  SUMMARY_LINE_HEIGHT,
   SUMMARY_PLACEHOLDER,
   type LayoutBoundary,
   type MindStructureRef,
@@ -334,36 +334,22 @@ function renderStyledLine(
   });
 }
 
-/** 在树中定位父节点并追加一个子节点 */
+/** 在树中定位父节点（含概要主题及其子树）并追加一个子节点 */
 function insertChildNode(n: MindNode, parentId: string, child: MindNode): boolean {
-  if (n.id === parentId) {
-    if (!n.children) n.children = [];
-    n.children.push(child);
-    n.isExpanded = true;
-    return true;
-  }
-  for (const c of n.children || []) {
-    if (insertChildNode(c, parentId, child)) return true;
-  }
-  return false;
+  const parent = findMindNode(n, parentId);
+  if (!parent) return false;
+  if (!parent.children) parent.children = [];
+  parent.children.push(child);
+  parent.isExpanded = true;
+  return true;
 }
 
-/** 在树中定位锚点节点并在其后方插入同级节点 */
+/** 在树中定位锚点节点并在其后方插入同级节点（根节点与概要主题没有同级） */
 function insertSiblingNode(n: MindNode, anchorId: string, sibling: MindNode): boolean {
-  const walk = (node: MindNode): boolean => {
-    if (node.children && node.children.length > 0) {
-      const idx = node.children.findIndex((c) => c.id === anchorId);
-      if (idx !== -1) {
-        node.children.splice(idx + 1, 0, sibling);
-        return true;
-      }
-      for (const c of node.children) {
-        if (walk(c)) return true;
-      }
-    }
-    return false;
-  };
-  return walk(n);
+  const info = findMindNodeParent(n, anchorId);
+  if (!info) return false;
+  info.parent.children.splice(info.index + 1, 0, sibling);
+  return true;
 }
 
 /** 缩略图节点的最小像素尺寸，缩得很小时仍能看出分支走向 */
@@ -686,7 +672,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   );
 
   // 计算无重叠思维导图绝对坐标（布局 + 主题 + 宽度设置共同决定节点位置、尺寸与配色）
-  const { nodes, links, decorations } = useMemo(
+  const baseLayout = useMemo(
     () =>
       computeMindmapLayout(root, layout, theme.branchColors.length, {
         maxNodeWidth,
@@ -726,10 +712,30 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     [rangePreview],
   );
   const structures = useMemo(
-    () => computeMindmapStructures(nodes, { measure: getSharedTextMeasurer(), fontFamily, controlOverrides, rangeOverrides }),
+    () => computeMindmapStructures(baseLayout.nodes, { measure: getSharedTextMeasurer(), fontFamily, edgeStyle, controlOverrides, rangeOverrides }),
     // fontVersion 仅用于字体加载完成后强制重新测量
-    [nodes, fontFamily, fontVersion, controlOverrides, rangeOverrides],
+    [baseLayout, fontFamily, fontVersion, edgeStyle, controlOverrides, rangeOverrides],
   );
+  // 概要主题子树按大括号位置定位后，与主树节点、连线合并为同一份渲染 / 交互数据
+  const nodes = useMemo(
+    () => (structures.nodes.length > 0 ? baseLayout.nodes.concat(structures.nodes) : baseLayout.nodes),
+    [baseLayout, structures],
+  );
+  const links = useMemo(
+    () => (structures.links.length > 0 ? baseLayout.links.concat(structures.links) : baseLayout.links),
+    [baseLayout, structures],
+  );
+  const { decorations } = baseLayout;
+  // 概要主题 id → 所属概要（删除、拖动、新增同级等需区别于普通节点）
+  const summaryTopicRefs = useMemo(() => {
+    const map = new Map<string, MindStructureRef>();
+    for (const node of walkMindNodes(root)) {
+      for (const summary of node.summaries ?? []) map.set(summary.topic.id, { kind: 'summary', ownerId: node.id, id: summary.id });
+    }
+    return map;
+  }, [root]);
+  const summaryTopicRefsRef = useRef(summaryTopicRefs);
+  summaryTopicRefsRef.current = summaryTopicRefs;
 
   // 布局仍覆盖全部已展开节点，只有真正的节点和连线 DOM 按视口裁剪。
   const viewport = useMemo(() => getMindmapViewport(panRef.current, zoom, viewportSize.width, viewportSize.height), [pan, zoom, viewportSize]);
@@ -974,8 +980,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     anchorId: string,
     commitCurrent = false,
   ) => {
-    // 根节点没有同级，Enter 时退化为新增子节点
-    const effectiveMode = mode === 'sibling' && anchorId === root.id ? 'child' : mode;
+    // 根节点与概要主题没有同级，Enter 时退化为新增子节点
+    const effectiveMode = mode === 'sibling' && (anchorId === root.id || summaryTopicRefs.has(anchorId)) ? 'child' : mode;
     const newNode: MindNode = {
       id: generateNodeId(),
       text: '',
@@ -1017,25 +1023,43 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
 
   /**
    * 删除节点（可多个，一次树更新即一个撤销步），随后选中第一个被删节点的父节点，便于连续操作
-   * @param ids 顶层节点 id（由 getTopLevelMindNodeIds 过滤，不含根节点）
+   * @param ids 顶层节点 id（由 getTopLevelMindNodeIds 过滤，不含根节点）；概要主题 id 表示删除整个概要
    */
   const deleteNodesAndSelectParent = (ids: readonly string[]) => {
     if (ids.length === 0) return;
-    const parent = findParentNode(root, ids[0]);
+    // 概要主题没有父节点，删除后选中概要的挂载节点
+    const firstTopic = summaryTopicRefs.get(ids[0]);
+    const parentId = firstTopic ? firstTopic.ownerId : findParentNode(root, ids[0])?.id;
     updateTree((cloned) => {
       for (const id of ids) {
+        const topicRef = summaryTopicRefs.get(id);
+        if (topicRef) {
+          const owner = findMindNode(cloned, topicRef.ownerId);
+          if (owner) removeStructure(owner, topicRef);
+          continue;
+        }
         const parentInfo = findMindNodeParent(cloned, id);
         if (parentInfo) parentInfo.parent.children.splice(parentInfo.index, 1);
       }
+      // 所覆盖节点全部被删的概要 / 外框随之失效，及时清理，避免留下看不见的概要主题
+      pruneMindmapStructures(cloned);
     });
-    setSelectedNodeId(parent?.id ?? null);
+    setSelectedNodeId(parentId && findMindNode(root, parentId) ? parentId : null);
   };
 
   /**
-   * 请求删除节点（单个或多选）：含子节点时先弹二次确认
+   * 请求删除节点（单个或多选）：含子节点时先弹二次确认。
+   * 选中的概要主题按删除概要处理（连同其子节点）
    */
   const requestDeleteNodes = (ids: readonly string[]) => {
-    const topIds = getTopLevelMindNodeIds(root, ids);
+    const topicIds = ids.filter((id) => summaryTopicRefs.has(id));
+    // 已选概要主题子树内的节点随概要一起删除，不再单独计入
+    const insideTopics = new Set<string>();
+    for (const id of topicIds) {
+      const topic = findNodeById(root, id);
+      if (topic) for (const node of walkMindNodes(topic)) insideTopics.add(node.id);
+    }
+    const topIds = [...topicIds, ...getTopLevelMindNodeIds(root, ids).filter((id) => !insideTopics.has(id))];
     if (topIds.length === 0) return;
     let descendantCount = 0;
     for (const id of topIds) {
@@ -1109,10 +1133,12 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       return;
     }
     const id = generateStructureId(kind);
+    // 概要主题是一个普通节点，可继续添加子节点
+    const topic: MindNode = { id: generateNodeId(), text: SUMMARY_PLACEHOLDER, isExpanded: true, children: [] };
     updateTree((cloned) => {
       updateNodeById(cloned, range.parentId, (parent) => {
         if (kind === 'summary') {
-          (parent.summaries ??= []).push({ id, startId: range.startId, endId: range.endId, text: SUMMARY_PLACEHOLDER });
+          (parent.summaries ??= []).push({ id, startId: range.startId, endId: range.endId, topic });
         } else {
           (parent.boundaries ??= []).push({ id, startId: range.startId, endId: range.endId });
         }
@@ -1120,10 +1146,15 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
         parent.isExpanded = true;
       });
     });
-    const ref: MindStructureRef = { kind, ownerId: range.parentId, id };
-    selectStructure(ref);
-    // 新概要直接进入文字编辑，便于立即输入
-    if (kind === 'summary') setEditingStructure({ ref, text: SUMMARY_PLACEHOLDER });
+    if (kind === 'summary') {
+      // 新概要直接选中概要主题并进入标题编辑，默认文字全选便于直接输入覆盖
+      pendingSelectAllRef.current = topic.id;
+      setSelectedNodeId(topic.id);
+      setEditDraft({ text: topic.text });
+      setEditingNodeId(topic.id);
+      return;
+    }
+    selectStructure({ kind, ownerId: range.parentId, id });
   };
 
   /** 进入联系线连接模式：随后点击目标节点完成连接 */
@@ -1169,10 +1200,17 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   const deleteStructureRef = useRef(deleteStructure);
   deleteStructureRef.current = deleteStructure;
 
-  /** 开始编辑结构元素文字 */
+  /** 开始编辑结构元素文字（概要即编辑概要主题节点的标题） */
   const beginEditStructure = (ref: MindStructureRef) => {
     const item = findStructure(findNodeById(root, ref.ownerId), ref);
     if (!item) return;
+    if (ref.kind === 'summary') {
+      const topic = (item as MindSummary).topic;
+      setSelectedNodeId(topic.id);
+      setEditDraft({ text: topic.text, marks: topic.marks });
+      setEditingNodeId(topic.id);
+      return;
+    }
     selectStructure(ref);
     setEditingStructure({ ref, text: getStructureText(item, ref.kind) });
   };
@@ -1596,8 +1634,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
 
   // 节点按下准备拖拽
   const handleNodePointerDown = (e: React.PointerEvent, layoutNode: LayoutNode) => {
-    // 仅允许左键且非根节点参与拖拽
-    if (e.button !== 0 || layoutNode.level === 0) return;
+    // 仅允许左键且非根节点、非概要主题参与拖拽（概要主题随所属概要定位，不能单独搬移）
+    if (e.button !== 0 || layoutNode.level === 0 || layoutNode.summaryOf) return;
 
     // 排除点击输入框、按钮、图片缩略图与拉伸手柄等交互子元素
     // （图片若被节点捕获指针，click 会派发给节点而不是图片，导致需要连点多次才能打开预览）
@@ -1770,8 +1808,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
           minDistance = dist;
           let pos: DropPosition = 'inside';
 
-          if (nLevel === 0) {
-            // 根节点仅允许作为子分支挂载
+          if (nLevel === 0 || lNode.summaryOf) {
+            // 根节点与概要主题没有同级，仅允许作为子分支挂载
             pos = 'inside';
           } else if (lNode.siblingFlow !== 'down') {
             // 同级横向排列（组织图 / 时间轴 / 鱼骨图）：按水平位置判定前后
@@ -2215,26 +2253,45 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
               />
             );
           })}
-          {/* 概要大括号：开口朝向被概括的节点 */}
+          {/* 概要大括号：开口朝向被概括的节点；加宽的透明描边用于点选概要（调整范围 / 删除） */}
           {structures.summaries.map((s) => {
-            const selected = isSameStructure(selectedStructure, { kind: 'summary', ownerId: s.ownerId, id: s.id });
+            const ref: MindStructureRef = { kind: 'summary', ownerId: s.ownerId, id: s.id };
+            const selected = isSameStructure(selectedStructure, ref);
             const color = theme.branchColors[s.branchIndex % theme.branchColors.length] ?? theme.branchColors[0];
             return (
-              <path
-                key={`summary-brace-${s.id}`}
-                d={s.bracePath}
-                fill="none"
-                stroke={selected ? ACCENT_COLOR : color}
-                strokeWidth={selected ? 2.2 : 1.8}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                opacity={selected ? 1 : theme.edgeOpacity}
-              />
+              <g key={`summary-brace-${s.id}`} className="nb-mindmap-summary-brace" data-selected={selected}>
+                <path
+                  d={s.bracePath}
+                  fill="none"
+                  stroke={selected ? ACCENT_COLOR : color}
+                  strokeWidth={selected ? 2.2 : 1.8}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity={selected ? 1 : theme.edgeOpacity}
+                />
+                <path
+                  d={s.bracePath}
+                  data-mindmap-structure
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth={12}
+                  style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    selectStructure(ref);
+                  }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    beginEditStructure(ref);
+                  }}
+                />
+              </g>
             );
           })}
         </svg>
 
-        {/* 外框标题与概要文字（节点卡片之下，避免遮挡节点） */}
+        {/* 外框标题（节点卡片之下，避免遮挡节点；概要主题作为普通节点渲染） */}
         {structures.boundaries.map((b) => {
           if (!b.titleBox) return null;
           const ref: MindStructureRef = { kind: 'boundary', ownerId: b.ownerId, id: b.id };
@@ -2279,58 +2336,6 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
             </div>
           );
         })}
-        {structures.summaries.map((s) => {
-          const ref: MindStructureRef = { kind: 'summary', ownerId: s.ownerId, id: s.id };
-          if (isSameStructure(editingStructure?.ref ?? null, ref)) return null;
-          const selected = isSameStructure(selectedStructure, ref);
-          const color = theme.branchColors[s.branchIndex % theme.branchColors.length] ?? theme.branchColors[0];
-          return (
-            <div
-              key={`summary-label-${s.id}`}
-              data-mindmap-structure
-              className="nb-mindmap-summary-label"
-              data-selected={selected}
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                selectStructure(ref);
-              }}
-              onDoubleClick={(e) => {
-                e.stopPropagation();
-                beginEditStructure(ref);
-              }}
-              style={{
-                position: 'absolute',
-                left: s.label.x,
-                top: s.label.y,
-                width: s.label.width,
-                height: s.label.height,
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                alignItems: 'center',
-                fontSize: SUMMARY_FONT_SIZE,
-                fontWeight: 500,
-                lineHeight: `${SUMMARY_LINE_HEIGHT}px`,
-                boxSizing: 'border-box',
-                border: `1.5px solid ${selected ? ACCENT_COLOR : color}`,
-                borderRadius: 8,
-                background: theme.nodeTint
-                  ? `color-mix(in srgb, ${color} ${theme.nodeTint}%, var(--editor-surface, #ffffff))`
-                  : 'var(--editor-surface, #ffffff)',
-                color: 'var(--editor-text, #1e293b)',
-                boxShadow: selected ? `0 0 0 2px ${ACCENT_COLOR}` : '0 2px 6px rgba(0, 0, 0, 0.05)',
-                cursor: 'pointer',
-              }}
-            >
-              {s.lines.map((line, idx) => (
-                <div key={idx} className="nb-mindmap-title-line" style={{ height: SUMMARY_LINE_HEIGHT, opacity: s.text ? 1 : 0.5 }}>
-                  {line}
-                </div>
-              ))}
-            </div>
-          );
-        })}
 
         {/* 拖拽重排序落位高亮指示线 (Drop Indicator Line - 前置 before / 后置 after)：
             同级纵向排列时为横线，横向排列（组织图 / 时间轴 / 鱼骨图）时为竖线 */}
@@ -2371,6 +2376,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
         {visibleNodes.map((n) => {
           const isRoot = n.level === 0;
           const isLevel1 = n.level === 1;
+          // 概要主题：边框沿用分支色（与大括号同色），不能拖动
+          const isSummaryTopic = Boolean(n.summaryOf);
           const isEditing = editingNodeId === n.node.id;
           // 主选中节点挂工具栏；多选中的其余节点只显示选中描边
           const isPrimarySelected = selectedNodeId === n.node.id;
@@ -2473,7 +2480,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                     ? '2px solid var(--editor-accent, #3b82f6)'
                     : isSourceOrDescendant
                       ? '1.5px dashed var(--editor-border, #94a3b8)'
-                      : `1.5px solid ${isSelected ? 'var(--editor-accent, #3b82f6)' : isLevel1 ? nodeColor : 'var(--editor-border, #cbd5e1)'}`,
+                      : `1.5px solid ${isSelected ? 'var(--editor-accent, #3b82f6)' : isLevel1 || isSummaryTopic ? nodeColor : 'var(--editor-border, #cbd5e1)'}`,
                 borderRadius: isRoot ? 10 : 8,
                 boxShadow: isDropTargetInside
                   ? '0 0 0 2.5px var(--editor-accent, #3b82f6), 0 0 20px rgba(59, 130, 246, 0.45)'
@@ -2483,7 +2490,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                       ? theme.rootShadow
                       : '0 2px 6px rgba(0, 0, 0, 0.05)',
                 padding: `${textStyle.paddingY}px ${textStyle.paddingX}px`,
-                cursor: connectFrom ? 'crosshair' : isEditing ? 'text' : isDraggingNode ? 'grabbing' : isRoot ? 'default' : 'grab',
+                cursor: connectFrom ? 'crosshair' : isEditing ? 'text' : isDraggingNode ? 'grabbing' : isRoot || isSummaryTopic ? 'default' : 'grab',
                 opacity: isSourceOrDescendant ? 0.35 : 1,
                 transform: isSourceOrDescendant ? 'scale(0.97)' : isDropTargetInside ? 'scale(1.02)' : 'none',
                 boxSizing: 'border-box',
@@ -2961,9 +2968,9 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                   </Tooltip>
                 )}
 
-                {/* 删除节点（根节点不可删除；多选时删除全部选中节点） */}
+                {/* 删除节点（根节点不可删除；多选时删除全部选中节点；概要主题即删除概要） */}
                 {!isRoot && (
-                  <Tooltip content={isMultiSelecting ? '删除选中节点' : '删除节点'} side="top" sideOffset={4}>
+                  <Tooltip content={isMultiSelecting ? '删除选中节点' : isSummaryTopic ? '删除概要' : '删除节点'} side="top" sideOffset={4}>
                     <button
                       type="button"
                       className="nb-mindmap-toolbar-btn is-danger"

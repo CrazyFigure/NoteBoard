@@ -1,12 +1,16 @@
-// NoteBoard 思维导图结构元素：概要（大括号）/ 外框 / 联系线
+// NoteBoard 思维导图结构元素：概要（大括号 + 概要主题）/ 外框 / 联系线
 // 数据挂在节点上（概要、外框挂父节点并以首尾子节点 id 表示范围；联系线挂起点节点），
 // 几何在排版之后按节点实际坐标计算，因此始终跟随节点位置，不随布局切换错位。
+// 概要主题是完整节点，可继续挂子节点：排版阶段已度量其子树并在同级方向预留空间，
+// 这里按大括号尖端位置定位整棵概要子树。
 // 详见 docs/09-开发路线图.md
 
-import type { MindBoundary, MindNode, MindNodeRange, MindPoint, MindRelation, MindSummary } from './mindmapTypes';
-import type { LayoutNode } from './layouts/layoutTypes';
+import type { MindBoundary, MindmapEdgeStyle, MindNode, MindNodeRange, MindPoint, MindRelation, MindSummary } from './mindmapTypes';
+import type { LayoutLink, LayoutNode } from './layouts/layoutTypes';
 import { buildFont, ellipsizeLine, estimateTextWidth, wrapText, type TextMeasure } from './mindmapTextMeasure';
 import { getTopLevelMindNodeIds, walkMindNodes } from './mindmapTree';
+import { adjustMarksForTextChange } from './mindmapRichText';
+import { placeSummaryTopicTree } from './mindmapLayout';
 
 // ── 数据操作 ──
 
@@ -38,17 +42,33 @@ function isText(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
+/** 旧版概要只有文字：迁移为概要主题时使用的确定性 id（与 XMind 导出的概要主题 id 一致） */
+export function legacySummaryTopicId(summaryId: string): string {
+  return `${summaryId}-topic`;
+}
+
 /**
  * 反序列化时校验结构元素字段，只保留合法条目；空数组不写回节点
+ * @param normalizeTopic 概要主题子树的节点规范化（由解析器提供，与普通节点同一套规则）
  */
-export function normalizeNodeStructures(source: Partial<MindNode>): Pick<MindNode, 'summaries' | 'boundaries' | 'relations'> {
+export function normalizeNodeStructures(
+  source: Partial<MindNode>,
+  normalizeTopic: (topic: Partial<MindNode>) => MindNode,
+): Pick<MindNode, 'summaries' | 'boundaries' | 'relations'> {
   const result: Pick<MindNode, 'summaries' | 'boundaries' | 'relations'> = {};
   const range = (item: Partial<MindNodeRange> | null | undefined): item is MindNodeRange =>
     Boolean(item) && isText(item!.id) && isText(item!.startId) && isText(item!.endId);
   if (Array.isArray(source.summaries)) {
-    const list = source.summaries
-      .filter(range)
-      .map((item): MindSummary => ({ id: item.id, startId: item.startId, endId: item.endId, text: typeof item.text === 'string' ? item.text : '' }));
+    const list = (source.summaries as Array<Partial<MindSummary> & { text?: unknown }>)
+      .filter((item): item is MindNodeRange & Partial<MindSummary> & { text?: unknown } => range(item))
+      .map((item): MindSummary => {
+        const raw = item.topic;
+        // 新版：概要主题为完整节点；旧版：只有概要文字，迁移为无子节点的概要主题
+        const topic = raw && typeof raw === 'object' && typeof raw.text === 'string'
+          ? normalizeTopic(raw)
+          : { id: legacySummaryTopicId(item.id), text: typeof item.text === 'string' ? item.text : '', isExpanded: true, children: [] };
+        return { id: item.id, startId: item.startId, endId: item.endId, topic };
+      });
     if (list.length > 0) result.summaries = list;
   }
   if (Array.isArray(source.boundaries)) {
@@ -199,9 +219,9 @@ export type SiblingRangeResult =
  * 同父时挂在父节点上；父节点不同但层级相同时挂在最近共同祖先上，只覆盖选中层级，不含中间的父节点
  */
 export function getSiblingRangeForSelection(root: MindNode, ids: Iterable<string>): SiblingRangeResult {
-  // 顶层 id 已按先序排列，首尾即范围两端
+  // 顶层 id 已按先序排列，首尾即范围两端（根节点与概要主题不会出现在其中）
   const topIds = getTopLevelMindNodeIds(root, ids);
-  if (topIds.length === 0) return { ok: false, reason: '中心主题不能添加' };
+  if (topIds.length === 0) return { ok: false, reason: '中心主题和概要不能添加' };
   const parentOf = new Map<string, MindNode>();
   const depthOf = new Map<string, number>();
   const stack: Array<{ node: MindNode; depth: number }> = [{ node: root, depth: 0 }];
@@ -212,13 +232,19 @@ export function getSiblingRangeForSelection(root: MindNode, ids: Iterable<string
       parentOf.set(child.id, node);
       stack.push({ node: child, depth: depth + 1 });
     }
+    // 概要主题自成一棵子树（不记父节点），层级按所属节点的下一层计
+    for (const summary of node.summaries ?? []) stack.push({ node: summary.topic, depth: depth + 1 });
   }
   if (topIds.some((id) => !parentOf.has(id))) return { ok: false, reason: '节点不存在' };
   const depth = depthOf.get(topIds[0]);
   if (topIds.some((id) => depthOf.get(id) !== depth)) return { ok: false, reason: '请选择同一层级的节点' };
-  // 同层节点逐级上溯直到汇合：同父时第一步即汇合于父节点
+  // 同层节点逐级上溯直到汇合：同父时第一步即汇合于父节点；分属主树与概要子树时无法汇合
   let ancestors = topIds.map((id) => parentOf.get(id)!);
-  while (ancestors.some((node) => node !== ancestors[0])) ancestors = ancestors.map((node) => parentOf.get(node.id)!);
+  while (ancestors.some((node) => node !== ancestors[0])) {
+    const next = ancestors.map((node) => parentOf.get(node.id));
+    if (next.some((node) => !node)) return { ok: false, reason: '请选择同一层级的节点' };
+    ancestors = next as MindNode[];
+  }
   return { ok: true, parentId: ancestors[0].id, startId: topIds[0], endId: topIds[topIds.length - 1] };
 }
 
@@ -240,34 +266,32 @@ export function removeStructure(owner: MindNode, ref: Pick<MindStructureRef, 'ki
   return true;
 }
 
-/** 改写结构元素的文字（概要文字 / 外框标题 / 联系线说明），原地修改；空标题移除字段 */
+/** 改写结构元素的文字（概要主题标题 / 外框标题 / 联系线说明），原地修改；空标题移除字段 */
 export function setStructureText(owner: MindNode, ref: Pick<MindStructureRef, 'kind' | 'id'>, text: string): boolean {
   const item = findStructure(owner, ref);
   if (!item) return false;
-  if (ref.kind === 'summary') (item as MindSummary).text = text;
-  else if (text) (item as MindBoundary | MindRelation).title = text;
+  if (ref.kind === 'summary') {
+    const topic = (item as MindSummary).topic;
+    // 标题富文本格式随文字变化平移，避免区间越界
+    const marks = adjustMarksForTextChange(topic.text, text, topic.marks);
+    topic.text = text;
+    if (marks && marks.length > 0) topic.marks = marks;
+    else delete topic.marks;
+  } else if (text) (item as MindBoundary | MindRelation).title = text;
   else delete (item as MindBoundary | MindRelation).title;
   return true;
 }
 
 /** 结构元素当前文字 */
 export function getStructureText(item: MindSummary | MindBoundary | MindRelation, kind: MindStructureKind): string {
-  return kind === 'summary' ? (item as MindSummary).text : (item as MindBoundary | MindRelation).title ?? '';
+  return kind === 'summary' ? (item as MindSummary).topic.text : (item as MindBoundary | MindRelation).title ?? '';
 }
 
 // ── 几何计算 ──
 
-/** 概要大括号与内容的间距、括号深度、括号到概要文字的间距 */
+/** 概要大括号与内容的间距、括号深度（括号尖端到概要主题的间距见 SUMMARY_TOPIC_GAP） */
 export const SUMMARY_GAP = 10;
 export const BRACE_DEPTH = 14;
-export const SUMMARY_LABEL_GAP = 8;
-/** 概要文字排版 */
-export const SUMMARY_FONT_SIZE = 13;
-export const SUMMARY_LINE_HEIGHT = 18;
-export const SUMMARY_PAD_X = 10;
-export const SUMMARY_PAD_Y = 6;
-const SUMMARY_MAX_TEXT_WIDTH = 200;
-const SUMMARY_MIN_WIDTH = 48;
 /** 外框内边距与标题排版 */
 export const BOUNDARY_PADDING = 8;
 export const BOUNDARY_TITLE_FONT_SIZE = 11;
@@ -283,7 +307,7 @@ const RELATION_MAX_TEXT_WIDTH = 160;
 const ARROW_LENGTH = 10;
 const ARROW_HALF_WIDTH = 5;
 
-/** 概要占位文字（空文字时显示） */
+/** 新建概要时概要主题的默认标题 */
 export const SUMMARY_PLACEHOLDER = '概要';
 
 type Point = MindPoint;
@@ -301,15 +325,15 @@ export type StructureSide = 'left' | 'right' | 'top' | 'bottom';
 export interface LayoutSummary {
   ownerId: string;
   id: string;
-  text: string;
+  /** 概要主题节点 id */
+  topicId: string;
   side: StructureSide;
   /** 所覆盖首个子节点的分支配色序号 */
   branchIndex: number;
   /** 大括号路径 */
   bracePath: string;
-  /** 概要文字框 */
+  /** 概要主题节点框（工具条、范围手柄等的定位参照） */
   label: Rect;
-  lines: string[];
   /** 大括号两端（拖动可扩大 / 缩小覆盖范围） */
   handles: [Point, Point];
 }
@@ -359,13 +383,19 @@ export interface MindmapStructureLayout {
   summaries: LayoutSummary[];
   boundaries: LayoutBoundary[];
   relations: LayoutRelation[];
-  /** 全部结构元素的外接矩形；没有元素时为 null */
+  /** 已定位的概要主题及其子孙节点（与排版结果的节点一同渲染） */
+  nodes: LayoutNode[];
+  /** 概要子树内部的父子连线 */
+  links: LayoutLink[];
+  /** 全部结构元素（含概要子树）的外接矩形；没有元素时为 null */
   bounds: Rect | null;
 }
 
 export interface StructureLayoutOptions {
   measure?: TextMeasure;
   fontFamily?: string;
+  /** 概要子树的连线样式（与主树一致） */
+  edgeStyle?: MindmapEdgeStyle;
   /** 临时控制点覆盖（拖动联系线控制点时的实时预览，偏移相对两端节点中心） */
   controlOverrides?: ReadonlyMap<string, [Point, Point]>;
   /** 临时范围覆盖（拖动概要 / 外框端点时的实时预览） */
@@ -559,6 +589,44 @@ function intersects(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 }
 
+/** 概要子树与其他节点之间至少保留的间距 */
+const SUMMARY_CLEARANCE = 4;
+/** 概要子树避让时单步移动量与最大移动量 */
+const SUMMARY_SHIFT_STEP = 6;
+const SUMMARY_SHIFT_LIMIT = 240;
+
+/**
+ * 概要子树沿同级方向（vertical 为 y 方向，否则 x 方向）需要的最小偏移，使其不压住其他节点；
+ * 原位不冲突返回 0，找不到无冲突位置时也返回 0（保持贴着大括号）
+ */
+function findClearShift(placed: readonly LayoutNode[], others: readonly LayoutNode[], vertical: boolean): number {
+  if (placed.length === 0) return 0;
+  let box: Rect | null = null;
+  for (const n of placed) box = union(box, nodeRect(n));
+  // 只考虑可能进入移动范围内的节点
+  const reach = SUMMARY_SHIFT_LIMIT + SUMMARY_CLEARANCE;
+  const band: Rect = vertical
+    ? { x: box!.x - SUMMARY_CLEARANCE, y: box!.y - reach, width: box!.width + SUMMARY_CLEARANCE * 2, height: box!.height + reach * 2 }
+    : { x: box!.x - reach, y: box!.y - SUMMARY_CLEARANCE, width: box!.width + reach * 2, height: box!.height + SUMMARY_CLEARANCE * 2 };
+  const obstacles = others.filter((n) => intersects(nodeRect(n), band));
+  if (obstacles.length === 0) return 0;
+  const collides = (shift: number) => placed.some((p) => {
+    const r: Rect = {
+      x: p.x + (vertical ? 0 : shift) - SUMMARY_CLEARANCE,
+      y: p.y + (vertical ? shift : 0) - SUMMARY_CLEARANCE,
+      width: p.width + SUMMARY_CLEARANCE * 2,
+      height: p.height + SUMMARY_CLEARANCE * 2,
+    };
+    return obstacles.some((o) => intersects(r, nodeRect(o)));
+  });
+  if (!collides(0)) return 0;
+  for (let step = SUMMARY_SHIFT_STEP; step <= SUMMARY_SHIFT_LIMIT; step += SUMMARY_SHIFT_STEP) {
+    if (!collides(-step)) return -step;
+    if (!collides(step)) return step;
+  }
+  return 0;
+}
+
 /** 子树（含自身）沿同级排列方向的覆盖区间 */
 function subtreeSpan(root: LayoutNode, vertical: boolean): [number, number] {
   let lo = Infinity;
@@ -622,25 +690,14 @@ export function dragRangeEnd(owner: LayoutNode, fixedId: string, point: Point): 
 export function computeMindmapStructures(nodes: readonly LayoutNode[], options: StructureLayoutOptions = {}): MindmapStructureLayout {
   const measure = options.measure ?? estimateTextWidth;
   const family = options.fontFamily ?? '';
-  const summaryFont = buildFont(SUMMARY_FONT_SIZE, 500, family);
+  const edgeStyle = options.edgeStyle ?? 'curve';
   const titleFont = buildFont(BOUNDARY_TITLE_FONT_SIZE, 500, family);
   const relationFont = buildFont(RELATION_FONT_SIZE, 400, family);
-  const result: MindmapStructureLayout = { summaries: [], boundaries: [], relations: [], bounds: null };
+  const result: MindmapStructureLayout = { summaries: [], boundaries: [], relations: [], nodes: [], links: [], bounds: null };
   const root = nodes.find((n) => n.level === 0);
   if (!root) return result;
-
-  // 显式栈先序遍历，逆序即为子节点先于父节点的后序
-  const order: LayoutNode[] = [];
-  const parentOf = new Map<LayoutNode, LayoutNode>();
-  const stack = [root];
-  while (stack.length > 0) {
-    const n = stack.pop()!;
-    order.push(n);
-    for (let i = n.children.length - 1; i >= 0; i -= 1) {
-      parentOf.set(n.children[i], n);
-      stack.push(n.children[i]);
-    }
-  }
+  // 主树节点 + 已定位的概要子树节点（外框间隙判定与联系线都要算上概要子树）
+  const allNodes: LayoutNode[] = [...nodes];
 
   /** 节点及其全部子孙（跨父外框判定间隙中是否夹着其他节点时排除） */
   const collectSubtrees = (tops: readonly LayoutNode[]): Set<LayoutNode> => {
@@ -658,6 +715,20 @@ export function computeMindmapStructures(nodes: readonly LayoutNode[], options: 
   const extent = new Map<LayoutNode, Rect>();
   // 已排好的外框（含标题）及其覆盖节点：外层外框 / 概要据此让出内层外框（后序保证内层先算）
   const boundaryRects: Array<{ owner: LayoutNode; children: Set<LayoutNode>; rect: Rect }> = [];
+
+  /**
+   * 后序处理一棵树（主树或某棵概要子树）上的外框与概要，返回树根「含子树与结构元素」的外接矩形。
+   * 概要子树在所属概要定位后递归处理，其中的外框 / 概要同样生效
+   */
+  const processTree = (treeRoot: LayoutNode): Rect => {
+  // 显式栈先序遍历，逆序即为子节点先于父节点的后序
+  const order: LayoutNode[] = [];
+  const stack = [treeRoot];
+  while (stack.length > 0) {
+    const n = stack.pop()!;
+    order.push(n);
+    for (let i = n.children.length - 1; i >= 0; i -= 1) stack.push(n.children[i]);
+  }
   for (let oi = order.length - 1; oi >= 0; oi -= 1) {
     const n = order[oi];
     let rect = nodeRect(n);
@@ -710,7 +781,7 @@ export function computeMindmapStructures(nodes: readonly LayoutNode[], options: 
         if (pieces.length > 1) {
           // 相邻两段之间若夹着范围外的节点（如缩进图中的父节点）或横向不重叠，则断开分段绘制
           const inside = collectSubtrees(info.children);
-          const others = nodes.filter((item) => !inside.has(item));
+          const others = allNodes.filter((item) => !inside.has(item));
           const groups: Rect[][] = [[pieces[0]]];
           for (let i = 1; i < pieces.length; i += 1) {
             const prev = pieces[i - 1];
@@ -761,57 +832,56 @@ export function computeMindmapStructures(nodes: readonly LayoutNode[], options: 
         boundaryRects.push({ owner: n, children: new Set(info.children), rect: occupied });
         rect = union(rect, occupied);
       }
-      // 2. 概要：大括号放在范围内子树（及重叠外框）最外侧之外
+      // 2. 概要：大括号放在范围内子树（及重叠外框）最外侧之外，概要主题子树从括号尖端向外展开
       for (const summary of node.summaries ?? []) {
         const info = covered(summary);
         if (!info) continue;
-        const inner = contentRect(info.children, true);
-        const area = inner!;
-        const text = summary.text || SUMMARY_PLACEHOLDER;
-        const wrapped = wrapLabel(text, SUMMARY_MAX_TEXT_WIDTH, measure, summaryFont);
-        // 宽高含 1.5px 边框（两侧共 3px）与 1px 取整余量
-        const labelWidth = Math.max(SUMMARY_MIN_WIDTH, wrapped.width + SUMMARY_PAD_X * 2 + 4);
-        const labelHeight = wrapped.lines.length * SUMMARY_LINE_HEIGHT + SUMMARY_PAD_Y * 2 + 3;
+        const area = contentRect(info.children, true);
         const { side } = info;
         let path: string;
-        let label: Rect;
         let handles: [Point, Point];
+        let tip: Point;
         if (side === 'left' || side === 'right') {
           const sign = side === 'right' ? 1 : -1;
           const base = side === 'right' ? area.x + area.width + SUMMARY_GAP : area.x - SUMMARY_GAP;
           path = bracePath(area.y, area.y + area.height, BRACE_DEPTH, (u, v) => [base + v * sign, u]);
           handles = [{ x: base, y: area.y }, { x: base, y: area.y + area.height }];
-          const tip = base + BRACE_DEPTH * sign;
-          const midY = area.y + area.height / 2;
-          label = {
-            x: side === 'right' ? tip + SUMMARY_LABEL_GAP : tip - SUMMARY_LABEL_GAP - labelWidth,
-            y: midY - labelHeight / 2,
-            width: labelWidth,
-            height: labelHeight,
-          };
+          tip = { x: base + BRACE_DEPTH * sign, y: area.y + area.height / 2 };
         } else {
           const sign = side === 'bottom' ? 1 : -1;
           const base = side === 'bottom' ? area.y + area.height + SUMMARY_GAP : area.y - SUMMARY_GAP;
           path = bracePath(area.x, area.x + area.width, BRACE_DEPTH, (u, v) => [u, base + v * sign]);
           handles = [{ x: area.x, y: base }, { x: area.x + area.width, y: base }];
-          const tip = base + BRACE_DEPTH * sign;
-          const midX = area.x + area.width / 2;
-          label = {
-            x: midX - labelWidth / 2,
-            y: side === 'bottom' ? tip + SUMMARY_LABEL_GAP : tip - SUMMARY_LABEL_GAP - labelHeight,
-            width: labelWidth,
-            height: labelHeight,
-          };
+          tip = { x: area.x + area.width / 2, y: base + BRACE_DEPTH * sign };
+        }
+        const branchIndex = info.children[0].branchIndex;
+        // 排版阶段已度量好的概要主题子树（手工构造的排版节点可能没有，此时只画括号）
+        const measured = n.summaryTopics?.get(summary.id);
+        let label: Rect = { x: tip.x, y: tip.y, width: 0, height: 0 };
+        if (measured) {
+          const owner = { ownerId: node.id, id: summary.id };
+          let placed = placeSummaryTopicTree(measured, side, tip, branchIndex, edgeStyle, owner);
+          // 未预留空间的布局（跨父范围、时间轴、鱼骨图等）中概要子树可能压住其他节点：沿同级方向微移避让
+          const shift = findClearShift(placed.nodes, allNodes, side === 'left' || side === 'right');
+          if (shift !== 0) {
+            const shifted = side === 'left' || side === 'right' ? { x: tip.x, y: tip.y + shift } : { x: tip.x + shift, y: tip.y };
+            placed = placeSummaryTopicTree(measured, side, shifted, branchIndex, edgeStyle, owner);
+          }
+          result.nodes.push(...placed.nodes);
+          result.links.push(...placed.links);
+          allNodes.push(...placed.nodes);
+          label = nodeRect(placed.root);
+          // 概要子树内部的外框 / 概要（递归），外接矩形计入所属节点
+          rect = union(rect, processTree(placed.root));
         }
         result.summaries.push({
           ownerId: node.id,
           id: summary.id,
-          text: summary.text,
+          topicId: summary.topic.id,
           side,
-          branchIndex: info.children[0].branchIndex,
+          branchIndex,
           bracePath: path,
           label,
-          lines: wrapped.lines,
           handles,
         });
         rect = union(union(rect, area), label);
@@ -819,11 +889,14 @@ export function computeMindmapStructures(nodes: readonly LayoutNode[], options: 
     }
     extent.set(n, rect);
   }
+  return extent.get(treeRoot)!;
+  };
+  processTree(root);
 
   // 3. 联系线：两端都可见时绘制，曲线从节点边框出发
   const byId = new Map<string, LayoutNode>();
-  for (const n of nodes) byId.set(n.node.id, n);
-  for (const source of nodes) {
+  for (const n of allNodes) byId.set(n.node.id, n);
+  for (const source of allNodes) {
     for (const relation of source.node.relations ?? []) {
       const target = byId.get(relation.targetId);
       if (!target || target === source) continue;
@@ -857,7 +930,7 @@ export function computeMindmapStructures(nodes: readonly LayoutNode[], options: 
       const controls = options.controlOverrides?.get(relation.id) ?? relation.controls;
       const { cp1, cp2, p1, p2, mid } = controls
         ? geometry({ x: c1.x + controls[0].x, y: c1.y + controls[0].y }, { x: c2.x + controls[1].x, y: c2.y + controls[1].y })
-        : bendGeometry(relation.bend ?? pickAutoBend(nodes, source, target, length, bendGeometry, { x: labelSize.width / 2, y: labelSize.height / 2 }));
+        : bendGeometry(relation.bend ?? pickAutoBend(allNodes, source, target, length, bendGeometry, { x: labelSize.width / 2, y: labelSize.height / 2 }));
       // 箭头沿终点切线方向
       let ax = p2.x - cp2.x;
       let ay = p2.y - cp2.y;
@@ -903,6 +976,8 @@ export function computeMindmapStructures(nodes: readonly LayoutNode[], options: 
   for (const item of result.summaries) {
     result.bounds = union(result.bounds, item.label);
   }
+  // 概要子树中的其余节点同样可能伸出主树范围
+  for (const item of result.nodes) result.bounds = union(result.bounds, nodeRect(item));
   for (const item of result.relations) result.bounds = union(result.bounds, item.bounds);
   return result;
 }

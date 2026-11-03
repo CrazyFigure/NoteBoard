@@ -42,8 +42,6 @@ import {
   BOUNDARY_TITLE_HEIGHT,
   RELATION_FONT_SIZE,
   RELATION_LINE_HEIGHT,
-  SUMMARY_FONT_SIZE,
-  SUMMARY_LINE_HEIGHT,
   type MindmapStructureLayout,
   type Rect,
 } from './mindmapStructures';
@@ -608,7 +606,6 @@ function drawStructures(
       ctx.globalAlpha = 1;
     }
   } else if (phase === 'middle') {
-    const surface = resolveCssVars('var(--editor-surface, #ffffff)');
     // 外框标题标签
     for (const b of structures.boundaries) {
       if (!b.titleBox || !b.titleText) continue;
@@ -621,27 +618,12 @@ function drawStructures(
       ctx.fillStyle = '#ffffff';
       ctx.fillText(b.titleText, box.x + 7, box.y + box.height / 2);
     }
-    // 概要：大括号 + 文字框
+    // 概要大括号（概要主题作为普通节点随节点卡片一起绘制）
     for (const s of structures.summaries) {
-      const color = branchColor(s.branchIndex);
       ctx.globalAlpha = theme.edgeOpacity;
       ctx.lineWidth = 1.8;
-      ctx.strokeStyle = color;
+      ctx.strokeStyle = branchColor(s.branchIndex);
       ctx.stroke(new Path2D(s.bracePath));
-      ctx.globalAlpha = 1;
-      const { label } = s;
-      roundRectPath(ctx, label.x, label.y, label.width, label.height, 8);
-      ctx.fillStyle = theme.nodeTint ? mixColors(color, surface, theme.nodeTint) : surface;
-      ctx.fill();
-      roundRectPath(ctx, label.x + 0.75, label.y + 0.75, label.width - 1.5, label.height - 1.5, 7.25);
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-      ctx.font = buildFont(SUMMARY_FONT_SIZE, 500, fontFamily);
-      ctx.textAlign = 'center';
-      ctx.fillStyle = resolveCssVars('var(--editor-text, #1e293b)');
-      if (!s.text) ctx.globalAlpha = 0.5;
-      const top = label.y + (label.height - s.lines.length * SUMMARY_LINE_HEIGHT) / 2;
-      s.lines.forEach((line, idx) => ctx.fillText(line, label.x + label.width / 2, top + idx * SUMMARY_LINE_HEIGHT + SUMMARY_LINE_HEIGHT / 2));
       ctx.globalAlpha = 1;
     }
   } else {
@@ -683,12 +665,15 @@ export async function exportMindmapImageBlob(options: MindmapImageExportOptions)
   const sources = new Set<string>();
   const collect = (node: MindNode) => {
     for (const src of node.images ?? []) sources.add(src);
-    if (node.isExpanded !== false) node.children.forEach(collect);
+    if (node.isExpanded === false) return;
+    node.children.forEach(collect);
+    // 概要主题子树中的图片同样需要预加载
+    for (const summary of node.summaries ?? []) collect(summary.topic);
   };
   collect(root);
   await Promise.all([...sources].map(async (src) => images.set(src, await loadImage(src))));
 
-  const { nodes, links, decorations } = computeMindmapLayout(root, layout, theme.branchColors.length, {
+  const base = computeMindmapLayout(root, layout, theme.branchColors.length, {
     maxNodeWidth,
     measure: getSharedTextMeasurer(),
     fontFamily,
@@ -700,7 +685,11 @@ export async function exportMindmapImageBlob(options: MindmapImageExportOptions)
       return img ? { width: img.naturalWidth || img.width, height: img.naturalHeight || img.height } : undefined;
     },
   });
-  const structures = computeMindmapStructures(nodes, { measure: getSharedTextMeasurer(), fontFamily });
+  const structures = computeMindmapStructures(base.nodes, { measure: getSharedTextMeasurer(), fontFamily, edgeStyle });
+  // 概要主题子树与主树节点、连线一并绘制
+  const nodes = base.nodes.concat(structures.nodes);
+  const links = base.links.concat(structures.links);
+  const { decorations } = base;
   const frame = computeExportFrame(nodes, links, decorations, EXPORT_PADDING, structures.bounds);
 
   // 倍率：默认 3 倍（高分屏与放大查看都清晰），超出浏览器画布上限时自动降低

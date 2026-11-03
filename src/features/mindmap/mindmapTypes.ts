@@ -51,9 +51,13 @@ export interface MindNodeRange {
   endId: string;
 }
 
-/** 概要：大括号 + 概要文字 */
+/**
+ * 概要：大括号 + 概要主题。
+ * 概要主题是一个完整节点（标题 / 图标 / 备注 / 图片等），可继续挂子节点；
+ * 旧版文档只有概要文字 text，解析时迁移为概要主题
+ */
 export interface MindSummary extends MindNodeRange {
-  text: string;
+  topic: MindNode;
 }
 
 /** 外框：虚线圆角框 + 可选标题 */

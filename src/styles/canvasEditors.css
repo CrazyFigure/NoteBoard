@@ -1006,10 +1006,16 @@
 
 /* ── 思维导图结构元素：外框 / 概要 / 联系线 ── */
 
-/* 外框与联系线：悬停加粗边线，提示可点选 */
+/* 外框、联系线与概要大括号：悬停加粗边线，提示可点选 */
 .nb-mindmap-boundary .nb-mindmap-boundary-frame,
-.nb-mindmap-relation .nb-mindmap-relation-line {
-  transition: stroke-width var(--transition-fast, 120ms ease), stroke-opacity var(--transition-fast, 120ms ease);
+.nb-mindmap-relation .nb-mindmap-relation-line,
+.nb-mindmap-summary-brace path:first-child {
+  transition: stroke-width var(--transition-fast, 120ms ease), stroke-opacity var(--transition-fast, 120ms ease), opacity var(--transition-fast, 120ms ease);
+}
+
+.nb-mindmap-summary-brace:hover path:first-child {
+  stroke-width: 2.6;
+  opacity: 1;
 }
 
 .nb-mindmap-boundary:hover .nb-mindmap-boundary-frame {
@@ -1021,21 +1027,15 @@
   stroke-width: 2.4;
 }
 
-/* 概要文字框、外框标题、联系线文字 */
-.nb-mindmap-summary-label,
+/* 外框标题、联系线文字 */
 .nb-mindmap-structure-tag {
   transition: box-shadow var(--transition-fast, 120ms ease), filter var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
-}
-
-.nb-mindmap-summary-label:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12) !important;
 }
 
 .nb-mindmap-structure-tag:hover {
   filter: brightness(1.08);
 }
 
-.nb-mindmap-summary-label:active,
 .nb-mindmap-structure-tag:active {
   transform: scale(0.97);
 }

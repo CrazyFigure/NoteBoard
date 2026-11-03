@@ -32,7 +32,7 @@ function sample(): MindNode {
   return {
     id: 'root',
     text: '中心',
-    summaries: [{ id: 's1', startId: 'a', endId: 'b', text: '前两项' }],
+    summaries: [{ id: 's1', startId: 'a', endId: 'b', topic: { id: 's1-topic', text: '前两项', isExpanded: true, children: [] } }],
     boundaries: [{ id: 'b1', startId: 'c', endId: 'c', title: '重点' }],
     children: [
       {
@@ -94,9 +94,9 @@ describe('范围与数据操作', () => {
     const cloned = cloneMindmapTree(root);
     setStructureText(cloned, { kind: 'summary', id: 's1' }, '改写');
     removeStructure(cloned, { kind: 'boundary', id: 'b1' });
-    expect(root.summaries![0].text).toBe('前两项');
+    expect(root.summaries![0].topic.text).toBe('前两项');
     expect(root.boundaries).toHaveLength(1);
-    expect(cloned.summaries![0].text).toBe('改写');
+    expect(cloned.summaries![0].topic.text).toBe('改写');
     expect(cloned.boundaries).toBeUndefined();
   });
 
@@ -104,7 +104,7 @@ describe('范围与数据操作', () => {
     const root = sample();
     (root.summaries as unknown[]).push({ id: 'bad' });
     const parsed = parseMindmapDocument(serializeMindmapDocument(root));
-    expect(parsed.summaries).toEqual([{ id: 's1', startId: 'a', endId: 'b', text: '前两项' }]);
+    expect(parsed.summaries).toEqual([{ id: 's1', startId: 'a', endId: 'b', topic: expect.objectContaining({ id: 's1-topic', text: '前两项', children: [] }) }]);
     expect(parsed.boundaries).toEqual([{ id: 'b1', startId: 'c', endId: 'c', title: '重点' }]);
     expect(parsed.children[0].relations).toEqual([{ id: 'r1', targetId: 'c', title: '依赖' }]);
   });
@@ -216,7 +216,7 @@ describe('XMind 双向转换', () => {
 
     const root = await importFromXmindZip(buffer);
     expect(root.children.map((n) => n.text)).toEqual(['分支 A', '分支 B', '分支 C']);
-    expect(root.summaries).toEqual([{ id: 's1', startId: 'a', endId: 'b', text: '前两项' }]);
+    expect(root.summaries).toEqual([{ id: 's1', startId: 'a', endId: 'b', topic: expect.objectContaining({ id: 's1-topic', text: '前两项', children: [] }) }]);
     expect(root.boundaries).toEqual([{ id: 'b1', startId: 'c', endId: 'c', title: '重点' }]);
     expect(root.children[0].relations).toEqual([{ id: 'r1', targetId: 'c', title: '依赖' }]);
   });
@@ -233,7 +233,7 @@ describe('XMind 双向转换', () => {
     const prepared = prepareXmindSheet(archive, (await readXmindSheets(archive))[0]);
     const root = prepared.root;
     expect(root.children.map((n) => n.text)).toEqual(['A', 'B']);
-    expect(root.summaries).toEqual([{ id: 'sx', startId: 'a', endId: 'b', text: '小结' }]);
+    expect(root.summaries).toEqual([{ id: 'sx', startId: 'a', endId: 'b', topic: expect.objectContaining({ id: 'st', text: '小结', children: [] }) }]);
     expect(root.boundaries).toHaveLength(2);
     expect(root.boundaries).toEqual(expect.arrayContaining([
       { id: 'm', startId: 'a', endId: 'a', title: '自身' },
@@ -264,7 +264,7 @@ describe('跨父节点的同层范围', () => {
       id: 'root',
       text: '中心',
       boundaries: [{ id: 'x1', startId: 'a2', endId: 'b1', title: '跨父' }],
-      summaries: [{ id: 'x2', startId: 'a2', endId: 'b1', text: '跨父概要' }],
+      summaries: [{ id: 'x2', startId: 'a2', endId: 'b1', topic: { id: 'x2-topic', text: '跨父概要', isExpanded: true, children: [] } }],
       children: [
         {
           id: 'a',
