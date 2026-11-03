@@ -215,13 +215,85 @@ export type SiblingRangeResult =
   | { ok: false; reason: string };
 
 /**
+ * 概要主题自成一棵子树，不在所属节点的 children 中，同层规则无法覆盖它。
+ * 选中项含概要主题，或分属不同的树（主树 / 各概要子树）时：把概要主题视作挂在所属节点下、
+ * 占据其所概括的那段子节点的位置，逐级上溯到全部选中项的最近共同上级，
+ * 概括该上级下包含它们的连续子节点（例如分属两个一级分支时，概括这两个一级分支）。
+ * 不涉及概要子树时返回 null，交由同层规则处理
+ */
+function liftRangeAcrossSummaryTopics(root: MindNode, ids: readonly string[]): SiblingRangeResult | null {
+  const selected = new Set(ids);
+  if (selected.size === 0 || selected.has(root.id)) return null;
+  // 每个节点的上级：普通子节点为父节点及自身下标；概要主题为所属节点及所概括子节点的下标区间
+  const upOf = new Map<string, { parent: MindNode; lo: number; hi: number }>();
+  // 节点所在的树：主树记根节点 id，概要子树记概要主题 id
+  const treeOf = new Map<string, string>();
+  const topicIds = new Set<string>();
+  const stack: Array<{ node: MindNode; tree: string }> = [{ node: root, tree: root.id }];
+  while (stack.length > 0) {
+    const { node, tree } = stack.pop()!;
+    treeOf.set(node.id, tree);
+    const summaries = node.summaries ?? [];
+    for (let i = summaries.length - 1; i >= 0; i -= 1) {
+      const topic = summaries[i]?.topic;
+      const indexes = topic ? resolveRangeIndexes(node, summaries[i]) : null;
+      if (!topic || !indexes) continue;
+      upOf.set(topic.id, { parent: node, lo: Math.min(indexes[0], indexes[1]), hi: Math.max(indexes[0], indexes[1]) });
+      topicIds.add(topic.id);
+      stack.push({ node: topic, tree: topic.id });
+    }
+    for (let i = node.children.length - 1; i >= 0; i -= 1) {
+      upOf.set(node.children[i].id, { parent: node, lo: i, hi: i });
+      stack.push({ node: node.children[i], tree });
+    }
+  }
+  /** 从根节点到直接上级的上溯链（经概要主题时跨到所属节点） */
+  const chainOf = (id: string): MindNode[] => {
+    const chain: MindNode[] = [];
+    for (let up = upOf.get(id); up; up = upOf.get(up.parent.id)) chain.push(up.parent);
+    return chain.reverse();
+  };
+  // 只保留「顶层」选中项：上溯链中已有选中节点的随祖先一起被概括
+  const items: Array<{ id: string; chain: MindNode[] }> = [];
+  for (const id of selected) {
+    if (!upOf.has(id)) continue;
+    const chain = chainOf(id);
+    if (!chain.some((node) => selected.has(node.id))) items.push({ id, chain });
+  }
+  if (items.length === 0) return null;
+  const crossesTrees = new Set(items.map((item) => treeOf.get(item.id))).size > 1;
+  if (!crossesTrees && !items.some((item) => topicIds.has(item.id))) return null;
+  // 最近共同上级：各上溯链的最长公共前缀的末端（链首都是根节点）
+  let common = items[0].chain.length;
+  for (const item of items) {
+    let k = 0;
+    while (k < common && k < item.chain.length && item.chain[k] === items[0].chain[k]) k += 1;
+    common = k;
+  }
+  const owner = items[0].chain[common - 1];
+  // 每个选中项在共同上级下占据的子节点区间，合并为一段连续范围
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const item of items) {
+    const up = upOf.get(item.chain.length === common ? item.id : item.chain[common].id)!;
+    lo = Math.min(lo, up.lo);
+    hi = Math.max(hi, up.hi);
+  }
+  return { ok: true, parentId: owner.id, startId: owner.children[lo].id, endId: owner.children[hi].id };
+}
+
+/**
  * 由选中节点求出连续的同层范围（中间未选中的同层节点一并纳入，与 XMind 一致）。
  * 同父时挂在父节点上；父节点不同但层级相同时挂在最近共同祖先上，只覆盖选中层级，不含中间的父节点
  */
 export function getSiblingRangeForSelection(root: MindNode, ids: Iterable<string>): SiblingRangeResult {
+  const selected = [...ids];
+  // 选中概要主题，或选中项分属主树与概要子树（不在同一棵树里）时，提升到共同上级再概括
+  const lifted = liftRangeAcrossSummaryTopics(root, selected);
+  if (lifted) return lifted;
   // 顶层 id 已按先序排列，首尾即范围两端（根节点与概要主题不会出现在其中）
-  const topIds = getTopLevelMindNodeIds(root, ids);
-  if (topIds.length === 0) return { ok: false, reason: '中心主题和概要不能添加' };
+  const topIds = getTopLevelMindNodeIds(root, selected);
+  if (topIds.length === 0) return { ok: false, reason: '中心主题不能添加' };
   const parentOf = new Map<string, MindNode>();
   const depthOf = new Map<string, number>();
   const stack: Array<{ node: MindNode; depth: number }> = [{ node: root, depth: 0 }];
@@ -391,6 +463,11 @@ export interface MindmapStructureLayout {
   bounds: Rect | null;
 }
 
+/** 概要 / 外框的目标范围；ownerId 为空表示仍挂在当前所属节点上 */
+export interface RangeTarget extends Pick<MindNodeRange, 'startId' | 'endId'> {
+  ownerId?: string;
+}
+
 export interface StructureLayoutOptions {
   measure?: TextMeasure;
   fontFamily?: string;
@@ -398,8 +475,8 @@ export interface StructureLayoutOptions {
   edgeStyle?: MindmapEdgeStyle;
   /** 临时控制点覆盖（拖动联系线控制点时的实时预览，偏移相对两端节点中心） */
   controlOverrides?: ReadonlyMap<string, [Point, Point]>;
-  /** 临时范围覆盖（拖动概要 / 外框端点时的实时预览） */
-  rangeOverrides?: ReadonlyMap<string, Pick<MindNodeRange, 'startId' | 'endId'>>;
+  /** 临时范围覆盖（拖动概要 / 外框端点时的实时预览）；ownerId 不同于当前所属节点时表示换挂到该节点 */
+  rangeOverrides?: ReadonlyMap<string, RangeTarget>;
 }
 
 /** 保留两位小数 */
@@ -656,13 +733,19 @@ export function rangeFixedEndId(owner: LayoutNode, range: Pick<MindNodeRange, 's
 }
 
 /**
- * 拖动概要 / 外框端点：在 owner 下与固定端同层、同侧的节点中，沿同级排列方向找指针所在（或最近）的子树，
- * 返回固定端与它之间的新范围（跨父范围同样只在该层内伸缩）
+ * 拖动概要 / 外框端点：在整棵树（treeRoot，主树或所在的概要子树）中与固定端同层、同侧的节点里，
+ * 沿同级排列方向找指针所在（或最近）的子树，返回固定端与它之间的新范围。
+ * 新端点仍在 owner 下时所属节点不变；拖到 owner 之外的同层节点（如相邻分支的子节点）时，
+ * 改挂到两端的最近共同祖先上，成为跨父节点的同层范围
  */
-export function dragRangeEnd(owner: LayoutNode, fixedId: string, point: Point): Pick<MindNodeRange, 'startId' | 'endId'> | null {
-  const depth = depthBelow(owner, fixedId, LAYOUT_ACCESS);
-  if (depth < 0) return null;
-  const level = nodesAtDepth(owner, depth, LAYOUT_ACCESS);
+export function dragRangeEnd(owner: LayoutNode, fixedId: string, point: Point, treeRoot: LayoutNode = owner): Required<RangeTarget> | null {
+  const ownerDepth = depthBelow(owner, fixedId, LAYOUT_ACCESS);
+  if (ownerDepth < 0) return null;
+  const rootDepth = treeRoot === owner ? ownerDepth : depthBelow(treeRoot, fixedId, LAYOUT_ACCESS);
+  // treeRoot 不含 owner 时退回只在 owner 下伸缩
+  const scope = rootDepth < 0 ? owner : treeRoot;
+  const depth = rootDepth < 0 ? ownerDepth : rootDepth;
+  const level = nodesAtDepth(scope, depth, LAYOUT_ACCESS);
   const a = level.findIndex((item) => item.node.node.id === fixedId);
   const fixed = level[a];
   const side = sideOf(fixed.parent, fixed.node);
@@ -680,7 +763,34 @@ export function dragRangeEnd(owner: LayoutNode, fixedId: string, point: Point): 
     }
   });
   const best = level[b].node;
-  return a <= b ? { startId: fixed.node.node.id, endId: best.node.id } : { startId: best.node.id, endId: fixed.node.node.id };
+  const range = a <= b ? { startId: fixed.node.node.id, endId: best.node.id } : { startId: best.node.id, endId: fixed.node.node.id };
+  // 新端点与固定端相对 owner 同层：仍挂在 owner 上（保持原有的跨父范围不被收窄成同父）
+  if (scope === owner || depthBelow(owner, best.node.id, LAYOUT_ACCESS) === ownerDepth) return { ownerId: owner.node.id, ...range };
+  return { ownerId: lowestCommonAncestor(scope, fixed.node.node.id, best.node.id)?.node.id ?? owner.node.id, ...range };
+}
+
+/** 排版节点所在的树根：主树根节点，或其所在概要子树的概要主题 */
+export function layoutTreeRootOf(nodes: readonly LayoutNode[], target: LayoutNode): LayoutNode {
+  return nodes.find((n) => (n.level === 0 || n.summaryOf) && (n === target || depthBelow(n, target.node.id, LAYOUT_ACCESS) > 0)) ?? target;
+}
+
+/** 树中两个节点的最近共同祖先（不含两者自身）；找不到返回 null */
+function lowestCommonAncestor(treeRoot: LayoutNode, a: string, b: string): LayoutNode | null {
+  const parentOf = new Map<LayoutNode, LayoutNode>();
+  const byId = new Map<string, LayoutNode>();
+  const stack = [treeRoot];
+  while (stack.length > 0) {
+    const n = stack.pop()!;
+    byId.set(n.node.id, n);
+    for (const child of n.children) {
+      parentOf.set(child, n);
+      stack.push(child);
+    }
+  }
+  const ancestors = new Set<LayoutNode>();
+  for (let cur = byId.get(a) && parentOf.get(byId.get(a)!); cur; cur = parentOf.get(cur)) ancestors.add(cur);
+  for (let cur = byId.get(b) && parentOf.get(byId.get(b)!); cur; cur = parentOf.get(cur)) if (ancestors.has(cur)) return cur;
+  return null;
 }
 
 /**
@@ -711,9 +821,36 @@ export function computeMindmapStructures(nodes: readonly LayoutNode[], options: 
     return set;
   };
 
+  // 拖动端点预览：覆盖里带 ownerId 且不同于当前所属节点的概要 / 外框，视为换挂到该节点
+  const movedFrom = new Map<string, string>();
+  const movedIn = new Map<string, { summaries: MindSummary[]; boundaries: MindBoundary[] }>();
+  const movedTopics = new Map<string, LayoutNode>();
+  const overrides = options.rangeOverrides;
+  if (overrides && [...overrides.values()].some((item) => item.ownerId)) {
+    for (const dataNode of walkMindNodes(root.node)) {
+      const collect = (list: ReadonlyArray<MindSummary | MindBoundary> | undefined, kind: 'summaries' | 'boundaries') => {
+        for (const item of list ?? []) {
+          const ownerId = overrides.get(item.id)?.ownerId;
+          if (!ownerId || ownerId === dataNode.id) continue;
+          movedFrom.set(item.id, dataNode.id);
+          if (!movedIn.has(ownerId)) movedIn.set(ownerId, { summaries: [], boundaries: [] });
+          (movedIn.get(ownerId)![kind] as Array<MindSummary | MindBoundary>).push(item);
+        }
+      };
+      collect(dataNode.summaries, 'summaries');
+      collect(dataNode.boundaries, 'boundaries');
+    }
+  }
+  const movedAway = (ownerId: string, id: string) => movedFrom.get(id) === ownerId;
+  /** 节点上实际参与排版的条目：去掉换挂走的，追加换挂进来的 */
+  const withMoved = <T extends MindNodeRange>(ownerId: string, list: readonly T[] | undefined, moved: readonly T[] | undefined): T[] => {
+    const kept = movedFrom.size > 0 ? (list ?? []).filter((item) => !movedAway(ownerId, item.id)) : [...(list ?? [])];
+    return moved ? kept.concat(moved) : kept;
+  };
+
   // 每个节点「含子树与其上结构元素」的外接矩形
   const extent = new Map<LayoutNode, Rect>();
-  // 已排好的外框（含标题）及其覆盖节点：外层外框 / 概要据此让出内层外框（后序保证内层先算）
+  // 已排好的外框（含标题）/ 概要（含大括号与概要子树）及其覆盖节点：外层外框 / 概要据此让出内层（后序保证内层先算）
   const boundaryRects: Array<{ owner: LayoutNode; children: Set<LayoutNode>; rect: Rect }> = [];
 
   /**
@@ -734,7 +871,16 @@ export function computeMindmapStructures(nodes: readonly LayoutNode[], options: 
     let rect = nodeRect(n);
     for (const child of n.children) rect = union(rect, extent.get(child)!);
     const node = n.node;
-    if (n.children.length > 0 && (node.boundaries || node.summaries)) {
+    // 拖动端点预览中换挂了所属节点的概要 / 外框：从原节点移走，挂到新节点上（新节点是原节点的祖先，后序保证原节点先处理）
+    const boundaryList = withMoved(node.id, node.boundaries, movedIn.get(node.id)?.boundaries);
+    const summaryList = withMoved(node.id, node.summaries, movedIn.get(node.id)?.summaries);
+    for (const summary of node.summaries ?? []) {
+      if (movedAway(node.id, summary.id)) {
+        const measuredTopic = n.summaryTopics?.get(summary.id);
+        if (measuredTopic) movedTopics.set(summary.id, measuredTopic);
+      }
+    }
+    if (n.children.length > 0 && (boundaryList.length > 0 || summaryList.length > 0)) {
       /** 范围内与首个节点同侧的节点（双向图根节点两侧分开），按父节点分成连续的段 */
       const covered = (range: MindNodeRange): { side: StructureSide; children: LayoutNode[]; runs: LayoutNode[][] } | null => {
         const entries = resolveRangeEntries(n, options.rangeOverrides?.get(range.id) ?? range, LAYOUT_ACCESS);
@@ -750,7 +896,7 @@ export function computeMindmapStructures(nodes: readonly LayoutNode[], options: 
         }
         return { side, children: runs.flat(), runs };
       };
-      /** 范围内容的外接矩形：子树 + 中间层级上与之重叠的外框（让出内层外框） */
+      /** 范围内容的外接矩形：子树 + 中间层级上与之重叠的外框 / 概要（让出内层结构） */
       const contentRect = (children: readonly LayoutNode[], withSameOwner: boolean): Rect => {
         let inner: Rect | null = null;
         for (const child of children) inner = union(inner, extent.get(child)!);
@@ -761,7 +907,7 @@ export function computeMindmapStructures(nodes: readonly LayoutNode[], options: 
         return inner!;
       };
       // 1. 外框：圈住范围内子树，记录「已占用」矩形，供概要与外层外框避让
-      for (const boundary of node.boundaries ?? []) {
+      for (const boundary of boundaryList) {
         const info = covered(boundary);
         if (!info) continue;
         const vertical = info.side === 'left' || info.side === 'right';
@@ -832,8 +978,9 @@ export function computeMindmapStructures(nodes: readonly LayoutNode[], options: 
         boundaryRects.push({ owner: n, children: new Set(info.children), rect: occupied });
         rect = union(rect, occupied);
       }
-      // 2. 概要：大括号放在范围内子树（及重叠外框）最外侧之外，概要主题子树从括号尖端向外展开
-      for (const summary of node.summaries ?? []) {
+      // 2. 概要：大括号放在范围内子树（及重叠的外框 / 先排好的概要）最外侧之外，概要主题子树从括号尖端向外展开。
+      // 先排好的概要同样登记为已占用：同一节点上后加的「概要的概要」、跨父范围外层概要都会整体让出
+      for (const summary of summaryList) {
         const info = covered(summary);
         if (!info) continue;
         const area = contentRect(info.children, true);
@@ -855,9 +1002,12 @@ export function computeMindmapStructures(nodes: readonly LayoutNode[], options: 
           tip = { x: area.x + area.width / 2, y: base + BRACE_DEPTH * sign };
         }
         const branchIndex = info.children[0].branchIndex;
-        // 排版阶段已度量好的概要主题子树（手工构造的排版节点可能没有，此时只画括号）
-        const measured = n.summaryTopics?.get(summary.id);
+        // 排版阶段已度量好的概要主题子树（手工构造的排版节点可能没有，此时只画括号）；
+        // 拖动端点预览中换挂到上级的概要沿用原所属节点上度量好的子树
+        const measured = movedTopics.get(summary.id) ?? n.summaryTopics?.get(summary.id);
         let label: Rect = { x: tip.x, y: tip.y, width: 0, height: 0 };
+        // 本概要占据的区域：所概括内容 + 大括号 + 概要子树
+        let occupied = union(area, { x: tip.x, y: tip.y, width: 0, height: 0 });
         if (measured) {
           const owner = { ownerId: node.id, id: summary.id };
           let placed = placeSummaryTopicTree(measured, side, tip, branchIndex, edgeStyle, owner);
@@ -872,8 +1022,10 @@ export function computeMindmapStructures(nodes: readonly LayoutNode[], options: 
           allNodes.push(...placed.nodes);
           label = nodeRect(placed.root);
           // 概要子树内部的外框 / 概要（递归），外接矩形计入所属节点
-          rect = union(rect, processTree(placed.root));
+          occupied = union(occupied, processTree(placed.root));
+          rect = union(rect, occupied);
         }
+        boundaryRects.push({ owner: n, children: new Set(info.children), rect: occupied });
         result.summaries.push({
           ownerId: node.id,
           id: summary.id,

@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import type {
   MindNode,
+  MindBoundary,
   MindSummary,
   MindmapLayout,
   MindmapEdgeStyle,
@@ -76,6 +77,7 @@ import { showToast } from '../../stores/toastStore';
 import {
   computeMindmapStructures,
   dragRangeEnd,
+  layoutTreeRootOf,
   rangeFixedEndId,
   findStructure,
   generateStructureId,
@@ -91,6 +93,7 @@ import {
   SUMMARY_PLACEHOLDER,
   type LayoutBoundary,
   type MindStructureRef,
+  type RangeTarget,
 } from './mindmapStructures';
 import type { MindNodeRange, MindPoint } from './mindmapTypes';
 
@@ -394,6 +397,8 @@ interface RangeSession {
   ref: MindStructureRef;
   /** 不动的一端子节点 */
   fixedId: string;
+  /** 所属节点所在的树根（主树根节点或概要主题）：端点可拖到这棵树内其他分支的同层节点 */
+  treeRootId: string;
   original: Pick<MindNodeRange, 'startId' | 'endId'>;
 }
 
@@ -560,7 +565,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   const [controlPreview, setControlPreview] = useState<{ id: string; controls: [MindPoint, MindPoint] } | null>(null);
   // 拖动概要 / 外框端点：会话 + 实时预览
   const rangeSessionRef = useRef<RangeSession | null>(null);
-  const [rangePreview, setRangePreview] = useState<{ id: string; startId: string; endId: string } | null>(null);
+  const [rangePreview, setRangePreview] = useState<({ id: string } & Required<RangeTarget>) | null>(null);
   /** 单选（或取消选中）：同时退出多选，既有的单选入口都经由它 */
   const setSelectedNodeId = useCallback((id: string | null) => {
     setPrimarySelectedId(id);
@@ -1329,6 +1334,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       pointerId: e.pointerId,
       ref: structureRef,
       fixedId: rangeFixedEndId(owner, item, handle),
+      treeRootId: layoutTreeRootOf(nodes, owner).node.id,
       original: { startId: item.startId, endId: item.endId },
     };
   };
@@ -1340,9 +1346,10 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     const point = clientToWorld(e.clientX, e.clientY);
     const owner = nodes.find((n) => n.node.id === session.ref.ownerId);
     if (!point || !owner) return;
-    const next = dragRangeEnd(owner, session.fixedId, point);
+    const treeRoot = session.treeRootId === owner.node.id ? owner : nodes.find((n) => n.node.id === session.treeRootId);
+    const next = dragRangeEnd(owner, session.fixedId, point, treeRoot);
     // 只在范围真正变化时更新预览，避免每帧重算
-    if (next && (next.startId !== rangePreview?.startId || next.endId !== rangePreview?.endId)) {
+    if (next && (next.startId !== rangePreview?.startId || next.endId !== rangePreview?.endId || next.ownerId !== rangePreview?.ownerId)) {
       setRangePreview({ id: session.ref.id, ...next });
     }
   };
@@ -1354,13 +1361,26 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     rangeSessionRef.current = null;
     const preview = rangePreview;
     setRangePreview(null);
-    if (!preview || (preview.startId === session.original.startId && preview.endId === session.original.endId)) return;
+    const ownerChanged = Boolean(preview && preview.ownerId !== session.ref.ownerId);
+    if (!preview || (!ownerChanged && preview.startId === session.original.startId && preview.endId === session.original.endId)) return;
     updateTree((cloned) => {
-      const item = findStructure(findMindNode(cloned, session.ref.ownerId), session.ref) as MindNodeRange | null;
+      const oldOwner = findMindNode(cloned, session.ref.ownerId);
+      const item = findStructure(oldOwner, session.ref) as MindNodeRange | null;
       if (!item) return;
       item.startId = preview.startId;
       item.endId = preview.endId;
+      if (!ownerChanged) return;
+      // 拖到其他分支的同层节点：从原节点移到两端的共同祖先上
+      const newOwner = findMindNode(cloned, preview.ownerId);
+      if (!oldOwner || !newOwner) return;
+      removeStructure(oldOwner, session.ref);
+      if (session.ref.kind === 'summary') (newOwner.summaries ??= []).push(item as MindSummary);
+      else (newOwner.boundaries ??= []).push(item as MindBoundary);
     });
+    // 选中态跟随新的所属节点，工具条与手柄不丢失
+    if (ownerChanged && selectedStructureRef.current?.id === session.ref.id) {
+      setSelectedStructure({ ...session.ref, ownerId: preview.ownerId });
+    }
   };
 
   // 顶部操作栏命令：作用于当前选中的节点（闭包每次渲染更新，句柄经 ref 读取最新版本）
@@ -3247,9 +3267,11 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
 
         {/* 选中概要 / 外框：两端手柄，拖动扩大或缩小覆盖的节点 */}
         {selectedStructure && selectedStructure.kind !== 'relation' && !editingStructure && (() => {
+          // 拖动预览中可能已换挂到其他节点，按预览中的所属节点查找，避免手柄卸载打断拖动
+          const ownerId = rangePreview?.id === selectedStructure.id ? rangePreview.ownerId : selectedStructure.ownerId;
           const item = selectedStructure.kind === 'summary'
-            ? structures.summaries.find((s) => s.id === selectedStructure.id && s.ownerId === selectedStructure.ownerId)
-            : structures.boundaries.find((b) => b.id === selectedStructure.id && b.ownerId === selectedStructure.ownerId);
+            ? structures.summaries.find((s) => s.id === selectedStructure.id && s.ownerId === ownerId)
+            : structures.boundaries.find((b) => b.id === selectedStructure.id && b.ownerId === ownerId);
           if (!item) return null;
           const vertical = item.side === 'left' || item.side === 'right';
           return item.handles.map((point, idx) => (
@@ -3274,7 +3296,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
 
         {/* 选中结构元素的快捷工具栏：编辑文字 / 删除 */}
         {selectedStructure && !editingStructure && (() => {
-          const anchor = getStructureAnchor(selectedStructure);
+          const anchor = getStructureAnchor(rangePreview?.id === selectedStructure.id ? { ...selectedStructure, ownerId: rangePreview.ownerId } : selectedStructure);
           if (!anchor) return null;
           const editLabel = selectedStructure.kind === 'summary' ? '编辑概要' : selectedStructure.kind === 'boundary' ? '编辑外框标题' : '编辑联系线文字';
           return (

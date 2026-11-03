@@ -8,6 +8,7 @@ import type { MindNode, MindmapLayout } from '@/features/mindmap/mindmapTypes';
 import {
   computeMindmapStructures,
   dragRangeEnd,
+  layoutTreeRootOf,
   rangeFixedEndId,
   getSiblingRangeForSelection,
   pruneMindmapStructures,
@@ -192,10 +193,10 @@ describe('几何跟随节点', () => {
     expect(rangeFixedEndId(owner, { startId: 'a', endId: 'b' }, bottom)).toBe('a');
     expect(rangeFixedEndId(owner, { startId: 'a', endId: 'b' }, top)).toBe('b');
     const c = nodes.find((n) => n.node.id === 'c')!;
-    expect(dragRangeEnd(owner, 'a', { x: bottom.x, y: c.y + c.height / 2 })).toEqual({ startId: 'a', endId: 'c' });
+    expect(dragRangeEnd(owner, 'a', { x: bottom.x, y: c.y + c.height / 2 })).toEqual({ ownerId: 'root', startId: 'a', endId: 'c' });
     // 拖过固定端时顺序自动交换
     const a = nodes.find((n) => n.node.id === 'a')!;
-    expect(dragRangeEnd(owner, 'b', { x: top.x, y: a.y - 100 })).toEqual({ startId: 'a', endId: 'b' });
+    expect(dragRangeEnd(owner, 'b', { x: top.x, y: a.y - 100 })).toEqual({ ownerId: 'root', startId: 'a', endId: 'b' });
     // 预览覆盖立即反映到几何
     const extended = computeMindmapStructures(nodes, { rangeOverrides: new Map([['s1', { startId: 'a', endId: 'c' }]]) }).summaries[0];
     expect(extended.handles[1].y).toBeGreaterThan(c.y + c.height);
@@ -353,10 +354,35 @@ describe('跨父节点的同层范围', () => {
     const owner = nodes.find((n) => n.level === 0)!;
     const b2 = nodes.find((n) => n.node.id === 'b2')!;
     const a1 = nodes.find((n) => n.node.id === 'a1')!;
-    expect(dragRangeEnd(owner, 'a2', { x: b2.x, y: b2.y + b2.height / 2 })).toEqual({ startId: 'a2', endId: 'b2' });
-    expect(dragRangeEnd(owner, 'b1', { x: a1.x, y: a1.y + a1.height / 2 })).toEqual({ startId: 'a1', endId: 'b1' });
+    expect(dragRangeEnd(owner, 'a2', { x: b2.x, y: b2.y + b2.height / 2 })).toEqual({ ownerId: 'root', startId: 'a2', endId: 'b2' });
+    expect(dragRangeEnd(owner, 'b1', { x: a1.x, y: a1.y + a1.height / 2 })).toEqual({ ownerId: 'root', startId: 'a1', endId: 'b1' });
     const [top, bottom] = computeMindmapStructures(nodes).boundaries[0].handles;
     expect(rangeFixedEndId(owner, { startId: 'a2', endId: 'b1' }, bottom)).toBe('a2');
     expect(rangeFixedEndId(owner, { startId: 'a2', endId: 'b1' }, top)).toBe('b1');
+  });
+
+  test('同父概要的端点拖到相邻分支的同层节点：改挂共同祖先，预览即按新所属节点绘制', () => {
+    const tree = cousins();
+    tree.boundaries = undefined;
+    tree.summaries = undefined;
+    tree.children[0].summaries = [{ id: 'sa', startId: 'a1', endId: 'a2', topic: { id: 'sa-topic', text: '小结', isExpanded: true, children: [] } }];
+    const { nodes } = computeMindmapLayout(tree, 'right', 6);
+    const root = nodes.find((n) => n.level === 0)!;
+    const owner = nodes.find((n) => n.node.id === 'a')!;
+    const b1 = nodes.find((n) => n.node.id === 'b1')!;
+    const a3 = nodes.find((n) => n.node.id === 'a3')!;
+    expect(layoutTreeRootOf(nodes, owner)).toBe(root);
+    // 不给树根时只在原父节点内伸缩
+    expect(dragRangeEnd(owner, 'a1', { x: b1.x, y: b1.y + b1.height / 2 })).toEqual({ ownerId: 'a', startId: 'a1', endId: 'a3' });
+    // 给出树根：拖到 B1 时改挂根节点，拖回 A3 时仍挂原父节点
+    const across = dragRangeEnd(owner, 'a1', { x: b1.x, y: b1.y + b1.height / 2 }, root);
+    expect(across).toEqual({ ownerId: 'root', startId: 'a1', endId: 'b1' });
+    expect(dragRangeEnd(owner, 'a1', { x: a3.x, y: a3.y + a3.height / 2 }, root)).toEqual({ ownerId: 'a', startId: 'a1', endId: 'a3' });
+    // 预览：概要从 A 移到根节点上绘制，大括号覆盖到 B1，概要主题仍然显示
+    const preview = computeMindmapStructures(nodes, { rangeOverrides: new Map([['sa', across!]]) });
+    expect(preview.summaries).toHaveLength(1);
+    expect(preview.summaries[0].ownerId).toBe('root');
+    expect(preview.summaries[0].handles[1].y).toBeGreaterThan(b1.y + b1.height / 2);
+    expect(preview.nodes.map((n) => n.node.id)).toEqual(['sa-topic']);
   });
 });

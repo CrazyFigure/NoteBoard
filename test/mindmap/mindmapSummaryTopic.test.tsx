@@ -169,11 +169,84 @@ describe('树操作覆盖概要子树', () => {
     expect(findMindNodeParent(back, 't2')?.parent.id).toBe('c');
   });
 
-  test('概要子树中的同层节点可以再加概要；不能与主树节点混选', () => {
+  test('概要子树中的同层节点可以再加概要；选中概要主题或与主树节点混选时提升到共同上级', () => {
     const root = sample();
     expect(getSiblingRangeForSelection(root, ['t1', 't2'])).toEqual({ ok: true, parentId: 'st', startId: 't1', endId: 't2' });
-    expect(getSiblingRangeForSelection(root, ['st']).ok).toBe(false);
-    expect(getSiblingRangeForSelection(root, ['t11', 'a']).ok).toBe(false);
+    // 单个概要主题：概括它所概括的那段节点（概要的概要）
+    expect(getSiblingRangeForSelection(root, ['st'])).toEqual({ ok: true, parentId: 'root', startId: 'a', endId: 'b' });
+    // 概要子树节点 + 主树节点：概要主题占据 a..b 的位置，与 c 合并
+    expect(getSiblingRangeForSelection(root, ['t11', 'c'])).toEqual({ ok: true, parentId: 'root', startId: 'a', endId: 'c' });
+    // 概要子树内的不同层级仍按同层规则提示
+    expect(getSiblingRangeForSelection(root, ['t11', 't2'])).toEqual({ ok: false, reason: '请选择同一层级的节点' });
+    expect(getSiblingRangeForSelection(root, ['root', 'st'])).toEqual({ ok: false, reason: '中心主题不能添加' });
+  });
+
+  test('分属两个分支的概要主题 / 概要子节点：概括这两个分支', () => {
+    const root: MindNode = {
+      id: 'root',
+      text: '中心',
+      isExpanded: true,
+      children: [
+        {
+          id: 'p1',
+          text: '分支 1',
+          isExpanded: true,
+          summaries: [{ id: 's1', startId: 'p11', endId: 'p12', topic: { id: 'st1', text: '概要', isExpanded: true, children: [{ id: 'x3', text: '3', children: [] }] } }],
+          children: [{ id: 'p11', text: '1.1', children: [] }, { id: 'p12', text: '1.2', children: [] }],
+        },
+        {
+          id: 'p2',
+          text: '分支 2',
+          isExpanded: true,
+          summaries: [{ id: 's2', startId: 'p21', endId: 'p21', topic: { id: 'st2', text: '概要', isExpanded: true, children: [] } }],
+          children: [{ id: 'p21', text: '2.1', isExpanded: true, children: [{ id: 'x1', text: '1', isExpanded: true, children: [{ id: 'x2', text: '2', children: [] }] }] }],
+        },
+        { id: 'p3', text: '分支 3', children: [] },
+      ],
+    };
+    const both = { ok: true, parentId: 'root', startId: 'p1', endId: 'p2' };
+    expect(getSiblingRangeForSelection(root, ['st1', 'st2'])).toEqual(both);
+    expect(getSiblingRangeForSelection(root, ['x3', 'x2'])).toEqual(both);
+    // 概要子节点 + 同一分支下的节点：在该分支内概括
+    expect(getSiblingRangeForSelection(root, ['x3', 'p12'])).toEqual({ ok: true, parentId: 'p1', startId: 'p11', endId: 'p12' });
+  });
+
+  test('同一节点上的「概要的概要」：外层大括号让出内层概要主题', () => {
+    const root = sample();
+    root.summaries!.push({ id: 's2', startId: 'a', endId: 'b', topic: { id: 'st2', text: '总结', isExpanded: true, children: [] } });
+    const { nodes } = computeMindmapLayout(root, 'right', 6);
+    const result = computeMindmapStructures(nodes);
+    const inner = result.nodes.filter((n) => n.summaryOf?.id !== 's2' && ['st', 't1', 't11', 't2'].includes(n.node.id));
+    const outer = result.summaries.find((s) => s.id === 's2')!;
+    const innerRight = Math.max(...inner.map((n) => n.x + n.width));
+    expect(outer.handles[0].x).toBeGreaterThan(innerRight);
+    expect(outer.label.x).toBeGreaterThan(innerRight);
+  });
+
+  test('跨父范围的外层概要让出中间层节点上的概要', () => {
+    const root: MindNode = {
+      id: 'root',
+      text: '中心',
+      isExpanded: true,
+      // 外层：挂根节点，覆盖 a1 ~ b1（跨父）
+      summaries: [{ id: 'outer', startId: 'a1', endId: 'b1', topic: { id: 'outer-topic', text: '外层', isExpanded: true, children: [] } }],
+      children: [
+        { id: 'a', text: 'A', isExpanded: true, children: [{ id: 'a1', text: 'A1', children: [] }] },
+        {
+          id: 'b',
+          text: 'B',
+          isExpanded: true,
+          // 内层：挂 b，只覆盖 b1
+          summaries: [{ id: 'inner', startId: 'b1', endId: 'b1', topic: { id: 'inner-topic', text: '内层概要', isExpanded: true, children: [] } }],
+          children: [{ id: 'b1', text: 'B1', children: [] }],
+        },
+      ],
+    };
+    const { nodes } = computeMindmapLayout(root, 'right', 6);
+    const result = computeMindmapStructures(nodes);
+    const innerTopic = result.nodes.find((n) => n.node.id === 'inner-topic')!;
+    const outer = result.summaries.find((s) => s.id === 'outer')!;
+    expect(outer.handles[0].x).toBeGreaterThan(innerTopic.x + innerTopic.width);
   });
 });
 
