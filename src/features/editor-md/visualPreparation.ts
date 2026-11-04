@@ -76,6 +76,8 @@ export function yieldVisualTask(signal: AbortSignal): Promise<void> {
 
 /** 按节点量限制每批 DOM 工作；长列表和长表格可在合法的项/行边界追加。 */
 const MOUNT_BATCH_NODES = 600;
+/** 后续每个装载事务最多取已装载节点量的这一比例（等待面板期间正文隐藏，单帧上界约为整篇的 1/5） */
+const MOUNT_BATCH_GROWTH = 0.25;
 /** 极端密集结构不能创建数十万个 DOM 后再尝试取消，先保留源码并说明原因。 */
 const MAX_VISUAL_NODES = 100_000;
 const MAX_BLOCK_NODES = 20_000;
@@ -144,23 +146,34 @@ export async function mountVisualDocument(editor: Editor, document: JSONContent,
     }
   };
   try {
-    for (const [index, batch] of batches.entries()) {
+    let index = 0;
+    while (index < batches.length) {
       await yieldVisualTask(signal);
       if (editor.isDestroyed) throw new DOMException('编辑器已关闭', 'AbortError');
+      // 每个事务都要让视图与节点视图门户按已装载的整篇更新一次，固定开销随已装载量增长；
+      // 每次取已装载量的一定比例（不少于一批），事务数从“总量 / 600”降为对数级，单帧工作量仍有上界。
+      const budget = Math.max(MOUNT_BATCH_NODES, Math.round(loaded * MOUNT_BATCH_GROWTH));
       const tr = editor.state.tr;
-      if (index === 0) {
-        tr.replaceWith(0, tr.doc.content.size, batch.nodes);
-        // 文档属性不随 replaceWith 自动更新，必须在首批沿用后台解析的源文件属性。
-        for (const [name, value] of Object.entries(document.attrs ?? {})) tr.setDocAttribute(name, value);
-      } else tr.insert(batch.position ?? tr.doc.content.size, batch.nodes);
-      const last = index === batches.length - 1;
+      let weight = 0;
+      // 按原顺序依次合并计划好的批次：同一事务内顺序插入与逐个事务插入得到的位置完全相同
+      do {
+        const batch = batches[index];
+        if (index === 0) {
+          tr.replaceWith(0, tr.doc.content.size, batch.nodes);
+          // 文档属性不随 replaceWith 自动更新，必须在首批沿用后台解析的源文件属性。
+          for (const [name, value] of Object.entries(document.attrs ?? {})) tr.setDocAttribute(name, value);
+        } else tr.insert(batch.position ?? tr.doc.content.size, batch.nodes);
+        weight += batch.weight;
+        index += 1;
+      } while (index < batches.length && weight + batches[index].weight <= budget);
+      const last = index === batches.length;
       tr.setMeta('addToHistory', false).setMeta('skipTrailingNode', !last);
       // 末批恢复：补尾段插件在同一事务中按完整文档补出辅助段
       if (!last || suspended) tr.setMeta(TRAILING_NODE_SUSPEND_META, !last);
       tr.setSelection(Selection.atStart(tr.doc));
       dispatchMount(tr);
       suspended = !last;
-      loaded += batch.weight;
+      loaded += weight;
       onProgress(loaded, total);
     }
   } finally {

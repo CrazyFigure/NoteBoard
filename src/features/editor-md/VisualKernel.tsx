@@ -9,6 +9,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEditorActive } from '../../core/editor/EditorActivityContext';
 import { EditorContent, useEditor } from '@tiptap/react';
+import { installNodeViewPortalStore } from './nodeViewPortalStore';
 import type { Editor } from '@tiptap/core';
 import { undoDepth as prosemirrorUndoDepth } from '@tiptap/pm/history';
 import { isInTable, __pastedCells } from '@tiptap/pm/tables';
@@ -108,6 +109,8 @@ export function VisualKernel({
     //    泄漏一个完整 editor 圈（真机内存持续增长根因）
     extensions,
     content: '',
+    // 早于 EditorContent 挂载接管节点视图门户登记表（官方实现每次登记复制整张表，长文档平方复杂度）
+    onBeforeCreate: installNodeViewPortalStore,
     onUpdate: ({ editor, transaction }) => {
       // 🔴 程序事务识别：仅忽略初始化/程序化设置内容的事务（同步作用域锁）；
       //    显示即输入：界面宣布可输入后的第一笔真实按键必须立即进入保护队列
