@@ -524,6 +524,19 @@ export function BitableGridView({
     return items;
   }, [flatTreeRows, groupByColumnId, groupColumn, collapsedGroupKeys]);
 
+  /**
+   * 选区使用的行序列：与屏幕上的数据行一一对应（分组视图下即分组后的展示顺序，折叠组内的行不参与）。
+   * 选区里存的是行实例键而不是行 ID：多选分组下同一行会出现多次，只有实例键能区分点的是哪一处；
+   * 若沿用分组前的树序索引，点击位置和高亮位置就会错开（点上面、选中下面）。
+   */
+  const selectableRows = useMemo(
+    () =>
+      gridItems.flatMap((item) =>
+        item.type === 'row' ? [{ ...item.treeNode, instanceKey: item.instanceKey }] : [],
+      ),
+    [gridItems],
+  );
+
   /** 切换分组折叠/展开 */
   const toggleGroupCollapse = (key: string) => {
     setCollapsedGroupKeys((prev) => {
@@ -626,14 +639,14 @@ export function BitableGridView({
     [rowSlots, rows],
   );
 
-  // 行 ID -> 扁平行序号的快速映射
+  // 行实例键 -> 展示行序号的快速映射（与渲染层 data-cell-row-idx 同一套索引）
   const rowIdxMap = useMemo(() => {
     const map = new Map<string, number>();
-    flatTreeRows.forEach((item, idx) => {
-      map.set(item.row.id, idx);
+    selectableRows.forEach((item, idx) => {
+      map.set(item.instanceKey, idx);
     });
     return map;
-  }, [flatTreeRows]);
+  }, [selectableRows]);
 
   // 列 ID -> 列序号的快速映射
   const colIdxMap = useMemo(() => {
@@ -660,7 +673,7 @@ export function BitableGridView({
 
       const selectedRowIds: string[] = [];
       for (let r = minRowIdx; r <= maxRowIdx; r += 1) {
-        if (flatTreeRows[r]) selectedRowIds.push(flatTreeRows[r].row.id);
+        if (selectableRows[r]) selectedRowIds.push(selectableRows[r].row.id);
       }
       const selectedColIds: string[] = [];
       for (let c = minColIdx; c <= maxColIdx; c += 1) {
@@ -674,7 +687,8 @@ export function BitableGridView({
         maxColIdx,
         anchorRowIdx: sRowIdx,
         anchorColIdx: sColIdx,
-        selectedRowIds,
+        // 同一行可能在多个分组里都被框进来，批量操作前去重
+        selectedRowIds: Array.from(new Set(selectedRowIds)),
         selectedColIds,
         isSingleCell: minRowIdx === maxRowIdx && minColIdx === maxColIdx,
       };
@@ -692,7 +706,7 @@ export function BitableGridView({
 
       const selectedRowIds: string[] = [];
       for (let r = minRowIdx; r <= maxRowIdx; r += 1) {
-        if (flatTreeRows[r]) selectedRowIds.push(flatTreeRows[r].row.id);
+        if (selectableRows[r]) selectedRowIds.push(selectableRows[r].row.id);
       }
 
       return {
@@ -702,7 +716,7 @@ export function BitableGridView({
         maxColIdx,
         anchorRowIdx: sRowIdx,
         anchorColIdx: 0,
-        selectedRowIds,
+        selectedRowIds: Array.from(new Set(selectedRowIds)),
         selectedColIds: columns.map((c) => c.id),
         isSingleCell: false,
       };
@@ -714,7 +728,7 @@ export function BitableGridView({
       if (sColIdx < 0) return null;
 
       const minRowIdx = 0;
-      const maxRowIdx = flatTreeRows.length - 1;
+      const maxRowIdx = selectableRows.length - 1;
       const minColIdx = Math.min(sColIdx, eColIdx);
       const maxColIdx = Math.max(sColIdx, eColIdx);
 
@@ -730,14 +744,14 @@ export function BitableGridView({
         maxColIdx,
         anchorRowIdx: 0,
         anchorColIdx: sColIdx,
-        selectedRowIds: flatTreeRows.map((n) => n.row.id),
+        selectedRowIds: Array.from(new Set(selectableRows.map((n) => n.row.id))),
         selectedColIds,
         isSingleCell: false,
       };
     }
 
     return null;
-  }, [selection, rowIdxMap, colIdxMap, flatTreeRows, columns]);
+  }, [selection, rowIdxMap, colIdxMap, selectableRows, columns]);
 
   // 单元格鼠标按下：开始框选或 Shift 扩展选区
   const handleCellMouseDown = (e: React.MouseEvent, rowId: string, colId: string) => {
@@ -817,7 +831,8 @@ export function BitableGridView({
     setCellContextMenu({
       x: e.clientX,
       y: e.clientY,
-      targetRowId: rowId,
+      // rowId 是行实例键，菜单操作需要真实行 ID
+      targetRowId: selectableRows[rIdx]?.row.id ?? rowId,
       targetColId: colId,
     });
   };
@@ -864,7 +879,7 @@ export function BitableGridView({
     if (selection.type === 'range') {
       const lines: string[] = [];
       for (let r = normalizedSelection.minRowIdx; r <= normalizedSelection.maxRowIdx; r += 1) {
-        const rowNode = flatTreeRows[r];
+        const rowNode = selectableRows[r];
         if (!rowNode) continue;
         const rowCells: string[] = [];
         for (let c = normalizedSelection.minColIdx; c <= normalizedSelection.maxColIdx; c += 1) {
@@ -880,7 +895,7 @@ export function BitableGridView({
     if (selection.type === 'row') {
       const lines: string[] = [];
       for (let r = normalizedSelection.minRowIdx; r <= normalizedSelection.maxRowIdx; r += 1) {
-        const rowNode = flatTreeRows[r];
+        const rowNode = selectableRows[r];
         if (!rowNode) continue;
         lines.push(columns.map((c) => formatCellValue(c, rowNode.row[c.id])).join('\t'));
       }
@@ -889,8 +904,8 @@ export function BitableGridView({
 
     if (selection.type === 'col') {
       const lines: string[] = [];
-      for (let r = 0; r < flatTreeRows.length; r += 1) {
-        const rowNode = flatTreeRows[r];
+      for (let r = 0; r < selectableRows.length; r += 1) {
+        const rowNode = selectableRows[r];
         const rowCells: string[] = [];
         for (let c = normalizedSelection.minColIdx; c <= normalizedSelection.maxColIdx; c += 1) {
           const col = columns[c];
@@ -902,7 +917,7 @@ export function BitableGridView({
     }
 
     return null;
-  }, [normalizedSelection, selection.type, flatTreeRows, columns]);
+  }, [normalizedSelection, selection.type, selectableRows, columns]);
 
   /** 剪切：内容写入剪贴板后清空选区数据 */
   const clearSelectedRange = useCallback(() => {
@@ -911,7 +926,7 @@ export function BitableGridView({
     if (selection.type === 'range') {
       const updates: Array<{ rowId: string; colId: string; value: unknown }> = [];
       for (let r = normalizedSelection.minRowIdx; r <= normalizedSelection.maxRowIdx; r += 1) {
-        const rowNode = flatTreeRows[r];
+        const rowNode = selectableRows[r];
         if (!rowNode) continue;
         for (let c = normalizedSelection.minColIdx; c <= normalizedSelection.maxColIdx; c += 1) {
           const col = columns[c];
@@ -929,10 +944,7 @@ export function BitableGridView({
     }
 
     if (selection.type === 'row') {
-      for (let r = normalizedSelection.minRowIdx; r <= normalizedSelection.maxRowIdx; r += 1) {
-        const rowNode = flatTreeRows[r];
-        if (rowNode) onDeleteRow(rowNode.row.id);
-      }
+      normalizedSelection.selectedRowIds.forEach((id) => onDeleteRow(id));
       setSelection({ type: 'none' });
       showToast('已删除选中行');
       return;
@@ -948,7 +960,7 @@ export function BitableGridView({
   }, [
     normalizedSelection,
     selection.type,
-    flatTreeRows,
+    selectableRows,
     columns,
     onBatchUpdateCells,
     onUpdateRow,
@@ -986,11 +998,11 @@ export function BitableGridView({
       finalMatrix.forEach((line, rOffset) => {
         const rIdx = startRowIdx + rOffset;
         let targetRowId: string;
-        if (rIdx < flatTreeRows.length) {
-          targetRowId = flatTreeRows[rIdx].row.id;
+        if (rIdx < selectableRows.length) {
+          targetRowId = selectableRows[rIdx].row.id;
         } else {
           // 行数不足时新建行
-          const anchorParentId = flatTreeRows[startRowIdx]?.row.parentId;
+          const anchorParentId = selectableRows[startRowIdx]?.row.parentId;
           const newRow = { ...createRow(columns), parentId: anchorParentId };
           newRowsToAppend.push(newRow);
           targetRowId = newRow.id;
@@ -1008,14 +1020,14 @@ export function BitableGridView({
         onBatchUpdateCells(updates, newRowsToAppend);
         showToast(updates.length > 1 ? '已粘贴区域数据' : '已粘贴数据');
       } else if (onPasteCells) {
-        onPasteCells(flatTreeRows[startRowIdx].row.id, columns[startColIdx].id, matrix);
+        onPasteCells(selectableRows[startRowIdx].row.id, columns[startColIdx].id, matrix);
         showToast('已粘贴数据');
       } else {
         updates.forEach((u) => onUpdateRow(u.rowId, u.colId, u.value));
         showToast('已粘贴数据');
       }
     },
-    [normalizedSelection, flatTreeRows, columns, onBatchUpdateCells, onPasteCells, onUpdateRow],
+    [normalizedSelection, selectableRows, columns, onBatchUpdateCells, onPasteCells, onUpdateRow],
   );
 
   /** 智能自动补齐执行入口 */
@@ -1045,10 +1057,10 @@ export function BitableGridView({
 
         const targetRowIds: string[] = [];
         for (let r = preview.fromRow; r <= preview.toRow; r += 1) {
-          if (r < flatTreeRows.length) {
-            targetRowIds.push(flatTreeRows[r].row.id);
+          if (r < selectableRows.length) {
+            targetRowIds.push(selectableRows[r].row.id);
           } else {
-            const anchorParentId = flatTreeRows[range.maxRowIdx]?.row.parentId;
+            const anchorParentId = selectableRows[range.maxRowIdx]?.row.parentId;
             const newRow = { ...createRow(columns), parentId: anchorParentId };
             newRowsToAppend.push(newRow);
             targetRowIds.push(newRow.id);
@@ -1061,7 +1073,7 @@ export function BitableGridView({
 
           const sourceValues: unknown[] = [];
           for (let r = range.minRowIdx; r <= range.maxRowIdx; r += 1) {
-            sourceValues.push(flatTreeRows[r]?.row[col.id]);
+            sourceValues.push(selectableRows[r]?.row[col.id]);
           }
 
           const filledValues = calculateAutoFillValues(
@@ -1081,10 +1093,11 @@ export function BitableGridView({
 
         const newMinRow = Math.min(range.minRowIdx, preview.fromRow);
         const newMaxRow = Math.max(range.maxRowIdx, preview.toRow);
-        const newStartRowId = flatTreeRows[newMinRow]?.row.id || targetRowIds[0];
+        // 选区存的是实例键；新建行首次出现时实例键即行 ID
+        const newStartRowId = selectableRows[newMinRow]?.instanceKey || targetRowIds[0];
         const newEndRowId =
-          newMaxRow < flatTreeRows.length
-            ? flatTreeRows[newMaxRow].row.id
+          newMaxRow < selectableRows.length
+            ? selectableRows[newMaxRow].instanceKey
             : targetRowIds[targetRowIds.length - 1];
 
         if (onBatchUpdateCells) {
@@ -1110,7 +1123,7 @@ export function BitableGridView({
         if (targetColCount <= 0) return;
 
         for (let r = range.minRowIdx; r <= range.maxRowIdx; r += 1) {
-          const rowNode = flatTreeRows[r];
+          const rowNode = selectableRows[r];
           if (!rowNode) continue;
 
           const sourceValues: unknown[] = [];
@@ -1141,16 +1154,16 @@ export function BitableGridView({
         setSelection({
           type: 'range',
           range: {
-            startRowId: flatTreeRows[range.minRowIdx].row.id,
+            startRowId: selectableRows[range.minRowIdx].instanceKey,
             startColId: columns[newMinCol].id,
-            endRowId: flatTreeRows[range.maxRowIdx].row.id,
+            endRowId: selectableRows[range.maxRowIdx].instanceKey,
             endColId: columns[newMaxCol].id,
           },
         });
         showToast('已自动填充数据');
       }
     },
-    [flatTreeRows, columns, onBatchUpdateCells, onUpdateRow],
+    [selectableRows, columns, onBatchUpdateCells, onUpdateRow],
   );
 
   function newEndEndId(id: string): string {
@@ -1193,7 +1206,7 @@ export function BitableGridView({
           const tbodyRect = tbody.getBoundingClientRect();
           if (ev.clientY > tbodyRect.bottom) {
             const extraRows = Math.floor((ev.clientY - tbodyRect.bottom) / 38) + 1;
-            hoverRow = flatTreeRows.length - 1 + extraRows;
+            hoverRow = selectableRows.length - 1 + extraRows;
           }
         }
       }
@@ -1273,7 +1286,7 @@ export function BitableGridView({
     e.preventDefault();
     e.stopPropagation();
 
-    if (range.maxRowIdx >= flatTreeRows.length - 1) {
+    if (range.maxRowIdx >= selectableRows.length - 1) {
       showToast('已到达表格末尾');
       return;
     }
@@ -1286,8 +1299,8 @@ export function BitableGridView({
     for (const cIdx of checkColIdxs) {
       const col = columns[cIdx];
       let lastFilledRow = range.maxRowIdx;
-      for (let r = range.maxRowIdx + 1; r < flatTreeRows.length; r += 1) {
-        const v = flatTreeRows[r].row[col.id];
+      for (let r = range.maxRowIdx + 1; r < selectableRows.length; r += 1) {
+        const v = selectableRows[r].row[col.id];
         if (v !== null && v !== undefined && v !== '') {
           lastFilledRow = r;
         } else {
@@ -1300,7 +1313,7 @@ export function BitableGridView({
     }
 
     if (targetLastRowIdx <= range.maxRowIdx) {
-      targetLastRowIdx = flatTreeRows.length - 1;
+      targetLastRowIdx = selectableRows.length - 1;
     }
 
     if (targetLastRowIdx <= range.maxRowIdx) {
@@ -1368,14 +1381,14 @@ export function BitableGridView({
 
       // Ctrl + A / Meta + A 全选表格
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
-        if (flatTreeRows.length > 0 && columns.length > 0) {
+        if (selectableRows.length > 0 && columns.length > 0) {
           e.preventDefault();
           setSelection({
             type: 'range',
             range: {
-              startRowId: flatTreeRows[0].row.id,
+              startRowId: selectableRows[0].instanceKey,
               startColId: columns[0].id,
-              endRowId: flatTreeRows[flatTreeRows.length - 1].row.id,
+              endRowId: selectableRows[selectableRows.length - 1].instanceKey,
               endColId: columns[columns.length - 1].id,
             },
           });
@@ -1405,9 +1418,9 @@ export function BitableGridView({
         if (e.key === 'ArrowLeft') dCol = -1;
         if (e.key === 'ArrowRight') dCol = 1;
 
-        const nextRowIdx = Math.max(0, Math.min(flatTreeRows.length - 1, currentEndRowIdx + dRow));
+        const nextRowIdx = Math.max(0, Math.min(selectableRows.length - 1, currentEndRowIdx + dRow));
         const nextColIdx = Math.max(0, Math.min(columns.length - 1, currentEndColIdx + dCol));
-        const nextRowId = flatTreeRows[nextRowIdx]?.row.id;
+        const nextRowId = selectableRows[nextRowIdx]?.instanceKey;
         const nextColId = columns[nextColIdx]?.id;
 
         if (nextRowId && nextColId) {
@@ -1447,10 +1460,9 @@ export function BitableGridView({
       if (e.key === 'Tab') {
         if (normalizedSelection && (selection.type === 'row' || selection.type === 'range')) {
           e.preventDefault();
-          const targetRowId =
-            selection.type === 'row'
-              ? selection.startRowId
-              : selection.range.startRowId;
+          // 选区存的是实例键，按锚点索引取回真实行 ID
+          const targetRowId = selectableRows[normalizedSelection.anchorRowIdx]?.row.id;
+          if (!targetRowId) return;
           if (e.shiftKey) {
             if (onOutdentRow) onOutdentRow(targetRowId);
           } else if (onIndentRow) {
@@ -1465,7 +1477,7 @@ export function BitableGridView({
   }, [
     normalizedSelection,
     selection,
-    flatTreeRows,
+    selectableRows,
     columns,
     rowIdxMap,
     colIdxMap,
@@ -2750,7 +2762,7 @@ export function BitableGridView({
             const { row, depth, hasChildren, isCollapsed, rowNumber } = item.treeNode;
             const { instanceKey } = item;
             const rowSlotIdx = rowSlotIndex.get(instanceKey) ?? -1;
-            const rIdx = rowSlotIdx >= 0 ? rowSlotIdx : (rowIdxMap.get(row.id) ?? -1);
+            const rIdx = rowSlotIdx >= 0 ? rowSlotIdx : (rowIdxMap.get(instanceKey) ?? -1);
             const isRowSelected =
               normalizedSelection !== null &&
               selection.type === 'row' &&
@@ -2800,17 +2812,17 @@ export function BitableGridView({
                       setSelection({
                         type: 'row',
                         startRowId: selection.startRowId,
-                        endRowId: row.id,
+                        endRowId: instanceKey,
                       });
                     } else {
-                      setSelection({ type: 'row', startRowId: row.id, endRowId: row.id });
+                      setSelection({ type: 'row', startRowId: instanceKey, endRowId: instanceKey });
                     }
                   }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     if (!isRowSelected) {
-                      setSelection({ type: 'row', startRowId: row.id, endRowId: row.id });
+                      setSelection({ type: 'row', startRowId: instanceKey, endRowId: instanceKey });
                     }
                     setCellContextMenu({
                       x: e.clientX,
@@ -3081,9 +3093,9 @@ export function BitableGridView({
                       key={col.id}
                       data-cell-row-idx={rIdx}
                       data-cell-col-idx={cIdx}
-                      onMouseDown={(e) => handleCellMouseDown(e, row.id, col.id)}
-                      onMouseEnter={() => handleCellMouseEnter(row.id, col.id)}
-                      onContextMenu={(e) => handleCellContextMenu(e, row.id, col.id)}
+                      onMouseDown={(e) => handleCellMouseDown(e, instanceKey, col.id)}
+                      onMouseEnter={() => handleCellMouseEnter(instanceKey, col.id)}
+                      onContextMenu={(e) => handleCellContextMenu(e, instanceKey, col.id)}
                       style={{
                         borderBottom: '1px solid var(--editor-border, #f1f5f9)',
                         borderRight: isLastFrozen
