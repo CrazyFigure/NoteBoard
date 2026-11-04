@@ -93,6 +93,19 @@ export async function openFolderDialog(): Promise<void> {
 }
 
 /**
+ * 将指定文件夹加载为资源管理器根（本地文件搜索结果中的文件夹使用）。
+ */
+export async function openFolderInExplorer(root: string): Promise<void> {
+  try {
+    const nodes = await ipc.readDir(root, false);
+    showRootInExplorer(root, nodes);
+    void ipc.pushRecent(root, true).catch(() => {});
+  } catch (error) {
+    showToast(`无法打开文件夹：${error instanceof Error ? error.message : String(error)}`, 'error', 5000);
+  }
+}
+
+/**
  * 打开已配置的暂存区并加载到左侧文件树。
  * 与“打开文件夹”保持相同浏览体验，但无需用户每次重新选择路径。
  */

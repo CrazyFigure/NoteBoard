@@ -1,0 +1,469 @@
+/* NoteBoard 本地文件搜索：搜索面板与设置卡片 */
+
+/* ── 搜索面板 ── */
+
+/* 遮罩：纯色半透明（不用 backdrop-filter，避免整窗重绘拖慢滚动） */
+.nb-ls-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9985;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 10vh;
+  background: rgba(0, 0, 0, 0.32);
+  animation: nb-ls-fade-in 120ms ease-out;
+}
+
+@keyframes nb-ls-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes nb-ls-panel-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.nb-ls-panel {
+  width: min(780px, 92vw);
+  max-height: 76vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--editor-bg);
+  color: var(--editor-text);
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  font-family: var(--ui-font-family);
+  font-size: var(--ui-font-size);
+  animation: nb-ls-panel-in 140ms ease-out;
+}
+
+.nb-ls-input-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px 10px 16px;
+}
+
+.nb-ls-input-icon {
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: var(--editor-text-muted);
+}
+
+.nb-ls-input {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--editor-text);
+  font: inherit;
+  font-size: 15px;
+  line-height: 22px;
+  padding: 0;
+  overflow-y: auto;
+}
+
+.nb-ls-input::placeholder {
+  color: var(--editor-text-muted);
+}
+
+/* 等待内容结果时的细进度条（延迟出现，快速查询不闪烁） */
+.nb-ls-progress {
+  height: 2px;
+  position: relative;
+  overflow: hidden;
+  background: var(--editor-border);
+}
+
+.nb-ls-progress.is-active::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 30%;
+  background: var(--accent-strong);
+  animation: nb-ls-progress 1s ease-in-out infinite;
+}
+
+@keyframes nb-ls-progress {
+  from { left: -30%; }
+  to { left: 100%; }
+}
+
+.nb-ls-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px 4px;
+}
+
+.nb-ls-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--editor-text-secondary, var(--editor-text-muted));
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-ls-tab:hover {
+  background: var(--toolbar-hover);
+  color: var(--editor-text);
+}
+
+.nb-ls-tab:active {
+  background: var(--toolbar-active);
+  transform: scale(0.96);
+}
+
+.nb-ls-tab.is-active {
+  background: var(--editor-selection);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.nb-ls-tab-count {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--editor-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.nb-ls-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 6px 6px;
+}
+
+.nb-ls-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 36px 16px 40px;
+  color: var(--editor-text-muted);
+  font-size: 13px;
+}
+
+.nb-ls-empty.is-hint {
+  gap: 6px;
+  padding: 28px 16px 32px;
+}
+
+.nb-ls-empty-sub {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* 分组标题（高度与 HEADER_ROW 一致） */
+.nb-ls-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--editor-text-muted);
+  box-sizing: border-box;
+}
+
+.nb-ls-header-count {
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.nb-ls-more {
+  margin-left: auto;
+  padding: 2px 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--accent-strong);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-ls-more:hover {
+  background: var(--toolbar-hover);
+}
+
+.nb-ls-more:active {
+  transform: scale(0.95);
+}
+
+/* 结果行 */
+.nb-ls-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: background-color var(--transition-fast);
+}
+
+.nb-ls-row.is-active {
+  background: var(--toolbar-hover);
+}
+
+.nb-ls-row:active {
+  background: var(--toolbar-active);
+}
+
+.nb-ls-row-content {
+  align-items: stretch;
+  padding-top: 4px;
+}
+
+.nb-ls-row-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.nb-ls-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nb-ls-row-title {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nb-ls-row-path {
+  font-size: 11.5px;
+  color: var(--editor-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.nb-ls-row-meta {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 10px;
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--editor-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 悬停或选中时显示行内操作，覆盖在时间信息上方 */
+.nb-ls-row-actions {
+  display: none;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.nb-ls-row-content .nb-ls-row-actions {
+  align-self: flex-start;
+  margin-top: 6px;
+}
+
+.nb-ls-row:hover .nb-ls-row-actions,
+.nb-ls-row.is-active .nb-ls-row-actions {
+  display: inline-flex;
+}
+
+.nb-ls-row:hover .nb-ls-row-main ~ .nb-ls-row-meta,
+.nb-ls-row.is-active .nb-ls-row-main ~ .nb-ls-row-meta {
+  display: none;
+}
+
+.nb-ls-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--editor-text-muted);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-ls-icon-btn:hover {
+  background: var(--toolbar-active);
+  color: var(--editor-text);
+}
+
+.nb-ls-icon-btn:active {
+  transform: scale(0.9);
+}
+
+/* 内容结果：标题行（高度与 CONTENT_HEAD 对应）+ 命中片段行（SNIPPET_ROW） */
+.nb-ls-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.nb-ls-content-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  min-width: 0;
+}
+
+.nb-ls-content-head .nb-ls-row-title {
+  flex-shrink: 0;
+  max-width: 50%;
+  font-weight: 500;
+}
+
+.nb-ls-snippet {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 24px;
+  padding: 0 6px 0 2px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  min-width: 0;
+  transition: background-color var(--transition-fast);
+}
+
+.nb-ls-snippet:hover {
+  background: var(--toolbar-active);
+}
+
+.nb-ls-snippet-line {
+  flex-shrink: 0;
+  width: 34px;
+  text-align: right;
+  font-family: var(--mono-font-family);
+  font-size: 11px;
+  color: var(--editor-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.nb-ls-snippet-text {
+  flex: 1;
+  min-width: 0;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--editor-text-secondary, var(--editor-text));
+}
+
+.nb-ls-panel mark {
+  background: var(--cm-search-match-bg, rgba(250, 204, 21, 0.35));
+  color: inherit;
+  border-radius: 2px;
+  font-weight: 600;
+}
+
+.nb-ls-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 7px 14px;
+  border-top: 1px solid var(--editor-border);
+  background: var(--editor-surface);
+  font-size: 11px;
+  color: var(--editor-text-muted);
+}
+
+.nb-ls-footer kbd {
+  display: inline-block;
+  min-width: 16px;
+  margin-right: 3px;
+  padding: 0 4px;
+  border: 1px solid var(--editor-border);
+  border-radius: 3px;
+  background: var(--editor-bg);
+  font-family: var(--mono-font-family);
+  font-size: 10.5px;
+  line-height: 16px;
+  text-align: center;
+}
+
+/* ── 设置卡片 ── */
+
+.nb-ls-settings-roots {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-md);
+  background: var(--editor-bg);
+}
+
+.nb-ls-settings-root {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 4px 5px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  transition: background-color var(--transition-fast);
+}
+
+.nb-ls-settings-root:hover {
+  background: var(--toolbar-hover);
+}
+
+.nb-ls-settings-root-path {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nb-ls-settings-tag {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--editor-selection);
+  color: var(--accent-strong);
+  font-size: 11px;
+}
+
+.nb-ls-settings-empty {
+  padding: 10px 8px;
+  font-size: 12px;
+  color: var(--editor-text-muted);
+}
+
+.nb-ls-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.nb-ls-drive-option:hover {
+  background: var(--toolbar-hover);
+}
+
+.nb-ls-drive-option[aria-disabled='true'] {
+  cursor: default;
+}

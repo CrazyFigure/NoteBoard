@@ -13,6 +13,7 @@ import type {
   LayoutSettings,
   SystemSettings,
   TitleBarButtons,
+  LocalSearchSettings,
 } from '../core/ipc/types';
 import * as ipc from '../core/ipc/commands';
 import { onSettingsChanged } from '../core/ipc/events';
@@ -127,7 +128,17 @@ export const DEFAULT_SETTINGS: Settings = {
     showWindowShortcut: '',
     updateChannel: 'github',
   },
+  localSearch: {
+    enabled: false,
+    roots: [],
+  },
 };
+
+/** 读取本地文件搜索设置：旧配置缺字段时按默认关闭补齐 */
+export function useLocalSearchSettings(): LocalSearchSettings {
+  const saved = useSettingsStore((s) => s.settings.localSearch);
+  return { enabled: saved?.enabled ?? false, roots: saved?.roots ?? [] };
+}
 
 // ── Store 类型 ──
 
@@ -161,6 +172,9 @@ interface SettingsStore {
 
   // ── 系统集成（托盘 / 全局快捷键）──
   setSystem: (patch: Partial<SystemSettings>) => Promise<void>;
+
+  // ── 本地文件搜索 ──
+  setLocalSearch: (patch: Partial<LocalSearchSettings>) => Promise<void>;
 
   // ── 内部：从广播更新 ──
   _applyRemoteUpdate: (s: Settings) => void;
@@ -356,6 +370,20 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const updated: Settings = {
       ...current,
       system: { ...current.system, ...patch },
+    };
+    set({ settings: updated });
+    try {
+      await ipc.saveSettings(updated);
+    } catch (e) {
+      console.error('保存设置失败:', e);
+    }
+  },
+
+  setLocalSearch: async (patch) => {
+    const current = get().settings;
+    const updated: Settings = {
+      ...current,
+      localSearch: { enabled: false, roots: [], ...current.localSearch, ...patch },
     };
     set({ settings: updated });
     try {

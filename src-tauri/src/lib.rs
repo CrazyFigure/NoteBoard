@@ -29,6 +29,8 @@ pub mod sync;
 pub mod history;
 // 系统剪贴板：图片位图与文件列表
 pub mod clipboard;
+// 本地文件搜索（文件名与内容索引）
+pub mod local_search;
 
 use state::AppState;
 use std::sync::Mutex;
@@ -280,6 +282,13 @@ pub fn run() {
             history::commands::history_delete_entry,
             history::commands::history_usage,
             history::commands::history_clear_all,
+            // 本地文件搜索（仅桌面端）
+            #[cfg(desktop)]
+            local_search::commands::local_search_names,
+            #[cfg(desktop)]
+            local_search::commands::local_search_content,
+            #[cfg(desktop)]
+            local_search::commands::local_search_drives,
         ])
         .on_window_event(|window, event| {
             #[cfg(desktop)]

@@ -35,6 +35,9 @@ pub struct Settings {
     // 系统集成：关闭到托盘、全局唤起快捷键（仅桌面端生效）
     #[serde(default)]
     pub system: SystemSettings,
+    // 本地文件搜索：开关与索引位置（仅桌面端生效）
+    #[serde(default)]
+    pub local_search: LocalSearchSettings,
 }
 
 impl Default for Settings {
@@ -48,8 +51,21 @@ impl Default for Settings {
             file: FileSettings::default(),
             layout: LayoutSettings::default(),
             system: SystemSettings::default(),
+            local_search: LocalSearchSettings::default(),
         }
     }
+}
+
+/// 本地文件搜索设置
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalSearchSettings {
+    // 总开关（默认关闭）
+    #[serde(default)]
+    pub enabled: bool,
+    // 索引位置：文件夹或整个磁盘的绝对路径（有序，先添加的优先建立内容索引）
+    #[serde(default)]
+    pub roots: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

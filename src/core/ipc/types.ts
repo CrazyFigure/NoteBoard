@@ -276,6 +276,8 @@ export interface Settings {
   file: FileSettings;
   layout: LayoutSettings;
   system: SystemSettings;
+  /** 本地文件搜索（旧设置文件与网页端可能缺失） */
+  localSearch?: LocalSearchSettings;
 }
 
 export interface AppearanceSettings {
@@ -474,6 +476,70 @@ export interface SystemSettings {
   showWindowShortcut: string;
   /** 更新渠道（默认 github）：同时决定安装包、字体包与插件的下载来源；旧设置文件可能缺失 */
   updateChannel?: UpdateChannel;
+}
+
+/** 本地文件搜索设置（仅桌面端生效） */
+export interface LocalSearchSettings {
+  /** 总开关（默认关闭） */
+  enabled: boolean;
+  /** 索引位置：文件夹或整个磁盘的绝对路径（有序） */
+  roots: string[];
+}
+
+/** 高亮片段：命中部分 hit 为 true */
+export interface LocalSearchPart {
+  text: string;
+  hit: boolean;
+}
+
+/** 文件名搜索结果 */
+export interface LocalSearchNameHit {
+  path: string;
+  name: string;
+  nameParts: LocalSearchPart[];
+  /** 所在目录 */
+  dir: string;
+  isDir: boolean;
+  size: number;
+  /** 修改时间（Unix 毫秒） */
+  mtime: number;
+}
+
+export interface LocalSearchNameResult {
+  hits: LocalSearchNameHit[];
+  /** 命中总数（hits 只含前若干条） */
+  total: number;
+}
+
+/** 内容命中行 */
+export interface LocalSearchSnippet {
+  /** 行号（从 1 开始） */
+  line: number;
+  parts: LocalSearchPart[];
+}
+
+/** 内容搜索结果 */
+export interface LocalSearchContentHit {
+  path: string;
+  name: string;
+  dir: string;
+  size: number;
+  mtime: number;
+  snippets: LocalSearchSnippet[];
+  /** 命中次数（上限 999） */
+  matches: number;
+}
+
+export interface LocalSearchContentResult {
+  hits: LocalSearchContentHit[];
+  /** 结果因数量或时间上限被截断 */
+  truncated: boolean;
+}
+
+/** 可添加为索引位置的磁盘 */
+export interface LocalSearchDrive {
+  path: string;
+  label: string;
 }
 
 /** 发布渠道：GitHub 主仓库或腾讯云 CNB 镜像 */

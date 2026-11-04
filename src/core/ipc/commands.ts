@@ -48,6 +48,9 @@ import type {
   HistoryCheckpointReason,
   TabDragResult,
   TabTransferTarget,
+  LocalSearchNameResult,
+  LocalSearchContentResult,
+  LocalSearchDrive,
 } from './types';
 
 // ── 窗口（S04 打开队列 + 迁移协议） ──
@@ -668,4 +671,21 @@ export function historyUsage(): Promise<HistoryUsage> {
 
 export function historyClearAll(): Promise<void> {
   return invoke<void>('history_clear_all');
+}
+
+// ── 本地文件搜索（仅桌面端） ──
+
+/** 文件名搜索；seq 为本窗口递增序号，被更新的查询取代时返回 null */
+export function localSearchNames(query: string, seq: number, limit?: number): Promise<LocalSearchNameResult | null> {
+  return invoke<LocalSearchNameResult | null>('local_search_names', { query, seq, limit: limit ?? null });
+}
+
+/** 内容搜索；被更新的查询取代时返回 null */
+export function localSearchContent(query: string, seq: number, limit?: number): Promise<LocalSearchContentResult | null> {
+  return invoke<LocalSearchContentResult | null>('local_search_content', { query, seq, limit: limit ?? null });
+}
+
+/** 列出可添加为索引位置的磁盘 */
+export function localSearchDrives(): Promise<LocalSearchDrive[]> {
+  return invoke<LocalSearchDrive[]>('local_search_drives');
 }

@@ -38,6 +38,9 @@ import { HistorySettingsPanel } from '../../features/versionHistory/HistorySetti
 import { useLayoutStore } from '../../stores/layoutStore';
 import { CreateFormatsSettings } from './CreateFormatsSettings';
 import { supportsCompactMode } from '../../features/window/compactMode';
+// 本地文件搜索设置（仅桌面端展示）
+import { LocalSearchSettingsCard } from '../../features/localSearch/LocalSearchSettings';
+import { SUPPORTS_LOCAL_SEARCH } from '../../features/localSearch/localSearchStore';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -65,7 +68,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('appearance');
   const settingsTarget = useLayoutStore((state) => state.settingsTarget);
   // 打开入口携带目标，字体按钮与缺少查看器的文件页均能直达安装区域。
-  useEffect(() => { if (isOpen && settingsTarget) setActiveTab(settingsTarget === 'history' ? 'history' : 'plugins'); }, [isOpen, settingsTarget]);
+  useEffect(() => {
+    if (!isOpen || !settingsTarget) return;
+    // 本地文件搜索面板的「前往设置」定位到全局页
+    setActiveTab(settingsTarget === 'history' ? 'history' : settingsTarget === 'localSearch' ? 'general' : 'plugins');
+  }, [isOpen, settingsTarget]);
   // 关闭后清除一次性定位，普通设置入口沿用上次查看的栏目。
   useEffect(() => { if (!isOpen && settingsTarget) useLayoutStore.setState({settingsTarget:null}); }, [isOpen, settingsTarget]);
   const { settings, resolvedTheme, setThemeMode, setTypography, setEditor, setFile, setLayout, setSystem } = useSettingsStore();
@@ -1491,6 +1498,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
                 )}
 
+                {/* 本地文件搜索：开关与索引位置（文件夹 / 整个磁盘，可添加多个） */}
+                {SUPPORTS_LOCAL_SEARCH && !IS_MOBILE_UI && <LocalSearchSettingsCard />}
+
                 {/* 新建入口：主页与「+」菜单中哪些格式直接展示、哪些收进更多 */}
                 <div style={{ padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <CreateFormatsSettings />
@@ -1623,6 +1633,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <ShortcutItem keyCombo="Ctrl + O" label="打开文件" />
                   <ShortcutItem keyCombo="Ctrl + Shift + O" label="打开文件夹" />
                   <ShortcutItem keyCombo="Ctrl + Shift + N" label="新建空窗口" />
+                  {SUPPORTS_LOCAL_SEARCH && <ShortcutItem keyCombo="Ctrl + Shift + F" label="本地文件搜索" tip="搜索文件名与内容，需先在 设置 → 全局 中开启" />}
                   <ShortcutItem keyCombo="Ctrl + S" label="保存当前文档" />
                   <ShortcutItem keyCombo="Ctrl + Shift + S" label="文档另存为" />
                   <ShortcutItem keyCombo="Ctrl + W" label="关闭当前标签页" />

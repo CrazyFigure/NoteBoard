@@ -41,6 +41,7 @@ import {
 import { startSyncEffects } from './features/sync/syncEffects';
 import { useSyncStore } from './stores/syncStore';
 import { installAnchorNavigationGuard } from './core/anchorNavigation';
+import { SUPPORTS_LOCAL_SEARCH, useLocalSearchStore } from './features/localSearch/localSearchStore';
 
 // 🔴 S05：全局弹窗首次触发才装载（E 节 6）——未打开时不渲染即不加载，
 //    装载后保持挂载以保留关闭动画；安全关闭保护（UnsavedGuardDialog）仍轻量常驻
@@ -65,6 +66,8 @@ const SyncTrashDialog = lazy(() =>
 const SyncUpdateDialog = lazy(() => import('./features/sync/SyncUpdateDialog').then((m) => ({ default: m.SyncUpdateDialog })));
 // 网页多用户的共享对话框：首次从右键菜单或账号页打开时装载
 const ShareDialogHost = lazy(() => import('./features/account/ShareDialog').then((m) => ({ default: m.ShareDialogHost })));
+// 本地文件搜索面板（Ctrl + Shift + F 首次打开时装载）
+const LocalSearchPanel = lazy(() => import('./features/localSearch/LocalSearchPanel').then((m) => ({ default: m.LocalSearchPanel })));
 // 移动端界面独立分包：桌面构建入口不加载移动端外壳
 const MobileShell = lazy(() =>
   import('./mobile/MobileShell').then((m) => ({ default: m.MobileShell })),
@@ -207,6 +210,20 @@ export default function App() {
       description: '打开文件夹',
     });
 
+    // Ctrl+Shift+F 本地文件搜索（仅桌面端；面板打开期间由面板自行处理按键）
+    const unregLocalSearch = SUPPORTS_LOCAL_SEARCH && !IS_MOBILE_UI
+      ? registerShortcut({
+        key: 'Ctrl+Shift+F',
+        action: () => {
+          // 设置弹窗层级更高，先收起以免遮住搜索面板
+          useLayoutStore.getState().setSettingsModalVisible(false);
+          useLocalSearchStore.getState().setOpen(true);
+        },
+        scope: 'global',
+        description: '本地文件搜索',
+      })
+      : () => {};
+
     return () => {
       disposed = true;
       stopAutoUpdate();
@@ -221,6 +238,7 @@ export default function App() {
       unregNewWindow();
       unregOpenFile();
       unregOpenFolder();
+      unregLocalSearch();
     };
   }, [init, initAutoUpdateTimer, bootRetryAttempt]);
 
@@ -235,6 +253,7 @@ export default function App() {
   const syncTrashOpen = useSyncStore((s) => s.trashOpen);
   const syncUpdatePending = useSyncStore((s) => !!s.status?.updateConfirmation);
   const shareDialogOpen = useShareStore((s) => !!s.dialogPath);
+  const localSearchEverOpened = useEverOpened(useLocalSearchStore((s) => s.open));
   // 网页多用户：启动后读取自己已共享的路径，资源管理器据此显示共享标记
   useEffect(() => {
     if (IS_WEB && isMultiUser()) void useShareStore.getState().refresh().catch(() => undefined);
@@ -387,6 +406,7 @@ export default function App() {
             </Suspense>
           )}
           {shareDialogOpen && <Suspense fallback={null}><ShareDialogHost /></Suspense>}
+          {localSearchEverOpened && <Suspense fallback={null}><LocalSearchPanel /></Suspense>}
         </div>
       </TooltipProvider>
     </ErrorBoundary>

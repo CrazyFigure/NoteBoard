@@ -11,6 +11,52 @@ interface MockFile {
 }
 
 const WORKSPACE = '/data/user/0/com.crazyfigure.noteboard/workspace';
+
+/** 本地文件搜索模拟：按空白切词，全部词都出现才算命中；高亮片段与真实接口结构一致 */
+function mockLocalSearch(cmd: string, query: string, files: Map<string, { content: string; mtime: number }>, dirs: Set<string>): unknown {
+  const terms = [...new Set(query.toLowerCase().split(/\s+/).filter(Boolean))];
+  const parts = (text: string) => {
+    const lower = text.toLowerCase();
+    const marks = new Array<boolean>(text.length).fill(false);
+    for (const t of terms) {
+      for (let i = lower.indexOf(t); i >= 0; i = lower.indexOf(t, i + t.length)) marks.fill(true, i, i + t.length);
+    }
+    const out: { text: string; hit: boolean }[] = [];
+    for (let i = 0; i < text.length; i++) {
+      const last = out[out.length - 1];
+      if (last && last.hit === marks[i]) last.text += text[i];
+      else out.push({ text: text[i], hit: marks[i] });
+    }
+    return out;
+  };
+  const split = (path: string) => ({ name: path.slice(path.lastIndexOf('/') + 1), dir: path.slice(0, path.lastIndexOf('/')) });
+  if (terms.length === 0) return cmd === 'local_search_names' ? { hits: [], total: 0 } : { hits: [], truncated: false };
+  if (cmd === 'local_search_names') {
+    const entries = [...[...files.keys()].map((p) => ({ path: p, isDir: false })), ...[...dirs].map((p) => ({ path: p, isDir: true }))];
+    const hits = entries
+      .filter((e) => terms.every((t) => split(e.path).name.toLowerCase().includes(t)))
+      .map((e) => {
+        const { name, dir } = split(e.path);
+        const file = files.get(e.path);
+        return { path: e.path, name, nameParts: parts(name), dir, isDir: e.isDir, size: file?.content.length ?? 0, mtime: file?.mtime ?? Date.now() };
+      });
+    return { hits: hits.slice(0, 200), total: hits.length };
+  }
+  const hits = [...files.entries()]
+    .filter(([, f]) => terms.every((t) => f.content.toLowerCase().includes(t)))
+    .map(([path, f]) => {
+      const { name, dir } = split(path);
+      const lines = f.content.split('\n');
+      const snippets = lines
+        .map((line, i) => ({ line: i + 1, text: line.trim() }))
+        .filter((l) => terms.some((t) => l.text.toLowerCase().includes(t)))
+        .slice(0, 3)
+        .map((l) => ({ line: l.line, parts: parts(l.text.slice(0, 160)) }));
+      const matches = terms.reduce((n, t) => n + (f.content.toLowerCase().split(t).length - 1), 0);
+      return { path, name, dir, size: f.content.length, mtime: f.mtime, snippets, matches };
+    });
+  return { hits: hits.slice(0, 100), truncated: false };
+}
 const EXTERNAL_ROOT = '/storage/emulated/0';
 
 const now = Date.now();
@@ -604,6 +650,12 @@ export function installTauriMock(): void {
       case 'history_clear_all':
         mockHistories.clear();
         return null;
+      // ── 本地文件搜索：在模拟文件系统中做简单的逐词匹配（真实实现见 src-tauri/src/local_search） ──
+      case 'local_search_names':
+      case 'local_search_content':
+        return mockLocalSearch(cmd, String(args.query ?? ''), files, dirs);
+      case 'local_search_drives':
+        return [{ path: 'C:\\', label: '系统 (C:)' }, { path: 'D:\\', label: '资料 (D:)' }];
       // ── 文件系统 ──
       case 'read_dir':
         return listDir(String(args.path));
