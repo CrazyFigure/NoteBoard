@@ -88,6 +88,7 @@ export function VisualKernel({
   const extensions = useMemo(() => buildExtensions(docKey, {
     onOpenLinkModal: makeLinkModalOpener(docKey),
     pasteFormatDetect: true,
+    markdownClipboard: true,
   }), [docKey]);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
   // 超链接插入与编辑弹窗状态

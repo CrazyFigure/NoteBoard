@@ -23,6 +23,7 @@ import { WikiLink } from '../wikiLinkNode';
 import { WikiLinkSuggestion } from '../wikiLinkSuggestion';
 import { handleLinkClick } from '../linkHandler';
 import { TableClipboard } from '../tableClipboard';
+import { MarkdownClipboard } from '../markdownClipboard';
 import { PasteFormatDetect } from '../pasteFormatDetect';
 import { ListEmptyItemBackspaceFix } from '../listItemBackspace';
 import { SelectionHighlight } from '../selectionHighlight';
@@ -171,6 +172,8 @@ export interface BuildExtensionsOptions {
   placeholder?: string;
   /** 是否跟踪纯文本粘贴以提示转换 Markdown / HTML（md 文档可视化编辑器与多维表格多行文本编辑器启用，默认 false） */
   pasteFormatDetect?: boolean;
+  /** Markdown 文档复制、剪切输出源码；嵌入式富文本编辑器仍沿用原有剪贴板规则。 */
+  markdownClipboard?: boolean;
   /** 是否启用双向链接 `[[笔记]]`（解析、补全与跳转；默认 true，多维表格单元格不需要仓库内跳转时关闭） */
   wikiLinks?: boolean;
 }
@@ -227,6 +230,8 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // 表格及表格剪贴板增强（支持标准 TSV 复制与二维矩阵粘贴）
     TableClipboard,
+    // Markdown 文档优先输出源码；表格粘贴增强继续由 TableClipboard 处理。
+    ...(options?.markdownClipboard ? [MarkdownClipboard] : []),
 
     // 查找/替换
     searchReplaceExtension(),
