@@ -13,9 +13,13 @@ afterAll(() => {
   editor.destroy();
 });
 
-/** 解析后立即序列化 */
+/**
+ * 解析后按序列化规则整篇重写（去掉顶层块原文记录，等同于每个块都被编辑过）。
+ * 本文件验证的是重写时序列化器自身对源码写法的保留；未编辑时的原文保留见 markdownSourcePreserve.test.ts。
+ */
 function roundTrip(markdown: string): string {
   expect(parseMarkdown(editor, markdown)).toBe(true);
+  editor.view.dispatch(editor.state.tr.setDocAttribute('sourceBlocks', null));
   return serializeMarkdown(editor);
 }
 

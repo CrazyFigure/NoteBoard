@@ -1162,7 +1162,7 @@ html[data-platform='mobile'] body {
   font-size: 14px;
 }
 
-/* 规范化确认等通用模态框：改为底部面板 */
+/* 通用模态框：改为底部面板 */
 [data-platform='mobile'] .nb-modal-overlay {
   align-items: flex-end;
 }
@@ -1175,20 +1175,6 @@ html[data-platform='mobile'] body {
   border-bottom: none;
   padding-bottom: calc(16px + var(--nb-m-safe-bottom));
   animation: nb-m-sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-[data-platform='mobile'] .nb-md-normalize-actions {
-  flex-direction: column-reverse;
-}
-
-[data-platform='mobile'] .nb-md-normalize-actions button {
-  justify-content: center;
-  min-height: 44px;
-}
-
-/* 平板也使用底部操作列，取消按钮与其他按钮等宽。 */
-[data-platform='mobile'] .nb-md-normalize-cancel {
-  margin-right: 0;
 }
 
 /* 编辑器内容：手机屏幕上收窄页边距、适度放大正文 */

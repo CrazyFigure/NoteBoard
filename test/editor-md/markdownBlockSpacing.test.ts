@@ -92,7 +92,10 @@ describe('原文中的块间空行', () => {
   });
 
   it('星号分隔线改成横线时保留必要空行，不能误写成 Setext 标题', () => {
-    expect(roundTrip('正文\n***\n后文')).toBe('正文\n\n---\n\n后文');
+    // 未编辑时按原文保留；按规则重写（去掉原文记录）时补出必要空行
+    expect(roundTrip('正文\n***\n后文')).toBe('正文\n***\n后文');
+    editor.view.dispatch(editor.state.tr.setDocAttribute('sourceBlocks', null));
+    expect(serializeMarkdown(editor)).toBe('正文\n\n---\n\n后文');
   });
 
   it('没有原文格式记录的新内容沿用原来的默认块间距', () => {

@@ -1,6 +1,8 @@
 // 保留原文中省略的块间空行：只记录已解析为独立块的边界，不删除实际空段落或语法必需的分隔。
 import { Extension, Node, type JSONContent, type MarkdownRendererHelpers, type MarkdownToken } from '@tiptap/core';
 import { Blockquote } from '@tiptap/extension-blockquote';
+import { emitRawBlock, emitRawSegment } from './rawMarkdownSegments';
+import { readPreservedBlock, SOURCE_ORPHAN_AFTER_ATTR, SOURCE_TAIL_ATTR } from './markdownSourcePreserve';
 
 // 只处理能够明确判断 Markdown 边界的内置块；HTML、自定义容器等仍沿用原来的保守分隔。
 const SPACING_NODE_TYPES = ['paragraph', 'heading', 'blockquote', 'bulletList', 'orderedList', 'taskList', 'codeBlock', 'horizontalRule'];
@@ -90,16 +92,50 @@ export function preserveSourceBlockSpacing(node: JSONContent, tokens: MarkdownTo
   });
 }
 
-/** 连接块时优先沿用已记录的单换行，其余仍保留默认空行与空段落的渲染行为。 */
+/**
+ * 连接块时优先沿用已记录的单换行，其余仍保留默认空行与空段落的渲染行为。
+ * 文档层的原文占位节点（见 markdownSourcePreserve.ts）直接写回原文：
+ * 与原前驱相邻时连同原间隔逐字输出，否则用空行隔开，保证原文按独立块解析。
+ */
 function renderBlockChildren(node: JSONContent, helpers: MarkdownRendererHelpers): string {
   const children = node.content ?? [];
-  return children.map((child, index) => {
-    const rendered = helpers.renderChild?.(child, index) ?? helpers.renderChildren([child]);
-    if (index === 0) return rendered;
-    const previous = children[index - 1];
-    const compact = child.attrs?.sourceCompactBefore === previous.type && allowsCompactBoundary(previous, child);
-    return (compact ? '\n' : '\n\n') + rendered;
-  }).join('');
+  let output = '';
+  let previous: JSONContent | undefined;
+  children.forEach((child, index) => {
+    const preserved = readPreservedBlock(child);
+    if (preserved?.skip) return;
+    // 顶层块原文整段登记为一个占位符（前后均为真实换行，不影响后处理的行首判断）
+    const rendered = preserved?.raw != null
+      ? emitRawBlock(preserved.raw)
+      : helpers.renderChild?.(child, index) ?? helpers.renderChildren([child]);
+    let separator: string;
+    if (preserved?.orphan != null) {
+      // 失去原位置的引用定义等内容作为独立块输出，前后空行隔开
+      separator = (previous ? '\n\n' : '') + emitRawSegment(preserved.orphan) + '\n\n';
+    } else if (preserved?.raw != null && preserved.gap !== null) {
+      separator = emitGap(preserved.gap);
+    } else if (!previous) {
+      separator = '';
+    } else if (preserved?.raw != null) {
+      separator = '\n\n';
+    } else {
+      const compact = child.attrs?.sourceCompactBefore === previous.type && allowsCompactBoundary(previous, child);
+      separator = compact ? '\n' : '\n\n';
+    }
+    output += separator + rendered;
+    previous = child;
+  });
+  const attrs = node.attrs as Record<string, unknown> | undefined;
+  const orphanAfter = attrs?.[SOURCE_ORPHAN_AFTER_ATTR];
+  if (typeof orphanAfter === 'string' && orphanAfter) output += (output ? '\n\n' : '') + emitRawSegment(orphanAfter);
+  const tail = attrs?.[SOURCE_TAIL_ATTR];
+  if (typeof tail === 'string' && tail) output += emitGap(tail);
+  return output;
+}
+
+/** 原文间隔：纯空白直接输出（后处理不改动空白，且需保留真实换行），含引用定义等内容时逐行登记保护。 */
+function emitGap(gap: string): string {
+  return /^\s*$/.test(gap) ? gap : emitRawSegment(gap);
 }
 
 /** 源码块边界只影响回写，不进入 HTML 或剪贴板，也不复制到新分裂出的块。 */

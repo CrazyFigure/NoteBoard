@@ -212,9 +212,6 @@ pub struct EditorSettings {
     // 允许进入列编辑模式（默认 true；关闭时已进入的编辑器立即退出）
     #[serde(default = "default_true")]
     pub enable_column_edit: bool,
-    // Markdown 进入可视化模式时的格式规范化策略：ask（每次询问）/ always（总是规范化）/ never（保持源码模式）
-    #[serde(default = "default_markdown_normalization")]
-    pub markdown_normalization: String,
     // 可视化模式中代码块默认展开（默认 true，仅影响显示，不写入文件）
     #[serde(default = "default_true")]
     pub code_block_default_expanded: bool,
@@ -251,7 +248,6 @@ impl Default for EditorSettings {
             show_whitespace: false,
             show_line_endings: false,
             enable_column_edit: true,
-            markdown_normalization: default_markdown_normalization(),
             code_block_default_expanded: true,
             details_default_expanded: false,
             swap_enter_keys: false,
@@ -450,7 +446,6 @@ fn default_mono_content_width() -> String { "full".to_string() }
 fn default_mono_padding_y() -> u32 { 16 }
 fn default_mono_padding_x() -> u32 { 24 }
 fn default_view_mode() -> String { "visual".to_string() }
-fn default_markdown_normalization() -> String { "ask".to_string() }
 fn default_true() -> bool { true }
 fn default_tab_size() -> u32 { 2 }
 fn default_mindmap_node_max_width() -> u32 { 280 }

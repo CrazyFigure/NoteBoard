@@ -13,6 +13,7 @@ import { formatWikiLinkMarkdown } from '../wikilink/wikiLinkSyntax';
 import { INVISIBLE_CHARACTER_ENTITIES, isDecodableEntitySuffix, usesInvisibleCharacterEntities } from './markdownHtmlEntities';
 import { captureMarkdownBlockTokens } from './markdownBlockStart';
 import { preserveSourceBlockSpacing } from './markdownBlockSpacing';
+import { buildPreservedSerializationJson, buildSourceBlocks, recordTopLevelTokens, type PreservableNode } from './markdownSourcePreserve';
 
 // CommonMark 允许反斜杠转义的 ASCII 标点；这些字符前的双反斜杠不能擅自折叠，
 // 否则原本可见的反斜杠会在下一次解析时被当成转义符吞掉。
@@ -322,8 +323,8 @@ function applyMarkdownCleanupCandidates(
   return output;
 }
 
-/** 仅记录源码写法、不影响文档语义的节点属性：围栏、表格风格、列表原始缩进与块间距。 */
-const SOURCE_FORMAT_ATTRIBUTES = ['sourceFence', 'markdownStyle', 'sourceIndent', 'sourceContinuationIndents', 'sourceLeadingIndent', 'sourceCompactBefore', 'sourceTrailingPlaceholder'];
+/** 仅记录源码写法、不影响文档语义的节点属性：围栏、表格风格、列表原始缩进、块间距与顶层块原文。 */
+const SOURCE_FORMAT_ATTRIBUTES = ['sourceFence', 'markdownStyle', 'sourceIndent', 'sourceContinuationIndents', 'sourceLeadingIndent', 'sourceCompactBefore', 'sourceTrailingPlaceholder', 'sourceBlocks'];
 
 /** 深拷贝 JSON 并去掉源码写法属性 */
 function withoutSourceFormatAttributes(json: unknown): unknown {
@@ -472,13 +473,14 @@ function trailingNewlineOf(markdown: string): string {
  * 统一的序列化后处理流水线（两个序列化入口共用）：
  * 1. 在原样片段会话中生成原始 Markdown（front matter / HTML / 脚注先以占位符输出）；
  * 2. 实体还原 → 冗余转义清理（语义校验前还原必要转义与原样片段，保证校验对象与最终输出一致）；
- * 3. 还原必要转义与原样片段，最后补回源文件末尾换行。
+ * 3. 还原必要转义与原样片段，最后补回源文件末尾换行（文末原文已逐字写回时保持原样）。
  */
 function runSerializationPipeline(
   produceRaw: () => string,
   referenceDoc: { eq(other: unknown): boolean; attrs?: Record<string, unknown>; toJSON?(): unknown },
   nodeFromJSON: (json: unknown) => unknown,
   manager: MarkdownManagerLike | null | undefined,
+  verbatimTail = false,
 ): string {
   beginRawSegmentSession();
   let raw: string;
@@ -492,7 +494,14 @@ function runSerializationPipeline(
     restoreRawSegments(finalizeStructuralEscapes(markdown), segments);
   const normalized = normalizeSerializedMarkdown(raw);
   const cleaned = removeRedundantMarkdownEscapes(normalized, referenceDoc, nodeFromJSON, manager, restore);
-  return appendTrailingNewline(restore(cleaned), referenceDoc.attrs);
+  return verbatimTail ? restore(cleaned) : appendTrailingNewline(restore(cleaned), referenceDoc.attrs);
+}
+
+/** 序列化入口共用：有原文记录的完整文档保留未编辑块原文，其余（片段、无记录）整篇输出。 */
+function serializationJson(doc: { toJSON(): ReturnType<Editor['getJSON']> }): { json: ReturnType<Editor['getJSON']>; verbatimTail: boolean } {
+  if (typeof (doc as Partial<PreservableNode>).forEach !== 'function') return { json: doc.toJSON(), verbatimTail: false };
+  const { json, verbatimTail } = buildPreservedSerializationJson(doc as unknown as PreservableNode);
+  return { json: json as ReturnType<Editor['getJSON']>, verbatimTail };
 }
 
 /**
@@ -637,11 +646,13 @@ export function serializeMarkdownFromDoc(
     manager.escapeMarkdownSyntax = (text: string) => escapeMarkdownText(text, invisibleAsEntities);
   }
   try {
+    const { json, verbatimTail } = serializationJson(doc);
     return runSerializationPipeline(
-      () => manager.serialize!(prepareJsonForSerialization(doc.toJSON())),
+      () => manager.serialize!(prepareJsonForSerialization(json)),
       doc,
       schema.nodeFromJSON.bind(schema),
       manager,
+      verbatimTail,
     );
   } finally {
     if (manager && typeof originalEscaper === 'function') {
@@ -676,13 +687,15 @@ export function serializeMarkdown(editor: Editor): string {
     }
     try {
       // 有 MarkdownManager 时直接序列化插入了必要转义哨兵的 JSON；否则回退到注入的 getMarkdown
+      const preserved = typeof manager?.serialize === 'function' ? serializationJson(editor.state.doc) : null;
       return runSerializationPipeline(
-        () => (typeof manager?.serialize === 'function'
-          ? manager.serialize(prepareJsonForSerialization(editor.getJSON()))
+        () => (preserved && typeof manager?.serialize === 'function'
+          ? manager.serialize(prepareJsonForSerialization(preserved.json))
           : getMarkdown.call(editor)),
         editor.state.doc,
         (json) => editor.schema.nodeFromJSON(json),
         manager,
+        preserved?.verbatimTail ?? false,
       );
     } finally {
       if (manager && typeof originalEscaper === 'function') {
@@ -767,16 +780,35 @@ function deduplicateParsedMarkdownMarks(root: ParsedMarkdownNode): void {
 /**
  * 把一段 Markdown 解析为可直接插入编辑器的文档 JSON（不修改编辑器内容）。
  * 与整篇加载共用同一解析器与 mark 修复，并按 schema 显式校验；失败或未装配解析器时返回 null。
+ * recordSource：整篇加载时在 attrs.sourceBlocks 记录顶层块原文，序列化时未编辑的块逐字写回。
  */
-export function parseMarkdownToJson(editor: Editor, markdown: string): ReturnType<Editor['getJSON']> | null {
+export function parseMarkdownToJson(editor: Editor, markdown: string, options: { recordSource?: boolean } = {}): ReturnType<Editor['getJSON']> | null {
   const manager = getMarkdownManager(editor);
-  const { parsed, tokens } = captureMarkdownBlockTokens(manager?.instance, () => manager?.parse?.(markdown));
+  const runParse = () => manager?.parse?.(markdown);
+  const recordSource = options.recordSource === true && !!manager && supportsSourceBlocks(editor);
+  let units: Parameters<typeof buildSourceBlocks>[0] = null;
+  const { parsed, tokens } = captureMarkdownBlockTokens(manager?.instance, recordSource
+    ? () => {
+      const recorded = recordTopLevelTokens(manager!, runParse);
+      units = recorded.units;
+      return recorded.parsed;
+    }
+    : runParse);
   if (!parsed) return null;
   // 记录源文件块间距，与正文一同进入历史 / 快照；不重新分词，也不改动真实空段落。
   if (tokens) preserveSourceBlockSpacing(parsed, tokens);
   deduplicateParsedMarkdownMarks(parsed as ParsedMarkdownNode);
-  editor.schema.nodeFromJSON(parsed);
+  const doc = editor.schema.nodeFromJSON(parsed);
+  if (recordSource) {
+    // 指纹基于 schema 规范化后的节点计算，与序列化时读取的编辑器文档一致
+    parsed.attrs = { ...parsed.attrs, sourceBlocks: buildSourceBlocks(units, markdown, doc as unknown as PreservableNode) };
+  }
   return parsed;
+}
+
+/** 当前 schema 是否装配了顶层块原文属性（嵌入式编辑器等未装配时不记录）。 */
+function supportsSourceBlocks(editor: Editor): boolean {
+  return !!editor.schema.topNodeType.spec.attrs?.sourceBlocks;
 }
 
 /** 补齐只来自原文的文档级属性，后台准备与主线程装载必须沿用相同规则。 */
@@ -785,10 +817,9 @@ export function withMarkdownSourceAttributes(parsed: ReturnType<Editor['getJSON'
 }
 
 /**
- * 仅在进入可视化且回写有差异时验证一次：文字、标记或结构变化不能被“总是规范化”静默接受。
- * 不修改编辑器、不进入输入热路径；后台准备可传入尚未装载的文档快照。
+ * 回写保真度检查：候选 Markdown 重新解析后是否与参考文档一致（文字、标记与结构）。
+ * 不修改编辑器、不进入输入热路径，用于验证序列化规则本身（编辑后按规则重写的块依赖它们保真）。
  * 仅忽略已有的源码写法属性和解析器本就丢弃的行尾空白。
- * 这是回写稳定性检查，不能证明首次解析已经准确表达作者意图，弹窗仍需允许核对完整差异。
  */
 export function isMarkdownSerializationStable(editor: Editor, markdown: string, referenceDoc = editor.state.doc): boolean {
   try {
@@ -802,6 +833,15 @@ export function isMarkdownSerializationStable(editor: Editor, markdown: string, 
     // 无法验证的候选同样必须交给用户逐次确认，不能把异常当成格式等价。
     return false;
   }
+}
+
+/** 在同一事务中写入顶层块原文记录（schema 未装配该属性时跳过）。 */
+function withSourceBlocks(editor: Editor, chain: ReturnType<Editor['chain']>, value: unknown): ReturnType<Editor['chain']> {
+  if (!supportsSourceBlocks(editor)) return chain;
+  return chain.command(({ tr }) => {
+    if (tr.doc.attrs.sourceBlocks !== value) tr.setDocAttribute('sourceBlocks', value);
+    return true;
+  });
 }
 
 export function parseMarkdown(
@@ -818,15 +858,16 @@ export function parseMarkdown(
         return true;
       });
     }
-    replaceEditorContent(editor, chain);
+    replaceEditorContent(editor, withSourceBlocks(editor, chain, null));
     return true;
   }
   try {
     // @tiptap/markdown 的 marked 适配器在长文档的相邻粗体边界上可能返回
     // bold,bold 等非法 mark 集合；进入 schema 前统一修复并显式校验（见 parseMarkdownToJson）。
-    const parsed = parseMarkdownToJson(editor, markdown);
+    const parsed = parseMarkdownToJson(editor, markdown, { recordSource: true });
     if (parsed) {
-      const chain = editor.chain().setContent(parsed, { contentType: 'json' });
+      // 顶层块原文与正文同一事务写入；旧内容的记录不能残留到新文档
+      const chain = withSourceBlocks(editor, editor.chain().setContent(parsed, { contentType: 'json' }), parsed.attrs?.sourceBlocks ?? null);
       // setContent 只替换文档内容、不改 doc 节点属性：末尾换行等需单独写入文档属性（同一事务、不入历史）
       const docAttrSpecs = editor.schema.topNodeType.spec.attrs;
       if (docAttrSpecs?.trailingNewline) {
@@ -850,7 +891,7 @@ export function parseMarkdown(
     // 未装配 MarkdownManager 时保留原兼容路径，配置错误仍由外层容错明确记录。
     replaceEditorContent(
       editor,
-      editor.chain().setContent(markdown, {
+      withSourceBlocks(editor, editor.chain(), null).setContent(markdown, {
         contentType: 'markdown',
         parseOptions: {
           // 保持原有格式
@@ -864,7 +905,7 @@ export function parseMarkdown(
     try {
       replaceEditorContent(
         editor,
-        editor.chain().setContent(
+        withSourceBlocks(editor, editor.chain(), null).setContent(
           {
             type: 'doc',
             content: [

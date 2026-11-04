@@ -58,6 +58,11 @@ export const MarkdownDocumentAttributes = Extension.create({
             default: false,
             rendered: false,
           },
+          // 解析时记录的顶层块原文与内容指纹：未编辑的块序列化时逐字写回（见 markdownSourcePreserve.ts）
+          sourceBlocks: {
+            default: null,
+            rendered: false,
+          },
         },
       },
     ];

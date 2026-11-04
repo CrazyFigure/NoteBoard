@@ -24,11 +24,16 @@ describe('大文档可视化准备', () => {
     const prepared = await prepareVisualDocumentData(content, async (stage) => { stages.push(stage); });
     const editor = createEditor();
     expect(parseMarkdown(editor, content)).toBe(true);
-    expect(prepared.serialized).toBe(serializeMarkdown(editor));
+    // 后台核心 schema 与正式编辑器的文档、原文记录（含内容指纹）完全一致
+    expect(editor.schema.nodeFromJSON(prepared.document).toJSON().content).toEqual(editor.getJSON().content);
+    expect(prepared.document.attrs?.sourceBlocks).toEqual(editor.state.doc.attrs.sourceBlocks);
+    expect(prepared.document.attrs?.sourceBlocks).not.toBeNull();
     expect(prepared.document.attrs?.trailingNewline).toBe('\n');
-    expect(prepared.stable).toBe(true);
-    expect(prepared.diff?.hunks.length).toBeGreaterThan(0);
-    expect(stages).toEqual(['parsing', 'checking', 'comparing']);
+    expect(stages).toEqual(['parsing']);
+    // 非规范写法（* 列表）不再整篇规范化：装载后未编辑时逐字写回原文
+    const mounted = createEditor();
+    await mountVisualDocument(mounted, prepared.document, new AbortController().signal, () => {}, { current: false });
+    expect(serializeMarkdown(mounted)).toBe(content);
   });
 
   it('分批装载列表和表格，完成后与一次性解析一致，事务始终处于程序锁内', async () => {
@@ -46,7 +51,7 @@ describe('大文档可视化准备', () => {
     expect(unsafeTransactions).toEqual([]);
     expect(initializing.current).toBe(false);
     expect(editor.state.selection.from).toBe(1);
-    expect(serializeMarkdown(editor)).toBe(prepared.serialized);
+    expect(serializeMarkdown(editor)).toBe(content);
   });
 
   it('取消后停止后续批次，不把部分正文当作完成', async () => {
@@ -72,7 +77,7 @@ describe('大文档可视化准备', () => {
     expect(editor.state.doc.childCount).toBe(3);
     expect(editor.state.doc.child(1).type.name).toBe(kind === 'list' ? 'orderedList' : 'table');
     expect(editor.state.doc.child(1).childCount).toBe(kind === 'list' ? 1_000 : 1_001);
-    expect(serializeMarkdown(editor)).toBe(prepared.serialized);
+    expect(serializeMarkdown(editor)).toBe(`开头\n\n${container}\n\n结尾\n`);
   });
 
   it('超大单块在生成 DOM 前拒绝，保留已有编辑器文档', async () => {
@@ -112,7 +117,7 @@ describe('正式构建的后台线程生命周期', () => {
     // 即使浏览器已经排入一条消息，取消后也不能继续持有回调或接受结果。
     expect(worker.onmessage).toBeNull();
     expect(worker.onerror).toBeNull();
-    lateMessage({ data: { stage: 'checking' } });
+    lateMessage({ data: { stage: 'parsing' } });
     expect(onStage).not.toHaveBeenCalled();
   });
   it('超时会终止线程并给出源码回退说明', async () => {
@@ -126,10 +131,10 @@ describe('正式构建的后台线程生命周期', () => {
   it('阶段通知、成功与异常均释放线程和超时计时器', async () => {
     vi.useFakeTimers();
     const task = start();
-    task.worker.onmessage!({ data: { stage: 'checking' } });
-    expect(task.onStage).toHaveBeenCalledWith('checking');
-    task.worker.onmessage!({ data: { result: { serialized: '完成' } } });
-    await expect(task.promise).resolves.toMatchObject({ serialized: '完成' });
+    task.worker.onmessage!({ data: { stage: 'parsing' } });
+    expect(task.onStage).toHaveBeenCalledWith('parsing');
+    task.worker.onmessage!({ data: { result: { document: { type: 'doc' } } } });
+    await expect(task.promise).resolves.toMatchObject({ document: { type: 'doc' } });
     expect(task.worker.terminate).toHaveBeenCalledOnce();
     expect(task.worker.onmessage).toBeNull();
     expect(task.worker.postMessage).toHaveBeenCalledWith({ content: '原文' });

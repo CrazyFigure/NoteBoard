@@ -90,7 +90,10 @@ describe('多色高亮：标准写法逐字往返', () => {
   });
 
   it('旧写法 background 简写保留原始颜色值', () => {
-    expect(roundTrip('<mark style="background: #bbf7d0">x</mark>')).toBe('<mark style="background-color: #bbf7d0">x</mark>');
+    // 未编辑时按原文保留；按规则重写（去掉原文记录）时输出标准写法
+    expect(roundTrip('<mark style="background: #bbf7d0">x</mark>')).toBe('<mark style="background: #bbf7d0">x</mark>');
+    editor.view.dispatch(editor.state.tr.setDocAttribute('sourceBlocks', null));
+    expect(serializeMarkdown(editor)).toBe('<mark style="background-color: #bbf7d0">x</mark>');
     expect(highlights()).toEqual([['x', '#bbf7d0']]);
   });
 });

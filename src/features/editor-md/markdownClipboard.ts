@@ -25,7 +25,8 @@ function serializeClipboardMarkdown(editor: Editor, slice: Slice): string {
     if (parent.type.validContent(content)) content = Fragment.from(parent.copy(content));
   }
   // 剪贴板片段不继承整份文件末尾的换行，正文中的空白和各节点源码属性仍交给共享流水线保留。
-  const fragmentDoc = doc.type.create({ ...doc.attrs, trailingNewline: '' }, content);
+  // 整篇的顶层块原文记录只对应完整文档，片段一律按规则输出，结果不随复制范围变化。
+  const fragmentDoc = doc.type.create({ ...doc.attrs, trailingNewline: '', sourceBlocks: null }, content);
   const manager = getMarkdownManager(editor);
   if (!manager) throw new Error('[NoteBoard] Markdown 剪贴板缺少 MarkdownManager');
   return serializeMarkdownFromDoc(manager, schema, fragmentDoc);

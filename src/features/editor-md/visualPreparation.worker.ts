@@ -1,15 +1,12 @@
-// 大文档在独立线程中解析、序列化和校验；主线程可随时终止任务，避免异常写法冻结整个窗口。
-import type { NormalizationDiff } from './markdownNormalization';
+// 大文档在独立线程中解析并记录顶层块原文；主线程可随时终止任务，避免异常写法冻结整个窗口。
 import type { JSONContent } from '@tiptap/core';
 import { prepareVisualDocumentData } from './visualPreparationData';
 
 /** 阶段来自实际工作边界，不能把尚未开始的渲染显示为已完成。 */
-export type PreparationStage = 'parsing' | 'checking' | 'comparing';
+export type PreparationStage = 'parsing';
 export interface PreparedVisualDocument {
+  /** 含文档级属性（末尾换行、顶层块原文记录）的完整文档 JSON */
   document: JSONContent;
-  serialized: string;
-  stable: boolean;
-  diff: NormalizationDiff | null;
 }
 
 /** 每次只处理一个文档；取消和超时由主线程 terminate，不能降级到主线程重跑。 */

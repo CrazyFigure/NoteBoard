@@ -26,7 +26,7 @@ describe('可视化等待界面', () => {
   });
   it('等待较久时显示已用时间，组件卸载会清理计时器', async () => {
     vi.useFakeTimers();
-    await act(async () => root.render(<VisualPreparationDialog displayName="长列表.md" progress={{ stage: 'checking' }} onCancel={cancel} />));
+    await act(async () => root.render(<VisualPreparationDialog displayName="长列表.md" progress={{ stage: 'parsing' }} onCancel={cancel} />));
     await act(async () => vi.advanceTimersByTime(9000));
     expect(document.querySelector('.nb-md-preparation-hint')?.textContent).toContain('已等待 9 秒');
   });

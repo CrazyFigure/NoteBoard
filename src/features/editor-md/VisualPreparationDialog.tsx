@@ -10,9 +10,9 @@ export interface VisualPreparationProgress {
   total?: number;
 }
 
-const STAGE_LABELS = { starting: '正在启动编辑器', parsing: '正在解析 Markdown', checking: '正在检查回写格式', comparing: '正在整理规范化差异', mounting: '正在装载可视化正文', revealing: '正在完成页面排版' };
+const STAGE_LABELS = { starting: '正在启动编辑器', parsing: '正在解析 Markdown', mounting: '正在装载可视化正文', revealing: '正在完成页面排版' };
 
-/** 使用模态焦点管理保护原文；Esc 与按钮都只取消切换，不能关闭文档或接受规范化。 */
+/** 使用模态焦点管理保护原文；Esc 与按钮都只取消切换，不会关闭文档。 */
 export function VisualPreparationDialog({ displayName, progress, onCancel }: { displayName: string; progress: VisualPreparationProgress; onCancel: () => void }) {
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {

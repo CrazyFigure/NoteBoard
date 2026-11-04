@@ -1,13 +1,13 @@
-// 双链与 Markdown 规范化：双链原文在任何位置都逐字保留，不会被规范化改写
-// 规范化 = 原文「解析 → 序列化」后与原文比较；这里分两类验证：
-// 1. 已是规范写法的文档：含双链也不触发规范化（无差异）；
-// 2. 需要规范化的文档（`*` 列表、`_强调_`、紧凑表格等）：周围内容被改写，双链本身一字不变。
+// 双链与 Markdown 回写：双链原文在任何位置都逐字保留，不会被序列化规则改写
+// 分两类验证：
+// 1. 已是规范写法的文档：含双链也逐字往返；
+// 2. 非规范写法的文档（`*` 列表、`_强调_`、紧凑表格等）：未编辑时按原文保留；
+//    块被编辑而按规则重写时，周围写法变为规范形式，双链本身一字不变。
 
 import { afterAll, describe, expect, it } from 'vitest';
 import { Editor } from '@tiptap/core';
 import { buildExtensions } from '../../src/features/editor-md/extensions';
 import { parseMarkdown, serializeMarkdown } from '../../src/features/editor-md/serialize';
-import { computeNormalizationDiff } from '../../src/features/editor-md/markdownNormalization';
 import { extractWikiLinks } from '../../src/features/wikilink/wikiLinkSyntax';
 
 const editor = new Editor({ element: null, extensions: buildExtensions('wiki-link-normalization'), content: '' });
@@ -24,6 +24,13 @@ function normalize(markdown: string): string {
 /** 文档中全部双链的原文写法（含嵌入的 `!`，表格中的 `\|` 统一为 `|` 后比较） */
 function wikiLinksOf(markdown: string): string[] {
   return extractWikiLinks(markdown).map((link) => `${link.embed ? '!' : ''}[[${link.inner.replace(/\\\|/g, '|')}]]`);
+}
+
+/** 模拟所有块都被编辑：去掉原文记录后按规则整篇重写 */
+function rewriteAll(markdown: string): string {
+  expect(parseMarkdown(editor, markdown)).toBe(true);
+  editor.view.dispatch(editor.state.tr.setDocAttribute('sourceBlocks', null));
+  return serializeMarkdown(editor);
 }
 
 /** 可视化文档中的双链节点 */
@@ -59,12 +66,11 @@ const CONTEXTS: Array<[string, string]> = [
   ['硬换行前后', '第一行 [[a]]  \n第二行 [[b]]'],
 ];
 
-describe('已是规范写法：含双链不触发规范化', () => {
-  it.each(CONTEXTS)('%s', async (_name, markdown) => {
-    const normalized = normalize(markdown);
-    expect(normalized).toBe(markdown);
-    const diff = await computeNormalizationDiff(markdown, normalized);
-    expect(diff.hunks).toEqual([]);
+describe('已是规范写法：含双链逐字往返', () => {
+  it.each(CONTEXTS)('%s', (_name, markdown) => {
+    expect(normalize(markdown)).toBe(markdown);
+    // 即使整篇按规则重写也与原文一致
+    expect(rewriteAll(markdown)).toBe(markdown);
   });
 
   it('整篇混合文档无差异', async () => {
@@ -74,7 +80,7 @@ describe('已是规范写法：含双链不触发规范化', () => {
   });
 });
 
-describe('需要规范化的文档：双链本身一字不变', () => {
+describe('非规范写法：未编辑时保留原文，按规则重写时双链一字不变', () => {
   const cases: Array<[string, string]> = [
     ['星号列表改为短横线', '* 第一项 [[a]]\n* 第二项 ![[b|300]]'],
     ['下划线强调改为星号', '正文 _强调 [[a]] 文字_ 与 __粗体[[b#节|名]]__'],
@@ -85,19 +91,16 @@ describe('需要规范化的文档：双链本身一字不变', () => {
     ['行尾空格与实体', '[[a]] &copy; \n[[b]]'],
   ];
 
-  it.each(cases)('%s', async (_name, markdown) => {
-    const normalized = normalize(markdown);
-    // 确实发生了规范化
+  it.each(cases)('%s', (_name, markdown) => {
+    // 未编辑：逐字保留原文
+    expect(normalize(markdown)).toBe(markdown);
+    const normalized = rewriteAll(markdown);
+    // 按规则重写确实改变了周围写法
     expect(normalized).not.toBe(markdown);
     // 双链顺序、写法完全一致
     expect(wikiLinksOf(normalized)).toEqual(wikiLinksOf(markdown));
-    // 再次往返稳定，不会累积变化
-    expect(normalize(normalized)).toBe(normalized);
+    // 再次重写稳定，不会累积变化
+    expect(rewriteAll(normalized)).toBe(normalized);
     expect(wikiLinksOf(normalized)).toEqual(wikiNodes());
-    // 差异块中出现的双链在前后两侧都相同
-    const diff = await computeNormalizationDiff(markdown, normalized);
-    for (const hunk of diff.hunks) {
-      expect(wikiLinksOf(hunk.after)).toEqual(wikiLinksOf(hunk.before));
-    }
   });
 });

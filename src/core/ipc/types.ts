@@ -343,8 +343,6 @@ export interface EditorSettings {
   showLineEndings: boolean;
   // 允许进入列编辑模式（缺省视为 true；关闭时已进入的编辑器立即退出）
   enableColumnEdit?: boolean;
-  // Markdown 进入可视化模式时的格式规范化策略（缺省视为 ask）
-  markdownNormalization?: MarkdownNormalizationPolicy;
   // 可视化模式中代码块默认展开（缺省视为 true；仅影响显示，不写入文件）
   codeBlockDefaultExpanded?: boolean;
   // 可视化模式中折叠块 <details> 默认展开（缺省视为 false；源码带 open 属性时始终展开）
@@ -358,9 +356,6 @@ export interface EditorSettings {
   // 思维导图节点图片默认显示方式：原始比例 / 宽度填充（缺省视为 original）
   mindmapImageFit?: 'original' | 'fill';
 }
-
-/** Markdown 规范化策略：每次询问 / 总是规范化 / 保持源码模式 */
-export type MarkdownNormalizationPolicy = 'ask' | 'always' | 'never';
 
 export interface FileSettings {
   // 自动保存设置：Markdown / 画板 / 其他文本（默认均关闭，即手动保存）

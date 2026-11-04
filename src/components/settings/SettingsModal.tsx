@@ -21,7 +21,7 @@ import { ReleaseNotes } from './ReleaseNotes';
 import { UPDATE_CHANNEL_ORDER, UpdateChannelSelector } from './UpdateChannelSelector';
 import { RELEASE_CHANNELS } from '../../core/releaseChannel';
 import { Tooltip } from '../Tooltip';
-import type { ExplorerOpenMode, HtmlOpenMode, MarkdownNormalizationPolicy, TitleBarButtons } from '../../core/ipc/types';
+import type { ExplorerOpenMode, HtmlOpenMode, TitleBarButtons } from '../../core/ipc/types';
 import { IS_MOBILE_UI, IS_NATIVE_MOBILE, IS_WEB } from '../../core/platform';
 import { GlobalShortcutRecorder } from './GlobalShortcutRecorder';
 import { formatShortcut } from '../../core/shortcuts';
@@ -1108,24 +1108,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         { value: 'source', label: '源码模式' },
                       ]}
                       onChange={(v) => setEditor({ defaultViewMode: v })}
-                    />
-                  </div>
-
-                  {/* 进入可视化模式时，若源码写法会被统一格式调整，按此策略处理（默认每次询问） */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
-                    <div>
-                      <div>Markdown 格式规范化</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>可视化模式会以统一写法保存源码（如列表符号统一为 -）</div>
-                    </div>
-                    <SettingsSelect<MarkdownNormalizationPolicy>
-                      ariaLabel="Markdown 格式规范化"
-                      value={settings.editor.markdownNormalization ?? 'ask'}
-                      options={[
-                        { value: 'ask', label: '每次询问' },
-                        { value: 'always', label: '总是规范化' },
-                        { value: 'never', label: '保持源码模式' },
-                      ]}
-                      onChange={(v) => setEditor({ markdownNormalization: v })}
                     />
                   </div>
 
