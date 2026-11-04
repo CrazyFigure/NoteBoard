@@ -37,8 +37,6 @@ import {
   ChevronsUp,
   GripVertical,
   Home,
-  LayoutGrid,
-  MoreHorizontal,
   Plus,
   RotateCcw,
 } from 'lucide-react';
@@ -111,7 +109,7 @@ interface FormatChipProps {
 }
 
 /** 条目外观：拖动把手、图标、名称、扩展名 */
-function FormatChipBody({ id, zone }: { id: CreateFormatId; zone: Zone }) {
+function FormatChipBody({ id }: { id: CreateFormatId }) {
   const meta = getCreateFormat(id);
   const Icon = meta.icon;
   return (
@@ -120,11 +118,11 @@ function FormatChipBody({ id, zone }: { id: CreateFormatId; zone: Zone }) {
         <GripVertical size={14} />
       </span>
       <span className="nb-cf-icon" style={{ '--nb-cf-color': meta.color } as CSSProperties}>
-        <Icon size={zone === 'primary' ? 15 : 14} color={meta.color} />
+        <Icon size={15} color={meta.color} />
       </span>
       <span className="nb-cf-name">{meta.name}</span>
-      {/* 扩展名以行内代码徽标展示，与主页卡片、「+」菜单一致 */}
-      {meta.ext && <CodeBadge color={meta.color} className="is-shrinkable">{meta.ext}</CodeBadge>}
+      {/* 扩展名以中性色行内代码徽标靠右展示，与主页卡片、「+」菜单一致 */}
+      {meta.ext && <CodeBadge className="is-shrinkable">{meta.ext}</CodeBadge>}
     </>
   );
 }
@@ -148,22 +146,8 @@ function SortableFormatChip({
     : (stacked ? ChevronsUp : ChevronsLeft);
   const moveLabel = zone === 'primary' ? '收进更多' : '直接展示';
   const name = getCreateFormat(id).name;
-  return (
-    <li
-      ref={setNodeRef}
-      style={style}
-      className={[
-        'nb-cf-chip',
-        `is-${zone}`,
-        isDragging ? 'is-placeholder' : '',
-        flash ? 'is-flash' : '',
-      ].filter(Boolean).join(' ')}
-      {...attributes}
-      {...listeners}
-      aria-label={`${name}，${zone === 'primary' ? '直接展示' : '收进更多'}`}
-    >
-      <FormatChipBody id={id} zone={zone} />
-      <Tooltip content={moveLabel} side="top" sideOffset={6} disabled={dragging}>
+  const moveButton = (
+    <Tooltip content={moveLabel} side="top" sideOffset={6} disabled={dragging}>
         <button
           type="button"
           className="nb-cf-move"
@@ -178,6 +162,25 @@ function SortableFormatChip({
           <MoveIcon size={14} />
         </button>
       </Tooltip>
+  );
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      className={[
+        'nb-cf-chip',
+        `is-${zone}`,
+        isDragging ? 'is-placeholder' : '',
+        flash ? 'is-flash' : '',
+      ].filter(Boolean).join(' ')}
+      {...attributes}
+      {...listeners}
+      aria-label={`${name}，${zone === 'primary' ? '直接展示' : '收进更多'}`}
+    >
+      {/* 移动按钮放在靠近目标分区的一侧：直接展示在右、收进更多在左，箭头朝向另一侧 */}
+      {zone === 'more' && moveButton}
+      <FormatChipBody id={id} />
+      {zone === 'primary' && moveButton}
     </li>
   );
 }
@@ -202,16 +205,8 @@ function FormatZone({ zone, ids, stacked, activeZone, dragging, flashId, onMove 
       className={['nb-cf-zone', `is-${zone}`, activeZone === zone ? 'is-target' : ''].filter(Boolean).join(' ')}
       aria-label={isPrimary ? '直接展示' : '收进更多'}
     >
+      {/* 两个分区外观一致，仅靠标题区分 */}
       <header className="nb-cf-zone-head">
-        {isPrimary ? (
-          <span className="nb-cf-zone-badge is-primary">
-            <LayoutGrid size={13} />
-          </span>
-        ) : (
-          <span className="nb-cf-zone-badge is-more">
-            <MoreHorizontal size={13} />
-          </span>
-        )}
         <span className="nb-cf-zone-title">{isPrimary ? '直接展示' : '收进更多'}</span>
         <span className="nb-cf-zone-count">{ids.length}</span>
       </header>
@@ -409,7 +404,7 @@ export function CreateFormatsSettings() {
           <DragOverlay zIndex={10060} dropAnimation={{ duration: 160, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' }}>
             {activeId && activeZone ? (
               <div className={`nb-cf-chip is-${activeZone} is-overlay`}>
-                <FormatChipBody id={activeId} zone={activeZone} />
+                <FormatChipBody id={activeId} />
               </div>
             ) : null}
           </DragOverlay>,

@@ -598,9 +598,9 @@ function TabItem({ tab, isActive, onActivate, onClose, nativeDragging, arriving 
   );
 }
 
-// 菜单项里的快捷键徽标靠右对齐；名称右侧多留 8px，加上 gap 后与徽标至少隔开 16px
-const MENU_SHORTCUT_LABEL_STYLE: React.CSSProperties = { marginRight: 8 };
-const MENU_SHORTCUT_BADGE_STYLE: React.CSSProperties = { marginLeft: 'auto' };
+// 菜单项里的扩展名与快捷键徽标统一中性色、靠右对齐；名称右侧多留 8px，加上 gap 后与徽标至少隔开 16px
+const MENU_BADGE_LABEL_STYLE: React.CSSProperties = { marginRight: 8 };
+const MENU_BADGE_STYLE: React.CSSProperties = { marginLeft: 'auto' };
 
 // 菜单项基础样式生成函数（支持禁用态）
 function getMenuItemStyle(disabled = false): React.CSSProperties {
@@ -995,9 +995,9 @@ export function TabBar() {
         onMouseUp={handleMenuItemMouseUp}
       >
         <Icon size={13} color={meta.color} />
-        <span>{meta.name}</span>
-        {/* 扩展名以行内代码徽标展示，与主页卡片一致 */}
-        {meta.ext && <CodeBadge color={meta.color}>{meta.ext}</CodeBadge>}
+        <span style={meta.ext ? MENU_BADGE_LABEL_STYLE : undefined}>{meta.name}</span>
+        {/* 扩展名以中性色行内代码徽标靠右展示，与主页卡片一致 */}
+        {meta.ext && <CodeBadge style={MENU_BADGE_STYLE}>{meta.ext}</CodeBadge>}
       </button>
     );
   };
@@ -1354,8 +1354,8 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <File size={13} color="#3b82f6" />
-            <span style={MENU_SHORTCUT_LABEL_STYLE}>打开文件</span>
-            <CodeBadge color="#3b82f6" style={MENU_SHORTCUT_BADGE_STYLE}>{formatShortcut('Ctrl+O')}</CodeBadge>
+            <span style={MENU_BADGE_LABEL_STYLE}>打开文件</span>
+            <CodeBadge style={MENU_BADGE_STYLE}>{formatShortcut('Ctrl+O')}</CodeBadge>
           </button>
 
           {/* 打开文件夹 */}
@@ -1373,8 +1373,8 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <FolderOpen size={13} color="#eab308" />
-            <span style={MENU_SHORTCUT_LABEL_STYLE}>打开文件夹</span>
-            <CodeBadge color="#eab308" style={MENU_SHORTCUT_BADGE_STYLE}>{formatShortcut('Ctrl+Shift+O')}</CodeBadge>
+            <span style={MENU_BADGE_LABEL_STYLE}>打开文件夹</span>
+            <CodeBadge style={MENU_BADGE_STYLE}>{formatShortcut('Ctrl+Shift+O')}</CodeBadge>
           </button>
 
           {/* 收藏夹：打开收藏夹管理弹窗 */}
@@ -1470,8 +1470,8 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <Save size={13} color={activeKey ? 'var(--editor-accent)' : undefined} />
-            <span style={MENU_SHORTCUT_LABEL_STYLE}>保存</span>
-            <CodeBadge color={activeKey ? 'var(--editor-accent)' : undefined} style={MENU_SHORTCUT_BADGE_STYLE}>{formatShortcut('Ctrl+S')}</CodeBadge>
+            <span style={MENU_BADGE_LABEL_STYLE}>保存</span>
+            <CodeBadge style={MENU_BADGE_STYLE}>{formatShortcut('Ctrl+S')}</CodeBadge>
           </button>
 
           {/* 另存为 */}
@@ -1491,8 +1491,8 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <SaveAll size={13} color={activeKey ? '#06b6d4' : undefined} />
-            <span style={MENU_SHORTCUT_LABEL_STYLE}>另存为</span>
-            <CodeBadge color={activeKey ? '#06b6d4' : undefined} style={MENU_SHORTCUT_BADGE_STYLE}>{formatShortcut('Ctrl+Shift+S')}</CodeBadge>
+            <span style={MENU_BADGE_LABEL_STYLE}>另存为</span>
+            <CodeBadge style={MENU_BADGE_STYLE}>{formatShortcut('Ctrl+Shift+S')}</CodeBadge>
           </button>
         </div>
       )}

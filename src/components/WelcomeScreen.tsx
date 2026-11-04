@@ -42,7 +42,7 @@ interface WelcomeScreenProps {
   onOpenSyncFolder?: () => void;
 }
 
-// 卡片内名称与徽标同处一行：固定一行高度并允许换行、裁掉第二行，
+// 卡片内名称居左、徽标靠右同处一行：固定一行高度并允许换行、裁掉第二行，
 // 空间不足时徽标整体换到被裁掉的第二行而隐藏，不会被挤成「.」，名称优先完整显示
 const LABEL_ROW_STYLE: React.CSSProperties = {
   flex: 1,
@@ -50,7 +50,8 @@ const LABEL_ROW_STYLE: React.CSSProperties = {
   display: 'flex',
   flexWrap: 'wrap',
   alignItems: 'center',
-  columnGap: 6,
+  justifyContent: 'space-between',
+  columnGap: 12,
   height: 18,
   overflow: 'hidden',
 };
@@ -255,6 +256,8 @@ export function WelcomeScreen({
               alignItems: 'center',
               gap: compact ? 6 : 12,
               padding: compact ? '10px 6px 8px' : '10px 14px',
+              // 去掉描述后保持原有卡片高度
+              minHeight: compact ? undefined : 57,
               minWidth: 0,
               border: '1px solid var(--control-border)',
               borderRadius: 8,
@@ -301,7 +304,7 @@ export function WelcomeScreen({
             {/* 名称 + 扩展名徽标（极窄模式只保留居中名称） */}
             <div style={compact ? { ...LABEL_ROW_STYLE, flex: 'none', width: '100%', justifyContent: 'center' } : LABEL_ROW_STYLE}>
               <span style={compact ? { ...LABEL_TEXT_STYLE, fontSize: 12 } : LABEL_TEXT_STYLE}>{action.name}</span>
-              {action.ext && !compact && <CodeBadge color={action.color}>{action.ext}</CodeBadge>}
+              {action.ext && !compact && <CodeBadge>{action.ext}</CodeBadge>}
             </div>
           </button>
           </Tooltip>
@@ -396,6 +399,8 @@ export function WelcomeScreen({
                 alignItems: 'center',
                 gap: compact ? 4 : 10,
                 padding: compact ? '8px 4px 6px' : '8px 12px',
+                // 去掉描述后保持原有卡片高度
+                minHeight: compact ? undefined : 52,
                 minWidth: 0,
                 border: '1px solid var(--control-border)',
                 borderRadius: 6,
@@ -427,7 +432,7 @@ export function WelcomeScreen({
               {/* 名称 + 扩展名徽标（极窄模式只保留居中名称） */}
               <div style={compact ? { ...LABEL_ROW_STYLE, flex: 'none', width: '100%', justifyContent: 'center' } : LABEL_ROW_STYLE}>
                 <span style={LABEL_TEXT_STYLE}>{fmt.name}</span>
-                {fmt.ext && !compact && <CodeBadge color={fmt.color}>{fmt.ext}</CodeBadge>}
+                {fmt.ext && !compact && <CodeBadge>{fmt.ext}</CodeBadge>}
               </div>
             </button>
             </Tooltip>
@@ -457,6 +462,8 @@ export function WelcomeScreen({
               alignItems: 'center',
               gap: compact ? 8 : 12,
               padding: compact ? '8px 10px' : '10px 14px',
+              // 去掉描述后保持原有卡片高度
+              minHeight: compact ? undefined : 57,
               minWidth: 0,
               border: `1px solid ${action.border}`,
               borderRadius: 8,
@@ -505,7 +512,7 @@ export function WelcomeScreen({
               />
             </div>
             {/* 标题 + 靠右的快捷键徽标（放不下时徽标隐藏，标题优先完整） */}
-            <div style={{ ...LABEL_ROW_STYLE, justifyContent: 'space-between', columnGap: 12 }}>
+            <div style={LABEL_ROW_STYLE}>
               <span style={LABEL_TEXT_STYLE}>{action.label}</span>
               {action.shortcut && !compact ? (
                 <CodeBadge color={action.badgeTint}>{formatShortcut(action.shortcut)}</CodeBadge>
@@ -526,6 +533,8 @@ export function WelcomeScreen({
               alignItems: 'center',
               gap: compact ? 8 : 12,
               padding: compact ? '8px 10px' : '10px 14px',
+              // 去掉描述后保持原有卡片高度
+              minHeight: compact ? undefined : 57,
               minWidth: 0,
               border: '1px solid rgba(14, 165, 233, 0.18)',
               borderRadius: 8,

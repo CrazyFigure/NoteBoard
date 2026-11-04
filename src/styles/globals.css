@@ -5612,18 +5612,11 @@ button.nb-callout-icon:active {
   gap: 8px;
   min-width: 0;
   padding: 10px;
+  /* 「直接展示」与「收进更多」外观一致，仅靠标题区分 */
+  border: 1px solid var(--editor-border);
   border-radius: var(--radius-md, 8px);
+  background: var(--editor-bg);
   transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
-}
-
-.nb-cf-zone.is-primary {
-  border: 1px solid color-mix(in srgb, var(--accent-strong) 26%, var(--editor-border));
-  background: color-mix(in srgb, var(--accent-strong) 5%, var(--editor-bg));
-}
-
-.nb-cf-zone.is-more {
-  border: 1px dashed var(--editor-border);
-  background: color-mix(in srgb, var(--editor-bg) 60%, transparent);
 }
 
 /* 拖动项当前所在分区：强调色描边 + 光晕 */
@@ -5639,25 +5632,6 @@ button.nb-callout-icon:active {
   min-height: 22px;
   padding: 0 2px;
   font-size: 12px;
-}
-
-.nb-cf-zone-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 6px;
-}
-
-.nb-cf-zone-badge.is-primary {
-  background: var(--accent-strong);
-  color: #fff;
-}
-
-.nb-cf-zone-badge.is-more {
-  border: 1px dashed color-mix(in srgb, var(--editor-text-muted) 60%, transparent);
-  color: var(--editor-text-muted);
 }
 
 .nb-cf-zone-title {
@@ -5691,7 +5665,11 @@ button.nb-callout-icon:active {
   align-items: center;
   gap: 8px;
   min-width: 0;
+  height: 36px;
   padding: 0 4px;
+  border: 1px solid var(--control-border, var(--editor-border));
+  background: var(--editor-surface);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.04));
   border-radius: 8px;
   font-size: 12.5px;
   color: var(--editor-text);
@@ -5703,26 +5681,8 @@ button.nb-callout-icon:active {
   transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
 }
 
-.nb-cf-chip.is-primary {
-  height: 36px;
-  border: 1px solid var(--control-border, var(--editor-border));
-  background: var(--editor-surface);
-  box-shadow: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.04));
-}
-
-.nb-cf-chip.is-more {
-  height: 32px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--editor-text-secondary, var(--editor-text));
-}
-
 .nb-cf-chip:hover {
   border-color: var(--editor-border-focus, var(--accent-strong));
-}
-
-.nb-cf-chip.is-more:hover {
-  background: var(--toolbar-hover);
 }
 
 .nb-cf-chip:active {
@@ -5789,12 +5749,6 @@ button.nb-callout-icon:active {
   background: color-mix(in srgb, var(--nb-cf-color) 12%, transparent);
 }
 
-.nb-cf-chip.is-more .nb-cf-icon {
-  width: 22px;
-  height: 22px;
-  background: transparent;
-}
-
 .nb-cf-name {
   flex: 1 1 auto;
   min-width: 0;
@@ -5852,12 +5806,8 @@ button.nb-callout-icon:active {
 }
 
 /* 移动端：加大条目与按钮点按区域 */
-[data-platform='mobile'] .nb-cf-chip.is-primary {
+[data-platform='mobile'] .nb-cf-chip {
   height: 42px;
-}
-
-[data-platform='mobile'] .nb-cf-chip.is-more {
-  height: 38px;
 }
 
 [data-platform='mobile'] .nb-cf-move {
