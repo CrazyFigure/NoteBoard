@@ -6,13 +6,16 @@
 // - macOS WKWebView 的触控板捏合走 WebKit 私有 gesture 事件；触屏双指捏合走指针事件
 // - 按住拖动平移，双击在适应窗口与 100% 间切换，Esc 或点击空白处关闭
 // - 多图时支持左右切换（按钮 / ← → 键）
+// - 复制图片（按钮 / Ctrl+C）：位图写入系统剪贴板
 // 视图状态放在 ref，transform 经 rAF 合并后直写 DOM，避免高频指针 / 滚轮事件重渲染整个浮层（同 DiagramFullscreenModal）。
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
+  Copy,
   ExternalLink,
   FolderOpen,
   Maximize2,
@@ -25,6 +28,8 @@ import {
 import { Tooltip } from '../../components/Tooltip';
 import { stopReactPropagation } from '../bitable/bitableUtils';
 import { USES_COMMAND_KEY } from '../../core/platform';
+import { showToast } from '../../stores/toastStore';
+import { copyImageToClipboard, describeError } from './imageClipboard';
 import '../../styles/imagePreview.css';
 
 export interface ImagePreviewOverlayProps {
@@ -38,6 +43,8 @@ export interface ImagePreviewOverlayProps {
   onNavigate?: (index: number) => void;
   /** 删除当前图片；未提供时不显示删除按钮 */
   onDelete?: () => void;
+  /** 复制当前图片；未提供时按 src 读取图片后复制（data URL / 网络图片） */
+  onCopyImage?: () => Promise<void>;
   /** 在独立图片标签页中打开；未提供时不显示 */
   onOpenInTab?: () => void;
   /** 在系统文件夹中显示原图；未提供时不显示 */
@@ -80,6 +87,8 @@ const CHROME_RESERVE = 68;
 const VIEW_TRANSITION = 'transform 0.12s ease-out';
 /** 缩放按钮提示中的滚轮快捷键文案 */
 const WHEEL_ZOOM_HINT = USES_COMMAND_KEY ? '⌘+滚轮' : 'Ctrl+滚轮';
+/** 复制成功后按钮保持对勾的时长 */
+const COPIED_FEEDBACK_MS = 1500;
 
 function clampScale(scale: number): number {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
@@ -115,6 +124,7 @@ export function ImagePreviewOverlay({
   count = 1,
   onNavigate,
   onDelete,
+  onCopyImage,
   onOpenInTab,
   onRevealInDir,
 }: ImagePreviewOverlayProps) {
@@ -147,6 +157,29 @@ export function ImagePreviewOverlay({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const canNavigate = count > 1 && Boolean(onNavigate);
+
+  // 复制状态：进行中防止重复触发，完成后短暂显示对勾
+  const [copyState, setCopyState] = useState<'idle' | 'busy' | 'done'>('idle');
+  const copyTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+  }, []);
+
+  /** 复制当前图片到系统剪贴板 */
+  const copyImage = async () => {
+    if (copyState === 'busy' || loadFailed) return;
+    setCopyState('busy');
+    try {
+      await (onCopyImage ? onCopyImage() : copyImageToClipboard({ url: src }));
+      // 成功只把按钮换成对勾：全局提示的位置正好压在预览顶部工具栏上；失败才用提示说明原因
+      setCopyState('done');
+      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = window.setTimeout(() => setCopyState('idle'), COPIED_FEEDBACK_MS);
+    } catch (error) {
+      setCopyState('idle');
+      showToast(describeError(error, '复制图片失败'), 'error');
+    }
+  };
 
   /** 把 viewRef 写入 DOM，并同步工具栏百分比 */
   const flushView = useCallback(() => {
@@ -340,7 +373,8 @@ export function ImagePreviewOverlay({
     navigate: (step: number) => void;
     zoomByStep: (factor: number) => void;
     resetToFit: (animate?: boolean) => void;
-  }>({ navigate: () => undefined, zoomByStep, resetToFit });
+    copyImage: () => void;
+  }>({ navigate: () => undefined, zoomByStep, resetToFit, copyImage: () => undefined });
   keyActionsRef.current = {
     navigate: (step: number) => {
       // 首尾循环切换
@@ -348,6 +382,7 @@ export function ImagePreviewOverlay({
     },
     zoomByStep,
     resetToFit,
+    copyImage: () => void copyImage(),
   };
 
   // 键盘：捕获阶段接管，Esc 关闭（preventDefault 让外层弹层不随之关闭）；
@@ -359,6 +394,10 @@ export function ImagePreviewOverlay({
       if (e.key === 'Escape') {
         e.preventDefault();
         onCloseRef.current();
+      } else if ((USES_COMMAND_KEY ? e.metaKey : e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'c') {
+        // 预览中 Ctrl / ⌘+C 复制当前图片，而不是背后编辑器里的选区
+        e.preventDefault();
+        actions.copyImage();
       } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         e.preventDefault();
         actions.navigate(e.key === 'ArrowLeft' ? -1 : 1);
@@ -507,8 +546,6 @@ export function ImagePreviewOverlay({
     }
   };
 
-  const showFileActions = Boolean(onOpenInTab || onRevealInDir);
-
   return createPortal(
     <div
       ref={rootRef}
@@ -631,7 +668,19 @@ export function ImagePreviewOverlay({
             <Maximize2 size={16} />
           </button>
         </Tooltip>
-        {showFileActions && <span className="nb-image-preview-divider" />}
+        <span className="nb-image-preview-divider" />
+        <Tooltip content={copyState === 'done' ? '已复制' : '复制图片'} shortcut="Ctrl+C" side="bottom" sideOffset={6}>
+          <button
+            type="button"
+            className="nb-image-preview-btn"
+            aria-label="复制图片"
+            disabled={loadFailed}
+            aria-busy={copyState === 'busy'}
+            onClick={() => void copyImage()}
+          >
+            {copyState === 'done' ? <Check size={16} color="var(--success-600, #10b981)" /> : <Copy size={16} />}
+          </button>
+        </Tooltip>
         {onOpenInTab && (
           <Tooltip content="在独立标签页中打开" side="bottom" sideOffset={6}>
             <button type="button" className="nb-image-preview-btn" aria-label="在独立标签页中打开" onClick={onOpenInTab}>

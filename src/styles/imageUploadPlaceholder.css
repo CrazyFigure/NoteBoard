@@ -1,0 +1,79 @@
+/* NoteBoard 图片插入占位（见 features/editor-md/imageUploadPlaceholder.ts）
+ * 预览图与最终图片同宽（默认 100%），保存完成替换时版面不跳动；加载徽标居中浮在预览上。 */
+
+.nb-image-uploading {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 72px;
+  margin: 16px 0;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px dashed var(--editor-border, rgba(0, 0, 0, 0.15));
+  background: color-mix(in srgb, var(--editor-text, #1e293b) 4%, transparent);
+  user-select: none;
+  -webkit-user-select: none;
+  vertical-align: top;
+}
+
+.nb-image-uploading > img {
+  display: block;
+  width: 100%;
+  height: auto;
+  opacity: 0.5;
+  pointer-events: none;
+  animation: nb-image-uploading-pulse 1.4s ease-in-out infinite;
+}
+
+.nb-image-uploading-badge {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--editor-border, rgba(0, 0, 0, 0.1));
+  background: var(--editor-surface, #ffffff);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  color: var(--editor-text-secondary, #64748b);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.nb-image-uploading-spinner {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent-500, #3b82f6) 25%, transparent);
+  border-top-color: var(--accent-500, #3b82f6);
+  animation: nb-image-uploading-spin 0.8s linear infinite;
+}
+
+@keyframes nb-image-uploading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes nb-image-uploading-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nb-image-uploading > img {
+    animation: none;
+  }
+  .nb-image-uploading-spinner {
+    animation-duration: 2s;
+  }
+}

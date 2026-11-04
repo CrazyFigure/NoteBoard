@@ -223,17 +223,20 @@ describe('exportBlobWithDialog 与 saveBlobToFile 导出保存', () => {
   });
 
   test.each(['C:\\Users\\测试\\导图.png', '/Users/test/导图.png', '/home/test/导图.png'])(
-    'Windows / macOS / Linux 普通路径导出继续使用既有 Rust 命令：%s', async (target) => {
+    'Windows / macOS / Linux 普通路径导出由 Rust 以二进制正文写盘：%s', async (target) => {
     vi.stubGlobal('isTauri', true);
     vi.mocked(invoke).mockImplementation(async (command) => {
       if (command === 'plugin:dialog|save') return target;
-      if (command === 'save_binary_file') return { ok: true };
+      if (command === 'save_binary_file_raw') return { ok: true };
       throw new Error(`不应调用：${command}`);
     });
 
     await expect(exportBlobWithDialog(imageBlob(), '导图.png', filters)).resolves.toBe(true);
     expect(invoke).toHaveBeenCalledTimes(2);
-    expect(invoke).toHaveBeenLastCalledWith('save_binary_file', { path: target, data: Array.from(bytes) }, undefined);
+    // 原始字节作为正文、路径放在请求头，不再转换为 JSON 数字数组
+    expect(invoke).toHaveBeenLastCalledWith('save_binary_file_raw', bytes, {
+      headers: { 'x-nb-path': encodeURIComponent(target) },
+    });
   });
 
   test('浏览器缺少下载能力时报告失败，不能返回成功', async () => {

@@ -27,6 +27,8 @@ pub mod mobile_bridge;
 pub mod sync;
 // 文档历史记录（版本历史）
 pub mod history;
+// 系统剪贴板：图片位图与文件列表
+pub mod clipboard;
 
 use state::AppState;
 use std::sync::Mutex;
@@ -193,6 +195,7 @@ pub fn run() {
             fsio::prepare::prepare_document,
             fsio::commands::write_document,
             fsio::commands::save_binary_file,
+            fsio::commands::save_binary_file_raw,
             fsio::commands::read_dir,
             fsio::commands::create_file,
             fsio::commands::create_dir,
@@ -201,6 +204,10 @@ pub fn run() {
             fsio::commands::path_exists,
             fsio::commands::reveal_in_explorer,
             fsio::commands::open_with_default_app,
+            // 系统剪贴板（图片位图 / 文件列表）
+            clipboard::clipboard_write_image,
+            clipboard::clipboard_write_image_file,
+            clipboard::clipboard_write_files,
             // settings
             settings::commands::load_settings,
             settings::commands::save_settings,
@@ -303,6 +310,10 @@ pub fn run() {
             if let tauri::RunEvent::Reopen { has_visible_windows: false, .. } = _event {
                 let handle = _app.clone();
                 std::thread::spawn(move || window::tray::restore_hidden_windows(&handle));
+            }
+            // 退出前释放剪贴板实例：Linux 借此把已复制的图片 / 文件移交给剪贴板管理器
+            if let tauri::RunEvent::Exit = _event {
+                clipboard::release();
             }
         });
 }

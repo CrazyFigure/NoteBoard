@@ -39,6 +39,7 @@ import { Extension, type Extensions } from '@tiptap/core';
 import { Plugin, TextSelection } from '@tiptap/pm/state';
 import { redoDocumentHistory, undoDocumentHistory } from '../../history/documentHistory';
 import { EnhancedImageBlock } from '../imageNodeView';
+import { ImageUploadPlaceholder } from '../imageUploadPlaceholder';
 import { buildCoreExtensions, MarkdownTable } from './core';
 // 引入图片扩展的类型增强，使自定义图片节点的 setImage 命令在全局链式 API 中可见。
 import '@tiptap/extension-image';
@@ -215,6 +216,8 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // 选区可视化：完整选中的块（列表、代码块、折叠块、图片等）整体显示底板
     SelectionHighlight,
+    // 粘贴 / 拖入 / 选择本地图片时，保存期间在插入位置显示预览与加载动画
+    ImageUploadPlaceholder,
     // 正文表情：表情库内的 Unicode 表情显示为与表情面板一致的 Noto SVG（文件中仍是标准字符）
     InlineEmojiRender,
     // 双击 / 三击选区不跨越段落边界：行尾空白双击不再选中换行，段落间隙判给更近的文本块

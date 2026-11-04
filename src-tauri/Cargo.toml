@@ -55,6 +55,13 @@ tauri-plugin-window-state = "2"
 tauri-plugin-global-shortcut = "~2.3"
 trash = "5"
 font-kit = "0.14"
+# 复制图片到剪贴板：原生端直接解码本地图片（4K JPEG 约 30 毫秒），避免经 IPC 传输数十 MB 像素
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico"] }
+
+# macOS / Linux 的图片位图与文件列表写入系统剪贴板（NSImage/NSURL、image/png 与 text/uri-list）。
+# Windows 不用它：其写图时在剪贴板打开期间编码 PNG（大图数秒），且以空所有者打开会写入失败，改为 clipboard/win.rs 原生实现。
+[target.'cfg(not(any(target_os = "android", target_os = "ios", windows)))'.dependencies]
+arboard = "3.6"
 
 # 标签跨窗口使用系统拖放；Linux 单独使用 GTK 事件串行号，兼容 Wayland。
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
@@ -65,7 +72,8 @@ drag = { path = "vendor/drag" }
 winreg = "0.55"
 # Win32_Graphics_Gdi：S06 起系统字体枚举使用 GDI EnumFontFamiliesExW 原生实现（替代 PowerShell 子进程）
 # Win32_Security_Cryptography：同步与备份的密码/令牌使用 DPAPI 绑定当前 Windows 用户加密保存
-windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_Graphics_Gdi", "Win32_Security_Cryptography"] }
+# Win32_System_DataExchange / Win32_System_Memory：图片与文件写入系统剪贴板（clipboard/win.rs）
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_Graphics_Gdi", "Win32_Security_Cryptography", "Win32_System_DataExchange", "Win32_System_Memory"] }
 # Markdown 导出 PDF：直接调用 WebView2 PrintToPdf，版本须与 tauri/wry 使用的保持一致
 webview2-com = "0.38"
 windows-core = "0.61"
@@ -79,3 +87,24 @@ gtk = "0.18"
 [target.'cfg(target_os = "windows")'.dev-dependencies]
 # 与 Tauri 当前锁定的 Tao 版本共用依赖，回归 OLE 嵌套循环中的实时事件投递。
 tao = { version = "0.35", default-features = false, features = ["rwh_06"] }
+
+# 调试构建（tauri dev）中，复制图片用到的解码 / 压缩依赖按发布级别优化：
+# 未优化时 4K JPEG 解码约 1.7 秒、PNG 约 0.5 秒，优化后与发布版一致（几十毫秒）。
+# 只影响下列依赖（首次编译一次），主工程仍按调试级别快速增量编译。
+[profile.dev.package]
+image = { opt-level = 3 }
+png = { opt-level = 3 }
+fdeflate = { opt-level = 3 }
+zune-jpeg = { opt-level = 3 }
+zune-core = { opt-level = 3 }
+gif = { opt-level = 3 }
+weezl = { opt-level = 3 }
+image-webp = { opt-level = 3 }
+moxcms = { opt-level = 3 }
+pxfm = { opt-level = 3 }
+crc32fast = { opt-level = 3 }
+miniz_oxide = { opt-level = 3 }
+adler2 = { opt-level = 3 }
+simd-adler32 = { opt-level = 3 }
+flate2 = { opt-level = 3 }
+zlib-rs = { opt-level = 3 }

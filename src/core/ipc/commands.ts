@@ -4,6 +4,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import type { DialogFilter } from '@tauri-apps/plugin-dialog';
+import { IS_WEB } from '../platform';
 import type {
   DocumentPayload,
   FileTreeNode,
@@ -285,13 +286,21 @@ export function writeDocument(
 }
 
 // 保存二进制文件（如粘贴或插入的图片数据）
+// 桌面与移动端以原始字节正文传输、路径放在请求头：原先转成 JSON 数字数组并在主线程反序列化，
+// 3 MB 截图要约 0.7 秒且期间界面卡住，二进制正文约 50 毫秒。网页端适配层仍按原接口转为 Base64 上传。
 export function saveBinaryFile(
   path: string,
   data: Uint8Array | number[],
 ): Promise<WriteResult> {
-  return invoke<WriteResult>('save_binary_file', {
-    path,
-    data: Array.from(data),
+  if (IS_WEB) {
+    return invoke<WriteResult>('save_binary_file', {
+      path,
+      data: Array.from(data),
+    });
+  }
+  const bytes = data instanceof Uint8Array ? data : Uint8Array.from(data);
+  return invoke<WriteResult>('save_binary_file_raw', bytes, {
+    headers: { 'x-nb-path': encodeURIComponent(path) },
   });
 }
 
@@ -334,6 +343,30 @@ export function revealInExplorer(path: string): Promise<void> {
 
 export function openWithDefaultApp(path: string): Promise<void> {
   return invoke<void>('open_with_default_app', { path });
+}
+
+// ── 系统剪贴板（桌面端原生格式） ──
+
+/** 复制本地图片文件的位图：只传路径，由原生端读盘解码（不经 IPC 传输像素） */
+export function clipboardWriteImageFile(path: string): Promise<void> {
+  return invoke<void>('clipboard_write_image_file', { path });
+}
+
+/** 复制图片位图：正文为原始文件字节（PNG / JPEG / GIF / WebP / BMP / ICO），由原生端解码 */
+export function clipboardWriteImageEncoded(bytes: Uint8Array): Promise<void> {
+  return invoke<void>('clipboard_write_image', bytes, { headers: { 'x-nb-encoding': 'encoded' } });
+}
+
+/** 复制图片位图：正文为自上而下的 RGBA 像素（每像素 4 字节、非预乘），宽高放在请求头 */
+export function clipboardWriteImagePixels(rgba: Uint8Array, width: number, height: number): Promise<void> {
+  return invoke<void>('clipboard_write_image', rgba, {
+    headers: { 'x-nb-encoding': 'rgba', 'x-nb-width': String(width), 'x-nb-height': String(height) },
+  });
+}
+
+/** 把文件以「文件」形式放入系统剪贴板，可在文件管理器或聊天软件中直接粘贴 */
+export function clipboardWriteFiles(paths: string[]): Promise<void> {
+  return invoke<void>('clipboard_write_files', { paths });
 }
 
 // ── 设置与系统 ──

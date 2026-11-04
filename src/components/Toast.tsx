@@ -18,7 +18,9 @@ export function ToastContainer() {
         top: 48,
         left: '50%',
         transform: 'translateX(-50%)',
-        zIndex: 99999,
+        // 需高于大图预览（100006）、多维表格长文本弹层（100002）与全局输入弹窗（100010），
+        // 否则在这些浮层中复制图片等操作的结果提示会被遮住
+        zIndex: 100020,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',

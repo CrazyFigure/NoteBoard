@@ -1,30 +1,142 @@
 // NoteBoard Markdown 现代图片扩展与交互组件
-// 支持本地相对路径动态解析、悬停工具栏、大图预览查看器、多级缩放与拖拽拉伸、居左/居中/居右对齐
+// 支持本地相对路径动态解析、悬停工具栏、大图预览查看器、多级缩放与拖拽拉伸、居左/居中/居右对齐，
+// 以及图片专属右键菜单（复制图片 / 复制为文件 / 另存为 / 重命名文件 / 编辑说明 / 删除等）
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
-import { Maximize2, AlignLeft, AlignCenter, AlignRight, Trash2, AlertCircle, RefreshCw, Link2 } from 'lucide-react';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
+import {
+  Maximize2,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  Trash2,
+  AlertCircle,
+  RefreshCw,
+  Link2,
+  Link,
+  Copy,
+  Files,
+  Download,
+  ExternalLink,
+  FolderOpen,
+  Globe,
+  Share2,
+  Captions,
+  PenLine,
+} from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import * as ipc from '../../core/ipc/commands';
+import { IS_NATIVE_MOBILE, TARGET_PLATFORM } from '../../core/platform';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
+import { showToast } from '../../stores/toastStore';
+import { showPrompt } from '../../stores/promptDialogStore';
 import { useExplorerStore } from '../explorer/explorerStore';
+import { basenameOf } from '../explorer/pathUtils';
+import { stopReactPropagation } from '../bitable/bitableUtils';
 import { handleLinkClick, isAbsoluteLocalPath, resolveRelativeDocPath } from './linkHandler';
 import { openDocument } from '../editor-code/orchestration/openDocument';
 import { Tooltip } from '../../components/Tooltip';
 import { EnhancedImageBlockCore } from './imageCore';
 import { ImagePreviewOverlay } from '../image-viewer/ImagePreviewOverlay';
+import {
+  CAN_COPY_IMAGE_FILE,
+  copyImageFileToClipboard,
+  copyImageLocation,
+  copyImageToClipboard,
+  describeError,
+  saveImageAs,
+  type ImageSource,
+} from '../image-viewer/imageClipboard';
+import { ImageContextMenu, type ImageAlign, type ImageMenuItem, type ImageMenuSection } from './ImageContextMenu';
+import { renameImageFile, splitFileName, validateFileStem } from './imageActions';
 
 // 保留既有导出入口，界面和调用方继续使用同一份核心规则。
 export { parseLinkedImageToken, normalizeImageWidth, normalizeImageAlign, renderImageMarkdown, formatMarkdownDestination } from './imageCore';
 
+/** 图片节点视图根元素标记：右键插件据此识别点击是否落在图片上 */
+const IMAGE_VIEW_ATTRIBUTE = 'data-nb-image-view';
+
+/** 是否为打开右键菜单的点击：右键，或 macOS 上的 Control+左键 */
+function isContextClick(event: MouseEvent): boolean {
+  return event.button === 2 || (TARGET_PLATFORM === 'macos' && event.button === 0 && event.ctrlKey);
+}
+
+/** 事件目标是否位于当前编辑器内的图片节点视图中 */
+function isInImageView(view: EditorView, target: EventTarget | null): boolean {
+  const element = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+  const imageView = element?.closest(`[${IMAGE_VIEW_ATTRIBUTE}]`);
+  return Boolean(imageView && view.dom.contains(imageView));
+}
+
+/** 菜单信息头显示的名称：本地图片取文件名，网络图片取地址末段，内嵌图片统一称呼 */
+function describeImageName(rawSrc: string, absPath: string | null): string {
+  if (absPath) return basenameOf(absPath);
+  if (rawSrc.startsWith('data:')) return '内嵌图片';
+  try {
+    const url = new URL(rawSrc);
+    const segment = url.pathname.split('/').filter(Boolean).pop();
+    return segment ? decodeURIComponent(segment) : url.host;
+  } catch {
+    return rawSrc || '图片';
+  }
+}
+
+/** 图片格式简称（PNG / JPG / SVG …），用于菜单信息头 */
+function describeImageFormat(rawSrc: string, absPath: string | null): string {
+  const dataMime = /^data:image\/([a-z0-9.+-]+)[;,]/i.exec(rawSrc)?.[1];
+  if (dataMime) return dataMime.replace(/\+xml$/i, '').toUpperCase();
+  const name = absPath ? basenameOf(absPath) : rawSrc.split(/[?#]/)[0];
+  const ext = /\.([a-z0-9]{2,5})$/i.exec(name)?.[1];
+  return ext ? ext.toUpperCase() : '';
+}
+
+/**
+ * 解析图片的显示地址与本地绝对路径：
+ * 网络地址 / Base64 原样使用；相对路径按当前文档目录（或工作区根目录）解析为本地文件。
+ */
+function resolveImageSource(rawSrc: string): { display: string; absPath: string | null } {
+  if (!rawSrc) return { display: '', absPath: null };
+
+  // 1. 网络 URL 或 Base64
+  if (
+    rawSrc.startsWith('http://') ||
+    rawSrc.startsWith('https://') ||
+    rawSrc.startsWith('data:') ||
+    rawSrc.startsWith('asset:')
+  ) {
+    return { display: rawSrc, absPath: null };
+  }
+
+  // 2. 本地相对路径或绝对路径
+  const activeKey = useWindowStore.getState().activeKey;
+  const currentDoc = activeKey ? useDocumentStore.getState().getDocument(activeKey) : null;
+  const baseDir = currentDoc?.dirPath || useExplorerStore.getState().root;
+  const absPath = baseDir ? resolveRelativeDocPath(baseDir, rawSrc) : isAbsoluteLocalPath(rawSrc) ? rawSrc : null;
+  if (!absPath) return { display: rawSrc, absPath: null };
+  try {
+    return { display: convertFileSrc(absPath), absPath };
+  } catch {
+    return { display: rawSrc, absPath };
+  }
+}
+
 /** TipTap 图片 NodeView 组件 */
-export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewProps) {
+export function ImageComponent({ node, editor, updateAttributes, deleteNode }: NodeViewProps) {
   const [hovered, setHovered] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
-  const [resolvedDisplaySrc, setResolvedDisplaySrc] = useState<string>('');
-  const [resolvedAbsPath, setResolvedAbsPath] = useState<string | null>(null);
+  // 首次渲染就解析出图片地址：不再先渲染一个空 src 的 <img>（粘贴图片替换占位时会闪一下空白）
+  const [initialSource] = useState(() => resolveImageSource(node.attrs.src || ''));
+  const [resolvedDisplaySrc, setResolvedDisplaySrc] = useState<string>(initialSource.display);
+  const [resolvedAbsPath, setResolvedAbsPath] = useState<string | null>(initialSource.absPath);
+  const resolvedForRef = useRef<string>(node.attrs.src || '');
+  // 右键菜单位置（视口坐标）；打开期间图片显示描边，标明菜单作用对象
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  // 原图像素尺寸，显示在右键菜单信息头
+  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
 
   const rawSrc: string = node.attrs.src || '';
   const alt: string = node.attrs.alt || '';
@@ -32,51 +144,16 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
   const width: string = node.attrs.width || '100%';
   const linkHref: string = node.attrs.href || '';
 
-  // 动态解析图片真实 URL
+  // 图片地址变化（如重命名文件）时重新解析；首次解析已在初始状态中完成，
+  // 不能在此重置尺寸——缓存命中的图片可能在本副作用执行前就已触发 onLoad
   useEffect(() => {
+    if (resolvedForRef.current === rawSrc) return;
+    resolvedForRef.current = rawSrc;
     setLoadError(false);
-    if (!rawSrc) {
-      setResolvedDisplaySrc('');
-      setResolvedAbsPath(null);
-      return;
-    }
-
-    // 1. 网络 URL 或 Base64
-    if (
-      rawSrc.startsWith('http://') ||
-      rawSrc.startsWith('https://') ||
-      rawSrc.startsWith('data:') ||
-      rawSrc.startsWith('asset:')
-    ) {
-      setResolvedDisplaySrc(rawSrc);
-      setResolvedAbsPath(null);
-      return;
-    }
-
-    // 2. 本地相对路径或绝对路径
-    const activeKey = useWindowStore.getState().activeKey;
-    const currentDoc = activeKey ? useDocumentStore.getState().getDocument(activeKey) : null;
-    const baseDir = currentDoc?.dirPath || useExplorerStore.getState().root;
-
-    if (baseDir) {
-      const absPath = resolveRelativeDocPath(baseDir, rawSrc);
-      setResolvedAbsPath(absPath);
-      try {
-        setResolvedDisplaySrc(convertFileSrc(absPath));
-      } catch {
-        setResolvedDisplaySrc(rawSrc);
-      }
-    } else if (isAbsoluteLocalPath(rawSrc)) {
-      setResolvedAbsPath(rawSrc);
-      try {
-        setResolvedDisplaySrc(convertFileSrc(rawSrc));
-      } catch {
-        setResolvedDisplaySrc(rawSrc);
-      }
-    } else {
-      setResolvedDisplaySrc(rawSrc);
-      setResolvedAbsPath(null);
-    }
+    setNaturalSize(null);
+    const next = resolveImageSource(rawSrc);
+    setResolvedDisplaySrc(next.display);
+    setResolvedAbsPath(next.absPath);
   }, [rawSrc]);
 
   // 处理对齐样式
@@ -125,12 +202,188 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
   // 在系统文件夹中显示
   const handleRevealInDir = async () => {
     if (resolvedAbsPath) {
-      await ipc.revealInExplorer(resolvedAbsPath);
+      await ipc.revealInExplorer(resolvedAbsPath).catch((error) => {
+        showToast(describeError(error, '无法打开文件夹'), 'error');
+      });
     }
   };
 
+  // ── 右键菜单 ──
+
+  const isRemote = /^https?:\/\//i.test(rawSrc);
+  // 菜单与预览中复制、另存为读取的图片来源：本地图片按磁盘路径读取原文件
+  const imageSource: ImageSource = { path: resolvedAbsPath, url: resolvedDisplaySrc || rawSrc };
+
+  /** 执行异步操作并以 Toast 反馈结果 */
+  const runWithToast = async (task: () => Promise<unknown>, success: string, failure: string) => {
+    try {
+      await task();
+      showToast(success, 'success');
+    } catch (error) {
+      showToast(describeError(error, failure), 'error');
+    }
+  };
+
+  const handleCopyImage = () => runWithToast(() => copyImageToClipboard(imageSource), '图片已复制', '复制图片失败');
+
+  const handleSaveAs = async () => {
+    try {
+      // 取消保存不提示
+      if (await saveImageAs(imageSource)) showToast('图片已保存', 'success');
+    } catch (error) {
+      showToast(describeError(error, '保存图片失败'), 'error');
+    }
+  };
+
+  // 编辑替代文本（显示在图片下方的说明文字）
+  const handleEditCaption = async () => {
+    const value = await showPrompt({
+      title: '编辑图片说明',
+      icon: <Captions size={17} />,
+      defaultValue: alt,
+      placeholder: '显示在图片下方，可留空',
+      confirmLabel: '保存',
+      allowEmpty: true,
+    });
+    if (value === null || editor.isDestroyed) return;
+    try {
+      updateAttributes({ alt: value });
+    } catch {
+      // 弹窗期间图片已被删除或撤销，忽略
+    }
+  };
+
+  // 重命名磁盘上的图片文件（扩展名不变），并同步文档中的引用
+  const handleRenameFile = async () => {
+    if (!resolvedAbsPath) return;
+    const absPath = resolvedAbsPath;
+    const { stem, ext } = splitFileName(basenameOf(absPath));
+    const value = await showPrompt({
+      title: '重命名图片文件',
+      icon: <PenLine size={17} />,
+      description: ext ? `扩展名 ${ext} 保持不变` : undefined,
+      defaultValue: stem,
+      confirmLabel: '重命名',
+      validate: validateFileStem,
+    });
+    if (value === null || editor.isDestroyed) return;
+    try {
+      const newName = await renameImageFile(editor, { absPath, rawSrc, newStem: value });
+      if (newName) showToast(`已重命名为 ${newName}`, 'success');
+    } catch (error) {
+      showToast(describeError(error, '重命名失败'), 'error');
+    }
+  };
+
+  // 右键（触屏长按）图片：弹出图片菜单，不再走通用的文本右键菜单
+  const handleContextMenu = (event: React.MouseEvent) => {
+    event.preventDefault();
+    // 只拦 React 树（编辑器容器的右键处理），原生事件继续冒泡，其他菜单的「点外部关闭」照常生效
+    stopReactPropagation(event);
+    setHovered(false);
+    setContextMenu({ x: event.clientX, y: event.clientY });
+  };
+
+  /** 按图片来源、可编辑状态与平台组装菜单 */
+  const buildMenuSections = (): ImageMenuSection[] => {
+    const editable = editor.isEditable;
+    const isLocal = Boolean(resolvedAbsPath);
+    const usable = !loadError && Boolean(resolvedDisplaySrc);
+    const pick = (items: Array<ImageMenuItem | false>) => items.filter((item): item is ImageMenuItem => Boolean(item));
+
+    const sections: ImageMenuSection[] = [
+      {
+        kind: 'items',
+        key: 'view',
+        items: pick([
+          usable && { key: 'preview', label: '查看大图', Icon: Maximize2, onSelect: () => setLightboxOpen(true) },
+          // 移动端没有标签页，图片以单独页面打开
+          isLocal && {
+            key: 'open-tab',
+            label: IS_NATIVE_MOBILE ? '单独打开' : '在独立标签页中打开',
+            Icon: ExternalLink,
+            onSelect: () => void handleOpenInTab(),
+          },
+          // 移动端没有可定位文件的系统文件管理器
+          isLocal && !IS_NATIVE_MOBILE && { key: 'reveal', label: '在文件夹中显示', Icon: FolderOpen, onSelect: () => void handleRevealInDir() },
+          isRemote && { key: 'open-url', label: '在浏览器中打开', Icon: Globe, onSelect: () => void ipc.openExternalUrl(rawSrc) },
+          Boolean(linkHref) && {
+            key: 'open-link',
+            label: '打开图片链接',
+            Icon: Link2,
+            onSelect: () => void handleLinkClick(linkHref, useWindowStore.getState().activeKey ?? ''),
+          },
+        ]),
+      },
+      {
+        kind: 'items',
+        key: 'copy',
+        items: pick([
+          usable && { key: 'copy-image', label: '复制图片', Icon: Copy, onSelect: () => void handleCopyImage() },
+          // 文件形式只在桌面端可用：可直接粘贴到文件管理器或聊天软件
+          usable && isLocal && CAN_COPY_IMAGE_FILE && {
+            key: 'copy-file',
+            label: '复制为文件',
+            Icon: Files,
+            onSelect: () => void runWithToast(() => copyImageFileToClipboard(resolvedAbsPath!), '已复制图片文件', '复制文件失败'),
+          },
+          (isLocal || isRemote) && {
+            key: 'copy-path',
+            label: isLocal ? '复制文件路径' : '复制图片链接',
+            Icon: Link,
+            onSelect: () => void runWithToast(() => copyImageLocation(imageSource), isLocal ? '已复制文件路径' : '已复制图片链接', '复制失败'),
+          },
+          // 移动端以系统分享代替文件复制
+          usable && isLocal && IS_NATIVE_MOBILE && {
+            key: 'share',
+            label: '分享图片',
+            Icon: Share2,
+            onSelect: () => void ipc.shareFile(resolvedAbsPath!).catch((error) => showToast(describeError(error, '分享失败'), 'error')),
+          },
+          usable && { key: 'save-as', label: '另存为…', Icon: Download, onSelect: () => void handleSaveAs() },
+        ]),
+      },
+    ];
+
+    // 沉浸阅读等只读状态不提供修改类操作
+    if (editable) {
+      sections.push(
+        {
+          kind: 'layout',
+          key: 'layout',
+          align,
+          width,
+          onAlign: (next: ImageAlign) => updateAttributes({ align: next }),
+          onWidth: (next: string) => updateAttributes({ width: next }),
+        },
+        {
+          kind: 'items',
+          key: 'edit',
+          items: pick([
+            { key: 'caption', label: '编辑说明文字…', Icon: Captions, onSelect: () => void handleEditCaption() },
+            // 图片加载失败时文件多半已不存在，不提供重命名
+            usable && isLocal && { key: 'rename', label: '重命名文件…', Icon: PenLine, onSelect: () => void handleRenameFile() },
+          ]),
+        },
+        {
+          kind: 'items',
+          key: 'delete',
+          items: [{ key: 'delete', label: '删除图片', Icon: Trash2, danger: true, onSelect: deleteNode }],
+        },
+      );
+    }
+    return sections;
+  };
+
+  const format = describeImageFormat(rawSrc, resolvedAbsPath);
+  const menuMeta = [format, naturalSize && `${naturalSize.width} × ${naturalSize.height}`].filter(Boolean).join(' · ');
+  // 菜单打开期间以强调色描边标明作用对象（替代整块选中底板）
+  const contextOutline: React.CSSProperties = contextMenu
+    ? { outline: '2px solid var(--accent-500, #3b82f6)', outlineOffset: 2 }
+    : {};
+
   return (
-    <NodeViewWrapper style={alignContainerStyle}>
+    <NodeViewWrapper style={alignContainerStyle} {...{ [IMAGE_VIEW_ATTRIBUTE]: '' }} onContextMenu={handleContextMenu}>
       <div
         style={{
           position: 'relative',
@@ -143,8 +396,8 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
-        {/* 悬停浮层快捷操作工具栏 */}
-        {hovered && (
+        {/* 悬停浮层快捷操作工具栏（右键菜单打开期间隐藏，避免与菜单重复） */}
+        {hovered && !contextMenu && (
           <div
             style={{
               position: 'absolute',
@@ -317,6 +570,7 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
               gap: 8,
               color: 'var(--editor-text)',
               fontSize: 13,
+              ...contextOutline,
             }}
           >
             <AlertCircle size={24} color="#ef4444" />
@@ -352,6 +606,10 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
             src={resolvedDisplaySrc}
             alt={alt}
             referrerPolicy="no-referrer"
+            onLoad={(event) => {
+              const image = event.currentTarget;
+              setNaturalSize(image.naturalWidth > 0 ? { width: image.naturalWidth, height: image.naturalHeight } : null);
+            }}
             onError={() => setLoadError(true)}
             onDoubleClick={() => setLightboxOpen(true)}
             style={{
@@ -367,12 +625,13 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
                 ? '1px solid var(--editor-border-focus)'
                 : '1px solid var(--editor-border)',
               transition: 'box-shadow 150ms ease, border-color 150ms ease',
+              ...contextOutline,
             }}
           />
         )}
 
         {/* 拖拽缩放手柄（右下角） */}
-        {hovered && !loadError && (
+        {hovered && !contextMenu && !loadError && (
           <Tooltip content="拖拽拉伸调节图片尺寸" side="left" sideOffset={6}>
             <div
               onMouseDown={handleResizeStart}
@@ -416,8 +675,22 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
           src={resolvedDisplaySrc}
           alt={alt}
           onClose={() => setLightboxOpen(false)}
+          onCopyImage={() => copyImageToClipboard(imageSource)}
           onOpenInTab={resolvedAbsPath ? handleOpenInTab : undefined}
-          onRevealInDir={resolvedAbsPath ? handleRevealInDir : undefined}
+          // 移动端没有可定位文件的系统文件管理器
+          onRevealInDir={resolvedAbsPath && !IS_NATIVE_MOBILE ? handleRevealInDir : undefined}
+        />
+      )}
+
+      {/* 图片右键菜单 */}
+      {contextMenu && (
+        <ImageContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          title={describeImageName(rawSrc, resolvedAbsPath)}
+          meta={menuMeta}
+          sections={buildMenuSections()}
+          onClose={() => setContextMenu(null)}
         />
       )}
     </NodeViewWrapper>
@@ -442,6 +715,27 @@ export const EnhancedImageBlock = EnhancedImageBlockCore.extend({
 
   addNodeView() {
     return ReactNodeViewRenderer(ImageComponent);
+  },
+
+  addProseMirrorPlugins() {
+    return [
+      ...(this.parent?.() ?? []),
+      new Plugin({
+        key: new PluginKey('nbImageContextClick'),
+        props: {
+          handleDOMEvents: {
+            // 右键图片时跳过 ProseMirror 的点击选中：原先图片会被选为整块（底板盖住图片），
+            // 右键菜单也因此误判为「选中文本」而弹出文字格式菜单。图片菜单由节点视图自行弹出。
+            mousedown: (view, event) => {
+              if (!isContextClick(event) || !isInImageView(view, event.target)) return false;
+              // 同时阻止浏览器默认行为：避免原生选区移动到图片两侧后又被同步为整块选中
+              event.preventDefault();
+              return true;
+            },
+          },
+        },
+      }),
+    ];
   },
 
   addCommands() {

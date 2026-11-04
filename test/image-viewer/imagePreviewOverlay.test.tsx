@@ -304,3 +304,47 @@ describe('ImagePreviewOverlay Markdown 图片', () => {
     expect(document.body.querySelector('[aria-label="删除这张图片"]')).toBeNull();
   });
 });
+
+describe('ImagePreviewOverlay 复制图片', () => {
+  let host: HTMLDivElement;
+  let root: Root;
+  const onCopyImage = vi.fn(() => Promise.resolve());
+
+  beforeEach(() => {
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+    onCopyImage.mockClear();
+    act(() => {
+      root.render(
+        <TooltipProvider>
+          <ImagePreviewOverlay src="data:image/png;base64,AAAA" onCopyImage={onCopyImage} onClose={() => undefined} />
+        </TooltipProvider>,
+      );
+    });
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  it('工具栏复制按钮复制当前图片，完成后显示对勾', async () => {
+    const button = document.body.querySelector('[aria-label="复制图片"]') as HTMLButtonElement;
+    expect(button).not.toBeNull();
+    await act(async () => {
+      button.click();
+    });
+    expect(onCopyImage).toHaveBeenCalledTimes(1);
+    expect(button.querySelector('.lucide-check')).not.toBeNull();
+  });
+
+  it('Ctrl+C 复制图片而不是背后编辑器的选区', async () => {
+    const event = new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true, cancelable: true });
+    await act(async () => {
+      window.dispatchEvent(event);
+    });
+    expect(event.defaultPrevented).toBe(true);
+    expect(onCopyImage).toHaveBeenCalledTimes(1);
+  });
+});

@@ -493,10 +493,14 @@ export function installTauriMock(): void {
         return { platform: 'android', isMobile: true, defaultWorkspace: WORKSPACE, externalRoot: EXTERNAL_ROOT, allFilesAccess: false };
       case 'ensure_default_workspace':
         return WORKSPACE;
+      // 系统剪贴板写入（clipboard_write_*）在浏览器预览中只验证调用链路
       case 'request_all_files_access':
       case 'move_app_to_background':
       case 'set_system_bar_style':
       case 'share_file':
+      case 'clipboard_write_image':
+      case 'clipboard_write_image_file':
+      case 'clipboard_write_files':
         return null;
       // ── 多端同步与备份（界面预览用样例数据） ──
       case 'sync_get_config':
@@ -634,6 +638,10 @@ export function installTauriMock(): void {
       case 'create_dir':
         dirs.add(`${String(args.dir)}/${String(args.name)}`);
         return null;
+      // 二进制保存（粘贴图片等）：只记录文件存在，浏览器预览不需要真实字节
+      case 'save_binary_file':
+      case 'save_binary_file_raw':
+        return { ok: true, mtime: Math.floor(Date.now() / 1000), size: 0, error: null };
       case 'rename_path': {
         const from = String(args.from);
         const to = String(args.to);
