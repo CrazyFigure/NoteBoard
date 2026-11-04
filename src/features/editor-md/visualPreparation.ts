@@ -2,8 +2,9 @@
 // 可视化准备任务的生命周期：正式构建中的大文档只在 Worker 中处理，取消、超时或失败都保留源码。
 import type { PreparedVisualDocument, PreparationStage } from './visualPreparation.worker';
 import type { Editor, JSONContent } from '@tiptap/core';
-import { Selection } from '@tiptap/pm/state';
+import { Selection, type Transaction } from '@tiptap/pm/state';
 import { Fragment, type Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { TRAILING_NODE_SUSPEND_META } from './markdownTrailingNode';
 
 /** 后台准备超过一分钟通常表示解析器遇到异常复杂内容，应允许继续使用源码而不是无限等待。 */
 const PREPARATION_TIMEOUT_MS = 60_000;
@@ -130,26 +131,43 @@ export async function mountVisualDocument(editor: Editor, document: JSONContent,
     rootPosition += block.nodeSize;
   });
   let loaded = 0;
-  for (const [index, batch] of batches.entries()) {
-    await yieldVisualTask(signal);
-    if (editor.isDestroyed) throw new DOMException('编辑器已关闭', 'AbortError');
+  // 首批起暂停补尾段，直到末批：批次之间插入的其它事务（代码高亮回填等）不能在半篇末尾补空段
+  let suspended = false;
+  /** 派发一批装载事务（不进撤销栈、不触发脏态） */
+  const dispatchMount = (tr: Transaction) => {
     const wasInitializing = initializing.current;
     initializing.current = true;
     try {
+      editor.view.dispatch(tr);
+    } finally {
+      initializing.current = wasInitializing;
+    }
+  };
+  try {
+    for (const [index, batch] of batches.entries()) {
+      await yieldVisualTask(signal);
+      if (editor.isDestroyed) throw new DOMException('编辑器已关闭', 'AbortError');
       const tr = editor.state.tr;
       if (index === 0) {
         tr.replaceWith(0, tr.doc.content.size, batch.nodes);
         // 文档属性不随 replaceWith 自动更新，必须在首批沿用后台解析的源文件属性。
         for (const [name, value] of Object.entries(document.attrs ?? {})) tr.setDocAttribute(name, value);
       } else tr.insert(batch.position ?? tr.doc.content.size, batch.nodes);
-      tr.setMeta('addToHistory', false).setMeta('skipTrailingNode', index < batches.length - 1);
+      const last = index === batches.length - 1;
+      tr.setMeta('addToHistory', false).setMeta('skipTrailingNode', !last);
+      // 末批恢复：补尾段插件在同一事务中按完整文档补出辅助段
+      if (!last || suspended) tr.setMeta(TRAILING_NODE_SUSPEND_META, !last);
       tr.setSelection(Selection.atStart(tr.doc));
-      editor.view.dispatch(tr);
-    } finally {
-      initializing.current = wasInitializing;
+      dispatchMount(tr);
+      suspended = !last;
+      loaded += batch.weight;
+      onProgress(loaded, total);
     }
-    loaded += batch.weight;
-    onProgress(loaded, total);
+  } finally {
+    // 取消或失败时也必须恢复，编辑器若继续使用不能永久停止补尾段
+    if (suspended && !editor.isDestroyed) {
+      dispatchMount(editor.state.tr.setMeta(TRAILING_NODE_SUSPEND_META, false).setMeta('addToHistory', false));
+    }
   }
   // React NodeViewContent 在事务后挂载；让出宏任务再显示，所有入口都遵守同一约束。
   await yieldVisualTask(signal);
