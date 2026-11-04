@@ -169,7 +169,7 @@ describe('exportBlobWithDialog 与 saveBlobToFile 导出保存', () => {
     vi.useRealTimers();
   });
 
-  test('非 Tauri 浏览器环境下调用 exportBlobWithDialog 触发浏览器下载并返回 true', async () => {
+  test('非 Tauri 浏览器环境下调用 exportBlobWithDialog 触发浏览器下载，结果不含磁盘路径', async () => {
     vi.useFakeTimers();
     const createObjectURL = vi.fn().mockReturnValue('blob:export-test');
     const revokeObjectURL = vi.fn();
@@ -184,7 +184,7 @@ describe('exportBlobWithDialog 与 saveBlobToFile 导出保存', () => {
     const result = await exportBlobWithDialog(blob, 'test.txt', [
       { name: '文本文件 (*.txt)', extensions: ['txt'] },
     ]);
-    expect(result).toBe(true);
+    expect(result).toEqual({ path: null, fileName: 'test.txt' });
     expect(createObjectURL).toHaveBeenCalledWith(blob);
     expect(click).toHaveBeenCalledOnce();
     expect(document.querySelector('a[download="test.txt"]')).toBeNull();
@@ -201,7 +201,7 @@ describe('exportBlobWithDialog 与 saveBlobToFile 导出保存', () => {
     ['xmind', 'application/zip', ['xmind']],
     ['md', 'text/markdown', ['md']],
     ['csv', 'text/csv', ['csv']],
-  ])('安卓导出 %s：通过 fs 插件向 content URI 写入原始字节', async (extension, mime, extensions) => {
+  ])('安卓导出 %s：通过 fs 插件向 content URI 写入原始字节，结果不含磁盘路径', async (extension, mime, extensions) => {
     vi.stubGlobal('isTauri', true);
     const target = `content://com.android.providers.downloads.documents/document/导图%3A1.${extension}`;
     vi.mocked(invoke).mockImplementation(async (command) => {
@@ -211,7 +211,8 @@ describe('exportBlobWithDialog 与 saveBlobToFile 导出保存', () => {
     });
     const imageFilters = [{ name: '图片', extensions }];
 
-    await expect(exportBlobWithDialog(imageBlob(mime), `导图.${extension}`, imageFilters)).resolves.toBe(true);
+    await expect(exportBlobWithDialog(imageBlob(mime), `导图.${extension}`, imageFilters))
+      .resolves.toEqual({ path: null, fileName: `导图.${extension}` });
 
     expect(invoke).toHaveBeenCalledTimes(2);
     expect(invoke).toHaveBeenNthCalledWith(1, 'plugin:dialog|save', {
@@ -231,7 +232,8 @@ describe('exportBlobWithDialog 与 saveBlobToFile 导出保存', () => {
       throw new Error(`不应调用：${command}`);
     });
 
-    await expect(exportBlobWithDialog(imageBlob(), '导图.png', filters)).resolves.toBe(true);
+    // 返回实际选择的磁盘路径，供结果弹窗打开文件与定位
+    await expect(exportBlobWithDialog(imageBlob(), '导图.png', filters)).resolves.toEqual({ path: target, fileName: '导图.png' });
     expect(invoke).toHaveBeenCalledTimes(2);
     // 原始字节作为正文、路径放在请求头，不再转换为 JSON 数字数组
     expect(invoke).toHaveBeenLastCalledWith('save_binary_file_raw', bytes, {
@@ -251,7 +253,7 @@ describe('exportBlobWithDialog 与 saveBlobToFile 导出保存', () => {
     vi.mocked(invoke).mockResolvedValue(null);
     const blob = imageBlob();
 
-    await expect(exportBlobWithDialog(blob, '导图.png', filters)).resolves.toBe(false);
+    await expect(exportBlobWithDialog(blob, '导图.png', filters)).resolves.toBeNull();
     expect(blob.arrayBuffer).not.toHaveBeenCalled();
     expect(invoke).toHaveBeenCalledOnce();
   });

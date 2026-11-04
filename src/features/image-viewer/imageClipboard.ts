@@ -244,8 +244,9 @@ export async function saveImageAs(source: ImageSource): Promise<boolean> {
   const blob = await loadImageBlob(source);
   const fileName = suggestImageFileName(source, blob.type);
   const ext = fileName.split('.').pop()?.toLowerCase() || 'png';
-  return await exportBlobWithDialog(blob, fileName, [
+  const saved = await exportBlobWithDialog(blob, fileName, [
     { name: `${ext.toUpperCase()} 图片`, extensions: [ext] },
     { name: '全部文件', extensions: ['*'] },
   ]);
+  return saved !== null;
 }

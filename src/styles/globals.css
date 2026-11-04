@@ -5127,6 +5127,43 @@ button.nb-callout-icon:active {
   line-height: 16px;
 }
 
+/* ── 导出结果弹窗：沿用 nb-prompt 外观，图标按成功 / 失败着色 ── */
+.nb-export-result.is-success .nb-prompt-icon {
+  background: color-mix(in srgb, var(--success-600) 12%, var(--editor-surface));
+  color: var(--success-600);
+}
+
+.nb-export-result.is-error .nb-prompt-icon {
+  background: color-mix(in srgb, var(--error-600) 12%, var(--editor-surface));
+  color: var(--error-600);
+}
+
+/* 导出路径：完整展示并允许选中复制，长路径任意处换行 */
+.nb-export-result-path,
+.nb-export-result-error {
+  padding: 9px 12px;
+  border: 1px solid var(--editor-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--editor-bg) 70%, var(--editor-surface));
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--editor-text-muted);
+  word-break: break-all;
+  user-select: text;
+}
+
+.nb-export-result-error {
+  color: var(--error-600);
+  word-break: break-word;
+}
+
+.nb-export-result-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
 /* 移动端：放大触控区域，按钮通栏排列，输入字号 ≥16px 防止 WebView 聚焦自动缩放 */
 [data-platform='mobile'] .nb-prompt {
   width: min(420px, 100%);

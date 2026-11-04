@@ -50,6 +50,7 @@ import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
 import { exportBlobWithDialog } from '../export/chartExport';
+import { showExportError, showExportSuccess } from '../../stores/exportResultStore';
 import {
   initializeDocumentHistory,
   registerDocumentHistoryAdapter,
@@ -1053,11 +1054,11 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
       // 唤起原生对话框保存文件
       const saved = await exportBlobWithDialog(blob, defaultFilename, filters);
       if (saved) {
-        showToast('成功导出为 CSV 表格数据', 'success');
+        showExportSuccess(saved, '已导出 CSV 表格');
       }
     } catch (e) {
       console.error('导出 CSV 失败:', e);
-      showToast('导出 CSV 失败', 'error');
+      showExportError(e, '导出 CSV 失败');
     }
   };
 

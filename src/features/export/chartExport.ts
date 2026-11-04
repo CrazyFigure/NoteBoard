@@ -16,6 +16,9 @@ import { isTauri } from '@tauri-apps/api/core';
 import { save } from '@tauri-apps/plugin-dialog';
 import * as ipc from '../../core/ipc/commands';
 import type { WriteError } from '../../core/ipc/types';
+import type { ExportedFile } from '../../stores/exportResultStore';
+
+export type { ExportedFile };
 
 /** 可导出的图片格式 */
 export type ChartImageFormat = 'svg' | 'png';
@@ -358,22 +361,22 @@ export interface DialogFilter {
 /**
  * 弹系统另存为对话框并保存二进制 Blob 文件
  * 普通路径由 Rust 写盘，安卓 content URI 通过 fs 插件交给系统内容提供器写入；浏览器使用 Blob 下载
- * @returns 用户取消时返回 false，成功保存返回 true
+ * @returns 用户取消时返回 null；成功时返回导出文件信息（浏览器下载与安卓 URI 没有磁盘路径，path 为 null）
  */
 export async function exportBlobWithDialog(
   blob: Blob,
   defaultFilename: string,
   filters: DialogFilter[],
-): Promise<boolean> {
+): Promise<ExportedFile | null> {
   // 浏览器非 Tauri 环境下走 <a> 链接模拟点击下载
   if (!isTauri()) {
     downloadBlob(blob, defaultFilename);
-    return true;
+    return { path: null, fileName: defaultFilename };
   }
 
   // 唤起系统原生保存文件对话框
   const selectedPath = await save({ defaultPath: defaultFilename, filters });
-  if (!selectedPath) return false;
+  if (!selectedPath) return null;
 
   // 安卓系统选择器返回的是授权 URI，不能传给只接受磁盘路径的 save_binary_file。
   // fs 插件会通过 ContentResolver 打开目标并写入原始字节，无需解析 URI 或扩大存储权限。
@@ -382,7 +385,8 @@ export async function exportBlobWithDialog(
     // 仅原生 URI 保存需要此能力；按需加载，避免网页适配层被要求提供安卓写入接口。
     const { writeFile } = await import('@tauri-apps/plugin-fs');
     await writeFile(selectedPath, bytes);
-    return true;
+    // content URI 不是可在本软件打开或在文件管理器定位的磁盘路径
+    return { path: null, fileName: defaultFilename };
   }
 
   // 桌面等普通文件路径保留既有写盘流程与错误提示。
@@ -390,19 +394,19 @@ export async function exportBlobWithDialog(
   if (!result.ok) {
     throw new Error(result.error ? describeWriteError(result.error) : '写入文件失败');
   }
-  return true;
+  return { path: selectedPath, fileName: selectedPath.split(/[\\/]/).pop() || defaultFilename };
 }
 
 /**
  * 弹系统另存为对话框并写入图片文件
  * Tauri 环境下必须走这条路径：WebView 不处理 blob 下载，按钮会「点了没反应」
- * @returns 用户取消时返回 false，不视为错误
+ * @returns 用户取消时返回 null，不视为错误
  */
 export async function saveBlobToFile(
   blob: Blob,
   defaultName: string,
   format: ChartImageFormat,
-): Promise<boolean> {
+): Promise<ExportedFile | null> {
   const extension = format;
   const filename = defaultName.endsWith(`.${extension}`)
     ? defaultName
@@ -477,7 +481,7 @@ export async function exportChartImage(
   format: ChartImageFormat,
   defaultName: string,
   options: ChartRasterOptions = {},
-): Promise<boolean> {
+): Promise<ExportedFile | null> {
   const blob = await chartToBlob(source, format, options);
   return await saveBlobToFile(blob, defaultName, format);
 }

@@ -4,23 +4,24 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { DrawioEditor } from '@/features/drawio/DrawioEditor';
 import { exportBlobWithDialog } from '@/features/export/chartExport';
-import { showToast } from '@/stores/toastStore';
+import { showExportError, showExportSuccess } from '@/stores/exportResultStore';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useWindowStore } from '@/stores/windowStore';
 import { resetEditorRegistryForTest } from '@/core/editor/editorRegistry';
 
 vi.mock('@/components/Tooltip', () => ({ Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock('@/features/export/chartExport', () => ({ exportBlobWithDialog: vi.fn(), buildExportFileName: () => '流程图' }));
-vi.mock('@/stores/toastStore', () => ({ showToast: vi.fn() }));
+vi.mock('@/stores/exportResultStore', () => ({ showExportSuccess: vi.fn(), showExportError: vi.fn() }));
 
 let root: Root;
 let host: HTMLDivElement;
 let frame: HTMLIFrameElement;
+const savedFile = { path: 'C:/test-only/流程图.png', fileName: '流程图.png' };
 
 beforeEach(async () => {
   (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
   vi.clearAllMocks();
-  vi.mocked(exportBlobWithDialog).mockResolvedValue(true);
+  vi.mocked(exportBlobWithDialog).mockResolvedValue(savedFile);
   // 模拟安装包 CSP 禁止 fetch(data:)；正确流程应完全不调用 fetch。
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('CSP 拦截')));
   useDocumentStore.setState({ documents: new Map() });
@@ -69,7 +70,7 @@ test('PNG 数据地址绕开 CSP 网络限制，原样交给公共保存流程',
   expect(blob.type).toBe('image/png');
   expect(Array.from(new Uint8Array(await readBlob(blob)))).toEqual([137, 80, 78, 71, 0, 255]);
   expect(fetch).not.toHaveBeenCalled();
-  expect(showToast).toHaveBeenCalledWith('绘图已成功导出为 PNG', 'success');
+  expect(showExportSuccess).toHaveBeenCalledWith(savedFile, '已导出 PNG 图片');
 });
 
 test('SVG 数据地址保留中文正文与扩展名', async () => {
@@ -82,15 +83,16 @@ test('SVG 数据地址保留中文正文与扩展名', async () => {
 });
 
 test('取消保存时不显示导出成功', async () => {
-  vi.mocked(exportBlobWithDialog).mockResolvedValue(false);
+  vi.mocked(exportBlobWithDialog).mockResolvedValue(null);
   await sendImage('png', 'data:image/png;base64,iVBORwD/');
   expect(exportBlobWithDialog).toHaveBeenCalledOnce();
-  expect(showToast).not.toHaveBeenCalled();
+  expect(showExportSuccess).not.toHaveBeenCalled();
+  expect(showExportError).not.toHaveBeenCalled();
 });
 
 test('写盘失败显示导出错误，避免静默失败', async () => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.mocked(exportBlobWithDialog).mockRejectedValue(new Error('磁盘空间不足'));
   await sendImage('png', 'data:image/png;base64,iVBORwD/');
-  expect(showToast).toHaveBeenCalledExactlyOnceWith('导出失败：磁盘空间不足', 'error');
+  expect(showExportError).toHaveBeenCalledExactlyOnceWith(new Error('磁盘空间不足'));
 });

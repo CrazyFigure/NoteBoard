@@ -53,6 +53,7 @@ import { Tooltip } from '../../components/Tooltip';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
+import { showExportError, showExportSuccess } from '../../stores/exportResultStore';
 import { buildExportFileName, exportBlobWithDialog } from '../export/chartExport';
 import {
   initializeDocumentHistory,
@@ -406,11 +407,11 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
       // 唤起原生对话框保存文件
       const saved = await exportBlobWithDialog(blob, defaultFilename, filters);
       if (saved) {
-        showToast('成功导出为 XMind 文件', 'success');
+        showExportSuccess(saved, '已导出 XMind 文件');
       }
     } catch (err) {
       console.error('导出 XMind 失败:', err);
-      showToast('导出 XMind 失败', 'error');
+      showExportError(err, '导出 XMind 失败');
     }
   };
 
@@ -427,11 +428,11 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
       // 唤起原生对话框保存文件
       const saved = await exportBlobWithDialog(blob, defaultFilename, filters);
       if (saved) {
-        showToast('成功导出为 Markdown 大纲', 'success');
+        showExportSuccess(saved, '已导出 Markdown 大纲');
       }
     } catch (err) {
       console.error('导出 Markdown 失败:', err);
-      showToast('导出 Markdown 失败', 'error');
+      showExportError(err, '导出 Markdown 失败');
     }
   };
 
@@ -469,11 +470,11 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
       ];
       const saved = await exportBlobWithDialog(blob, `${exportBaseName}.${extension}`, filters);
       if (saved) {
-        showToast(`成功导出为 ${extension.toUpperCase()} 图片`, 'success');
+        showExportSuccess(saved, `已导出 ${extension.toUpperCase()} 图片`);
       }
     } catch (err) {
       console.error('导出图片失败:', err);
-      showToast('导出图片失败', 'error');
+      showExportError(err, '导出图片失败');
     }
   };
 

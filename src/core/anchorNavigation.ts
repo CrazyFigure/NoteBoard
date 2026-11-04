@@ -1,7 +1,7 @@
 // 统一保护应用内链接导航，同时让导出下载走各平台实际支持的保存流程。
 // 画板使用的 browser-fs-access 会点击未挂到 DOM 的下载链接，因此原生端还需接管程序化 click。
 import { isTauri } from '@tauri-apps/api/core';
-import { showToast } from '../stores/toastStore';
+import { showExportError, showExportSuccess } from '../stores/exportResultStore';
 import { dataUrlToBlob } from './dataUrl';
 
 /** 仅接管应用生成的 Blob / data 下载，不把普通文档链接或外部网址当成导出。 */
@@ -25,11 +25,13 @@ async function saveGeneratedDownload(anchor: HTMLAnchorElement): Promise<void> {
     // 首次导出才装载保存模块，不增加应用首屏依赖。
     const { exportBlobWithDialog } = await import('../features/export/chartExport');
     const extension = /\.([a-z0-9]+)$/i.exec(filename)?.[1].toLowerCase();
-    await exportBlobWithDialog(blob, filename, [
+    const saved = await exportBlobWithDialog(blob, filename, [
       { name: '导出文件', extensions: [extension || '*'] },
     ]);
+    // 用户取消另存为不提示；成功后弹出统一的导出结果窗
+    if (saved) showExportSuccess(saved, extension ? `已导出 ${extension.toUpperCase()} 文件` : '已导出文件');
   } catch (error) {
-    showToast(`导出失败：${error instanceof Error ? error.message : String(error)}`, 'error');
+    showExportError(error);
   }
 }
 

@@ -16,6 +16,7 @@ import * as ipc from '../../core/ipc/commands';
 import { TARGET_PLATFORM } from '../../core/platform';
 import { THEMES } from '../../core/theme/themes';
 import type { ThemeId } from '../../core/ipc/types';
+import type { ExportedFile } from '../../stores/exportResultStore';
 import { activateWithin } from '../editor-md/viewportActivation';
 import { hasPending } from '../editor-md/viewportWorkScheduler';
 
@@ -88,20 +89,21 @@ export interface MarkdownPdfExportOptions {
 
 /**
  * 把 Markdown 可视化编辑器的正文导出为 PDF
- * @returns 用户取消另存为时返回 false；回退到系统打印时返回 true（结果由用户在对话框中决定）
+ * @returns 用户取消另存为时返回 null；直出时返回导出文件信息；
+ *   回退到系统打印时 path 为 null（结果由用户在打印对话框中决定）
  */
-export async function exportMarkdownPdf(editor: Editor, options: MarkdownPdfExportOptions): Promise<boolean> {
+export async function exportMarkdownPdf(editor: Editor, options: MarkdownPdfExportOptions): Promise<ExportedFile | null> {
   const direct = isTauri() && TARGET_PLATFORM === 'windows';
 
   // 1. 直出模式先选保存路径，用户取消则不做任何渲染准备
   let targetPath: string | null = null;
+  const defaultPath = /\.pdf$/i.test(options.defaultPath) ? options.defaultPath : `${options.defaultPath}.pdf`;
   if (direct) {
-    const defaultPath = /\.pdf$/i.test(options.defaultPath) ? options.defaultPath : `${options.defaultPath}.pdf`;
     targetPath = await save({
       defaultPath,
       filters: [{ name: 'PDF 文档 (*.pdf)', extensions: ['pdf'] }],
     });
-    if (!targetPath) return false;
+    if (!targetPath) return null;
   }
 
   // 2. 强制渲染全部离屏公式与图表，等待 DOM 静止后再克隆
@@ -120,7 +122,10 @@ export async function exportMarkdownPdf(editor: Editor, options: MarkdownPdfExpo
     } else {
       await printWithDialog();
     }
-    return true;
+    return {
+      path: targetPath,
+      fileName: (targetPath ?? defaultPath).split(/[\\/]/).pop() || defaultPath,
+    };
   } finally {
     unmountPrintRoot(root);
   }

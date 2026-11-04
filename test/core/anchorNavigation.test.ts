@@ -2,13 +2,14 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { installAnchorNavigationGuard } from '@/core/anchorNavigation';
 import { exportBlobWithDialog } from '@/features/export/chartExport';
-import { showToast } from '@/stores/toastStore';
+import { showExportError, showExportSuccess } from '@/stores/exportResultStore';
 
 vi.mock('@/features/export/chartExport', () => ({ exportBlobWithDialog: vi.fn() }));
-vi.mock('@/stores/toastStore', () => ({ showToast: vi.fn() }));
+vi.mock('@/stores/exportResultStore', () => ({ showExportSuccess: vi.fn(), showExportError: vi.fn() }));
 
 let stop: (() => void) | undefined;
 const blob = new Blob(['导出内容'], { type: 'text/plain' });
+const savedFile = { path: 'C:/导出/画板.excalidraw.png', fileName: '画板.excalidraw.png' };
 
 /** 构造与画板第三方下载器相同的链接；默认不挂到 DOM。 */
 function downloadLink(href = 'blob:board-export', filename = '画板.excalidraw.png'): HTMLAnchorElement {
@@ -20,7 +21,7 @@ function downloadLink(href = 'blob:board-export', filename = '画板.excalidraw.
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(exportBlobWithDialog).mockResolvedValue(true);
+  vi.mocked(exportBlobWithDialog).mockResolvedValue(savedFile);
   vi.stubGlobal('isTauri', true);
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, blob: async () => blob }));
 });
@@ -63,7 +64,9 @@ describe('跨平台导出链接', () => {
     await vi.waitFor(() => expect(exportBlobWithDialog).toHaveBeenCalledExactlyOnceWith(
       blob, '画板.excalidraw.png', [{ name: '导出文件', extensions: ['png'] }],
     ));
-    expect(showToast).not.toHaveBeenCalled();
+    // 保存成功后弹出导出结果窗，携带磁盘路径供打开文件与定位
+    await vi.waitFor(() => expect(showExportSuccess).toHaveBeenCalledExactlyOnceWith(savedFile, '已导出 PNG 文件'));
+    expect(showExportError).not.toHaveBeenCalled();
   });
 
   test('data URL 导出原始场景文件时保留文件名与扩展名', async () => {
@@ -78,12 +81,13 @@ describe('跨平台导出链接', () => {
   });
 
   test('用户取消原生保存时不报错', async () => {
-    vi.mocked(exportBlobWithDialog).mockResolvedValue(false);
+    vi.mocked(exportBlobWithDialog).mockResolvedValue(null);
     stop = installAnchorNavigationGuard();
     downloadLink().click();
 
     await vi.waitFor(() => expect(exportBlobWithDialog).toHaveBeenCalledOnce());
-    expect(showToast).not.toHaveBeenCalled();
+    expect(showExportSuccess).not.toHaveBeenCalled();
+    expect(showExportError).not.toHaveBeenCalled();
   });
 
   test('读取或写入失败会显示错误，不会成为未处理的 Promise', async () => {
@@ -91,7 +95,7 @@ describe('跨平台导出链接', () => {
     stop = installAnchorNavigationGuard();
     downloadLink().click();
 
-    await vi.waitFor(() => expect(showToast).toHaveBeenCalledWith('导出失败：磁盘空间不足', 'error'));
+    await vi.waitFor(() => expect(showExportError).toHaveBeenCalledWith(new Error('磁盘空间不足')));
   });
 
   test('下载源读取失败时不弹保存对话框', async () => {
@@ -99,7 +103,7 @@ describe('跨平台导出链接', () => {
     stop = installAnchorNavigationGuard();
     downloadLink().click();
 
-    await vi.waitFor(() => expect(showToast).toHaveBeenCalledWith('导出失败：无法读取导出文件', 'error'));
+    await vi.waitFor(() => expect(showExportError).toHaveBeenCalledWith(new Error('无法读取导出文件')));
     expect(exportBlobWithDialog).not.toHaveBeenCalled();
   });
 

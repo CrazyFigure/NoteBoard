@@ -8,6 +8,7 @@ import { Download, FileCode, RefreshCw, WifiOff } from 'lucide-react';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
+import { showExportError, showExportSuccess } from '../../stores/exportResultStore';
 import { saveDocument } from '../editor-code/orchestration/saveDocument';
 import { buildExportFileName, exportBlobWithDialog } from '../export/chartExport';
 import { dataUrlToBlob } from '../../core/dataUrl';
@@ -293,7 +294,7 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
             // 唤起系统原生保存文件对话框
             const saved = await exportBlobWithDialog(blob, defaultFilename, filters);
             if (saved) {
-              showToast(`绘图已成功导出为 ${format.toUpperCase()}`, 'success');
+              showExportSuccess(saved, `已导出 ${format.toUpperCase()} 图片`);
             }
           }
         }
@@ -301,7 +302,7 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
         console.error('解析 Draw.io 消息失败:', err);
         // 图片生成、解码或写盘失败时给出反馈，不能只记录在用户看不到的控制台。
         if (imageExport) {
-          showToast(`导出失败：${err instanceof Error ? err.message : String(err)}`, 'error');
+          showExportError(err);
         }
       }
     };
