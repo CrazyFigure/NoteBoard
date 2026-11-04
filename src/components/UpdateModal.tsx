@@ -13,7 +13,6 @@ import {
   AlertCircle,
   Sparkles,
   ArrowRight,
-  ArrowLeftRight,
 } from 'lucide-react';
 import { Tooltip } from './Tooltip';
 import { UpdateReleaseNotes } from './UpdateReleaseNotes';
@@ -22,8 +21,7 @@ import * as ipc from '../core/ipc/commands';
 import { IS_MOBILE_UI, IS_NATIVE_MOBILE, USES_MANUAL_UPDATE_INSTALL } from '../core/platform';
 import { useBackDismiss } from '../mobile/components';
 import { resumeSnapshotTracking, saveCurrentWindowSnapshot } from '../features/session/closedWindowSession';
-import { RELEASE_CHANNELS, alternateUpdateChannel, useUpdateChannel } from '../core/releaseChannel';
-import { useSettingsStore } from '../stores/settingsStore';
+import { RELEASE_CHANNELS, useUpdateChannel } from '../core/releaseChannel';
 import './update-modal.css';
 
 interface UpdateModalProps {
@@ -69,11 +67,9 @@ export function UpdateModal({
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<UpdateDownloadProgress | null>(null);
   const [installError, setInstallError] = useState<string | null>(null);
-  // 当前更新渠道；检测失败时可一键切换到另一渠道重试
+  // 当前已保存的下载渠道，检测成功后随可用渠道自动切换。
   const channel = useUpdateChannel();
   const channelLabel = RELEASE_CHANNELS[channel].label;
-  const alternateChannel = alternateUpdateChannel(channel);
-  const setSystem = useSettingsStore((state) => state.setSystem);
 
   // 移动端返回键关闭弹窗（下载中不响应，避免中断进度展示）
   useBackDismiss(IS_MOBILE_UI && isOpen && !downloading, onClose);
@@ -189,12 +185,6 @@ export function UpdateModal({
     ipc.openExternalUrl(url).catch((err) => {
       console.error('无法打开外部链接:', err);
     });
-  };
-
-  // 切换更新渠道：设置落盘后再重试，后端检查时读取的是已保存的渠道
-  const handleSwitchChannel = async () => {
-    await setSystem({ updateChannel: alternateChannel });
-    onRecheck?.();
   };
 
   if (!isOpen) return null;
@@ -344,7 +334,7 @@ export function UpdateModal({
                 color="var(--accent-strong)"
               />
               <span style={{ fontSize: 13, color: 'var(--editor-text-secondary)' }}>
-                正在连接 {channelLabel} 检查最新版本
+                正在检查最新版本，优先 GitHub，失败后尝试腾讯云 CNB
               </span>
             </div>
           )}
@@ -367,23 +357,8 @@ export function UpdateModal({
                 }}
               >
                 <AlertCircle size={18} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />
-                <div>{checkError}</div>
+                <div style={{ whiteSpace: 'pre-wrap' }}>{checkError}</div>
               </div>
-              {/* 可选：切换到另一更新渠道重试，安装包、字体与插件下载随之切换 */}
-              {onRecheck && (
-                <div className="nb-update-channel-switch">
-                  <div className="nb-update-channel-switch-text">
-                    <span>当前渠道：{channelLabel}</span>
-                    <span className="nb-update-channel-switch-hint">网络不通时可换用 {RELEASE_CHANNELS[alternateChannel].label}</span>
-                  </div>
-                  <Tooltip content="之后的更新、字体与插件下载也走该渠道，可在「关于」中改回" side="top" sideOffset={4}>
-                    <button type="button" className="nb-btn-secondary nb-update-channel-switch-btn" onClick={handleSwitchChannel}>
-                      <ArrowLeftRight size={14} />
-                      <span>切换到 {RELEASE_CHANNELS[alternateChannel].label} 并重试</span>
-                    </button>
-                  </Tooltip>
-                </div>
-              )}
             </div>
           )}
 
@@ -547,7 +522,7 @@ export function UpdateModal({
             </button>
           )}
 
-          {/* 重新检查按钮 */}
+          {/* 两个渠道均失败时重新按 GitHub、CNB 顺序检测，成功前保留现有下载渠道。 */}
           {checkError && onRecheck && (
             <button
               type="button"

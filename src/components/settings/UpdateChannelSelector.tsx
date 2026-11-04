@@ -1,5 +1,5 @@
 // 更新渠道选择：GitHub / 腾讯云 CNB
-// 渠道写入设置后，检测更新、安装包、字体包与插件下载均从所选渠道获取
+// 所选渠道用于下载，检测更新时按 GitHub、CNB 顺序探测并自动切换到可用渠道。
 
 import type { UpdateChannel } from '../../core/ipc/types';
 import { IS_WEB } from '../../core/platform';
@@ -11,7 +11,7 @@ import './about-panel.css';
 export const UPDATE_CHANNEL_ORDER: UpdateChannel[] = ['github', 'cnb'];
 
 // 网页版由部署者更新镜像，渠道只影响字体包与插件
-const CHANNEL_HINT = IS_WEB ? '字体包与插件从所选渠道下载' : '检测更新、安装包、字体与插件均从所选渠道下载';
+const CHANNEL_HINT = IS_WEB ? '字体包与插件从所选渠道下载' : '检测更新优先 GitHub，失败后尝试腾讯云 CNB；可用渠道将自动用于安装包、字体与插件下载';
 
 export function UpdateChannelSelector() {
   const channel = useUpdateChannel();

@@ -1,5 +1,5 @@
 // 发布渠道：GitHub 主仓库与腾讯云 CNB 镜像
-// 后端按设置中的渠道检查更新并下载安装包、字体包与插件，前端只负责展示与切换
+// 检测更新按 GitHub、CNB 顺序探测并保存可用渠道，安装包、字体包与插件使用该渠道下载。
 
 import type { UpdateChannel } from './ipc/types';
 import { useSettingsStore } from '../stores/settingsStore';

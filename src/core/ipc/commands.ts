@@ -28,6 +28,7 @@ import type {
   Eol,
   Encoding,
   UpdateCheckResult,
+  UpdateChannel,
   StagingDocument,
   StagingResult,
   SessionSnapshot,
@@ -486,9 +487,9 @@ export function saveFavorites(favorites: FavoritesData): Promise<void> {
 
 // ── 应用更新与外部链接 ──
 
-// 检查 GitHub 最新版本
-export function checkForUpdates(): Promise<UpdateCheckResult> {
-  return invoke<UpdateCheckResult>('check_for_updates');
+// 指定渠道检查最新版本，不提前改写设置；未传渠道时兼容原有调用。
+export function checkForUpdates(channel?: UpdateChannel): Promise<UpdateCheckResult> {
+  return invoke<UpdateCheckResult>('check_for_updates', { channel });
 }
 
 // 下载更新安装包并在落盘后启动安装器

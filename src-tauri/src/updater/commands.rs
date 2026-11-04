@@ -682,11 +682,18 @@ fn to_release_note(release: &GitHubReleaseResponse, channel: ReleaseChannel) -> 
     }
 }
 
-/// 检查应用更新：先使用默认网络，网络故障或限流时按平台尝试真实直连，再挑选安装包。
+/// 检查指定渠道的应用更新，未指定时沿用设置；网络故障或限流时保留平台直连回退。
 #[tauri::command]
-pub async fn check_for_updates(app: AppHandle) -> Result<UpdateCheckResult, String> {
+pub async fn check_for_updates(
+    app: AppHandle,
+    channel: Option<String>,
+) -> Result<UpdateCheckResult, String> {
     let current_version = env!("CARGO_PKG_VERSION").to_string();
-    let channel = ReleaseChannel::current();
+    // 探测期间不修改持久化设置，由前端在获得有效结果后统一保存成功渠道。
+    let channel = channel
+        .as_deref()
+        .map(ReleaseChannel::from_setting)
+        .unwrap_or_else(ReleaseChannel::current);
     let response = release_response_with_fallback(
         fetch_latest_release(true, channel),
         fetch_direct_latest_release(&app, channel),
