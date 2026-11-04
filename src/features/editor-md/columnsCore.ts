@@ -3,6 +3,7 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import { createIndexedBlockStart } from './markdownBlockStart';
 import { emitRawSegment } from './rawMarkdownSegments';
 import { DIV_CLOSE_TAG, readDivBody } from './divBlockSyntax';
+import { SourceLines } from './sourceLines';
 
 /** 外层容器开始标签（标准写法，逐字匹配） */
 export const COLUMNS_OPEN_TAG = '<div class="nb-columns" style="display: flex; gap: 16px;">';
@@ -34,12 +35,15 @@ export interface ColumnsMatch {
  */
 export function matchColumnsBlock(src: string): ColumnsMatch | null {
   if (!src.startsWith(`${COLUMNS_OPEN_TAG}\n`)) return null;
-  const lines = src.split('\n');
+  // 按需逐行读取：src 是剩余全文，整篇切分会让每个分栏块都付出 O(全文) 的代价
+  const lines = new SourceLines(src);
   const columns: ColumnsMatch['columns'] = [];
   let index = 1;
 
-  while (index < lines.length) {
-    const open = COLUMN_OPEN_PATTERN.exec(lines[index]);
+  for (;;) {
+    const line = lines.at(index);
+    if (line === undefined) break;
+    const open = COLUMN_OPEN_PATTERN.exec(line);
     if (!open) break;
     // 单栏为「开始标签 + 空行 + 正文 + 空行 + 结束标签」，结构不符即整体不识别
     const parsed = readDivBody(lines, index);
@@ -50,11 +54,12 @@ export function matchColumnsBlock(src: string): ColumnsMatch | null {
   }
 
   // 至少一栏，且各栏之后紧跟外层结束标签
-  if (columns.length === 0 || lines[index] !== DIV_CLOSE_TAG) return null;
+  if (columns.length === 0 || lines.at(index) !== DIV_CLOSE_TAG) return null;
   // 结束标签后必须是空行或文末，否则 CommonMark 会把后续文字并入同一 HTML 块
-  if (index + 1 < lines.length && lines[index + 1].trim() !== '') return null;
+  const after = lines.at(index + 1);
+  if (after !== undefined && after.trim() !== '') return null;
 
-  const raw = lines.slice(0, index + 1).join('\n') + (index + 1 < lines.length ? '\n' : '');
+  const raw = lines.prefix(index + 1);
   return { raw, columns };
 }
 

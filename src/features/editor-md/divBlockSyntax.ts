@@ -1,6 +1,7 @@
 // NoteBoard「HTML div 块 + 空行包裹 Markdown」写法的公共解析工具
 // 分栏卡片、高亮块共用：在源码行中查找与开始标签配对的 `</div>` 行，
 // 跳过代码围栏内的文本，并按嵌套的 div 开始/结束标签计数。
+import type { SourceLines } from './sourceLines';
 
 /** 独占一行的 div 结束标签（标准写法，逐字匹配） */
 export const DIV_CLOSE_TAG = '</div>';
@@ -26,11 +27,13 @@ function closesFence(line: string, fence: string): boolean {
  * 从 lines[start] 开始查找与当前 div 配对的 `</div>` 行号（跳过代码围栏与嵌套 div）；
  * 结构不符合标准写法时返回 -1。
  */
-export function findDivClose(lines: string[], start: number): number {
+export function findDivClose(lines: SourceLines, start: number): number {
   let depth = 0;
   let fence: string | null = null;
-  for (let index = start; index < lines.length; index += 1) {
-    const line = lines[index];
+  // 按需逐行读取，找到配对的结束标签即停止，不切分剩余全文
+  for (let index = start; ; index += 1) {
+    const line = lines.at(index);
+    if (line === undefined) break;
     if (fence) {
       if (closesFence(line, fence)) fence = null;
       continue;
@@ -54,9 +57,10 @@ export function findDivClose(lines: string[], start: number): number {
  * lines[openIndex] 为开始标签，返回正文与结束标签行号；结构不符时返回 null。
  * 空正文写作「开始标签 + 空行 + 结束标签」。
  */
-export function readDivBody(lines: string[], openIndex: number): { body: string; closeIndex: number } | null {
+export function readDivBody(lines: SourceLines, openIndex: number): { body: string; closeIndex: number } | null {
   // 开始标签后必须是一个空行（空行允许含空白：列表内序列化会给空行补缩进）
-  if (openIndex + 1 >= lines.length || lines[openIndex + 1].trim() !== '') return null;
+  const blank = lines.at(openIndex + 1);
+  if (blank === undefined || blank.trim() !== '') return null;
   const bodyStart = openIndex + 2;
   const closeIndex = findDivClose(lines, bodyStart);
   if (closeIndex < 0) return null;

@@ -4,6 +4,7 @@ import { createIndexedBlockStart } from './markdownBlockStart';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { emitRawSegment } from './rawMarkdownSegments';
 import { DIV_CLOSE_TAG, readDivBody } from './divBlockSyntax';
+import { SourceLines } from './sourceLines';
 import { DEFAULT_CALLOUT_COLOR, DEFAULT_CALLOUT_ICON, calloutColorHex, isValidCalloutColor } from './calloutSchema';
 
 // 开始标签：属性顺序固定，样式随后与颜色推导结果逐字比对
@@ -57,14 +58,16 @@ export function matchCalloutBlock(src: string): CalloutMatch | null {
   // 颜色必须合法，且样式与颜色推导结果逐字一致（手改过样式的视为自定义 HTML）
   if (!isValidCalloutColor(color) || head !== renderCalloutOpenTag(color, icon)) return null;
 
-  const lines = src.split('\n');
+  // 按需逐行读取：src 是剩余全文，整篇切分会让每个高亮块都付出 O(全文) 的代价
+  const lines = new SourceLines(src);
   const parsed = readDivBody(lines, 0);
   if (!parsed) return null;
   const { body, closeIndex } = parsed;
   // 结束标签后必须是空行或文末，否则 CommonMark 会把后续文字并入同一 HTML 块
-  if (closeIndex + 1 < lines.length && lines[closeIndex + 1].trim() !== '') return null;
+  const after = lines.at(closeIndex + 1);
+  if (after !== undefined && after.trim() !== '') return null;
 
-  const raw = lines.slice(0, closeIndex + 1).join('\n') + (closeIndex + 1 < lines.length ? '\n' : '');
+  const raw = lines.prefix(closeIndex + 1);
   return { raw, color, icon, body };
 }
 

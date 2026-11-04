@@ -1,6 +1,7 @@
 // 共享文档规则：后台解析与主线程使用同一份定义，禁止引入界面、store 或原生 API。
 import { Node, mergeAttributes, type JSONContent } from '@tiptap/core';
 import { createIndexedBlockStart } from './markdownBlockStart';
+import { SourceLines } from './sourceLines';
 
 export type AlertKind = 'note' | 'tip' | 'important' | 'warning' | 'caution';
 
@@ -42,17 +43,18 @@ export const GitHubAlertCore = Node.create({
     tokenize: (src, _tokens, lexer) => {
       const head = ALERT_HEAD_PATTERN.exec(src);
       if (!head) return undefined;
-      const lines = src.split('\n');
+      // 按需逐行读取：src 是剩余全文，整篇切分会让每个提示块都付出 O(全文) 的代价
+      const lines = new SourceLines(src);
       const bodyLines: string[] = [];
       let rawLineCount = 1;
       // 收集紧随其后的连续引用行，遇到非 `>` 开头的行即结束
-      for (let index = 1; index < lines.length; index += 1) {
-        const line = lines[index];
-        if (!/^ {0,3}>/.test(line)) break;
+      for (let index = 1; ; index += 1) {
+        const line = lines.at(index);
+        if (line === undefined || !/^ {0,3}>/.test(line)) break;
         bodyLines.push(line.replace(/^ {0,3}> ?/, ''));
         rawLineCount += 1;
       }
-      const raw = lines.slice(0, rawLineCount).join('\n') + (rawLineCount < lines.length ? '\n' : '');
+      const raw = lines.prefix(rawLineCount);
       const body = bodyLines.join('\n');
       return {
         type: 'githubAlert',

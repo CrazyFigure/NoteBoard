@@ -269,6 +269,54 @@ export const MarkdownOrderedList = OrderedList.extend({
 
 const baseTaskTokenizer = TaskList.config.markdownTokenizer as MarkdownTokenizer | undefined;
 
+// 与官方任务列表 tokenizer（parseIndentedBlocks 的 itemPattern）逐字一致的任务项行
+const OFFICIAL_TASK_ITEM_LINE = /^(\s*)([-+*])\s+\[([ xX])\]\s+(.*)$/;
+
+/**
+ * 官方任务列表 tokenizer 会先把收到的剩余全文整篇 split，每个任务列表都付出 O(全文) 的代价，
+ * 大文档整体退化为 O(n²)。这里找出它必定在此结束的位置，只把这之前的源码交给它，结果完全一致：
+ * - 首个任务项之后，空行且下一非空行顶格（缩进为 0）：官方在该空行处结束（缩进不大于任何项）；
+ * - 首个任务项之后，顶格且不是任务项的非空行：官方在此行结束；
+ * - 首个非空行不是任务项：官方返回空，截在此行之前同样返回空。
+ * 截断后的源码以换行结尾，官方看到的是一个空的末行，与原来在该处结束的分支等价。
+ */
+export function taskListScanLimit(src: string): number {
+  let seenItem = false;
+  // 当前连续空行的起点（只记录首个任务项之后的）
+  let blankStart = -1;
+  let start = 0;
+  for (;;) {
+    const lineBreak = src.indexOf('\n', start);
+    const line = lineBreak < 0 ? src.slice(start) : src.slice(start, lineBreak);
+    if (line.trim() === '') {
+      if (seenItem && blankStart < 0) blankStart = start;
+    } else {
+      const flush = !/^\s/.test(line);
+      if (!seenItem) {
+        if (!OFFICIAL_TASK_ITEM_LINE.test(line)) return start;
+        seenItem = true;
+      } else if (flush && (blankStart >= 0 || !OFFICIAL_TASK_ITEM_LINE.test(line))) {
+        return blankStart >= 0 ? blankStart : start;
+      }
+      blankStart = -1;
+    }
+    if (lineBreak < 0) return blankStart >= 0 ? blankStart : src.length;
+    start = lineBreak + 1;
+  }
+}
+
+/** 调用官方任务列表 tokenizer，只交给它列表所在的那一段源码 */
+function tokenizeTaskListRegion(
+  tokenize: NonNullable<MarkdownTokenizer['tokenize']>,
+  context: unknown,
+  src: string,
+  tokens: MarkdownToken[],
+  lexer: MarkdownLexerConfiguration,
+): MarkdownToken | undefined {
+  const limit = taskListScanLimit(src);
+  return tokenize.call(context, limit < src.length ? src.slice(0, limit) : src, tokens, lexer) as MarkdownToken | undefined;
+}
+
 /**
  * 任务列表分词：官方 tokenizer 遇到项间空行即结束，`- [ ] a\n\n- [ ] b` 会被拆成两个列表
  * （CommonMark 中它是一个宽松列表）。这里在空行后紧跟同缩进、同标记的任务项时继续分词并合并，
@@ -284,7 +332,7 @@ function tokenizeTaskList(
   if (!tokenize) return undefined;
   // 这里只做与官方入口一致的快速排除，制表符缩进等合法输入仍由原 tokenizer 决定。
   if (!/^\s*[-+*]\s+\[[ xX]\]\s+/.test(src)) return undefined;
-  const first = tokenize.call(this, src, tokens, lexer) as MarkdownToken | undefined;
+  const first = tokenizeTaskListRegion(tokenize, this, src, tokens, lexer);
   // src 可能以前一块遗留的空行开头，按首个任务项所在行识别标记与缩进
   const firstMarker = TASK_ITEM_MARKER.exec(src.replace(/^(?:[ \t]*\n)+/, ''));
   if (!first || typeof first.raw !== 'string' || !firstMarker) return first;
@@ -299,7 +347,7 @@ function tokenizeTaskList(
     const marker = TASK_ITEM_MARKER.exec(following);
     // 只合并同缩进、同标记的任务项（不同标记在 CommonMark 中属于另一个列表）
     if (!marker || marker[1] !== firstMarker[1] || marker[2] !== firstMarker[2]) break;
-    const next = tokenize.call(this, following, tokens, lexer) as MarkdownToken | undefined;
+    const next = tokenizeTaskListRegion(tokenize, this, following, tokens, lexer);
     if (!next || typeof next.raw !== 'string' || !next.raw) break;
     raw += gap[0] + next.raw;
     items.push(...((next.items as MarkdownToken[] | undefined) ?? []));

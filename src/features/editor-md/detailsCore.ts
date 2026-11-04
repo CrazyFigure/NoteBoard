@@ -2,6 +2,7 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import { createIndexedBlockStart } from './markdownBlockStart';
 import { emitRawSegment } from './rawMarkdownSegments';
+import { SourceLines } from './sourceLines';
 
 /** 新插入折叠块的默认标题 */
 export const DEFAULT_DETAILS_SUMMARY = '标题';
@@ -66,13 +67,15 @@ export function matchDetailsBlock(src: string): DetailsMatch | null {
   // 标题必须是可无损往返的纯文本（含 <b> 等标签或非常规实体时不接管）
   if (escapeSummary(decodeSummary(summaryRaw)) !== summaryRaw) return null;
 
-  const lines = src.split('\n');
+  // 按需逐行读取：src 是剩余全文，整篇切分会让每个折叠块都付出 O(全文) 的代价
+  const lines = new SourceLines(src);
   // lines[0] = <details>，lines[1] = <summary>，lines[2] = 空行，正文从第 3 行开始
   let depth = 0;
   let fence: string | null = null;
   let closeIndex = -1;
-  for (let index = 3; index < lines.length; index += 1) {
-    const line = lines[index];
+  for (let index = 3; ; index += 1) {
+    const line = lines.at(index);
+    if (line === undefined) break;
     if (fence) {
       if (closesFence(line, fence)) fence = null;
       continue;
@@ -93,7 +96,8 @@ export function matchDetailsBlock(src: string): DetailsMatch | null {
   }
   if (closeIndex < 0) return null;
   // 结束标签后必须是空行或文末，否则 CommonMark 会把后续文字并入同一 HTML 块
-  if (closeIndex + 1 < lines.length && lines[closeIndex + 1].trim() !== '') return null;
+  const after = lines.at(closeIndex + 1);
+  if (after !== undefined && after.trim() !== '') return null;
 
   const between = lines.slice(3, closeIndex);
   let body = '';
@@ -104,7 +108,7 @@ export function matchDetailsBlock(src: string): DetailsMatch | null {
     if (body.trim() === '') return null;
   }
 
-  const raw = lines.slice(0, closeIndex + 1).join('\n') + (closeIndex + 1 < lines.length ? '\n' : '');
+  const raw = lines.prefix(closeIndex + 1);
   return { raw, open: Boolean(head[1]), summary: decodeSummary(summaryRaw), body };
 }
 

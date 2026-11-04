@@ -20,6 +20,7 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { createIndexedBlockStart } from './markdownBlockStart';
 import { emitRawSegment } from './rawMarkdownSegments';
 import { DIV_CLOSE_TAG, readDivBody } from './divBlockSyntax';
+import { SourceLines } from './sourceLines';
 
 export type BlockAlign = 'left' | 'center' | 'right';
 
@@ -82,14 +83,16 @@ export function matchBlockFormat(src: string): BlockFormatMatch | null {
   const indent = em / INDENT_STEP_EM;
   if (!Number.isInteger(indent) || indent > MAX_BLOCK_INDENT || head !== renderBlockFormatOpenTag(align, indent)) return null;
 
-  const lines = src.split('\n');
+  // 按需逐行读取：src 是剩余全文，整篇切分会让每个格式块都付出 O(全文) 的代价
+  const lines = new SourceLines(src);
   const parsed = readDivBody(lines, 0);
   if (!parsed || parsed.body.trim() === '') return null;
   const { body, closeIndex } = parsed;
   // 结束标签后必须是空行或文末，否则 CommonMark 会把后续文字并入同一 HTML 块
-  if (closeIndex + 1 < lines.length && lines[closeIndex + 1].trim() !== '') return null;
+  const after = lines.at(closeIndex + 1);
+  if (after !== undefined && after.trim() !== '') return null;
 
-  const raw = lines.slice(0, closeIndex + 1).join('\n') + (closeIndex + 1 < lines.length ? '\n' : '');
+  const raw = lines.prefix(closeIndex + 1);
   return { raw, align, indent, body };
 }
 
