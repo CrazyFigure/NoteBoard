@@ -3,11 +3,23 @@ import { useEffect, useState } from 'react';
 import { Download, RefreshCw, FileText, FileSpreadsheet, Presentation, FileType, LayoutDashboard, DraftingCompass, BookOpen, Trash2 } from 'lucide-react';
 import { initializePlugins, usePluginStore } from '../../stores/pluginStore';
 import { OFFICIAL_PLUGINS, isNewerPluginVersion, type PluginId } from './pluginTypes';
+import pluginChangelog from './pluginChangelog.json';
 import { Tooltip } from '../../components/Tooltip';
 import { PluginFonts } from './PluginFonts';
 import { ProgressRing } from './ProgressRing';
 import { canManageInstance } from '../account/accountState';
 import './plugins.css';
+
+interface PluginChangelogEntry { version: string; date?: string; changelog: string }
+const PLUGIN_CHANGELOG = pluginChangelog as Partial<Record<PluginId, PluginChangelogEntry[]>>;
+const CHANGELOG_LIMIT = 10;
+
+/** 内置日志由 scripts/sync-plugin-changelog.mjs 生成；线上目录或已安装包里更新的版本补在前面，主程序未升级也能看到。 */
+function pluginHistory(id: PluginId, ...extra: Array<{ version: string; changelog: string } | undefined>): PluginChangelogEntry[] {
+  const entries = new Map((PLUGIN_CHANGELOG[id] ?? []).map((entry) => [entry.version, entry]));
+  for (const item of extra) if (item?.changelog && !entries.has(item.version)) entries.set(item.version, { version: item.version, changelog: item.changelog });
+  return [...entries.values()].sort((a, b) => isNewerPluginVersion(a.version, b.version) ? -1 : isNewerPluginVersion(b.version, a.version) ? 1 : 0).slice(0, CHANGELOG_LIMIT);
+}
 
 export const PLUGIN_ICONS = { word: FileText, excel: FileSpreadsheet, powerpoint: Presentation, pdf: FileType, cad: DraftingCompass, epub: BookOpen, notability: BookOpen, goodnotes: BookOpen, workbench: LayoutDashboard };
 
@@ -46,6 +58,8 @@ export function PluginsPanel({ target }: { target?: string | null }) {
       const installing = busy === `install:${item.id}`;
       const percent = progress?.id === item.id ? progress.percent : null;
       const Icon = PLUGIN_ICONS[item.id];
+      // 未安装也展示更新日志，损坏的安装包不参与合并
+      const history = pluginHistory(item.id, latest, current && !current.invalid ? current.manifest : undefined);
       return <article className={`nb-plugin-card${highlight === item.id ? ' is-highlight' : ''}`} id={`nb-plugin-${item.id}`} key={item.id}>
         <div className="nb-plugin-icon"><Icon size={19} /></div>
         <div className="nb-plugin-info">
@@ -69,9 +83,11 @@ export function PluginsPanel({ target }: { target?: string | null }) {
             <Tooltip content="卸载插件"><button type="button" className="nb-plugin-button icon" aria-label={`卸载${item.name}`} disabled={!!busy} onClick={() => setRemoveId(item.id)}><Trash2 size={14} /></button></Tooltip>
           </>}
         </div>
-        {current && !current.invalid && <details className="nb-plugin-license"><summary>版本与开源许可</summary>
-          {current.manifest.changelog && <p>{current.manifest.changelog}</p>}
-          <pre>{current.manifest.licenses}</pre>
+        {history.length > 0 && <details className="nb-plugin-changelog"><summary>更新日志</summary>
+          <ol>{history.map((entry) => <li key={entry.version}>
+            <div className="nb-plugin-changelog-version">v{entry.version}{entry.date && <span>{entry.date}</span>}</div>
+            <p>{entry.changelog}</p>
+          </li>)}</ol>
         </details>}
       </article>;
     })}</div>

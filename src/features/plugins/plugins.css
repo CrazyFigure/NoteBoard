@@ -25,12 +25,16 @@
 .nb-plugin-inline-error { margin:2px 0 0; color:var(--error-500); font-size:12px; overflow-wrap:anywhere; }
 .nb-plugin-actions { display:flex; align-items:center; flex-wrap:wrap; justify-content:flex-end; gap:6px; }
 .nb-plugin-confirm-text { font-size:12px; color:var(--editor-text-muted); margin-right:2px; }
-.nb-plugin-license { grid-column:1 / -1; margin:10px 0 0 50px; color:var(--editor-text-muted); font-size:12px; }
-.nb-plugin-license summary { cursor:pointer; width:max-content; padding:2px 6px; margin-left:-6px; border-radius:4px; user-select:none; }
-.nb-plugin-license summary:hover { background:var(--toolbar-hover); color:var(--editor-text); }
-.nb-plugin-license summary:active { background:var(--toolbar-active); }
-.nb-plugin-license p { margin:8px 0 6px; }
-.nb-plugin-license pre { white-space:pre-wrap; word-break:break-word; max-height:260px; overflow:auto; margin:6px 0 0; padding:10px 12px; border:1px solid var(--editor-border); border-radius:8px; background:var(--editor-surface); user-select:text; font:11px/1.6 var(--mono-font-family,var(--ui-font-family)); }
+.nb-plugin-changelog { grid-column:1 / -1; margin:10px 0 0 50px; color:var(--editor-text-muted); font-size:12px; }
+.nb-plugin-changelog summary { cursor:pointer; width:max-content; padding:2px 6px; margin-left:-6px; border-radius:4px; user-select:none; }
+.nb-plugin-changelog summary:hover { background:var(--toolbar-hover); color:var(--editor-text); }
+.nb-plugin-changelog summary:active { background:var(--toolbar-active); }
+/* 版本列表左侧细线串联，新版在上；内容过多时限制高度内部滚动 */
+.nb-plugin-changelog ol { list-style:none; margin:8px 0 0; padding:0 0 0 12px; border-left:1px solid var(--editor-border); max-height:260px; overflow:auto; user-select:text; }
+.nb-plugin-changelog li + li { margin-top:8px; }
+.nb-plugin-changelog-version { display:flex; align-items:baseline; gap:8px; color:var(--editor-text); font-weight:600; }
+.nb-plugin-changelog-version span { color:var(--editor-text-muted); font-weight:400; font-size:11px; }
+.nb-plugin-changelog p { margin:2px 0 0; line-height:1.6; }
 .nb-plugin-enable { display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; padding:5px 8px; border-radius:6px; white-space:nowrap; }
 .nb-plugin-enable:hover { background:var(--toolbar-hover); }
 .nb-plugin-enable:active { background:var(--toolbar-active); }
@@ -80,7 +84,7 @@
 @media(max-width:760px) {
   .nb-plugin-card { grid-template-columns:auto minmax(0,1fr); row-gap:10px; padding:12px; }
   .nb-plugin-actions { grid-column:1 / -1; justify-content:flex-start; margin-left:50px; }
-  .nb-plugin-license { margin-left:0; }
+  .nb-plugin-changelog { margin-left:0; }
   .nb-plugin-button { height:40px; }
   .nb-plugin-button.icon { width:40px; }
   .nb-plugin-font-grid { grid-template-columns:1fr; }

@@ -6,9 +6,9 @@
   "license": "AGPL-3.0-only",
   "scripts": {
     "sync:version": "node scripts/sync-version.mjs",
-    "sync:changelog": "node scripts/sync-changelog.mjs",
-    "predev": "node scripts/sync-version.mjs && node scripts/sync-changelog.mjs",
-    "prebuild": "node scripts/sync-version.mjs && node scripts/sync-changelog.mjs",
+    "sync:changelog": "node scripts/sync-changelog.mjs && node scripts/sync-plugin-changelog.mjs",
+    "predev": "node scripts/sync-version.mjs && node scripts/sync-changelog.mjs && node scripts/sync-plugin-changelog.mjs",
+    "prebuild": "node scripts/sync-version.mjs && node scripts/sync-changelog.mjs && node scripts/sync-plugin-changelog.mjs",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "build:web": "tsc --noEmit && vite build --mode web --outDir dist-web",
