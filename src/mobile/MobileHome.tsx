@@ -102,7 +102,7 @@ interface CreateItem {
 
 // 卡片文案与图标为移动端精简版；顺序与「直接展示 / 收进更多」分组由设置「全局 → 新建入口」决定
 const CREATE_ITEMS: CreateItem[] = [
-  { key: 'markdown', label: 'Markdown 笔记', desc: '富文本与源码双模', icon: <FilePlus size={22} color="var(--editor-accent, #3b82f6)" />, run: newMarkdown },
+  { key: 'markdown', label: 'Markdown笔记', desc: '富文本与源码双模', icon: <FilePlus size={22} color="var(--editor-accent, #3b82f6)" />, run: newMarkdown },
   { key: 'text', label: '文本文档', desc: '轻量纯文本', icon: <FileText size={22} color="#64748b" />, run: newText },
   { key: 'board', label: '手绘风白板', desc: 'Excalidraw 手绘', icon: <PencilRuler size={22} color="var(--accent-strong, #8b5cf6)" />, run: newBoard },
   { key: 'mindmap', label: '思维导图', desc: '大纲 ⇄ 脑图', icon: <Network size={22} color="#f97316" />, run: newMindmap },

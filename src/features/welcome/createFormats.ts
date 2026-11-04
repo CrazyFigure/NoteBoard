@@ -35,9 +35,9 @@ export type CreateFormatId =
 
 export interface CreateFormatMeta {
   id: CreateFormatId;
-  /** 显示名称，如「Markdown 笔记」 */
+  /** 显示名称，如「Markdown笔记」；中英文之间不留空格，避免菜单里折成两行 */
   name: string;
-  /** 扩展名后缀，如「.md」；工具视图没有 */
+  /** 扩展名后缀，如「.md」，以行内代码徽标单独展示；工具视图没有 */
   ext?: string;
   desc: string;
   icon: LucideIcon;
@@ -47,7 +47,7 @@ export interface CreateFormatMeta {
 }
 
 export const CREATE_FORMATS: readonly CreateFormatMeta[] = [
-  { id: 'markdown', name: 'Markdown 笔记', ext: '.md', desc: '富文本与源码双模笔记', icon: FilePlus, menuIcon: FileText, color: 'var(--editor-accent, #3b82f6)' },
+  { id: 'markdown', name: 'Markdown笔记', ext: '.md', desc: '富文本与源码双模笔记', icon: FilePlus, menuIcon: FileText, color: 'var(--editor-accent, #3b82f6)' },
   { id: 'text', name: '文本文档', ext: '.txt', desc: '轻量纯文本记录与备忘', icon: FileText, color: '#64748b' },
   { id: 'bitable', name: '多维表格', ext: '.bitable', desc: '结构化数据与看板视图', icon: Table2, color: '#2563eb' },
   { id: 'board', name: '手绘风白板', ext: '.excalidraw', desc: 'Excalidraw 自由手绘与白板', icon: PencilRuler, color: 'var(--accent-strong, #8b5cf6)' },
@@ -55,10 +55,10 @@ export const CREATE_FORMATS: readonly CreateFormatMeta[] = [
   { id: 'textdiff', name: '文本对比', desc: '左右对照实时比对差异', icon: GitCompare, color: '#10b981' },
   { id: 'drawio', name: '架构图', ext: '.drawio', desc: '专业系统架构与业务流程图', icon: Layout, color: '#ea580c' },
   { id: 'infographic', name: '信息图', ext: '.infographic', desc: '指标看板、时间线与漏斗等可视化', icon: ChartColumn, color: '#14b8a6' },
-  { id: 'mermaid', name: 'Mermaid 图表', ext: '.mmd', desc: '时序图、流程图与状态机脚本', icon: Workflow, color: '#00bfb2' },
-  { id: 'plantuml', name: 'PlantUML 建模', ext: '.puml', desc: '类图、时序图与系统组件图', icon: GitMerge, color: '#a855f7' },
-  { id: 'json', name: 'JSON 配置文件', ext: '.json', desc: 'JSON 数据、格式化与校验', icon: Braces, color: '#eab308' },
-  { id: 'sql', name: 'SQL 数据库脚本', ext: '.sql', desc: 'SQL 数据库查询与 DDL 语句', icon: Database, color: '#3b82f6' },
+  { id: 'mermaid', name: 'Mermaid图表', ext: '.mmd', desc: '时序图、流程图与状态机脚本', icon: Workflow, color: '#00bfb2' },
+  { id: 'plantuml', name: 'PlantUML建模', ext: '.puml', desc: '类图、时序图与系统组件图', icon: GitMerge, color: '#a855f7' },
+  { id: 'json', name: 'JSON配置文件', ext: '.json', desc: 'JSON 数据、格式化与校验', icon: Braces, color: '#eab308' },
+  { id: 'sql', name: 'SQL数据库脚本', ext: '.sql', desc: 'SQL 数据库查询与 DDL 语句', icon: Database, color: '#3b82f6' },
 ];
 
 const FORMAT_MAP = new Map<string, CreateFormatMeta>(CREATE_FORMATS.map((f) => [f.id, f]));
@@ -104,9 +104,4 @@ export function resolveCreateFormats(saved: Partial<CreateFormatsLayout> | null 
 export function isDefaultCreateFormats(layout: ResolvedCreateFormats): boolean {
   const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((v, i) => v === b[i]);
   return same(layout.primary, DEFAULT_CREATE_FORMATS.primary) && same(layout.more, DEFAULT_CREATE_FORMATS.more);
-}
-
-/** 显示名：名称后附扩展名，直接展示与收进更多均不加「新建」 */
-export function createFormatLabel(meta: CreateFormatMeta): string {
-  return meta.ext ? `${meta.name} (${meta.ext})` : meta.name;
 }

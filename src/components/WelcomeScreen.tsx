@@ -14,12 +14,12 @@ import {
   FolderSync,
 } from 'lucide-react';
 import { useSyncStore } from '../stores/syncStore';
-import { formatRelative } from '../features/sync/syncFormat';
 import { formatShortcut } from '../core/shortcuts';
-import { createFormatLabel, getCreateFormat, type CreateFormatId } from '../features/welcome/createFormats';
+import { getCreateFormat, type CreateFormatId } from '../features/welcome/createFormats';
 import { useCreateFormats } from '../features/welcome/useCreateFormats';
 import { useLayoutStore } from '../stores/layoutStore';
 import { Tooltip } from './Tooltip';
+import { CodeBadge } from './CodeBadge';
 
 interface WelcomeScreenProps {
   onOpenFile?: () => void;
@@ -42,10 +42,29 @@ interface WelcomeScreenProps {
   onOpenSyncFolder?: () => void;
 }
 
-/** 极窄模式卡片较窄：去掉标题末尾的「(.md)」扩展名说明，避免截断 */
-function stripExtension(label: string): string {
-  return label.replace(/\s*[(（][^()（）]*[)）]\s*$/, '');
-}
+// 卡片内名称与徽标同处一行：固定一行高度并允许换行、裁掉第二行，
+// 空间不足时徽标整体换到被裁掉的第二行而隐藏，不会被挤成「.」，名称优先完整显示
+const LABEL_ROW_STYLE: React.CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  columnGap: 6,
+  height: 18,
+  overflow: 'hidden',
+};
+
+// 名称：单独占满一行时仍超宽则省略号截断
+const LABEL_TEXT_STYLE: React.CSSProperties = {
+  minWidth: 0,
+  maxWidth: '100%',
+  fontWeight: 500,
+  lineHeight: '18px',
+  whiteSpace: 'nowrap',
+  textOverflow: 'ellipsis',
+  overflow: 'hidden',
+};
 
 export function WelcomeScreen({
   onOpenFile,
@@ -69,18 +88,8 @@ export function WelcomeScreen({
   const [showMoreFormats, setShowMoreFormats] = useState(false);
   // 极窄模式：新建卡片改为图标在上的紧凑三列，描述移入 Tooltip，打开类卡片隐藏快捷键徽标
   const compact = useLayoutStore((s) => s.compactMode);
-  // 同步文件夹入口：路径与最近同步状态
+  // 设置了同步文件夹时显示入口
   const syncRoot = useSyncStore((s) => s.config?.sync.rootDir?.trim() || null);
-  const syncEnabled = useSyncStore((s) => s.config?.sync.enabled ?? false);
-  const lastSyncAt = useSyncStore((s) => s.status?.lastSync?.at ?? 0);
-  const syncing = useSyncStore((s) => s.status?.syncing ?? false);
-  const syncStatusText = !syncEnabled
-    ? '多端同步未开启'
-    : syncing
-      ? '正在同步…'
-      : lastSyncAt
-        ? `上次同步 ${formatRelative(lastSyncAt)}`
-        : '尚未同步';
 
   // 仅展示新建入口不代表用户要打开编辑器；实际新建/打开动作仍会与读文件并行预取目标内核。
 
@@ -105,9 +114,9 @@ export function WelcomeScreen({
     return {
       id,
       icon: meta.icon,
-      label: createFormatLabel(meta),
+      name: meta.name,
+      ext: meta.ext,
       desc: meta.desc,
-      shortcut: '',
       color: meta.color,
       onClick: createHandlers[id],
     };
@@ -121,7 +130,6 @@ export function WelcomeScreen({
     {
       icon: FileSearch,
       label: '打开文件',
-      desc: '打开已有文档或图表',
       shortcut: 'Ctrl+O',
       color: 'var(--editor-accent, #3b82f6)',
       bg: 'rgba(59, 130, 246, 0.05)',
@@ -129,14 +137,12 @@ export function WelcomeScreen({
       hoverBg: 'rgba(59, 130, 246, 0.10)',
       hoverBorder: 'rgba(59, 130, 246, 0.38)',
       iconBg: 'rgba(59, 130, 246, 0.10)',
-      badgeBg: 'rgba(59, 130, 246, 0.08)',
-      badgeBorder: 'rgba(59, 130, 246, 0.22)',
+      badgeTint: '#3b82f6',
       onClick: onOpenFile,
     },
     {
       icon: FolderOpen,
       label: '打开文件夹',
-      desc: '载入本地文件夹',
       shortcut: 'Ctrl+Shift+O',
       color: '#eab308',
       bg: 'rgba(234, 179, 8, 0.04)',
@@ -144,15 +150,13 @@ export function WelcomeScreen({
       hoverBg: 'rgba(234, 179, 8, 0.09)',
       hoverBorder: 'rgba(234, 179, 8, 0.35)',
       iconBg: 'rgba(234, 179, 8, 0.09)',
-      badgeBg: 'rgba(234, 179, 8, 0.07)',
-      badgeBorder: 'rgba(234, 179, 8, 0.20)',
+      badgeTint: '#eab308',
       onClick: onOpenFolder,
     },
     {
       icon: Star,
       iconFill: '#f97316',
       label: '打开收藏夹',
-      desc: '查看与整理收藏文件',
       shortcut: '',
       color: '#f97316',
       bg: 'rgba(249, 115, 22, 0.05)',
@@ -160,14 +164,12 @@ export function WelcomeScreen({
       hoverBg: 'rgba(249, 115, 22, 0.10)',
       hoverBorder: 'rgba(249, 115, 22, 0.38)',
       iconBg: 'rgba(249, 115, 22, 0.10)',
-      badgeBg: 'rgba(249, 115, 22, 0.08)',
-      badgeBorder: 'rgba(249, 115, 22, 0.22)',
+      badgeTint: '#f97316',
       onClick: onOpenFavorites,
     },
     {
       icon: Archive,
       label: '打开暂存区',
-      desc: '恢复未保存或异常副本',
       shortcut: '',
       color: '#8b5cf6',
       bg: 'rgba(139, 92, 246, 0.05)',
@@ -175,8 +177,7 @@ export function WelcomeScreen({
       hoverBg: 'rgba(139, 92, 246, 0.10)',
       hoverBorder: 'rgba(139, 92, 246, 0.38)',
       iconBg: 'rgba(139, 92, 246, 0.10)',
-      badgeBg: 'rgba(139, 92, 246, 0.08)',
-      badgeBorder: 'rgba(139, 92, 246, 0.22)',
+      badgeTint: '#8b5cf6',
       onClick: onOpenStaging,
     },
   ];
@@ -201,7 +202,7 @@ export function WelcomeScreen({
         overflowY: 'auto',
       }}
     >
-      {/* 顶部 Logo 与系统标语 */}
+      {/* 顶部 Logo 与名称 */}
       <div
         style={{
           display: 'flex',
@@ -229,9 +230,6 @@ export function WelcomeScreen({
         >
           NoteBoard
         </h1>
-        <span style={{ fontSize: compact ? 12 : 13, color: 'var(--editor-text-muted)', textAlign: 'center' }}>
-          轻量双模笔记、思维导图与专业图表工作台
-        </span>
       </div>
 
       {/* 第一部分：常用新建核心卡片区（3 列网格；全部收进更多时不渲染） */}
@@ -300,32 +298,11 @@ export function WelcomeScreen({
             >
               <action.icon size={18} color={action.color} />
             </div>
-            {/* 标题与描述（极窄模式只保留居中标题） */}
-            <div style={{ flex: 1, minWidth: 0, width: compact ? '100%' : undefined, textAlign: compact ? 'center' : undefined }}>
-              <div style={{ fontWeight: 500, lineHeight: 1.3, fontSize: compact ? 12 : undefined, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                {compact ? stripExtension(action.label) : action.label}
-              </div>
-              {!compact && (
-                <div style={{ fontSize: 11, color: 'var(--editor-text-muted)', marginTop: 2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                  {action.desc}
-                </div>
-              )}
+            {/* 名称 + 扩展名徽标（极窄模式只保留居中名称） */}
+            <div style={compact ? { ...LABEL_ROW_STYLE, flex: 'none', width: '100%', justifyContent: 'center' } : LABEL_ROW_STYLE}>
+              <span style={compact ? { ...LABEL_TEXT_STYLE, fontSize: 12 } : LABEL_TEXT_STYLE}>{action.name}</span>
+              {action.ext && !compact && <CodeBadge color={action.color}>{action.ext}</CodeBadge>}
             </div>
-            {action.shortcut && !compact ? (
-              <span
-                style={{
-                  color: 'var(--editor-text-muted)',
-                  fontSize: 10,
-                  padding: '2px 5px',
-                  background: 'var(--editor-bg)',
-                  borderRadius: 4,
-                  border: '1px solid var(--editor-border)',
-                  flexShrink: 0,
-                }}
-              >
-                {formatShortcut(action.shortcut)}
-              </span>
-            ) : null}
           </button>
           </Tooltip>
         ))}
@@ -447,15 +424,10 @@ export function WelcomeScreen({
               }}
             >
               <fmt.icon size={16} color={fmt.color} style={{ flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', width: compact ? '100%' : undefined, textAlign: compact ? 'center' : undefined }}>
-                <div style={{ fontWeight: 500, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                  {compact ? stripExtension(fmt.label) : fmt.label}
-                </div>
-                {!compact && (
-                  <div style={{ fontSize: 10, color: 'var(--editor-text-muted)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                    {fmt.desc}
-                  </div>
-                )}
+              {/* 名称 + 扩展名徽标（极窄模式只保留居中名称） */}
+              <div style={compact ? { ...LABEL_ROW_STYLE, flex: 'none', width: '100%', justifyContent: 'center' } : LABEL_ROW_STYLE}>
+                <span style={LABEL_TEXT_STYLE}>{fmt.name}</span>
+                {fmt.ext && !compact && <CodeBadge color={fmt.color}>{fmt.ext}</CodeBadge>}
               </div>
             </button>
             </Tooltip>
@@ -532,34 +504,17 @@ export function WelcomeScreen({
                 fill={action.iconFill || 'none'}
               />
             </div>
-            {/* 标题与描述 */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 500, lineHeight: 1.3, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                {action.label}
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--editor-text-muted)', marginTop: 2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                {action.desc}
-              </div>
+            {/* 标题 + 靠右的快捷键徽标（放不下时徽标隐藏，标题优先完整） */}
+            <div style={{ ...LABEL_ROW_STYLE, justifyContent: 'space-between', columnGap: 12 }}>
+              <span style={LABEL_TEXT_STYLE}>{action.label}</span>
+              {action.shortcut && !compact ? (
+                <CodeBadge color={action.badgeTint}>{formatShortcut(action.shortcut)}</CodeBadge>
+              ) : null}
             </div>
-            {action.shortcut && !compact ? (
-              <span
-                style={{
-                  color: 'var(--editor-text-secondary, var(--editor-text-muted))',
-                  fontSize: 10,
-                  padding: '2px 5px',
-                  background: action.badgeBg,
-                  borderRadius: 4,
-                  border: `1px solid ${action.badgeBorder}`,
-                  flexShrink: 0,
-                }}
-              >
-                {formatShortcut(action.shortcut)}
-              </span>
-            ) : null}
           </button>
         ))}
 
-        {/* 设置了同步文件夹时显示：横跨两列，附带路径与最近同步时间 */}
+        {/* 设置了同步文件夹时显示：横跨两列 */}
         {syncRoot && onOpenSyncFolder ? (
           <button
             type="button"
@@ -613,13 +568,9 @@ export function WelcomeScreen({
             >
               <FolderSync size={18} color="#0ea5e9" />
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 500, lineHeight: 1.3 }}>打开同步文件夹</div>
-              <div style={{ fontSize: 11, color: 'var(--editor-text-muted)', marginTop: 2, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                {syncRoot}
-              </div>
+            <div style={{ flex: 1, minWidth: 0, fontWeight: 500, lineHeight: 1.3, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+              打开同步文件夹
             </div>
-            {!compact && <span style={{ fontSize: 11, color: 'var(--editor-text-muted)', flexShrink: 0 }}>{syncStatusText}</span>}
           </button>
         ) : null}
       </div>

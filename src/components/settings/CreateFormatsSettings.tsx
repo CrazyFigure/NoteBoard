@@ -43,6 +43,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { Tooltip } from '../Tooltip';
+import { CodeBadge } from '../CodeBadge';
 import { useSettingsStore } from '../../stores/settingsStore';
 import {
   DEFAULT_CREATE_FORMATS,
@@ -122,7 +123,8 @@ function FormatChipBody({ id, zone }: { id: CreateFormatId; zone: Zone }) {
         <Icon size={zone === 'primary' ? 15 : 14} color={meta.color} />
       </span>
       <span className="nb-cf-name">{meta.name}</span>
-      {meta.ext && <span className="nb-cf-ext">{meta.ext}</span>}
+      {/* 扩展名以行内代码徽标展示，与主页卡片、「+」菜单一致 */}
+      {meta.ext && <CodeBadge color={meta.color} className="is-shrinkable">{meta.ext}</CodeBadge>}
     </>
   );
 }

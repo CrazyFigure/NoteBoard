@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   CREATE_FORMATS,
   DEFAULT_CREATE_FORMATS,
-  createFormatLabel,
   getCreateFormat,
   isDefaultCreateFormats,
   resolveCreateFormats,
@@ -38,10 +37,17 @@ describe('新建格式入口布局', () => {
     expect(resolved.more).toHaveLength(CREATE_FORMATS.length);
   });
 
-  it('显示名不加「新建」，附带扩展名', () => {
-    expect(createFormatLabel(getCreateFormat('markdown'))).toBe('Markdown 笔记 (.md)');
-    expect(createFormatLabel(getCreateFormat('drawio'))).toBe('架构图 (.drawio)');
-    expect(createFormatLabel(getCreateFormat('board'))).toBe('手绘风白板 (.excalidraw)');
-    expect(createFormatLabel(getCreateFormat('textdiff'))).toBe('文本对比');
+  it('显示名不加「新建」，扩展名单独展示', () => {
+    expect(getCreateFormat('markdown')).toMatchObject({ name: 'Markdown笔记', ext: '.md' });
+    expect(getCreateFormat('drawio')).toMatchObject({ name: '架构图', ext: '.drawio' });
+    expect(getCreateFormat('board')).toMatchObject({ name: '手绘风白板', ext: '.excalidraw' });
+    expect(getCreateFormat('textdiff').ext).toBeUndefined();
+  });
+
+  it('名称中英文之间不留空格、不含括号扩展名', () => {
+    for (const meta of CREATE_FORMATS) {
+      expect(meta.name).not.toMatch(/[A-Za-z]\s+[一-龥]|[一-龥]\s+[A-Za-z]/);
+      expect(meta.name).not.toMatch(/[(（]/);
+    }
   });
 });

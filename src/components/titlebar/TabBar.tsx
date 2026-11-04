@@ -79,7 +79,8 @@ import { formatShortcut } from '../../core/shortcuts';
 import { dragTab } from '../../features/window/tabDrag';
 import { TabDropOverlay } from '../../features/window/TabDropOverlay';
 import { useArrivingTabKey, useNativeDraggedTabKey } from '../../features/window/tabDragFeedback';
-import { createFormatLabel, getCreateFormat, type CreateFormatId } from '../../features/welcome/createFormats';
+import { getCreateFormat, type CreateFormatId } from '../../features/welcome/createFormats';
+import { CodeBadge } from '../CodeBadge';
 import { useCreateFormats } from '../../features/welcome/useCreateFormats';
 
 // ── 类型图标映射 ──
@@ -597,6 +598,10 @@ function TabItem({ tab, isActive, onActivate, onClose, nativeDragging, arriving 
   );
 }
 
+// 菜单项里的快捷键徽标靠右对齐；名称右侧多留 8px，加上 gap 后与徽标至少隔开 16px
+const MENU_SHORTCUT_LABEL_STYLE: React.CSSProperties = { marginRight: 8 };
+const MENU_SHORTCUT_BADGE_STYLE: React.CSSProperties = { marginLeft: 'auto' };
+
 // 菜单项基础样式生成函数（支持禁用态）
 function getMenuItemStyle(disabled = false): React.CSSProperties {
   return {
@@ -609,6 +614,8 @@ function getMenuItemStyle(disabled = false): React.CSSProperties {
     border: 'none',
     borderRadius: 4,
     textAlign: 'left',
+    // 菜单项始终单行：靠近窗口右缘时菜单宽度受限也不折行，越界部分由视口收回逻辑平移
+    whiteSpace: 'nowrap',
     cursor: disabled ? 'not-allowed' : 'pointer',
     fontFamily: 'var(--ui-font-family, inherit)',
     fontSize: 'calc(var(--ui-font-size, 13px) - 1px)',
@@ -988,7 +995,9 @@ export function TabBar() {
         onMouseUp={handleMenuItemMouseUp}
       >
         <Icon size={13} color={meta.color} />
-        <span>{createFormatLabel(meta)}</span>
+        <span>{meta.name}</span>
+        {/* 扩展名以行内代码徽标展示，与主页卡片一致 */}
+        {meta.ext && <CodeBadge color={meta.color}>{meta.ext}</CodeBadge>}
       </button>
     );
   };
@@ -1345,7 +1354,8 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <File size={13} color="#3b82f6" />
-            <span>{formatShortcut('打开文件 (Ctrl+O)')}</span>
+            <span style={MENU_SHORTCUT_LABEL_STYLE}>打开文件</span>
+            <CodeBadge color="#3b82f6" style={MENU_SHORTCUT_BADGE_STYLE}>{formatShortcut('Ctrl+O')}</CodeBadge>
           </button>
 
           {/* 打开文件夹 */}
@@ -1363,7 +1373,8 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <FolderOpen size={13} color="#eab308" />
-            <span>{formatShortcut('打开文件夹 (Ctrl+Shift+O)')}</span>
+            <span style={MENU_SHORTCUT_LABEL_STYLE}>打开文件夹</span>
+            <CodeBadge color="#eab308" style={MENU_SHORTCUT_BADGE_STYLE}>{formatShortcut('Ctrl+Shift+O')}</CodeBadge>
           </button>
 
           {/* 收藏夹：打开收藏夹管理弹窗 */}
@@ -1459,7 +1470,8 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <Save size={13} color={activeKey ? 'var(--editor-accent)' : undefined} />
-            <span>{formatShortcut('保存 (Ctrl+S)')}</span>
+            <span style={MENU_SHORTCUT_LABEL_STYLE}>保存</span>
+            <CodeBadge color={activeKey ? 'var(--editor-accent)' : undefined} style={MENU_SHORTCUT_BADGE_STYLE}>{formatShortcut('Ctrl+S')}</CodeBadge>
           </button>
 
           {/* 另存为 */}
@@ -1479,7 +1491,8 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <SaveAll size={13} color={activeKey ? '#06b6d4' : undefined} />
-            <span>{formatShortcut('另存为 (Ctrl+Shift+S)')}</span>
+            <span style={MENU_SHORTCUT_LABEL_STYLE}>另存为</span>
+            <CodeBadge color={activeKey ? '#06b6d4' : undefined} style={MENU_SHORTCUT_BADGE_STYLE}>{formatShortcut('Ctrl+Shift+S')}</CodeBadge>
           </button>
         </div>
       )}

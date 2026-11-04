@@ -2917,6 +2917,33 @@ button:not(:disabled) {
   box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.05));
 }
 
+/* 行内代码徽标：扩展名、快捷键等短代码文本（主页卡片、「+」菜单、设置新建入口共用）
+   底色与描边由 --nb-badge-color 半透明混合而来，浅色与深色主题下都只是一层淡淡的色调 */
+.nb-code-badge {
+  --nb-badge-color: var(--editor-text-muted);
+  display: inline-block;
+  flex-shrink: 0;
+  padding: 0 5px;
+  border: 1px solid color-mix(in srgb, var(--nb-badge-color) 24%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--nb-badge-color) 8%, transparent);
+  color: var(--editor-text-secondary, var(--editor-text-muted));
+  font-family: var(--mono-font-family, monospace);
+  font-size: 10.5px;
+  font-weight: 400;
+  line-height: 16px;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+/* 跟在名称后的扩展名：空间不足时先于名称收缩，名称尽量完整 */
+.nb-code-badge.is-shrinkable {
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* 主操作按钮（强调色实心填充） */
 .nb-btn-primary {
   display: inline-flex;
@@ -5774,21 +5801,6 @@ button.nb-callout-icon:active {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-
-/* 空间不足时扩展名先于名称收缩，名称尽量完整 */
-.nb-cf-ext {
-  flex: 0 100 auto;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: var(--toolbar-hover);
-  color: var(--editor-text-muted);
-  font-family: var(--mono-font-family, monospace);
-  font-size: 10.5px;
 }
 
 .nb-cf-move {
