@@ -97,6 +97,49 @@ describe('buildHtmlPreviewDocument', () => {
     expect(doc.querySelector('link[href="https://cdn.example.com/x.css"]')).not.toBeNull();
   });
 
+  it('递归内联本地 @import：子样式表 url() 以自身目录为基准，条件包裹为规则块，网络 @import 保留在最前', async () => {
+    const files: Record<string, string> = {
+      '/site/assets/lesson.css':
+        '@charset "utf-8";\n/* 主样式 */\n@import "base/reset.css";\n@import url(\'print.css\') print;\n@import url(https://fonts.example.com/a.css);\n@import "theme.css" layer(theme) supports(selector(:has(a))) screen;\n.lesson { color: red; }',
+      '/site/assets/base/reset.css': 'body { background: url(bg.png); }',
+      '/site/assets/print.css': '.p { display: none; }',
+      '/site/assets/theme.css': '.t { color: blue; }',
+    };
+    const readText = vi.fn(async (abs: string) => files[abs] ?? null);
+    const html = await buildHtmlPreviewDocument(
+      '<html><head><link rel="stylesheet" href="../assets/lesson.css"></head><body></body></html>',
+      createEnv({ readText }),
+    );
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const css = doc.querySelector('style[data-nb-source="../assets/lesson.css"]')?.textContent ?? '';
+    expect(css).not.toContain('@charset');
+    expect(css).not.toMatch(/@import\s+["']?(base|print|theme)/);
+    expect(css.indexOf('@import url(https://fonts.example.com/a.css);')).toBe(0);
+    expect(css).toContain('url(asset:///site/assets/base/bg.png)');
+    expect(css).toMatch(/@media print \{\s*\.p \{ display: none; \}\s*\}/);
+    expect(css).toMatch(/@media screen \{\s*@supports \(selector\(:has\(a\)\)\) \{\s*@layer theme \{\s*\.t \{ color: blue; \}/);
+    // 内联内容位于本文件自身规则之前，保持层叠顺序
+    expect(css.indexOf('body {')).toBeLessThan(css.indexOf('.lesson'));
+  });
+
+  it('<style> 中的 @import 以 HTML 目录为基准内联；循环引用跳过不报缺失，读取失败回调原始地址', async () => {
+    const files: Record<string, string> = {
+      '/site/pages/a.css': '@import "b.css";\n.a{}',
+      '/site/pages/b.css': '@import "a.css";\n.b{}',
+    };
+    const onStyleMissing = vi.fn();
+    const html = await buildHtmlPreviewDocument(
+      '<style>@import "a.css"; @import "gone.css"; .own{}</style><link rel="stylesheet" href="../x/missing.css">',
+      createEnv({ readText: vi.fn(async (abs: string) => files[abs] ?? null), onStyleMissing }),
+    );
+    const css = new DOMParser().parseFromString(html, 'text/html').querySelector('style')?.textContent ?? '';
+    expect(css).toContain('.a{}');
+    expect(css).toContain('.b{}');
+    expect(css).toContain('.own{}');
+    expect(css).not.toContain('@import');
+    expect(onStyleMissing.mock.calls.map(([ref]) => ref).sort()).toEqual(['../x/missing.css', 'gone.css']);
+  });
+
   it('未保存的文档没有基准目录：相对资源保持原样且不读取文件', async () => {
     const readText = vi.fn(async () => 'body{}');
     const html = await buildHtmlPreviewDocument(

@@ -10,8 +10,7 @@ import { EditorState, Compartment } from '@codemirror/state';
 import type { ViewUpdate } from '@codemirror/view';
 import { defaultKeymap, historyKeymap, history } from '@codemirror/commands';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { readFile } from '@tauri-apps/plugin-fs';
-import { Columns, Code2, Eye, Globe, ExternalLink, RotateCw, ShieldCheck } from 'lucide-react';
+import { Columns, Code2, Eye, Globe, ExternalLink, RotateCw, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -58,22 +57,27 @@ function shouldForwardKey(event: KeyboardEvent): boolean {
   return event.ctrlKey || event.metaKey || event.altKey || event.key === 'Escape' || /^F\d{1,2}$/.test(event.key);
 }
 
-/** 读取本地文本文件；失败时静默返回 null（样式表缺失不影响预览其余部分） */
+/**
+ * 读取本地文本文件；失败返回 null（样式表缺失不影响预览其余部分）。
+ * 走应用文件层而非 fs 插件：插件只放行文件选择器授权过的路径，侧栏、文件关联或会话恢复打开时会读取被拒；
+ * 同时沿用编码探测，GBK 样式表也能正确解码。
+ */
 async function readTextFile(absPath: string): Promise<string | null> {
   try {
-    return new TextDecoder().decode(await readFile(absPath));
+    return (await ipc.readDocument(absPath)).content ?? null;
   } catch {
     return null;
   }
 }
 
 /** 当前平台的预览构建能力 */
-function createPreviewEnv(baseDir: string | null): HtmlPreviewEnv {
+function createPreviewEnv(baseDir: string | null, onStyleMissing: (ref: string) => void): HtmlPreviewEnv {
   return {
     baseDir,
     resolvePath: resolveRelativeDocPath,
     toResourceUrl: convertFileSrc,
     readText: readTextFile,
+    onStyleMissing,
   };
 }
 
@@ -114,6 +118,8 @@ export function HtmlSplitEditor({ docKey }: HtmlSplitEditorProps) {
 
   const [source, setSource] = useState<string>(doc?.content ?? '');
   const [srcDoc, setSrcDoc] = useState<string>('');
+  // 本次预览中未能加载的本地样式表（原始引用地址），非空时在工具栏提示
+  const [missingStyles, setMissingStyles] = useState<string[]>([]);
   // 手动刷新计数：外部样式表或图片改动后重新读取
   const [refreshTick, setRefreshTick] = useState(0);
 
@@ -239,13 +245,19 @@ export function HtmlSplitEditor({ docKey }: HtmlSplitEditorProps) {
     if (!previewVisible) return;
     const token = ++buildTokenRef.current;
     const timer = window.setTimeout(() => {
-      void buildHtmlPreviewDocument(source, createPreviewEnv(baseDir)).then(
+      const missing = new Set<string>();
+      void buildHtmlPreviewDocument(source, createPreviewEnv(baseDir, (ref) => missing.add(ref))).then(
         (html) => {
           if (token !== buildTokenRef.current) return;
           // 记录旧文档滚动位置，onLoad 时恢复
           const win = iframeRef.current?.contentWindow;
           if (win) previewScrollRef.current = { x: win.scrollX, y: win.scrollY };
           setSrcDoc(html);
+          setMissingStyles((prev) => {
+            const next = [...missing];
+            // 内容未变时沿用旧数组，避免每次输入都触发工具栏重渲染
+            return prev.length === next.length && prev.every((ref, i) => ref === next[i]) ? prev : next;
+          });
         },
         (error: unknown) => {
           console.error('构建 HTML 预览失败:', error);
@@ -410,6 +422,16 @@ export function HtmlSplitEditor({ docKey }: HtmlSplitEditorProps) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           {previewVisible && (
             <>
+              {missingStyles.length > 0 && (
+                <Tooltip content={`样式表未能加载：${missingStyles.join('、')}`} side="bottom" sideOffset={4}>
+                  <span
+                    aria-label={`样式表未能加载：${missingStyles.join('、')}`}
+                    style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 6px', color: 'var(--warning-600, #d97706)' }}
+                  >
+                    <TriangleAlert size={14} />
+                  </span>
+                </Tooltip>
+              )}
               <Tooltip content="安全预览：不运行脚本，不加载网络样式" side="bottom" sideOffset={4}>
                 <span
                   aria-label="安全预览：不运行脚本，不加载网络样式"
