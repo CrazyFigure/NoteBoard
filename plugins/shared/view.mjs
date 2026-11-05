@@ -81,6 +81,7 @@ const ICONS = {
   list: 'M3 12h.01M3 18h.01M3 6h.01M8 12h13M8 18h13M8 6h13',
   external: 'M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6',
   minimize: 'M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7',
+  map: 'm3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6M9 3v15M15 6v15',
 };
 
 /** 内联 SVG 图标，颜色跟随 currentColor。 */

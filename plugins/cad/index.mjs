@@ -3,12 +3,13 @@ import { CadViewer, isWebGLAvailable } from '@flyfish-dev/cad-viewer';
 import assets from 'noteboard:cad-assets';
 import {createView,el,iconButton,separator} from '../shared/view.mjs';
 import { CAD_LIMITS, canvasOptionsForScene } from './scene.mjs';
+import { mountMinimap } from './minimap.mjs';
 
 /** 所有解析资源包含在已校验的插件内，打开图纸不请求远程文件或外部参照。 */
 export async function mount({container,name,bytes,signal,reading}) {
   if(signal.aborted)throw new DOMException('已取消','AbortError');
   if(bytes.byteLength>CAD_LIMITS.fileBytes)throw new Error('CAD 预览支持 50 MB 以内的图纸，请使用专业 CAD 软件打开此文件。');
-  const view=createView(container,name,reading),urls=[];let viewer,worker,stopped=false;
+  const view=createView(container,name,reading),urls=[];let viewer,worker,minimap,stopped=false;
   const blob=(value,type)=>{const url=URL.createObjectURL(new Blob([value],{type}));urls.push(url);return url;};
   const status=el('span','np-muted','正在后台解析图纸…'),canvasHost=el('div','cad-canvas');
   view.style.textContent+=`.np-scroll{overflow:hidden;display:flex;flex-direction:column}.cad-canvas{flex:1;min-height:0;position:relative;touch-action:none}.cad-canvas canvas{width:100%;height:100%;display:block;touch-action:none}.cad-hint{padding:6px 12px;border-top:1px solid var(--editor-border);font-size:11px;color:var(--editor-text-muted)}`;
@@ -25,11 +26,11 @@ export async function mount({container,name,bytes,signal,reading}) {
     // 上游运行时通过 locateFile 解析这两个固定名，映射到包内 Blob，完全离线。
     code=assets.worker.replaceAll('"libredwg-web.wasm"',JSON.stringify(wasm)).replaceAll('"libredwg-web.js"',JSON.stringify(module));
   }
-  const destroy=()=>{if(stopped)return;stopped=true;worker?.terminate();viewer?.destroy();observer.disconnect();urls.forEach((url)=>URL.revokeObjectURL(url));view.destroy();};
+  const destroy=()=>{if(stopped)return;stopped=true;worker?.terminate();minimap?.destroy();viewer?.destroy();observer.disconnect();urls.forEach((url)=>URL.revokeObjectURL(url));view.destroy();};
   const theme=()=>{const style=getComputedStyle(container);return {background:style.getPropertyValue('--editor-bg').trim()||'#fff',foreground:style.getPropertyValue('--editor-text').trim()||'#333'};};
   let textFont='';
   const updateFonts=()=>{const style=getComputedStyle(container);textFont=style.getPropertyValue('--content-font-family').trim()||style.getPropertyValue('--ui-font-family').trim()||'system-ui, sans-serif';};
-  const observer=new MutationObserver(()=>{updateFonts();viewer?.setCanvasOptions(theme());});observer.observe(document.documentElement,{attributes:true,attributeFilter:['style','class','data-theme']});
+  const observer=new MutationObserver(()=>{updateFonts();viewer?.setCanvasOptions(theme());minimap?.invalidate();});observer.observe(document.documentElement,{attributes:true,attributeFilter:['style','class','data-theme']});
   signal.addEventListener('abort',destroy,{once:true});
   try {
     worker=new Worker(blob(assets.sceneWorker+'\n'+code,'text/javascript'),{type:'module'});
@@ -56,7 +57,7 @@ export async function mount({container,name,bytes,signal,reading}) {
     await new Promise((resolve)=>setTimeout(resolve,0));
     if(signal.aborted)return destroy;
     // 大场景已要求 GPU，创建失败时明确退出，不能自动回退到每帧扫描整图的 Canvas2D。
-    viewer=new CadViewer({container:canvasHost,renderer:result.scene.large?'webgl':'auto',loaders:[],autoFit:true,canvasOptions:{...theme(),...options},onViewChange:({zoomPercent})=>{status.textContent=`${Math.round(zoomPercent)}% · ${result.document.entities?.length??0} 个实体`;}});
+    viewer=new CadViewer({container:canvasHost,renderer:result.scene.large?'webgl':'auto',loaders:[],autoFit:true,canvasOptions:{...theme(),...options},onViewChange:({zoomPercent})=>{status.textContent=`${Math.round(zoomPercent)}% · ${result.document.entities?.length??0} 个实体`;minimap?.sync();}});
     // 仅为此查看器的文字 Canvas 替换上游固定的系统回退字体，SHX 矢量字形保持原样。
     // 缓存 CSS 字体栈，避免每帧上千文字标签重复读取布局；不修改全局 Canvas 原型。
     updateFonts();
@@ -67,6 +68,8 @@ export async function mount({container,name,bytes,signal,reading}) {
     }
     // setDocument 已执行首次适合窗口，避免再次扫描全部实体和嵌套块。
     viewer.setDocument(result.document,name);
+    // 缩略图仅属于图纸画布；按需缓存整图，关闭文档时随渲染器一并清理。
+    minimap=mountMinimap(canvasHost,viewer.renderer);
     return destroy;
   } catch(error) {destroy();throw error;}
 }
