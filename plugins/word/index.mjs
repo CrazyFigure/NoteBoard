@@ -35,7 +35,7 @@ export async function mount({ container, name, bytes, signal, notify, reading })
   const reflow = button('阅读排版', () => {
     const on = page.classList.toggle('reading'); reflow.setAttribute('aria-pressed', String(on));
     if (on) setZoom(1); else fitWidth();
-  }, { icon:'book', tip:'按应用字体与主题重排正文' });
+  }, { icon:'text', tip:'按应用字体与主题重排正文' });
   reflow.setAttribute('aria-pressed', 'false');
   view.toolbar.append(zoomer.element, iconButton('fit-width', '适合宽度', fitWidth), separator(), reflow);
   try {
