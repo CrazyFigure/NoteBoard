@@ -15,7 +15,7 @@ import { createBoardMinimapScene } from './boardMinimap';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { useWindowStore } from '../../stores/windowStore';
-import { useSettingsStore } from '../../stores/settingsStore';
+import { getAutoSaveDelayMs, useSettingsStore } from '../../stores/settingsStore';
 import { showToast } from '../../stores/toastStore';
 import {
   bumpDocumentRevision,
@@ -401,7 +401,7 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
         setZoomLevel(zoom);
       }, 300);
 
-      // 800ms 防抖自动写入磁盘（auto 策略；🔴 S09：统一走每文档写队列与基线/脏态屏障）
+      // 按设置的自动保存间隔防抖写入磁盘（auto 策略；🔴 S09：统一走每文档写队列与基线/脏态屏障）
       if (diskTimerRef.current) clearTimeout(diskTimerRef.current);
       diskTimerRef.current = setTimeout(async () => {
         try {
@@ -409,7 +409,7 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
         } catch (e) {
           console.error('画板自动保存失败:', e);
         }
-      }, 800);
+      }, getAutoSaveDelayMs());
     },
     [refreshHistoryAvailability],
   );

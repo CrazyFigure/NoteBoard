@@ -186,7 +186,7 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
             setContent(docKey, newText);
             setDirty(docKey, true);
             setTabDirty(docKey, true);
-            // auto 策略下停止编辑 800ms 后自动写盘
+            // auto 策略下停止编辑达到自动保存间隔后写盘
             scheduleAutoSave(docKey);
           }
         }),

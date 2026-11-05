@@ -21,6 +21,7 @@ import {
 } from '../../core/editor/editorRegistry';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
+import { getAutoSaveDelayMs } from '../../stores/settingsStore';
 import * as ipc from '../../core/ipc/commands';
 import { getBaseline, normalizeEol } from '../editor-md/serialize';
 import { onDocumentSaved } from '../staging/stagingManager';
@@ -438,7 +439,7 @@ const autoSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
  * 文档已关闭时 queuedAutoSave 自行放弃。
  * 用于分屏图表（信息图 / Mermaid / PlantUML）、思维导图、Draw.io 与多维表格。
  */
-export function scheduleAutoSave(docKey: string, delay = 800): void {
+export function scheduleAutoSave(docKey: string, delay = getAutoSaveDelayMs()): void {
   // 新建 / 导入的未命名文档还没有磁盘路径，需先另存为
   if (docKey.startsWith('untitled:')) return;
   if (useDocumentStore.getState().getDocument(docKey)?.savePolicy !== 'auto') return;

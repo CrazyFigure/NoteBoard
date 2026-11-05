@@ -32,7 +32,7 @@ import {
 import type { LanguageId } from '../../core/ipc/types';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
-import { useSettingsStore } from '../../stores/settingsStore';
+import { getAutoSaveDelayMs, useSettingsStore } from '../../stores/settingsStore';
 import { normalizeEol } from '../editor-md/serialize';
 import {
   bumpDocumentRevision,
@@ -191,7 +191,7 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
     const initialEditorSettings = useSettingsStore.getState().settings.editor;
     initializeDocumentHistory(docKey, currentDoc.content ?? '', 'code');
 
-    // 内容变更监听 → 更新 store（防抖 500ms）及自动保存（800ms，仅在 auto 策略时）
+    // 内容变更监听 → 更新 store（防抖 500ms）及自动保存（按设置间隔，仅在 auto 策略时）
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
     // 基线仅在真实保存/外部重载后重建，输入时用 Text.eq 保持即时精确脏态，避免每键转全文字符串。
@@ -235,7 +235,7 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
         flushPendingSourceSnapshot(key);
       }, 500);
 
-      // 若处于 auto 自动保存策略，800ms 防抖写入磁盘
+      // 若处于 auto 自动保存策略，按设置的自动保存间隔防抖写入磁盘
       // 🔴 S09：统一走每文档写队列（策略/外部状态/基线检查 + flush-and-compare 脏态 + 带证明暂存清理）
       if (targetDoc?.savePolicy === 'auto') {
         if (autoSaveTimer) clearTimeout(autoSaveTimer);
@@ -246,7 +246,7 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
           } catch (e) {
             console.error('代码/文本文件自动保存失败:', e);
           }
-        }, 800);
+        }, getAutoSaveDelayMs());
       }
     });
 

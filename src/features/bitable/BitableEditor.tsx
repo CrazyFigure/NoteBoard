@@ -221,7 +221,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
       setContent(docKey, serialized);
       setDirty(docKey, true);
       setTabDirty(docKey, true);
-      // auto 策略下停止编辑 800ms 后自动写盘
+      // auto 策略下停止编辑达到自动保存间隔后写盘
       scheduleAutoSave(docKey);
 
       // 延迟到本轮事件结束再记录历史：把一次交互产生的多步提交合并为单条撤销记录

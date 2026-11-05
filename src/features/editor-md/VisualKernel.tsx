@@ -33,6 +33,7 @@ import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { bumpDocumentRevision, getDocumentRevision } from '../../core/editor/editorRegistry';
 import { autoSaveDocument } from './markdownAutoSave';
+import { getAutoSaveDelayMs } from '../../stores/settingsStore';
 import { registerHistoryMaterializeHook } from '../history/documentHistory';
 import { saveViewState } from '../session/editorSuspension';
 import { findVisualScrollContainer } from './visualScroller';
@@ -164,13 +165,13 @@ export function VisualKernel({
         flushPendingVisualSnapshot(docKey);
       }, 500);
 
-      // 800ms → 盘（auto 策略；先物化保证镜像为最新组末内容）
+      // 自动保存间隔（默认 1s）→ 盘（auto 策略；先物化保证镜像为最新组末内容）
       if (diskTimerRef.current) clearTimeout(diskTimerRef.current);
       diskTimerRef.current = setTimeout(async () => {
         flushPendingVisualSnapshot(docKey);
         const latest = useDocumentStore.getState().getDocument(docKey)?.content ?? '';
         await autoSaveDocument(docKey, latest);
-      }, 800);
+      }, getAutoSaveDelayMs());
     },
     editorProps: {
       attributes: {

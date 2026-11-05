@@ -278,6 +278,9 @@ pub struct FileSettings {
     pub auto_save_drawio: bool,
     #[serde(default)]
     pub auto_save_bitable: bool,
+    // 自动保存间隔（毫秒）：停止编辑多久后写盘；旧配置缺失时为 1000
+    #[serde(default = "default_auto_save_delay_ms")]
+    pub auto_save_delay_ms: u32,
     #[serde(default)]
     pub force_manual_save: bool,
     #[serde(default)]
@@ -312,6 +315,7 @@ impl Default for FileSettings {
             auto_save_mindmap: false,
             auto_save_drawio: false,
             auto_save_bitable: false,
+            auto_save_delay_ms: default_auto_save_delay_ms(),
             force_manual_save: false,
             show_hidden_files: false,
             restore_session: true,
@@ -453,6 +457,7 @@ fn default_mindmap_text_align() -> String { "left".to_string() }
 fn default_mindmap_image_fit() -> String { "original".to_string() }
 fn default_image_dir() -> String { "img".to_string() }
 fn default_large_file_mb() -> u32 { 50 }
+fn default_auto_save_delay_ms() -> u32 { 1000 }
 fn default_explorer_open_mode() -> String { "double".to_string() }
 fn default_html_open_mode() -> String { "browser".to_string() }
 // 默认暂存目录与设置文件同属应用数据区，避免依赖用户是否存在“文档”库。

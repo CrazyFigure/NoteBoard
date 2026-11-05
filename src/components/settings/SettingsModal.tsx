@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud, ChevronRight, Monitor, History, PanelTop, UserRound, Users, Globe, RotateCcw } from 'lucide-react';
-import { DEFAULT_SETTINGS, useSettingsStore, useTitleBarButtons } from '../../stores/settingsStore';
+import { AUTO_SAVE_DELAY_MAX_MS, AUTO_SAVE_DELAY_MIN_MS, DEFAULT_SETTINGS, clampAutoSaveDelayMs, useSettingsStore, useTitleBarButtons } from '../../stores/settingsStore';
 import { ConfirmDialog } from '../../features/sync/SyncControls';
 import { THEMES } from '../../core/theme/themes';
 import { contentWidthToPercent, CONTENT_WIDTH_PERCENT_MAP } from '../../core/theme/applyTheme';
@@ -1265,14 +1265,21 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <Save size={15} color="var(--accent-strong)" />
                       <span>自动保存设置 (分类型独立配置)</span>
                     </div>
-                    <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>{formatShortcut('默认关闭：使用 Ctrl+S 手动保存，关闭时自动拦截确认')}</span>
+                  </div>
+
+                  {/* 自动保存间隔：所有类型共用，停止编辑达到该时长后写盘 */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
+                    <div>保存间隔 (秒)</div>
+                    <AutoSaveDelayInput
+                      valueMs={clampAutoSaveDelayMs(settings.file.autoSaveDelayMs)}
+                      onCommit={(ms) => setFile({ autoSaveDelayMs: ms })}
+                    />
                   </div>
 
                   {/* Markdown 笔记自动保存 */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>Markdown 笔记 (.md / .markdown)</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>停止输入 800ms 后自动写入磁盘；未开启时需手动保存</div>
                     </div>
                     <input
                       type="checkbox"
@@ -1285,7 +1292,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>自由画板 (.excalidraw / .board / .canvas)</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>绘制操作停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
                     </div>
                     <input
                       type="checkbox"
@@ -1298,7 +1304,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>思维导图 (.mindmap / .mm)</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>编辑停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
                     </div>
                     <input
                       type="checkbox"
@@ -1311,7 +1316,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>Draw.io 图表 (.drawio / .dio)</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>绘制操作停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
                     </div>
                     <input
                       type="checkbox"
@@ -1324,7 +1328,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>多维表格 (.bitable / .table)</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>编辑停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
                     </div>
                     <input
                       type="checkbox"
@@ -1337,7 +1340,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>信息图 (.infographic / .ig)</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>编辑停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
                     </div>
                     <input
                       type="checkbox"
@@ -1350,7 +1352,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>代码与文本 (.txt / .sql / .json / .yaml 等)</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>编辑停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
                     </div>
                     <input
                       type="checkbox"
@@ -2157,5 +2158,83 @@ const inputStyle: React.CSSProperties = {
   width: '100%',
   boxSizing: 'border-box',
 };
+
+/** 毫秒转为秒的展示文本：1000 → "1"，1500 → "1.5" */
+function formatDelaySeconds(ms: number): string {
+  return String(Math.round(ms / 100) / 10);
+}
+
+/**
+ * 自动保存间隔输入框（单位：秒）。
+ * 使用 text + inputMode=decimal 而非 type=number：没有右侧微调按钮，滚轮滑过也不会改动数值；
+ * 输入过程中不写设置，失焦或回车时规整到 0.2 ~ 60 秒再提交，Esc 放弃修改。
+ */
+function AutoSaveDelayInput({ valueMs, onCommit }: { valueMs: number; onCommit: (ms: number) => void }) {
+  const [text, setText] = useState(() => formatDelaySeconds(valueMs));
+  const [hover, setHover] = useState(false);
+  const [focused, setFocused] = useState(false);
+  // Esc 撤销时跳过随后的失焦提交（blur 同步触发，此时 text 仍是旧闭包里的输入值）
+  const cancelRef = useRef(false);
+  // 外部设置变化（如另一窗口修改）时同步展示，编辑中不打断输入
+  useEffect(() => {
+    if (!focused) setText(formatDelaySeconds(valueMs));
+  }, [valueMs, focused]);
+
+  const commit = () => {
+    const seconds = parseFloat(text);
+    // 空值 / 非法值回退到当前设置；合法值按 0.1 秒精度规整到可调范围
+    const ms = Number.isFinite(seconds)
+      ? Math.min(AUTO_SAVE_DELAY_MAX_MS, Math.max(AUTO_SAVE_DELAY_MIN_MS, Math.round(seconds * 10) * 100))
+      : valueMs;
+    setText(formatDelaySeconds(ms));
+    if (ms !== valueMs) onCommit(ms);
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      autoComplete="off"
+      aria-label="自动保存间隔（秒）"
+      value={text}
+      onChange={(e) => {
+        // 只保留数字与第一个小数点，小数最多一位
+        const raw = e.target.value.replace(/[^\d.]/g, '');
+        const [int = '', ...rest] = raw.split('.');
+        const next = rest.length > 0 ? `${int.slice(0, 2)}.${rest.join('').slice(0, 1)}` : int.slice(0, 2);
+        setText(next);
+      }}
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        setFocused(false);
+        if (cancelRef.current) {
+          cancelRef.current = false;
+          return;
+        }
+        commit();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.currentTarget.blur();
+        } else if (e.key === 'Escape') {
+          // 阻止冒泡关闭设置弹窗，仅撤销本次输入
+          e.stopPropagation();
+          cancelRef.current = true;
+          setText(formatDelaySeconds(valueMs));
+          e.currentTarget.blur();
+        }
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        ...inputStyle,
+        width: 60,
+        textAlign: 'center',
+        borderColor: focused ? 'var(--accent-strong)' : hover ? 'var(--editor-text-muted)' : 'var(--editor-border)',
+        transition: 'border-color 0.15s',
+      }}
+    />
+  );
+}
 
 

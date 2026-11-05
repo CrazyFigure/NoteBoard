@@ -368,6 +368,8 @@ export interface FileSettings {
   autoSaveMindmap?: boolean;
   autoSaveDrawio?: boolean;
   autoSaveBitable?: boolean;
+  // 自动保存间隔（毫秒）：停止编辑多久后写盘；旧配置缺失时视为 1000
+  autoSaveDelayMs?: number;
   forceManualSave: boolean;
   showHiddenFiles: boolean;
   restoreSession: boolean;

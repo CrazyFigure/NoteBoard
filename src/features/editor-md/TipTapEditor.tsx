@@ -8,7 +8,7 @@
 //    首次进入 visual 时挂载，此后常驻（display 切换保留撤销栈与选区）。
 // 2. 初始化锁为同步程序事务作用域（不再使用 50ms 时间窗忽略真实输入）。
 // 3. 编辑器内核持有内容权威副本，store 里的是防抖后镜像。
-// 4. onUpdate 500ms → store；800ms → 盘（auto 策略，VisualKernel/源码模式各自实现）。
+// 4. onUpdate 500ms → store；自动保存间隔（默认 1s）→ 盘（auto 策略，VisualKernel/源码模式各自实现）。
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Editor } from '@tiptap/core';
@@ -35,7 +35,7 @@ import { nbSyntaxHighlighting } from '../editor-code/highlightStyle';
 import { createBaseExtensions, typographyCompartment } from '../editor-code/setup';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
-import { useSettingsStore } from '../../stores/settingsStore';
+import { getAutoSaveDelayMs, useSettingsStore } from '../../stores/settingsStore';
 import { on, off, emit } from '../../core/emitter';
 import { MarkdownModeToggle } from './MarkdownModeToggle';
 import { ReadingModeOverlay } from '../reading/ReadingModeOverlay';
@@ -376,7 +376,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
         flushPendingSourceSnapshot(docKey);
         const latest = useDocumentStore.getState().getDocument(docKey)?.content ?? '';
         await autoSaveDocument(docKey, latest);
-      }, 800);
+      }, getAutoSaveDelayMs());
     });
 
     const state = EditorState.create({

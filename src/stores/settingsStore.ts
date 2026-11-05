@@ -43,6 +43,22 @@ export function useTitleBarButtons(): TitleBarButtons {
   return { ...DEFAULT_TITLE_BAR_BUTTONS, ...saved };
 }
 
+// 自动保存间隔（毫秒）：默认 1 秒，可调范围 0.2 ~ 60 秒
+export const AUTO_SAVE_DELAY_DEFAULT_MS = 1000;
+export const AUTO_SAVE_DELAY_MIN_MS = 200;
+export const AUTO_SAVE_DELAY_MAX_MS = 60_000;
+
+/** 把任意输入规整为合法的自动保存间隔；非法值回到默认 1 秒 */
+export function clampAutoSaveDelayMs(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return AUTO_SAVE_DELAY_DEFAULT_MS;
+  return Math.min(AUTO_SAVE_DELAY_MAX_MS, Math.max(AUTO_SAVE_DELAY_MIN_MS, Math.round(value)));
+}
+
+/** 编辑器定时器调用：读取当前设置中的自动保存间隔（旧配置缺字段时为 1 秒） */
+export function getAutoSaveDelayMs(): number {
+  return clampAutoSaveDelayMs(useSettingsStore.getState().settings.file?.autoSaveDelayMs);
+}
+
 // 网页适配层复用同一套默认值，避免新部署和桌面端的设置模型逐渐分叉。
 export const DEFAULT_SETTINGS: Settings = {
   schemaVersion: 1,
@@ -102,6 +118,7 @@ export const DEFAULT_SETTINGS: Settings = {
     autoSaveMindmap: false,
     autoSaveDrawio: false,
     autoSaveBitable: false,
+    autoSaveDelayMs: AUTO_SAVE_DELAY_DEFAULT_MS,
     forceManualSave: false,
     showHiddenFiles: false,
     restoreSession: true,
