@@ -55,12 +55,12 @@ export function getExplorerFileIcon(
     style: { flexShrink: 0, ...style },
   };
 
-  // 1. 文件夹图标渲染（温暖琥珀金黄色）
+  // 1. 文件夹图标渲染（温暖琥珀金黄色线条 + 30% 浅黄填充）
   if (isDir) {
     if (isOpen) {
-      return <FolderOpen {...iconProps} color="#f59e0b" />;
+      return <FolderOpen {...iconProps} color="#f59e0b" fill="#f59e0b" fillOpacity={0.3} />;
     }
-    return <Folder {...iconProps} color="#f59e0b" />;
+    return <Folder {...iconProps} color="#f59e0b" fill="#f59e0b" fillOpacity={0.3} />;
   }
 
   const ext = extFromPath(fileNameOrPath);

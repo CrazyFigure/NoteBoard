@@ -4,7 +4,7 @@
 // 详见 docs/09-开发路线图.md 阶段5
 
 import { useState, useCallback } from 'react';
-import { FilePlus, FolderPlus, LocateFixed, RotateCw, FolderOpen } from 'lucide-react';
+import { FilePlus, FolderPlus, LocateFixed, RotateCw, FolderOpen, Search } from 'lucide-react';
 import { useExplorerStore, isSubPath } from './explorerStore';
 import { useTreeData } from './useTreeData';
 import { useReveal } from './useReveal';
@@ -19,8 +19,10 @@ import { useDocumentStore } from '../../stores/documentStore';
 import { ExplorerBreadcrumb } from './ExplorerBreadcrumb';
 import { Tooltip } from '../../components/Tooltip';
 import { pathKey } from './pathUtils';
-import { IS_WEB } from '../../core/platform';
+import { IS_MOBILE_UI, IS_WEB } from '../../core/platform';
 import { showToast } from '../../stores/toastStore';
+import { SUPPORTS_LOCAL_SEARCH, useLocalSearchStore } from '../localSearch/localSearchStore';
+import './explorer.css';
 // 网页多用户：“我的笔记 / 共享给我”切换
 import { ExplorerSpaces } from '../account/ExplorerSpaces';
 import { SHARED_ROOT, isMultiUser, isSharedPath } from '../account/accountState';
@@ -182,105 +184,68 @@ export function Explorer() {
 
   return (
     <div style={containerStyle} role="tree">
-      {/* 标题行 */}
+      {/* 标题行：仅保留操作按钮，靠右排列 */}
       <div
         style={{
           height: 30,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
+          justifyContent: 'flex-end',
+          gap: 2,
           padding: '0 8px',
           borderBottom: '1px solid var(--explorer-border)',
           flexShrink: 0,
         }}
       >
-        <span
-          style={{
-            fontSize: 'calc(var(--explorer-font-size, 13px) - 1px)',
-            fontWeight: 600,
-            color: 'var(--explorer-text)',
-          }}
-        >
-          资源管理器
-        </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          {/* 定位当前激活的文件与目录 */}
-          <Tooltip content="定位当前打开的文件与目录">
-            <button
-              type="button"
-              onClick={handleLocateActive}
-              style={actionBtnStyle}
-              onMouseEnter={handleBtnMouseEnter}
-              onMouseLeave={handleBtnMouseLeave}
-              onMouseDown={handleBtnMouseDown}
-              onMouseUp={handleBtnMouseUp}
-            >
-              <LocateFixed size={15} />
-            </button>
-          </Tooltip>
-          {/* 新建文件 */}
-          {!virtualShared && <Tooltip content="新建文件">
-            <button
-              type="button"
-              onClick={() => {
-                setCreatingType('file');
-                setCreatingName('');
-              }}
-              style={actionBtnStyle}
-              onMouseEnter={handleBtnMouseEnter}
-              onMouseLeave={handleBtnMouseLeave}
-              onMouseDown={handleBtnMouseDown}
-              onMouseUp={handleBtnMouseUp}
-            >
-              <FilePlus size={15} />
-            </button>
-          </Tooltip>}
-          {/* 新建文件夹 */}
-          {!virtualShared && <Tooltip content="新建文件夹">
-            <button
-              type="button"
-              onClick={() => {
-                setCreatingType('folder');
-                setCreatingName('');
-              }}
-              style={actionBtnStyle}
-              onMouseEnter={handleBtnMouseEnter}
-              onMouseLeave={handleBtnMouseLeave}
-              onMouseDown={handleBtnMouseDown}
-              onMouseUp={handleBtnMouseUp}
-            >
-              <FolderPlus size={15} />
-            </button>
-          </Tooltip>}
-          {/* 刷新目录 */}
-          <Tooltip content="刷新目录">
-            <button
-              type="button"
-              onClick={handleRefresh}
-              style={actionBtnStyle}
-              onMouseEnter={handleBtnMouseEnter}
-              onMouseLeave={handleBtnMouseLeave}
-              onMouseDown={handleBtnMouseDown}
-              onMouseUp={handleBtnMouseUp}
-            >
-              <RotateCw size={15} />
-            </button>
-          </Tooltip>
-          {/* 打开文件夹 */}
-          <Tooltip content="打开文件夹">
-            <button
-              type="button"
-              onClick={openFolderDialog}
-              style={actionBtnStyle}
-              onMouseEnter={handleBtnMouseEnter}
-              onMouseLeave={handleBtnMouseLeave}
-              onMouseDown={handleBtnMouseDown}
-              onMouseUp={handleBtnMouseUp}
-            >
-              <FolderOpen size={15} />
-            </button>
-          </Tooltip>
-        </div>
+        {/* 定位当前激活的文件与目录 */}
+        <ActionButton label="定位当前打开的文件与目录" hue={ACTION_HUES.locate} onClick={handleLocateActive}>
+          <LocateFixed size={15} />
+        </ActionButton>
+        {/* 新建文件 */}
+        {!virtualShared && (
+          <ActionButton
+            label="新建文件"
+            hue={ACTION_HUES.newFile}
+            onClick={() => {
+              setCreatingType('file');
+              setCreatingName('');
+            }}
+          >
+            <FilePlus size={15} />
+          </ActionButton>
+        )}
+        {/* 新建文件夹 */}
+        {!virtualShared && (
+          <ActionButton
+            label="新建文件夹"
+            hue={ACTION_HUES.newFolder}
+            onClick={() => {
+              setCreatingType('folder');
+              setCreatingName('');
+            }}
+          >
+            <FolderPlus size={15} />
+          </ActionButton>
+        )}
+        {/* 刷新目录 */}
+        <ActionButton label="刷新目录" hue={ACTION_HUES.refresh} onClick={handleRefresh}>
+          <RotateCw size={15} />
+        </ActionButton>
+        {/* 打开文件夹 */}
+        <ActionButton label="打开文件夹" hue={ACTION_HUES.openFolder} onClick={openFolderDialog}>
+          <FolderOpen size={15} />
+        </ActionButton>
+        {/* 全局搜索（与 Ctrl/Cmd+Shift+F 相同，仅桌面端提供） */}
+        {SUPPORTS_LOCAL_SEARCH && !IS_MOBILE_UI && (
+          <ActionButton
+            label="全局搜索"
+            shortcut="Ctrl+Shift+F"
+            hue={ACTION_HUES.search}
+            onClick={() => useLocalSearchStore.getState().setOpen(true)}
+          >
+            <Search size={15} />
+          </ActionButton>
+        )}
       </div>
 
       {showSpaces && <ExplorerSpaces root={root} />}
@@ -372,41 +337,39 @@ export function Explorer() {
   );
 }
 
-const actionBtnStyle: React.CSSProperties = {
-  width: 24,
-  height: 24,
-  border: 'none',
-  background: 'transparent',
-  cursor: 'pointer',
-  color: 'var(--explorer-text-muted)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: 0,
-  borderRadius: 4,
-  transition: 'all var(--transition-fast)',
-};
+// 标题栏按钮各自的色相；实际颜色在 explorer.css 中与主题文字色混合，适配明暗主题
+const ACTION_HUES = {
+  locate: '#f43f5e',
+  newFile: '#3b82f6',
+  newFolder: '#f59e0b',
+  refresh: '#10b981',
+  openFolder: '#f97316',
+  search: '#8b5cf6',
+} as const;
 
-function handleBtnMouseEnter(e: React.MouseEvent<HTMLButtonElement>) {
-  e.currentTarget.style.background = 'var(--toolbar-hover)';
-  e.currentTarget.style.color = 'var(--explorer-text)';
-  e.currentTarget.style.transform = 'scale(1.05)';
+interface ActionButtonProps {
+  label: string;
+  shortcut?: string;
+  hue: string;
+  onClick: () => void;
+  children: React.ReactNode;
 }
 
-function handleBtnMouseLeave(e: React.MouseEvent<HTMLButtonElement>) {
-  e.currentTarget.style.background = 'transparent';
-  e.currentTarget.style.color = 'var(--explorer-text-muted)';
-  e.currentTarget.style.transform = 'scale(1)';
-}
-
-function handleBtnMouseDown(e: React.MouseEvent<HTMLButtonElement>) {
-  e.currentTarget.style.background = 'var(--toolbar-active)';
-  e.currentTarget.style.transform = 'scale(0.92)';
-}
-
-function handleBtnMouseUp(e: React.MouseEvent<HTMLButtonElement>) {
-  e.currentTarget.style.background = 'var(--toolbar-hover)';
-  e.currentTarget.style.transform = 'scale(1.05)';
+/** 标题栏彩色图标按钮：悬停/按下反馈由 .nb-explorer-action 提供 */
+function ActionButton({ label, shortcut, hue, onClick, children }: ActionButtonProps) {
+  return (
+    <Tooltip content={label} shortcut={shortcut}>
+      <button
+        type="button"
+        aria-label={label}
+        className="nb-explorer-action"
+        style={{ '--nb-action-hue': hue } as React.CSSProperties}
+        onClick={onClick}
+      >
+        {children}
+      </button>
+    </Tooltip>
+  );
 }
 
 

@@ -1,0 +1,45 @@
+/* NoteBoard 资源管理器：标题栏操作按钮 */
+
+/*
+ * 每个按钮通过 --nb-action-hue 指定自身色相，与 explorer 文字色混合：
+ * 浅色主题文字偏深 → 图标自动加深；深色主题文字偏浅 → 图标自动提亮，无需逐主题定义变量。
+ */
+.nb-explorer-action {
+  --nb-action-hue: var(--editor-accent);
+  width: 24px;
+  height: 24px;
+  border: none;
+  padding: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: color-mix(in srgb, var(--nb-action-hue) 78%, var(--explorer-text));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+/* 悬停：同色浅底 + 图标加深 */
+.nb-explorer-action:hover {
+  background: color-mix(in srgb, var(--nb-action-hue) 14%, transparent);
+  color: color-mix(in srgb, var(--nb-action-hue) 90%, var(--explorer-text));
+  transform: scale(1.05);
+}
+
+.nb-explorer-action:active {
+  background: color-mix(in srgb, var(--nb-action-hue) 22%, transparent);
+  transform: scale(0.92);
+}
+
+.nb-explorer-action:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--nb-action-hue) 60%, transparent);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nb-explorer-action:hover,
+  .nb-explorer-action:active {
+    transform: none;
+  }
+}
