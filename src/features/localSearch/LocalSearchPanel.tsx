@@ -142,6 +142,8 @@ function LocalSearchDialog() {
   const notReadyText = IS_WEB
     ? (canConfigure ? '全局搜索未开启' : '管理员尚未开启全局搜索')
     : (enabled ? '尚未添加索引位置' : '本地文件搜索未开启');
+  // 可配置时说明去设置里做什么
+  const notReadyHint = !canConfigure ? '' : IS_WEB || !enabled ? '在设置中开启后即可搜索文件名与内容' : '在设置中添加要搜索的文件夹或磁盘';
 
   const close = useCallback(() => setOpen(false), [setOpen]);
 
@@ -414,6 +416,7 @@ function LocalSearchDialog() {
             <div className="nb-ls-empty">
               <FileSearch size={28} />
               <div>{notReadyText}</div>
+              {notReadyHint && <div className="nb-ls-empty-sub">{notReadyHint}</div>}
               {canConfigure && (
                 <button type="button" className="nb-btn-secondary" onClick={goSettings}>
                   <Settings2 size={14} />

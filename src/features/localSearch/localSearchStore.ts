@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { IS_NATIVE_MOBILE, IS_WEB } from '../../core/platform';
-import { useLocalSearchSettings } from '../../stores/settingsStore';
+import { canManageInstance } from '../account/accountState';
 
 /**
  * 桌面端搜索本机磁盘；网页端由服务器提供全局搜索（管理员开启，按用户权限限定范围）。
@@ -38,9 +38,11 @@ export const useLocalSearchStore = create<LocalSearchState>((set) => ({
   })),
 }));
 
-/** 搜索是否已开启：桌面端看本机设置，网页端看服务器上管理员的开关 */
-export function useLocalSearchEnabled(): boolean {
-  const desktopEnabled = useLocalSearchSettings().enabled;
+/**
+ * 是否显示搜索入口按钮：桌面端与网页管理员始终显示（未开启时面板内提示并可前往设置）；
+ * 网页普通用户无法开启，只在管理员开启后显示。
+ */
+export function useShowSearchButton(): boolean {
   const webEnabled = useLocalSearchStore((s) => s.webEnabled);
-  return IS_WEB ? webEnabled : desktopEnabled;
+  return !IS_WEB || canManageInstance() || webEnabled;
 }
