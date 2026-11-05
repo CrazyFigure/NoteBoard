@@ -13,7 +13,7 @@ import { TreeNode } from './TreeNode';
 import { openFolderDialog } from '../welcome/welcomeActions';
 import * as ipc from '../../core/ipc/commands';
 import { openDocument } from '../editor-code/orchestration/openDocument';
-import { useSettingsStore } from '../../stores/settingsStore';
+import { useLocalSearchSettings, useSettingsStore } from '../../stores/settingsStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
 import { ExplorerBreadcrumb } from './ExplorerBreadcrumb';
@@ -34,6 +34,8 @@ export function Explorer() {
   const { loadChildren, revealPath } = useTreeData();
   const [creatingType, setCreatingType] = useState<'file' | 'folder' | null>(null);
   const [creatingName, setCreatingName] = useState('');
+  // 全局搜索按钮仅在 设置 → 全局 中开启本地文件搜索后显示
+  const localSearchEnabled = useLocalSearchSettings().enabled;
 
   // 纯跟随 + Reveal
   useReveal();
@@ -235,8 +237,8 @@ export function Explorer() {
         <ActionButton label="打开文件夹" hue={ACTION_HUES.openFolder} onClick={openFolderDialog}>
           <FolderOpen size={15} />
         </ActionButton>
-        {/* 全局搜索（与 Ctrl/Cmd+Shift+F 相同，仅桌面端提供） */}
-        {SUPPORTS_LOCAL_SEARCH && !IS_MOBILE_UI && (
+        {/* 全局搜索（与 Ctrl/Cmd+Shift+F 相同，仅桌面端且在设置中开启后提供） */}
+        {SUPPORTS_LOCAL_SEARCH && !IS_MOBILE_UI && localSearchEnabled && (
           <ActionButton
             label="全局搜索"
             shortcut="Ctrl+Shift+F"
