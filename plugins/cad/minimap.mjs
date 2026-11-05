@@ -6,6 +6,21 @@ const STORAGE_KEY = 'nb-minimap-visible:cad';
 const MAX_WIDTH = 200, MAX_HEIGHT = 150, MIN_SIDE = 48, PAD = 8;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
+/** 在有界总览采样中查找已绘制像素；整图适配留白使左上角像素可作为背景色。 */
+export function imageContentBounds({ data, width, height }) {
+  let left = width, top = height, right = -1, bottom = -1;
+  // 忽略不超过 2 级的插值舍入差异，细线的抗锯齿像素仍参与边界计算。
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const offset = (y * width + x) * 4;
+    if (Math.abs(data[offset] - data[0]) <= 2 && Math.abs(data[offset + 1] - data[1]) <= 2
+      && Math.abs(data[offset + 2] - data[2]) <= 2 && Math.abs(data[offset + 3] - data[3]) <= 2) continue;
+    left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x); bottom = Math.max(bottom, y);
+  }
+  if (right < left) return null;
+  // 外扩一个采样像素，保留边缘细线；不能按实体距离或数量丢弃远处的真实内容。
+  return { left: Math.max(0, left - 1), top: Math.max(0, top - 1), right: Math.min(width, right + 2), bottom: Math.min(height, bottom + 2) };
+}
+
 /** 世界坐标的 Y 轴向上；面板坐标的 Y 轴向下，统一在映射处转换。 */
 export function minimapLayout(bounds, viewport) {
   const bw = Math.max(1e-9, bounds.maxX - bounds.minX), bh = Math.max(1e-9, bounds.maxY - bounds.minY);
@@ -33,6 +48,8 @@ export function mountMinimap(host, renderer) {
   let enabled = true;
   try { enabled = localStorage.getItem(STORAGE_KEY) !== '0'; } catch { /* 存储不可用时仍可切换 */ }
   let stopped = false, capturing = false, dirty = true, needed = false, frame = 0, mapping, drag = null, imageBounds;
+  // 原始实体范围可能包含未绘制的尺寸标注占位点；首张总览生成后改用实际绘制范围。
+  let contentBounds = renderer.getBounds();
   const image = el('canvas'), panel = el('div', 'cad-minimap'), canvas = el('canvas'), box = el('div', 'cad-minimap-viewport');
   const style = el('style');
   style.textContent = `
@@ -81,6 +98,23 @@ export function mountMinimap(host, renderer) {
       // 高质量降采样保留细线，避免小比例下图纸线段被普通采样漏掉。
       const context = image.getContext('2d'); context.imageSmoothingQuality = 'high';
       context.drawImage(source, 0, 0, image.width, image.height);
+      const clip = imageContentBounds(context.getImageData(0, 0, image.width, image.height));
+      if (clip) {
+        const left = clip.left / image.width, top = clip.top / image.height;
+        const width = (clip.right - clip.left) / image.width, height = (clip.bottom - clip.top) / image.height;
+        const worldWidth = imageBounds.maxX - imageBounds.minX, worldHeight = imageBounds.maxY - imageBounds.minY;
+        // 裁剪必须同时换算世界边界，视口框、点击与拖动才会与总览图严格对齐。
+        imageBounds = { minX: imageBounds.minX + left * worldWidth, maxX: imageBounds.minX + (left + width) * worldWidth,
+          maxY: imageBounds.maxY - top * worldHeight, minY: imageBounds.maxY - (top + height) * worldHeight };
+        contentBounds = imageBounds;
+        const pixelWidth = source.width * width, pixelHeight = source.height * height;
+        const cropRatio = Math.min(1, 400 / pixelWidth, 300 / pixelHeight);
+        image.width = Math.max(1, Math.round(pixelWidth * cropRatio)); image.height = Math.max(1, Math.round(pixelHeight * cropRatio));
+        // 从原截图取裁剪区域，避免放大低分辨率采样后损失细节。
+        context.imageSmoothingQuality = 'high';
+        context.drawImage(source, source.width * left, source.height * top, pixelWidth, pixelHeight, 0, 0, image.width, image.height);
+      } else contentBounds = bounds;
+      mapping = null;
       dirty = false;
     } finally {
       // 截图失败也必须恢复原视野，临时全尺寸位图立即释放。
@@ -91,12 +125,21 @@ export function mountMinimap(host, renderer) {
 
   /** 隐藏时只计算显隐；普通平移只移动框，缓存映射变化才重画小位图。 */
   function update() {
-    const bounds = renderer.getBounds(), vp = viewport();
+    let bounds = contentBounds;
+    const vp = viewport();
     const valid = Object.values(bounds).every(Number.isFinite) && bounds.maxX >= bounds.minX && bounds.maxY >= bounds.minY;
     needed = valid && renderer.canvas.clientWidth > 0 && renderer.canvas.clientHeight > 0 && (Boolean(drag) || needsMinimap(bounds, vp, needed));
     panel.hidden = !enabled || !needed; show.hidden = enabled || !needed;
     if (panel.hidden) return;
-    try { if (dirty) capture(bounds); }
+    try {
+      if (dirty) {
+        // 主题刷新仍从完整实体范围截图，不能累积裁剪误差或遗漏新显现的边缘线条。
+        capture(renderer.getBounds()); bounds = contentBounds;
+        needed = Boolean(drag) || needsMinimap(bounds, vp, needed);
+        panel.hidden = !needed;
+        if (panel.hidden) return;
+      }
+    }
     catch { panel.hidden = true; return; /* 辅助预览失败不能影响主图 */ }
     const next = drag?.mapping ?? minimapLayout(bounds, vp);
     if (!mapping || dirty || Object.keys(next).some((key) => next[key] !== mapping[key])) {
@@ -129,7 +172,7 @@ export function mountMinimap(host, renderer) {
       y: map.maxY - ((event.clientY - rect.top) * map.height / rect.height - map.y) / map.scale };
   }
   function navigate(x, y) {
-    const bounds = renderer.getBounds();
+    const bounds = contentBounds;
     renderer.setViewState({ ...renderer.getViewState(), centerX: clamp(x, bounds.minX, bounds.maxX), centerY: clamp(y, bounds.minY, bounds.maxY) });
   }
   panel.addEventListener('pointerdown', (event) => {

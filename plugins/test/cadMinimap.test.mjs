@@ -2,7 +2,7 @@
 import test, { beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { mountMinimap, minimapLayout, needsMinimap } from '../cad/minimap.mjs';
+import { mountMinimap, minimapLayout, needsMinimap, imageContentBounds } from '../cad/minimap.mjs';
 
 const bounds = { minX: 100, minY: 200, maxX: 1100, maxY: 700 };
 let dom, frames, nextFrame, host, api, renderer, state, captures, failCapture, contexts;
@@ -15,7 +15,7 @@ beforeEach(() => {
   globalThis.requestAnimationFrame = (fn) => { frames.set(++nextFrame, fn); return nextFrame; };
   globalThis.cancelAnimationFrame = (id) => frames.delete(id);
   dom.window.HTMLCanvasElement.prototype.getContext = function () {
-    if (!contexts.has(this)) contexts.set(this, { draws: [], setTransform() {}, drawImage(...args) { this.draws.push(args); } });
+    if (!contexts.has(this)) contexts.set(this, { draws: [], setTransform() {}, getImageData: () => raster(400, 200), drawImage(...args) { this.draws.push(args); } });
     return contexts.get(this);
   };
   host = document.getElementById('host');
@@ -42,6 +42,43 @@ function preparePointer(panel) {
   panel.getBoundingClientRect = () => ({ left: 0, top: 0, width, height });
   panel.setPointerCapture = () => {}; panel.hasPointerCapture = () => false;
 }
+
+/** 构造真实 RGBA 采样；背景和前景可切换，避免依赖私有图纸作为测试夹具。 */
+function raster(width, height, regions = [], background = 255, foreground = 0) {
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let i = 0; i < data.length; i += 4) { data[i] = background; data[i + 1] = background; data[i + 2] = background; data[i + 3] = 255; }
+  for (const [left, top, right, bottom] of regions) for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) {
+    const offset = (y * width + x) * 4; data[offset] = foreground; data[offset + 1] = foreground; data[offset + 2] = foreground;
+  }
+  return { data, width, height };
+}
+
+test('按实际像素去除大片空白，保留远处孤立的真实几何及深色主题细线', () => {
+  const regions = [[70, 60, 90, 80], [10, 20, 11, 21]];
+  assert.deepEqual(imageContentBounds(raster(100, 100, regions)), { left: 9, top: 19, right: 91, bottom: 81 });
+  assert.deepEqual(imageContentBounds(raster(100, 100, regions, 25, 60)), { left: 9, top: 19, right: 91, bottom: 81 });
+  assert.equal(imageContentBounds(raster(100, 100)), null);
+});
+
+test('图形偏在原始截图角落时重新居中，裁剪后的导航仍使用正确世界坐标', () => {
+  // 模拟图纸实际边界被原点占位坐标撑大，而真正的可见线条仅在右下角。
+  renderer.getBounds = () => ({ minX: -10000, minY: -10000, maxX: 10000, maxY: 10000 });
+  state.centerX = 6000; state.centerY = -5000;
+  const context = dom.window.HTMLCanvasElement.prototype.getContext;
+  dom.window.HTMLCanvasElement.prototype.getContext = function () {
+    const ctx = context.call(this); ctx.getImageData = () => raster(400, 200, [[240, 130, 280, 170]]); return ctx;
+  };
+  const panel = mount(); preparePointer(panel);
+  const capturesContext = [...contexts.values()].find((ctx) => ctx.draws.some((args) => args.length === 9));
+  assert.ok(capturesContext, '最终缓存从原截图裁剪区域重采样，不能直接放大小采样图');
+  const cropCall = capturesContext.draws.find((args) => args.length === 9);
+  assert.equal(cropCall[1], 956); assert.equal(cropCall[2], 516);
+  // 面板中心对应裁剪后内容的世界中心，Y 轴与截图方向相反，缩放必须保持原样。
+  pointer(panel, 'pointerdown', parseFloat(panel.style.width) / 2, parseFloat(panel.style.height) / 2);
+  assert.ok(Math.abs(state.centerX - 6521.739130434784) < 1e-8);
+  assert.ok(Math.abs(state.centerY - -5434.782608695653) < 1e-8);
+  assert.equal(state.scale, 4);
+});
 
 test('适合窗口时不截图；放大后出现，截图始终恢复原中心和缩放', () => {
   state.scale = .7; const panel = mount();
