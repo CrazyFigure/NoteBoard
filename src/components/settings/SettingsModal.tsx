@@ -3,8 +3,9 @@
 // 详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud, ChevronRight, Monitor, History, PanelTop, UserRound, Users, Globe } from 'lucide-react';
-import { useSettingsStore, useTitleBarButtons } from '../../stores/settingsStore';
+import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud, ChevronRight, Monitor, History, PanelTop, UserRound, Users, Globe, RotateCcw } from 'lucide-react';
+import { DEFAULT_SETTINGS, useSettingsStore, useTitleBarButtons } from '../../stores/settingsStore';
+import { ConfirmDialog } from '../../features/sync/SyncControls';
 import { THEMES } from '../../core/theme/themes';
 import { contentWidthToPercent, CONTENT_WIDTH_PERCENT_MAP } from '../../core/theme/applyTheme';
 import { FontSelect } from './FontSelect';
@@ -112,6 +113,22 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     } catch (error) {
       showToast(`无法打开暂存区：${error instanceof Error ? error.message : String(error)}`, 'error', 5000);
     }
+  };
+
+  // 「恢复默认」确认框的目标分区，null 表示未打开
+  const [resetTarget, setResetTarget] = useState<'typography' | 'editor' | null>(null);
+  // 回车键互换在快捷键页设置，编辑器页恢复默认时保留，避免改动其它页的设置项
+  const editorDefaults = { ...DEFAULT_SETTINGS.editor, swapEnterKeys: settings.editor.swapEnterKeys ?? false };
+  const isTypographyDefault = matchesDefaults(settings.typography, DEFAULT_SETTINGS.typography);
+  const isEditorDefault = matchesDefaults(settings.editor, editorDefaults);
+
+  /** 将确认的分区整体写回默认值 */
+  const handleConfirmReset = async () => {
+    const target = resetTarget;
+    setResetTarget(null);
+    if (target === 'typography') await setTypography({ ...DEFAULT_SETTINGS.typography });
+    else if (target === 'editor') await setEditor(editorDefaults);
+    if (target) showToast('已恢复默认设置', 'success');
   };
 
   // 设置右侧内容区域的容器引用
@@ -382,8 +399,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             {/* 2. 排版与字体：页级仅保留标题，具体排版规则由设置项说明。 */}
             {activeTab === 'typography' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-                <div>
-                  <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>排版参数自定义</h3>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <h3 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>排版参数自定义</h3>
+                  <ResetDefaultsButton disabled={isTypographyDefault} onClick={() => setResetTarget('typography')} />
                 </div>
 
                 {/* 应用字体包独立于安装包，设置页提供下载、修复、导入和删除的长期入口。 */}
@@ -974,8 +992,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             {/* 3. 编辑器配置：页级仅保留标题，具体编辑行为由设置项说明。 */}
             {activeTab === 'editor' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-                <div>
-                  <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>编辑器与代码设置</h3>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <h3 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>编辑器与代码设置</h3>
+                  <ResetDefaultsButton disabled={isEditorDefault} onClick={() => setResetTarget('editor')} />
                 </div>
 
                 {/* ── 3.1 代码与纯文本展示 ── */}
@@ -1870,6 +1889,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         </div>
       </div>
 
+      {/* 恢复默认二次确认：仅重置当前页的设置项 */}
+      <ConfirmDialog
+        open={resetTarget !== null}
+        title="恢复默认设置"
+        confirmLabel="恢复默认"
+        onConfirm={() => void handleConfirmReset()}
+        onClose={() => setResetTarget(null)}
+      >
+        <div>{resetTarget === 'typography' ? '「排版与字体」' : '「编辑器」'}页的设置将恢复为默认值。</div>
+      </ConfirmDialog>
     </div>
   );
 }
@@ -2016,6 +2045,32 @@ function ShortcutLabel({ label, tip }: { label: string; tip?: string }) {
 }
 
 /** 排版分组底部的效果预览：折叠块，默认收起，展开后随本分组参数实时变化 */
+/** 分区设置是否与默认值一致：旧配置缺失的可选字段按默认值看待 */
+function matchesDefaults<T extends object>(current: Partial<T>, defaults: T): boolean {
+  return (Object.keys(defaults) as (keyof T)[]).every((key) => (current[key] ?? defaults[key]) === defaults[key]);
+}
+
+/** 设置页标题行右侧的「恢复默认」按钮；已是默认值时禁用 */
+function ResetDefaultsButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
+  return (
+    <Tooltip content={disabled ? '已是默认设置' : '恢复本页默认设置'}>
+      {/* 禁用的按钮不响应指针事件，外包一层保证提示仍可显示 */}
+      <span style={{ display: 'inline-flex' }}>
+        <button
+          type="button"
+          className="nb-btn-secondary"
+          disabled={disabled}
+          onClick={onClick}
+          style={{ padding: '4px 10px', fontSize: 12 }}
+        >
+          <RotateCcw size={13} />
+          恢复默认
+        </button>
+      </span>
+    </Tooltip>
+  );
+}
+
 function PreviewCollapse({ children }: { children: React.ReactNode }) {
   const [expanded, setExpanded] = useState(false);
   return (
