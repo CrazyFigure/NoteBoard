@@ -2572,7 +2572,7 @@ dependencies = [
 
 [[package]]
 name = "noteboard"
-version = "0.7.7"
+version = "0.7.8"
 dependencies = [
  "arboard",
  "base64 0.22.1",
