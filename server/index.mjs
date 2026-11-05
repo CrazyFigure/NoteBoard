@@ -11,6 +11,7 @@ import { createFonts } from './fonts.mjs';
 import { normalizeChannel } from './releaseChannel.mjs';
 import { createAccounts, ADMIN_ID } from './accounts.mjs';
 import { createSpaces, SHARED } from './spaces.mjs';
+import { createSearch } from './search.mjs';
 
 const projectDir = fileURLToPath(new URL('../', import.meta.url));
 const SESSION_COOKIE = 'nb_session';
@@ -44,6 +45,8 @@ export async function createWebServer(options = {}) {
   // 原生工作进程同时提供多端同步与文档历史记录。同步管理包含云端凭证，只在部署访问认证已启用时开放给管理员；
   // 普通用户与未启用认证的部署只提供历史记录（不启动同步调度、不执行同步钩子）。
   const spaces = await createSpaces({ dataDir, accounts, allowAdminSync: authEnabled });
+  // 全局搜索由管理员开启，查询结果按各用户的文件访问权限限定
+  const search = await createSearch({ dataDir, spaces, accounts });
   const loginPage = await fs.readFile(new URL('./login.html', import.meta.url));
   // 公开模式没有登录，所有访问者使用原有的管理员空间。
   const publicUser = { id: ADMIN_ID, username: '', role: 'admin' };
@@ -145,7 +148,16 @@ export async function createWebServer(options = {}) {
         historyAvailable: spaces.historyAvailable,
         multiUser: !!accounts,
         account: accounts ? { username: user.username, role: user.role } : null,
+        searchAvailable: search.available,
+        searchEnabled: search.enabled(),
       };
+    }
+    if (cmd === 'local_search_names' || cmd === 'local_search_content') {
+      return search.query(user, cmd === 'local_search_names' ? 'names' : 'content', args, key());
+    }
+    if (cmd === 'local_search_web_set_enabled') {
+      requireAdmin(user, '仅管理员可开启或关闭全局搜索');
+      return search.setEnabled(args.enabled === true);
     }
     if (cmd.startsWith('history_')) {
       if (!spaces.historyAvailable) throw fail('当前部署未启用历史记录', 503);
@@ -172,7 +184,12 @@ export async function createWebServer(options = {}) {
       case 'account_change_password': await accounts.changePassword(user, args.oldPassword, args.newPassword); return null;
       case 'account_logout_others': await accounts.revoke(user.id, user.sessionId); return null;
       case 'users_list': return accounts.listUsers();
-      case 'users_create': return accounts.createUser(args.username, args.password);
+      case 'users_create': {
+        const created = await accounts.createUser(args.username, args.password);
+        // 新账号的工作区加入全局搜索索引
+        await search.refreshRoots();
+        return created;
+      }
       case 'users_set_disabled': return accounts.setDisabled(String(args.id), args.disabled === true);
       case 'users_reset_password': return accounts.resetPassword(String(args.id), args.password);
       case 'users_delete': {
@@ -181,6 +198,7 @@ export async function createWebServer(options = {}) {
         // 先把数据目录移入回收目录，成功后再删除账号记录，避免留下无主目录。
         await spaces.retire(target);
         await accounts.deleteUser(target.id);
+        await search.refreshRoots();
         return null;
       }
       case 'share_targets': return accounts.shareTargets(user.id);
@@ -477,8 +495,11 @@ export async function createWebServer(options = {}) {
         // 每个用户只收到自己空间的事件；未启用多端同步的空间只转发历史记录事件
         const forward = (event) => { if (space.syncAllowed || String(event.event).startsWith('nb://history-')) res.write(`data: ${JSON.stringify(event)}\n\n`); };
         space.events.on('event', forward);
+        // 全局搜索索引更新通知所有在线用户（不含任何文件信息，面板据此静默刷新）
+        const forwardSearch = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`);
+        search.events.on('event', forwardSearch);
         const timer = setInterval(() => res.write(': heartbeat\n\n'), 25000);
-        req.on('close', () => { clearInterval(timer); streams.delete(res); space.events.off('event', forward); });
+        req.on('close', () => { clearInterval(timer); streams.delete(res); space.events.off('event', forward); search.events.off('event', forwardSearch); });
         return;
       }
       if (req.method === 'POST') {
@@ -539,9 +560,9 @@ export async function createWebServer(options = {}) {
   });
   server.requestTimeout = 120000;
   // 停止时先关闭 SSE，避免长连接阻止服务和同步工作进程退出。
-  server.stopNoteboard = () => { for (const stream of streams) stream.end(); void spaces.closeAll(); };
+  server.stopNoteboard = () => { for (const stream of streams) stream.end(); void spaces.closeAll(); search.close(); };
   // 直接关闭 HTTP 服务时同样停止全部工作进程
-  server.on('close', () => void spaces.closeAll());
+  server.on('close', () => { void spaces.closeAll(); search.close(); });
   return server;
 }
 

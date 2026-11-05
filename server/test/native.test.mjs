@@ -226,3 +226,81 @@ test('多用户：普通用户拥有独立历史记录，共享文件写入记�
   assert.equal((await admin.send('history_list', { path: own.key })).status, 200);
   assert.equal((await admin.call('history_list', { path: own.key })).entries.length, 0);
 });
+
+test('全局搜索：管理员开启后，每个用户只能搜到自己的笔记与共享给他的内容', { skip: !process.env.NOTEBOARD_SYNC_BINARY }, async (t) => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'noteboard-web-search-'));
+  const server = await createWebServer({ dataDir: path.join(temp, 'data'), username: 'admin', password: 'admin-password' });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => {
+    server.stopNoteboard(); server.closeAllConnections(); await new Promise((resolve) => server.close(resolve));
+    await fs.rm(temp, { recursive: true, force: true });
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  async function as(username, password) {
+    const login = await fetch(`${base}/api/login`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-NoteBoard-Request': '1' }, body: JSON.stringify({ username, password }) });
+    assert.equal(login.status, 200);
+    const cookie = login.headers.get('set-cookie').split(';')[0];
+    async function send(command, args = {}) {
+      const response = await fetch(`${base}/api/command`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-NoteBoard-Request': '1', 'X-NoteBoard-Client': `browser-${username}-1234`, Cookie: cookie }, body: JSON.stringify({ command, args }) });
+      return { status: response.status, body: await response.json() };
+    }
+    async function call(command, args = {}) {
+      const { status, body } = await send(command, args);
+      assert.equal(status, 200, `${command}: ${JSON.stringify(body)}`);
+      return body.result;
+    }
+    return { send, call };
+  }
+  let seq = 0;
+  /** 内容搜索返回的路径（排序后便于比较） */
+  const contentPaths = async (who, query) => (await who.call('local_search_content', { query, seq: ++seq, limit: 50 })).hits.map((hit) => hit.path).sort();
+  /** 等待后台索引追上文件变化 */
+  async function until(check) {
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      if (await check()) return;
+      await delay(50);
+    }
+    assert.fail('索引未在预期时间内更新');
+  }
+  async function write(who, dir, name, content) {
+    const file = await who.call('create_file', { dir, name });
+    await who.call('write_document', { path: file.key, content, encoding: 'utf8', eol: 'lf', expectedRevision: file.webRevision });
+    return file.key;
+  }
+
+  const admin = await as('admin', 'admin-password');
+  const reader = await admin.call('users_create', { username: 'reader', password: 'reader-password' });
+  const bob = await as('reader', 'reader-password');
+  assert.equal((await bob.call('web_capabilities')).searchEnabled, false);
+  // 只有管理员能开关；未开启时查询返回空结果
+  assert.equal((await bob.send('local_search_web_set_enabled', { enabled: true })).status, 403);
+  assert.deepEqual(await contentPaths(bob, 'searchProbe'), []);
+
+  await write(admin, '/workspace', '管理员私人.md', 'searchProbe 管理员私人');
+  await admin.call('create_dir', { dir: '/workspace', name: '项目' });
+  await write(admin, '/workspace/项目', '计划.md', 'searchProbe 共享计划');
+  await write(bob, '/workspace', '读者笔记.md', 'searchProbe 读者自己');
+  await write(bob, '/workspace', '.隐藏.md', 'searchProbe 读者隐藏');
+  await admin.call('share_set', { path: '/workspace/项目', grants: [{ userId: reader.id, permission: 'read' }] });
+  assert.equal(await admin.call('local_search_web_set_enabled', { enabled: true }), true);
+  assert.equal((await bob.call('web_capabilities')).searchEnabled, true);
+
+  // 读者：本人工作区（不含隐藏文件）+ 共享进来的文件夹，路径为他看到的虚拟路径
+  await until(async () => (await contentPaths(bob, 'searchProbe')).length === 2);
+  assert.deepEqual(await contentPaths(bob, 'searchProbe'), ['/shared/admin/项目/计划.md', '/workspace/读者笔记.md']);
+  const names = await bob.call('local_search_names', { query: '计划', seq: ++seq, limit: 50 });
+  assert.equal(names.total, 1);
+  assert.equal(names.hits[0].path, '/shared/admin/项目/计划.md');
+  assert.equal(names.hits[0].dir, '/shared/admin/项目');
+  // 管理员与查看文件的权限一致：只有自己的工作区，看不到读者的笔记
+  assert.deepEqual(await contentPaths(admin, 'searchProbe'), ['/workspace/管理员私人.md', '/workspace/项目/计划.md']);
+
+  // 取消共享后立即搜不到
+  const [share] = await admin.call('share_list_mine');
+  await admin.call('share_remove', { id: share.id });
+  assert.deepEqual(await contentPaths(bob, 'searchProbe'), ['/workspace/读者笔记.md']);
+
+  // 关闭后不再返回结果
+  assert.equal(await admin.call('local_search_web_set_enabled', { enabled: false }), false);
+  assert.deepEqual(await contentPaths(bob, 'searchProbe'), []);
+});

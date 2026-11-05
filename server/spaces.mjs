@@ -200,6 +200,25 @@ export async function createSpaces({ dataDir, accounts, allowAdminSync }) {
     return result.sort((a, b) => Number(b.isDir) - Number(a.isDir) || a.name.localeCompare(b.name, 'zh-CN'));
   }
 
+  /**
+   * 全局搜索的可访问位置：本人工作区 + 共享给他的每一项，与 route 的读取权限一致。
+   * physical 为服务器真实路径（交给搜索引擎过滤），virtual 为访问者看到的路径（用于改写结果）。
+   */
+  async function searchScopes(user) {
+    const own = await space(user.id);
+    const scopes = [{ physical: await own.files.resolve(ROOT), virtual: ROOT }];
+    if (!accounts) return scopes;
+    for (const [groupName, group] of tree(user)) {
+      for (const [name, share] of group.items) {
+        const owner = await space(share.ownerId);
+        // 目标已被移走或删除的共享跳过
+        const physical = await owner.files.resolve(share.path).catch(() => null);
+        if (physical) scopes.push({ physical, virtual: `${SHARED}/${groupName}/${name}` });
+      }
+    }
+    return scopes;
+  }
+
   /** 删除账号时关闭进程，并把数据目录整体移入回收目录，不永久删除。 */
   async function retire(user) {
     const pending = spaces.get(user.id);
@@ -218,5 +237,5 @@ export async function createSpaces({ dataDir, accounts, allowAdminSync }) {
     for (const pending of spaces.values()) (await pending.catch(() => null))?.close();
   }
 
-  return { space, admin, route, mapOut, listVirtual, retire, closeAll, historyAvailable };
+  return { space, admin, route, mapOut, listVirtual, searchScopes, retire, closeAll, historyAvailable };
 }

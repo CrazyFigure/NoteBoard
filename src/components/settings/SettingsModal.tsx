@@ -40,7 +40,7 @@ import { useLayoutStore } from '../../stores/layoutStore';
 import { CreateFormatsSettings } from './CreateFormatsSettings';
 import { supportsCompactMode } from '../../features/window/compactMode';
 // 本地文件搜索设置（仅桌面端展示）
-import { LocalSearchSettingsCard } from '../../features/localSearch/LocalSearchSettings';
+import { LocalSearchSettingsCard, WebSearchSettingsCard } from '../../features/localSearch/LocalSearchSettings';
 import { SUPPORTS_LOCAL_SEARCH } from '../../features/localSearch/localSearchStore';
 
 interface SettingsModalProps {
@@ -1500,8 +1500,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
                 )}
 
-                {/* 本地文件搜索：开关与索引位置（文件夹 / 整个磁盘，可添加多个） */}
-                {SUPPORTS_LOCAL_SEARCH && !IS_MOBILE_UI && <LocalSearchSettingsCard />}
+                {/* 本地文件搜索：开关与索引位置（文件夹 / 整个磁盘，可添加多个）；网页端为管理员开关的全局搜索 */}
+                {SUPPORTS_LOCAL_SEARCH && !IS_MOBILE_UI && (IS_WEB ? <WebSearchSettingsCard /> : <LocalSearchSettingsCard />)}
 
                 {/* 新建入口：主页与「+」菜单中哪些格式直接展示、哪些收进更多 */}
                 <div style={{ padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
@@ -1635,7 +1635,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <ShortcutItem keyCombo="Ctrl + O" label="打开文件" />
                   <ShortcutItem keyCombo="Ctrl + Shift + O" label="打开文件夹" />
                   <ShortcutItem keyCombo="Ctrl + Shift + N" label="新建空窗口" />
-                  {SUPPORTS_LOCAL_SEARCH && <ShortcutItem keyCombo="Ctrl + Shift + F" label="本地文件搜索" tip="搜索文件名与内容，需先在 设置 → 全局 中开启" />}
+                  {SUPPORTS_LOCAL_SEARCH && <ShortcutItem keyCombo="Ctrl + Shift + F" label={IS_WEB ? '全局搜索' : '本地文件搜索'} tip={IS_WEB ? '搜索文件名与内容，需管理员在 设置 → 全局 中开启' : '搜索文件名与内容，需先在 设置 → 全局 中开启'} />}
                   <ShortcutItem keyCombo="Ctrl + S" label="保存当前文档" />
                   <ShortcutItem keyCombo="Ctrl + Shift + S" label="文档另存为" />
                   <ShortcutItem keyCombo="Ctrl + W" label="关闭当前标签页" />

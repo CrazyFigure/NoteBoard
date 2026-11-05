@@ -7,6 +7,7 @@ import { installWebClipboardFallback } from './clipboard';
 import './web.css';
 import { browserSystemFonts } from './fonts';
 import { SHARED_ROOT, isMultiUser, setWebAccount, type WebAccount } from '../features/account/accountState';
+import { useLocalSearchStore } from '../features/localSearch/localSearchStore';
 
 const ROOT = '/workspace';
 /** 普通 HTTP 部署也可生成随机标识；randomUUID 只在安全上下文中可用。 */
@@ -32,9 +33,11 @@ export function canUseWebSync(): boolean { return syncAvailable; }
 export async function initializeWebRuntime(): Promise<void> {
   // 服务器 IP + HTTP 也能复制文本；图片复制和主动粘贴仍遵循浏览器 HTTPS 权限限制。
   installWebClipboardFallback();
-  const capabilities = await request<{ syncAvailable: boolean; authEnabled: boolean; historyAvailable?: boolean; account?: WebAccount | null }>('web_capabilities');
+  const capabilities = await request<{ syncAvailable: boolean; authEnabled: boolean; historyAvailable?: boolean; account?: WebAccount | null; searchAvailable?: boolean; searchEnabled?: boolean }>('web_capabilities');
   syncAvailable = capabilities.syncAvailable;
   setWebAccount(capabilities.authEnabled ? capabilities.account ?? null : null);
+  // 全局搜索由管理员在服务器上开启，资源管理器按钮与搜索面板据此显示
+  useLocalSearchStore.getState().setWebState({ available: !!capabilities.searchAvailable, enabled: !!capabilities.searchEnabled });
   // 未启用多端同步的部署仍可能提供历史记录：同样需要事件流刷新版本列表
   if (syncAvailable || capabilities.historyAvailable) {
     const stream = new EventSource('/api/events');

@@ -26,6 +26,20 @@ dunce = "1"
 # 文档历史记录：版本正文 gzip 存储；读取历史正文时与桌面端相同的编码探测
 flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
 chardetng = "0.1"
+# 全局搜索：复用桌面端索引引擎（文件监听、引擎通道、子串查找与哈希表）
+notify = "8"
+crossbeam-channel = "0.5"
+memchr = "2"
+rustc-hash = "2"
+# 索引快照校验
+crc32fast = "1"
+
+# 搜索引擎的后台线程降低优先级（与桌面端相同的平台调用）
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = ["Win32_System_Threading"] }
 
 [lints.rust]
 # 复用原生业务模块中的条件编译标记，宿主本身不启用桌面窗口分支。

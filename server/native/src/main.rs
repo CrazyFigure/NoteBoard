@@ -27,6 +27,27 @@ mod history {
     pub fn now_ms() -> i64 { crate::sync::util::now_ms() }
 }
 
+// 全局搜索：复用桌面端索引引擎（不含依赖 Tauri 的命令层与整机磁盘列表）
+#[path = "../../../src-tauri/src/local_search"]
+mod local_search {
+    pub mod content;
+    pub mod engine;
+    pub mod extract;
+    pub mod names;
+    pub mod persist;
+    pub mod query;
+    pub mod scan;
+    pub mod text;
+
+    /// 索引数据：与桌面端 local_search/mod.rs 中的定义一致
+    #[derive(Debug, Default)]
+    pub struct Index {
+        pub table: names::FileTable,
+        pub content: content::ContentIndex,
+    }
+}
+mod search;
+
 mod fsio {
     // 原子写入继续复用桌面实现；避免同步状态和备份恢复使用不同的落盘规则。
     pub mod write { include!("../../../src-tauri/src/fsio/write.rs"); }
@@ -209,6 +230,11 @@ async fn dispatch(command: &str, args: &Value) -> Result<Value, String> {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let data = PathBuf::from(std::env::var("NOTEBOARD_DATA_DIR")?);
+    // 全局搜索以独立进程运行：查询耗时不阻塞同步与历史记录命令
+    if std::env::var("NOTEBOARD_WORKER").is_ok_and(|mode| mode == "search") {
+        app_dirs::set_data_root(data.join("native"));
+        return search::run(&data);
+    }
     // Windows 测试宿主去除扩展路径前缀，确保与 Node 的 realpath 表示一致。
     let workspace = dunce::canonicalize(data.join("workspace"))?;
     WORKSPACE.set(workspace).ok();

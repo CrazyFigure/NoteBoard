@@ -25,6 +25,8 @@ import { getExplorerFileIcon } from '../explorer/fileIcons';
 import { formatRelative } from '../sync/syncFormat';
 import { formatBytes } from '../versionHistory/historyFormat';
 import { useLocalSearchStore } from './localSearchStore';
+import { IS_WEB } from '../../core/platform';
+import { canManageInstance } from '../account/accountState';
 import { openSearchResult, revealSearchResult } from './openResult';
 import './localSearch.css';
 
@@ -132,7 +134,14 @@ function LocalSearchDialog() {
   const latestSeq = useRef(0);
   const queryRef = useRef(query);
   queryRef.current = query;
-  const ready = enabled && roots.length > 0;
+  // 网页端由服务器决定索引范围，只看管理员是否已开启
+  const webEnabled = useLocalSearchStore((s) => s.webEnabled);
+  const ready = IS_WEB ? webEnabled : enabled && roots.length > 0;
+  // 网页普通用户无法开启，不提供「前往设置」
+  const canConfigure = !IS_WEB || canManageInstance();
+  const notReadyText = IS_WEB
+    ? (canConfigure ? '全局搜索未开启' : '管理员尚未开启全局搜索')
+    : (enabled ? '尚未添加索引位置' : '本地文件搜索未开启');
 
   const close = useCallback(() => setOpen(false), [setOpen]);
 
@@ -404,11 +413,13 @@ function LocalSearchDialog() {
           {!ready ? (
             <div className="nb-ls-empty">
               <FileSearch size={28} />
-              <div>{enabled ? '尚未添加索引位置' : '本地文件搜索未开启'}</div>
-              <button type="button" className="nb-btn-secondary" onClick={goSettings}>
-                <Settings2 size={14} />
-                前往设置
-              </button>
+              <div>{notReadyText}</div>
+              {canConfigure && (
+                <button type="button" className="nb-btn-secondary" onClick={goSettings}>
+                  <Settings2 size={14} />
+                  前往设置
+                </button>
+              )}
             </div>
           ) : !hasQuery ? (
             <div className="nb-ls-empty is-hint">

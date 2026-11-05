@@ -674,7 +674,7 @@ export function historyClearAll(): Promise<void> {
   return invoke<void>('history_clear_all');
 }
 
-// ── 本地文件搜索（仅桌面端） ──
+// ── 本地文件搜索（桌面端搜索本机磁盘；网页端由服务器按用户权限搜索） ──
 
 /** 文件名搜索；seq 为本窗口递增序号，被更新的查询取代时返回 null */
 export function localSearchNames(query: string, seq: number, limit?: number): Promise<LocalSearchNameResult | null> {
@@ -689,4 +689,9 @@ export function localSearchContent(query: string, seq: number, limit?: number): 
 /** 列出可添加为索引位置的磁盘 */
 export function localSearchDrives(): Promise<LocalSearchDrive[]> {
   return invoke<LocalSearchDrive[]>('local_search_drives');
+}
+
+/** 网页端：管理员开启或关闭整个实例的全局搜索，返回生效后的状态 */
+export function setWebSearchEnabled(enabled: boolean): Promise<boolean> {
+  return invoke<boolean>('local_search_web_set_enabled', { enabled });
 }

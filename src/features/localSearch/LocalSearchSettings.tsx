@@ -14,6 +14,8 @@ import { useLocalSearchSettings, useSettingsStore } from '../../stores/settingsS
 import { useSyncStore } from '../../stores/syncStore';
 import { showToast } from '../../stores/toastStore';
 import { Tooltip } from '../../components/Tooltip';
+import { canManageInstance } from '../account/accountState';
+import { useLocalSearchStore } from './localSearchStore';
 import './localSearch.css';
 
 /** 路径比较键：Windows 忽略大小写与分隔符差异，并去掉末尾分隔符（盘符根除外） */
@@ -139,6 +141,58 @@ export function LocalSearchSettingsCard() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * 网页端：全局搜索由管理员开启，索引所有用户的笔记；每人只能搜到自己有权查看的内容。
+ * 普通用户只读显示当前状态。
+ */
+export function WebSearchSettingsCard() {
+  const available = useLocalSearchStore((s) => s.webAvailable);
+  const enabled = useLocalSearchStore((s) => s.webEnabled);
+  const [saving, setSaving] = useState(false);
+  const manageable = canManageInstance();
+
+  const handleToggle = async (on: boolean) => {
+    setSaving(true);
+    try {
+      const result = await ipc.setWebSearchEnabled(on);
+      useLocalSearchStore.getState().setWebState({ enabled: result });
+    } catch (error) {
+      showToast(`设置失败：${error instanceof Error ? error.message : String(error)}`, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const hint = !available
+    ? '当前部署未包含搜索服务'
+    : manageable
+      ? '索引所有用户的笔记，每人只能搜到有权查看的内容'
+      : '由管理员开启或关闭';
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
+            <Search size={15} color="var(--accent-strong)" />
+            <span>全局搜索</span>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--editor-text-muted)', marginTop: 4 }}>
+            {formatShortcut('Ctrl + Shift + F')} 搜索文件名与内容 · {hint}
+          </div>
+        </div>
+        <input
+          type="checkbox"
+          aria-label="全局搜索"
+          checked={enabled}
+          disabled={!available || !manageable || saving}
+          onChange={(e) => void handleToggle(e.target.checked)}
+        />
+      </div>
     </div>
   );
 }

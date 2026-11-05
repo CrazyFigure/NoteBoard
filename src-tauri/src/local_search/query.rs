@@ -10,9 +10,11 @@ use super::names::{FileTable, DEAD, DIR, HIDDEN, ROOT};
 use super::text::{collapse_whitespace, find_ranges, fold_str, highlight, Part, Query};
 use super::Index;
 use memchr::memmem;
+use rustc_hash::FxHashSet;
 use serde::Serialize;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, RwLock};
 use std::time::{Duration, Instant};
@@ -100,9 +102,43 @@ fn score_name(folded: &str, finders: &[memmem::Finder<'_>]) -> Option<i32> {
     Some(score)
 }
 
+/// 允许返回的条目编号（范围内各位置在文件表中的条目）
+struct Allowed(FxHashSet<u32>);
+
+impl Allowed {
+    /// 将范围路径解析为条目编号；尚未建立索引的位置忽略
+    fn resolve(table: &FileTable, scope: &[PathBuf]) -> Self {
+        Allowed(scope.iter().filter_map(|p| table.find_path(p)).collect())
+    }
+
+    /// 条目位于某个允许位置（或其子孙）中，且两者之间不经过隐藏项
+    fn contains(&self, table: &FileTable, id: u32) -> bool {
+        let mut cur = id;
+        loop {
+            if self.0.contains(&cur) {
+                return true;
+            }
+            let e = &table.entries[cur as usize];
+            if e.flags & HIDDEN != 0 || e.parent == NONE {
+                return false;
+            }
+            cur = e.parent;
+        }
+    }
+}
+
 /// 文件名搜索
 pub fn search_names(index: &Index, query: &Query, limit: usize, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<NameResult> {
+    search_names_in(index, query, limit, None, cancelled)
+}
+
+/// 文件名搜索，scope 非空时只返回位于这些位置中的结果（网页端按用户权限限定，计数同样只算范围内）
+pub fn search_names_in(index: &Index, query: &Query, limit: usize, scope: Option<&[PathBuf]>, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<NameResult> {
     let table = &index.table;
+    let allowed = scope.map(|s| Allowed::resolve(table, s));
+    if allowed.as_ref().is_some_and(|a| a.0.is_empty()) {
+        return Some(NameResult::default());
+    }
     let name_terms: Vec<&str> = query.terms.iter().filter(|t| !t.is_path).map(|t| t.folded.as_str()).collect();
     let path_terms: Vec<String> = query
         .terms
@@ -123,7 +159,7 @@ pub fn search_names(index: &Index, query: &Query, limit: usize, cancelled: &(dyn
     let results: Vec<Option<Vec<(i32, u32, u32)>>> = std::thread::scope(|scope| {
         let handles: Vec<_> = (0..threads)
             .map(|t| {
-                let (finders, path_finders, total) = (&finders, &path_finders, &total);
+                let (finders, path_finders, total, allowed) = (&finders, &path_finders, &total, &allowed);
                 scope.spawn(move || {
                     let mut heap: BinaryHeap<Reverse<(i32, u32, Reverse<u32>)>> = BinaryHeap::with_capacity(limit + 1);
                     let mut buf = String::new();
@@ -147,6 +183,10 @@ pub fn search_names(index: &Index, query: &Query, limit: usize, cancelled: &(dyn
                             buf.push_str(&fold_str(name));
                         }
                         let Some(mut score) = score_name(&buf, finders) else { continue };
+                        // 范围检查放在名字匹配之后：只对命中的少量条目回溯父链
+                        if allowed.as_ref().is_some_and(|a| !a.contains(table, id as u32)) {
+                            continue;
+                        }
                         if !path_finders.is_empty() {
                             let full = fold_str(&table.path(id as u32));
                             if !path_finders.iter().all(|f| f.find(full.as_bytes()).is_some()) {
@@ -224,12 +264,16 @@ const VERIFY_BUDGET: Duration = Duration::from_millis(2500);
 /// 每个文件最多展示的片段行数
 const MAX_SNIPPETS: usize = 3;
 
-fn collect_candidates(index: &Index, query: &Query) -> (Vec<Candidate>, bool) {
+fn collect_candidates(index: &Index, query: &Query, scope: Option<&[PathBuf]>) -> (Vec<Candidate>, bool) {
+    let table: &FileTable = &index.table;
+    let allowed = scope.map(|s| Allowed::resolve(table, s));
+    if allowed.as_ref().is_some_and(|a| a.0.is_empty()) {
+        return (Vec::new(), false);
+    }
     let mut grams: Vec<u32> = query.terms.iter().flat_map(|t| t.grams.iter().copied()).collect();
     grams.sort_unstable();
     grams.dedup();
     let docs = index.content.candidates(&grams, 12);
-    let table: &FileTable = &index.table;
     let mut list: Vec<(u32, u32)> = docs
         .into_iter()
         .filter_map(|d| {
@@ -238,7 +282,14 @@ fn collect_candidates(index: &Index, query: &Query) -> (Vec<Candidate>, bool) {
                 return None;
             }
             let e = table.entries.get(id as usize)?;
-            (e.alive() && e.doc == d).then_some((e.mtime, id))
+            if !(e.alive() && e.doc == d) {
+                return None;
+            }
+            // 范围外的文件在核对正文之前剔除：既不读取其内容，也不占用候选与结果名额
+            if allowed.as_ref().is_some_and(|a| !a.contains(table, id)) {
+                return None;
+            }
+            Some((e.mtime, id))
         })
         .collect();
     // 最近修改的优先核对
@@ -315,12 +366,17 @@ pub fn verify_text(text: &str, query: &Query, name: &str) -> Option<(i64, u32, V
 
 /// 内容搜索
 pub fn search_content(index: &RwLock<Index>, query: &Query, limit: usize, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<ContentResult> {
+    search_content_in(index, query, limit, None, cancelled)
+}
+
+/// 内容搜索，scope 含义同 search_names_in
+pub fn search_content_in(index: &RwLock<Index>, query: &Query, limit: usize, scope: Option<&[PathBuf]>, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<ContentResult> {
     if !query.has_content_grams() {
         return Some(ContentResult::default());
     }
     let (cands, mut truncated) = {
         let guard = index.read().unwrap_or_else(|e| e.into_inner());
-        collect_candidates(&guard, query)
+        collect_candidates(&guard, query, scope)
     };
     if cancelled() {
         return None;

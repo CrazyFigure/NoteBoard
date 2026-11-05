@@ -1,7 +1,7 @@
 // 本地文件搜索端到端测试：真实目录 → 后台引擎建索引 → 文件名 / 内容查询 → 增量更新 → 快照重载
 
 use super::engine::{Engine, Handle, Msg};
-use super::query::{search_content, search_names, ContentResult, NameResult};
+use super::query::{search_content, search_content_in, search_names, search_names_in, ContentResult, NameResult};
 use super::text::Query;
 use std::fs;
 use std::io::Write;
@@ -81,6 +81,51 @@ fn start(root: &Path, snapshot: Option<PathBuf>) -> Handle {
     h.send(Msg::Configure { enabled: true, roots: vec![root.to_string_lossy().to_string()], delay: Duration::ZERO });
     wait_idle(&h);
     h
+}
+
+/// 网页端按权限限定范围：只返回范围内的结果，计数不含范围外；范围内的隐藏项同样不返回
+#[test]
+fn scoped_queries_only_return_entries_inside_allowed_locations() {
+    let dir = tempfile::tempdir().unwrap();
+    let alice = dir.path().join("alice");
+    let bob = dir.path().join("bob");
+    fs::create_dir_all(alice.join("共享")).unwrap();
+    fs::create_dir_all(bob.join("私人")).unwrap();
+    fs::write(alice.join("共享/计划.md"), "scopeSecretWord alice shared").unwrap();
+    fs::write(alice.join("日记.md"), "scopeSecretWord alice private").unwrap();
+    fs::write(alice.join(".草稿.md"), "scopeSecretWord alice hidden").unwrap();
+    fs::write(bob.join("私人/计划.md"), "scopeSecretWord bob private").unwrap();
+    let h = Engine::spawn(None, Box::new(|| {}), false);
+    let roots = [&alice, &bob].map(|p| p.to_string_lossy().to_string()).to_vec();
+    h.send(Msg::Configure { enabled: true, roots, delay: Duration::ZERO });
+    wait_idle(&h);
+    let canonical = |p: &Path| dunce::canonicalize(p).unwrap();
+
+    // bob 可访问：自己的工作区 + alice 共享的文件夹
+    let scope = vec![canonical(&bob), canonical(&alice.join("共享"))];
+    let index = h.shared.index.read().unwrap();
+    let named = search_names_in(&index, &Query::parse("计划"), 50, Some(&scope), &|| false).unwrap();
+    assert_eq!(named.total, 2);
+    let mut paths: Vec<String> = named.hits.iter().map(|h| h.path.clone()).collect();
+    paths.sort();
+    assert!(paths.iter().all(|p| p.contains("bob") || p.contains("共享")), "{paths:?}");
+    drop(index);
+    let found = search_content_in(&h.shared.index, &Query::parse("scopeSecretWord"), 50, Some(&scope), &|| false).unwrap();
+    let mut texts: Vec<String> = found.hits.iter().map(|h| h.path.clone()).collect();
+    texts.sort();
+    assert_eq!(texts.len(), 2, "{texts:?}");
+    assert!(!texts.iter().any(|p| p.contains("日记") || p.contains(".草稿")));
+
+    // alice 访问自己的工作区：隐藏文件不返回
+    let own = vec![canonical(&alice)];
+    let found = search_content_in(&h.shared.index, &Query::parse("scopeSecretWord"), 50, Some(&own), &|| false).unwrap();
+    assert_eq!(found.hits.len(), 2);
+    assert!(!found.hits.iter().any(|h| h.name.starts_with('.')));
+    // 范围内没有已索引的位置时直接返回空
+    let none = vec![dir.path().join("不存在")];
+    let index = h.shared.index.read().unwrap();
+    assert!(search_names_in(&index, &Query::parse("计划"), 50, Some(&none), &|| false).unwrap().hits.is_empty());
+    h.send(Msg::Shutdown);
 }
 
 #[test]
