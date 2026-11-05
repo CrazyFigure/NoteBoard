@@ -25,7 +25,7 @@ vi.mock('@/core/ipc/commands', () => ({
   pathExists: (...args: unknown[]) => pathExistsMock(...args),
 }));
 
-import { watchDirectory } from '@/features/explorer/directoryWatcher';
+import { recheckDocument, watchDirectory } from '@/features/explorer/directoryWatcher';
 import { noteSelfWrite } from '@/features/explorer/directoryWatcher';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useWindowStore } from '@/stores/windowStore';
@@ -77,6 +77,28 @@ describe('🔴 N09 外部正文修改核对链', () => {
     useDocumentStore.setState({ documents: new Map() });
     useExplorerStore.setState({ root: null, children: new Map() });
     resetEditorRegistryForTest();
+  });
+
+  it('迁移或保存后，磁盘 CRLF 与编辑器 LF 基线不误报外部修改', async () => {
+    seedOpenDocument('第一行\n第二行\n', '第一行\n第二行\n');
+    readDocumentMock.mockResolvedValue({ content: '第一行\r\n第二行\r\n' });
+    await recheckDocument(KEY);
+    expect(useDocumentStore.getState().getDocument(KEY)?.externalStatus).toBe('clean');
+    // 只忽略行尾编码差异，真实内容修改依然需要冲突确认。
+    readDocumentMock.mockResolvedValue({ content: '第一行\r\n外部修改\r\n' });
+    await recheckDocument(KEY);
+    expect(useDocumentStore.getState().getDocument(KEY)?.externalStatus).toBe('modified');
+  });
+
+  it('迁移保护期间不核对，交接结束后仍能检测真实外部修改', async () => {
+    seedOpenDocument('基线', '基线');
+    useWindowStore.getState().enterTransfer(KEY);
+    await recheckDocument(KEY);
+    expect(readDocumentMock).not.toHaveBeenCalled();
+    useWindowStore.getState().exitTransfer(KEY);
+    readDocumentMock.mockResolvedValue({ content: '外部修改' });
+    await recheckDocument(KEY);
+    expect(useDocumentStore.getState().getDocument(KEY)?.externalStatus).toBe('modified');
   });
 
   it('外部修改同名文件（含等长替换）→ 核对后置 modified，自动保存被阻止', async () => {
@@ -188,5 +210,48 @@ describe('🔴 N09 外部正文修改核对链', () => {
     expect(useDocumentStore.getState().getDocument(KEY)?.externalStatus).toBe('deleted');
     expect(useWindowStore.getState().getTab(KEY)?.externalStatus).toBe('deleted');
     release();
+  });
+
+  it('读取事件不反复触发正文核对，避免 Linux 监听读盘循环', async () => {
+    seedOpenDocument('base', 'base');
+    const release = watchDirectory(DIR);
+    await vi.advanceTimersByTimeAsync(10);
+    watchHandler?.({ type: { access: { kind: 'read' } }, paths: [KEY] } as never);
+    await vi.advanceTimersByTimeAsync(700);
+    expect(readDocumentMock).not.toHaveBeenCalled();
+    expect(readDirMock).not.toHaveBeenCalled();
+    release();
+  });
+
+  it('核对期间自身保存更新基线，不把迟到的旧读取误报为冲突', async () => {
+    seedOpenDocument('base', 'base');
+    const release = watchDirectory(DIR);
+    await vi.advanceTimersByTimeAsync(10);
+    let finish!: (value: { content: string }) => void;
+    readDocumentMock.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    watchHandler?.({ type: 'write', paths: [KEY] });
+    await vi.advanceTimersByTimeAsync(700);
+    useDocumentStore.getState().updateBaseline(KEY, 'saved', 2, 5);
+    finish({ content: 'base' });
+    await Promise.resolve();
+    expect(useDocumentStore.getState().getDocument(KEY)?.externalStatus).toBe('clean');
+    readDocumentMock.mockResolvedValue({ content: 'saved' });
+    await vi.advanceTimersByTimeAsync(700);
+    expect(readDocumentMock).toHaveBeenCalledTimes(2);
+    expect(useDocumentStore.getState().getDocument(KEY)?.externalStatus).toBe('clean');
+    release();
+  });
+
+  it('补查与监听读取乱序返回，旧 clean 结果不能解除新冲突', async () => {
+    seedOpenDocument('base', 'base');
+    let finishOld!: (value: { content: string }) => void;
+    readDocumentMock.mockReturnValueOnce(new Promise((resolve) => { finishOld = resolve; }));
+    const oldCheck = recheckDocument(KEY);
+    await vi.advanceTimersByTimeAsync(1);
+    readDocumentMock.mockResolvedValueOnce({ content: 'external edits' });
+    await recheckDocument(KEY);
+    finishOld({ content: 'base' });
+    await oldCheck;
+    expect(useDocumentStore.getState().getDocument(KEY)?.externalStatus).toBe('modified');
   });
 });

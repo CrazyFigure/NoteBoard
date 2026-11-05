@@ -3,11 +3,20 @@ pub mod intent;
 pub mod commands;
 pub mod print_pdf;
 pub mod render_recovery;
+// GTK 原生打开对话框显式展开路径输入框，仅 Linux 装配。
+#[cfg(target_os = "linux")]
+pub mod path_dialog;
+// 原生标签拖放只在桌面端装配，移动端继续使用窗口内排序。
+#[cfg(desktop)]
+pub mod tab_drag;
 // 托盘与全局快捷键仅桌面端存在（移动端单窗口常驻前台）
 #[cfg(desktop)]
 pub mod tray;
 #[cfg(desktop)]
 pub mod global_shortcut;
+// 极窄模式自动贴边：依赖桌面窗口坐标与显示器信息
+#[cfg(desktop)]
+pub mod edge_dock;
 
 /// 按设置同步系统集成（托盘 + 全局快捷键）；启动与每次保存设置时调用，失败只记录日志
 #[cfg(desktop)]

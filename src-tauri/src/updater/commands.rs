@@ -1,5 +1,6 @@
 //! NoteBoard 应用更新检查、安装包下载与系统外链唤起模块。
 //! 支持 Windows 系统代理与 Android 非 VPN 网络直连回退，以及准确的 GitHub API 限流识别。
+//! 按设置中的发布渠道从 GitHub 或腾讯云 CNB 镜像读取 Release 列表与安装包。
 //! 一次请求 Release 列表，汇总当前版本之后所有未安装版本的更新日志；
 //! Android 在应用内下载 APK 后直接调起系统安装器，不再依赖浏览器下载。
 
@@ -18,12 +19,15 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
 use crate::dto::{UpdateCheckResult, UpdateReleaseNote};
+use crate::release_channel::ReleaseChannel;
 
 // GitHub Release 响应实体定义
 #[derive(Debug, Deserialize)]
 struct GitHubReleaseResponse {
     tag_name: String,
     name: Option<String>,
+    // CNB 镜像接口不返回页面地址，缺省时按渠道拼接
+    #[serde(default)]
     html_url: String,
     published_at: Option<String>,
     body: Option<String>,
@@ -55,12 +59,8 @@ const UPDATE_DOWNLOAD_PROGRESS_EVENT: &str = "noteboard-update-download-progress
 // 下载进度事件推送节流间隔（100毫秒）
 const UPDATE_DOWNLOAD_PROGRESS_THROTTLE: Duration = Duration::from_millis(100);
 
-// GitHub 仓库与 API 默认地址
-const GITHUB_REPO_URL: &str = "https://github.com/CrazyFigure/NoteBoard";
 // 单页 Release 数量；改动时需同步 Android 直连（NbUpdateNetwork.kt）中的地址
 const GITHUB_RELEASE_PAGE_SIZE: usize = 30;
-const GITHUB_RELEASE_API_URL: &str =
-    "https://api.github.com/repos/CrazyFigure/NoteBoard/releases?per_page=30";
 
 /// 统一 Rust HTTP 与 Android 原生直连的响应，保留限流头与正文供后续准确分类。
 #[derive(Debug, Deserialize)]
@@ -178,17 +178,6 @@ fn installer_asset_score(asset_name: &str) -> i32 {
     let x64 = name.contains("x86_64") || name.contains("amd64") || name.contains("x64");
     if !name.contains("universal") && ((cfg!(target_arch = "aarch64") && !arm) || (cfg!(target_arch = "x86_64") && !x64)) { return -1; }
     if name.ends_with(".appimage") { 20 } else { 10 }
-}
-
-/// 是否为 Windows 免安装版：NSIS 安装目录必有 uninstall.exe，免安装版 exe 旁边没有
-fn is_portable_build() -> bool {
-    if !cfg!(target_os = "windows") {
-        return false;
-    }
-    std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(|dir| !dir.join("uninstall.exe").is_file()))
-        .unwrap_or(false)
 }
 
 /// 从 Release 资产列表中挑选最优安装包
@@ -507,8 +496,11 @@ fn spawn_update_installer(installer_path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// 请求 GitHub Release 列表元数据并保存状态、限流头与正文；桌面支持忽略系统 HTTP 代理。
-async fn fetch_latest_release(use_system_proxy: bool) -> Result<ReleaseHttpResponse, String> {
+/// 请求当前渠道的 Release 列表元数据并保存状态、限流头与正文；桌面支持忽略系统 HTTP 代理。
+async fn fetch_latest_release(
+    use_system_proxy: bool,
+    channel: ReleaseChannel,
+) -> Result<ReleaseHttpResponse, String> {
     let client = if use_system_proxy {
         build_update_http_client(UPDATE_HTTP_READ_TIMEOUT)?
     } else {
@@ -516,8 +508,9 @@ async fn fetch_latest_release(use_system_proxy: bool) -> Result<ReleaseHttpRespo
     };
 
     let response = client
-        .get(GITHUB_RELEASE_API_URL)
+        .get(channel.release_list_url(GITHUB_RELEASE_PAGE_SIZE))
         .header(reqwest::header::USER_AGENT, "NoteBoard")
+        .header(reqwest::header::ACCEPT, channel.release_list_accept())
         .send()
         .await
         .map_err(|err| format!("update_error:network:{err}"))?;
@@ -544,9 +537,13 @@ async fn fetch_latest_release(use_system_proxy: bool) -> Result<ReleaseHttpRespo
 }
 
 /// Android 通过原生 Network 绑定到非 VPN 网络；其余平台继续使用 no_proxy 直连。
-async fn fetch_direct_latest_release(app: &AppHandle) -> Result<ReleaseHttpResponse, String> {
+/// 原生直连只服务 GitHub 接口，CNB 镜像在所有平台都使用 Rust no_proxy 直连。
+async fn fetch_direct_latest_release(
+    app: &AppHandle,
+    channel: ReleaseChannel,
+) -> Result<ReleaseHttpResponse, String> {
     #[cfg(target_os = "android")]
-    {
+    if channel == ReleaseChannel::Github {
         use tauri::Manager;
         let app = app.clone();
         // 原生调用等待 Kotlin 网络线程返回，放入阻塞任务，避免占用异步运行时工作线程。
@@ -562,11 +559,8 @@ async fn fetch_direct_latest_release(app: &AppHandle) -> Result<ReleaseHttpRespo
         .await
         .map_err(|error| format!("update_error:network:{error}"))?;
     }
-    #[cfg(not(target_os = "android"))]
-    {
-        let _ = app;
-        fetch_latest_release(false).await
-    }
+    let _ = app;
+    fetch_latest_release(false, channel).await
 }
 
 /// 仅在网络故障、403 或 429 时直连一次；直连不可用时保留原限流响应，避免误报。
@@ -598,10 +592,12 @@ fn parse_release_response(
     response: ReleaseHttpResponse,
 ) -> Result<Vec<GitHubReleaseResponse>, String> {
     if matches!(response.status, 403 | 429) {
+        // GitHub 错误说明在 message，CNB 在 errmsg
         let message = serde_json::from_str::<serde_json::Value>(&response.body)
             .ok()
             .and_then(|body| {
                 body.get("message")
+                    .or_else(|| body.get("errmsg"))
                     .and_then(|value| value.as_str())
                     .map(str::to_string)
             })
@@ -613,7 +609,8 @@ fn parse_release_response(
             .and_then(|value| value.parse::<u32>().ok())
             == Some(0)
             || response.status == 429
-            || message.contains("rate limit");
+            || message.contains("rate limit")
+            || message.contains("too many requests");
         if rate_limited {
             // 解析 GitHub 配额重置时间戳（Unix 秒）
             let reset_ts = response
@@ -665,25 +662,41 @@ fn collect_pending_releases(
     Some((latest, pending))
 }
 
+/// Release 页面地址：接口未返回时按渠道拼接
+fn release_page_url(release: &GitHubReleaseResponse, channel: ReleaseChannel) -> String {
+    if release.html_url.is_empty() {
+        channel.release_page_url(&release.tag_name)
+    } else {
+        release.html_url.clone()
+    }
+}
+
 /// 将 Release 元数据转为前端展示用的版本日志条目
-fn to_release_note(release: &GitHubReleaseResponse) -> UpdateReleaseNote {
+fn to_release_note(release: &GitHubReleaseResponse, channel: ReleaseChannel) -> UpdateReleaseNote {
     UpdateReleaseNote {
         version: release.tag_name.trim_start_matches(['v', 'V']).to_string(),
         name: release.name.clone(),
-        url: release.html_url.clone(),
+        url: release_page_url(release, channel),
         published_at: release.published_at.clone(),
         body: release.body.clone(),
     }
 }
 
-/// 检查应用更新：先使用默认网络，网络故障或限流时按平台尝试真实直连，再挑选安装包。
+/// 检查指定渠道的应用更新，未指定时沿用设置；网络故障或限流时保留平台直连回退。
 #[tauri::command]
-pub async fn check_for_updates(app: AppHandle) -> Result<UpdateCheckResult, String> {
+pub async fn check_for_updates(
+    app: AppHandle,
+    channel: Option<String>,
+) -> Result<UpdateCheckResult, String> {
     let current_version = env!("CARGO_PKG_VERSION").to_string();
-    let release_url = GITHUB_REPO_URL.to_string();
+    // 探测期间不修改持久化设置，由前端在获得有效结果后统一保存成功渠道。
+    let channel = channel
+        .as_deref()
+        .map(ReleaseChannel::from_setting)
+        .unwrap_or_else(ReleaseChannel::current);
     let response = release_response_with_fallback(
-        fetch_latest_release(true),
-        fetch_direct_latest_release(&app),
+        fetch_latest_release(true, channel),
+        fetch_direct_latest_release(&app, channel),
     )
     .await?;
     let releases = parse_release_response(response)?;
@@ -695,7 +708,7 @@ pub async fn check_for_updates(app: AppHandle) -> Result<UpdateCheckResult, Stri
     let latest_version = release.tag_name.trim_start_matches(['v', 'V']).to_string();
     let update_available = is_newer_version(&release.tag_name, &current_version);
     // 免安装版不下载运行安装包，避免在旁边另装一份安装版
-    let portable = is_portable_build();
+    let portable = crate::app_dirs::portable_data_root().is_some();
     let installer_asset = if portable {
         None
     } else {
@@ -706,23 +719,20 @@ pub async fn check_for_updates(app: AppHandle) -> Result<UpdateCheckResult, Stri
     let release_notes: Vec<UpdateReleaseNote> = if update_available {
         std::iter::once(&release)
             .chain(older_pending.iter())
-            .map(to_release_note)
+            .map(|release| to_release_note(release, channel))
             .collect()
     } else {
         Vec::new()
     };
     let release_notes_truncated =
         update_available && page_full && older_pending.len() + 1 >= GITHUB_RELEASE_PAGE_SIZE;
+    let release_url = release_page_url(&release, channel);
 
     Ok(UpdateCheckResult {
         current_version,
         latest_version,
         release_name: release.name,
-        release_url: if release.html_url.is_empty() {
-            release_url
-        } else {
-            release.html_url
-        },
+        release_url,
         published_at: release.published_at,
         update_available,
         installer_asset_name: installer_asset.as_ref().map(|asset| asset.name.clone()),
@@ -778,7 +788,7 @@ pub async fn download_and_install_update(
     if !is_valid_update_download_url(normalized_url) {
         return Err("无效的更新安装包下载地址".to_string());
     }
-    if is_portable_build() {
+    if crate::app_dirs::portable_data_root().is_some() {
         return Err("免安装版请前往 Release 页面下载新版本".to_string());
     }
 
@@ -1048,5 +1058,24 @@ mod tests {
             parse_release_response(response(403, None, "{}")).unwrap_err(),
             "update_error:forbidden"
         );
+    }
+
+    /// CNB 镜像列表无 html_url，页面地址按渠道拼接；其限流说明位于 errmsg。
+    #[test]
+    fn cnb_release_list_parses_without_html_url() {
+        const CNB_BODY: &str = r#"[{"id":"1","tag_name":"v0.7.2","name":"NoteBoard v0.7.2","body":"notes","draft":false,"prerelease":false,"is_latest":true,"published_at":"2026-10-29T03:36:15Z","assets":[{"name":"NoteBoard_0.7.2_windows_x64-setup.exe","browser_download_url":"https://cnb.cool/crazy-figure/NoteBoard/-/releases/download/v0.7.2/NoteBoard_0.7.2_windows_x64-setup.exe","size":123}]}]"#;
+        let releases = parse_release_response(response(200, None, CNB_BODY)).unwrap();
+        assert_eq!(
+            release_page_url(&releases[0], ReleaseChannel::Cnb),
+            "https://cnb.cool/crazy-figure/NoteBoard/-/releases/tag/v0.7.2"
+        );
+        assert_eq!(releases[0].assets[0].size, Some(123));
+        let limited = ReleaseHttpResponse {
+            status: 403,
+            rate_limit_remaining: None,
+            rate_limit_reset: None,
+            body: r#"{"errcode":8,"errmsg":"Too many requests. Please try again later."}"#.to_string(),
+        };
+        assert_eq!(parse_release_response(limited).unwrap_err(), "update_error:rate_limited");
     }
 }

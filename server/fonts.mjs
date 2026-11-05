@@ -5,6 +5,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { inflateRaw } from 'node:zlib';
 import { promisify } from 'node:util';
 import { fail } from './files.mjs';
+import { channelUrl } from './releaseChannel.mjs';
 
 const specs = JSON.parse(await fs.readFile(new URL('./font-files.json', import.meta.url), 'utf8'));
 const DOWNLOAD_URL = 'https://github.com/CrazyFigure/NoteBoard/releases/download/fonts-v1.0.0/NoteBoard-fontpack-core-v1.0.0.zip';
@@ -60,8 +61,8 @@ export async function createFonts(dataDir, { download = fetch } = {}) {
     const faces = cachedReady ? specs.map((s) => ({family:s.name.startsWith('Maple') ? 'Maple Mono Normal NF CN' : 'JetBrains Mono',weight:s.name.includes('Bold') ? '700' : '400',style:s.name.includes('Italic') ? 'italic' : 'normal',path:`/api/font-pack/${s.name}`})) : [];
     return {...base,state:cachedReady ? 'ready' : stats.some(Boolean) ? 'invalid' : 'missing',faces};
   }
-  async function install() {
-    const response = await download(DOWNLOAD_URL, { signal:AbortSignal.timeout(600000) });
+  async function install(channel) {
+    const response = await download(channelUrl(DOWNLOAD_URL, channel), { signal:AbortSignal.timeout(600000) });
     if (!response.ok || Number(response.headers.get('content-length')) > 30 * 1024 * 1024) throw fail('字体下载失败');
     let size = 0; const chunks = [];
     for await (const chunk of response.body) { size += chunk.length; if (size > 30 * 1024 * 1024) throw fail('字体文件过大'); chunks.push(chunk); }
@@ -81,7 +82,8 @@ export async function createFonts(dataDir, { download = fetch } = {}) {
   }
   return {
     status,
-    download:() => installation ?? (installation = install().finally(() => { installation = undefined; })),
+    // channel 为 github / cnb，决定从 GitHub Release 还是 CNB 镜像下载
+    download:(channel) => installation ?? (installation = install(channel).finally(() => { installation = undefined; })),
     // 卸载只删除本实例下载的字体目录；下载进行中拒绝，避免删掉刚激活的文件。
     remove:async () => {
       if (installation) throw fail('字体正在下载，请稍后再卸载');

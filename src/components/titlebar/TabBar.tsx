@@ -9,6 +9,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragMoveEvent,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -22,12 +23,8 @@ import {
   Home,
   Save,
   SaveAll,
-  FileText,
   File,
-  Database,
-  Braces,
   FileCode,
-  PencilRuler,
   AlertTriangle,
   Unlink,
   ExternalLink,
@@ -36,21 +33,17 @@ import {
   ChevronLeft,
   ChevronRight,
   Trash2,
-  Network,
-  Layout,
-  Workflow,
-  GitMerge,
   GitCompare,
   Archive,
-  Table2,
-  ChartColumn,
   Star,
   FolderSync,
   History,
 } from 'lucide-react';
 import { Tooltip } from '../Tooltip';
+import { useViewportClamp } from '../useViewportClamp';
 import { on, off } from '../../core/emitter';
 import { useLayoutStore } from '../../stores/layoutStore';
+import { useTitleBarButtons } from '../../stores/settingsStore';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useExplorerStore } from '../../features/explorer/explorerStore';
@@ -81,8 +74,14 @@ import * as ipc from '../../core/ipc/commands';
 import { getExplorerFileIcon } from '../../features/explorer/fileIcons';
 import { checkOpenDocumentStillExists } from '../../features/external/missingFileGuard';
 import { useSyncStore } from '../../stores/syncStore';
-import { IS_WEB } from '../../core/platform';
+import { IS_WEB, IS_NATIVE_MOBILE } from '../../core/platform';
 import { formatShortcut } from '../../core/shortcuts';
+import { dragTab } from '../../features/window/tabDrag';
+import { TabDropOverlay } from '../../features/window/TabDropOverlay';
+import { useArrivingTabKey, useNativeDraggedTabKey } from '../../features/window/tabDragFeedback';
+import { getCreateFormat, type CreateFormatId } from '../../features/welcome/createFormats';
+import { CodeBadge } from '../CodeBadge';
+import { useCreateFormats } from '../../features/welcome/useCreateFormats';
 
 // ── 类型图标映射 ──
 
@@ -114,14 +113,23 @@ interface TabItemProps {
   isActive: boolean;
   onActivate: () => void;
   onClose: () => void;
+  /** 原生拖动源淡出；新接收标签只播放一次入场动画。 */
+  nativeDragging: boolean;
+  arriving: boolean;
 }
 
-function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
+function TabItem({ tab, isActive, onActivate, onClose, nativeDragging, arriving }: TabItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: tab.key });
 
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
+  // 记录同一标签内的中键按压，松开时复用安全关闭流程，兼容不派发 auxclick 的 WebView。
+  const middlePressedRef = useRef(false);
+  // 右键菜单按点击坐标展开，窄窗口靠右的标签会越出窗口，展开后平移回窗口内
+  const menuClamp = useViewportClamp<HTMLDivElement>(Boolean(menuPos), menuPos);
+  const menuRef = menuClamp.ref;
+  // 极窄模式：标签更窄、内边距更小，一屏多放几个标签
+  const compactMode = useLayoutStore((s) => s.compactMode);
   const { tabs, requestCloseOther, requestCloseLeft, requestCloseRight, requestCloseAll } = useWindowStore();
 
   // 计算当前标签页索引与各方向关闭操作可用状态
@@ -164,18 +172,19 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
   // 单个 Tab 的外观样式（采用现代圆角卡片设计，短标题自动紧凑缩短，长标题受限截断）
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
+    transition: transition ?? 'opacity 120ms ease',
+    opacity: isDragging || nativeDragging ? 0.4 : 1,
+    animation: arriving && !isDragging ? 'nb-tab-arrive 200ms ease-out' : undefined,
     display: 'flex',
     alignItems: 'center',
-    gap: 6,
-    // 短标题自动紧凑自适应，长标题限制在 200px 并在末端以省略号截断
-    minWidth: 80,
-    maxWidth: 200,
+    gap: compactMode ? 4 : 6,
+    // 短标题自动紧凑自适应，长标题限制在 200px（极窄模式 132px）并在末端以省略号截断
+    minWidth: compactMode ? 56 : 80,
+    maxWidth: compactMode ? 132 : 200,
     width: 'max-content',
     flex: '0 0 auto',
-    height: 28,
-    padding: '0 6px 0 10px',
+    height: compactMode ? 26 : 28,
+    padding: compactMode ? '0 4px 0 7px' : '0 6px 0 10px',
     // 左右留出间距，防止边缘遮挡（相邻 Tab 间缝隙为 4px）
     margin: '0 2px',
     borderRadius: 6,
@@ -228,16 +237,39 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
           style={style}
           {...attributes}
           {...listeners}
-          onClick={onActivate}
+          data-tab-key={tab.key}
+          data-tab-arriving={arriving || undefined}
+          onClick={(e) => {
+            // 中键只走关闭流程；主键及键盘触发的点击才激活标签。
+            if (e.button === 0) onActivate();
+          }}
           onContextMenu={(e) => {
             e.preventDefault();
             e.stopPropagation();
             setMenuPos({ x: e.clientX, y: e.clientY });
           }}
-          onAuxClick={(e) => {
+          onMouseDown={(e) => {
+            if (e.button === 1) {
+              // 中键按下即阻止默认滚动或粘贴；左键拖动与右键菜单保持原行为。
+              e.preventDefault();
+              e.stopPropagation();
+              middlePressedRef.current = true;
+            }
+          }}
+          onMouseUp={(e) => {
             if (e.button === 1) {
               e.preventDefault();
-              onClose();
+              e.stopPropagation();
+              const shouldClose = middlePressedRef.current;
+              middlePressedRef.current = false;
+              if (shouldClose) onClose();
+            }
+          }}
+          onAuxClick={(e) => {
+            // 关闭已在松开中键时处理；此处仅抑制默认行为，避免重复触发未保存确认。
+            if (e.button === 1) {
+              e.preventDefault();
+              e.stopPropagation();
             }
           }}
           role="tab"
@@ -253,6 +285,8 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
             }
           }}
           onMouseLeave={(e) => {
+            // 移出标签取消本次中键点击，避免在其他标签上松开时误关。
+            middlePressedRef.current = false;
             if (!isActive) {
               e.currentTarget.style.background = 'var(--tab-inactive-bg)';
               e.currentTarget.style.color = 'var(--editor-text-secondary)';
@@ -296,10 +330,12 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
           {/* 关闭按钮（固定靠在 Tab 最右侧） */}
           <button
             className="tab-close"
+            onPointerDown={(event) => event.stopPropagation()}
             style={closeBtnStyle}
             onClick={(e) => {
               e.stopPropagation();
-              onClose();
+              // 中键统一交给标签的松开事件，避免额外的 click 重复发起关闭。
+              if (e.button === 0) onClose();
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = 'var(--toolbar-hover)';
@@ -339,6 +375,7 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
             boxShadow: 'var(--shadow-md)',
             padding: '4px',
             minWidth: 150,
+            ...menuClamp.style,
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -433,8 +470,8 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
             <span>关闭全部</span>
           </button>
 
-          {/* 工具型视图（文本对比）无文档模型，不支持迁移到独立窗口 */}
-          {!tab.toolKind && !IS_WEB && (
+          {/* 桌面所有标签均通过统一迁移入口打开独立窗口。 */}
+          {!IS_WEB && !IS_NATIVE_MOBILE && (
             <>
               <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />
 
@@ -561,6 +598,10 @@ function TabItem({ tab, isActive, onActivate, onClose }: TabItemProps) {
   );
 }
 
+// 菜单项里的扩展名与快捷键徽标统一中性色、靠右对齐；名称右侧多留 8px，加上 gap 后与徽标至少隔开 16px
+const MENU_BADGE_LABEL_STYLE: React.CSSProperties = { marginRight: 8 };
+const MENU_BADGE_STYLE: React.CSSProperties = { marginLeft: 'auto' };
+
 // 菜单项基础样式生成函数（支持禁用态）
 function getMenuItemStyle(disabled = false): React.CSSProperties {
   return {
@@ -573,6 +614,8 @@ function getMenuItemStyle(disabled = false): React.CSSProperties {
     border: 'none',
     borderRadius: 4,
     textAlign: 'left',
+    // 菜单项始终单行：靠近窗口右缘时菜单宽度受限也不折行，越界部分由视口收回逻辑平移
+    whiteSpace: 'nowrap',
     cursor: disabled ? 'not-allowed' : 'pointer',
     fontFamily: 'var(--ui-font-family, inherit)',
     fontSize: 'calc(var(--ui-font-size, 13px) - 1px)',
@@ -611,6 +654,22 @@ function handleMenuItemMouseUp(e: React.MouseEvent<HTMLButtonElement>) {
   }
 }
 
+// 「+」菜单各新建格式对应的动作
+const CREATE_FORMAT_ACTIONS: Record<CreateFormatId, () => void> = {
+  markdown: newMarkdown,
+  text: newText,
+  bitable: newBitable,
+  board: newBoard,
+  mindmap: newMindmap,
+  textdiff: newTextDiff,
+  drawio: newDrawio,
+  infographic: newInfographic,
+  mermaid: newMermaid,
+  plantuml: newPlantUml,
+  json: newJson,
+  sql: newSql,
+};
+
 // ── 自绘横向滚动条 ──
 
 // 滚动条轨道距 Tab 栏左右两端的内缩（与滚动容器 padding 对齐）
@@ -638,7 +697,14 @@ const HIDDEN_TAB_SCROLLBAR: TabScrollbarState = { visible: false, thumbLeft: 0, 
 
 export function TabBar() {
   const { tabs, activeKey, activateTab, requestCloseTab, reorderTabs } = useWindowStore();
+  // 极窄模式隐藏保存与回到主界面按钮（Ctrl+S 与状态栏仍可保存），只保留新建
+  const compactMode = useLayoutStore((s) => s.compactMode);
+  const showHomeButton = useTitleBarButtons().home;
   const scrollRef = useRef<HTMLDivElement>(null);
+  const nativeDraggedKey = useNativeDraggedTabKey();
+  const arrivingKey = useArrivingTabKey();
+  // 窗口内沿用原有排序反馈；越出标签栏后只交接一次系统拖放。
+  const nativeDragStartedRef = useRef(false);
   // 自绘滚动条：几何状态、悬停/拖动态与拖动起点
   const [scrollbar, setScrollbar] = useState<TabScrollbarState>(HIDDEN_TAB_SCROLLBAR);
   const [scrollbarHovered, setScrollbarHovered] = useState(false);
@@ -652,11 +718,16 @@ export function TabBar() {
   const [newMenuPos, setNewMenuPos] = useState<{ x: number; y: number } | null>(null);
   // 设置了同步文件夹时「+」菜单显示「打开同步文件夹」
   const syncRoot = useSyncStore((s) => s.config?.sync.rootDir?.trim() || null);
+  // 新建格式布局：与主页共用设置，决定直接展示与收进「更多」的格式及顺序
+  const createFormats = useCreateFormats();
   const [showMoreSubMenu, setShowMoreSubMenu] = useState(false);
   const [flipSubMenuLeft, setFlipSubMenuLeft] = useState(false);
   const subMenuTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const moreItemRef = useRef<HTMLDivElement>(null);
-  const newMenuRef = useRef<HTMLDivElement>(null);
+  // 新建菜单及其子菜单在窄窗口里可能越出底部或两侧，展开后平移回窗口内
+  const newMenuClamp = useViewportClamp<HTMLDivElement>(Boolean(newMenuPos), newMenuPos);
+  const newMenuRef = newMenuClamp.ref;
+  const moreSubMenuClamp = useViewportClamp<HTMLDivElement>(showMoreSubMenu, flipSubMenuLeft);
   // 新建按钮引用，用于菜单点击外部区域判断
   const newBtnRef = useRef<HTMLButtonElement>(null);
 
@@ -733,12 +804,30 @@ export function TabBar() {
   }, [newMenuPos, saveMenuPos]);
 
   const handleDragEnd = (e: DragEndEvent) => {
+    if (nativeDragStartedRef.current) return;
     const { active, over } = e;
     if (!over || active.id === over.id) return;
     const fromIndex = tabs.findIndex((t) => t.key === active.id);
     const toIndex = tabs.findIndex((t) => t.key === over.id);
     if (fromIndex < 0 || toIndex < 0) return;
     reorderTabs(fromIndex, toIndex);
+  };
+
+  /** 越界时接管桌面鼠标手势；网页、移动端与触摸拖动维持原有排序。 */
+  const handleDragMove = (event: DragMoveEvent) => {
+    if (IS_WEB || IS_NATIVE_MOBILE || nativeDragStartedRef.current) return;
+    const pointer = event.activatorEvent as PointerEvent;
+    if (pointer.pointerType !== 'mouse') return;
+    const bar = scrollRef.current?.getBoundingClientRect();
+    if (!bar) return;
+    const x = pointer.clientX + event.delta.x;
+    const y = pointer.clientY + event.delta.y;
+    // 8px 容差避免正常水平排序中的细微抖动意外拆窗。
+    if (y >= bar.top - 8 && y <= bar.bottom + 8 && x >= -8 && x <= window.innerWidth + 8) return;
+    nativeDragStartedRef.current = true;
+    void dragTab(String(event.active.id)).finally(() => { nativeDragStartedRef.current = false; });
+    // 原生拖放接管后结束 DOM 排序传感器，避免松手时重复排序或残留拖动外观。
+    document.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId: pointer.pointerId }));
   };
 
   // 滚轮横滚
@@ -770,15 +859,50 @@ export function TabBar() {
     ));
   }, []);
 
-  // 标签增删、改名、切换激活（字重变化）及窗口尺寸变化时都可能改变溢出量
+  // 标签增删、改名及切换激活（字重变化）都可能改变溢出量。
   useLayoutEffect(() => {
     updateScrollbar();
+  }, [tabs, activeKey, updateScrollbar]);
+
+  // 仅标签顺序或激活项变化时重新定位，避免脏状态等更新打断用户手动横向浏览。
+  const tabOrder = JSON.stringify(tabs.map((tab) => tab.key));
+  useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => updateScrollbar());
+    if (!el) return;
+
+    /** 布局完成后以最小横向位移展示激活标签，不改变编辑器焦点或页面纵向位置。 */
+    const syncViewport = () => {
+      // 逐项比较路径键，兼容文件名中的引号、反斜杠等 CSS 选择器特殊字符。
+      const activeTab = Array.from(el.querySelectorAll<HTMLElement>('[data-tab-key]'))
+        .find((tab) => tab.dataset.tabKey === activeKey);
+      // 隐藏容器尚无可视宽度，等待尺寸观察回调后再计算，避免写入错误的滚动位置。
+      if (activeTab && el.clientWidth > 0) {
+        const viewportLeft = el.getBoundingClientRect().left + el.clientLeft;
+        const viewportRight = viewportLeft + el.clientWidth;
+        const tabRect = activeTab.getBoundingClientRect();
+        // 极窄窗口装不下单个标签时优先展示文件名起点；其余情况只修正被裁切的一侧。
+        const delta = tabRect.width > el.clientWidth || tabRect.left < viewportLeft
+          ? tabRect.left - viewportLeft
+          : Math.max(0, tabRect.right - viewportRight);
+        if (delta !== 0) {
+          const maxScrollLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+          el.scrollLeft = Math.min(maxScrollLeft, Math.max(0, el.scrollLeft + delta));
+        }
+      }
+      // 自动定位后立即同步自绘滑块，不依赖各端 scroll 事件的派发时机。
+      updateScrollbar();
+    };
+
+    syncViewport();
+    // 桌面缩放、分屏与触屏设备横竖屏切换后，重新按容器实际宽度定位。
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', syncViewport);
+      return () => window.removeEventListener('resize', syncViewport);
+    }
+    const observer = new ResizeObserver(syncViewport);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [tabs, activeKey, updateScrollbar]);
+  }, [activeKey, tabOrder, updateScrollbar]);
 
   // 滚动条隐藏时 pointerleave 不会触发，需手动复位悬停态，避免下次出现时仍是高亮
   useEffect(() => {
@@ -851,6 +975,33 @@ export function TabBar() {
     boxSizing: 'border-box',
   };
 
+  // 渲染单个新建格式菜单项（首层与二级菜单同样式）
+  const renderCreateMenuItem = (id: CreateFormatId) => {
+    const meta = getCreateFormat(id);
+    const Icon = meta.menuIcon ?? meta.icon;
+    return (
+      <button
+        key={id}
+        type="button"
+        style={getMenuItemStyle(false)}
+        onClick={() => {
+          setNewMenuPos(null);
+          setShowMoreSubMenu(false);
+          CREATE_FORMAT_ACTIONS[id]();
+        }}
+        onMouseEnter={handleMenuItemMouseEnter}
+        onMouseLeave={handleMenuItemMouseLeave}
+        onMouseDown={handleMenuItemMouseDown}
+        onMouseUp={handleMenuItemMouseUp}
+      >
+        <Icon size={13} color={meta.color} />
+        <span style={meta.ext ? MENU_BADGE_LABEL_STYLE : undefined}>{meta.name}</span>
+        {/* 扩展名以中性色行内代码徽标靠右展示，与主页卡片一致 */}
+        {meta.ext && <CodeBadge style={MENU_BADGE_STYLE}>{meta.ext}</CodeBadge>}
+      </button>
+    );
+  };
+
   // 新建标签页按钮样式
   const newBtnStyle: React.CSSProperties = {
     display: 'flex',
@@ -884,7 +1035,9 @@ export function TabBar() {
   };
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', height: '100%', minWidth: 0, flex: '0 1 auto', maxWidth: 'calc(100vw - 210px)' }}>
+    // 极窄模式按钮更少，不再预留常规模式的右侧宽度，标签栏随拖拽区按需收缩
+    <div style={{ display: 'flex', alignItems: 'center', height: '100%', minWidth: 0, flex: '0 1 auto', maxWidth: compactMode ? undefined : 'calc(100vw - 210px)' }}>
+      {!IS_WEB && !IS_NATIVE_MOBILE && <TabDropOverlay />}
       {/* 滚动外壳：不随内容滚动，为自绘滚动条提供定位基准 */}
       <div style={{ position: 'relative', display: 'flex', height: '100%', minWidth: 0, flex: '0 1 auto' }}>
         <div
@@ -895,7 +1048,8 @@ export function TabBar() {
           onScroll={updateScrollbar}
           role="tablist"
         >
-          <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+          <DndContext sensors={sensors} onDragStart={() => { nativeDragStartedRef.current = false; }}
+            onDragMove={handleDragMove} onDragEnd={handleDragEnd}>
             <SortableContext
               items={tabs.map((t) => t.key)}
               strategy={horizontalListSortingStrategy}
@@ -905,6 +1059,8 @@ export function TabBar() {
                   key={tab.key}
                   tab={tab}
                   isActive={tab.key === activeKey}
+                  nativeDragging={tab.key === nativeDraggedKey}
+                  arriving={tab.key === arrivingKey}
                   onActivate={() => handleActivateTab(tab.key)}
                   onClose={() => requestCloseTab(tab.key)}
                 />
@@ -953,6 +1109,7 @@ export function TabBar() {
         )}
       </div>
 
+      {!compactMode && (<>
       {/* 保存与另存为快捷按钮 */}
       <Tooltip content="保存与另存为" side="bottom" sideOffset={6} disabled={Boolean(saveMenuPos)}>
         <button
@@ -1007,8 +1164,8 @@ export function TabBar() {
         </button>
       </Tooltip>
 
-      {/* 回到主界面 Home 按钮 */}
-      <Tooltip content="回到主界面" side="bottom" sideOffset={6}>
+      {/* 回到主界面 Home 按钮（可在设置「全局 → 标题栏按钮」中隐藏） */}
+      {showHomeButton && <Tooltip content="回到主界面" side="bottom" sideOffset={6}>
         <button
           type="button"
           style={newBtnStyle}
@@ -1043,7 +1200,9 @@ export function TabBar() {
         >
           <Home size={15} />
         </button>
-      </Tooltip>
+      </Tooltip>}
+
+      </>)}
 
       {/* 新建标签按钮（+） */}
       <Tooltip content="新建或打开" side="bottom" sideOffset={6} disabled={Boolean(newMenuPos)}>
@@ -1112,120 +1271,19 @@ export function TabBar() {
             boxShadow: 'var(--shadow-md)',
             padding: '4px',
             minWidth: 175,
+            ...newMenuClamp.style,
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* 新建 Markdown 笔记 */}
-          <button
-            type="button"
-            style={getMenuItemStyle(false)}
-            onClick={() => {
-              setNewMenuPos(null);
-              setShowMoreSubMenu(false);
-              newMarkdown();
-            }}
-            onMouseEnter={handleMenuItemMouseEnter}
-            onMouseLeave={handleMenuItemMouseLeave}
-            onMouseDown={handleMenuItemMouseDown}
-            onMouseUp={handleMenuItemMouseUp}
-          >
-            <FileText size={13} color="var(--editor-accent)" />
-            <span>新建 Markdown 笔记 (.md)</span>
-          </button>
+          {/* 直接展示的新建格式（顺序与主页共用设置「全局 → 新建入口」） */}
+          {createFormats.primary.map(renderCreateMenuItem)}
 
-          {/* 新建文本文档 (.txt) */}
-          <button
-            type="button"
-            style={getMenuItemStyle(false)}
-            onClick={() => {
-              setNewMenuPos(null);
-              setShowMoreSubMenu(false);
-              newText();
-            }}
-            onMouseEnter={handleMenuItemMouseEnter}
-            onMouseLeave={handleMenuItemMouseLeave}
-            onMouseDown={handleMenuItemMouseDown}
-            onMouseUp={handleMenuItemMouseUp}
-          >
-            <FileText size={13} color="#64748b" />
-            <span>新建文本文档 (.txt)</span>
-          </button>
+          {createFormats.primary.length > 0 && createFormats.more.length > 0 && (
+            <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />
+          )}
 
-          {/* 新建多维表格 */}
-          <button
-            type="button"
-            style={getMenuItemStyle(false)}
-            onClick={() => {
-              setNewMenuPos(null);
-              setShowMoreSubMenu(false);
-              newBitable();
-            }}
-            onMouseEnter={handleMenuItemMouseEnter}
-            onMouseLeave={handleMenuItemMouseLeave}
-            onMouseDown={handleMenuItemMouseDown}
-            onMouseUp={handleMenuItemMouseUp}
-          >
-            <Table2 size={13} color="#2563eb" />
-            <span>新建多维表格 (.bitable)</span>
-          </button>
-
-          {/* 新建自由画板 */}
-          <button
-            type="button"
-            style={getMenuItemStyle(false)}
-            onClick={() => {
-              setNewMenuPos(null);
-              setShowMoreSubMenu(false);
-              newBoard();
-            }}
-            onMouseEnter={handleMenuItemMouseEnter}
-            onMouseLeave={handleMenuItemMouseLeave}
-            onMouseDown={handleMenuItemMouseDown}
-            onMouseUp={handleMenuItemMouseUp}
-          >
-            <PencilRuler size={13} color="var(--accent-strong)" />
-            <span>新建自由画板 (.excalidraw)</span>
-          </button>
-
-          {/* 新建思维导图 */}
-          <button
-            type="button"
-            style={getMenuItemStyle(false)}
-            onClick={() => {
-              setNewMenuPos(null);
-              setShowMoreSubMenu(false);
-              newMindmap();
-            }}
-            onMouseEnter={handleMenuItemMouseEnter}
-            onMouseLeave={handleMenuItemMouseLeave}
-            onMouseDown={handleMenuItemMouseDown}
-            onMouseUp={handleMenuItemMouseUp}
-          >
-            <Network size={13} color="#f97316" />
-            <span>新建思维导图 (.mindmap)</span>
-          </button>
-
-          {/* 文本对比（纯前端工具视图，不落盘） */}
-          <button
-            type="button"
-            style={getMenuItemStyle(false)}
-            onClick={() => {
-              setNewMenuPos(null);
-              setShowMoreSubMenu(false);
-              newTextDiff();
-            }}
-            onMouseEnter={handleMenuItemMouseEnter}
-            onMouseLeave={handleMenuItemMouseLeave}
-            onMouseDown={handleMenuItemMouseDown}
-            onMouseUp={handleMenuItemMouseUp}
-          >
-            <GitCompare size={13} color="#10b981" />
-            <span>文本对比</span>
-          </button>
-
-          <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />
-
-          {/* 更多格式新建（带二级菜单，防抖无缝悬停与自适应向左展开） */}
+          {/* 更多格式新建（带二级菜单，防抖无缝悬停与自适应向左展开；没有收进更多的格式时不渲染） */}
+          {createFormats.more.length > 0 && (
           <div
             ref={moreItemRef}
             style={{ position: 'relative' }}
@@ -1254,9 +1312,11 @@ export function TabBar() {
             {/* 二级菜单 */}
             {showMoreSubMenu && (
               <div
+                ref={moreSubMenuClamp.ref}
                 onMouseEnter={handleOpenSubMenu}
                 onMouseLeave={handleCloseSubMenuDelayed}
                 style={{
+                  ...moreSubMenuClamp.style,
                   position: 'absolute',
                   top: -4,
                   ...(flipSubMenuLeft
@@ -1271,118 +1331,11 @@ export function TabBar() {
                   minWidth: 175,
                 }}
               >
-                {/* 新建 Draw.io 架构图 */}
-                <button
-                  type="button"
-                  style={getMenuItemStyle(false)}
-                  onClick={() => {
-                    setNewMenuPos(null);
-                    setShowMoreSubMenu(false);
-                    newDrawio();
-                  }}
-                  onMouseEnter={handleMenuItemMouseEnter}
-                  onMouseLeave={handleMenuItemMouseLeave}
-                  onMouseDown={handleMenuItemMouseDown}
-                  onMouseUp={handleMenuItemMouseUp}
-                >
-                  <Layout size={13} color="#ea580c" />
-                  <span>Draw.io 架构图 (.drawio)</span>
-                </button>
-
-                {/* 新建信息图（.infographic 声明式源码，与 md 内嵌信息图块同源） */}
-                <button
-                  type="button"
-                  style={getMenuItemStyle(false)}
-                  onClick={() => {
-                    setNewMenuPos(null);
-                    setShowMoreSubMenu(false);
-                    newInfographic();
-                  }}
-                  onMouseEnter={handleMenuItemMouseEnter}
-                  onMouseLeave={handleMenuItemMouseLeave}
-                  onMouseDown={handleMenuItemMouseDown}
-                  onMouseUp={handleMenuItemMouseUp}
-                >
-                  <ChartColumn size={13} color="#14b8a6" />
-                  <span>信息图 (.infographic)</span>
-                </button>
-
-                {/* 新建 Mermaid 图表 */}
-                <button
-                  type="button"
-                  style={getMenuItemStyle(false)}
-                  onClick={() => {
-                    setNewMenuPos(null);
-                    setShowMoreSubMenu(false);
-                    newMermaid();
-                  }}
-                  onMouseEnter={handleMenuItemMouseEnter}
-                  onMouseLeave={handleMenuItemMouseLeave}
-                  onMouseDown={handleMenuItemMouseDown}
-                  onMouseUp={handleMenuItemMouseUp}
-                >
-                  <Workflow size={13} color="#00bfb2" />
-                  <span>Mermaid 图表 (.mmd)</span>
-                </button>
-
-                {/* 新建 PlantUML / UML */}
-                <button
-                  type="button"
-                  style={getMenuItemStyle(false)}
-                  onClick={() => {
-                    setNewMenuPos(null);
-                    setShowMoreSubMenu(false);
-                    newPlantUml();
-                  }}
-                  onMouseEnter={handleMenuItemMouseEnter}
-                  onMouseLeave={handleMenuItemMouseLeave}
-                  onMouseDown={handleMenuItemMouseDown}
-                  onMouseUp={handleMenuItemMouseUp}
-                >
-                  <GitMerge size={13} color="#a855f7" />
-                  <span>PlantUML 建模 (.puml)</span>
-                </button>
-
-                <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />
-
-                {/* 新建 JSON 配置文件 */}
-                <button
-                  type="button"
-                  style={getMenuItemStyle(false)}
-                  onClick={() => {
-                    setNewMenuPos(null);
-                    setShowMoreSubMenu(false);
-                    newJson();
-                  }}
-                  onMouseEnter={handleMenuItemMouseEnter}
-                  onMouseLeave={handleMenuItemMouseLeave}
-                  onMouseDown={handleMenuItemMouseDown}
-                  onMouseUp={handleMenuItemMouseUp}
-                >
-                  <Braces size={13} color="#eab308" />
-                  <span>JSON 配置文件 (.json)</span>
-                </button>
-
-                {/* 新建 SQL 数据库脚本 */}
-                <button
-                  type="button"
-                  style={getMenuItemStyle(false)}
-                  onClick={() => {
-                    setNewMenuPos(null);
-                    setShowMoreSubMenu(false);
-                    newSql();
-                  }}
-                  onMouseEnter={handleMenuItemMouseEnter}
-                  onMouseLeave={handleMenuItemMouseLeave}
-                  onMouseDown={handleMenuItemMouseDown}
-                  onMouseUp={handleMenuItemMouseUp}
-                >
-                  <Database size={13} color="#3b82f6" />
-                  <span>SQL 数据库脚本 (.sql)</span>
-                </button>
+                {createFormats.more.map(renderCreateMenuItem)}
               </div>
             )}
           </div>
+          )}
 
           <div style={{ height: 1, background: 'var(--editor-border)', margin: '4px 0' }} />
 
@@ -1401,7 +1354,8 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <File size={13} color="#3b82f6" />
-            <span>{formatShortcut('打开文件 (Ctrl+O)')}</span>
+            <span style={MENU_BADGE_LABEL_STYLE}>打开文件</span>
+            <CodeBadge style={MENU_BADGE_STYLE}>{formatShortcut('Ctrl+O')}</CodeBadge>
           </button>
 
           {/* 打开文件夹 */}
@@ -1419,7 +1373,8 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <FolderOpen size={13} color="#eab308" />
-            <span>{formatShortcut('打开文件夹 (Ctrl+Shift+O)')}</span>
+            <span style={MENU_BADGE_LABEL_STYLE}>打开文件夹</span>
+            <CodeBadge style={MENU_BADGE_STYLE}>{formatShortcut('Ctrl+Shift+O')}</CodeBadge>
           </button>
 
           {/* 收藏夹：打开收藏夹管理弹窗 */}
@@ -1515,7 +1470,8 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <Save size={13} color={activeKey ? 'var(--editor-accent)' : undefined} />
-            <span>{formatShortcut('保存 (Ctrl+S)')}</span>
+            <span style={MENU_BADGE_LABEL_STYLE}>保存</span>
+            <CodeBadge style={MENU_BADGE_STYLE}>{formatShortcut('Ctrl+S')}</CodeBadge>
           </button>
 
           {/* 另存为 */}
@@ -1535,7 +1491,8 @@ export function TabBar() {
             onMouseUp={handleMenuItemMouseUp}
           >
             <SaveAll size={13} color={activeKey ? '#06b6d4' : undefined} />
-            <span>{formatShortcut('另存为 (Ctrl+Shift+S)')}</span>
+            <span style={MENU_BADGE_LABEL_STYLE}>另存为</span>
+            <CodeBadge style={MENU_BADGE_STYLE}>{formatShortcut('Ctrl+Shift+S')}</CodeBadge>
           </button>
         </div>
       )}

@@ -25,6 +25,7 @@ import {
   handleValidateJson,
   handleFormatXml,
 } from './jsonOps';
+import { isColumnModeActive, toggleColumnMode } from './columnEdit';
 import { handleTransformCase } from '../toolbar/textOps';
 import type { LanguageId } from '../../core/ipc/types';
 import { getDocumentRevision } from '../../core/editor/editorRegistry';
@@ -65,6 +66,11 @@ export function createCodeEditorCapabilities(
     validateJson: (scope) => handleValidateJson(view, { scope, lang }),
     transformCase: (mode) => handleTransformCase(view, mode),
     formatXml: (scope) => handleFormatXml(view, { scope, lang }),
+    toggleColumnEdit: () => {
+      toggleColumnMode(view);
+      view.focus();
+    },
+    isColumnEditActive: () => isColumnModeActive(view),
   };
 
   return {

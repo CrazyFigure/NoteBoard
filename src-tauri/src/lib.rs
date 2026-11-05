@@ -17,6 +17,8 @@ pub mod font_pack;
 pub mod plugins;
 pub mod bootstrap;
 pub mod updater;
+// 发布渠道（GitHub / 腾讯云 CNB 镜像）
+pub mod release_channel;
 pub mod staging;
 pub mod favorites;
 pub mod perf;
@@ -25,9 +27,14 @@ pub mod mobile_bridge;
 pub mod sync;
 // 文档历史记录（版本历史）
 pub mod history;
+// 系统剪贴板：图片位图与文件列表
+pub mod clipboard;
+// 本地文件搜索（文件名与内容索引）
+pub mod local_search;
 
 use state::AppState;
 use std::sync::Mutex;
+use tauri::Manager;
 
 /// 应用入口（桌面端由 main.rs 调用；移动端由 mobile_entry_point 宏生成的原生入口调用）
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -37,14 +44,38 @@ pub fn run() {
     perf::init();
 
     let context = tauri::generate_context!();
+    // 安装器调用同一套原生恢复，不创建窗口，也不被运行中的单实例截走；未勾选安装后启动也能修复。
+    #[cfg(windows)]
+    if bootstrap::file_associations::is_installer_repair(std::env::args_os().skip(1)) {
+        std::process::exit(bootstrap::file_associations::run_from_installer(context.config()));
+    }
     #[cfg(windows)]
     let context = {
         let mut context = context;
+        // 开发版与免安装版数据必须先于单实例插件与主 WebView 初始化，统一隔离原生和浏览器存储。
+        if let Err(error) = app_dirs::init_windows_profile() {
+            use windows::core::HSTRING;
+            use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+            let message = HSTRING::from(format!(
+                "无法使用 NoteBoard 数据目录。请确认该目录可写且没有其他程序的同名数据。\n\n{error}"
+            ));
+            // 发布版没有控制台，原生提示明确说明原因；此时不启动任何读写安装版数据的后台任务。
+            unsafe { MessageBoxW(None, &message, &HSTRING::from("NoteBoard"), MB_OK | MB_ICONERROR); }
+            return;
+        }
+        if let Some(root) = app_dirs::portable_data_root() {
+            let identifier = app_dirs::portable_identifier(&context.config().identifier, root);
+            context.config_mut().identifier = identifier;
+        }
         // 主窗口由 Tauri 根据配置自动创建，必须提前设置呈现参数，on_webview_ready 时已无法改变浏览器环境。
         // 后续新建窗口复用同一组参数，避免同一应用的窗口使用不同的呈现策略。
         for window_config in &mut context.config_mut().app.windows {
             window_config.additional_browser_args =
                 Some(window::render_recovery::WINDOWS_BROWSER_ARGS.to_string());
+            // localStorage / IndexedDB / 浏览器缓存随开发版或免安装版数据隔离，所有窗口共用同一资料目录。
+            if let Some(root) = app_dirs::isolated_data_root() {
+                window_config.data_directory = Some(root.join("webview"));
+            }
         }
         context
     };
@@ -67,18 +98,33 @@ pub fn run() {
     // 不记忆窗口装饰：装饰由各平台配置决定，避免旧版本保存的系统标题栏状态被恢复
     // 不记忆可见性：窗口统一在前端壳就绪后由 window_shell_ready 显示，避免插件提前显示出白屏
     #[cfg(desktop)]
-    let builder = builder.plugin(
-        tauri_plugin_window_state::Builder::new()
+    let builder = {
+        let window_state = tauri_plugin_window_state::Builder::new()
             .with_state_flags(
                 tauri_plugin_window_state::StateFlags::all()
                     & !tauri_plugin_window_state::StateFlags::DECORATIONS
                     & !tauri_plugin_window_state::StateFlags::VISIBLE,
-            )
-            .build(),
-    );
+            );
+        // 开发版与免安装版将窗口状态写入各自的数据目录，与设置和草稿归属一致。
+        let window_state = if let Some(root) = app_dirs::isolated_data_root() {
+            window_state.with_filename(root.join("window-state.json").to_string_lossy().into_owned())
+        } else {
+            window_state
+        };
+        builder.plugin(window_state.build())
+    };
 
     // WebView2 GPU/渲染进程异常后的画面自愈（逻辑仅 Windows 生效，其他平台为空插件）
     let builder = builder.plugin(window::render_recovery::plugin());
+
+    // 系统拖放落点在 Rust 同步登记，前端异步补充标签顺序。
+    // 极窄模式自动贴边：各窗口独立的贴边状态
+    #[cfg(desktop)]
+    let builder = builder.manage(window::edge_dock::EdgeDockRegistry::default());
+
+    #[cfg(desktop)]
+    let builder = builder.manage(window::tab_drag::TabDragState::default())
+        .plugin(window::tab_drag::plugin());
 
     // 全局唤起窗口快捷键（仅桌面端；具体按键由设置决定，启动时在 bootstrap 中注册）
     #[cfg(desktop)]
@@ -104,6 +150,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            #[cfg(target_os = "linux")]
+            window::path_dialog::open_linux_path_dialog,
             // window（S04 打开队列 + 迁移协议）
             window::commands::window_listeners_ready,
             window::commands::window_shell_ready,
@@ -112,6 +160,7 @@ pub fn run() {
             window::commands::enqueue_open_requests,
             window::commands::create_window,
             window::commands::begin_document_transfer,
+            window::commands::list_incoming_transfers,
             window::commands::take_transfer_payload,
             window::commands::prepare_transfer_complete,
             window::commands::abort_transfer,
@@ -119,6 +168,17 @@ pub fn run() {
             window::commands::focus_window,
             window::commands::close_window,
             window::commands::set_show_window_shortcut,
+            window::commands::set_traffic_lights_hidden,
+            #[cfg(desktop)]
+            window::tab_drag::start_tab_drag,
+            #[cfg(desktop)]
+            window::edge_dock::set_edge_dock,
+            #[cfg(desktop)]
+            window::edge_dock::begin_dock_drag,
+            #[cfg(desktop)]
+            window::edge_dock::end_dock_drag,
+            #[cfg(desktop)]
+            window::tab_drag::claim_tab_drop,
             window::print_pdf::print_window_to_pdf,
             // registry
             registry::commands::register_document,
@@ -131,11 +191,13 @@ pub fn run() {
             // XMind 直接打开保留二进制正文，不能走普通文本解码。
             fsio::commands::read_xmind_file,
             fsio::commands::read_preview_file,
+            fsio::commands::read_pdf_file_range,
             fsio::commands::probe_document,
             // 🔴 S07：统一文件准备（读盘前归属查询 + 在途去重 + blocking 读取）
             fsio::prepare::prepare_document,
             fsio::commands::write_document,
             fsio::commands::save_binary_file,
+            fsio::commands::save_binary_file_raw,
             fsio::commands::read_dir,
             fsio::commands::create_file,
             fsio::commands::create_dir,
@@ -144,6 +206,10 @@ pub fn run() {
             fsio::commands::path_exists,
             fsio::commands::reveal_in_explorer,
             fsio::commands::open_with_default_app,
+            // 系统剪贴板（图片位图 / 文件列表）
+            clipboard::clipboard_write_image,
+            clipboard::clipboard_write_image_file,
+            clipboard::clipboard_write_files,
             // settings
             settings::commands::load_settings,
             settings::commands::save_settings,
@@ -216,9 +282,26 @@ pub fn run() {
             history::commands::history_delete_entry,
             history::commands::history_usage,
             history::commands::history_clear_all,
+            // 本地文件搜索（仅桌面端）
+            #[cfg(desktop)]
+            local_search::commands::local_search_names,
+            #[cfg(desktop)]
+            local_search::commands::local_search_content,
+            #[cfg(desktop)]
+            local_search::commands::local_search_drives,
         ])
         .on_window_event(|window, event| {
+            #[cfg(desktop)]
+            if let tauri::WindowEvent::DragDrop(event) = event {
+                window::tab_drag::record_drop(window.app_handle(), window.label(), event);
+            }
             window::manager::on_window_event(window, event)
+        })
+        .on_webview_event(|webview, event| {
+            #[cfg(desktop)]
+            if let tauri::WebviewEvent::DragDrop(event) = event {
+                window::tab_drag::record_drop(webview.app_handle(), webview.window().label(), event);
+            }
         })
         .build(context)
         .expect("error while building NoteBoard application")
@@ -236,6 +319,10 @@ pub fn run() {
             if let tauri::RunEvent::Reopen { has_visible_windows: false, .. } = _event {
                 let handle = _app.clone();
                 std::thread::spawn(move || window::tray::restore_hidden_windows(&handle));
+            }
+            // 退出前释放剪贴板实例：Linux 借此把已复制的图片 / 文件移交给剪贴板管理器
+            if let tauri::RunEvent::Exit = _event {
+                clipboard::release();
             }
         });
 }

@@ -1,13 +1,16 @@
 // 设置页同步与备份首次切换回归测试。
 // 保留真实面板和缓存配置；同步提交后立即检查 DOM，避免异步等待掩盖加载占位闪烁。
 
-import { act } from 'react';
+import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SettingsModal } from '../../src/components/settings/SettingsModal';
 import { TooltipProvider } from '../../src/components/Tooltip';
 import type { SyncConfigFile, SyncProviderConfig } from '../../src/core/ipc/types';
 import { useSyncStore } from '../../src/stores/syncStore';
+import { ProviderForm } from '../../src/features/sync/SyncControls';
+import * as ipc from '../../src/core/ipc/commands';
+import { DEFAULT_SETTINGS, useSettingsStore } from '../../src/stores/settingsStore';
 
 // 字体设置与本次页签切换无关，不触发原生字体接口或字体包检查。
 vi.mock('../../src/components/settings/FontSelect', () => ({ FontSelect: () => null }));
@@ -16,10 +19,17 @@ vi.mock('../../src/components/settings/FontPackSettingsCard', () => ({ FontPackS
 /** 提供完整的服务配置，确保实际表单能够读取不同服务的缓存输入。 */
 function createProvider(): SyncProviderConfig {
   const git = { baseUrl: '', owner: '', repo: '', branch: 'main', token: '', remoteDir: 'NoteBoard' };
+  // 厂商配置分别初始化，切换与修改不会共享 Header 数组。
+  const storage = () => ({ endpoint: '', region: '', bucket: '', accessKeyId: '', secretAccessKey: '', prefix: '', pathStyle: false, customDomain: false, headers: [] });
   return {
     kind: 'webdav',
-    webdav: { url: '', username: '', password: '', userAgent: '', remoteDir: 'NoteBoard' },
-    s3: { endpoint: '', region: '', bucket: '', accessKeyId: '', secretAccessKey: '', prefix: '', pathStyle: true, userAgent: '' },
+    webdav: { url: '', username: '', password: '', headers: [], remoteDir: 'NoteBoard' },
+    s3: { ...storage(), pathStyle: true },
+    oss: storage(),
+    zos: storage(),
+    oos: storage(),
+    obs: storage(),
+    cos: storage(),
     github: { ...git },
     gitee: { ...git },
     gitcode: { ...git },
@@ -86,6 +96,71 @@ describe('设置页同步与备份切换', () => {
     act(() => button!.click());
   }
 
+  it('全局最后一项默认开启阅读位置恢复，并允许手动关闭', async () => {
+    const previous = useSettingsStore.getState().settings;
+    const setFile = vi.spyOn(useSettingsStore.getState(), 'setFile').mockResolvedValue(undefined);
+    try {
+      await act(async () => useSettingsStore.setState({ settings: structuredClone(DEFAULT_SETTINGS) }));
+      switchTab('全局');
+      const checkboxes = host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
+      const toggle = host.querySelector<HTMLInputElement>('[aria-label="重新打开时恢复上次阅读位置"]')!;
+      expect(toggle).not.toBeNull();
+      expect(checkboxes[checkboxes.length - 1]).toBe(toggle);
+      expect(toggle.checked).toBe(true);
+      await act(async () => toggle.click());
+      expect(setFile).toHaveBeenCalledWith({ restoreReadingPosition: false });
+    } finally {
+      await act(async () => useSettingsStore.setState({ settings: previous }));
+    }
+  });
+
+  /** 厂商下拉弹层挂在 body；通过角色和可见文字操作，覆盖真实门户渲染。 */
+  function chooseStorage(label: string, index = 0) {
+    const trigger = host.querySelectorAll<HTMLButtonElement>('[role="combobox"][aria-label="对象存储服务"]')[index];
+    act(() => trigger.click());
+    const option = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).find((item) => item.textContent === label);
+    expect(option).toBeDefined();
+    act(() => option!.click());
+  }
+
+  it('新 ZOS 预填签名区域与路径风格，往返分类保留手动修改的访问方式', () => {
+    /** 使用真实受控表单，确保只在首次选择全空配置时写入预设值。 */
+    function Form() {
+      const [provider, setProvider] = useState<SyncProviderConfig>({ ...createProvider(), kind: 's3' });
+      return <ProviderForm value={provider} onChange={setProvider} />;
+    }
+    act(() => root.render(<TooltipProvider><Form /></TooltipProvider>));
+    chooseStorage('天翼云 ZOS');
+    expect(host.querySelector<HTMLInputElement>('input[placeholder="us-east-1"]')!.value).toBe('us-east-1');
+    expect(host.textContent).toContain('不是天翼云资源池 ID');
+    const toggle = () => Array.from(host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')).find((input) =>
+      host.querySelector(`#${input.getAttribute('aria-labelledby')}`)?.textContent?.startsWith('路径风格访问'))!;
+    expect(toggle().checked).toBe(true);
+    act(() => toggle().click());
+    chooseStorage('通用 S3（AWS / R2 / MinIO）');
+    chooseStorage('天翼云 ZOS');
+    expect(toggle().checked).toBe(false);
+  });
+
+  it('已有 ZOS 配置切换服务时保留区域、访问模式、凭证和同步目标', async () => {
+    const provider = createProvider();
+    provider.kind = 's3';
+    provider.zos = { ...provider.zos, endpoint: 'https://hunan-4.zos.ctyun.cn', region: 'saved-region',
+      bucket: 'saved-bucket', prefix: 'saved-prefix', accessKeyId: 'saved-key', secretAccessKey: 'saved-secret', pathStyle: false };
+    const before = structuredClone(provider.zos);
+    const testConnection = vi.spyOn(ipc, 'syncTestConnection').mockResolvedValue('连接成功');
+    /** 模拟加载旧配置后重新选择 ZOS，不能以预设覆盖已有区域和模式。 */
+    function Form() {
+      const [value, setValue] = useState(provider);
+      return <ProviderForm value={value} onChange={setValue} />;
+    }
+    act(() => root.render(<TooltipProvider><Form /></TooltipProvider>));
+    chooseStorage('天翼云 ZOS');
+    const test = Array.from(host.querySelectorAll('button')).find((button) => button.textContent?.includes('测试连接'))!;
+    await act(async () => test.click());
+    expect(testConnection.mock.calls[0][0].zos).toEqual(before);
+  });
+
   it('首次点击直接提交完整面板，不闪现模块加载占位', () => {
     expect(host.querySelector('.nb-sync-panel')).toBeNull();
     switchTab('同步与备份');
@@ -102,6 +177,37 @@ describe('设置页同步与备份切换', () => {
     expect(host.textContent).not.toContain('正在加载同步设置');
   });
 
+  it.each(['webdav', 's3', 'github', 'gitee', 'gitcode', 'gitlab'] as const)('旧 %s 配置打开分组表单不会改写同步方式或原有输入', async (kind) => {
+    const provider = createProvider();
+    provider.kind = kind;
+    provider.s3.endpoint = 'https://objects.example.com/old-path/?saved=1';
+    provider.s3.bucket = 'old-bucket';
+    provider.s3.secretAccessKey = 'old-storage-key';
+    provider.gitlab.branch = 'old-branch';
+    provider.gitlab.token = 'old-gitlab-token';
+    const before = structuredClone(provider);
+    const change = vi.fn();
+    const testConnection = vi.spyOn(ipc, 'syncTestConnection').mockResolvedValue('连接成功');
+    act(() => root.render(<TooltipProvider><ProviderForm value={provider} onChange={change} /></TooltipProvider>));
+    const radios = Array.from(host.querySelectorAll<HTMLButtonElement>('[role="radio"]'));
+    const selected = kind === 'webdav' ? 'WebDAV' : kind === 's3' ? '对象存储' : 'Git 仓库';
+    expect(radios.find((radio) => radio.textContent === selected)!.getAttribute('aria-checked')).toBe('true');
+    if (kind === 's3') {
+      expect(host.querySelector('[aria-label="对象存储服务"]')!.textContent).toBe('通用 S3（AWS / R2 / MinIO）');
+      expect(host.querySelector<HTMLInputElement>('input[placeholder="https://s3.us-east-1.amazonaws.com"]')!.value).toBe(before.s3.endpoint);
+    } else if (kind !== 'webdav') {
+      const names = { github: 'GitHub', gitee: 'Gitee', gitcode: 'GitCode', gitlab: 'GitLab' };
+      expect(host.querySelector('[aria-label="Git 托管平台"]')!.textContent).toBe(names[kind]);
+    }
+    // 点击已经激活的分类也不能回退到通用 S3 或 GitHub，更不能清空原凭证。
+    act(() => radios.find((radio) => radio.textContent === selected)!.click());
+    expect(change).not.toHaveBeenCalled();
+    const test = Array.from(host.querySelectorAll('button')).find((button) => button.textContent?.includes('测试连接'))!;
+    await act(async () => test.click());
+    expect(testConnection).toHaveBeenCalledWith(before);
+    expect(provider).toEqual(before);
+  });
+
   it('配置确实尚未就绪时保留加载提示，缓存到达后展示表单', () => {
     // 单独控制启动初始化，避免测试向 Tauri 发出实际 IPC 请求。
     const init = vi.spyOn(useSyncStore.getState(), 'init').mockResolvedValue(undefined);
@@ -112,5 +218,206 @@ describe('设置页同步与备份切换', () => {
     act(() => useSyncStore.setState({ config: createConfig(), initialized: true }));
     expect(host.textContent).toContain('开启多端同步');
     expect(host.textContent).not.toContain('正在加载同步设置');
+  });
+
+  it.each(['webdav', 's3'] as const)('%s 支持多项 Header 编辑、隐藏和删除，并将新配置用于连接测试', async (kind) => {
+    const testConnection = vi.spyOn(ipc, 'syncTestConnection').mockResolvedValue('连接成功');
+    /** 使用真实受控表单，确保连续输入和增删后的状态能向上保存。 */
+    function Form() {
+      const [provider, setProvider] = useState<SyncProviderConfig>({ ...createProvider(), kind });
+      return <ProviderForm value={provider} onChange={setProvider} />;
+    }
+    act(() => root.render(<TooltipProvider><Form /></TooltipProvider>));
+    /** 按无障碍名称操作按钮，避免依赖图标或样式结构。 */
+    const button = (name: string) => host.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`)!;
+    /** 原生 setter 与 input 事件模拟用户输入，使 React 的受控更新正常执行。 */
+    const fill = (name: string, value: string) => {
+      const input = host.querySelector<HTMLInputElement>(`input[aria-label="${name}"]`)!;
+      act(() => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    };
+    act(() => button('添加 Header').click());
+    fill('Header 1 名称', 'User-Agent');
+    fill('Header 1 值', 'Custom/1');
+    act(() => button('添加 Header').click());
+    fill('Header 2 名称', 'CF-Access-Client-Secret');
+    fill('Header 2 值', 'gateway-token');
+    expect(host.querySelector<HTMLInputElement>('input[aria-label="Header 2 值"]')!.type).toBe('password');
+    act(() => button('显示Header 2 值').click());
+    expect(host.querySelector<HTMLInputElement>('input[aria-label="Header 2 值"]')!.type).toBe('text');
+    act(() => button('删除 Header 1').click());
+    expect(host.querySelector<HTMLInputElement>('input[aria-label="Header 1 名称"]')!.value).toBe('CF-Access-Client-Secret');
+    expect(host.querySelector<HTMLInputElement>('input[aria-label="Header 1 值"]')!.type).toBe('password');
+    const testButton = Array.from(host.querySelectorAll('button')).find((item) => item.textContent?.includes('测试连接'))!;
+    await act(async () => testButton.click());
+    expect(testConnection.mock.calls[0][0][kind].headers).toEqual([{ name: 'CF-Access-Client-Secret', value: 'gateway-token' }]);
+
+    // 类型切换保留各自的 Header，不能把 WebDAV 网关凭证误带到 S3（或反向）。
+    const other = host.querySelector<HTMLButtonElement>('button[role="radio"][aria-checked="false"]')!;
+    act(() => other.click());
+    expect(host.querySelector('input[aria-label="Header 1 名称"]')).toBeNull();
+    const original = Array.from(host.querySelectorAll<HTMLButtonElement>('button[role="radio"]')).find((item) => item.textContent === (kind === 'webdav' ? 'WebDAV' : '对象存储'))!;
+    act(() => original.click());
+    expect(host.querySelector<HTMLInputElement>('input[aria-label="Header 1 值"]')!.value).toBe('gateway-token');
+  });
+
+  it.each(['webdav', 's3'] as const)('%s 折叠帮助说明 Header、默认 UA 与 Cloudflare Access 两项凭证', (kind) => {
+    const provider = { ...createProvider(), kind };
+    act(() => root.render(<TooltipProvider><ProviderForm value={provider} onChange={() => undefined} /></TooltipProvider>));
+    const help = Array.from(host.querySelectorAll('button')).find((item) => item.textContent?.startsWith('如何获取'))!;
+    act(() => help.click());
+    expect(host.textContent).toContain('自定义 Header');
+    expect(host.textContent).toContain('User-Agent');
+    expect(host.textContent).toContain('NoteBoard 默认标识');
+    expect(host.textContent).toContain('CF-Access-Client-Id');
+    expect(host.textContent).toContain('CF-Access-Client-Secret');
+  });
+
+  it('顶层仅三类，S3 与厂商收进下拉，各自帮助默认收起并重置密钥显示状态', () => {
+    /** 保留真实父级配置更新，验证切换入口后独立输入和折叠状态。 */
+    function Form() {
+      const [provider, setProvider] = useState(createProvider());
+      return <ProviderForm value={provider} onChange={setProvider} />;
+    }
+    act(() => root.render(<TooltipProvider><Form /></TooltipProvider>));
+    const radios = () => Array.from(host.querySelectorAll<HTMLButtonElement>('[role="radio"]'));
+    expect(radios().map((button) => button.textContent)).toEqual(['WebDAV', '对象存储', 'Git 仓库']);
+    act(() => radios().find((button) => button.textContent === '对象存储')!.click());
+    const trigger = host.querySelector<HTMLButtonElement>('[role="combobox"]')!;
+    expect(trigger.textContent).toBe('通用 S3（AWS / R2 / MinIO）');
+    act(() => trigger.click());
+    expect(Array.from(document.querySelectorAll('[role="option"]')).map((option) => option.textContent)).toEqual(['通用 S3（AWS / R2 / MinIO）', '阿里云 OSS', '天翼云 ZOS', '天翼云 OOS', '华为云 OBS', '腾讯云 COS']);
+    act(() => trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+    for (const label of ['阿里云 OSS', '天翼云 ZOS', '天翼云 OOS', '华为云 OBS', '腾讯云 COS']) {
+      chooseStorage(label);
+      const help = host.querySelector<HTMLButtonElement>('.nb-sync-collapsible-head')!;
+      expect(help.textContent).toContain(label);
+      expect(help.getAttribute('aria-expanded')).toBe('false');
+      expect(host.querySelector('.nb-sync-collapsible-body')).toBeNull();
+      act(() => help.click());
+      expect(help.getAttribute('aria-expanded')).toBe('true');
+      expect(host.textContent).toContain('私有存储桶');
+      expect(host.textContent).toContain('1 GiB');
+      expect(host.textContent).toContain('列举和删除');
+      expect(host.querySelectorAll('.nb-sync-link').length).toBeGreaterThan(0);
+      const show = host.querySelector<HTMLButtonElement>('button[aria-label="显示明文"]')!;
+      expect(host.querySelector<HTMLInputElement>('input[placeholder="密钥"]')!.type).toBe('password');
+      act(() => show.click());
+      expect(host.querySelector<HTMLInputElement>('input[placeholder="密钥"]')!.type).toBe('text');
+    }
+  });
+
+  it.each(['oss', 'zos', 'oos', 'obs', 'cos'] as const)('%s 独立保存输入，连接测试携带选中厂商配置', async (kind) => {
+    const testConnection = vi.spyOn(ipc, 'syncTestConnection').mockResolvedValue('连接成功');
+    /** 通过受控输入模拟真实填写，不能用重新渲染常量绕过配置保存过程。 */
+    function Form() {
+      const [provider, setProvider] = useState<SyncProviderConfig>({ ...createProvider(), kind });
+      return <ProviderForm value={provider} onChange={setProvider} />;
+    }
+    act(() => root.render(<TooltipProvider><Form /></TooltipProvider>));
+    const fill = (label: string, text: string) => {
+      const field = Array.from(host.querySelectorAll('label')).find((item) => item.querySelector(':scope > span')?.textContent === label)!;
+      const input = field.querySelector('input')!;
+      act(() => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, text);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    };
+    fill('服务端点（Endpoint）', `https://${kind}.example.com`);
+    fill('区域（Region）', 'test-region');
+    fill('存储桶（Bucket）', `${kind}-notes`);
+    fill(kind === 'cos' ? '访问密钥 ID（SecretId）' : 'Access Key ID', `${kind}-key`);
+    fill(kind === 'cos' ? '访问密钥（SecretKey）' : 'Secret Access Key', `${kind}-secret`);
+    const selected = host.querySelector<HTMLButtonElement>('[role="combobox"]')!.textContent!;
+    chooseStorage('通用 S3（AWS / R2 / MinIO）');
+    expect(host.querySelector<HTMLInputElement>('input[placeholder="密钥"]')!.value).toBe('');
+    chooseStorage(selected);
+    const test = Array.from(host.querySelectorAll('button')).find((button) => button.textContent?.includes('测试连接'))!;
+    await act(async () => test.click());
+    const provider = testConnection.mock.calls[0][0];
+    expect(provider.kind).toBe(kind);
+    expect(provider[kind]).toMatchObject({ endpoint: `https://${kind}.example.com`, bucket: `${kind}-notes`, accessKeyId: `${kind}-key`, secretAccessKey: `${kind}-secret` });
+    expect(provider.s3.endpoint).toBe('');
+  });
+
+  it('自定义域名与路径风格互斥，关闭域名模式后不意外重新启用路径风格', () => {
+    /** 使用通用 S3 的旧路径风格配置，覆盖升级后打开 CNAME 的交互。 */
+    function Form() {
+      const [provider, setProvider] = useState<SyncProviderConfig>({ ...createProvider(), kind: 's3' });
+      return <ProviderForm value={provider} onChange={setProvider} />;
+    }
+    act(() => root.render(<TooltipProvider><Form /></TooltipProvider>));
+    const toggle = (name: string) => Array.from(host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')).find((input) => host.querySelector(`#${input.getAttribute('aria-labelledby')}`)?.textContent?.startsWith(name));
+    expect(toggle('路径风格访问')!.checked).toBe(true);
+    act(() => toggle('使用自定义域名')!.click());
+    expect(toggle('路径风格访问')).toBeUndefined();
+    expect(host.querySelector('input[placeholder="https://storage.example.com"]')).not.toBeNull();
+    act(() => toggle('使用自定义域名')!.click());
+    expect(toggle('路径风格访问')!.checked).toBe(false);
+  });
+
+  it('同步和远端备份分别保存厂商选择，复制同步配置也包含厂商配置', async () => {
+    const save = vi.spyOn(ipc, 'syncSaveConfig').mockImplementation(async (config) => config);
+    switchTab('同步与备份');
+    const radio = (label: string, group = 0) => host.querySelectorAll('[role="radiogroup"][aria-label="同步方式"]')[group]
+      && Array.from(host.querySelectorAll('[role="radiogroup"][aria-label="同步方式"]')[group].querySelectorAll<HTMLButtonElement>('[role="radio"]')).find((button) => button.textContent === label)!;
+    act(() => radio('对象存储')!.click());
+    chooseStorage('华为云 OBS');
+    const remote = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent === '云端（WebDAV / S3 / Git 仓库）')!;
+    expect(remote).toBeDefined();
+    await act(async () => remote.click());
+    act(() => radio('对象存储', 1)!.click());
+    chooseStorage('腾讯云 COS', 1);
+    expect(radio('对象存储')!.getAttribute('aria-checked')).toBe('true');
+    expect(radio('对象存储', 1)!.getAttribute('aria-checked')).toBe('true');
+    expect(host.querySelectorAll('[role="combobox"][aria-label="对象存储服务"]')[0].textContent).toBe('华为云 OBS');
+    expect(host.querySelectorAll('[role="combobox"][aria-label="对象存储服务"]')[1].textContent).toBe('腾讯云 COS');
+    // 表单卸载会 flush，验证两个入口最终使用各自独立的配置提交。
+    await act(async () => root.render(<div />));
+    expect(save).toHaveBeenCalled();
+    const last = save.mock.calls.at(-1)![0];
+    expect(last.sync.provider.kind).toBe('obs');
+    expect(last.backup.provider.kind).toBe('cos');
+    // 再打开时可一键复制完整厂商配置，不只是复制类型名。
+    act(() => root.render(<TooltipProvider><SettingsModal isOpen onClose={() => undefined} /></TooltipProvider>));
+    switchTab('同步与备份');
+    const copy = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent?.includes('使用同步方式的配置'))!;
+    act(() => copy.click());
+    await act(async () => root.render(<div />));
+    expect(save.mock.calls.at(-1)![0].backup.provider).toEqual(save.mock.calls.at(-1)![0].sync.provider);
+  });
+
+  it('分类方向键、Git 下拉与 Esc 正常工作，往返分类保留最后选中的厂商', () => {
+    /** 从旧 GitLab 配置进入直接显示 Git 分组，不先改写为 GitHub。 */
+    function Form() {
+      const [provider, setProvider] = useState<SyncProviderConfig>({ ...createProvider(), kind: 'gitlab' });
+      return <ProviderForm value={provider} onChange={setProvider} />;
+    }
+    act(() => root.render(<TooltipProvider><Form /></TooltipProvider>));
+    const radios = () => Array.from(host.querySelectorAll<HTMLButtonElement>('[role="radio"]'));
+    expect(radios()[2].getAttribute('aria-checked')).toBe('true');
+    const git = host.querySelector<HTMLButtonElement>('[aria-label="Git 托管平台"]')!;
+    expect(git.textContent).toBe('GitLab');
+    act(() => git.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })));
+    expect(Array.from(document.querySelectorAll('[role="option"]')).map((option) => option.textContent)).toEqual(['GitHub', 'Gitee', 'GitCode', 'GitLab']);
+    act(() => git.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true })));
+    act(() => git.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
+    expect(git.textContent).toBe('GitHub');
+    act(() => radios()[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })));
+    expect(radios()[1].getAttribute('aria-checked')).toBe('true');
+    expect(document.activeElement).toBe(radios()[1]);
+    chooseStorage('华为云 OBS');
+    act(() => radios()[0].click());
+    act(() => radios()[1].click());
+    expect(host.querySelector('[aria-label="对象存储服务"]')!.textContent).toBe('华为云 OBS');
+    act(() => radios()[2].click());
+    expect(host.querySelector('[aria-label="Git 托管平台"]')!.textContent).toBe('GitHub');
+    const trigger = host.querySelector<HTMLButtonElement>('[role="combobox"]')!;
+    act(() => trigger.click());
+    act(() => trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+    expect(document.querySelector('[role="listbox"]')).toBeNull();
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
   });
 });

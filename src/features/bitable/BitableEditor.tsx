@@ -2,6 +2,7 @@
 // 深度还原多维表格多视图管理（多看板/多表格）+ 拖拽换列 + 树形子任务 + 各字段专有排序 + 撤销重做
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import '../../styles/canvasEditors.css';
 import {
   DEFAULT_DATE_TIME_CONFIG,
   type BitableDocument,
@@ -29,6 +30,9 @@ import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './Bita
 import { usePointerReorder } from './usePointerReorder';
 import { Tooltip } from '../../components/Tooltip';
 import { ReadingModeButton } from '../reading/ReadingModeButton';
+import { ReadingWindowControls } from '../reading/ReadingWindowControls';
+import { requestReadingMode, useIsReading, useWindowFullscreen } from '../reading/readingMode';
+import { IS_MOBILE_UI, IS_WEB } from '../../core/platform';
 import {
   areCellValuesEqual,
   coerceCellValue,
@@ -46,6 +50,7 @@ import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
 import { exportBlobWithDialog } from '../export/chartExport';
+import { showExportError, showExportSuccess } from '../../stores/exportResultStore';
 import {
   initializeDocumentHistory,
   registerDocumentHistoryAdapter,
@@ -73,6 +78,7 @@ import {
   Plus,
   X,
   FileSpreadsheet,
+  Download,
   Edit2,
   Copy,
   Trash2,
@@ -86,8 +92,15 @@ interface BitableEditorProps {
 /** 🔴 S12：实例代际序号（同 docKey 重挂载递增；注册表删除保护） */
 let nextBitableInstanceId = 0;
 
+const exitReading = () => requestReadingMode(false);
+
 export function BitableEditor({ docKey }: BitableEditorProps) {
   const doc = useDocumentStore((s) => s.documents.get(docKey));
+  // 沉浸阅读保留工具栏：桌面与网页显示窗口控件；拖动窗口改用工具栏空白处（全屏窗口不可移动）
+  const isReading = useIsReading(docKey);
+  const readingWindowChrome = isReading && !IS_MOBILE_UI;
+  const readingFullscreen = useWindowFullscreen(readingWindowChrome);
+  const readingDragRegion = readingWindowChrome && !IS_WEB && !readingFullscreen ? { 'data-tauri-drag-region': '' } : undefined;
   const setContent = useDocumentStore((s) => s.setContent);
   const setDirty = useDocumentStore((s) => s.setDirty);
   const setTabDirty = useWindowStore((s) => s.setTabDirty);
@@ -117,6 +130,11 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
     trigger: HTMLElement;
   } | null>(null);
   const [customRowCount, setCustomRowCount] = useState<string>('3');
+  // 导出下拉菜单状态
+  const [exportMenu, setExportMenu] = useState<{
+    anchor: AnchorRect;
+    trigger: HTMLElement;
+  } | null>(null);
 
   // 右侧记录详情侧边栏：以「收集单」形式编辑单条记录
   const [recordPanelRowId, setRecordPanelRowId] = useState<string | null>(null);
@@ -203,7 +221,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
       setContent(docKey, serialized);
       setDirty(docKey, true);
       setTabDirty(docKey, true);
-      // auto 策略下停止编辑 800ms 后自动写盘
+      // auto 策略下停止编辑达到自动保存间隔后写盘
       scheduleAutoSave(docKey);
 
       // 延迟到本轮事件结束再记录历史：把一次交互产生的多步提交合并为单条撤销记录
@@ -1036,11 +1054,11 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
       // 唤起原生对话框保存文件
       const saved = await exportBlobWithDialog(blob, defaultFilename, filters);
       if (saved) {
-        showToast('成功导出为 CSV 表格数据', 'success');
+        showExportSuccess(saved, '已导出 CSV 表格');
       }
     } catch (e) {
       console.error('导出 CSV 失败:', e);
-      showToast('导出 CSV 失败', 'error');
+      showExportError(e, '导出 CSV 失败');
     }
   };
 
@@ -1127,18 +1145,24 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
         flexDirection: 'column',
         background: 'var(--editor-bg, #ffffff)',
         overflow: 'hidden',
+        position: 'relative',
       }}
     >
+      {/* 沉浸阅读：工具栏兼作退出入口，这里补窗口控件；表格内 Esc 用于关闭浮层，提示不显示 Esc */}
+      {readingWindowChrome && <ReadingWindowControls onExit={exitReading} escHint={false} dragStrip={false} />}
+
       {/* 顶部多视图 Tab 栏 + 搜索 + 导出 + 添加行（移动端由样式改为两行：视图 Tab / 搜索与新建） */}
       <div
         className="nb-bitable-toolbar"
+        {...readingDragRegion}
         style={{
           height: 42,
           minHeight: 42,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0 12px',
+          // 沉浸阅读时右侧让出窗口控件胶囊的宽度，展开时不遮挡「新建记录」
+          padding: readingWindowChrome ? '0 190px 0 12px' : '0 12px',
           borderBottom: '1px solid var(--editor-border, #e2e8f0)',
           background: 'var(--editor-surface, #f8fafc)',
           userSelect: 'none',
@@ -1146,7 +1170,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
         }}
       >
         {/* 左侧：多视图 Tab 标签列表 */}
-        <div className="nb-bitable-views" style={{ display: 'flex', alignItems: 'center', gap: 4, overflowX: 'auto', flex: 1 }}>
+        <div className="nb-bitable-views" {...readingDragRegion} style={{ display: 'flex', alignItems: 'center', gap: 4, overflowX: 'auto', flex: 1 }}>
           {data.views.map((v, viewIdx) => {
             const isActive = v.id === activeView.id;
             const isEditingThis = editingViewId === v.id;
@@ -1235,11 +1259,11 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                     </span>
                   )}
 
-                  {/* 视图下拉更多菜单按钮 */}
+                  {/* 视图下拉更多菜单按钮：仿导航标签，仅当前视图、悬浮或菜单展开时显示（占位保留，避免悬浮时标签宽度跳动） */}
                   <button
                     type="button"
                     data-no-drag
-                    className="nb-bitable-btn-ghost"
+                    className={`nb-bitable-btn-ghost nb-bitable-tab-more${isMenuOpen ? ' is-open' : ''}`}
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1255,7 +1279,6 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                     style={{
                       padding: 2,
                       color: 'inherit',
-                      opacity: 0.75,
                     }}
                   >
                     <ChevronDown size={11} />
@@ -1423,18 +1446,53 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
               表格内 Esc 用于关闭各类浮层，因此不以 Esc 退出 */}
           <ReadingModeButton docKey={docKey} className="nb-bitable-btn-secondary" escHint={false} style={{ padding: '4px 6px' }} />
 
-          {/* 导出按钮（移动端隐藏：使用频率低，且挤占窄屏工具栏空间） */}
-          <Tooltip content="导出为 CSV 表格" side="bottom" sideOffset={4}>
+          {/* 导出下拉按钮（移动端隐藏：使用频率低，且挤占窄屏工具栏空间；收纳为菜单便于后续扩展格式） */}
+          <div
+            className="nb-bitable-export"
+            style={{ position: 'relative', display: activeView.type === 'workbench' ? 'none' : undefined }}
+          >
             <button
               type="button"
-              className="nb-bitable-btn-secondary nb-bitable-export"
-              style={{ display: activeView.type === 'workbench' ? 'none' : undefined }}
-              onClick={handleExportCsv}
+              className="nb-bitable-btn-secondary"
+              onClick={(e) => {
+                if (exportMenu) {
+                  setExportMenu(null);
+                  return;
+                }
+                const anchor = getAnchorRect(e.currentTarget);
+                if (anchor) {
+                  setExportMenu({ anchor, trigger: e.currentTarget as HTMLElement });
+                }
+              }}
+              style={{ gap: 4, background: exportMenu ? 'var(--editor-bg, #f1f5f9)' : undefined }}
             >
-              <FileSpreadsheet size={13} />
-              <span>导出 CSV</span>
+              <Download size={13} />
+              <span>导出</span>
+              <ChevronDown size={11} style={{ opacity: 0.8 }} />
             </button>
-          </Tooltip>
+
+            {exportMenu && (
+              <FloatingPanel
+                anchor={exportMenu.anchor}
+                trigger={exportMenu.trigger}
+                align="right"
+                width={140}
+                onClose={() => setExportMenu(null)}
+              >
+                <button
+                  type="button"
+                  className="nb-bitable-menu-item"
+                  onClick={() => {
+                    setExportMenu(null);
+                    void handleExportCsv();
+                  }}
+                >
+                  <FileSpreadsheet size={13} />
+                  <span>导出 CSV</span>
+                </button>
+              </FloatingPanel>
+            )}
+          </div>
 
           {/* 新增记录按钮及下拉菜单 */}
           <div style={{ position: 'relative' }}>

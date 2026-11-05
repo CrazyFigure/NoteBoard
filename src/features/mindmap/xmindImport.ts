@@ -185,7 +185,7 @@ export async function readXmindSheets(archive: XmindArchive): Promise<XmindImpor
   });
 }
 
-/** 被 summaries 引用的概要主题 id：这些主题转为概要文字，不再作为普通分支 */
+/** 被 summaries 引用的概要主题 id：这些主题转为概要主题（含子树），不再作为普通分支 */
 function referencedSummaryIds(topic: RawTopic): Set<string> {
   const ids = new Set<string>();
   for (const summary of Array.isArray(topic.summaries) ? topic.summaries as RawRange[] : []) {
@@ -203,19 +203,21 @@ function topicGroup(topic: RawTopic, type: string): RawTopic[] {
 /**
  * 获取所有主题分组：常规子主题在前（外框 / 概要的下标区间以它为准）；
  * 漂浮等特殊主题与未被引用的概要主题转为普通分支，不能静默跳过。
+ * 被引用的概要主题排在最后，随整树一起转换，之后再从子节点中摘出挂到对应概要上
  */
 function topicChildren(topic: RawTopic): RawTopic[] {
   if (!topic.children || typeof topic.children !== 'object') return [];
   const referenced = referencedSummaryIds(topic);
   const result = [...topicGroup(topic, 'attached')];
+  const summaryTopics: RawTopic[] = [];
   for (const [type, group] of Object.entries(topic.children as Record<string, unknown>)) {
     if (type === 'attached' || !Array.isArray(group)) continue;
     for (const child of group as RawTopic[]) {
-      if (type === 'summary' && typeof child?.id === 'string' && referenced.has(child.id)) continue;
-      result.push(child);
+      if (type === 'summary' && typeof child?.id === 'string' && referenced.has(child.id)) summaryTopics.push(child);
+      else result.push(child);
     }
   }
-  return result;
+  return [...result, ...summaryTopics];
 }
 
 /** 解析 XMind 范围 "(起,止)"；"master" 表示主题自身 */
@@ -300,12 +302,12 @@ export function prepareXmindSheet(archive: XmindArchive, sheet: XmindImportSheet
       if (!entry) warnings.add('部分包内图片资源缺失，无法显示');
       if (uncompressedSize(entry) > XMIND_IMPORT_WARNINGS.imageBytes) warnings.add('单张内嵌图片超过 10 MB，继续可能占用较多内存');
     }
-    const node: MindNode = { id, text: typeof topic.title === 'string' ? topic.title : '', note, icon: markerIcon(markers[0]?.markerId, warnings), image, isExpanded: topic.branch !== 'folded', children: [] };
+    const node: MindNode = { id, text: typeof topic.title === 'string' ? topic.title : '', note, icon: markerIcon(markers[0]?.markerId, warnings), images: image ? [image] : undefined, isExpanded: topic.branch !== 'folded', children: [] };
     if ((Array.isArray(topic.boundaries) && topic.boundaries.length > 0) || (Array.isArray(topic.summaries) && topic.summaries.length > 0)) rawOf.set(node, topic);
     return node;
   });
   if (!archive.legacyRoot) {
-    convertXmindStructures(root, rawOf, warnings);
+    convertXmindStructures(root, rawOf, idOf, warnings);
     convertXmindRelationships(root, sheet.relationships ?? [], idOf, warnings);
     pruneMindmapStructures(root);
   }
@@ -315,8 +317,11 @@ export function prepareXmindSheet(archive: XmindArchive, sheet: XmindImportSheet
   return { root, warnings: [...warnings] };
 }
 
-/** 外框与概要：按常规子主题下标转为首尾子节点 id；"master" 外框挂到父节点并只圈住自身 */
-function convertXmindStructures(root: MindNode, rawOf: Map<MindNode, RawTopic>, warnings: Set<string>): void {
+/**
+ * 外框与概要：按常规子主题下标转为首尾子节点 id；"master" 外框挂到父节点并只圈住自身。
+ * 概要主题（已作为末尾子节点转换）摘出后挂到概要上；范围无效的概要主题保留为普通分支
+ */
+function convertXmindStructures(root: MindNode, rawOf: Map<MindNode, RawTopic>, idOf: Map<string, string>, warnings: Set<string>): void {
   if (rawOf.size === 0) return;
   const parentOf = new Map<MindNode, MindNode>();
   for (const node of walkMindNodes(root)) for (const child of node.children) parentOf.set(child, node);
@@ -348,21 +353,28 @@ function convertXmindStructures(root: MindNode, rawOf: Map<MindNode, RawTopic>, 
       }
       (node.boundaries ??= []).push({ id, ...ends, ...(title ? { title } : {}) });
     }
-    const summaryTopics = topicGroup(topic, 'summary');
+    // 先按下标解析全部范围，再摘出概要主题，避免摘除影响下标
+    const pending: Array<{ id: string; ends: { startId: string; endId: string }; topicId?: string }> = [];
     for (const summary of Array.isArray(topic.summaries) ? topic.summaries as RawRange[] : []) {
       const range = parseRange(summary?.range);
       const ends = range && range !== 'master' ? toIds(range) : null;
-      const summaryTopic = summaryTopics.find((item) => item?.id === summary?.topicId);
       if (!ends) {
         warnings.add('部分概要范围无效，未转换');
         continue;
       }
-      if (summaryTopic && topicChildren(summaryTopic).length > 0) warnings.add('概要主题下的子分支无法转换');
-      (node.summaries ??= []).push({
+      pending.push({
         id: typeof summary?.id === 'string' && summary.id ? summary.id : generateNodeId(),
-        ...ends,
-        text: typeof summaryTopic?.title === 'string' ? summaryTopic.title : '',
+        ends,
+        topicId: typeof summary?.topicId === 'string' ? idOf.get(summary.topicId) : undefined,
       });
+    }
+    for (const item of pending) {
+      // 概要主题只在常规子主题之后查找，不会误摘普通分支
+      const index = item.topicId ? node.children.findIndex((child, i) => i >= attachedCount && child.id === item.topicId) : -1;
+      const summaryTopic: MindNode = index >= 0
+        ? node.children.splice(index, 1)[0]
+        : { id: generateNodeId(), text: '', isExpanded: true, children: [] };
+      (node.summaries ??= []).push({ id: item.id, ...item.ends, topic: summaryTopic });
     }
   }
 }
@@ -392,18 +404,25 @@ function convertXmindRelationships(root: MindNode, relationships: RawRelationshi
 export async function resolveXmindImages(archive: XmindArchive, root: MindNode): Promise<MindNode> {
   const images = new Map<string, string | undefined>();
   for (const node of walkMindNodes(root)) {
-    if (!node.image?.startsWith('xap:') && !node.image?.startsWith('resources/')) continue;
-    const path = resourcePath(node.image);
-    const entry = path ? archive.zip.file(path) : null;
-    if (!path || !entry) { delete node.image; continue; }
-    if (!images.has(path)) {
-      const base64 = await entry.async('base64');
-      const extension = path.split('.').at(-1)?.toLowerCase();
-      const types: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp' };
-      const mime = types[extension ?? ''] ?? (base64.startsWith('/9j/') ? 'image/jpeg' : 'image/png');
-      images.set(path, `data:${mime};base64,${base64}`);
+    if (!node.images) continue;
+    const resolved: string[] = [];
+    for (const src of node.images) {
+      if (!src.startsWith('xap:') && !src.startsWith('resources/')) { resolved.push(src); continue; }
+      const path = resourcePath(src);
+      const entry = path ? archive.zip.file(path) : null;
+      // 包内资源缺失的图片直接丢弃
+      if (!path || !entry) continue;
+      if (!images.has(path)) {
+        const base64 = await entry.async('base64');
+        const extension = path.split('.').at(-1)?.toLowerCase();
+        const types: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp' };
+        const mime = types[extension ?? ''] ?? (base64.startsWith('/9j/') ? 'image/jpeg' : 'image/png');
+        images.set(path, `data:${mime};base64,${base64}`);
+      }
+      resolved.push(images.get(path)!);
     }
-    node.image = images.get(path);
+    if (resolved.length > 0) node.images = resolved;
+    else delete node.images;
   }
   return root;
 }

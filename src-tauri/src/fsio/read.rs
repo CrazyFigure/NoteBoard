@@ -17,6 +17,39 @@ pub struct FileReadResult {
     pub readonly: bool,
 }
 
+/// Office 按格式限制原文件大小；PDF 的整文件兼容入口仍为 50 MiB，大 PDF 走分块入口。
+pub fn preview_file_limit(path: &Path) -> u64 {
+    match path.extension().and_then(|ext| ext.to_str()).unwrap_or_default().to_ascii_lowercase().as_str() {
+        "doc" | "docx" | "xls" | "xlsx" => 100 * 1024 * 1024,
+        "ppt" | "pptx" => 512 * 1024 * 1024,
+        _ => 50 * 1024 * 1024,
+    }
+}
+
+/// 从同一文件句柄校验格式、普通文件和大小，避免先检查路径再读取另一个文件。
+fn open_preview_file(path: &Path) -> Result<fs::File, String> {
+    if crate::dto::kind_from_path(&path.to_string_lossy()).0 != crate::dto::DocumentKind::Preview {
+        return Err("此入口仅用于插件查看的文档".into());
+    }
+    let file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let metadata = file.metadata().map_err(|e| e.to_string())?;
+    let limit = preview_file_limit(path);
+    if !metadata.is_file() || metadata.len() > limit {
+        return Err(format!("查看文件须为 {} MB 以内的普通文件", limit / 1024 / 1024));
+    }
+    Ok(file)
+}
+
+/// Office 解析需要完整字节；有界读取阻止文件在校验后持续增长而突破内存预算。
+pub fn read_preview_bytes(path: &Path) -> Result<Vec<u8>, String> {
+    let file = open_preview_file(path)?;
+    let limit = preview_file_limit(path);
+    let mut bytes = Vec::with_capacity(file.metadata().map_err(|e| e.to_string())?.len().min(limit) as usize);
+    file.take(limit + 1).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    if bytes.len() as u64 > limit { return Err("文件读取期间超过大小上限，请重新打开".into()); }
+    Ok(bytes)
+}
+
 /// XMind 按原始二进制读取，不经过文本编码探测；后续格式校验与风险确认由导入流程统一执行。
 pub fn read_xmind_bytes(path: &Path) -> Result<Vec<u8>, String> {
     // 此入口只服务 XMind，避免为了资源管理器打开而扩大文件插件的全局路径权限。
@@ -128,6 +161,26 @@ pub fn is_text_file(path: &Path) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_office_preview_limits_and_binary_read() {
+        let directory = tempfile::tempdir().unwrap();
+        // 大小边界只检查句柄元信息，测试不分配 512 MiB 正文。
+        for (ext, mb) in [("doc",100),("DOCX",100),("xls",100),("XLSX",100),("ppt",512),("PPTX",512),("pdf",50),("epub",50)] {
+            let path = directory.path().join(format!("document.{}", ext));
+            let file = fs::File::create(&path).unwrap();
+            let limit = mb * 1024 * 1024;
+            assert_eq!(preview_file_limit(&path), limit);
+            file.set_len(limit).unwrap();
+            assert!(open_preview_file(&path).is_ok());
+            file.set_len(limit + 1).unwrap();
+            assert!(open_preview_file(&path).is_err());
+            drop(file);
+            fs::write(&path, [80,75,0,255]).unwrap();
+            assert_eq!(read_preview_bytes(&path).unwrap(), [80,75,0,255]);
+        }
+        assert!(read_preview_bytes(&directory.path().join("not-preview.txt")).is_err());
+    }
 
     #[test]
     fn test_read_xmind_preserves_binary_and_source() {

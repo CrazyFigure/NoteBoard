@@ -30,3 +30,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node plugins/publish.mjs
+
+  # 插件包与目录上传后同步到腾讯云 CNB 镜像，目录变化时覆盖 CNB 上的旧目录
+  sync-cnb:
+    needs: publish
+    permissions:
+      contents: read
+    uses: ./.github/workflows/cnb-release.yml
+    with:
+      tag: plugins
+    secrets: inherit

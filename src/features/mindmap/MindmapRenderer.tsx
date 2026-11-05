@@ -15,9 +15,12 @@ import {
   GripVertical,
   Spline,
   Pencil,
+  Link2,
 } from 'lucide-react';
 import type {
   MindNode,
+  MindBoundary,
+  MindSummary,
   MindmapLayout,
   MindmapEdgeStyle,
   MindmapImageFit,
@@ -27,16 +30,21 @@ import { generateNodeId, moveMindNodes } from './mindmapConverter';
 import { cloneMindmapTree, findMindNode, findMindNodeParent, getTopLevelMindNodeIds, walkMindNodes } from './mindmapTree';
 import { getMindmapViewport, isMindmapNodeVisible, isMindmapLinkVisible } from './mindmapViewport';
 import {
+  attachmentMinWidth,
   computeMindmapLayout,
   clampManualWidth,
   titleBlockHeight,
+  GALLERY_TOP_GAP,
   type LayoutNode,
   type NodeSide,
   type TextDraft,
 } from './mindmapLayout';
 import type { MindmapTheme } from './mindmapTheme';
 import { MindmapIconPicker } from './MindmapIconPicker';
-import { MindmapImagePreview } from './MindmapImagePreview';
+import { ImagePreviewOverlay } from '../image-viewer/ImagePreviewOverlay';
+import { MindmapFileLink } from './MindmapFileLink';
+import { openFileLink, pickFileLinks } from './mindmapFileLinks';
+import { appendWithLimit, getNodeFiles, getNodeImages, MAX_NODE_FILES, MAX_NODE_IMAGES } from './mindmapAttachments';
 import { MindmapTitleEditor, type MindmapTitleEditorHandle, type TitleSelectionInfo } from './MindmapTitleEditor';
 import { MindmapTextFormatMenu, type FormatState } from './MindmapTextFormatMenu';
 import { MindmapNodeStylePopover } from './MindmapNodeStylePopover';
@@ -53,6 +61,8 @@ import {
 import { getImageSize, subscribeImageSizes } from './mindmapImageSize';
 import {
   FALLBACK_FONT_FAMILY,
+  FILE_LIST_TOP_GAP,
+  FILE_ROW_GAP,
   NOTE_LINE_HEIGHT,
   getNodeTextStyle,
   getSharedTextMeasurer,
@@ -67,22 +77,23 @@ import { showToast } from '../../stores/toastStore';
 import {
   computeMindmapStructures,
   dragRangeEnd,
+  layoutTreeRootOf,
   rangeFixedEndId,
   findStructure,
   generateStructureId,
   getSiblingRangeForSelection,
   getStructureText,
   removeStructure,
+  pruneMindmapStructures,
   setStructureText,
   BOUNDARY_TITLE_FONT_SIZE,
   BOUNDARY_TITLE_HEIGHT,
   RELATION_FONT_SIZE,
   RELATION_LINE_HEIGHT,
-  SUMMARY_FONT_SIZE,
-  SUMMARY_LINE_HEIGHT,
   SUMMARY_PLACEHOLDER,
   type LayoutBoundary,
   type MindStructureRef,
+  type RangeTarget,
 } from './mindmapStructures';
 import type { MindNodeRange, MindPoint } from './mindmapTypes';
 
@@ -109,6 +120,8 @@ interface MindmapRendererProps {
   onSelectionChange?: (selection: MindmapSelectionInfo) => void;
   /** 历史记录差异标记：节点 id → 新增 / 删除 / 修改 / 移动（渲染为 data-diff 属性，由历史查看样式着色） */
   diffMarks?: ReadonlyMap<string, string>;
+  /** 所属文档（解析节点文件链接的相对路径）；缺省时以当前激活文档为基准 */
+  docKey?: string;
 }
 
 /** 当前选中节点概况 */
@@ -142,6 +155,13 @@ interface DragSession {
   sourceIds?: string[];
 }
 
+/** 仅保留最后一个指针采样，避免高频移动事件反复扫描导图和刷新预览。 */
+interface DragPoint {
+  pointerId: number;
+  x: number;
+  y: number;
+}
+
 /** 空 id 集合（多选 / 拖拽状态的初始值，保持引用稳定） */
 const NO_IDS: readonly string[] = [];
 
@@ -164,7 +184,8 @@ interface ResizeSession {
   startWidth: number;
   /** 拖动的是哪条边：右边向右拉变宽，左边向左拉变宽 */
   edge: 'left' | 'right';
-  hasImage: boolean;
+  /** 附件（图片 / 文件链接）要求的最小宽度 */
+  minWidth: number;
   moved: boolean;
 }
 
@@ -316,40 +337,29 @@ function renderStyledLine(
   });
 }
 
-/** 在树中定位父节点并追加一个子节点 */
+/** 在树中定位父节点（含概要主题及其子树）并追加一个子节点 */
 function insertChildNode(n: MindNode, parentId: string, child: MindNode): boolean {
-  if (n.id === parentId) {
-    if (!n.children) n.children = [];
-    n.children.push(child);
-    n.isExpanded = true;
-    return true;
-  }
-  for (const c of n.children || []) {
-    if (insertChildNode(c, parentId, child)) return true;
-  }
-  return false;
+  const parent = findMindNode(n, parentId);
+  if (!parent) return false;
+  if (!parent.children) parent.children = [];
+  parent.children.push(child);
+  parent.isExpanded = true;
+  return true;
 }
 
-/** 在树中定位锚点节点并在其后方插入同级节点 */
+/** 在树中定位锚点节点并在其后方插入同级节点（根节点与概要主题没有同级） */
 function insertSiblingNode(n: MindNode, anchorId: string, sibling: MindNode): boolean {
-  const walk = (node: MindNode): boolean => {
-    if (node.children && node.children.length > 0) {
-      const idx = node.children.findIndex((c) => c.id === anchorId);
-      if (idx !== -1) {
-        node.children.splice(idx + 1, 0, sibling);
-        return true;
-      }
-      for (const c of node.children) {
-        if (walk(c)) return true;
-      }
-    }
-    return false;
-  };
-  return walk(n);
+  const info = findMindNodeParent(n, anchorId);
+  if (!info) return false;
+  info.parent.children.splice(info.index + 1, 0, sibling);
+  return true;
 }
 
 /** 缩略图节点的最小像素尺寸，缩得很小时仍能看出分支走向 */
 const MINIMAP_MIN_NODE_PX = 1.5;
+
+/** 首次显示整图居中后，中心主题与画布边缘至少保留的距离 */
+const INITIAL_ROOT_MARGIN = 24;
 
 /** 联系线颜色：未选中为次级文字色，选中为强调色 */
 const RELATION_COLOR = 'var(--editor-text-secondary, #64748b)';
@@ -387,6 +397,8 @@ interface RangeSession {
   ref: MindStructureRef;
   /** 不动的一端子节点 */
   fixedId: string;
+  /** 所属节点所在的树根（主树根节点或概要主题）：端点可拖到这棵树内其他分支的同层节点 */
+  treeRootId: string;
   original: Pick<MindNodeRange, 'startId' | 'endId'>;
 }
 
@@ -404,6 +416,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   searchHighlight,
   onSelectionChange,
   diffMarks,
+  docKey,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -421,19 +434,19 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   const minimapRef = useRef<CanvasMinimapHandle>(null);
   // 判断内容是否已全部移出视野（每次渲染指向最新闭包，供命令式平移逐帧调用）
   const checkOffscreenRef = useRef<() => void>(() => undefined);
-  // 平移先更新图层变换；移动接近缓冲区边缘时才触发 React 补绘，不改原有灵敏度与坐标规则。
+  // 坐标立即累加，图层、缩略图和裁剪检查每帧只同步一次，避免触控板高频事件重复触发布局与绘制。
   const setPan = useCallback((next: React.SetStateAction<{ x: number; y: number }>) => {
     const value = typeof next === 'function' ? next(panRef.current) : next;
     panRef.current = value;
-    if (transformLayerRef.current) transformLayerRef.current.style.transform = `translate(${value.x}px, ${value.y}px) scale(${zoomRef.current})`;
-    // 缩略图视口框跟随每帧平移，只写 DOM 不触发渲染
-    minimapRef.current?.syncViewport();
-    checkOffscreenRef.current();
-    const committed = committedPanRef.current;
-    if (Math.max(Math.abs(value.x - committed.x), Math.abs(value.y - committed.y)) < 128) return;
     if (panFrameRef.current === null) panFrameRef.current = requestAnimationFrame(() => {
       panFrameRef.current = null;
-      commitPan(panRef.current);
+      const current = panRef.current;
+      if (transformLayerRef.current) transformLayerRef.current.style.transform = `translate3d(${current.x}px, ${current.y}px, 0) scale(${zoomRef.current})`;
+      minimapRef.current?.syncViewport();
+      checkOffscreenRef.current();
+      // 移动接近既有缓冲区边缘时才让 React 补绘，保留原有裁剪范围和坐标规则。
+      const committed = committedPanRef.current;
+      if (Math.max(Math.abs(current.x - committed.x), Math.abs(current.y - committed.y)) >= 128) commitPan(current);
     });
   }, []);
   const [viewportSize, setViewportSize] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
@@ -447,6 +460,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     return () => {
       observer?.disconnect();
       if (panFrameRef.current !== null) cancelAnimationFrame(panFrameRef.current);
+      panFrameRef.current = null;
     };
   }, []);
   const [isPanning, setIsPanning] = useState(false);
@@ -461,7 +475,6 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     worldX: number;
     worldY: number;
   } | null>(null);
-  const [isPinching, setIsPinching] = useState(false);
   // 最近一次触摸时间：用于忽略触屏点按后浏览器补发的兼容 mousedown，避免误入鼠标平移态
   const lastTouchAtRef = useRef(0);
 
@@ -471,14 +484,48 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   // 正在被拖动的节点（多选拖动时为多个）
   const [draggedIds, setDraggedIds] = useState<readonly string[]>(NO_IDS);
   const [dragPreview, setDragPreview] = useState<{
-    x: number;
-    y: number;
     node: MindNode;
     descendantCount: number;
     /** 一起拖动的节点数（多选拖动时 > 1） */
     count: number;
   } | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTargetState | null>(null);
+  // 预览位置和实际落点用 ref 保存；只有预览内容、落点变化时才需要重绘节点。
+  const dragPreviewElementRef = useRef<HTMLDivElement>(null);
+  const dragPointRef = useRef<DragPoint>({ pointerId: 0, x: 0, y: 0 });
+  const dropTargetRef = useRef<DropTargetState | null>(null);
+  const dragMoveFrameRef = useRef<number | null>(null);
+  const pendingDragPointRef = useRef<DragPoint | null>(null);
+  const applyDragPointRef = useRef<(point: DragPoint) => void>(() => undefined);
+
+  /** 消费最后一次移动；松手也同步调用，确保未到下一帧时仍按最新指针位置提交落点。 */
+  const flushNodeDrag = useCallback(() => {
+    if (dragMoveFrameRef.current !== null) cancelAnimationFrame(dragMoveFrameRef.current);
+    dragMoveFrameRef.current = null;
+    const point = pendingDragPointRef.current;
+    pendingDragPointRef.current = null;
+    if (point) applyDragPointRef.current(point);
+  }, []);
+
+  /** 结束或取消节点拖动时一并清除待绘帧，防止预览在松手、Esc 或捏合后重新出现。 */
+  const resetNodeDrag = useCallback(() => {
+    if (dragMoveFrameRef.current !== null) cancelAnimationFrame(dragMoveFrameRef.current);
+    dragMoveFrameRef.current = null;
+    pendingDragPointRef.current = null;
+    dragSessionRef.current = null;
+    dropTargetRef.current = null;
+    setIsDraggingNode(false);
+    setDraggedIds(NO_IDS);
+    setDragPreview(null);
+    setDropTarget(null);
+    document.body.style.cursor = 'default';
+  }, []);
+
+  // 卸载时不再提交状态，只撤销本组件的待绘任务及拖动光标。
+  useEffect(() => () => {
+    if (dragMoveFrameRef.current !== null) cancelAnimationFrame(dragMoveFrameRef.current);
+    if (dragSessionRef.current?.isDragging) document.body.style.cursor = 'default';
+  }, []);
 
   // 正在就地编辑标题的节点与草稿（文本 + 富文本格式）
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
@@ -518,7 +565,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   const [controlPreview, setControlPreview] = useState<{ id: string; controls: [MindPoint, MindPoint] } | null>(null);
   // 拖动概要 / 外框端点：会话 + 实时预览
   const rangeSessionRef = useRef<RangeSession | null>(null);
-  const [rangePreview, setRangePreview] = useState<{ id: string; startId: string; endId: string } | null>(null);
+  const [rangePreview, setRangePreview] = useState<({ id: string } & Required<RangeTarget>) | null>(null);
   /** 单选（或取消选中）：同时退出多选，既有的单选入口都经由它 */
   const setSelectedNodeId = useCallback((id: string | null) => {
     setPrimarySelectedId(id);
@@ -541,14 +588,38 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     y: number;
   } | null>(null);
 
-  // 图片大图预览
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  // 图片大图预览：记录节点与图片序号，预览中可左右切换节点内的多张图片
+  const [previewImage, setPreviewImage] = useState<{ nodeId: string; index: number } | null>(null);
 
   // 节点宽度拉伸：会话记录在 ref，实时预览宽度放在 state 参与排版
   const resizeSessionRef = useRef<ResizeSession | null>(null);
   const [resizePreview, setResizePreview] = useState<{ id: string; width: number } | null>(null);
   // 从折叠按钮上拖动调宽后，紧随松手的 click 不再触发折叠（记录截止时间）
   const suppressFoldClickUntilRef = useRef(0);
+
+  // 按住 Ctrl / Cmd 时文件链接呈可点击态：直接写容器属性，不触发重渲染
+  useEffect(() => {
+    if (IS_MOBILE_UI) return;
+    const sync = (e: KeyboardEvent | MouseEvent) => {
+      const held = USES_COMMAND_KEY ? e.metaKey : e.ctrlKey;
+      const el = containerRef.current;
+      if (el && (el.dataset.linkMod === 'true') !== held) el.dataset.linkMod = String(held);
+    };
+    const clear = () => {
+      if (containerRef.current) containerRef.current.dataset.linkMod = 'false';
+    };
+    window.addEventListener('keydown', sync, true);
+    window.addEventListener('keyup', sync, true);
+    // 在别处松开按键（如切换窗口）时，鼠标重新进入即可纠正状态
+    window.addEventListener('mousemove', sync, { passive: true });
+    window.addEventListener('blur', clear);
+    return () => {
+      window.removeEventListener('keydown', sync, true);
+      window.removeEventListener('keyup', sync, true);
+      window.removeEventListener('mousemove', sync);
+      window.removeEventListener('blur', clear);
+    };
+  }, []);
 
   // 图片固有尺寸测得后重新排版（原始比例显示依赖图片宽高）
   const [imageSizeVersion, setImageSizeVersion] = useState(0);
@@ -606,7 +677,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   );
 
   // 计算无重叠思维导图绝对坐标（布局 + 主题 + 宽度设置共同决定节点位置、尺寸与配色）
-  const { nodes, links, decorations } = useMemo(
+  const baseLayout = useMemo(
     () =>
       computeMindmapLayout(root, layout, theme.branchColors.length, {
         maxNodeWidth,
@@ -646,10 +717,30 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     [rangePreview],
   );
   const structures = useMemo(
-    () => computeMindmapStructures(nodes, { measure: getSharedTextMeasurer(), fontFamily, controlOverrides, rangeOverrides }),
+    () => computeMindmapStructures(baseLayout.nodes, { measure: getSharedTextMeasurer(), fontFamily, edgeStyle, controlOverrides, rangeOverrides }),
     // fontVersion 仅用于字体加载完成后强制重新测量
-    [nodes, fontFamily, fontVersion, controlOverrides, rangeOverrides],
+    [baseLayout, fontFamily, fontVersion, edgeStyle, controlOverrides, rangeOverrides],
   );
+  // 概要主题子树按大括号位置定位后，与主树节点、连线合并为同一份渲染 / 交互数据
+  const nodes = useMemo(
+    () => (structures.nodes.length > 0 ? baseLayout.nodes.concat(structures.nodes) : baseLayout.nodes),
+    [baseLayout, structures],
+  );
+  const links = useMemo(
+    () => (structures.links.length > 0 ? baseLayout.links.concat(structures.links) : baseLayout.links),
+    [baseLayout, structures],
+  );
+  const { decorations } = baseLayout;
+  // 概要主题 id → 所属概要（删除、拖动、新增同级等需区别于普通节点）
+  const summaryTopicRefs = useMemo(() => {
+    const map = new Map<string, MindStructureRef>();
+    for (const node of walkMindNodes(root)) {
+      for (const summary of node.summaries ?? []) map.set(summary.topic.id, { kind: 'summary', ownerId: node.id, id: summary.id });
+    }
+    return map;
+  }, [root]);
+  const summaryTopicRefsRef = useRef(summaryTopicRefs);
+  summaryTopicRefsRef.current = summaryTopicRefs;
 
   // 布局仍覆盖全部已展开节点，只有真正的节点和连线 DOM 按视口裁剪。
   const viewport = useMemo(() => getMindmapViewport(panRef.current, zoom, viewportSize.width, viewportSize.height), [pan, zoom, viewportSize]);
@@ -777,17 +868,55 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     checkOffscreenRef.current();
   }, [nodes, zoom, viewportSize]);
 
-  // 回到内容：整图放得下就居中整图，否则把中心主题移到画面中央，缩放不变
-  const handleScrollBackToContent = () => {
-    if (!contentBounds) return;
-    const z = zoomRef.current;
-    const fits = contentBounds.width * z <= viewportSize.width && contentBounds.height * z <= viewportSize.height;
+  // 内容居中的目标平移：整图放得下（或指定 wholeContent）就居中整图，否则把中心主题移到画面中央
+  const getContentCenterPan = (width: number, height: number, z: number, wholeContent = false) => {
+    if (!contentBounds) return null;
+    const fits = wholeContent || (contentBounds.width * z <= width && contentBounds.height * z <= height);
     const rootNode = nodes.find((n) => n.level === 0);
     const target = fits || !rootNode
       ? { x: contentBounds.left + contentBounds.width / 2, y: contentBounds.top + contentBounds.height / 2 }
       : { x: rootNode.x + rootNode.width / 2, y: rootNode.y + rootNode.height / 2 };
-    setPan({ x: viewportSize.width / 2 - target.x * z, y: viewportSize.height / 2 - target.y * z });
+    return { x: width / 2 - target.x * z, y: height / 2 - target.y * z };
   };
+
+  // 回到内容：缩放不变，只平移
+  const handleScrollBackToContent = () => {
+    const next = getContentCenterPan(viewportSize.width, viewportSize.height, zoomRef.current);
+    if (next) setPan(next);
+  };
+
+  // 首次显示：首帧绘制前按画布实际尺寸居中，避免先停在默认偏移再跳到中央。
+  // 画布尚未布局（尺寸为 0，如隐藏的保活宿主）时等尺寸测得后再居中；
+  // 用户还没移动过视图时，恢复的缩放比例生效后也重新居中
+  const autoCenterRef = useRef<{ pan: { x: number; y: number }; zoom: number } | null>(null);
+  useLayoutEffect(() => {
+    const auto = autoCenterRef.current;
+    if (auto && (panRef.current !== auto.pan || auto.zoom === zoom)) return;
+    const container = containerRef.current;
+    if (!container || container.clientWidth === 0 || container.clientHeight === 0) return;
+    // 首次显示以整图居中为准，一屏放不下时也不改成以中心主题居中
+    const next = getContentCenterPan(container.clientWidth, container.clientHeight, zoom, true);
+    if (!next) return;
+    // 但中心主题必须完整可见：超出画面时只平移到刚好露出（留边距）
+    const rootNode = nodes.find((n) => n.level === 0);
+    if (rootNode) {
+      const keepVisible = (offset: number, start: number, length: number, viewLength: number) => {
+        const size = length * zoom;
+        // 画面放不下边距时边距收窄，主题比画面还大时贴齐起始边
+        const margin = Math.min(INITIAL_ROOT_MARGIN, Math.max(0, (viewLength - size) / 2));
+        const screenStart = offset + start * zoom;
+        if (screenStart < margin) return offset + margin - screenStart;
+        const overflow = screenStart + size - (viewLength - margin);
+        return overflow > 0 ? offset - Math.min(overflow, screenStart - margin) : offset;
+      };
+      next.x = keepVisible(next.x, rootNode.x, rootNode.width, container.clientWidth);
+      next.y = keepVisible(next.y, rootNode.y, rootNode.height, container.clientHeight);
+    }
+    autoCenterRef.current = { pan: next, zoom };
+    // 同步提交而非走逐帧合并，保证首帧就是居中后的位置
+    panRef.current = next;
+    commitPan(next);
+  }, [contentBounds, viewportSize, zoom]);
 
   // 画布容器虽是 overflow:hidden，编辑节点时浏览器仍会滚动它把光标露出来，
   // 导致缩略图等绝对定位控件整体上移；视图位置只由 pan 决定，滚动一律复位
@@ -827,6 +956,16 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     },
     [root, onChange],
   );
+  // 异步操作（文件选择对话框、读取图片）结束时导图可能已变化，需基于最新的树修改
+  const rootRef = useRef(root);
+  rootRef.current = root;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const updateLatestTree = useCallback((mutator: (clonedRoot: MindNode) => void) => {
+    const cloned = cloneMindmapTree(rootRef.current);
+    mutator(cloned);
+    onChangeRef.current(cloned);
+  }, []);
 
   // 切换节点折叠
   const handleToggleExpand = (id: string) => {
@@ -846,8 +985,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     anchorId: string,
     commitCurrent = false,
   ) => {
-    // 根节点没有同级，Enter 时退化为新增子节点
-    const effectiveMode = mode === 'sibling' && anchorId === root.id ? 'child' : mode;
+    // 根节点与概要主题没有同级，Enter 时退化为新增子节点
+    const effectiveMode = mode === 'sibling' && (anchorId === root.id || summaryTopicRefs.has(anchorId)) ? 'child' : mode;
     const newNode: MindNode = {
       id: generateNodeId(),
       text: '',
@@ -889,25 +1028,43 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
 
   /**
    * 删除节点（可多个，一次树更新即一个撤销步），随后选中第一个被删节点的父节点，便于连续操作
-   * @param ids 顶层节点 id（由 getTopLevelMindNodeIds 过滤，不含根节点）
+   * @param ids 顶层节点 id（由 getTopLevelMindNodeIds 过滤，不含根节点）；概要主题 id 表示删除整个概要
    */
   const deleteNodesAndSelectParent = (ids: readonly string[]) => {
     if (ids.length === 0) return;
-    const parent = findParentNode(root, ids[0]);
+    // 概要主题没有父节点，删除后选中概要的挂载节点
+    const firstTopic = summaryTopicRefs.get(ids[0]);
+    const parentId = firstTopic ? firstTopic.ownerId : findParentNode(root, ids[0])?.id;
     updateTree((cloned) => {
       for (const id of ids) {
+        const topicRef = summaryTopicRefs.get(id);
+        if (topicRef) {
+          const owner = findMindNode(cloned, topicRef.ownerId);
+          if (owner) removeStructure(owner, topicRef);
+          continue;
+        }
         const parentInfo = findMindNodeParent(cloned, id);
         if (parentInfo) parentInfo.parent.children.splice(parentInfo.index, 1);
       }
+      // 所覆盖节点全部被删的概要 / 外框随之失效，及时清理，避免留下看不见的概要主题
+      pruneMindmapStructures(cloned);
     });
-    setSelectedNodeId(parent?.id ?? null);
+    setSelectedNodeId(parentId && findMindNode(root, parentId) ? parentId : null);
   };
 
   /**
-   * 请求删除节点（单个或多选）：含子节点时先弹二次确认
+   * 请求删除节点（单个或多选）：含子节点时先弹二次确认。
+   * 选中的概要主题按删除概要处理（连同其子节点）
    */
   const requestDeleteNodes = (ids: readonly string[]) => {
-    const topIds = getTopLevelMindNodeIds(root, ids);
+    const topicIds = ids.filter((id) => summaryTopicRefs.has(id));
+    // 已选概要主题子树内的节点随概要一起删除，不再单独计入
+    const insideTopics = new Set<string>();
+    for (const id of topicIds) {
+      const topic = findNodeById(root, id);
+      if (topic) for (const node of walkMindNodes(topic)) insideTopics.add(node.id);
+    }
+    const topIds = [...topicIds, ...getTopLevelMindNodeIds(root, ids).filter((id) => !insideTopics.has(id))];
     if (topIds.length === 0) return;
     let descendantCount = 0;
     for (const id of topIds) {
@@ -981,10 +1138,12 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       return;
     }
     const id = generateStructureId(kind);
+    // 概要主题是一个普通节点，可继续添加子节点
+    const topic: MindNode = { id: generateNodeId(), text: SUMMARY_PLACEHOLDER, isExpanded: true, children: [] };
     updateTree((cloned) => {
       updateNodeById(cloned, range.parentId, (parent) => {
         if (kind === 'summary') {
-          (parent.summaries ??= []).push({ id, startId: range.startId, endId: range.endId, text: SUMMARY_PLACEHOLDER });
+          (parent.summaries ??= []).push({ id, startId: range.startId, endId: range.endId, topic });
         } else {
           (parent.boundaries ??= []).push({ id, startId: range.startId, endId: range.endId });
         }
@@ -992,10 +1151,15 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
         parent.isExpanded = true;
       });
     });
-    const ref: MindStructureRef = { kind, ownerId: range.parentId, id };
-    selectStructure(ref);
-    // 新概要直接进入文字编辑，便于立即输入
-    if (kind === 'summary') setEditingStructure({ ref, text: SUMMARY_PLACEHOLDER });
+    if (kind === 'summary') {
+      // 新概要直接选中概要主题并进入标题编辑，默认文字全选便于直接输入覆盖
+      pendingSelectAllRef.current = topic.id;
+      setSelectedNodeId(topic.id);
+      setEditDraft({ text: topic.text });
+      setEditingNodeId(topic.id);
+      return;
+    }
+    selectStructure({ kind, ownerId: range.parentId, id });
   };
 
   /** 进入联系线连接模式：随后点击目标节点完成连接 */
@@ -1041,10 +1205,17 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   const deleteStructureRef = useRef(deleteStructure);
   deleteStructureRef.current = deleteStructure;
 
-  /** 开始编辑结构元素文字 */
+  /** 开始编辑结构元素文字（概要即编辑概要主题节点的标题） */
   const beginEditStructure = (ref: MindStructureRef) => {
     const item = findStructure(findNodeById(root, ref.ownerId), ref);
     if (!item) return;
+    if (ref.kind === 'summary') {
+      const topic = (item as MindSummary).topic;
+      setSelectedNodeId(topic.id);
+      setEditDraft({ text: topic.text, marks: topic.marks });
+      setEditingNodeId(topic.id);
+      return;
+    }
     selectStructure(ref);
     setEditingStructure({ ref, text: getStructureText(item, ref.kind) });
   };
@@ -1163,6 +1334,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       pointerId: e.pointerId,
       ref: structureRef,
       fixedId: rangeFixedEndId(owner, item, handle),
+      treeRootId: layoutTreeRootOf(nodes, owner).node.id,
       original: { startId: item.startId, endId: item.endId },
     };
   };
@@ -1174,9 +1346,10 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     const point = clientToWorld(e.clientX, e.clientY);
     const owner = nodes.find((n) => n.node.id === session.ref.ownerId);
     if (!point || !owner) return;
-    const next = dragRangeEnd(owner, session.fixedId, point);
+    const treeRoot = session.treeRootId === owner.node.id ? owner : nodes.find((n) => n.node.id === session.treeRootId);
+    const next = dragRangeEnd(owner, session.fixedId, point, treeRoot);
     // 只在范围真正变化时更新预览，避免每帧重算
-    if (next && (next.startId !== rangePreview?.startId || next.endId !== rangePreview?.endId)) {
+    if (next && (next.startId !== rangePreview?.startId || next.endId !== rangePreview?.endId || next.ownerId !== rangePreview?.ownerId)) {
       setRangePreview({ id: session.ref.id, ...next });
     }
   };
@@ -1188,13 +1361,26 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     rangeSessionRef.current = null;
     const preview = rangePreview;
     setRangePreview(null);
-    if (!preview || (preview.startId === session.original.startId && preview.endId === session.original.endId)) return;
+    const ownerChanged = Boolean(preview && preview.ownerId !== session.ref.ownerId);
+    if (!preview || (!ownerChanged && preview.startId === session.original.startId && preview.endId === session.original.endId)) return;
     updateTree((cloned) => {
-      const item = findStructure(findMindNode(cloned, session.ref.ownerId), session.ref) as MindNodeRange | null;
+      const oldOwner = findMindNode(cloned, session.ref.ownerId);
+      const item = findStructure(oldOwner, session.ref) as MindNodeRange | null;
       if (!item) return;
       item.startId = preview.startId;
       item.endId = preview.endId;
+      if (!ownerChanged) return;
+      // 拖到其他分支的同层节点：从原节点移到两端的共同祖先上
+      const newOwner = findMindNode(cloned, preview.ownerId);
+      if (!oldOwner || !newOwner) return;
+      removeStructure(oldOwner, session.ref);
+      if (session.ref.kind === 'summary') (newOwner.summaries ??= []).push(item as MindSummary);
+      else (newOwner.boundaries ??= []).push(item as MindBoundary);
     });
+    // 选中态跟随新的所属节点，工具条与手柄不丢失
+    if (ownerChanged && selectedStructureRef.current?.id === session.ref.id) {
+      setSelectedStructure({ ...session.ref, ownerId: preview.ownerId });
+    }
   };
 
   // 顶部操作栏命令：作用于当前选中的节点（闭包每次渲染更新，句柄经 ref 读取最新版本）
@@ -1321,53 +1507,78 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     setEditNoteText('');
   };
 
-  // 上传/替换图片
+  // 上传图片（可多选，追加到节点已有图片之后）
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files ?? []);
     const targetNodeId = uploadTargetNodeIdRef.current;
-    if (!file || !targetNodeId) return;
-    setNodeImageFromFile(targetNodeId, file);
     e.target.value = '';
+    if (files.length === 0 || !targetNodeId) return;
+    addNodeImagesFromFiles(targetNodeId, files);
   };
 
-  /** 读取图片文件并设为节点图片（文件选择与编辑时粘贴共用） */
-  const setNodeImageFromFile = (targetNodeId: string, file: File) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        const imgData = reader.result;
-        updateTree((cloned) => {
-          function findAndSet(n: MindNode) {
-            if (n.id === targetNodeId) {
-              n.image = imgData;
-              return true;
-            }
-            for (const c of n.children || []) {
-              if (findAndSet(c)) return true;
-            }
-            return false;
-          }
-          findAndSet(cloned);
+  /** 读取图片文件并追加为节点图片（文件选择与编辑时粘贴共用），超出 10 张的部分忽略并提示 */
+  const addNodeImagesFromFiles = (targetNodeId: string, files: readonly File[]) => {
+    const imageFiles = files.filter((file) => file.type.startsWith('image/'));
+    if (imageFiles.length === 0) return;
+    void Promise.all(imageFiles.map((file) => new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    }))).then((results) => {
+      const sources = results.filter((src): src is string => Boolean(src));
+      if (sources.length === 0) return;
+      let dropped = 0;
+      updateLatestTree((cloned) => {
+        updateNodeById(cloned, targetNodeId, (node) => {
+          const result = appendWithLimit(node.images, sources, MAX_NODE_IMAGES);
+          node.images = result.next;
+          dropped = result.dropped;
         });
-      }
-    };
-    reader.readAsDataURL(file);
+      });
+      if (dropped > 0) showToast(`每个节点最多 ${MAX_NODE_IMAGES} 张图片，已忽略 ${dropped} 张`, 'warning');
+    });
   };
 
-  // 删除图片
-  const handleDeleteImage = (id: string) => {
+  // 删除节点中的某张图片
+  const handleDeleteImage = (id: string, index: number) => {
     updateTree((cloned) => {
-      function findAndSet(n: MindNode) {
-        if (n.id === id) {
-          n.image = undefined;
-          return true;
-        }
-        for (const c of n.children || []) {
-          if (findAndSet(c)) return true;
-        }
-        return false;
-      }
-      findAndSet(cloned);
+      updateNodeById(cloned, id, (node) => {
+        const next = (node.images ?? []).filter((_, i) => i !== index);
+        if (next.length > 0) node.images = next;
+        else delete node.images;
+      });
+    });
+  };
+
+  /** 选择本地文件并追加为节点文件链接（同一路径不重复添加） */
+  const handleAddFileLinks = async (id: string) => {
+    const target = findNodeById(rootRef.current, id);
+    if (target && getNodeFiles(target).length >= MAX_NODE_FILES) {
+      showToast(`每个节点最多链接 ${MAX_NODE_FILES} 个文件`, 'warning');
+      return;
+    }
+    const links = await pickFileLinks(docKey);
+    if (links.length === 0) return;
+    let dropped = 0;
+    updateLatestTree((cloned) => {
+      updateNodeById(cloned, id, (node) => {
+        const result = appendWithLimit(node.files, links, MAX_NODE_FILES, true);
+        node.files = result.next;
+        dropped = result.dropped;
+      });
+    });
+    if (dropped > 0) showToast(`每个节点最多链接 ${MAX_NODE_FILES} 个文件，已忽略 ${dropped} 个`, 'warning');
+  };
+
+  // 移除节点中的某个文件链接
+  const handleRemoveFileLink = (id: string, index: number) => {
+    updateTree((cloned) => {
+      updateNodeById(cloned, id, (node) => {
+        const next = (node.files ?? []).filter((_, i) => i !== index);
+        if (next.length > 0) node.files = next;
+        else delete node.files;
+      });
     });
   };
 
@@ -1399,7 +1610,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       startX: e.clientX,
       startWidth: layoutNode.width,
       edge: layoutNode.freeEdge,
-      hasImage: Boolean(layoutNode.node.image),
+      minWidth: attachmentMinWidth(layoutNode.node),
       moved: false,
     };
     document.body.style.cursor = 'ew-resize';
@@ -1415,7 +1626,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     session.moved = true;
     setResizePreview({
       id: session.nodeId,
-      width: clampManualWidth(session.startWidth + delta, session.hasImage),
+      width: clampManualWidth(session.startWidth + delta, session.minWidth),
     });
   };
 
@@ -1443,8 +1654,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
 
   // 节点按下准备拖拽
   const handleNodePointerDown = (e: React.PointerEvent, layoutNode: LayoutNode) => {
-    // 仅允许左键且非根节点参与拖拽
-    if (e.button !== 0 || layoutNode.level === 0) return;
+    // 仅允许左键且非根节点、非概要主题参与拖拽（概要主题随所属概要定位，不能单独搬移）
+    if (e.button !== 0 || layoutNode.level === 0 || layoutNode.summaryOf) return;
 
     // 排除点击输入框、按钮、图片缩略图与拉伸手柄等交互子元素
     // （图片若被节点捕获指针，click 会派发给节点而不是图片，导致需要连点多次才能打开预览）
@@ -1454,6 +1665,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       target.closest('input') ||
       target.closest('textarea') ||
       target.closest('[data-mindmap-image]') ||
+      target.closest('[data-mindmap-file]') ||
       target.closest('[data-resize-handle]')
     ) {
       return;
@@ -1522,8 +1734,17 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       return;
     }
 
-    const deltaX = Math.abs(e.clientX - session.startX);
-    const deltaY = Math.abs(e.clientY - session.startY);
+    if (e.pointerId !== session.pointerId) return;
+    pendingDragPointRef.current = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
+    if (dragMoveFrameRef.current === null) dragMoveFrameRef.current = requestAnimationFrame(flushNodeDrag);
+  };
+
+  /** 按显示帧移动预览并判定落点；相同落点不触发 React 重绘，树结构仍只在松手时提交。 */
+  applyDragPointRef.current = (point) => {
+    const session = dragSessionRef.current;
+    if (!session || point.pointerId !== session.pointerId) return;
+    const deltaX = Math.abs(point.x - session.startX);
+    const deltaY = Math.abs(point.y - session.startY);
 
     // 位移超过 4px 正式激活拖拽状态
     if (!session.isDragging) {
@@ -1554,21 +1775,21 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       }
       session.descendantIds = ids;
     }
-    const descendantCount = session.descendantIds.size - sourceIds.length;
-    setDragPreview({
-      x: e.clientX,
-      y: e.clientY,
-      node: session.sourceNode,
-      descendantCount,
-      count: sourceIds.length,
-    });
+    dragPointRef.current = point;
+    const preview = dragPreviewElementRef.current;
+    if (preview) {
+      preview.style.transform = `translate3d(${point.x + 14}px, ${point.y + 14}px, 0) scale(1.04)`;
+    } else {
+      // 卡片内容在同一次拖动中不变，首次挂载后只移动合成层。
+      setDragPreview({ node: session.sourceNode, descendantCount: session.descendantIds.size - sourceIds.length, count: sourceIds.length });
+    }
 
     // 屏幕视口坐标转导图世界坐标系
     const containerEl = containerRef.current;
     if (!containerEl) return;
     const rect = containerEl.getBoundingClientRect();
-    const worldX = (e.clientX - rect.left - panRef.current.x) / zoom;
-    const worldY = (e.clientY - rect.top - panRef.current.y) / zoom;
+    const worldX = (point.x - rect.left - panRef.current.x) / zoomRef.current;
+    const worldY = (point.y - rect.top - panRef.current.y) / zoomRef.current;
 
     // 寻找最近有效落点目标 (严格过滤自身及所有子孙节点，防止成环)
     let closest: DropTargetState | null = null;
@@ -1607,8 +1828,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
           minDistance = dist;
           let pos: DropPosition = 'inside';
 
-          if (nLevel === 0) {
-            // 根节点仅允许作为子分支挂载
+          if (nLevel === 0 || lNode.summaryOf) {
+            // 根节点与概要主题没有同级，仅允许作为子分支挂载
             pos = 'inside';
           } else if (lNode.siblingFlow !== 'down') {
             // 同级横向排列（组织图 / 时间轴 / 鱼骨图）：按水平位置判定前后
@@ -1644,7 +1865,11 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       }
     }
 
-    setDropTarget(closest);
+    const previous = dropTargetRef.current;
+    dropTargetRef.current = closest;
+    if (previous?.targetId !== closest?.targetId || previous?.pos !== closest?.pos || previous?.targetLayout !== closest?.targetLayout) {
+      setDropTarget(closest);
+    }
   };
 
   // 全局指针释放：提交树结构变更或重置状态
@@ -1654,7 +1879,11 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     }
 
     const session = dragSessionRef.current;
-    if (!session) return;
+    if (!session || e.pointerId !== session.pointerId) return;
+
+    // 最后一个 pointermove 可能尚在等待绘制；pointerup 的坐标作为最终落点采样。
+    pendingDragPointRef.current = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
+    flushNodeDrag();
 
     try {
       const el = e.currentTarget as HTMLElement;
@@ -1665,17 +1894,12 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       // ignore
     }
 
-    const currentDropTarget = dropTarget;
+    const currentDropTarget = dropTargetRef.current;
     const sourceId = session.sourceNode.id;
     const sourceIds = session.sourceIds ?? [sourceId];
     const wasDragging = session.isDragging;
 
-    dragSessionRef.current = null;
-    setIsDraggingNode(false);
-    setDraggedIds(NO_IDS);
-    setDragPreview(null);
-    setDropTarget(null);
-    document.body.style.cursor = 'default';
+    resetNodeDrag();
 
     // 若处于真实拖拽态且存在有效落点，执行整树转移
     if (wasDragging && currentDropTarget) {
@@ -1718,7 +1942,6 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     if (e.isPrimary && touchPointsRef.current.size > 0) {
       touchPointsRef.current.clear();
       pinchRef.current = null;
-      setIsPinching(false);
     }
     touchPointsRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const points = Array.from(touchPointsRef.current.values());
@@ -1756,15 +1979,9 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       worldX: (midX - panRef.current.x) / zoom,
       worldY: (midY - panRef.current.y) / zoom,
     };
-    setIsPinching(true);
     setIsPanning(false);
     if (dragSessionRef.current) {
-      dragSessionRef.current = null;
-      setIsDraggingNode(false);
-      setDraggedIds(NO_IDS);
-      setDragPreview(null);
-      setDropTarget(null);
-      document.body.style.cursor = 'default';
+      resetNodeDrag();
     }
     // 第一指按在手柄上时同样让位给捏合
     abortHandleSessions();
@@ -1779,7 +1996,6 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     touchPointsRef.current.delete(e.pointerId);
     if (pinchRef.current && touchPointsRef.current.size < 2) {
       pinchRef.current = null;
-      setIsPinching(false);
       const rest = Array.from(touchPointsRef.current.values())[0];
       if (rest) {
         setIsPanning(true);
@@ -1826,17 +2042,12 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
         setConnectPointer(null);
       }
       if (e.key === 'Escape' && dragSessionRef.current) {
-        dragSessionRef.current = null;
-        setIsDraggingNode(false);
-        setDraggedIds(NO_IDS);
-        setDragPreview(null);
-        setDropTarget(null);
-        document.body.style.cursor = 'default';
+        resetNodeDrag();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [resetNodeDrag]);
 
   // 选中节点后：Tab 新增子节点，Enter 新增同级节点（两者均把光标移到新节点）
   useEffect(() => {
@@ -1933,6 +2144,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   return (
     <div
       ref={containerRef}
+      // 触屏界面没有修饰键，文件链接始终呈可点按的链接态
+      className={IS_MOBILE_UI ? 'nb-touch-links' : undefined}
       onMouseDown={handleMouseDown}
       onPointerDownCapture={handleTouchPointerDownCapture}
       onPointerMoveCapture={handleTouchPointerMoveCapture}
@@ -1942,12 +2155,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
         // 系统取消触点（如来电、手势被接管）：只复位状态，不提交拖拽落点（触点表由 window 监听移除）
         setIsPanning(false);
         if (dragSessionRef.current) {
-          dragSessionRef.current = null;
-          setIsDraggingNode(false);
-          setDraggedIds(NO_IDS);
-          setDragPreview(null);
-          setDropTarget(null);
-          document.body.style.cursor = 'default';
+          resetNodeDrag();
         }
       }}
       style={{
@@ -1967,6 +2175,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        multiple
         style={{ display: 'none' }}
         onChange={handleFileSelect}
       />
@@ -1974,11 +2183,12 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       {/* 缩放与平移图层 */}
       <div
         ref={transformLayerRef}
+        className="nb-mindmap-transform"
         style={{
           position: 'absolute',
-          transform: `translate(${panRef.current.x}px, ${panRef.current.y}px) scale(${zoom})`,
+          // 统一用合成层平移；连续输入不叠加过渡插值，避免触控板平移时出现拖尾。
+          transform: `translate3d(${panRef.current.x}px, ${panRef.current.y}px, 0) scale(${zoom})`,
           transformOrigin: '0 0',
-          transition: isPanning || isDraggingNode || isPinching ? 'none' : 'transform 0.05s ease-out',
         }}
       >
         {/* SVG 贝塞尔曲线连接线图层 */}
@@ -1987,8 +2197,9 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
             position: 'absolute',
             left: 0,
             top: 0,
-            width: 8000,
-            height: 8000,
+            // 图形使用绝对坐标并允许溢出，无需为连线保留 8000² 的空白绘制表面。
+            width: 1,
+            height: 1,
             pointerEvents: 'none',
             overflow: 'visible',
           }}
@@ -2062,26 +2273,45 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
               />
             );
           })}
-          {/* 概要大括号：开口朝向被概括的节点 */}
+          {/* 概要大括号：开口朝向被概括的节点；加宽的透明描边用于点选概要（调整范围 / 删除） */}
           {structures.summaries.map((s) => {
-            const selected = isSameStructure(selectedStructure, { kind: 'summary', ownerId: s.ownerId, id: s.id });
+            const ref: MindStructureRef = { kind: 'summary', ownerId: s.ownerId, id: s.id };
+            const selected = isSameStructure(selectedStructure, ref);
             const color = theme.branchColors[s.branchIndex % theme.branchColors.length] ?? theme.branchColors[0];
             return (
-              <path
-                key={`summary-brace-${s.id}`}
-                d={s.bracePath}
-                fill="none"
-                stroke={selected ? ACCENT_COLOR : color}
-                strokeWidth={selected ? 2.2 : 1.8}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                opacity={selected ? 1 : theme.edgeOpacity}
-              />
+              <g key={`summary-brace-${s.id}`} className="nb-mindmap-summary-brace" data-selected={selected}>
+                <path
+                  d={s.bracePath}
+                  fill="none"
+                  stroke={selected ? ACCENT_COLOR : color}
+                  strokeWidth={selected ? 2.2 : 1.8}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity={selected ? 1 : theme.edgeOpacity}
+                />
+                <path
+                  d={s.bracePath}
+                  data-mindmap-structure
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth={12}
+                  style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    selectStructure(ref);
+                  }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    beginEditStructure(ref);
+                  }}
+                />
+              </g>
             );
           })}
         </svg>
 
-        {/* 外框标题与概要文字（节点卡片之下，避免遮挡节点） */}
+        {/* 外框标题（节点卡片之下，避免遮挡节点；概要主题作为普通节点渲染） */}
         {structures.boundaries.map((b) => {
           if (!b.titleBox) return null;
           const ref: MindStructureRef = { kind: 'boundary', ownerId: b.ownerId, id: b.id };
@@ -2126,58 +2356,6 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
             </div>
           );
         })}
-        {structures.summaries.map((s) => {
-          const ref: MindStructureRef = { kind: 'summary', ownerId: s.ownerId, id: s.id };
-          if (isSameStructure(editingStructure?.ref ?? null, ref)) return null;
-          const selected = isSameStructure(selectedStructure, ref);
-          const color = theme.branchColors[s.branchIndex % theme.branchColors.length] ?? theme.branchColors[0];
-          return (
-            <div
-              key={`summary-label-${s.id}`}
-              data-mindmap-structure
-              className="nb-mindmap-summary-label"
-              data-selected={selected}
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                selectStructure(ref);
-              }}
-              onDoubleClick={(e) => {
-                e.stopPropagation();
-                beginEditStructure(ref);
-              }}
-              style={{
-                position: 'absolute',
-                left: s.label.x,
-                top: s.label.y,
-                width: s.label.width,
-                height: s.label.height,
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                alignItems: 'center',
-                fontSize: SUMMARY_FONT_SIZE,
-                fontWeight: 500,
-                lineHeight: `${SUMMARY_LINE_HEIGHT}px`,
-                boxSizing: 'border-box',
-                border: `1.5px solid ${selected ? ACCENT_COLOR : color}`,
-                borderRadius: 8,
-                background: theme.nodeTint
-                  ? `color-mix(in srgb, ${color} ${theme.nodeTint}%, var(--editor-surface, #ffffff))`
-                  : 'var(--editor-surface, #ffffff)',
-                color: 'var(--editor-text, #1e293b)',
-                boxShadow: selected ? `0 0 0 2px ${ACCENT_COLOR}` : '0 2px 6px rgba(0, 0, 0, 0.05)',
-                cursor: 'pointer',
-              }}
-            >
-              {s.lines.map((line, idx) => (
-                <div key={idx} className="nb-mindmap-title-line" style={{ height: SUMMARY_LINE_HEIGHT, opacity: s.text ? 1 : 0.5 }}>
-                  {line}
-                </div>
-              ))}
-            </div>
-          );
-        })}
 
         {/* 拖拽重排序落位高亮指示线 (Drop Indicator Line - 前置 before / 后置 after)：
             同级纵向排列时为横线，横向排列（组织图 / 时间轴 / 鱼骨图）时为竖线 */}
@@ -2218,6 +2396,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
         {visibleNodes.map((n) => {
           const isRoot = n.level === 0;
           const isLevel1 = n.level === 1;
+          // 概要主题：边框沿用分支色（与大括号同色），不能拖动
+          const isSummaryTopic = Boolean(n.summaryOf);
           const isEditing = editingNodeId === n.node.id;
           // 主选中节点挂工具栏；多选中的其余节点只显示选中描边
           const isPrimarySelected = selectedNodeId === n.node.id;
@@ -2234,7 +2414,10 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
             : 'var(--editor-surface, #ffffff)';
           const hasIcon = Boolean(n.node.icon);
           const hasNote = Boolean(n.node.note);
-          const hasImage = Boolean(n.node.image);
+          const nodeImages = getNodeImages(n.node);
+          const nodeFiles = getNodeFiles(n.node);
+          const hasImage = nodeImages.length > 0;
+          const hasFiles = nodeFiles.length > 0;
           // 标题排版参数与布局引擎共用，保证换行位置一致
           const textStyle = getNodeTextStyle(n.level);
           const titleHeight = titleBlockHeight(n.level, n.titleLines.length);
@@ -2258,6 +2441,10 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
               className="nb-mindmap-node"
               data-node-id={n.node.id}
               data-diff={diffMarks?.get(n.node.id)}
+              // 选中态供样式使用：触屏没有悬停，选中节点时显示图片 / 文件的移除按钮
+              data-selected={isSelected || undefined}
+              // 中心主题为主题色底，附件图标改用文字色保证对比度
+              data-root={isRoot || undefined}
               onPointerDown={(e) => handleNodePointerDown(e, n)}
               onClick={(e) => {
                 e.stopPropagation();
@@ -2274,9 +2461,13 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
               }}
               onDoubleClick={(e) => {
                 e.stopPropagation();
-                // 双击图片或拉伸手柄不进入标题编辑
+                // 双击图片、文件链接或拉伸手柄不进入标题编辑
                 const target = e.target as HTMLElement;
-                if (target.closest('[data-mindmap-image]') || target.closest('[data-resize-handle]')) return;
+                if (
+                  target.closest('[data-mindmap-image]') ||
+                  target.closest('[data-mindmap-file]') ||
+                  target.closest('[data-resize-handle]')
+                ) return;
                 if (!isDraggingNode) {
                   setEditingNodeId(n.node.id);
                   setEditDraft({ text: n.node.text, marks: n.node.marks });
@@ -2290,7 +2481,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                 height: n.height,
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: hasNote || hasImage ? 'flex-start' : 'center',
+                justifyContent: hasNote || hasImage || hasFiles ? 'flex-start' : 'center',
                 background: isDropTargetInside
                   ? isRoot
                     ? theme.rootBackground
@@ -2309,7 +2500,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                     ? '2px solid var(--editor-accent, #3b82f6)'
                     : isSourceOrDescendant
                       ? '1.5px dashed var(--editor-border, #94a3b8)'
-                      : `1.5px solid ${isSelected ? 'var(--editor-accent, #3b82f6)' : isLevel1 ? nodeColor : 'var(--editor-border, #cbd5e1)'}`,
+                      : `1.5px solid ${isSelected ? 'var(--editor-accent, #3b82f6)' : isLevel1 || isSummaryTopic ? nodeColor : 'var(--editor-border, #cbd5e1)'}`,
                 borderRadius: isRoot ? 10 : 8,
                 boxShadow: isDropTargetInside
                   ? '0 0 0 2.5px var(--editor-accent, #3b82f6), 0 0 20px rgba(59, 130, 246, 0.45)'
@@ -2319,7 +2510,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                       ? theme.rootShadow
                       : '0 2px 6px rgba(0, 0, 0, 0.05)',
                 padding: `${textStyle.paddingY}px ${textStyle.paddingX}px`,
-                cursor: connectFrom ? 'crosshair' : isEditing ? 'text' : isDraggingNode ? 'grabbing' : isRoot ? 'default' : 'grab',
+                cursor: connectFrom ? 'crosshair' : isEditing ? 'text' : isDraggingNode ? 'grabbing' : isRoot || isSummaryTopic ? 'default' : 'grab',
                 opacity: isSourceOrDescendant ? 0.35 : 1,
                 transform: isSourceOrDescendant ? 'scale(0.97)' : isDropTargetInside ? 'scale(1.02)' : 'none',
                 boxSizing: 'border-box',
@@ -2432,7 +2623,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                       handleFinishEdit(n.node.id);
                       setSelectedNodeId(n.node.id);
                     }}
-                    onPasteImage={(file) => setNodeImageFromFile(n.node.id, file)}
+                    onPasteImage={(file) => addNodeImagesFromFiles(n.node.id, [file])}
                     onEscape={() => handleFinishEdit(n.node.id)}
                     onBlur={() => handleFinishEdit(n.node.id)}
                     onSelectionChange={setFormatSelection}
@@ -2491,8 +2682,69 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                 </Tooltip>
               )}
 
-              {/* 挂载图片：原始比例按固有宽高等比显示；宽度填充为固定高度裁切 */}
-              {hasImage && n.node.image && n.imageBox && (
+              {/* 多图网格：单元格统一裁切铺满，超出展示张数时末格叠加 +N，点击进入可左右切换的大图预览 */}
+              {n.gallery && (
+                <div
+                  className="nb-mindmap-gallery"
+                  style={{
+                    marginTop: GALLERY_TOP_GAP,
+                    width: n.gallery.width,
+                    height: n.gallery.height,
+                    gridTemplateColumns: `repeat(${n.gallery.columns}, ${n.gallery.cellWidth}px)`,
+                    gridAutoRows: n.gallery.cellHeight,
+                    gap: n.gallery.gap,
+                  }}
+                >
+                  {nodeImages.slice(0, n.gallery.visibleCount).map((src, index) => {
+                    const hiddenCount = index === n.gallery!.visibleCount - 1 ? nodeImages.length - n.gallery!.visibleCount : 0;
+                    return (
+                      <div key={index} className="nb-mindmap-gallery-cell">
+                        <img
+                          data-mindmap-image
+                          draggable={false}
+                          src={src}
+                          alt={`节点图片 ${index + 1}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPreviewImage({ nodeId: n.node.id, index });
+                          }}
+                        />
+                        {hiddenCount > 0 ? (
+                          <Tooltip content={`还有 ${hiddenCount} 张，点击浏览全部`} side="top" sideOffset={4}>
+                            <div
+                              data-mindmap-image
+                              className="nb-mindmap-gallery-more"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPreviewImage({ nodeId: n.node.id, index });
+                              }}
+                            >
+                              +{hiddenCount}
+                            </div>
+                          </Tooltip>
+                        ) : (
+                          <Tooltip content="删除图片" side="top" sideOffset={4}>
+                            <button
+                              type="button"
+                              className="nb-mindmap-image-remove"
+                              aria-label="删除图片"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteImage(n.node.id, index);
+                              }}
+                            >
+                              <X size={10} />
+                            </button>
+                          </Tooltip>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* 挂载单张图片：原始比例按固有宽高等比显示；宽度填充为固定高度裁切 */}
+              {hasImage && !n.gallery && n.imageBox && (
                 <div
                   style={{
                     marginTop: 4,
@@ -2511,11 +2763,11 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                     <img
                       data-mindmap-image
                       draggable={false}
-                      src={n.node.image}
+                      src={nodeImages[0]}
                       alt="节点缩略图"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setPreviewImage(n.node.image!);
+                        setPreviewImage({ nodeId: n.node.id, index: 0 });
                       }}
                       style={{
                         width: n.imageBox.width,
@@ -2531,7 +2783,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDeleteImage(n.node.id);
+                        handleDeleteImage(n.node.id, 0);
                       }}
                       aria-label="删除图片"
                       style={{
@@ -2556,6 +2808,23 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                       <X size={10} />
                     </button>
                   </Tooltip>
+                </div>
+              )}
+
+              {/* 本地文件链接：每个文件一行，Ctrl/Cmd + 单击（触屏点按）在应用内打开 */}
+              {hasFiles && (
+                <div
+                  className="nb-mindmap-files"
+                  style={{ marginTop: FILE_LIST_TOP_GAP, gap: FILE_ROW_GAP }}
+                >
+                  {nodeFiles.map((path, index) => (
+                    <MindmapFileLink
+                      key={`${index}:${path}`}
+                      path={path}
+                      onOpen={() => openFileLink(path, docKey)}
+                      onRemove={() => handleRemoveFileLink(n.node.id, index)}
+                    />
+                  ))}
                 </div>
               )}
 
@@ -2622,19 +2891,46 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                       </button>
                     </Tooltip>
 
-                    {/* 上传/替换图片 */}
-                    <Tooltip content="上传/替换图片" side="top" sideOffset={4}>
+                    {/* 添加图片（可多选，最多 10 张） */}
+                    <Tooltip
+                      content={nodeImages.length >= MAX_NODE_IMAGES ? `已达 ${MAX_NODE_IMAGES} 张上限` : hasImage ? `添加图片（${nodeImages.length}/${MAX_NODE_IMAGES}）` : '添加图片'}
+                      side="top"
+                      sideOffset={4}
+                    >
                       <button
                         type="button"
                         className={`nb-mindmap-toolbar-btn${hasImage ? ' is-active-accent' : ''}`}
                         onClick={(e) => {
                           e.stopPropagation();
+                          if (nodeImages.length >= MAX_NODE_IMAGES) {
+                            showToast(`每个节点最多 ${MAX_NODE_IMAGES} 张图片`, 'warning');
+                            return;
+                          }
                           uploadTargetNodeIdRef.current = n.node.id;
                           fileInputRef.current?.click();
                         }}
-                        aria-label="上传/替换图片"
+                        aria-label="添加图片"
                       >
                         <ImageIcon size={12} />
+                      </button>
+                    </Tooltip>
+
+                    {/* 链接本地文件（可多选，最多 10 个） */}
+                    <Tooltip
+                      content={nodeFiles.length >= MAX_NODE_FILES ? `已达 ${MAX_NODE_FILES} 个上限` : hasFiles ? `链接文件（${nodeFiles.length}/${MAX_NODE_FILES}）` : '链接文件'}
+                      side="top"
+                      sideOffset={4}
+                    >
+                      <button
+                        type="button"
+                        className={`nb-mindmap-toolbar-btn${hasFiles ? ' is-active-accent' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleAddFileLinks(n.node.id);
+                        }}
+                        aria-label="链接文件"
+                      >
+                        <Link2 size={12} />
                       </button>
                     </Tooltip>
                   </>
@@ -2692,9 +2988,9 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                   </Tooltip>
                 )}
 
-                {/* 删除节点（根节点不可删除；多选时删除全部选中节点） */}
+                {/* 删除节点（根节点不可删除；多选时删除全部选中节点；概要主题即删除概要） */}
                 {!isRoot && (
-                  <Tooltip content={isMultiSelecting ? '删除选中节点' : '删除节点'} side="top" sideOffset={4}>
+                  <Tooltip content={isMultiSelecting ? '删除选中节点' : isSummaryTopic ? '删除概要' : '删除节点'} side="top" sideOffset={4}>
                     <button
                       type="button"
                       className="nb-mindmap-toolbar-btn is-danger"
@@ -2826,8 +3122,9 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
             position: 'absolute',
             left: 0,
             top: 0,
-            width: 8000,
-            height: 8000,
+            // 与底层连线共用最小 SVG 视口，实际线条继续通过 overflow 绘制和命中。
+            width: 1,
+            height: 1,
             pointerEvents: 'none',
             overflow: 'visible',
           }}
@@ -2970,9 +3267,11 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
 
         {/* 选中概要 / 外框：两端手柄，拖动扩大或缩小覆盖的节点 */}
         {selectedStructure && selectedStructure.kind !== 'relation' && !editingStructure && (() => {
+          // 拖动预览中可能已换挂到其他节点，按预览中的所属节点查找，避免手柄卸载打断拖动
+          const ownerId = rangePreview?.id === selectedStructure.id ? rangePreview.ownerId : selectedStructure.ownerId;
           const item = selectedStructure.kind === 'summary'
-            ? structures.summaries.find((s) => s.id === selectedStructure.id && s.ownerId === selectedStructure.ownerId)
-            : structures.boundaries.find((b) => b.id === selectedStructure.id && b.ownerId === selectedStructure.ownerId);
+            ? structures.summaries.find((s) => s.id === selectedStructure.id && s.ownerId === ownerId)
+            : structures.boundaries.find((b) => b.id === selectedStructure.id && b.ownerId === ownerId);
           if (!item) return null;
           const vertical = item.side === 'left' || item.side === 'right';
           return item.handles.map((point, idx) => (
@@ -2997,7 +3296,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
 
         {/* 选中结构元素的快捷工具栏：编辑文字 / 删除 */}
         {selectedStructure && !editingStructure && (() => {
-          const anchor = getStructureAnchor(selectedStructure);
+          const anchor = getStructureAnchor(rangePreview?.id === selectedStructure.id ? { ...selectedStructure, ownerId: rangePreview.ownerId } : selectedStructure);
           if (!anchor) return null;
           const editLabel = selectedStructure.kind === 'summary' ? '编辑概要' : selectedStructure.kind === 'boundary' ? '编辑外框标题' : '编辑联系线文字';
           return (
@@ -3232,9 +3531,27 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       )}
 
       {/* 图片放大预览：Portal 到 body，滚轮缩放图片而不是导图 */}
-      {previewImage && (
-        <MindmapImagePreview src={previewImage} onClose={() => setPreviewImage(null)} />
-      )}
+      {previewImage && (() => {
+        // 从最新的树取图片列表：预览中删除图片后序号自动收敛到有效范围
+        const target = findNodeById(root, previewImage.nodeId);
+        const list = target ? getNodeImages(target) : [];
+        if (list.length === 0) return null;
+        const index = Math.min(previewImage.index, list.length - 1);
+        return (
+          <ImagePreviewOverlay
+            src={list[index]}
+            index={index}
+            count={list.length}
+            onNavigate={(next) => setPreviewImage({ nodeId: previewImage.nodeId, index: next })}
+            onDelete={() => {
+              handleDeleteImage(previewImage.nodeId, index);
+              // 删完最后一张时关闭预览，否则停留在原位置（自动显示下一张）
+              if (list.length === 1) setPreviewImage(null);
+            }}
+            onClose={() => setPreviewImage(null)}
+          />
+        );
+      })()}
 
       {/* 选中标题文字后的格式悬浮菜单 */}
       {editingNodeId && formatSelection && (() => {
@@ -3260,7 +3577,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
             position={{ x: nodeStylePopover.x, y: nodeStylePopover.y }}
             textAlign={target.textAlign}
             imageFit={target.imageFit}
-            hasImage={Boolean(target.image)}
+            // 显示方式只作用于单图，多图固定为网格裁切
+            hasImage={target.images?.length === 1}
             defaultTextAlign={defaultTextAlign}
             defaultImageFit={defaultImageFit}
             onTextAlignChange={(value) => setNodeStyleField(getActionTargetIds(target.id), 'textAlign', value)}
@@ -3291,10 +3609,12 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       {/* 跟随光标的半透明悬浮拖拽预览卡片 (Drag Ghost Preview) */}
       {dragPreview && (
         <div
+          ref={dragPreviewElementRef}
+          className="nb-mindmap-drag-preview"
           style={{
             position: 'fixed',
-            left: dragPreview.x + 14,
-            top: dragPreview.y + 14,
+            left: 0,
+            top: 0,
             minWidth: 100,
             maxWidth: 280,
             padding: '7px 12px',
@@ -3303,14 +3623,14 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
             border: '1.5px solid var(--editor-accent, #3b82f6)',
             borderRadius: 8,
             boxShadow: '0 14px 30px rgba(0, 0, 0, 0.18), 0 4px 12px rgba(59, 130, 246, 0.25)',
-            backdropFilter: 'blur(8px)',
             pointerEvents: 'none',
             zIndex: 100001,
             display: 'flex',
             alignItems: 'center',
             gap: 6,
-            transform: 'scale(1.04)',
-            transition: 'transform 0.08s ease-out',
+            // 实色预览不需要背景模糊；只变换位置，避免移动中重排和重复采样背景。
+            transform: `translate3d(${dragPointRef.current.x + 14}px, ${dragPointRef.current.y + 14}px, 0) scale(1.04)`,
+            willChange: 'transform',
           }}
         >
           <GripVertical size={13} style={{ color: 'var(--editor-accent, #3b82f6)', flexShrink: 0, opacity: 0.8 }} />

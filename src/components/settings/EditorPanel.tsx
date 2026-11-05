@@ -3,6 +3,7 @@
 // 详见 docs/09-开发路线图.md 12.6
 
 import { useSettingsStore } from '../../stores/settingsStore';
+import { TabSizeSelect } from './TabSizeSelect';
 
 export function EditorPanel() {
   const settings = useSettingsStore((s) => s.settings);
@@ -89,16 +90,22 @@ export function EditorPanel() {
         />
       </div>
 
-      {/* Tab 大小 */}
+      {/* 列编辑模式：关闭时已进入的编辑器立即退出 */}
+      <div style={rowStyle}>
+        <span style={labelStyle}>列编辑模式</span>
+        <input
+          type="checkbox"
+          checked={settings.editor.enableColumnEdit !== false}
+          onChange={(e) => setEditor({ enableColumnEdit: e.target.checked })}
+        />
+      </div>
+
+      {/* Tab 宽度与设置中心共用选项，兼容旧配置中的自定义宽度。 */}
       <div style={rowStyle}>
         <span style={labelStyle}>Tab 大小</span>
-        <input
-          type="number"
-          min="1"
-          max="8"
+        <TabSizeSelect
           value={settings.editor.tabSize}
-          onChange={(e) => setEditor({ tabSize: parseInt(e.target.value, 10) || 2 })}
-          style={{ ...inputStyle, width: 60 }}
+          onChange={(tabSize) => setEditor({ tabSize })}
         />
       </div>
 

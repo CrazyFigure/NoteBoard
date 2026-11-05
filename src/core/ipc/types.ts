@@ -5,7 +5,7 @@
 // preview 为插件提供的二进制只读查看，禁止混入文本保存链路。
 export type DocumentKind = 'markdown' | 'code' | 'board' | 'image' | 'mindmap' | 'drawio' | 'bitable' | 'preview' | 'unsupported';
 // infographic：NoteBoard 自研信息图声明式源码（YAML/JSON），与 md 内嵌 ```infographic 块同源
-export type LanguageId = 'markdown' | 'sql' | 'json' | 'yaml' | 'xml' | 'mermaid' | 'plantuml' | 'infographic' | 'plaintext';
+export type LanguageId = 'markdown' | 'sql' | 'json' | 'yaml' | 'xml' | 'mermaid' | 'plantuml' | 'infographic' | 'html' | 'plaintext';
 export type SavePolicy = 'auto' | 'manual';
 export type ViewMode = 'visual' | 'source';
 export type Encoding = 'utf8' | 'utf8-bom' | 'gbk';
@@ -20,7 +20,7 @@ export type ContentWidth = 'narrow' | 'standard' | 'wide' | 'full' | (string & {
 export const ALL_DOCUMENT_KINDS: DocumentKind[] = ['markdown', 'code', 'board', 'image', 'mindmap', 'drawio', 'bitable', 'preview', 'unsupported'];
 export const ALL_ENCODINGS: Encoding[] = ['utf8', 'utf8-bom', 'gbk'];
 export const ALL_EOLS: Eol[] = ['crlf', 'lf'];
-export const ALL_LANGUAGE_IDS: LanguageId[] = ['markdown', 'sql', 'json', 'yaml', 'xml', 'mermaid', 'plantuml', 'infographic', 'plaintext'];
+export const ALL_LANGUAGE_IDS: LanguageId[] = ['markdown', 'sql', 'json', 'yaml', 'xml', 'mermaid', 'plantuml', 'infographic', 'html', 'plaintext'];
 export const ALL_THEME_IDS: ThemeId[] = ['chen-guang', 'hu-po', 'mo-ye'];
 
 // ── 文档载荷 ──
@@ -65,6 +65,8 @@ export interface FileTreeNode {
   mtime: number | null;
   isHidden: boolean;
   isSymlink: boolean;
+  /** 网页多用户：只读共享内的条目（原生端不返回） */
+  readonly?: boolean;
 }
 
 // ── 窗口意图 ──
@@ -100,6 +102,37 @@ export interface TransferredDocument {
   viewStateSnapshot?: unknown;
   /** 标签显示名（未命名文档的 key 不含可读名称，须随载荷传递；缺省按 key 推断） */
   displayName?: string | null;
+  /** 目标标签插入锚点；无锚点时追加。 */
+  insertBefore?: string | null;
+  /** 原生落点交由目标窗口自己换算 DPI 并确定插入位置。 */
+  dropPosition?: { x: number; y: number };
+  /** 保留真实路径、外部状态与工具类型，不能从 key 猜测工具路径。 */
+  tabMeta?: {
+    path: string | null;
+    externalStatus: 'clean' | 'modified' | 'deleted' | 'renamed' | null;
+    isDetached: boolean;
+    toolKind?: 'textdiff';
+  };
+  /** 纯前端工具的可序列化快照，只在内存迁移。 */
+  toolState?: unknown;
+}
+
+/** 系统拖放结果：目标坐标为目标 WebView 物理像素；新窗位置保留原生坐标语义。 */
+export interface TabDragResult {
+  cancelled: boolean;
+  target: { label: string; beforeKey: string | null; x: number; y: number } | null;
+  position: [number, number] | null;
+}
+
+/** 原生拖动的展示摘要；正文由迁移接口定向读取，不放入该广播。 */
+export interface NativeTabDragInfo { sourceLabel: string; key: string; displayName: string }
+
+/** 省略目标表示新建；原生拖出完成后才传递位置。 */
+export interface TabTransferTarget {
+  targetLabel?: string;
+  beforeKey?: string | null;
+  position?: [number, number] | null;
+  dropPosition?: { x: number; y: number };
 }
 
 // ── 打开请求队列（S04 C 节协议） ──
@@ -243,6 +276,8 @@ export interface Settings {
   file: FileSettings;
   layout: LayoutSettings;
   system: SystemSettings;
+  /** 本地文件搜索（旧设置文件与网页端可能缺失） */
+  localSearch?: LocalSearchSettings;
 }
 
 export interface AppearanceSettings {
@@ -306,8 +341,8 @@ export interface EditorSettings {
   showWhitespace: boolean;
   // 显示换行符号（↵）
   showLineEndings: boolean;
-  // Markdown 进入可视化模式时的格式规范化策略（缺省视为 ask）
-  markdownNormalization?: MarkdownNormalizationPolicy;
+  // 允许进入列编辑模式（缺省视为 true；关闭时已进入的编辑器立即退出）
+  enableColumnEdit?: boolean;
   // 可视化模式中代码块默认展开（缺省视为 true；仅影响显示，不写入文件）
   codeBlockDefaultExpanded?: boolean;
   // 可视化模式中折叠块 <details> 默认展开（缺省视为 false；源码带 open 属性时始终展开）
@@ -322,9 +357,6 @@ export interface EditorSettings {
   mindmapImageFit?: 'original' | 'fill';
 }
 
-/** Markdown 规范化策略：每次询问 / 总是规范化 / 保持源码模式 */
-export type MarkdownNormalizationPolicy = 'ask' | 'always' | 'never';
-
 export interface FileSettings {
   // 自动保存设置：Markdown / 画板 / 其他文本（默认均关闭，即手动保存）
   autoSaveMarkdown: boolean;
@@ -336,14 +368,28 @@ export interface FileSettings {
   autoSaveMindmap?: boolean;
   autoSaveDrawio?: boolean;
   autoSaveBitable?: boolean;
+  // 自动保存间隔（毫秒）：停止编辑多久后写盘；旧配置缺失时视为 1000
+  autoSaveDelayMs?: number;
   forceManualSave: boolean;
   showHiddenFiles: boolean;
   restoreSession: boolean;
+  // 重新打开 Markdown / 文本文件时恢复阅读位置；旧配置缺失时默认开启。
+  restoreReadingPosition?: boolean;
   imageDirName: string;
   largeFileConfirmMb: number;
   // 未保存文件的用户可见暂存目录（绝对路径）
   stagingDirectory: string;
+  // 资源管理器打开文件的方式（缺省视为 double 双击打开）
+  explorerOpenMode?: ExplorerOpenMode;
+  // 文档中本地 HTML 链接的打开方式（缺省视为 browser 系统默认浏览器；仅桌面端生效）
+  htmlOpenMode?: HtmlOpenMode;
 }
+
+/** 资源管理器打开文件的方式：双击 / 单击 */
+export type ExplorerOpenMode = 'double' | 'single';
+
+/** HTML 链接打开方式：系统默认浏览器 / 本软件分屏预览 */
+export type HtmlOpenMode = 'browser' | 'app';
 
 // ── 暂存 ──
 
@@ -392,9 +438,31 @@ export interface SessionSnapshot {
   windows: SessionWindowSnapshot[];
 }
 
+/** 新建格式入口布局（主页与「+」菜单共用）：各存格式 id 的有序列表 */
+export interface CreateFormatsLayout {
+  /** 直接展示 */
+  primary: string[];
+  /** 收进「更多」 */
+  more: string[];
+}
+
+/** 标题栏可选按钮是否展示（默认全部展示） */
+export interface TitleBarButtons {
+  /** 回到主界面 */
+  home: boolean;
+  /** 检查更新 */
+  checkUpdate: boolean;
+  /** 快捷切换主题 */
+  theme: boolean;
+  /** 极窄模式入口 */
+  compactMode: boolean;
+}
+
 export interface LayoutSettings {
   statusBarVisible: boolean;
   uiScale: number;
+  createFormats: CreateFormatsLayout;
+  titleBarButtons: TitleBarButtons;
 }
 
 /** 系统集成设置（仅桌面端生效） */
@@ -403,7 +471,76 @@ export interface SystemSettings {
   closeToTray: boolean;
   /** 全局唤起窗口快捷键（默认留空不注册），格式如 Ctrl+Alt+N */
   showWindowShortcut: string;
+  /** 更新渠道（默认 github）：同时决定安装包、字体包与插件的下载来源；旧设置文件可能缺失 */
+  updateChannel?: UpdateChannel;
 }
+
+/** 本地文件搜索设置（仅桌面端生效） */
+export interface LocalSearchSettings {
+  /** 总开关（默认关闭） */
+  enabled: boolean;
+  /** 索引位置：文件夹或整个磁盘的绝对路径（有序） */
+  roots: string[];
+}
+
+/** 高亮片段：命中部分 hit 为 true */
+export interface LocalSearchPart {
+  text: string;
+  hit: boolean;
+}
+
+/** 文件名搜索结果 */
+export interface LocalSearchNameHit {
+  path: string;
+  name: string;
+  nameParts: LocalSearchPart[];
+  /** 所在目录 */
+  dir: string;
+  isDir: boolean;
+  size: number;
+  /** 修改时间（Unix 毫秒） */
+  mtime: number;
+}
+
+export interface LocalSearchNameResult {
+  hits: LocalSearchNameHit[];
+  /** 命中总数（hits 只含前若干条） */
+  total: number;
+}
+
+/** 内容命中行 */
+export interface LocalSearchSnippet {
+  /** 行号（从 1 开始） */
+  line: number;
+  parts: LocalSearchPart[];
+}
+
+/** 内容搜索结果 */
+export interface LocalSearchContentHit {
+  path: string;
+  name: string;
+  dir: string;
+  size: number;
+  mtime: number;
+  snippets: LocalSearchSnippet[];
+  /** 命中次数（上限 999） */
+  matches: number;
+}
+
+export interface LocalSearchContentResult {
+  hits: LocalSearchContentHit[];
+  /** 结果因数量或时间上限被截断 */
+  truncated: boolean;
+}
+
+/** 可添加为索引位置的磁盘 */
+export interface LocalSearchDrive {
+  path: string;
+  label: string;
+}
+
+/** 发布渠道：GitHub 主仓库或腾讯云 CNB 镜像 */
+export type UpdateChannel = 'github' | 'cnb';
 
 // ── 事件载荷 ──
 
@@ -539,14 +676,23 @@ export interface PlatformInfo {
 // ── 多端同步与备份 ──
 
 /** 远端服务类型 */
-export type SyncProviderKind = 'webdav' | 's3' | 'github' | 'gitee' | 'gitcode' | 'gitlab';
+export type SyncProviderKind = 'webdav' | 's3' | 'oss' | 'zos' | 'oos' | 'obs' | 'cos' | 'github' | 'gitee' | 'gitcode' | 'gitlab';
+
+/** 对象存储入口独立保存配置，网络操作统一使用 S3 兼容接口。 */
+export type ObjectStorageKind = 's3' | 'oss' | 'zos' | 'oos' | 'obs' | 'cos';
+
+/** 自定义 HTTP 请求头；值可能包含网关令牌，按凭证保存。 */
+export interface HttpHeader {
+  name: string;
+  value: string;
+}
 
 export interface WebDavConfig {
   url: string;
   username: string;
   password: string;
-  /** 自定义 User-Agent，留空使用 NoteBoard/版本号 */
-  userAgent: string;
+  /** 自定义请求头；未设置 User-Agent 时沿用默认客户端标识。 */
+  headers: HttpHeader[];
   remoteDir: string;
 }
 
@@ -558,8 +704,10 @@ export interface S3Config {
   secretAccessKey: string;
   prefix: string;
   pathStyle: boolean;
-  /** 自定义 User-Agent，留空使用 NoteBoard/版本号 */
-  userAgent: string;
+  /** 直接使用已绑定存储桶的自定义域名，不再向地址中拼接桶名。 */
+  customDomain: boolean;
+  /** 自定义请求头；签名所需的 x-amz-* 由后端统一处理。 */
+  headers: HttpHeader[];
 }
 
 export interface GitRepoConfig {
@@ -577,6 +725,12 @@ export interface SyncProviderConfig {
   kind: SyncProviderKind;
   webdav: WebDavConfig;
   s3: S3Config;
+  /** 各厂商独立保留端点、桶和凭证，切换入口时不会覆盖其他服务。 */
+  oss: S3Config;
+  zos: S3Config;
+  oos: S3Config;
+  obs: S3Config;
+  cos: S3Config;
   github: GitRepoConfig;
   gitee: GitRepoConfig;
   gitcode: GitRepoConfig;

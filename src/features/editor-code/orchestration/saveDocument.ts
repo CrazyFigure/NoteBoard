@@ -16,6 +16,7 @@ import { onDocumentSaved } from '../../staging/stagingManager';
 import { showToast } from '../../../stores/toastStore';
 import { noteSelfWrite } from '../../explorer/directoryWatcher';
 import { dirnameOf, pathKey } from '../../explorer/pathUtils';
+import { extractSourceHeadings } from '../../outline/sourceHeadings';
 // 🔴 R01/N02：保存未加载的恢复标签前先按需加载正文；正文出口统一前置屏障
 import { ensureWritableContent } from '../../session/closedWindowSession';
 // 🔴 R3-02：无能力实例时保存前的 pending 物化（J2 未物化输入是正文权威）
@@ -65,6 +66,36 @@ export function takeLastSaveIdentityMove(): { from: string; to: string } | null 
 /** 规范化路径身份比较（Windows 大小写不敏感，Android 等 POSIX 平台大小写敏感） */
 function samePathIdentity(a: string, b: string): boolean {
   return pathKey(a) === pathKey(b);
+}
+
+/** 仅从文首一级标题生成跨端可用的建议文件名；没有有效标题时保留原命名规则。 */
+function markdownSaveAsName(content: string): string | null {
+  // 只读取前两行，复用大纲对 ATX / Setext 与行内标记的识别，不扫描大文档正文。
+  const lines = content.split('\n', 2);
+  lines[0] = lines[0].replace(/^\uFEFF/, '');
+  // 只有闭合井号的 ATX 行没有标题文字，不能建议为「###.md」。
+  if (/^ {0,3}#[ \t]+#+[ \t]*$/.test(lines[0])) return null;
+  const heading = extractSourceHeadings(lines)[0];
+  if (heading?.pos !== 0 || heading.level !== 1) return null;
+
+  // 建议名称需同时适用于 Windows、移动端及网页服务器，不能把标题中的斜杠当作目录。
+  const safeTitle = Array.from(heading.text, (character) =>
+    character.charCodeAt(0) < 32 || /[\\/:*?"<>|]/.test(character) ? '_' : character,
+  ).join('').trim();
+  // 为扩展名留出空间；按 UTF-8 字节截断并保持完整字符，兼容各端文件名长度限制。
+  const encoder = new TextEncoder();
+  let byteLength = 0;
+  let baseName = '';
+  for (const character of safeTitle) {
+    byteLength += encoder.encode(character).length;
+    if (byteLength > 240) break;
+    baseName += character;
+  }
+  baseName = baseName.replace(/[. ]+$/, '');
+  if (!baseName) return null;
+  // Windows 设备保留名即使带扩展名也不能落盘，统一添加下划线避免跨端同步失败。
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(baseName)) baseName = `_${baseName}`;
+  return /\.(md|markdown)$/i.test(baseName) ? baseName : `${baseName}.md`;
 }
 
 export async function saveDocument(docKey: string): Promise<boolean> {
@@ -122,6 +153,12 @@ export async function saveDocument(docKey: string): Promise<boolean> {
     return saveAs(updatedDoc.key, authoritativeContent);
   }
 
+  // 磁盘冲突由应用级弹窗处理；手动保存和移动端退后台保存都不得覆盖外部版本。
+  if (updatedDoc.externalStatus === 'modified') {
+    showToast('文件在磁盘上已更改，请先重新加载或另存为', 'warning');
+    return false;
+  }
+
   // 没有路径 → 另存为
   if (!updatedDoc.key || updatedDoc.key.startsWith('untitled:')) {
     return saveAs(updatedDoc.key, authoritativeContent);
@@ -164,11 +201,15 @@ export async function saveAs(originalKey: string, _content: string): Promise<boo
     return false;
   }
   // 另存为可能由“原文件已删除”提示触发，先抓取编辑器权威内容（统一屏障），避免写入防抖前的旧镜像。
-  await flushDocument(originalKey, 'save');
+  const namingSnapshot = await flushDocument(originalKey, 'save');
   // 🔴 R3-04：flush await 后会话身份校验
   if (getSessionGeneration(originalKey) !== originalGeneration) {
     showToast('文档已发生变更，另存为已取消', 'warning');
     return false;
+  }
+  // 源码首开等尚无编辑器能力的窗口期，也要先物化最新输入再为 Markdown 建议名称。
+  if (namingSnapshot === null && useDocumentStore.getState().getDocument(originalKey)?.kind === 'markdown') {
+    if (flushPendingSourceSnapshot(originalKey) === null) flushPendingVisualSnapshot(originalKey);
   }
   const doc = useDocumentStore.getState().getDocument(originalKey);
 
@@ -222,6 +263,12 @@ export async function saveAs(originalKey: string, _content: string): Promise<boo
       { name: '信息图源码 (*.infographic)', extensions: ['infographic', 'ig'] },
       { name: '全部文件 (*.*)', extensions: ['*'] },
     ];
+  } else if (doc?.language === 'html') {
+    defaultExtension = 'html';
+    filters = [
+      { name: 'HTML 网页 (*.html)', extensions: ['html', 'htm'] },
+      { name: '全部文件 (*.*)', extensions: ['*'] },
+    ];
   } else if (doc?.language === 'plantuml' || originalKey.includes('plantuml')) {
     defaultExtension = 'puml';
     filters = [
@@ -254,7 +301,11 @@ export async function saveAs(originalKey: string, _content: string): Promise<boo
     ];
   }
 
-  const defaultPath = doc?.displayName || `未命名.${defaultExtension}`;
+  // 三端共用此处的建议名称，仍由各端原有保存窗口供用户修改并确认。
+  const titleName = doc?.kind === 'markdown'
+    ? markdownSaveAsName(namingSnapshot?.content ?? doc?.content ?? '')
+    : null;
+  const defaultPath = titleName || doc?.displayName || `未命名.${defaultExtension}`;
 
   try {
     // 移动端由应用内命名对话框决定目标路径（系统保存对话框返回 content:// 无法按路径写盘）
@@ -276,6 +327,11 @@ export async function saveAs(originalKey: string, _content: string): Promise<boo
     // 🔴 N03：目标等于原路径（规范化身份比较）→ 普通保存语义，
     //    避免重复标签与历史串线
     if (!originalKey.startsWith('untitled:') && samePathIdentity(selectedPath, originalKey)) {
+      // 冲突时“另存为”必须保留两份内容，不能选回原路径悄悄覆盖外部版本。
+      if (useDocumentStore.getState().getDocument(originalKey)?.externalStatus === 'modified') {
+        showToast('请选择新的文件名或位置，原文件包含外部修改', 'warning');
+        return false;
+      }
       return saveDocument(originalKey);
     }
 

@@ -2,17 +2,31 @@
 // NoteBoard 大纲面板
 // 24px 行、缩进 min(level-1,5)*12+8、字号阶梯、当前项高亮
 // 搜索过滤、h2/h3 折叠、双击就地重命名
+// 顶部可切换到「反链」：列出链接到当前文档的其它笔记
 // 详见 docs/09-开发路线图.md 9.2-9.10
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import { ChevronRight } from 'lucide-react';
 import type { Editor } from '@tiptap/core';
 import { Tooltip } from '../../components/Tooltip';
+import { useWindowStore } from '../../stores/windowStore';
 import { useHeadings, type HeadingItem } from './useHeadings';
+import { jumpToSourceHeading, renameSourceHeading, useMdSourceView, useSourceHeadings } from './useSourceHeadings';
+import type { SourceHeadingItem } from './sourceHeadings';
 
 interface OutlinePanelProps {
   editor: Editor | null;
+  /** 当前文档：源码模式（含不挂载可视化内核的大文档）据此从源码视图提取大纲 */
+  docKey?: string | null;
 }
+
+// 反向链接面板按需加载：大纲随首屏装载，扫描笔记的代码只在切到「反向链接」时下载
+const BacklinksPanel = lazy(() => import('../wikilink/BacklinksPanel').then((module) => ({ default: module.BacklinksPanel })));
+
+type OutlineTab = 'outline' | 'backlinks';
+
+/** 本次运行中最后选择的分页：切换文档、收起再展开时保持 */
+let lastOutlineTab: OutlineTab = 'outline';
 
 /** 字号阶梯 */
 function getFontSize(level: number): number {
@@ -25,8 +39,19 @@ function getIndent(level: number): number {
   return Math.min(level - 1, 5) * 12 + 8;
 }
 
-export function OutlinePanel({ editor }: OutlinePanelProps) {
-  const { headings, activeId, setActiveId } = useHeadings(editor);
+export function OutlinePanel({ editor, docKey = null }: OutlinePanelProps) {
+  const viewMode = useWindowStore((s) => (docKey ? s.tabs.find((t) => t.key === docKey)?.viewMode : undefined));
+  const sourceView = useMdSourceView(docKey);
+  // 源码模式，或可视化内核尚未挂载（源码首开、大文档）时，以源码为大纲数据源
+  const sourceMode = Boolean(sourceView) && (viewMode === 'source' || !editor);
+  const visualOutline = useHeadings(sourceMode ? null : editor);
+  const sourceOutline = useSourceHeadings(sourceMode ? sourceView : null);
+  const { headings, activeId, setActiveId } = sourceMode ? sourceOutline : visualOutline;
+  const [tab, setTabState] = useState<OutlineTab>(lastOutlineTab);
+  const setTab = useCallback((next: OutlineTab) => {
+    lastOutlineTab = next;
+    setTabState(next);
+  }, []);
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -93,6 +118,11 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
   // 点击跳转
   const handleHeadingClick = useCallback(
     (heading: HeadingItem) => {
+      if (sourceMode && sourceView) {
+        jumpToSourceHeading(sourceView, heading as SourceHeadingItem);
+        setActiveId(heading.id);
+        return;
+      }
       if (!editor) return;
       const { pos } = heading;
       const docSize = editor.state.doc.content.size;
@@ -117,7 +147,7 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
 
       setActiveId(heading.id);
     },
-    [editor, setActiveId],
+    [editor, setActiveId, sourceMode, sourceView],
   );
 
   // 双击编辑
@@ -132,6 +162,11 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
   // 提交重命名
   const handleRename = useCallback(
     (heading: HeadingItem) => {
+      if (sourceMode && sourceView) {
+        if (editValue.trim()) renameSourceHeading(sourceView, heading as SourceHeadingItem, editValue);
+        setEditingId(null);
+        return;
+      }
       if (!editor || !editValue.trim()) {
         setEditingId(null);
         return;
@@ -153,7 +188,7 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
 
       setEditingId(null);
     },
-    [editor, editValue],
+    [editor, editValue, sourceMode, sourceView],
   );
 
   // 大纲面板自身跟随当前项滚动
@@ -181,7 +216,7 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--outline-bg)' }}>
-      {/* 大纲标题栏 */}
+      {/* 大纲标题栏仅保留页签，不展示条目数量。 */}
       <div
         style={{
           height: 28,
@@ -193,16 +228,38 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--editor-text)' }}>
-          文档大纲
-        </span>
-        <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>
-          {headings.length} 项
-        </span>
+        <div className="nb-outline-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'outline'}
+            className={`nb-outline-tab${tab === 'outline' ? ' is-active' : ''}`}
+            data-sheet-keep=""
+            onClick={() => setTab('outline')}
+          >
+            文档大纲
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'backlinks'}
+            className={`nb-outline-tab${tab === 'backlinks' ? ' is-active' : ''}`}
+            data-sheet-keep=""
+            onClick={() => setTab('backlinks')}
+          >
+            反向链接
+          </button>
+        </div>
       </div>
 
+      {tab === 'backlinks' && (
+        <Suspense fallback={null}>
+          <BacklinksPanel />
+        </Suspense>
+      )}
+
       {/* 搜索框 */}
-      {headings.length > 0 && (
+      {tab === 'outline' && headings.length > 0 && (
         <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--editor-border)', flexShrink: 0 }}>
           <input
             type="text"
@@ -225,7 +282,7 @@ export function OutlinePanel({ editor }: OutlinePanelProps) {
       )}
 
       {/* 标题列表 */}
-      {headings.length === 0 ? (
+      {tab !== 'outline' ? null : headings.length === 0 ? (
         <div
           style={{
             padding: '24px 16px',

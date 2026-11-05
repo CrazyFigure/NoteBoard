@@ -43,6 +43,9 @@ export const LANGUAGE_BY_EXT: Record<string, LanguageId> = {
   // 信息图为声明式 YAML/JSON 源码，需专属 language 以走分屏预览编辑器
   infographic: 'infographic',
   ig: 'infographic',
+  // 网页文件走源码 + 预览分屏编辑器
+  html: 'html',
+  htm: 'html',
 };
 
 /** 从路径提取扩展名（小写，无点） */

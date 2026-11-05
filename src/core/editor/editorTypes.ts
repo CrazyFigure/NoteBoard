@@ -78,6 +78,9 @@ export interface CodeOpsCapabilities {
   validateJson(scope?: 'all' | 'selection'): void;
   transformCase(mode: 'upper' | 'lower' | 'title'): void;
   formatXml(scope?: 'all' | 'selection'): void;
+  /** 切换列编辑模式（仅 code 编辑器提供，Markdown 工具栏不展示此入口） */
+  toggleColumnEdit?(): void;
+  isColumnEditActive?(): boolean;
 }
 
 /**
@@ -96,6 +99,8 @@ export interface EditorCapabilities {
    * 实例已无法产出权威内容时返回 null，由调用方保留镜像或中止操作。
    */
   flush(reason: FlushReason): Promise<CapturedContent | null>;
+  /** 无统一历史适配器的编辑器显式接收磁盘正文；未就绪时拒绝，避免只更新镜像。 */
+  replaceContent?(content: string): boolean;
   focus(): void;
   getSelectedText(): string;
   /** 是否可安全回收渲染实例（S11 起逐类型验证接入；未验证类型必须返回 false） */

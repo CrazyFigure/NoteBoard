@@ -3,6 +3,7 @@
 // 详见 docs/07-UI布局与交互规范.md §1
 
 import { useEffect, useRef } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import type { PanelSize } from 'react-resizable-panels';
 import { TitleBar } from './titlebar/TitleBar';
@@ -10,9 +11,12 @@ import { StatusBar } from './statusbar/StatusBar';
 import { WelcomeScreen } from './WelcomeScreen';
 import { ToastContainer } from './Toast';
 import { PromptDialogHost } from './PromptDialogHost';
+import { ExportResultDialogHost } from './ExportResultDialogHost';
+import { WikiLinkDialogHost } from '../features/wikilink/WikiLinkDialogHost';
 import { RailToggle } from './rail/RailToggle';
 import { FileDropOverlay } from './FileDropOverlay';
 import { EditorStack } from './shell/EditorStack';
+import { CompactModeNotice } from './shell/CompactModeNotice';
 import { useCloseGuardHandlers, useMarkdownEditorRegistry, useRestoredTabLoader } from './shell/shellHooks';
 import { useWindowStore } from '../stores/windowStore';
 import {
@@ -28,6 +32,7 @@ import { UnsavedGuardDialog } from '../features/editor-code/UnsavedGuardDialog';
 import { Explorer } from '../features/explorer/Explorer';
 import { SearchReplaceBar } from '../features/search/SearchReplaceBar';
 import { EditorToolbar } from '../features/toolbar/EditorToolbar';
+import { useSharedReadonly } from '../features/account/sharedReadonly';
 import { useSearchStore } from '../stores/searchStore';
 // 🔴 S03：快捷键与工具栏统一走 core 能力注册表，不再从编辑器组件导入实例 getter
 import { getEditorCapabilities } from '../core/editor/editorRegistry';
@@ -54,8 +59,11 @@ import {
 } from '../features/welcome/welcomeActions';
 import { useFavoritesStore } from '../features/favorites/favoritesStore';
 import { MissingFileDialog } from '../features/external/MissingFileDialog';
+import { ExternalChangeDialog } from '../features/external/ExternalChangeDialog';
 import { checkActiveDocumentStillExists } from '../features/external/missingFileGuard';
-import { isDocumentReading, requestReadingMode, supportsReadingMode } from '../features/reading/readingMode';
+import { isDocumentReading, requestReadingMode, supportsReadingMode, useWindowFullscreen } from '../features/reading/readingMode';
+import { USES_MAC_TRAFFIC_LIGHTS } from '../core/platform';
+import { setTrafficLightsHidden } from '../core/ipc/commands';
 // 历史记录：挂载点只订阅开关，查看界面按需懒加载
 import { HistoryHost } from '../features/versionHistory/HistoryHost';
 import { openVersionHistory, useVersionHistoryStore } from '../features/versionHistory/versionHistoryStore';
@@ -90,6 +98,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
   const activeKey = useWindowStore((s) => s.activeKey);
   // 🔴 迁移保护中的文档：阻断编辑输入（pointerEvents），避免迁移期间新修改无法同步到目标
   const transferringKeys = useWindowStore((s) => s.transferringKeys);
+  // 菜单计数、拖入高亮等局部状态不能使整组保活编辑器和侧栏跟着重绘。
   const {
     explorerVisible,
     explorerWidth,
@@ -98,9 +107,15 @@ export function AppShell(_props: { children?: React.ReactNode }) {
     statusBarVisible,
     boardPresentationMode,
     readingMode,
+    compactMode,
     toggleExplorer,
     toggleOutline,
-  } = useLayoutStore();
+  } = useLayoutStore(useShallow((s) => ({
+    explorerVisible: s.explorerVisible, explorerWidth: s.explorerWidth,
+    outlineVisible: s.outlineVisible, outlineWidth: s.outlineWidth, statusBarVisible: s.statusBarVisible,
+    boardPresentationMode: s.boardPresentationMode, readingMode: s.readingMode, compactMode: s.compactMode,
+    toggleExplorer: s.toggleExplorer, toggleOutline: s.toggleOutline,
+  })));
 
   // Markdown 内核登记（大纲数据源）：桌面/移动外壳共用
   const { activeEditor, getMarkdownEditorReadyHandler } = useMarkdownEditorRegistry(tabs, activeKey);
@@ -125,11 +140,30 @@ export function AppShell(_props: { children?: React.ReactNode }) {
   // 沉浸阅读同样接管外壳：隐藏标题栏、侧栏、操作栏与状态栏
   const isReadingMode = readingMode && supportsReadingMode(activeTab);
   const isShellHidden = isBoardPresentationMode || isReadingMode;
+  // 网页只读共享：隐藏格式操作栏，避免通过工具栏命令改动无法保存的正文
+  const sharedReadonlyActive = useSharedReadonly(activeTab?.key ?? '');
+  // 极窄模式只保留编辑区：侧栏与大纲按渲染条件隐藏，不改写各自的可见性记忆
+  const showSidePanels = !isShellHidden && !compactMode;
+
+  // 极窄模式标记写到根节点：各格式自带工具栏经全局样式统一切换为图标按钮、自动换行
+  useEffect(() => {
+    const root = document.documentElement;
+    if (compactMode) root.dataset.compact = 'true';
+    else delete root.dataset.compact;
+  }, [compactMode]);
 
   // 切换或关闭标签时退出沉浸阅读，避免窗口停留在全屏且外壳不可见
   useEffect(() => {
     if (useLayoutStore.getState().readingMode) requestReadingMode(false);
   }, [activeKey]);
+
+  // macOS 红绿灯叠加在页面上：窗口大小的阅读没有系统全屏代为隐藏，由这里隐藏；
+  // 挂载时也同步一次，页面进程重载后不会残留隐藏状态；全屏切换后重新应用，防止系统恢复按钮
+  const readingFullscreen = useWindowFullscreen(isReadingMode && USES_MAC_TRAFFIC_LIGHTS);
+  useEffect(() => {
+    if (!USES_MAC_TRAFFIC_LIGHTS) return;
+    void setTrafficLightsHidden(isReadingMode).catch((error) => console.warn('切换红绿灯显示失败:', error));
+  }, [isReadingMode, readingFullscreen]);
 
   // 历史记录查看属于当前文档：切换或关闭标签时退出
   useEffect(() => {
@@ -379,7 +413,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
           }}
         >
           {/* 资源管理器 */}
-          {!isShellHidden && explorerVisible && (
+          {showSidePanels && explorerVisible && (
             <>
               <Panel
                 id="nb-explorer"
@@ -425,7 +459,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
               }}
             >
               {/* 左折叠把手 */}
-              {!isShellHidden && (
+              {showSidePanels && (
                 <RailToggle
                   side="left"
                   visible={explorerVisible}
@@ -445,12 +479,15 @@ export function AppShell(_props: { children?: React.ReactNode }) {
                 }}
               >
                 {/* 顶部操作栏（针对 Markdown 与代码/纯文本格式，支持多级菜单与收起/悬浮恢复） */}
-                {!isShellHidden && tabs.length > 0 && activeTab && (
+                {!isShellHidden && tabs.length > 0 && activeTab && !sharedReadonlyActive && (
                   <EditorToolbar
                     activeTab={activeTab}
                     activeEditor={activeEditor}
                   />
                 )}
+
+                {/* 极窄模式下适配受限的格式给出提示 */}
+                {compactMode && !isShellHidden && activeTab && <CompactModeNotice tab={activeTab} />}
 
                 {/* 🔴 N08：Home 与编辑器容器并存——显示 Home（无活动标签）不销毁 */}
                 {/* 已打开文档的会话/实例；不可回收类型（Markdown/Board 等）的实例保持挂载。 */}
@@ -485,7 +522,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
                 />
 
                 {/* 右折叠把手（仅 Markdown） */}
-                {!isShellHidden && tabs.length > 0 && (
+                {showSidePanels && tabs.length > 0 && (
                   <RailToggle
                     side="right"
                     visible={outlineVisible}
@@ -502,7 +539,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
           </Panel>
 
           {/* 大纲 */}
-          {!isShellHidden && outlineVisible && showOutline && (
+          {showSidePanels && outlineVisible && showOutline && (
             <>
               <ResizeHandle />
               <Panel
@@ -519,7 +556,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
                   overflow: 'hidden',
                 }}
               >
-                <OutlinePanel editor={activeEditor} />
+                <OutlinePanel editor={activeEditor} docKey={activeKey} />
               </Panel>
             </>
           )}
@@ -539,12 +576,19 @@ export function AppShell(_props: { children?: React.ReactNode }) {
 
       {/* 仅处理应用运行期间原文件被删除的活动标签；重启恢复缺失文件会直接跳过。 */}
       <MissingFileDialog />
+      <ExternalChangeDialog />
 
       {/* 全局 Toast 提示 */}
       <ToastContainer />
 
       {/* 全局输入弹窗（替代原生 prompt） */}
       <PromptDialogHost />
+
+      {/* 全局导出结果弹窗 */}
+      <ExportResultDialogHost />
+
+      {/* 双向链接插入 / 编辑弹窗 */}
+      <WikiLinkDialogHost />
 
       {/* 全局文件拖拽释放提示 */}
       {!isShellHidden && <FileDropOverlay />}

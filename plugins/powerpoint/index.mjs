@@ -7,7 +7,8 @@ import { normalizePowerPointGroups } from './groupGeometry.mjs';
 
 export async function mount({ container, name, bytes, signal, notify, reading }) {
   // 先归一组合的几何坐标，避免 SVG 组合缩放再次放大字号，导致文字超出图形。
-  const presentation = await parse(/\.pptx$/i.test(name)?await cleanOpenXml(bytes,normalizePowerPointGroups):bytes);
+  // 512 MiB 演示文稿允许较多媒体；正文 XML 仍有独立限制，幻灯片保持引擎默认的按页解析。
+  const presentation = await parse(/\.pptx$/i.test(name)?await cleanOpenXml(bytes,normalizePowerPointGroups,{maxBytes:768*1024*1024,signal,pruneMedia:true}):bytes);
   if (signal.aborted) { presentation.dispose?.(); return; }
   const view = createView(container, name, reading);
   view.style.textContent += `.np-slides{display:flex;height:100%;min-height:0}
@@ -43,15 +44,17 @@ export async function mount({ container, name, bytes, signal, notify, reading })
   const zoomer=zoomControl({min:.5,max:4,step:.1,target:stage,get:()=>relative,set:(z,anchor)=>{relative=Math.abs(z-1)<.001?1:z;applyZoom(anchor);}});
   const outline=button('文字',()=>{const on=textPanel.hidden;textPanel.hidden=!on;canvas.hidden=on;outline.setAttribute('aria-pressed',String(on));},{icon:'text',tip:'只看本页文字'});outline.setAttribute('aria-pressed','false');
   view.toolbar.append(pageControl.element,separator(),zoomer.element,separator(),outline,button('复制本页',()=>void copyText(viewer.text(viewer.index),notify),{icon:'copy',tip:'复制本页文字'}));
-  const controls=[],urls=[];let destroyed=false,queue=Promise.resolve();
+  const controls=[],urls=new Map(),visibleThumbs=new Set(),pendingThumbs=new Set();let destroyed=false,queue=Promise.resolve();
   function update(){
     pageControl.set(viewer.index+1,viewer.count);textPanel.textContent=viewer.text(viewer.index)||'本页没有文字';
     controls.forEach((b,i)=>b.setAttribute('aria-current',String(i===viewer.index)));controls[viewer.index]?.scrollIntoView({block:'nearest'});
     applyFontFallback(canvas);zoomer.update();
   }
-  // 缩略图在进入侧栏可视区域时才逐张生成，避免大文件一次栅格化全部页面。
-  const thumbObserver=new IntersectionObserver((entries)=>{for(const entry of entries){if(!entry.isIntersecting)continue;thumbObserver.unobserve(entry.target);const index=Number(entry.target.dataset.index),frame=entry.target.querySelector('div');
-    queue=queue.then(async()=>{if(destroyed)return;try{const blob=await viewer.exportPng(.3,index);if(destroyed)return;const url=URL.createObjectURL(blob);urls.push(url);const img=el('img');img.alt='';img.src=url;frame.replaceChildren(img);}catch{/* 缩略图失败时保留空白框，不影响主视图 */}});
+  // 缩略图只保留侧栏附近的页面；离屏即释放，排队任务也会跳过已经离屏的页面。
+  const thumbObserver=new IntersectionObserver((entries)=>{for(const entry of entries){const index=Number(entry.target.dataset.index),frame=entry.target.querySelector('div');
+    if(!entry.isIntersecting){visibleThumbs.delete(index);if(urls.has(index)){URL.revokeObjectURL(urls.get(index));urls.delete(index);frame.replaceChildren();}continue;}
+    visibleThumbs.add(index);if(urls.has(index)||pendingThumbs.has(index))continue;pendingThumbs.add(index);
+    queue=queue.then(async()=>{try{if(destroyed||signal.aborted||!visibleThumbs.has(index))return;const blob=await viewer.exportPng(.3,index);if(destroyed||signal.aborted||!visibleThumbs.has(index))return;const url=URL.createObjectURL(blob);urls.set(index,url);const img=el('img');img.alt='';img.src=url;frame.replaceChildren(img);}catch{/* 缩略图失败时保留空白框，不影响主视图 */}finally{pendingThumbs.delete(index);}});
   }},{root:thumbs,rootMargin:'200px 0px'});
   for(let i=0;i<viewer.count;i++){const b=button('',()=>{viewer.goTo(i);stage.focus({preventScroll:true});},{className:'np-thumb'});b.dataset.index=String(i);b.setAttribute('aria-label',`第 ${i+1} 页`);b.append(el('span','',i+1),el('div'));controls.push(b);thumbs.append(b);thumbObserver.observe(b);}
   // 方向键与翻页键切换幻灯片；输入框内的按键不拦截。

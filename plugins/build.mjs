@@ -68,8 +68,8 @@ for(const item of metadata) {
       licenses+='\n'+await notices([...Object.keys(dxfWorker.metafile.inputs),'node_modules/@flyfish-dev/cad-viewer/package.json']);
       licenses+='\nLibreDWG / @mlightcad/libredwg-web 0.7.9 · GPL-3.0-only\n源码：https://github.com/mlightcad/libredwg-web\n'+await fs.readFile(path.join(root,'../licenses/GPL-3.0.txt'),'utf8');
     }
-    if(item.id==='pdf')for(const dir of ['cmaps','standard_fonts'])for(const name of await fs.readdir(path.join(root,'node_modules/pdfjs-dist',dir)))if(/license/i.test(name))licenses+=`\nPDF ${dir}/${name}\n${await fs.readFile(path.join(root,'node_modules/pdfjs-dist',dir,name),'utf8')}`;
-    const manifest={...item,apiVersion:1,minAppVersion:'0.5.8',codeSha256:createHash('sha256').update(code).digest('hex'),licenses};
+    if(['pdf','notability','goodnotes'].includes(item.id))for(const dir of ['cmaps','standard_fonts'])for(const name of await fs.readdir(path.join(root,'node_modules/pdfjs-dist',dir)))if(/license/i.test(name))licenses+=`\nPDF ${dir}/${name}\n${await fs.readFile(path.join(root,'node_modules/pdfjs-dist',dir,name),'utf8')}`;
+    const manifest={...item,apiVersion:1,minAppVersion:item.minAppVersion??'0.5.8',codeSha256:createHash('sha256').update(code).digest('hex'),licenses};
     await fs.writeFile(path.join(out,name),JSON.stringify({manifest,code}));
     process.stdout.write(`${item.id} v${item.version} · ${Math.round(Buffer.byteLength(code)/1024)} KiB\n`);
   }

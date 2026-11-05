@@ -7,6 +7,7 @@ import {
   Archive,
   Braces,
   ChartColumn,
+  ChevronDown,
   ChevronRight,
   FolderSync,
   Database,
@@ -31,12 +32,14 @@ import {
   StarOff,
   Table2,
   Trash2,
+  Users,
   Workflow,
   X,
 } from 'lucide-react';
 import type { FileTreeNode, FavoriteNode } from '../core/ipc/types';
 import * as ipc from '../core/ipc/commands';
 import { IS_WEB } from '../core/platform';
+import { isMultiUser } from '../features/account/accountState';
 import { getExplorerFileIcon } from '../features/explorer/fileIcons';
 import { basenameOf, isSubPath, pathKey, PATH_SEP } from '../features/explorer/pathUtils';
 import { useFavoritesStore } from '../features/favorites/favoritesStore';
@@ -84,31 +87,36 @@ import {
 } from './mobileFiles';
 import { useMobileStore, type HomeSection } from './mobileStore';
 import { SwipePager } from './SwipePager';
+import type { CreateFormatId } from '../features/welcome/createFormats';
+import { useCreateFormats } from '../features/welcome/useCreateFormats';
 
 // ── 新建类型 ──
 
 interface CreateItem {
-  key: string;
+  key: CreateFormatId;
   label: string;
   desc: string;
   icon: ReactNode;
   run: () => void;
 }
 
+// 卡片文案与图标为移动端精简版；顺序与「直接展示 / 收进更多」分组由设置「全局 → 新建入口」决定
 const CREATE_ITEMS: CreateItem[] = [
-  { key: 'md', label: 'Markdown 笔记', desc: '富文本与源码双模', icon: <FilePlus size={22} color="var(--editor-accent, #3b82f6)" />, run: newMarkdown },
-  { key: 'txt', label: '文本文档', desc: '轻量纯文本', icon: <FileText size={22} color="#64748b" />, run: newText },
-  { key: 'board', label: '自由画板', desc: 'Excalidraw 手绘', icon: <PencilRuler size={22} color="var(--accent-strong, #8b5cf6)" />, run: newBoard },
+  { key: 'markdown', label: 'Markdown笔记', desc: '富文本与源码双模', icon: <FilePlus size={22} color="var(--editor-accent, #3b82f6)" />, run: newMarkdown },
+  { key: 'text', label: '文本文档', desc: '轻量纯文本', icon: <FileText size={22} color="#64748b" />, run: newText },
+  { key: 'board', label: '手绘风白板', desc: 'Excalidraw 手绘', icon: <PencilRuler size={22} color="var(--accent-strong, #8b5cf6)" />, run: newBoard },
   { key: 'mindmap', label: '思维导图', desc: '大纲 ⇄ 脑图', icon: <Network size={22} color="#f97316" />, run: newMindmap },
   { key: 'bitable', label: '多维表格', desc: '表格 / 看板 / 甘特', icon: <Table2 size={22} color="#2563eb" />, run: newBitable },
-  { key: 'drawio', label: 'Draw.io', desc: '架构与流程图（需联网）', icon: <Layout size={22} color="#ea580c" />, run: newDrawio },
+  { key: 'drawio', label: '架构图', desc: '架构与流程图（需联网）', icon: <Layout size={22} color="#ea580c" />, run: newDrawio },
   { key: 'mermaid', label: 'Mermaid', desc: '时序 / 流程图脚本', icon: <Workflow size={22} color="#00bfb2" />, run: newMermaid },
   { key: 'plantuml', label: 'PlantUML', desc: 'UML 建模（需联网）', icon: <GitMerge size={22} color="#a855f7" />, run: newPlantUml },
   { key: 'infographic', label: '信息图', desc: '看板 / 时间线', icon: <ChartColumn size={22} color="#14b8a6" />, run: newInfographic },
   { key: 'json', label: 'JSON', desc: '数据与配置', icon: <Braces size={22} color="#eab308" />, run: newJson },
   { key: 'sql', label: 'SQL', desc: '数据库脚本', icon: <Database size={22} color="#3b82f6" />, run: newSql },
-  { key: 'diff', label: '文本对比', desc: '左右比对差异', icon: <GitCompare size={22} color="#10b981" />, run: newTextDiff },
+  { key: 'textdiff', label: '文本对比', desc: '左右比对差异', icon: <GitCompare size={22} color="#10b981" />, run: newTextDiff },
 ];
+
+const CREATE_ITEM_MAP = new Map(CREATE_ITEMS.map((item) => [item.key, item]));
 
 // ── 工具函数 ──
 
@@ -190,7 +198,7 @@ function Breadcrumb() {
 
   // 由根目录逐级拼出到当前文件夹的路径段
   const segments = useMemo(() => {
-    const rootLabel = location === 'device' ? '手机存储' : '我的笔记';
+    const rootLabel = location === 'device' ? '手机存储' : location === 'shared' ? '共享给我' : '我的笔记';
     const result: Array<{ label: string; path: string }> = [{ label: rootLabel, path: locationRoot }];
     if (!currentFolder || !locationRoot || !isSubPath(locationRoot, currentFolder)) return result;
     const relative = currentFolder.slice(locationRoot.length).split(/[/\\]/).filter(Boolean);
@@ -270,6 +278,16 @@ function FilesSection({ onEntryMenu }: { onEntryMenu: (node: FileTreeNode) => vo
             {!platform.allFilesAccess && <ShieldAlert size={14} className="nb-m-chip-warn" />}
           </button>
         )}
+        {/* 网页多用户：他人共享给自己的文件 */}
+        {IS_WEB && isMultiUser() && (
+          <button
+            type="button"
+            className={`nb-m-chip${location === 'shared' ? ' is-active' : ''}`}
+            onClick={() => void switchLocation('shared')}
+          >
+            <Users size={15} /> 共享给我
+          </button>
+        )}
         {/* 设置了多端同步文件夹时提供直达入口 */}
         {syncRoot && (
           <button type="button" className="nb-m-chip" onClick={() => void openSyncFolderOnMobile()}>
@@ -297,11 +315,19 @@ function FilesSection({ onEntryMenu }: { onEntryMenu: (node: FileTreeNode) => vo
             </button>
           </div>
         ) : entries.length === 0 && !loading ? (
-          <div className="nb-m-empty">
-            <FilePlus size={36} />
-            <div>这里还没有文件</div>
-            <div className="nb-m-empty-sub">点击右下角 ＋ 新建笔记，或导入文件</div>
-          </div>
+          location === 'shared' ? (
+            <div className="nb-m-empty">
+              <Users size={36} />
+              <div>暂无共享给你的文件</div>
+              <div className="nb-m-empty-sub">他人共享后会显示在这里</div>
+            </div>
+          ) : (
+            <div className="nb-m-empty">
+              <FilePlus size={36} />
+              <div>这里还没有文件</div>
+              <div className="nb-m-empty-sub">点击右下角 ＋ 新建笔记，或导入文件</div>
+            </div>
+          )
         ) : (
           entries.map((node) =>
             // 同步文件夹根下的回收站：显示为「回收站」，点开管理已删除文件（其中文件不能直接打开）
@@ -499,6 +525,8 @@ export function MobileHome() {
   const homeSection = useMobileStore((s) => s.homeSection);
   const setHomeSection = useMobileStore((s) => s.setHomeSection);
   const setSettingsOpen = useLayoutStore((s) => s.setSettingsModalVisible);
+  // “共享给我”根目录与所有者目录是虚拟目录，不能在其中新建
+  const inVirtualShared = useMobileStore((s) => s.location === 'shared' && (s.currentFolder ?? '').split('/').length < 4);
   const openCount = useWindowStore((s) => s.tabs.length);
   const favoriteRoots = useFavoritesStore((s) => s.data.roots);
   const openAddModal = useFavoritesStore((s) => s.openAddModal);
@@ -515,11 +543,35 @@ export function MobileHome() {
   }, []);
 
   const [createOpen, setCreateOpen] = useState(false);
+  // 新建面板：直接展示的格式铺在网格里，其余折叠在「更多格式」中
+  const createFormats = useCreateFormats();
+  const [createMoreOpen, setCreateMoreOpen] = useState(false);
   const syncRoot = useSyncStore((s) => s.config?.sync.rootDir?.trim() || null);
   const [menuNode, setMenuNode] = useState<FileTreeNode | null>(null);
   const [renameNode, setRenameNode] = useState<FileTreeNode | null>(null);
   const [deleteNode, setDeleteNode] = useState<FileTreeNode | null>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
+
+  const renderCreateCard = (id: CreateFormatId) => {
+    const item = CREATE_ITEM_MAP.get(id);
+    if (!item) return null;
+    return (
+      <button
+        key={item.key}
+        type="button"
+        className="nb-m-create-card"
+        onClick={() => {
+          setCreateOpen(false);
+          item.run();
+          useMobileStore.getState().setPage('editor');
+        }}
+      >
+        <span className="nb-m-create-icon">{item.icon}</span>
+        <span className="nb-m-create-label">{item.label}</span>
+        <span className="nb-m-create-desc">{item.desc}</span>
+      </button>
+    );
+  };
 
   // 长按条目的操作列表
   const entryActions: SheetAction[] = useMemo(() => {
@@ -605,30 +657,38 @@ export function MobileHome() {
       </div>
 
       {/* 新建悬浮按钮 */}
-      <button type="button" className="nb-m-fab" aria-label="新建" onClick={() => setCreateOpen(true)}>
-        <Plus size={26} />
-      </button>
+      {!inVirtualShared && (
+        <button type="button" className="nb-m-fab" aria-label="新建" onClick={() => setCreateOpen(true)}>
+          <Plus size={26} />
+        </button>
+      )}
 
-      {/* 新建面板：文档类型网格 + 文件夹 / 导入 */}
+      {/* 新建面板：文档类型网格（含可展开的更多格式） + 文件夹 / 导入 */}
       <BottomSheet open={createOpen} onClose={() => setCreateOpen(false)} title="新建">
-        <div className="nb-m-create-grid">
-          {CREATE_ITEMS.map((item) => (
+        {createFormats.primary.length > 0 && (
+          <div className="nb-m-create-grid">
+            {createFormats.primary.map(renderCreateCard)}
+          </div>
+        )}
+        {createFormats.more.length > 0 && (
+          <>
             <button
-              key={item.key}
               type="button"
-              className="nb-m-create-card"
-              onClick={() => {
-                setCreateOpen(false);
-                item.run();
-                useMobileStore.getState().setPage('editor');
-              }}
+              className={`nb-m-create-more${createMoreOpen ? ' is-open' : ''}`}
+              aria-expanded={createMoreOpen}
+              onClick={() => setCreateMoreOpen((open) => !open)}
             >
-              <span className="nb-m-create-icon">{item.icon}</span>
-              <span className="nb-m-create-label">{item.label}</span>
-              <span className="nb-m-create-desc">{item.desc}</span>
+              <span>更多格式</span>
+              <span className="nb-m-create-more-count">{createFormats.more.length}</span>
+              <ChevronDown size={16} className="nb-m-create-more-chevron" />
             </button>
-          ))}
-        </div>
+            {createMoreOpen && (
+              <div className="nb-m-create-grid">
+                {createFormats.more.map(renderCreateCard)}
+              </div>
+            )}
+          </>
+        )}
         <div className="nb-m-action-list nb-m-create-extra">
           <button
             type="button"

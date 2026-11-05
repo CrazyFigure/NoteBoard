@@ -36,6 +36,8 @@ pub enum LanguageId {
     Plantuml,
     /// NoteBoard 自研信息图声明式源码（YAML/JSON），与 mermaid / plantuml 同为可独立成文件的图表脚本
     Infographic,
+    /// 网页文件（.html / .htm），走源码 + 安全预览的分屏编辑器
+    Html,
     Plaintext,
 }
 
@@ -205,6 +207,17 @@ pub struct TransferredDocument {
     /// 标签显示名（未命名文档的 key 不含可读名称，必须随载荷传递；缺省按 key 推断）
     #[serde(default)]
     pub display_name: Option<String>,
+    /// 插入目标标签之前；缺省追加，目标标签已关闭时也追加。
+    #[serde(default)]
+    pub insert_before: Option<String>,
+    /// 原生目标内坐标；目标 WebView 按自身 DPI 换算后计算标签插入位置。
+    #[serde(default)]
+    pub drop_position: Option<serde_json::Value>,
+    /// 标签状态与工具视图快照；工具数据不写入文件或暂存区。
+    #[serde(default)]
+    pub tab_meta: Option<serde_json::Value>,
+    #[serde(default)]
+    pub tool_state: Option<serde_json::Value>,
 }
 
 // ── 打开请求队列（C 节协议） ──
@@ -379,10 +392,11 @@ pub fn kind_by_ext(ext: &str) -> (DocumentKind, LanguageId) {
         "drawio" | "dio" => (DocumentKind::Drawio, LanguageId::Xml),
         "bitable" | "table" => (DocumentKind::Bitable, LanguageId::Json),
         // 只读查看插件格式，须与前端 docKind.json 保持一致。
-        "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "pdf" | "dwg" | "dxf" | "epub" => (DocumentKind::Preview, LanguageId::Plaintext),
+        "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "pdf" | "dwg" | "dxf" | "epub" | "note" | "goodnotes" => (DocumentKind::Preview, LanguageId::Plaintext),
         "mmd" | "mermaid" => (DocumentKind::Code, LanguageId::Mermaid),
         "puml" | "plantuml" | "iuml" | "uml" => (DocumentKind::Code, LanguageId::Plantuml),
         "infographic" | "ig" => (DocumentKind::Code, LanguageId::Infographic),
+        "html" | "htm" => (DocumentKind::Code, LanguageId::Html),
         "sql" => (DocumentKind::Code, LanguageId::Sql),
         "json" => (DocumentKind::Code, LanguageId::Json),
         "yaml" | "yml" => (DocumentKind::Code, LanguageId::Yaml),

@@ -12,7 +12,8 @@ import {
   goToPreviousChunk,
 } from '@codemirror/merge';
 import { EditorView } from '@codemirror/view';
-import { Compartment, type Extension } from '@codemirror/state';
+import { Compartment, EditorSelection, EditorState, type Extension } from '@codemirror/state';
+import { historyField } from '@codemirror/commands';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
   FolderOpen,
@@ -34,6 +35,7 @@ import { SearchReplaceBar } from '../search/SearchReplaceBar';
 import { createCodeMirrorSearchCapabilities } from '../search/searchController';
 import { createSearchStore } from '../../stores/searchStore';
 import { useEditorActive } from '../../core/editor/EditorActivityContext';
+import { captureTextDiff, clearTextDiffTransfer, registerTextDiffCapture, type TextDiffSnapshot } from './textDiffTransfer';
 
 /** 文本对比可打开的文件类型（文本类优先） */
 const TEXT_DIFF_FILE_FILTERS = [
@@ -160,8 +162,9 @@ const RIGHT_SEARCH_BAR_STYLE: React.CSSProperties = {
   maxWidth: `calc(100% - var(--nb-diff-left) - ${CHUNK_BAR_WIDTH}px - 32px)`,
 };
 
-// props.docKey 由 EditorHost 统一传入（编辑器签名约定）；文本对比不落盘，不消费该值
-export function TextDiffView(_props: { docKey: string }) {
+// docKey 只用于内存迁移标识，不进入文件保存链。
+export function TextDiffView({ docKey }: { docKey: string }) {
+  const [restored] = useState(() => captureTextDiff(docKey));
   const stageRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const mergeRef = useRef<MergeView | null>(null);
@@ -169,17 +172,20 @@ export function TextDiffView(_props: { docKey: string }) {
   const rafRef = useRef(-1);
 
   // 文件名仅在打开文件后显示（初始无占位文字）
-  const [leftName, setLeftName] = useState('');
-  const [rightName, setRightName] = useState('');
+  const [leftName, setLeftName] = useState(restored?.leftName ?? '');
+  const [rightName, setRightName] = useState(restored?.rightName ?? '');
   const [chunkCount, setChunkCount] = useState(0);
   // 默认不折叠相同行（工具栏可开）
-  const [collapseOn, setCollapseOn] = useState(false);
+  const [collapseOn, setCollapseOn] = useState(restored?.collapseOn ?? false);
   // 左右两侧软换行状态与独立的 compartment
   const wrapCompARef = useRef(new Compartment());
   const wrapCompBRef = useRef(new Compartment());
-  const [softWrap, setSoftWrap] = useState(() => useSettingsStore.getState().settings.editor.softWrap);
+  const [softWrap, setSoftWrap] = useState(() => restored?.softWrap ?? useSettingsStore.getState().settings.editor.softWrap);
   const softWrapRef = useRef(softWrap);
   softWrapRef.current = softWrap;
+  // 捕获器读取最新名称和选项，避免闭包停留在初次渲染的状态。
+  const transferOptionsRef = useRef({ leftName, rightName, collapseOn, softWrap });
+  transferOptionsRef.current = { leftName, rightName, collapseOn, softWrap };
 
   // 左右两侧各自独立的搜索状态与搜索目标（互不影响，也不影响全局搜索栏）
   const [searchStoreA] = useState(createSearchStore);
@@ -277,14 +283,43 @@ export function TextDiffView(_props: { docKey: string }) {
       }),
     ];
 
+    // 通过 StateField 初始化导入撤销历史，同时保留 MergeView 自己的扩展配置。
+    const sideConfig = (side: 'a' | 'b', compartment: Compartment) => {
+      const snapshot = restored?.[side];
+      const extensions = makeSideExtensions(compartment);
+      if (snapshot?.history != null) {
+        const historyState = EditorState.fromJSON(snapshot, { extensions: [historyField] }, { history: historyField });
+        extensions.push(historyField.init(() => historyState.field(historyField)));
+      }
+      return { doc: snapshot?.doc ?? '', extensions,
+        selection: snapshot?.selection ? EditorSelection.fromJSON(snapshot.selection) : undefined };
+    };
     const mv = new MergeView({
-      a: { doc: '', extensions: makeSideExtensions(wrapCompARef.current) },
-      b: { doc: '', extensions: makeSideExtensions(wrapCompBRef.current) },
+      a: sideConfig('a', wrapCompARef.current),
+      b: sideConfig('b', wrapCompBRef.current),
       parent: host,
       // 差异行 gutter 色条
       gutter: true,
+      collapseUnchanged: restored?.collapseOn ? COLLAPSE_UNCHANGED : undefined,
     });
     mergeRef.current = mv;
+    if (restored?.leftWidth) stage.style.setProperty('--nb-diff-left', restored.leftWidth);
+    const restoreFrame = requestAnimationFrame(() => {
+      if (!restored) return;
+      mv.a.scrollDOM.scrollTop = restored.scrollA.top;
+      mv.a.scrollDOM.scrollLeft = restored.scrollA.left;
+      mv.b.scrollDOM.scrollTop = restored.scrollB.top;
+      mv.b.scrollDOM.scrollLeft = restored.scrollB.left;
+    });
+    const unregisterCapture = registerTextDiffCapture(docKey, () => ({
+      a: mv.a.state.toJSON({ history: historyField }) as TextDiffSnapshot['a'],
+      b: mv.b.state.toJSON({ history: historyField }) as TextDiffSnapshot['b'],
+      ...transferOptionsRef.current,
+      leftWidth: stage.style.getPropertyValue('--nb-diff-left'),
+      scrollA: { top: mv.a.scrollDOM.scrollTop, left: mv.a.scrollDOM.scrollLeft },
+      scrollB: { top: mv.b.scrollDOM.scrollTop, left: mv.b.scrollDOM.scrollLeft },
+    }));
+    clearTextDiffTransfer(docKey);
 
     // 逐处采用：把一侧差异块内容写入另一侧（复刻 merge 内置 revert 的编辑事务）
     const applyChunkAt = (index: number, toLeft: boolean) => {
@@ -397,6 +432,8 @@ export function TextDiffView(_props: { docKey: string }) {
     updateChunkBar();
 
     return () => {
+      unregisterCapture();
+      cancelAnimationFrame(restoreFrame);
       if (rafRef.current > -1) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = -1;
@@ -411,7 +448,7 @@ export function TextDiffView(_props: { docKey: string }) {
       mv.destroy();
       mergeRef.current = null;
     };
-  }, []);
+  }, [docKey, restored]);
 
   // Ctrl+F / Ctrl+H：按光标所在侧打开该侧搜索栏（焦点不在右侧时默认左侧）。
   // 全局快捷键对本视图不做处理（无文档搜索能力），这里在冒泡阶段接管；

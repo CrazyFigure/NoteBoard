@@ -8,7 +8,14 @@ import { Minus, Square, Copy, X } from 'lucide-react';
 import { Tooltip } from '../Tooltip';
 import { requestCloseButton } from '../../features/window/windowManager';
 
-export function WindowControls() {
+interface WindowControlsProps {
+  /** 极窄模式：限制了最大宽度，不提供最大化按钮 */
+  compact?: boolean;
+  /** 按钮宽度，极窄模式更紧凑 */
+  buttonWidth?: number;
+}
+
+export function WindowControls({ compact = false, buttonWidth = 36 }: WindowControlsProps) {
   const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
@@ -36,9 +43,9 @@ export function WindowControls() {
     return requestCloseButton();
   };
 
-  // 窗口控制按钮统一样式：尺寸 36x36，与左侧功能按钮保持完全一致
+  // 窗口控制按钮统一样式：高度 36，宽度与左侧功能按钮保持完全一致
   const btnStyle: React.CSSProperties = {
-    width: 36,
+    width: buttonWidth,
     height: 36,
     display: 'flex',
     alignItems: 'center',
@@ -88,7 +95,7 @@ export function WindowControls() {
         </button>
       </Tooltip>
       {/* 最大化 / 还原按钮 */}
-      <Tooltip content={isMaximized ? '向下还原' : '最大化'} side="bottom" sideOffset={6}>
+      {!compact && <Tooltip content={isMaximized ? '向下还原' : '最大化'} side="bottom" sideOffset={6}>
         <button
           type="button"
           onClick={handleMaximize}
@@ -115,7 +122,7 @@ export function WindowControls() {
         >
           {isMaximized ? <Copy size={14} /> : <Square size={14} />}
         </button>
-      </Tooltip>
+      </Tooltip>}
       {/* 关闭窗口按钮 */}
       <Tooltip content="关闭" side="bottom" sideOffset={6}>
         <button

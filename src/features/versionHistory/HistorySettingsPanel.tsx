@@ -153,11 +153,9 @@ export function HistorySettingsPanel() {
 
   return (
     <div className="nb-sync-panel">
+      {/* 页级仅保留标题，记录方式与还原规则由具体设置项说明。 */}
       <div>
         <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>历史记录</h3>
-        <p style={{ fontSize: 12, color: 'var(--editor-text-muted)', margin: 0 }}>
-          保存时自动记录版本，可查看改动并还原。
-        </p>
       </div>
 
       <div className="nb-sync-card">

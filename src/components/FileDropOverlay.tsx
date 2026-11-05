@@ -29,7 +29,7 @@ export function FileDropOverlay() {
         padding: 32,
         boxSizing: 'border-box',
         backgroundColor: 'rgba(0, 0, 0, 0.45)',
-        backdropFilter: 'blur(3px)',
+        // 拖入反馈随指针持续变化，使用纯色遮罩避免每帧重新虚化整窗。
         animation: 'fadeIn 150ms ease-out',
       }}
     >

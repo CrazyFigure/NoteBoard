@@ -1,6 +1,7 @@
 // NoteBoard 同步错误类型：统一把 HTTP 状态码、网络异常与本地 I/O 错误翻译成用户能看懂的提示
 
 use std::fmt;
+use std::error::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyncErrorKind {
@@ -77,12 +78,38 @@ impl From<std::io::Error> for SyncError {
     }
 }
 
-/// reqwest 网络异常 → 友好提示
+/// 检查连接错误的底层原因；仅返回固定提示，错误原文可能含地址或凭证，不能直接展示。
+fn connection_hint(error: &(dyn Error + 'static)) -> &'static str {
+    let (mut tls, mut dns, mut proxy, mut refused) = (false, false, false, false);
+    let mut current = Some(error);
+    // 限制错误链深度，避免异常来源形成循环；优先报告比代理包装更具体的 TLS 或 DNS 原因。
+    for _ in 0..16 {
+        let Some(cause) = current else { break };
+        let text = cause.to_string().to_lowercase();
+        tls |= ["certificate", "tls", "unknownissuer", "unknown issuer"].iter().any(|term| text.contains(term));
+        dns |= ["dns", "lookup address", "name or service not known", "no such host", "host not found"].iter().any(|term| text.contains(term));
+        proxy |= text.contains("proxy") || text.contains("tunnel");
+        if let Some(io) = cause.downcast_ref::<std::io::Error>() {
+            refused |= io.kind() == std::io::ErrorKind::ConnectionRefused;
+            dns |= io.raw_os_error() == Some(11001);
+        }
+        current = cause.source();
+    }
+    if tls { "TLS/证书校验失败，请检查服务域名、证书链及 HTTPS 代理证书" }
+    else if dns { "域名解析失败，请检查服务端点与 DNS 设置" }
+    else if proxy { "代理连接失败，请检查系统代理地址、认证及代理服务是否可用" }
+    else if refused { "服务器拒绝连接，请检查地址、端口、防火墙或系统代理" }
+    else { "请检查服务地址是否正确、网络是否可用（如需代理请先在系统中设置）" }
+}
+
+/// reqwest 网络异常 → 友好提示；连接错误须区分 DNS、TLS 和代理，且不暴露请求 URL。
 pub fn from_reqwest(e: reqwest::Error, service: &str) -> SyncError {
+    // 分类前先移除 URL，避免域名或查询参数中的 tls/proxy 字样被误判成底层故障。
+    let e = e.without_url();
     let msg = if e.is_timeout() {
         format!("连接 {} 超时，请检查网络或代理设置", service)
     } else if e.is_connect() {
-        format!("无法连接 {}：请检查服务地址是否正确、网络是否可用（如需代理请先在系统中设置）", service)
+        format!("无法连接 {}：{}", service, connection_hint(&e))
     } else if e.is_builder() {
         format!("{} 地址格式不正确：{}", service, e)
     } else {
@@ -130,3 +157,47 @@ fn short_body(body: &str) -> String {
 }
 
 pub type SyncResult<T> = Result<T, SyncError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 模拟代理包装底层错误，验证诊断能穿透外层提示且不回显可能包含凭证的原文。
+    #[derive(Debug)]
+    struct ProxyFailure(std::io::Error);
+    impl fmt::Display for ProxyFailure {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "proxy tunnel failed") }
+    }
+    impl Error for ProxyFailure {
+        fn source(&self) -> Option<&(dyn Error + 'static)> { Some(&self.0) }
+    }
+
+    /// TLS 和 DNS 是具体根因，不能被外层代理错误掩盖，也不能把错误正文中的令牌显示给用户。
+    #[test]
+    fn connection_diagnostics_preserve_underlying_reason_without_details() {
+        let tls = ProxyFailure(std::io::Error::other("invalid peer certificate: UnknownIssuer; private-token"));
+        assert!(connection_hint(&tls).contains("TLS/证书"));
+        assert!(!connection_hint(&tls).contains("private-token"));
+        let dns = ProxyFailure(std::io::Error::other("dns error: failed to lookup address"));
+        assert!(connection_hint(&dns).contains("域名解析"));
+        assert!(connection_hint(&std::io::Error::from_raw_os_error(11001)).contains("域名解析"));
+        assert!(connection_hint(&ProxyFailure(std::io::Error::other("authentication failed"))).contains("代理连接"));
+        assert!(connection_hint(&std::io::Error::from(std::io::ErrorKind::ConnectionRefused)).contains("拒绝连接"));
+    }
+
+    /// 真实连接一个已关闭的回环端口；URL 中故意包含分类关键词和假令牌，均不能泄漏或误导分类。
+    #[test]
+    fn request_url_is_removed_before_classifying_connection_failure() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        drop(listener);
+        super::super::runtime::block_on(async {
+            let client = reqwest::Client::builder().no_proxy().timeout(std::time::Duration::from_secs(3)).build().unwrap();
+            let error = client.get(format!("http://{}/private?tls=private-token&proxy=private-token", address)).send().await.unwrap_err();
+            let translated = from_reqwest(error, "天翼云 ZOS");
+            assert_eq!(translated.kind, SyncErrorKind::Network);
+            assert!(translated.message.contains("拒绝连接"));
+            assert!(!translated.message.contains("private-token") && !translated.message.contains("http://"));
+        });
+    }
+}

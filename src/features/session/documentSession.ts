@@ -21,6 +21,7 @@ import {
 } from '../../core/editor/editorRegistry';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
+import { getAutoSaveDelayMs } from '../../stores/settingsStore';
 import * as ipc from '../../core/ipc/commands';
 import { getBaseline, normalizeEol } from '../editor-md/serialize';
 import { onDocumentSaved } from '../staging/stagingManager';
@@ -372,6 +373,8 @@ async function refreshDirtyAfterWrite(docKey: string): Promise<boolean> {
  * 其余编辑器经 scheduleAutoSave 防抖后进入。
  */
 export async function queuedAutoSave(docKey: string, content: string): Promise<void> {
+  // 迁移屏障停止接纳新保存；此前已入队的写入由迁移方排空后交接基线。
+  if (useWindowStore.getState().isTransferring(docKey)) return;
   const store = useDocumentStore.getState();
   const targetDoc = store.getDocument(docKey);
   if (!targetDoc) return;
@@ -436,7 +439,7 @@ const autoSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
  * 文档已关闭时 queuedAutoSave 自行放弃。
  * 用于分屏图表（信息图 / Mermaid / PlantUML）、思维导图、Draw.io 与多维表格。
  */
-export function scheduleAutoSave(docKey: string, delay = 800): void {
+export function scheduleAutoSave(docKey: string, delay = getAutoSaveDelayMs()): void {
   // 新建 / 导入的未命名文档还没有磁盘路径，需先另存为
   if (docKey.startsWith('untitled:')) return;
   if (useDocumentStore.getState().getDocument(docKey)?.savePolicy !== 'auto') return;
@@ -467,7 +470,7 @@ export async function writeDocumentWithBarrier(
 ): Promise<boolean> {
   // 🔴 R3-05/C09：closing 状态的旧会话拒绝写盘（返回 false——调用方得到明确失败，
   //    不以异常炸保存链；排空中的在途任务仍正常完成）
-  if (isClosing(docKey)) return false;
+  if (isClosing(docKey) || useWindowStore.getState().isTransferring(docKey)) return false;
   const store = useDocumentStore.getState();
   const doc = store.getDocument(docKey);
   if (!doc) return false;

@@ -215,7 +215,8 @@ describe('转换', () => {
 
   it('段落中间粘贴的标题、列表独立成块，不被并入所在段落', () => {
     const converted = convert(pastePlain(createState('前后', 2), '## 标题\n- 项'), 'markdown');
-    expect(serializeState(converted)).toBe('前\n\n## 标题\n\n- 项\n\n后');
+    // 粘贴片段中标题与列表本已独立成块，保留其单换行；与宿主正文之间仍使用必要分隔。
+    expect(serializeState(converted)).toBe('前\n\n## 标题\n- 项\n\n后');
   });
 
   it('段落末尾粘贴标题与段落：标题独立成块，末段与后文合并', () => {

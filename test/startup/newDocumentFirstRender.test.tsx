@@ -12,6 +12,7 @@ import { useWindowStore } from '@/stores/windowStore';
 import { getMdTipTapEditor } from '@/features/editor-md/editorInstances';
 import { resetEditorRegistryForTest } from '@/core/editor/editorRegistry';
 import { clearAllDocumentHistories } from '@/features/history/documentHistory';
+import { resetSuspensionForTest, saveViewState } from '@/features/session/editorSuspension';
 vi.mock('@/features/editor-md/extensions', async () => {
   const { default: StarterKit } = await import('@tiptap/starter-kit');
   const { Markdown } = await import('@tiptap/markdown');
@@ -35,16 +36,16 @@ beforeEach(() => {
     Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
   }
   useDocumentStore.setState({ documents: new Map() }); useWindowStore.setState({ tabs: [], activeKey: null, transferringKeys: [] });
-  resetEditorRegistryForTest(); clearAllDocumentHistories();
+  resetEditorRegistryForTest(); clearAllDocumentHistories(); resetSuspensionForTest();
 });
 afterEach(() => { vi.restoreAllMocks(); });
 
 // 与 welcomeActions.createUntitledDocument 相同的数据形态（content=''、viewMode=null）
-function seedUntitled(n: number): string {
+function seedUntitled(n: number, content = ''): string {
   const key = `untitled:markdown-${n}`;
   useDocumentStore.getState().upsertFromPayload({
     key, displayName: '未命名.md', dirPath: '', kind: 'markdown', language: 'markdown',
-    content: '', encoding: 'utf8', eol: 'lf', size: 0, mtime: 0, readonly: false,
+    content, encoding: 'utf8', eol: 'lf', size: content.length, mtime: 0, readonly: false,
   });
   useWindowStore.getState().openTab({
     key, displayName: '未命名.md', path: null, kind: 'markdown', language: 'markdown',
@@ -54,6 +55,36 @@ function seedUntitled(n: number): string {
 }
 
 describe('🔴 P0-1 新建 MD 首次挂载即显示', () => {
+  it.each([false, true])('长文首次打开从头开始，存在恢复点时保留选区和滚动（恢复=%s）', async (restore) => {
+    const content = Array.from({ length: 100 }, (_, index) => `第 ${index + 1} 段正文`).join('\n\n');
+    const key = seedUntitled(3, content);
+    // 回收后的旧光标可能在当前阅读视口之外，自动聚焦不能再次滚动到该光标。
+    if (restore) saveViewState(key, {
+      kind: 'markdown', mode: 'visual', selection: { anchor: 400, head: 420 }, scrollTop: 321,
+    });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    try {
+      await act(async () => { root.render(<TipTapEditor docKey={key} />); });
+      const editor = getMdTipTapEditor(key)!;
+      expect(editor).not.toBeNull();
+      // 捕获真正的 ProseMirror 滚动请求，覆盖 20ms 聚焦定时器及后续动画帧。
+      const handleScrollToSelection = vi.fn(() => true);
+      editor.view.setProps({ handleScrollToSelection });
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
+      expect(editor.state.selection.anchor).toBe(restore ? 400 : 1);
+      expect(editor.state.selection.head).toBe(restore ? 420 : 1);
+      expect(host.querySelector('.nb-md-visual-scroller')?.scrollTop).toBe(restore ? 321 : 0);
+      expect(handleScrollToSelection).not.toHaveBeenCalled();
+      expect(useDocumentStore.getState().getDocument(key)?.isDirty).toBe(false);
+      expect(useDocumentStore.getState().getDocument(key)?.content).toBe(content);
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+    }
+  });
+
   it('新建文档（空正文、viewMode=null）：挂载后无需切换即可输入', async () => {
     const key = seedUntitled(1);
     const host = document.createElement('div'); document.body.appendChild(host); const root = createRoot(host);

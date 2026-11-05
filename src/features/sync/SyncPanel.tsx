@@ -109,11 +109,9 @@ export function SyncPanel() {
 
   return (
     <div className="nb-sync-panel">
+      {/* 页级仅保留标题，同步与备份的具体规则由设置项说明。 */}
       <div>
         <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>同步与备份</h3>
-        <p style={{ fontSize: 12, color: 'var(--editor-text-muted)', margin: 0 }}>
-          在多台电脑和手机之间双向同步一个文件夹，并定期把它备份到本地或云端。
-        </p>
       </div>
       <SyncSection draft={draft} update={update} flush={flush} />
       <ProviderSection draft={draft} update={update} />
@@ -640,7 +638,8 @@ function BackupSection({ draft, update, flush }: { draft: SyncConfigFile; update
             </button>
           </div>
           <small>备份文件保存在远端目录下的 NoteBoard-Backups 文件夹中</small>
-          <ProviderForm value={backup.provider} onChange={(provider) => update((c) => (c.backup.provider = provider))} showHelp={false} />
+          {/* 备份可独立选择服务，同样提供默认收起的厂商配置说明。 */}
+          <ProviderForm value={backup.provider} onChange={(provider) => update((c) => (c.backup.provider = provider))} />
         </div>
       )}
 

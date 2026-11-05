@@ -1,0 +1,81 @@
+/* 关于面板：更新渠道分段选择与仓库外链 */
+
+.nb-about-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin: 4px 0;
+  white-space: normal;
+}
+
+/* 分段选择：两项互斥，当前项高亮 */
+.nb-about-segmented {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-md, 6px);
+  background: var(--editor-surface);
+}
+
+.nb-about-segment {
+  padding: 3px 12px;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  color: var(--editor-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.nb-about-segment:hover:not(.is-active) {
+  background: var(--toolbar-hover);
+  color: var(--editor-text);
+}
+
+.nb-about-segment:active {
+  transform: scale(0.96);
+  background: var(--toolbar-active);
+}
+
+.nb-about-segment.is-active {
+  background: var(--accent-strong);
+  color: #fff;
+  font-weight: 500;
+  cursor: default;
+}
+
+/* 仓库外链：来源标签 + 仓库路径 */
+.nb-about-repo-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--accent-strong);
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+  transition: transform var(--transition-fast);
+}
+
+.nb-about-repo-link:hover {
+  transform: scale(1.03);
+}
+
+.nb-about-repo-link:active {
+  transform: scale(0.96);
+}
+
+.nb-about-repo-source {
+  padding: 0 5px;
+  border-radius: var(--radius-sm, 4px);
+  background: color-mix(in srgb, var(--accent-strong) 12%, transparent);
+  font-size: 11px;
+  line-height: 1.6;
+  text-decoration: none;
+}

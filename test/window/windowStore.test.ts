@@ -30,6 +30,24 @@ describe('windowStore tab 关闭操作', () => {
     });
   });
 
+  it('连续标记相同脏态不广播窗口更新，真正翻转时才通知', () => {
+    useWindowStore.setState({ tabs: [createMockTab('typing')], activeKey: 'typing' });
+    let updates = 0;
+    const unsubscribe = useWindowStore.subscribe(() => { updates += 1; });
+    try {
+      for (let i = 0; i < 50; i += 1) useWindowStore.getState().setTabDirty('typing', true);
+      expect(updates).toBe(1);
+      expect(useWindowStore.getState().getTab('typing')?.isDirty).toBe(true);
+      useWindowStore.getState().setTabDirty('typing', false);
+      expect(updates).toBe(2);
+      expect(useWindowStore.getState().getTab('typing')?.isDirty).toBe(false);
+      useWindowStore.getState().setTabDirty('missing', true);
+      expect(updates).toBe(2);
+    } finally {
+      unsubscribe();
+    }
+  });
+
   it('closeTabsLeft 正确关闭目标左侧的所有标签页', () => {
     const tab1 = createMockTab('tab1');
     const tab2 = createMockTab('tab2');

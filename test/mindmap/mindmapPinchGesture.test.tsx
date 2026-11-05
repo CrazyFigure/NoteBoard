@@ -9,7 +9,7 @@ import type { MindNode } from '@/features/mindmap/mindmapTypes';
 
 const tree = (): MindNode => ({
   id: 'root', text: '中心', isExpanded: true,
-  summaries: [{ id: 's1', startId: 'a', endId: 'b', text: '概要' }],
+  summaries: [{ id: 's1', startId: 'a', endId: 'b', topic: { id: 's1-topic', text: '概要', children: [] } }],
   children: [
     { id: 'a', text: 'A', isExpanded: true, children: [] },
     { id: 'b', text: 'B', isExpanded: true, children: [] },
@@ -38,6 +38,12 @@ describe('触屏捏合缩放', () => {
     vi.restoreAllMocks();
   });
 
+  /** 点击概要大括号的点选描边，选中概要 */
+  const selectSummaryBrace = () => {
+    const hit = host.querySelector('.nb-mindmap-summary-brace [data-mindmap-structure]')!;
+    hit.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+  };
+
   const renderMindmap = async (onZoomChange: (zoom: number) => void) => {
     const theme = getMindmapTheme();
     await act(async () => root.render(
@@ -52,7 +58,7 @@ describe('触屏捏合缩放', () => {
     const onZoomChange = vi.fn();
     const canvas = await renderMindmap(onZoomChange);
     // 选中概要，出现范围手柄
-    await act(async () => (host.querySelector('.nb-mindmap-summary-label') as HTMLElement).click());
+    await act(async () => selectSummaryBrace());
     const handle = host.querySelector('.nb-mindmap-range-handle') as HTMLElement;
     expect(handle).toBeTruthy();
     // 单指在手柄上按下、抬起（手柄会阻止 pointerup 冒泡）
@@ -72,7 +78,7 @@ describe('触屏捏合缩放', () => {
   it('一指按在手柄上开始捏合时，两指移动都参与缩放', async () => {
     const onZoomChange = vi.fn();
     const canvas = await renderMindmap(onZoomChange);
-    await act(async () => (host.querySelector('.nb-mindmap-summary-label') as HTMLElement).click());
+    await act(async () => selectSummaryBrace());
     const handle = host.querySelector('.nb-mindmap-range-handle') as HTMLElement;
     await act(async () => {
       touch(handle, 'pointerdown', 21, 100, 100, true);

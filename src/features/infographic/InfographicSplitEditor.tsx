@@ -9,6 +9,7 @@ import { EditorView, keymap, lineNumbers, highlightActiveLineGutter } from '@cod
 import { EditorState, Compartment } from '@codemirror/state';
 import type { ViewUpdate } from '@codemirror/view';
 import { defaultKeymap, historyKeymap, history } from '@codemirror/commands';
+import { createIndentationExtension } from '../editor-code/indentation';
 import {
   Columns,
   Code2,
@@ -21,8 +22,10 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { useDocumentStore } from '../../stores/documentStore';
+import { useLayoutStore } from '../../stores/layoutStore';
 // 🔴 S12：回收能力注册与视图状态恢复
-import { takeViewState } from '../session/editorSuspension';
+import { takeReadingViewState } from '../session/editorSuspension';
+import { restoreSplitReadingPosition } from '../reading/restoreTextPosition';
 import { registerEditorCapabilities } from '../../core/editor/editorRegistry';
 import { createSplitEditorCapabilities } from '../diagram-preview/splitEditorCapabilities';
 import { useWindowStore } from '../../stores/windowStore';
@@ -37,6 +40,7 @@ import { Tooltip } from '../../components/Tooltip';
 import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
 import { codeMirrorSearchSupport } from '../search/searchController';
 import { tripleClickLineSelection } from '../editor-code/tripleClickLine';
+import { createColumnEditExtension } from '../editor-code/columnEdit';
 import { ReadingModeOverlay } from '../reading/ReadingModeOverlay';
 import { requestReadingMode, useIsReading } from '../reading/readingMode';
 
@@ -59,6 +63,8 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
   // 沉浸阅读只显示预览，工具栏与源码栏隐藏（不改动用户选择的布局）
   const isReading = useIsReading(docKey);
   const paneMode: LayoutMode = isReading ? 'preview' : layoutMode;
+  // 极窄模式下左右分栏过窄，分屏改为上下堆叠（源码在上、预览在下）
+  const stacked = useLayoutStore((s) => s.compactMode);
   const exitReading = useCallback(() => requestReadingMode(false), []);
   const [splitRatio, setSplitRatio] = useState<number>(0.5);
   const [isResizing, setIsResizing] = useState<boolean>(false);
@@ -83,7 +89,7 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
   }, [layoutMode, zoom, pan]);
 
   useEffect(() => {
-    const restored = takeViewState(docKey) as {
+    const restored = takeReadingViewState(docKey) as {
       kind: 'split-diagram';
       layoutMode: LayoutMode;
       zoom: number;
@@ -131,7 +137,9 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       if (!splitContainerRef.current) return;
       const rect = splitContainerRef.current.getBoundingClientRect();
-      const newRatio = (moveEvent.clientX - rect.left) / rect.width;
+      const newRatio = stacked
+        ? (moveEvent.clientY - rect.top) / rect.height
+        : (moveEvent.clientX - rect.left) / rect.width;
       setSplitRatio(Math.max(0.18, Math.min(0.82, newRatio)));
     };
 
@@ -162,7 +170,11 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
         highlightActiveLineGutter(),
         // 三击选行不带换行符，避免行号高亮跳到下一行
         tripleClickLineSelection,
+        // 与普通文本文档共用列编辑模式
+        createColumnEditExtension(),
         history(),
+        // 信息图源码与普通文本文档共用缩进宽度、制表符偏好和 Tab 按键规则。
+        createIndentationExtension(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
         // Ctrl+F 搜索高亮与查询状态（界面由统一悬浮搜索栏提供）
         codeMirrorSearchSupport,
@@ -174,7 +186,7 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
             setContent(docKey, newText);
             setDirty(docKey, true);
             setTabDirty(docKey, true);
-            // auto 策略下停止编辑 800ms 后自动写盘
+            // auto 策略下停止编辑达到自动保存间隔后写盘
             scheduleAutoSave(docKey);
           }
         }),
@@ -208,6 +220,7 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
     });
 
     editorViewRef.current = view;
+    restoreSplitReadingPosition(docKey, view);
 
     // 语法高亮为动态包，加载完成后再注入，避免阻塞首屏
     void loadLanguageExtension('infographic').then((ext) => {
@@ -229,7 +242,7 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
     if (paneMode !== 'preview' && editorViewRef.current) {
       editorViewRef.current.requestMeasure();
     }
-  }, [paneMode, splitRatio]);
+  }, [paneMode, splitRatio, stacked]);
 
   // 点击外部关闭模板下拉
   useEffect(() => {
@@ -398,7 +411,7 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
+          <div className="nb-editor-topbar-title" style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
             <Sparkles size={16} color="#14b8a6" />
             <span>信息图 (.infographic)</span>
           </div>
@@ -560,6 +573,7 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
         style={{
           flex: 1,
           display: 'flex',
+          flexDirection: stacked ? 'column' : 'row',
           overflow: 'hidden',
           position: 'relative',
           userSelect: isResizing ? 'none' : 'auto',
@@ -572,8 +586,8 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
           ref={editorContainerRef}
           style={{
             display: paneMode === 'preview' ? 'none' : 'block',
-            width: paneMode === 'split' ? `calc(${splitRatio * 100}% - 4px)` : '100%',
-            height: '100%',
+            width: paneMode === 'split' && !stacked ? `calc(${splitRatio * 100}% - 4px)` : '100%',
+            height: paneMode === 'split' && stacked ? `calc(${splitRatio * 100}% - 4px)` : '100%',
             overflow: 'hidden',
             flexShrink: 0,
           }}
@@ -587,9 +601,9 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
               onDoubleClick={() => setSplitRatio(0.5)}
               aria-label="拖拽调节分栏比例，双击居中复位 (50%)"
               style={{
-                width: 8,
-                height: '100%',
-                cursor: 'col-resize',
+                width: stacked ? '100%' : 8,
+                height: stacked ? 8 : '100%',
+                cursor: stacked ? 'row-resize' : 'col-resize',
                 background: isResizing ? 'var(--editor-accent, #3b82f6)' : 'transparent',
                 position: 'relative',
                 flexShrink: 0,
@@ -608,8 +622,8 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
             >
               <div
                 style={{
-                  width: 1,
-                  height: '100%',
+                  width: stacked ? '100%' : 1,
+                  height: stacked ? 1 : '100%',
                   background: 'var(--editor-border, #e2e8f0)',
                 }}
               />
@@ -621,8 +635,8 @@ export function InfographicSplitEditor({ docKey }: InfographicSplitEditorProps) 
         <div
           style={{
             display: paneMode === 'code' ? 'none' : 'flex',
-            width: paneMode === 'split' ? `calc(${(1 - splitRatio) * 100}% - 4px)` : '100%',
-            height: '100%',
+            width: paneMode === 'split' && !stacked ? `calc(${(1 - splitRatio) * 100}% - 4px)` : '100%',
+            height: paneMode === 'split' && stacked ? `calc(${(1 - splitRatio) * 100}% - 4px)` : '100%',
             overflow: 'hidden',
             position: 'relative',
             background: 'var(--editor-bg, #ffffff)',

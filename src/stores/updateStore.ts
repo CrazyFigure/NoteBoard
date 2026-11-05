@@ -6,6 +6,8 @@ import type { UpdateCheckResult } from '../core/ipc/types';
 import * as ipc from '../core/ipc/commands';
 import { translateUpdateCheckError } from '../core/updates';
 import { IS_WEB } from '../core/platform';
+import { RELEASE_CHANNELS, currentUpdateChannel } from '../core/releaseChannel';
+import { useSettingsStore } from './settingsStore';
 
 interface UpdateStore {
   /** 是否正在执行更新检查 */
@@ -59,21 +61,29 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
         ...(silent ? {} : { modalOpen: true, updateResult: null }),
       });
 
-      // 调用后端 IPC 接口请求 GitHub Release
-      const result = await ipc.checkForUpdates();
+      // 手动与自动检测始终优先 GitHub，失败后才探测 CNB；两者均失败时保留原设置。
+      const errors: string[] = [];
+      for (const channel of ['github', 'cnb'] as const) {
+        let result: UpdateCheckResult;
+        try {
+          result = await ipc.checkForUpdates(channel);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          const label = RELEASE_CHANNELS[channel].label;
+          errors.push(`${label}：${translateUpdateCheckError(msg, label)}`);
+          continue;
+        }
 
-      set({
-        updateResult: result,
-        hasUpdate: Boolean(result.updateAvailable),
-      });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      const friendlyError = translateUpdateCheckError(msg);
-
-      // 主动检查时记录错误展示给用户，静默检查时不打扰用户
-      if (!silent) {
-        set({ checkError: friendlyError });
+        // 有效结果即代表渠道可用，即使没有新版本也同步保存，后续下载统一使用该渠道。
+        if (currentUpdateChannel() !== channel) {
+          await useSettingsStore.getState().setSystem({ updateChannel: channel });
+        }
+        set({ updateResult: result, hasUpdate: Boolean(result.updateAvailable) });
+        return;
       }
+
+      // 两个渠道均失败后才提示，静默检测保持不打扰用户。
+      if (!silent) set({ checkError: errors.join('\n') });
     } finally {
       set({ checking: false });
     }

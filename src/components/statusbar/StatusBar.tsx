@@ -4,16 +4,20 @@
 
 import { useWindowStore } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
+import { useLayoutStore } from '../../stores/layoutStore';
 import { saveDocument } from '../../features/editor-code/orchestration/saveDocument';
 import { emit } from '../../core/emitter';
 import { Eye, Code } from 'lucide-react';
 import { Tooltip } from '../Tooltip';
+import { isSharedPath } from '../../features/account/accountState';
 import { formatShortcut } from '../../core/shortcuts';
 
 export function StatusBar() {
   const activeKey = useWindowStore((s) => s.activeKey);
   const activeTab = useWindowStore((s) => (activeKey ? s.getTab(activeKey) : undefined));
   const doc = useDocumentStore((s) => (activeKey ? s.documents.get(activeKey) : undefined));
+  // 极窄模式只保留字数、类型与保存状态，光标位置、编码与行尾符收起
+  const compactMode = useLayoutStore((s) => s.compactMode);
 
   if (!doc) {
     return (
@@ -38,7 +42,7 @@ export function StatusBar() {
   }
 
   const sectionStyle: React.CSSProperties = {
-    padding: '0 10px',
+    padding: compactMode ? '0 7px' : '0 10px',
     display: 'flex',
     alignItems: 'center',
     gap: 4,
@@ -89,9 +93,11 @@ export function StatusBar() {
               ? 'YAML'
               : doc.language === 'xml'
                 ? 'XML'
-                : doc.language === 'markdown'
-                  ? 'Markdown'
-                  : '纯文本';
+                : doc.language === 'html'
+                  ? 'HTML'
+                  : doc.language === 'markdown'
+                    ? 'Markdown'
+                    : '纯文本';
 
   return (
     <div
@@ -110,30 +116,39 @@ export function StatusBar() {
       role="status"
     >
       {/* 光标位置 */}
-      <div style={sectionStyle}>
-        <span>行 1, 列 1</span>
-      </div>
-      <div style={dividerStyle} />
+      {!compactMode && (
+        <>
+          <div style={sectionStyle}>
+            <span>行 1, 列 1</span>
+          </div>
+          <div style={dividerStyle} />
+        </>
+      )}
 
       {/* 字数/行数 */}
       <div style={sectionStyle}>
         <span>
-          {doc.content?.length.toLocaleString() ?? 0} 字 · {(doc.content?.split('\n').length ?? 0).toLocaleString()} 行
+          {doc.content?.length.toLocaleString() ?? 0} 字
+          {!compactMode && <> · {(doc.content?.split('\n').length ?? 0).toLocaleString()} 行</>}
         </span>
       </div>
       <div style={dividerStyle} />
 
-      {/* 编码 */}
-      <div style={sectionStyle}>
-        <span>{doc.encoding === 'utf8' ? 'UTF-8' : doc.encoding === 'utf8-bom' ? 'UTF-8 BOM' : 'GBK'}</span>
-      </div>
-      <div style={dividerStyle} />
+      {!compactMode && (
+        <>
+          {/* 编码 */}
+          <div style={sectionStyle}>
+            <span>{doc.encoding === 'utf8' ? 'UTF-8' : doc.encoding === 'utf8-bom' ? 'UTF-8 BOM' : 'GBK'}</span>
+          </div>
+          <div style={dividerStyle} />
 
-      {/* 行尾符 */}
-      <div style={sectionStyle}>
-        <span>{doc.eol === 'crlf' ? 'CRLF' : 'LF'}</span>
-      </div>
-      <div style={dividerStyle} />
+          {/* 行尾符 */}
+          <div style={sectionStyle}>
+            <span>{doc.eol === 'crlf' ? 'CRLF' : 'LF'}</span>
+          </div>
+          <div style={dividerStyle} />
+        </>
+      )}
 
       {/* 类型 / Markdown 模式切换 */}
       {doc.kind === 'markdown' ? (
@@ -175,12 +190,12 @@ export function StatusBar() {
             {activeTab?.viewMode === 'source' ? (
               <>
                 <Code size={13} style={{ flexShrink: 0 }} />
-                <span>Markdown (源码)</span>
+                <span>{compactMode ? '源码' : 'Markdown (源码)'}</span>
               </>
             ) : (
               <>
                 <Eye size={13} style={{ flexShrink: 0 }} />
-                <span>Markdown (可视化)</span>
+                <span>{compactMode ? '可视化' : 'Markdown (可视化)'}</span>
               </>
             )}
           </div>
@@ -213,9 +228,11 @@ export function StatusBar() {
       {doc.readonly && (
         <>
           <div style={dividerStyle} />
-          <div style={sectionStyle}>
-            <span style={{ color: 'var(--warning-600)' }}>只读</span>
-          </div>
+          <Tooltip content={isSharedPath(doc.key) ? '只读共享，修改不会保存' : '文件为只读'} side="top" sideOffset={4}>
+            <div style={sectionStyle}>
+              <span style={{ color: 'var(--warning-600)' }}>只读</span>
+            </div>
+          </Tooltip>
         </>
       )}
     </div>

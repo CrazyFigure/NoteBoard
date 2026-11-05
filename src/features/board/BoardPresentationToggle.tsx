@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Maximize2, Minimize2 } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
+import { useLayoutStore } from '../../stores/layoutStore';
 
 interface BoardPresentationToggleProps {
   /** 当前是否已经进入纯净全屏演示模式 */
@@ -22,6 +23,8 @@ export function BoardPresentationToggle({ enabled, onToggle }: BoardPresentation
   const [isPressed, setIsPressed] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const hotZoneRef = useRef<HTMLDivElement>(null);
+  // 全屏演示与极窄模式互斥：极窄模式下不提供入口（已在演示中时保留退出按钮）
+  const compactMode = useLayoutStore((s) => s.compactMode);
 
   // 监听全局指针位置，使不可点击的透明热区不会拦截画板自身操作
   useEffect(() => {
@@ -41,6 +44,8 @@ export function BoardPresentationToggle({ enabled, onToggle }: BoardPresentation
     document.addEventListener('pointermove', handlePointerMove);
     return () => document.removeEventListener('pointermove', handlePointerMove);
   }, []);
+
+  if (compactMode && !enabled) return null;
 
   const isHighlighted = isHovered || isFocused;
   const isVisible = isHighlighted || inHotZone;

@@ -4,6 +4,7 @@
 // 详见 docs/09-开发路线图.md 5.3/5.4
 
 import { useEffect } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useExplorerStore, isSubPath } from './explorerStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { useDocumentStore } from '../../stores/documentStore';
@@ -24,18 +25,21 @@ export function markActiveTabFollowed(): void {
  */
 export function useReveal() {
   const activeKey = useWindowStore((s) => s.activeKey);
-  const doc = useDocumentStore((s) => (activeKey ? s.documents.get(activeKey) : undefined));
-  const { setRoot, setRevealed } = useExplorerStore();
+  // 文件树只跟随文档身份和目录，正文及脏态的逐字更新不能使整棵树重新渲染。
+  const { filePath, newDir } = useDocumentStore(useShallow((s) => {
+    const doc = activeKey ? s.documents.get(activeKey) : undefined;
+    return { filePath: doc?.key, newDir: doc?.dirPath };
+  }));
+  const setRoot = useExplorerStore((s) => s.setRoot);
+  const setRevealed = useExplorerStore((s) => s.setRevealed);
   const { loadChildren, revealPath } = useTreeData();
 
   useEffect(() => {
-    if (!activeKey || !doc || activeKey.startsWith('untitled:')) {
+    if (!activeKey || !filePath || activeKey.startsWith('untitled:')) {
       lastFollowedKey = activeKey;
       return;
     }
 
-    const newDir = doc.dirPath;
-    const filePath = doc.key;
     if (!newDir || !filePath) return;
 
     // 当 activeKey 发生切换时，触发跟随与展开定位
@@ -65,5 +69,5 @@ export function useReveal() {
         });
       }
     }
-  }, [activeKey, doc?.dirPath, doc?.key, setRoot, setRevealed, loadChildren, revealPath]);
+  }, [activeKey, newDir, filePath, setRoot, setRevealed, loadChildren, revealPath]);
 }

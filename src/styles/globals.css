@@ -653,6 +653,16 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   --history-month-text: #a1a1aa;
 }
 
+/* 各端文字编辑区的正文与空白统一使用 I 形鼠标指针；仅通过继承生效，保留链接、按钮及拖拽控件的专用样式。 */
+.nb-text-editor-surface {
+  cursor: text;
+}
+
+/* 行号栏用于选行，不是文字插入区域，保留箭头指针。 */
+.nb-text-editor-surface .cm-gutters {
+  cursor: default;
+}
+
 /* ═════════════════════════════════════════════════════════
  * Markdown 正文排版
  * ═════════════════════════════════════════════════════════ */
@@ -1059,6 +1069,808 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   opacity: 0.95;
 }
 
+/* 双向链接 [[笔记]]：浅底胶囊，与普通超链接区分；目标未找到时弱化为虚线 */
+.ProseMirror .nb-wikilink {
+  color: var(--editor-link, #2563eb);
+  background: color-mix(in srgb, var(--editor-link, #2563eb) 9%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--editor-link, #2563eb) 35%, transparent);
+  border-radius: 4px;
+  padding: 0 3px;
+  margin: 0 1px;
+  cursor: pointer;
+  word-break: break-word;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.ProseMirror .nb-wikilink:hover {
+  background: color-mix(in srgb, var(--editor-link, #2563eb) 16%, transparent);
+}
+
+.ProseMirror .nb-wikilink:active {
+  background: color-mix(in srgb, var(--editor-link, #2563eb) 24%, transparent);
+}
+
+.ProseMirror .nb-wikilink.is-unresolved {
+  color: var(--editor-text-muted);
+  background: transparent;
+  border-bottom: 1px dashed currentColor;
+}
+
+.ProseMirror .nb-wikilink.is-unresolved:hover {
+  background: color-mix(in srgb, var(--editor-text-muted) 12%, transparent);
+}
+
+.ProseMirror .nb-wikilink.ProseMirror-selectednode {
+  outline: 2px solid var(--editor-accent);
+  outline-offset: 1px;
+}
+
+/* 双链补全菜单 */
+.nb-wikilink-menu-popup {
+  display: flex;
+}
+
+.nb-wikilink-menu {
+  width: min(320px, calc(100vw - 32px));
+  /* 弹层按光标上下可用空间写入该变量，超出时列表内部滚动 */
+  max-height: var(--nb-wikilink-menu-max-height, 320px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--editor-surface);
+  border: 1px solid var(--editor-border);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px -4px rgba(0, 0, 0, 0.18), 0 3px 8px -2px rgba(0, 0, 0, 0.1);
+}
+
+.nb-wikilink-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--editor-text-secondary);
+  background: var(--editor-bg);
+  border-bottom: 1px solid var(--editor-border);
+  flex-shrink: 0;
+}
+
+.nb-wikilink-menu-header > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nb-wikilink-menu-hint {
+  font-size: 10px;
+  font-weight: 400;
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+
+.nb-wikilink-menu-list {
+  overflow-y: auto;
+  padding: 4px;
+  min-height: 0;
+}
+
+.nb-wikilink-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--editor-text);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-wikilink-menu-item.is-active {
+  background: var(--editor-selection-background, var(--toolbar-hover));
+}
+
+.nb-wikilink-menu-item:active {
+  transform: scale(0.985);
+}
+
+.nb-wikilink-menu-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--editor-text-muted);
+}
+
+.nb-wikilink-menu-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.nb-wikilink-menu-name {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 已打开但不在当前仓库内的文档 */
+.nb-wikilink-menu-badge {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  color: var(--editor-text-muted);
+  background: color-mix(in srgb, var(--editor-text-muted) 12%, transparent);
+  vertical-align: 1px;
+}
+
+/* 双链嵌入 ![[...]]：图片直接显示，笔记显示为只读卡片 */
+.ProseMirror .nb-wikiembed {
+  display: block;
+  margin: 6px 0;
+  border-radius: 8px;
+  cursor: default;
+}
+
+.ProseMirror .nb-wikiembed .nb-wikiembed-content {
+  display: block;
+}
+
+.ProseMirror .nb-wikiembed.ProseMirror-selectednode {
+  outline: 2px solid var(--editor-accent);
+  outline-offset: 2px;
+}
+
+.ProseMirror .nb-wikiembed-content[data-embed-kind='note'] {
+  border: 1px solid var(--editor-border);
+  border-left: 3px solid color-mix(in srgb, var(--editor-link, #2563eb) 55%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--editor-surface) 60%, transparent);
+  overflow: hidden;
+}
+
+.ProseMirror .nb-wikiembed-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--editor-link, #2563eb);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.ProseMirror .nb-wikiembed-header:hover {
+  background: color-mix(in srgb, var(--editor-link, #2563eb) 8%, transparent);
+}
+
+.ProseMirror .nb-wikiembed-header:active {
+  transform: scale(0.995);
+}
+
+.ProseMirror .nb-wikiembed-content[data-embed-kind='note'] .nb-wikiembed-header {
+  border-bottom: 1px solid var(--editor-border);
+}
+
+.ProseMirror .nb-wikiembed-content[data-embed-kind='placeholder'] .nb-wikiembed-header {
+  border: 1px dashed var(--editor-border);
+  border-radius: 8px;
+  color: var(--editor-text-muted);
+  font-weight: 400;
+}
+
+.ProseMirror .nb-wikiembed-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ProseMirror .nb-wikiembed-open {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--editor-text-muted);
+}
+
+/* 未指定高度时自适应内容、最高 420px；拖动底边或写了 `|高度` 后固定为该高度，内容在卡片内滚动 */
+.ProseMirror .nb-wikiembed-body {
+  display: block;
+  box-sizing: border-box;
+  padding: 8px 14px 10px;
+  height: var(--nb-wikiembed-height, auto);
+  max-height: var(--nb-wikiembed-height, 420px);
+  overflow: auto;
+  font-size: 0.95em;
+}
+
+/* 卡片底边高度拖柄 */
+.ProseMirror .nb-wikiembed-resize {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 12px;
+  border-top: 1px solid var(--editor-border);
+  cursor: ns-resize;
+  touch-action: none;
+  user-select: none;
+  transition: background var(--transition-fast);
+}
+
+.ProseMirror .nb-wikiembed-resize-grip {
+  width: 32px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--editor-border);
+  transition: background var(--transition-fast), width var(--transition-fast);
+}
+
+.ProseMirror .nb-wikiembed-resize:hover,
+.ProseMirror .nb-wikiembed-resize.is-dragging {
+  background: color-mix(in srgb, var(--editor-accent) 8%, transparent);
+}
+
+.ProseMirror .nb-wikiembed-resize:hover .nb-wikiembed-resize-grip,
+.ProseMirror .nb-wikiembed-resize.is-dragging .nb-wikiembed-resize-grip {
+  width: 44px;
+  background: var(--editor-accent);
+}
+
+/* 只读（沉浸阅读、历史预览等）不显示拖柄 */
+.ProseMirror[contenteditable='false'] .nb-wikiembed-resize {
+  display: none;
+}
+
+/* 触屏：加大拖柄触控区域 */
+[data-platform='mobile'] .ProseMirror .nb-wikiembed-resize {
+  height: 20px;
+}
+
+.ProseMirror .nb-wikiembed-hint {
+  display: block;
+  font-size: 12px;
+  color: var(--editor-text-muted);
+}
+
+.ProseMirror .nb-wikiembed-image {
+  display: block;
+  max-width: 100%;
+  border-radius: 6px;
+}
+
+.nb-wikilink-menu-path {
+  font-size: 11px;
+  color: var(--editor-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nb-wikilink-menu-empty {
+  padding: 14px 10px;
+  font-size: 12px;
+  color: var(--editor-text-muted);
+  text-align: center;
+  line-height: 1.6;
+}
+
+/* 笔记行右侧「# >」：进入该笔记的标题列表；当前行或悬停时显示，触屏始终显示 */
+.nb-wikilink-menu-drill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  margin-left: auto;
+  flex-shrink: 0;
+  height: 24px;
+  padding: 0 4px 0 6px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--editor-text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition-fast), background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-wikilink-menu-item.is-active .nb-wikilink-menu-drill,
+.nb-wikilink-menu-item:hover .nb-wikilink-menu-drill {
+  opacity: 1;
+}
+
+.nb-wikilink-menu-drill:hover {
+  background: color-mix(in srgb, var(--editor-accent) 14%, transparent);
+  color: var(--editor-accent);
+}
+
+.nb-wikilink-menu-drill:active {
+  transform: scale(0.92);
+}
+
+[data-platform='mobile'] .nb-wikilink-menu-drill {
+  opacity: 1;
+  height: 32px;
+  padding: 0 8px;
+}
+
+/* 底部：嵌入开关与更多选项 */
+.nb-wikilink-menu-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 6px;
+  border-top: 1px solid var(--editor-border);
+  background: var(--editor-bg);
+  flex-shrink: 0;
+}
+
+.nb-wikilink-menu-toggle,
+.nb-wikilink-menu-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--editor-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-wikilink-menu-toggle:hover,
+.nb-wikilink-menu-more:hover {
+  background: var(--toolbar-hover);
+  color: var(--editor-text);
+}
+
+.nb-wikilink-menu-toggle:active,
+.nb-wikilink-menu-more:active {
+  transform: scale(0.96);
+}
+
+/* 迷你开关 */
+.nb-wikilink-menu-switch {
+  position: relative;
+  width: 24px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--editor-border);
+  transition: background var(--transition-fast);
+}
+
+.nb-wikilink-menu-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--editor-surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+  transition: transform var(--transition-fast);
+}
+
+.nb-wikilink-menu-toggle.is-on {
+  color: var(--editor-accent);
+}
+
+.nb-wikilink-menu-toggle.is-on .nb-wikilink-menu-switch {
+  background: var(--editor-accent);
+}
+
+.nb-wikilink-menu-toggle.is-on .nb-wikilink-menu-switch::after {
+  transform: translateX(10px);
+}
+
+[data-platform='mobile'] .nb-wikilink-menu-toggle,
+[data-platform='mobile'] .nb-wikilink-menu-more {
+  height: 34px;
+  font-size: 13px;
+}
+
+/* 双链弹窗遮罩不做背景模糊：弹窗内容随输入频繁变化，模糊背景每帧重新合成会导致卡顿 */
+.nb-prompt-overlay.nb-wikidialog-overlay {
+  backdrop-filter: none;
+  background: rgb(20 18 14 / .4);
+}
+
+/* 双链弹窗：沿用 nb-prompt 外观，补充字段布局 */
+.nb-wikidialog .nb-prompt-body {
+  gap: 6px;
+}
+
+.nb-wikidialog-label {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--editor-text-secondary);
+}
+
+.nb-wikidialog-label:first-child {
+  margin-top: 0;
+}
+
+.nb-wikidialog-combo {
+  position: relative;
+}
+
+.nb-wikidialog-list {
+  margin-top: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--editor-border);
+  border-radius: 8px;
+  background: var(--editor-surface);
+}
+
+.nb-wikidialog-status {
+  font-size: 11.5px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.nb-wikidialog-status.is-ok {
+  color: var(--success-600, #16a34a);
+}
+
+.nb-wikidialog-status.is-warn {
+  color: var(--warning-600, #d97706);
+}
+
+.nb-wikidialog-status.is-muted {
+  color: var(--editor-text-muted);
+}
+
+.nb-wikidialog-select {
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--control-border, var(--editor-border));
+  border-radius: 8px;
+  background: var(--editor-bg);
+  color: var(--editor-text);
+  font-family: inherit;
+  font-size: 13.5px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.nb-wikidialog-select:hover:not(:disabled) {
+  border-color: var(--editor-border-focus);
+}
+
+.nb-wikidialog-select:focus {
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-strong) 18%, transparent);
+}
+
+.nb-wikidialog-select:disabled {
+  color: var(--editor-text-muted);
+  cursor: default;
+}
+
+.nb-wikidialog-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.nb-wikidialog-mode {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--control-border, var(--editor-border));
+  border-radius: 8px;
+  background: var(--editor-bg);
+  color: var(--editor-text-secondary);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-wikidialog-mode > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.nb-wikidialog-mode:hover {
+  border-color: var(--editor-border-focus);
+  color: var(--editor-text);
+}
+
+.nb-wikidialog-mode:active {
+  transform: scale(0.98);
+}
+
+.nb-wikidialog-mode.is-active {
+  border-color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent-strong) 8%, var(--editor-bg));
+  color: var(--accent-strong);
+}
+
+.nb-wikidialog-mode-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.nb-wikidialog-mode-text small {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--editor-text-muted);
+}
+
+/* 对应的 Markdown 写法 */
+.nb-wikidialog-syntax {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--editor-text-muted) 8%, transparent);
+  font-size: 11.5px;
+  color: var(--editor-text-muted);
+}
+
+.nb-wikidialog-syntax > span {
+  flex-shrink: 0;
+}
+
+.nb-wikidialog-syntax code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono-font-family, monospace);
+  font-size: 12px;
+  color: var(--editor-text);
+}
+
+/* 编辑已有链接时的操作行：打开笔记 / 删除链接 */
+.nb-wikidialog-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.nb-wikidialog-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--control-border, var(--editor-border));
+  border-radius: 8px;
+  background: transparent;
+  color: var(--editor-text-secondary);
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-wikidialog-action:hover {
+  background: var(--toolbar-hover);
+  color: var(--editor-text);
+}
+
+.nb-wikidialog-action.is-danger:hover {
+  border-color: color-mix(in srgb, var(--error-500, #ef4444) 45%, transparent);
+  background: color-mix(in srgb, var(--error-500, #ef4444) 10%, transparent);
+  color: var(--error-500, #ef4444);
+}
+
+.nb-wikidialog-action:active {
+  transform: scale(0.96);
+}
+
+[data-platform='mobile'] .nb-wikidialog-action {
+  flex: 1;
+  justify-content: center;
+  height: 40px;
+  font-size: 14px;
+}
+
+/* 大纲侧栏分页：文档大纲 / 反向链接 */
+.nb-outline-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.nb-outline-tab {
+  height: 22px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--editor-text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-outline-tab:hover {
+  background: var(--toolbar-hover);
+  color: var(--editor-text);
+}
+
+.nb-outline-tab:active {
+  transform: scale(0.96);
+}
+
+.nb-outline-tab.is-active {
+  color: var(--editor-text);
+  font-weight: 600;
+}
+
+/* 反向链接 */
+.nb-backlinks {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.nb-backlinks-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 4px 12px;
+  font-size: 11px;
+  color: var(--editor-text-muted);
+  border-bottom: 1px solid var(--editor-border);
+  flex-shrink: 0;
+}
+
+.nb-backlinks-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--editor-text-muted);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-backlinks-refresh:hover {
+  background: var(--toolbar-hover);
+  color: var(--editor-text);
+}
+
+.nb-backlinks-refresh:active {
+  transform: scale(0.92);
+}
+
+.nb-backlinks-refresh.is-loading svg {
+  animation: nb-backlinks-spin 0.9s linear infinite;
+}
+
+@keyframes nb-backlinks-spin {
+  to { transform: rotate(360deg); }
+}
+
+.nb-backlinks-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 0 8px;
+}
+
+.nb-backlinks-group {
+  padding: 2px 6px 6px;
+}
+
+.nb-backlinks-source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 26px;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--editor-text);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-backlinks-source:hover {
+  background: var(--toolbar-hover);
+}
+
+.nb-backlinks-source:active,
+.nb-backlinks-snippet:active {
+  transform: scale(0.985);
+}
+
+.nb-backlinks-source > svg {
+  flex-shrink: 0;
+  color: var(--editor-text-muted);
+}
+
+.nb-backlinks-source-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nb-backlinks-count {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--editor-text-muted);
+}
+
+.nb-backlinks-snippet {
+  display: block;
+  width: calc(100% - 12px);
+  margin: 2px 0 2px 12px;
+  padding: 4px 8px;
+  border: none;
+  border-left: 2px solid var(--editor-border);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: transparent;
+  color: var(--editor-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+  text-align: left;
+  word-break: break-word;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-backlinks-snippet:hover {
+  background: var(--toolbar-hover);
+  border-left-color: var(--editor-accent);
+}
+
+.nb-backlinks-snippet-link {
+  color: var(--editor-link);
+}
+
+.nb-backlinks-empty {
+  padding: 24px 16px;
+  font-size: 12px;
+  color: var(--editor-text-muted);
+  text-align: center;
+  line-height: 1.6;
+}
+
 /* 列表 */
 .ProseMirror ul:not([data-type="taskList"]),
 .ProseMirror ol {
@@ -1282,6 +2094,22 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   -webkit-box-decoration-break: clone;
 }
 
+/* 字体颜色：文件中保存原色值（内联 color）；菜单色样经 --nb-text-color 取色 */
+.nb-text-color-preview {
+  color: var(--nb-text-color);
+}
+
+/* 深色主题：中等明度的预设色在黑底上偏暗，显示时向白色提亮（不改动文件中的色值） */
+:root[data-theme="mo-ye"] .ProseMirror .nb-text-color,
+:root[data-theme="mo-ye"] .nb-text-color-preview {
+  color: color-mix(in srgb, var(--nb-text-color) 68%, #ffffff) !important;
+}
+
+/* 高亮底色始终是浅色，其中的彩色文字保持原色才清晰 */
+:root[data-theme="mo-ye"] .ProseMirror mark .nb-text-color {
+  color: var(--nb-text-color) !important;
+}
+
 /* 分割线 */
 .ProseMirror hr {
   height: 2px;
@@ -1301,7 +2129,8 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   font-family: var(--mono-font-family);
   font-size: var(--mono-font-size);
   line-height: var(--mono-line-height, 1.5);
-  tab-size: 2;
+  /* 代码块继承当前编辑器设置的 Tab 显示宽度。 */
+  tab-size: var(--nb-tab-size, 2);
 }
 /* 原样保留块（front matter / 块级 HTML）：只读源码样式，右上角标注类型，选中时描边强调 */
 .ProseMirror pre.nb-md-raw-block {
@@ -1563,7 +2392,8 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   border: none;
   outline: none;
   resize: vertical;
-  tab-size: 2;
+  /* 块内源码与正文使用相同的 Tab 显示宽度。 */
+  tab-size: var(--nb-tab-size, 2);
 }
 /* 脚注：引用为上标，定义为弱化的小号原文 */
 .ProseMirror .nb-md-footnote-ref {
@@ -1677,6 +2507,97 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
 
 .nb-settings-preview-body {
   margin-top: 10px;
+}
+
+/* 关于页更新日志：版本行可折叠，正文左对齐 */
+.nb-release-notes {
+  align-self: stretch;
+  width: 100%;
+  max-width: 560px;
+  margin: 8px auto 0;
+  text-align: left;
+}
+
+.nb-release-notes-heading {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--editor-text);
+}
+
+.nb-release-note {
+  border-top: 1px solid var(--editor-border);
+}
+
+.nb-release-note:last-child {
+  border-bottom: 1px solid var(--editor-border);
+}
+
+.nb-release-note-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--editor-text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-release-note-toggle:hover {
+  background: var(--toolbar-hover);
+}
+
+.nb-release-note-toggle:active {
+  background: var(--toolbar-active);
+  transform: scale(0.99);
+}
+
+.nb-release-note-chevron {
+  flex-shrink: 0;
+  color: var(--editor-text-muted);
+  transition: transform var(--transition-fast);
+}
+
+.nb-release-note-toggle[aria-expanded='true'] .nb-release-note-chevron {
+  transform: rotate(90deg);
+}
+
+.nb-release-note-version {
+  font-weight: 600;
+}
+
+.nb-release-note-date {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--editor-text-muted);
+}
+
+.nb-release-note-body {
+  padding: 2px 8px 10px 26px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--editor-text-secondary);
+}
+
+.nb-release-note-section + .nb-release-note-section {
+  margin-top: 6px;
+}
+
+.nb-release-note-section-title {
+  font-weight: 600;
+  color: var(--editor-text);
+}
+
+.nb-release-note-section ul {
+  margin: 2px 0 0;
+  padding-left: 16px;
+  list-style: disc;
 }
 
 /* 设置页下拉框：自绘触发按钮与弹出列表，替代原生 select（原生列表在 WebView2 下为系统深色块） */
@@ -1994,6 +2915,33 @@ button:not(:disabled) {
   background: var(--toolbar-active);
   transform: translateY(0) scale(0.985);
   box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.05));
+}
+
+/* 行内代码徽标：扩展名、快捷键等短代码文本（主页卡片、「+」菜单、设置新建入口共用）
+   底色与描边由 --nb-badge-color 半透明混合而来，浅色与深色主题下都只是一层淡淡的色调 */
+.nb-code-badge {
+  --nb-badge-color: var(--editor-text-muted);
+  display: inline-block;
+  flex-shrink: 0;
+  padding: 0 5px;
+  border: 1px solid color-mix(in srgb, var(--nb-badge-color) 24%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--nb-badge-color) 8%, transparent);
+  color: var(--editor-text-secondary, var(--editor-text-muted));
+  font-family: var(--mono-font-family, monospace);
+  font-size: 10.5px;
+  font-weight: 400;
+  line-height: 16px;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+/* 跟在名称后的扩展名：空间不足时先于名称收缩，名称尽量完整 */
+.nb-code-badge.is-shrinkable {
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 主操作按钮（强调色实心填充） */
@@ -2463,7 +3411,7 @@ button:not(:disabled) {
   justify-content: center;
   padding: 24px;
   background: rgb(0 0 0 / 48%);
-  backdrop-filter: blur(5px);
+  /* 字体加载进度变化时仅更新弹窗，避免反复虚化完整编辑区。 */
 }
 
 .nb-font-pack-prompt {
@@ -3540,7 +4488,7 @@ button.nb-callout-icon:active {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(2px);
+  /* 多端通用弹窗保持纯色遮罩，交互与滚动不再扩大成整窗背景合成。 */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3558,103 +4506,26 @@ button.nb-callout-icon:active {
   color: var(--editor-text);
 }
 
-/* Markdown 规范化确认框 */
-.nb-md-normalize-summary {
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--editor-text-secondary);
-  background: var(--editor-bg);
-  border: 1px solid var(--editor-border);
-  border-radius: var(--radius-md);
-  padding: 10px 12px;
-}
-.nb-md-normalize-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 10px;
-  padding: 4px 6px;
-  font-size: 12px;
-  color: var(--accent-strong);
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background var(--transition-fast), transform var(--transition-fast);
-}
-.nb-md-normalize-toggle:hover {
-  background: var(--editor-hover, rgba(127, 127, 127, 0.1));
-}
-.nb-md-normalize-toggle:active {
-  transform: scale(0.97);
-}
-.nb-md-normalize-diff {
-  margin-top: 8px;
-  max-height: 260px;
-  overflow: auto;
-  border: 1px solid var(--editor-border);
-  border-radius: var(--radius-md);
-  padding: 6px 8px;
-}
-.nb-md-normalize-hunk + .nb-md-normalize-hunk {
-  margin-top: 8px;
-}
-.nb-md-normalize-hunk-line {
-  font-size: 11px;
-  color: var(--editor-text-muted);
-  margin-bottom: 2px;
-}
-.nb-md-normalize-hunk pre {
-  margin: 0;
-  padding: 2px 6px;
-  font-family: var(--mono-font-family);
-  font-size: 12px;
-  white-space: pre-wrap;
-  word-break: break-word;
-  border-radius: var(--radius-sm);
-}
-.nb-md-normalize-before {
-  background: color-mix(in srgb, var(--error-500, #ef4444) 12%, transparent);
-  text-decoration: line-through;
-  text-decoration-color: color-mix(in srgb, var(--error-500, #ef4444) 50%, transparent);
-}
-.nb-md-normalize-after {
-  margin-top: 2px !important;
-  background: color-mix(in srgb, var(--success-500, #22c55e) 14%, transparent);
-}
-.nb-md-normalize-hunk-category {
-  color: var(--editor-text-secondary);
-  font-weight: 500;
-}
-.nb-md-normalize-hunk-reason {
-  color: var(--editor-text-muted);
-}
-/* 行尾空格、制表符的可见符号：醒目但不抢正文 */
-.nb-md-normalize-ws {
-  color: var(--accent-strong);
-  background: color-mix(in srgb, var(--accent-strong) 20%, transparent);
-  border-radius: 2px;
-}
-.nb-md-normalize-empty {
-  color: var(--editor-text-muted);
-  font-style: italic;
-}
-.nb-md-normalize-remember {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 14px;
-  font-size: 12px;
-  color: var(--editor-text-secondary);
-  cursor: pointer;
-}
-.nb-md-normalize-actions {
-  display: flex;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 16px;
-}
+/* 可视化准备沿用主题色；仅装载阶段显示真实进度，后台解析使用不定进度。 */
+.nb-md-preparation-dialog { width: min(400px, calc(100vw - 32px)); text-align: center; padding: 28px; }
+.nb-md-preparation-icon { display: inline-flex; padding: 13px; border-radius: 50%; background: color-mix(in srgb, var(--accent-strong) 10%, transparent); color: var(--accent-strong); }
+.nb-md-preparation-icon svg { animation: nb-md-preparation-spin 1.2s linear infinite; }
+.nb-md-preparation-title { font-size: 16px; font-weight: 600; margin: 16px 0 6px; color: var(--editor-heading); }
+.nb-md-preparation-name { margin: 0 0 24px; font-size: 12px; color: var(--editor-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nb-md-preparation-stage { font-size: 13px; color: var(--editor-text-secondary); margin-bottom: 12px; }
+.nb-md-preparation-track { height: 4px; overflow: hidden; border-radius: 4px; background: var(--editor-border); }
+.nb-md-preparation-track span { display: block; height: 100%; border-radius: inherit; background: var(--accent-strong); transition: width 120ms ease; }
+.nb-md-preparation-track.is-indeterminate span { width: 36%; animation: nb-md-preparation-travel 1.5s ease-in-out infinite; }
+.nb-md-preparation-hint { min-height: 20px; margin: 12px 0 24px; font-size: 12px; line-height: 1.6; color: var(--editor-text-muted); }
+.nb-md-preparation-cancel { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 8px 14px; font-size: 13px; }
+.nb-md-preparation-cancel:hover { background: var(--editor-hover); }
+.nb-md-preparation-cancel:active { transform: translateY(1px); }
+@keyframes nb-md-preparation-spin { to { transform: rotate(360deg); } }
+@keyframes nb-md-preparation-travel { from { transform: translateX(-110%); } to { transform: translateX(380%); } }
+/* 大文档的离屏块跳过初次布局；仍保留真实 DOM、编辑与全文选择能力。 */
+.nb-md-large-visual .ProseMirror > * { content-visibility: auto; contain-intrinsic-size: auto 80px; }
+/* 单个列表也可能覆盖整篇文档，离屏项单独延后布局，原始层级和编号仍由同一列表管理。 */
+.nb-md-large-visual .ProseMirror li { content-visibility: auto; contain-intrinsic-size: auto 32px; }
 
 /* prefers-reduced-motion */
 @media (prefers-reduced-motion: reduce) {
@@ -3709,7 +4580,30 @@ button.nb-callout-icon:active {
   color: transparent;
 }
 
-/* 大纲中的概要 / 外框 / 联系线小标签 */
+/* 大纲中概要主题行前的标签（标明概括了几项） */
+.nb-outliner-summary-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  height: 20px;
+  padding: 0 7px;
+  margin-right: 2px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--editor-accent, #3b82f6) 10%, transparent);
+  color: var(--editor-accent, #3b82f6);
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+  transition: background var(--transition-fast, 120ms ease);
+}
+
+.nb-outliner-summary-tag:hover {
+  background: color-mix(in srgb, var(--editor-accent, #3b82f6) 18%, transparent);
+}
+
+/* 大纲中的外框 / 联系线小标签 */
 .nb-outliner-structure-chip {
   display: inline-flex;
   align-items: center;
@@ -3776,1836 +4670,7 @@ button.nb-callout-icon:active {
   transform: scale(0.9);
 }
 
-/* 思维导图卡片悬浮添加按钮与快捷工具栏 */
-.nb-mindmap-node:hover .nb-node-add-btn {
-  opacity: 1 !important;
-}
-
-.nb-mindmap-node:hover .nb-mindmap-node-toolbar {
-  display: flex !important;
-}
-
-/* 节点标题按行渲染：行内容已由布局引擎断好，禁止浏览器二次折行 */
-.nb-mindmap-title-line {
-  white-space: pre;
-}
-
-/* ── 思维导图与图表编辑器交互按钮状态反馈规范 ── */
-
-/* 思维导图节点快捷浮动工具栏小按钮 */
-.nb-mindmap-toolbar-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 3px;
-  border-radius: 4px;
-  color: var(--editor-text-secondary, #64748b);
-  transition: background var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
-}
-
-.nb-mindmap-toolbar-btn:hover {
-  background: var(--toolbar-hover, rgba(59, 130, 246, 0.08));
-  color: var(--editor-accent, #3b82f6);
-}
-
-.nb-mindmap-toolbar-btn:active {
-  background: var(--toolbar-active, rgba(59, 130, 246, 0.16));
-  transform: scale(0.92);
-}
-
-/* 多选时工具栏前的选中数量 */
-.nb-mindmap-toolbar-count {
-  padding: 0 4px;
-  font-size: 11px;
-  white-space: nowrap;
-  color: var(--editor-accent, #3b82f6);
-}
-
-/* 节点工具栏高亮激活态（如已配置备注、已有图片或添加按钮） */
-.nb-mindmap-toolbar-btn.is-active-accent {
-  color: var(--editor-accent, #3b82f6);
-}
-
-.nb-mindmap-toolbar-btn.is-active-accent:hover {
-  background: var(--toolbar-hover, rgba(59, 130, 246, 0.12));
-}
-
-/* 节点工具栏删除按钮危险色反馈 */
-.nb-mindmap-toolbar-btn.is-danger {
-  color: #ef4444;
-}
-
-.nb-mindmap-toolbar-btn.is-danger:hover {
-  background: rgba(239, 68, 68, 0.12);
-  color: #dc2626;
-}
-
-.nb-mindmap-toolbar-btn.is-danger:active {
-  background: rgba(239, 68, 68, 0.22);
-  transform: scale(0.92);
-}
-
-/* 节点折叠/展开徽标交互反馈 */
-.nb-mindmap-fold-btn {
-  transition: transform var(--transition-fast, 120ms ease), filter var(--transition-fast, 120ms ease), box-shadow var(--transition-fast, 120ms ease);
-}
-
-.nb-mindmap-fold-btn:hover {
-  filter: brightness(1.12);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
-}
-
-.nb-mindmap-fold-btn:active {
-  transform: translateY(-50%) scale(0.90) !important;
-  filter: brightness(0.95);
-}
-
-/* 节点悬停添加按钮交互反馈 */
-.nb-node-add-btn:hover {
-  filter: brightness(1.1);
-  transform: translateY(-50%) scale(1.12) !important;
-}
-
-.nb-node-add-btn:active {
-  transform: translateY(-50%) scale(0.92) !important;
-  filter: brightness(0.9);
-}
-
-/* 胶囊分段单选按钮（思维导图双模切换、图表双栏分屏/源码/预览切换） */
-.nb-editor-pill-btn {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  /* 工具栏空间不足时按钮不被压缩、文字不折行 */
-  flex-shrink: 0;
-  white-space: nowrap;
-  padding: 4px 10px;
-  border-radius: 4px;
-  border: none;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 400;
-  background: transparent;
-  color: var(--editor-text-muted, #64748b);
-  transition: background var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
-}
-
-.nb-editor-pill-btn:hover:not([data-active='true']) {
-  background: var(--toolbar-hover, rgba(0, 0, 0, 0.05));
-  color: var(--editor-text, #1e293b);
-}
-
-.nb-editor-pill-btn:active {
-  transform: scale(0.96);
-}
-
-.nb-editor-pill-btn[data-active='true'] {
-  background: var(--toolbar-active, rgba(59, 130, 246, 0.12));
-  color: var(--editor-accent, #3b82f6);
-  font-weight: 600;
-}
-
-/* 工具栏小图标边框按钮（放大、缩小、复位等） */
-.nb-editor-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid var(--control-border);
-  border-radius: 4px;
-  padding: 3px 6px;
-  cursor: pointer;
-  color: var(--editor-text, #1e293b);
-  transition: background var(--transition-fast, 120ms ease), border-color var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
-}
-
-.nb-editor-icon-btn:hover {
-  background: var(--toolbar-hover, rgba(59, 130, 246, 0.08));
-  border-color: var(--editor-border-focus, #93c5fd);
-  color: var(--editor-accent, #3b82f6);
-}
-
-.nb-editor-icon-btn:active {
-  background: var(--toolbar-active, rgba(59, 130, 246, 0.18));
-  transform: scale(0.94);
-}
-
-/* 图片查看器悬浮工具栏的无边框图标按钮 */
-.nb-image-toolbar-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  transition: background var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
-}
-
-.nb-image-toolbar-btn:hover {
-  background: var(--toolbar-hover, rgba(59, 130, 246, 0.08));
-  color: var(--editor-accent, #3b82f6);
-}
-
-.nb-image-toolbar-btn:active {
-  background: var(--toolbar-active, rgba(59, 130, 246, 0.18));
-  transform: scale(0.92);
-}
-
-/* 工具栏次级边框文本按钮（导入 XMind、导出 Markdown 等） */
-.nb-editor-toolbar-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  /* 工具栏空间不足时按钮不被压缩、文字不折行 */
-  flex-shrink: 0;
-  white-space: nowrap;
-  padding: 4px 8px;
-  border-radius: 5px;
-  border: 1px solid var(--control-border);
-  background: var(--editor-bg, #ffffff);
-  color: var(--editor-text, #1e293b);
-  cursor: pointer;
-  font-size: 12px;
-  user-select: none;
-  transition: background var(--transition-fast, 120ms ease), border-color var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
-}
-
-.nb-editor-toolbar-btn:hover {
-  background: var(--toolbar-hover, rgba(59, 130, 246, 0.08));
-  border-color: var(--editor-border-focus, #93c5fd);
-}
-
-.nb-editor-toolbar-btn:active {
-  background: var(--toolbar-active, rgba(59, 130, 246, 0.16));
-  transform: scale(0.96);
-}
-
-/* 工具栏主要强调按钮（导出 XMind 等） */
-.nb-editor-primary-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  /* 工具栏空间不足时按钮不被压缩、文字不折行 */
-  flex-shrink: 0;
-  white-space: nowrap;
-  padding: 4px 10px;
-  border-radius: 5px;
-  border: 1px solid transparent;
-  background: var(--editor-accent, #3b82f6);
-  color: #ffffff;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-  user-select: none;
-  transition: filter var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
-}
-
-.nb-editor-primary-btn:hover {
-  filter: brightness(1.08);
-}
-
-.nb-editor-primary-btn:active {
-  filter: brightness(0.92);
-  transform: scale(0.96);
-}
-
-/* 图表块内操作栏按钮（编辑、全屏等） */
-.nb-diagram-action-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 3px 6px;
-  border-radius: 4px;
-  color: var(--editor-text-muted, #64748b);
-  font-size: 11px;
-  transition: background var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
-}
-
-.nb-diagram-action-btn:hover {
-  background: var(--toolbar-hover, rgba(59, 130, 246, 0.12));
-  color: var(--editor-text, #1e293b);
-}
-
-.nb-diagram-action-btn:active {
-  background: var(--toolbar-active, rgba(59, 130, 246, 0.20));
-  transform: scale(0.95);
-}
-
-/* 思维导图样式控制触发器与下拉项交互反馈 */
-.nb-mindmap-style-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 6px;
-  border-radius: 5px;
-  border: 1px solid var(--control-border);
-  background: var(--editor-bg, #ffffff);
-  color: var(--editor-text, #1e293b);
-  font-size: 12px;
-  white-space: nowrap;
-  cursor: pointer;
-  user-select: none;
-  transition: background var(--transition-fast, 120ms ease), border-color var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
-}
-
-.nb-mindmap-style-trigger:hover {
-  background: var(--toolbar-hover, rgba(59, 130, 246, 0.08));
-  border-color: var(--editor-border-focus, #93c5fd);
-  color: var(--editor-accent, #3b82f6);
-}
-
-.nb-mindmap-style-trigger:active,
-.nb-mindmap-style-trigger[data-active='true']:active {
-  background: var(--toolbar-active, rgba(59, 130, 246, 0.18));
-  transform: scale(0.96);
-}
-
-.nb-mindmap-style-trigger[data-active='true'] {
-  background: var(--toolbar-active, rgba(59, 130, 246, 0.12));
-  border-color: var(--editor-accent, #3b82f6);
-  color: var(--editor-accent, #3b82f6);
-}
-
-.nb-mindmap-style-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 6px 8px;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: var(--editor-text, #1e293b);
-  cursor: pointer;
-  font-size: 12px;
-  text-align: left;
-  transition: background-color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
-}
-
-.nb-mindmap-style-item:hover {
-  background: var(--toolbar-hover, rgba(59, 130, 246, 0.08));
-}
-
-.nb-mindmap-style-item:active {
-  background: var(--toolbar-active, rgba(59, 130, 246, 0.16));
-  transform: scale(0.98);
-}
-
-.nb-mindmap-style-item[data-active='true'] {
-  background: var(--toolbar-active, rgba(59, 130, 246, 0.12));
-  color: var(--editor-accent, #3b82f6);
-  font-weight: 600;
-}
-
-/* 布局面板：缩略图卡片网格 */
-.nb-mindmap-layout-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 6px 7px;
-  border-radius: 8px;
-  border: 1px solid var(--editor-border, #e2e8f0);
-  background: var(--editor-bg, #ffffff);
-  color: var(--editor-text, #1e293b);
-  font-size: 12px;
-  cursor: pointer;
-  transition: background-color var(--transition-fast, 120ms ease), border-color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease), box-shadow var(--transition-fast, 120ms ease);
-}
-
-.nb-mindmap-layout-card:hover {
-  border-color: var(--editor-border-focus, #93c5fd);
-  background: var(--toolbar-hover, rgba(59, 130, 246, 0.06));
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-}
-
-.nb-mindmap-layout-card:active {
-  transform: scale(0.97);
-  background: var(--toolbar-active, rgba(59, 130, 246, 0.14));
-}
-
-.nb-mindmap-layout-card[data-active='true'] {
-  border-color: var(--editor-accent, #3b82f6);
-  box-shadow: 0 0 0 1px var(--editor-accent, #3b82f6);
-  color: var(--editor-accent, #3b82f6);
-  font-weight: 600;
-}
-
-/* 布局面板：连线样式分段按钮 */
-.nb-mindmap-edge-option {
-  /* 按内容分配宽度：长选项（如「跟随主题」）多占一些，空间不足时再省略 */
-  flex: 1 1 auto;
-  /* 宽字体（如等宽字体、加大字间距）下也不撑出容器 */
-  min-width: 0;
-  overflow: hidden;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 5px 4px;
-  border: none;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--editor-text-secondary, #64748b);
-  font-size: 12px;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background-color var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
-}
-
-.nb-mindmap-edge-option > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.nb-mindmap-edge-option > svg {
-  flex-shrink: 0;
-}
-
-.nb-mindmap-edge-option:hover {
-  background: var(--toolbar-hover, rgba(59, 130, 246, 0.08));
-  color: var(--editor-text, #1e293b);
-}
-
-.nb-mindmap-edge-option:active {
-  transform: scale(0.96);
-  background: var(--toolbar-active, rgba(59, 130, 246, 0.16));
-}
-
-.nb-mindmap-edge-option[data-active='true'] {
-  background: var(--editor-surface, #ffffff);
-  color: var(--editor-accent, #3b82f6);
-  font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-/* 节点宽度拉伸手柄：悬停或选中节点时显示 */
-.nb-mindmap-resize-handle {
-  position: absolute;
-  top: 6px;
-  bottom: 6px;
-  width: 8px;
-  cursor: ew-resize;
-  z-index: 6;
-  opacity: 0;
-  transition: opacity var(--transition-fast, 120ms ease);
-}
-
-.nb-mindmap-resize-handle::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 3px;
-  height: min(18px, 60%);
-  border-radius: 2px;
-  background: var(--editor-accent, #3b82f6);
-  transform: translate(-50%, -50%);
-  transition: height var(--transition-fast, 120ms ease), background-color var(--transition-fast, 120ms ease);
-}
-
-.nb-mindmap-node:hover .nb-mindmap-resize-handle,
-.nb-mindmap-resize-handle[data-visible='true'] {
-  opacity: 0.75;
-}
-
-.nb-mindmap-resize-handle:hover,
-.nb-mindmap-resize-handle[data-dragging='true'] {
-  opacity: 1 !important;
-}
-
-.nb-mindmap-resize-handle:hover::after,
-.nb-mindmap-resize-handle[data-dragging='true']::after {
-  height: min(28px, 80%);
-}
-
-/* 折叠 / 添加按钮在节点上下两侧时改为水平居中 */
-.nb-mindmap-fold-btn[data-side='top']:active,
-.nb-mindmap-fold-btn[data-side='bottom']:active {
-  transform: translateX(-50%) scale(0.90) !important;
-}
-
-.nb-node-add-btn[data-side='top']:hover,
-.nb-node-add-btn[data-side='bottom']:hover {
-  transform: translateX(-50%) scale(1.12) !important;
-}
-
-.nb-node-add-btn[data-side='top']:active,
-.nb-node-add-btn[data-side='bottom']:active {
-  transform: translateX(-50%) scale(0.92) !important;
-}
-
-/* 节点图片放大预览底部工具栏 */
-.nb-image-preview-toolbar {
-  position: absolute;
-  left: 50%;
-  bottom: 22px;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 4px 6px;
-  border-radius: 10px;
-  background: rgba(24, 24, 27, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-  cursor: default;
-}
-
-.nb-image-preview-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 30px;
-  height: 30px;
-  padding: 0 6px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.86);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  cursor: pointer;
-  transition: background-color var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
-}
-
-.nb-image-preview-btn:hover {
-  background: rgba(255, 255, 255, 0.14);
-  color: #ffffff;
-}
-
-.nb-image-preview-btn:active {
-  background: rgba(255, 255, 255, 0.24);
-  transform: scale(0.93);
-}
-
-.nb-image-preview-percent {
-  min-width: 52px;
-}
-
-.nb-image-preview-divider {
-  width: 1px;
-  height: 18px;
-  margin: 0 4px;
-  background: rgba(255, 255, 255, 0.18);
-}
-
-/* 导图模式左下角撤销 / 重做按钮组 */
-.nb-mindmap-history-bar {
-  position: absolute;
-  left: 12px;
-  bottom: 10px;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 7px;
-  background: color-mix(in srgb, var(--editor-surface, #ffffff) 88%, transparent);
-  border: 1px solid var(--editor-border, #e2e8f0);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-}
-
-.nb-mindmap-history-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 26px;
-  border: none;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--editor-text-secondary, #64748b);
-  cursor: pointer;
-  transition: background-color var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
-}
-
-.nb-mindmap-history-btn:hover:not(:disabled) {
-  background: var(--toolbar-hover, rgba(59, 130, 246, 0.08));
-  color: var(--editor-accent, #3b82f6);
-}
-
-.nb-mindmap-history-btn:active:not(:disabled) {
-  transform: scale(0.92);
-  background: var(--toolbar-active, rgba(59, 130, 246, 0.16));
-}
-
-.nb-mindmap-history-btn:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-/* 通用画布缩略图（导图 / 画板右下角） */
-.nb-minimap {
-  position: absolute;
-  z-index: 6;
-  overflow: hidden;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--editor-surface, #ffffff) 92%, transparent);
-  border: 1px solid var(--editor-border, #e2e8f0);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
-  backdrop-filter: blur(6px);
-  cursor: pointer;
-  user-select: none;
-  touch-action: none;
-  transition:
-    border-color var(--transition-fast, 120ms ease),
-    box-shadow var(--transition-fast, 120ms ease),
-    opacity 160ms ease,
-    transform 160ms ease;
-}
-
-/* 视野已能看到大部分内容时淡出，不响应指针 */
-.nb-minimap[data-idle='true'] {
-  opacity: 0;
-  transform: translateY(6px);
-  pointer-events: none;
-  visibility: hidden;
-  transition:
-    opacity 160ms ease,
-    transform 160ms ease,
-    visibility 0s linear 160ms;
-}
-
-.nb-minimap:hover {
-  border-color: var(--editor-border-focus, #93c5fd);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
-}
-
-.nb-minimap[data-dragging='true'] {
-  cursor: grabbing;
-}
-
-/* 当前可视区域框：只改 transform / 尺寸，不触发内容重绘 */
-.nb-minimap-viewport {
-  position: absolute;
-  left: 0;
-  top: 0;
-  display: none;
-  box-sizing: border-box;
-  border: 1.5px solid var(--editor-accent, #3b82f6);
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--editor-accent, #3b82f6) 16%, transparent);
-  cursor: grab;
-  pointer-events: none;
-}
-
-.nb-minimap[data-dragging='true'] .nb-minimap-viewport {
-  background: color-mix(in srgb, var(--editor-accent, #3b82f6) 24%, transparent);
-}
-
-.nb-minimap-close {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: 1px solid var(--editor-border, #e2e8f0);
-  border-radius: 5px;
-  background: var(--editor-surface, #ffffff);
-  color: var(--editor-text-secondary, #64748b);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity var(--transition-fast, 120ms ease), background-color var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
-}
-
-.nb-minimap:hover .nb-minimap-close,
-.nb-minimap-close:focus-visible {
-  opacity: 1;
-}
-
-.nb-minimap[data-dragging='true'] .nb-minimap-close {
-  opacity: 0;
-}
-
-.nb-minimap-close:hover {
-  background: var(--toolbar-hover, rgba(59, 130, 246, 0.08));
-  color: var(--editor-accent, #3b82f6);
-}
-
-.nb-minimap-close:active {
-  transform: scale(0.9);
-  background: var(--toolbar-active, rgba(59, 130, 246, 0.16));
-}
-
-/* 收起后的把手：与侧栏把手一致，默认隐藏，靠近半显，悬停全显 */
-.nb-minimap-handle {
-  position: absolute;
-  z-index: 7;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid var(--editor-border, #e2e8f0);
-  border-radius: 7px;
-  background: var(--rail-bg, var(--editor-surface, #ffffff));
-  color: var(--rail-fg, var(--editor-text-secondary, #64748b));
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity var(--transition-normal, 200ms ease), background-color var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), box-shadow var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
-}
-
-.nb-minimap-handle[data-near='true'] {
-  opacity: 0.75;
-}
-
-.nb-minimap-handle:hover,
-.nb-minimap-handle:focus-visible {
-  opacity: 1;
-  background: var(--rail-hover-bg, var(--toolbar-hover, rgba(59, 130, 246, 0.08)));
-  color: var(--editor-text, #0f172a);
-  border-color: var(--editor-border-focus, #93c5fd);
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.16);
-}
-
-.nb-minimap-handle:active {
-  transform: scale(0.92);
-  background: var(--toolbar-active, rgba(59, 130, 246, 0.16));
-}
-
-/* 导图“滚动回到内容”：内容全部移出视野时底部居中出现（同画板） */
-.nb-mindmap-scroll-back {
-  position: absolute;
-  left: 50%;
-  bottom: 52px;
-  z-index: 7;
-  transform: translateX(-50%);
-  padding: 7px 16px;
-  border-radius: 8px;
-  border: 1px solid var(--editor-border, #e2e8f0);
-  background: var(--editor-surface, #ffffff);
-  color: var(--editor-text, #0f172a);
-  font-size: 13px;
-  line-height: 1.4;
-  white-space: nowrap;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
-  cursor: pointer;
-  animation: nb-scroll-back-in 160ms ease;
-  transition:
-    background var(--transition-fast, 120ms ease),
-    border-color var(--transition-fast, 120ms ease),
-    color var(--transition-fast, 120ms ease),
-    transform var(--transition-fast, 120ms ease);
-}
-
-.nb-mindmap-scroll-back:hover {
-  background: color-mix(in srgb, var(--editor-accent, #3b82f6) 8%, var(--editor-surface, #ffffff));
-  border-color: var(--editor-border-focus, #93c5fd);
-  color: var(--editor-accent, #3b82f6);
-}
-
-.nb-mindmap-scroll-back:active {
-  transform: translateX(-50%) scale(0.96);
-  background: color-mix(in srgb, var(--editor-accent, #3b82f6) 16%, var(--editor-surface, #ffffff));
-}
-
-@keyframes nb-scroll-back-in {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%);
-  }
-}
-
-/* ── 思维导图结构元素：外框 / 概要 / 联系线 ── */
-
-/* 外框与联系线：悬停加粗边线，提示可点选 */
-.nb-mindmap-boundary .nb-mindmap-boundary-frame,
-.nb-mindmap-relation .nb-mindmap-relation-line {
-  transition: stroke-width var(--transition-fast, 120ms ease), stroke-opacity var(--transition-fast, 120ms ease);
-}
-
-.nb-mindmap-boundary:hover .nb-mindmap-boundary-frame {
-  stroke-width: 2.2;
-  stroke-opacity: 1;
-}
-
-.nb-mindmap-relation:hover .nb-mindmap-relation-line {
-  stroke-width: 2.4;
-}
-
-/* 概要文字框、外框标题、联系线文字 */
-.nb-mindmap-summary-label,
-.nb-mindmap-structure-tag {
-  transition: box-shadow var(--transition-fast, 120ms ease), filter var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
-}
-
-.nb-mindmap-summary-label:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12) !important;
-}
-
-.nb-mindmap-structure-tag:hover {
-  filter: brightness(1.08);
-}
-
-.nb-mindmap-summary-label:active,
-.nb-mindmap-structure-tag:active {
-  transform: scale(0.97);
-}
-
-/* 联系线弯曲手柄 */
-.nb-mindmap-bend-handle {
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  box-sizing: border-box;
-  border: 2px solid var(--editor-accent, #3b82f6);
-  background: var(--editor-surface, #ffffff);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
-  cursor: grab;
-  z-index: 21;
-  touch-action: none;
-  transition: transform var(--transition-fast, 120ms ease), background var(--transition-fast, 120ms ease);
-}
-
-.nb-mindmap-bend-handle:hover {
-  transform: scale(1.2);
-  background: color-mix(in srgb, var(--editor-accent, #3b82f6) 20%, var(--editor-surface, #ffffff));
-}
-
-.nb-mindmap-bend-handle:active {
-  cursor: grabbing;
-  transform: scale(1.1);
-}
-
-/* 概要 / 外框范围端点手柄：沿同级排列方向拖动 */
-.nb-mindmap-range-handle {
-  position: absolute;
-  box-sizing: border-box;
-  border-radius: 4px;
-  border: 1.5px solid var(--editor-accent, #3b82f6);
-  background: var(--editor-surface, #ffffff);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
-  z-index: 21;
-  touch-action: none;
-  transition: transform var(--transition-fast, 120ms ease), background var(--transition-fast, 120ms ease);
-}
-
-.nb-mindmap-range-handle[data-axis='y'] {
-  cursor: ns-resize;
-}
-
-.nb-mindmap-range-handle[data-axis='x'] {
-  cursor: ew-resize;
-}
-
-.nb-mindmap-range-handle:hover {
-  transform: scale(1.25);
-  background: color-mix(in srgb, var(--editor-accent, #3b82f6) 20%, var(--editor-surface, #ffffff));
-}
-
-.nb-mindmap-range-handle:active {
-  transform: scale(1.1);
-  background: var(--editor-accent, #3b82f6);
-}
-
-/* 结构元素文字就地编辑框 */
-.nb-mindmap-structure-input {
-  position: absolute;
-  height: 26px;
-  z-index: 30;
-  box-sizing: border-box;
-  padding: 0 8px;
-  font-size: 13px;
-  font-family: inherit;
-  color: var(--editor-text, #1e293b);
-  background: var(--editor-surface, #ffffff);
-  border: 1.5px solid var(--editor-accent, #3b82f6);
-  border-radius: 6px;
-  outline: none;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
-  user-select: text;
-}
-
-/* 联系线连接模式提示条（画布顶部居中） */
-.nb-mindmap-connect-hint {
-  position: absolute;
-  left: 50%;
-  top: 12px;
-  z-index: 7;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px 6px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--editor-border, #e2e8f0);
-  background: var(--editor-surface, #ffffff);
-  color: var(--editor-accent, #3b82f6);
-  font-size: 12px;
-  white-space: nowrap;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
-  animation: nb-scroll-back-in 160ms ease;
-}
-
-.nb-mindmap-connect-cancel {
-  padding: 2px 10px;
-  border-radius: 5px;
-  border: 1px solid var(--editor-border, #e2e8f0);
-  background: transparent;
-  color: var(--editor-text, #1e293b);
-  font-size: 12px;
-  cursor: pointer;
-  transition: background var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
-}
-
-.nb-mindmap-connect-cancel:hover {
-  background: var(--toolbar-hover, rgba(0, 0, 0, 0.06));
-}
-
-.nb-mindmap-connect-cancel:active {
-  transform: scale(0.95);
-}
-
-/* 思维导图标题富文本编辑框 */
-.nb-mindmap-title-editor {
-  outline: none;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  cursor: text;
-  user-select: text;
-  -webkit-user-select: text;
-}
-
-/* 选中文字后的格式悬浮菜单 */
-.nb-mindmap-format-menu {
-  position: fixed;
-  z-index: 100004;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 4px;
-  border-radius: 8px;
-  background: var(--editor-surface, #ffffff);
-  border: 1px solid var(--editor-border, #e2e8f0);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
-  user-select: none;
-}
-
-.nb-mindmap-format-row {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.nb-mindmap-format-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  min-width: 28px;
-  height: 28px;
-  padding: 0 4px;
-  border: none;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--editor-text, #1e293b);
-  cursor: pointer;
-  transition: background-color var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
-}
-
-.nb-mindmap-format-btn.is-wide {
-  min-width: 36px;
-}
-
-.nb-mindmap-format-btn:hover {
-  background: var(--toolbar-hover, rgba(59, 130, 246, 0.08));
-  color: var(--editor-accent, #3b82f6);
-}
-
-.nb-mindmap-format-btn:active {
-  transform: scale(0.92);
-  background: var(--toolbar-active, rgba(59, 130, 246, 0.16));
-}
-
-.nb-mindmap-format-btn[data-active='true'] {
-  background: var(--toolbar-active, rgba(59, 130, 246, 0.14));
-  color: var(--editor-accent, #3b82f6);
-}
-
-.nb-mindmap-format-divider {
-  width: 1px;
-  height: 18px;
-  margin: 0 3px;
-  background: var(--editor-border, #e2e8f0);
-}
-
-.nb-mindmap-format-palette {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
-  padding: 4px 2px 2px;
-  border-top: 1px solid var(--editor-border, #e2e8f0);
-}
-
-.nb-mindmap-format-swatch {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--editor-text-secondary, #64748b);
-  cursor: pointer;
-  transition: background-color var(--transition-fast, 120ms ease), border-color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
-}
-
-.nb-mindmap-format-swatch:hover {
-  background: var(--toolbar-hover, rgba(59, 130, 246, 0.08));
-  border-color: var(--editor-border, #e2e8f0);
-}
-
-.nb-mindmap-format-swatch:active {
-  transform: scale(0.9);
-}
-
-.nb-mindmap-format-swatch[data-active='true'] {
-  border-color: var(--editor-accent, #3b82f6);
-}
-
-.nb-mindmap-format-chip {
-  width: 14px;
-  height: 14px;
-  border-radius: 3px;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
-}
-
-/* 单个节点样式浮层 */
-.nb-mindmap-node-style-popover {
-  position: fixed;
-  z-index: 100004;
-  width: 240px;
-  box-sizing: border-box;
-  padding: 10px;
-  border-radius: 8px;
-  background: var(--editor-surface, #ffffff);
-  border: 1px solid var(--editor-border, #e2e8f0);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.16);
-  color: var(--editor-text, #1e293b);
-  font-size: 12px;
-  user-select: none;
-}
-
-.nb-mindmap-popover-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 600;
-  margin-bottom: 6px;
-}
-
-.nb-mindmap-popover-label {
-  margin: 8px 2px 5px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--editor-text-muted, #94a3b8);
-}
-
-.nb-mindmap-segment {
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 7px;
-  background: var(--editor-bg, #f1f5f9);
-  border: 1px solid var(--editor-border, #e2e8f0);
-}
-
-/* 思维导图二次确认对话框 */
-.nb-mindmap-confirm-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 100006;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  background: rgba(0, 0, 0, 0.4);
-  animation: nbFadeIn 0.15s ease-out;
-}
-
-.nb-mindmap-confirm-card {
-  width: min(380px, 100%);
-  padding: 16px 18px;
-  border-radius: 10px;
-  background: var(--editor-surface, #ffffff);
-  border: 1px solid var(--editor-border, #cbd5e1);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
-  color: var(--editor-text, #1e293b);
-}
-
-.nb-mindmap-confirm-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.nb-mindmap-confirm-message {
-  margin: 10px 0 16px;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--editor-text-secondary, #64748b);
-}
-
-.nb-mindmap-confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.nb-mindmap-danger-btn {
-  padding: 4px 14px;
-  border: none;
-  border-radius: 6px;
-  background: var(--error-500, #ef4444);
-  color: #ffffff;
-  font-size: 12px;
-  cursor: pointer;
-  transition: filter var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
-}
-
-.nb-mindmap-danger-btn:hover {
-  filter: brightness(1.08);
-}
-
-.nb-mindmap-danger-btn:active {
-  transform: scale(0.96);
-  filter: brightness(0.92);
-}
-
-.nb-mindmap-danger-btn:focus-visible {
-  outline: 2px solid var(--error-500, #ef4444);
-  outline-offset: 2px;
-}
-
-/* ── 多维表格 (Bitable) 按钮与交互元素状态反馈 ── */
-
-/* 通用按钮过渡与基础交互 */
-.nb-bitable-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  border-radius: var(--radius-sm, 4px);
-  cursor: pointer;
-  user-select: none;
-  font-family: inherit;
-  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast), opacity var(--transition-fast);
-  box-sizing: border-box;
-}
-
-.nb-bitable-btn:active:not(:disabled) {
-  transform: scale(0.96);
-}
-
-/* 主操作按钮（新建记录、保存、应用等） */
-.nb-bitable-btn-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border-radius: 5px;
-  border: 1px solid transparent;
-  background: var(--editor-accent, #3b82f6);
-  color: #ffffff;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  user-select: none;
-  transition: all var(--transition-fast);
-  box-sizing: border-box;
-}
-
-.nb-bitable-btn-primary:hover:not(:disabled) {
-  filter: brightness(1.08);
-  transform: translateY(-1px);
-  box-shadow: 0 3px 8px rgba(59, 130, 246, 0.28);
-}
-
-.nb-bitable-btn-primary:active:not(:disabled) {
-  filter: brightness(0.95);
-  transform: translateY(0) scale(0.96);
-  box-shadow: none;
-}
-
-.nb-bitable-btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* 次级/轮廓按钮（导出 CSV、取消、字段选择触发器等） */
-.nb-bitable-btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 4px 8px;
-  border-radius: 5px;
-  border: 1px solid var(--control-border);
-  background: var(--editor-bg, #ffffff);
-  color: var(--editor-text, #1e293b);
-  font-size: 12px;
-  cursor: pointer;
-  user-select: none;
-  transition: all var(--transition-fast);
-  box-sizing: border-box;
-}
-
-.nb-bitable-btn-secondary:hover:not(:disabled) {
-  background: var(--toolbar-hover, #f1f5f9);
-  border-color: var(--editor-border-focus, #94a3b8);
-  color: var(--editor-text, #0f172a);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
-}
-
-.nb-bitable-btn-secondary:active:not(:disabled) {
-  background: var(--toolbar-active, #e2e8f0);
-  transform: translateY(0) scale(0.96);
-  box-shadow: none;
-}
-
-.nb-bitable-btn-secondary:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* 幽灵/小图标按钮（列更多菜单、关闭、加号等） */
-.nb-bitable-btn-ghost {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--editor-text-muted, #64748b);
-  cursor: pointer;
-  padding: 3px;
-  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast), opacity var(--transition-fast);
-  box-sizing: border-box;
-}
-
-.nb-bitable-btn-ghost:hover:not(:disabled) {
-  background: var(--toolbar-hover, rgba(148, 163, 184, 0.14));
-  color: var(--editor-text, #1e293b);
-  transform: scale(1.06);
-}
-
-.nb-bitable-btn-ghost:active:not(:disabled) {
-  background: var(--toolbar-active, rgba(148, 163, 184, 0.25));
-  transform: scale(0.92);
-}
-
-.nb-bitable-btn-ghost:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-/* 危险操作按钮（删除视图、删除列、删除卡片等） */
-.nb-bitable-btn-danger {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 8px;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: #ef4444;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
-  box-sizing: border-box;
-}
-
-.nb-bitable-btn-danger:hover:not(:disabled) {
-  background: color-mix(in srgb, #ef4444 12%, var(--editor-surface, #ffffff));
-  color: #dc2626;
-  transform: scale(1.02);
-}
-
-.nb-bitable-btn-danger:active:not(:disabled) {
-  background: color-mix(in srgb, #ef4444 22%, var(--editor-surface, #ffffff));
-  transform: scale(0.97);
-}
-
-/* 浮动菜单项按钮 */
-.nb-bitable-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 5px 8px;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  cursor: pointer;
-  font-size: 12px;
-  color: var(--editor-text, #1e293b);
-  text-align: left;
-  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
-  box-sizing: border-box;
-}
-
-.nb-bitable-menu-item:hover:not(:disabled) {
-  background: var(--toolbar-hover, #f1f5f9);
-  color: var(--editor-text, #0f172a);
-}
-
-.nb-bitable-menu-item:active:not(:disabled) {
-  background: var(--toolbar-active, #e2e8f0);
-  transform: scale(0.98);
-}
-
-.nb-bitable-menu-item:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-/* 视图 Tab 标签项交互 */
-.nb-bitable-tab {
-  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
-}
-
-.nb-bitable-tab:hover {
-  background: var(--toolbar-hover, rgba(148, 163, 184, 0.12)) !important;
-}
-
-/* 未激活 Tab 默认无边框，悬浮时补出控件轮廓，让可点击范围更明确（内联样式需 !important 覆盖） */
-.nb-bitable-tab:not(.is-active):hover {
-  border-color: var(--control-border) !important;
-}
-
-.nb-bitable-tab.is-active:hover {
-  background: var(--editor-bg, #ffffff) !important;
-}
-
-.nb-bitable-tab:active {
-  transform: scale(0.98);
-}
-
-/* 看板卡片悬浮与点击反馈 */
-.nb-bitable-kanban-card {
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
-}
-
-.nb-bitable-kanban-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--editor-border-focus, #cbd5e1) !important;
-  box-shadow: 0 5px 14px rgba(15, 23, 42, 0.07) !important;
-}
-
-.nb-bitable-kanban-card:active {
-  transform: translateY(0) scale(0.985);
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04) !important;
-}
-
-/* 拾色器色块交互（圆点 / 预览式方块共用） */
-.nb-bitable-color-swatch {
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
-}
-
-.nb-bitable-color-swatch:hover {
-  transform: scale(1.15);
-  box-shadow: 0 0 6px rgba(0, 0, 0, 0.25);
-  z-index: 2;
-}
-
-.nb-bitable-color-swatch:active {
-  transform: scale(1.02);
-}
-
-/* 星级评分星星动效 */
-.nb-bitable-star {
-  transition: transform var(--transition-fast), opacity var(--transition-fast);
-}
-
-.nb-bitable-star:hover {
-  transform: scale(1.3);
-}
-
-.nb-bitable-star:active {
-  transform: scale(1.05);
-}
-
-/* 标签徽章动效 */
-.nb-bitable-badge {
-  transition: transform var(--transition-fast), filter var(--transition-fast);
-}
-
-.nb-bitable-badge:hover {
-  filter: brightness(0.96);
-  transform: scale(1.03);
-}
-
-.nb-bitable-badge:active {
-  transform: scale(0.97);
-}
-
-/* 行快捷操作栏按钮 */
-.nb-bitable-row-action-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  padding: 5px 6px;
-  min-width: 28px;
-  height: 28px;
-  border-radius: 5px;
-  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
-}
-
-.nb-bitable-row-action-btn:hover:not(:disabled) {
-  background: var(--toolbar-hover, #f1f5f9);
-  transform: scale(1.1);
-}
-
-.nb-bitable-row-action-btn:active:not(:disabled) {
-  background: var(--toolbar-active, #e2e8f0);
-  transform: scale(0.92);
-}
-
-.nb-bitable-row-action-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-/* 多维表格右下角填充柄 (Fill Handle) */
-.nb-bitable-fill-handle {
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
-}
-
-.nb-bitable-fill-handle:hover {
-  transform: scale(1.35);
-  box-shadow: 0 0 6px rgba(59, 130, 246, 0.7) !important;
-  background: var(--editor-accent-hover, #2563eb) !important;
-}
-
-.nb-bitable-fill-handle:active {
-  transform: scale(1.1);
-  background: var(--editor-accent-active, #1d4ed8) !important;
-}
-
-/* ── 多维表格甘特图视图 ──
-   左侧固定列与序号列是 sticky 元素，背景必须完全不透明（含 hover / 选中态），
-   否则横向滚动时被它遮住的单元格会透出来，出现文字重影。 */
-
-.nb-bitable-gantt-row {
-  background: var(--editor-surface, #ffffff);
-  transition: background var(--transition-fast);
-}
-
-.nb-bitable-gantt-row:hover {
-  background: #f8fafc;
-}
-
-.nb-bitable-gantt-left-cell,
-.nb-bitable-gantt-num-cell {
-  background: var(--editor-surface, #ffffff);
-  transition: background var(--transition-fast);
-}
-
-.nb-bitable-gantt-th-left,
-.nb-bitable-gantt-corner {
-  background: var(--editor-surface, #f8fafc);
-}
-
-/* 分组标题行：整行可点，hover 给出可折叠的暗示 */
-.nb-bitable-gantt-group-cell {
-  background: var(--editor-surface, #f8fafc);
-  transition: background var(--transition-fast);
-}
-
-.nb-bitable-gantt-group-cell:hover {
-  background: #eef2f7;
-}
-
-.nb-bitable-gantt-row:hover .nb-bitable-gantt-left-cell,
-.nb-bitable-gantt-row:hover .nb-bitable-gantt-num-cell {
-  background: #f8fafc;
-}
-
-/* 墨夜主题：上方悬浮色为浅色写死值，深色下会闪出白行，改为基于 surface 的轻度提亮 */
-:root[data-theme="mo-ye"] .nb-bitable-gantt-row:hover,
-:root[data-theme="mo-ye"] .nb-bitable-gantt-row:hover .nb-bitable-gantt-left-cell,
-:root[data-theme="mo-ye"] .nb-bitable-gantt-row:hover .nb-bitable-gantt-num-cell {
-  background: #222226;
-}
-
-:root[data-theme="mo-ye"] .nb-bitable-gantt-group-cell:hover {
-  background: var(--toolbar-hover);
-}
-
-/* 琥珀主题：冷灰悬浮色在暖纸底上发青，改为暖灰 */
-:root[data-theme="hu-po"] .nb-bitable-gantt-row:hover,
-:root[data-theme="hu-po"] .nb-bitable-gantt-row:hover .nb-bitable-gantt-left-cell,
-:root[data-theme="hu-po"] .nb-bitable-gantt-row:hover .nb-bitable-gantt-num-cell {
-  background: #EFEDE5;
-}
-
-:root[data-theme="hu-po"] .nb-bitable-gantt-group-cell:hover {
-  background: var(--toolbar-hover);
-}
-
-/* 左侧固定列宽度拖拽把手：贴在列头右缘，悬浮 / 拖动时显出强调色竖线 */
-.nb-bitable-gantt-col-resizer {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 6px;
-  cursor: col-resize;
-  z-index: 2;
-  transition: background var(--transition-fast);
-}
-
-.nb-bitable-gantt-col-resizer:hover {
-  background: color-mix(in srgb, var(--editor-accent, #3b82f6) 45%, transparent);
-}
-
-.nb-bitable-gantt-col-resizer:active {
-  background: var(--editor-accent, #3b82f6);
-}
-
-/* 甘特图配置：开关与每周休息日选择 */
-.nb-bitable-gantt-switch:hover {
-  filter: brightness(1.06);
-}
-
-.nb-bitable-gantt-switch:active {
-  transform: scale(0.95);
-}
-
-.nb-bitable-gantt-weekday {
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid var(--editor-border, #e2e8f0);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--editor-text-muted, #64748b);
-  font-size: 12px;
-  cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
-}
-
-.nb-bitable-gantt-weekday:hover:not(.is-active) {
-  background: var(--toolbar-hover, #f1f5f9);
-  color: var(--editor-text, #1e293b);
-}
-
-.nb-bitable-gantt-weekday:active {
-  transform: scale(0.92);
-}
-
-.nb-bitable-gantt-weekday.is-active {
-  background: var(--editor-accent, #3b82f6);
-  border-color: var(--editor-accent, #3b82f6);
-  color: #ffffff;
-  font-weight: 600;
-}
-
-.nb-bitable-gantt-weekday.is-active:hover {
-  filter: brightness(1.06);
-}
-
-/* 时间轴刻度切换（周 / 月 / 季 / 年） */
-.nb-bitable-gantt-zoom {
-  background: transparent;
-  color: var(--editor-text-muted, #64748b);
-  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
-}
-
-.nb-bitable-gantt-zoom:hover:not(.is-active) {
-  background: var(--toolbar-hover, #f1f5f9);
-  color: var(--editor-text, #1e293b);
-}
-
-.nb-bitable-gantt-zoom:active {
-  transform: scale(0.95);
-}
-
-.nb-bitable-gantt-zoom.is-active {
-  background: var(--editor-accent, #3b82f6);
-  color: #ffffff;
-  font-weight: 600;
-}
-
-.nb-bitable-gantt-zoom.is-active:hover {
-  filter: brightness(1.06);
-}
-
-/* 甘特条形：hover 提亮并抬起，两端把手在悬浮时才显现 */
-.nb-bitable-gantt-bar {
-  transition: filter var(--transition-fast), box-shadow var(--transition-fast);
-}
-
-.nb-bitable-gantt-bar:hover {
-  filter: brightness(1.08);
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.22) !important;
-}
-
-.nb-bitable-gantt-bar:active {
-  filter: brightness(0.96);
-}
-
-.nb-bitable-gantt-bar-handle {
-  opacity: 0;
-  transition: opacity var(--transition-fast);
-}
-
-.nb-bitable-gantt-bar:hover .nb-bitable-gantt-bar-handle {
-  opacity: 1;
-  background: rgba(255, 255, 255, 0.38);
-}
-
-/* 空行悬浮时的快速排期入口 */
-.nb-bitable-gantt-add {
-  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
-}
-
-.nb-bitable-gantt-add:hover {
-  background: var(--toolbar-hover, #f1f5f9) !important;
-  border-color: var(--editor-accent, #3b82f6) !important;
-  color: var(--editor-accent, #3b82f6) !important;
-  transform: scale(1.08);
-}
-
-.nb-bitable-gantt-add:active {
-  transform: scale(0.94);
-}
-
-/* ── 数字输入：全局禁用原生上下微调箭头（滚轮调整由 core/numberInputGuard 统一屏蔽） ──
-   number 输入框聚焦后滚轮会直接改值，与表格/设置页滚动严重冲突；
-   微调箭头在紧凑单元格与设置项里也极易误触，故统一屏蔽，只允许键盘直接输入。
-   最早仅多维表格单元格（.nb-bitable-num-input）屏蔽，现推广到设置页等全部数字输入框。 */
-input[type='number']::-webkit-outer-spin-button,
-input[type='number']::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-input[type='number'] {
-  -moz-appearance: textfield;
-  appearance: textfield;
-}
-
-/* ── 多维表格日期 / 时间选择器 ── */
-
-/* 日历头部年月快速切换按钮 */
-.nb-bitable-cal-title-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px 6px;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--editor-text, #1e293b);
-  font-size: 12px;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
-}
-
-.nb-bitable-cal-title-btn:hover {
-  background: var(--toolbar-hover, #f1f5f9);
-  color: var(--editor-accent, #3b82f6);
-}
-
-.nb-bitable-cal-title-btn:active {
-  background: var(--toolbar-active, #e2e8f0);
-  transform: scale(0.96);
-}
-
-/* 月份 / 年份选择格 */
-.nb-bitable-month-cell,
-.nb-bitable-year-cell {
-  height: 38px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--editor-text, #1e293b);
-  font-size: 12px;
-  font-family: inherit;
-  font-variant-numeric: tabular-nums;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast), border-color var(--transition-fast);
-}
-
-.nb-bitable-month-cell:hover,
-.nb-bitable-year-cell:hover {
-  background: var(--toolbar-hover, #f1f5f9);
-  transform: scale(1.04);
-}
-
-.nb-bitable-month-cell:active,
-.nb-bitable-year-cell:active {
-  transform: scale(0.96);
-}
-
-.nb-bitable-month-cell.is-selected,
-.nb-bitable-month-cell.is-selected:hover,
-.nb-bitable-year-cell.is-selected,
-.nb-bitable-year-cell.is-selected:hover {
-  background: var(--editor-accent, #3b82f6);
-  border-color: var(--editor-accent, #3b82f6);
-  color: #ffffff;
-  font-weight: 600;
-  transform: none;
-}
-
-.nb-bitable-month-cell.is-current:not(.is-selected),
-.nb-bitable-year-cell.is-current:not(.is-selected) {
-  border-color: var(--editor-accent, #3b82f6);
-  color: var(--editor-accent, #3b82f6);
-  font-weight: 600;
-}
-
-/* 单元格与表单中的日期触发器：悬停浮现底色，按下轻微收缩 */
-.nb-bitable-date-trigger {
-  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
-}
-
-/* 仅在表单形态下的日期触发器显示输入框悬停边框与按下收缩效果，避免在表格单元格中 hover 时多出一个内层边框 */
-.nb-bitable-date-trigger.is-form:hover {
-  background: var(--toolbar-hover, #f1f5f9) !important;
-  border-color: var(--editor-border-focus, #cbd5e1) !important;
-}
-
-.nb-bitable-date-trigger.is-form:active {
-  background: var(--toolbar-active, #e2e8f0) !important;
-  transform: scale(0.985);
-}
-
-/* 日历格：6×7 网格，选中态用强调色实心，今日态用细描边区分 */
-.nb-bitable-date-cell {
-  height: 26px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--editor-text, #1e293b);
-  font-size: 12px;
-  font-family: inherit;
-  font-variant-numeric: tabular-nums;
-  cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast), border-color var(--transition-fast);
-}
-
-.nb-bitable-date-cell:hover {
-  background: var(--toolbar-hover, #f1f5f9);
-  transform: scale(1.06);
-}
-
-.nb-bitable-date-cell:active {
-  transform: scale(0.94);
-}
-
-/* 前后补齐的相邻月日期淡化，避免误以为是本月的有效日期 */
-.nb-bitable-date-cell.is-outside {
-  color: var(--editor-text-muted, #94a3b8);
-  opacity: 0.55;
-}
-
-.nb-bitable-date-cell.is-today:not(.is-selected) {
-  border-color: var(--editor-accent, #3b82f6);
-  color: var(--editor-accent, #3b82f6);
-  font-weight: 600;
-}
-
-.nb-bitable-date-cell.is-selected,
-.nb-bitable-date-cell.is-selected:hover {
-  background: var(--editor-accent, #3b82f6);
-  border-color: var(--editor-accent, #3b82f6);
-  color: #ffffff;
-  font-weight: 600;
-  transform: none;
-}
-
-/* 时间列项：时 / 分 / 秒 */
-.nb-bitable-time-item {
-  flex-shrink: 0;
-  height: 28px;
-  padding: 0 8px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--editor-text, #1e293b);
-  font-size: 12px;
-  font-family: inherit;
-  font-variant-numeric: tabular-nums;
-  cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
-}
-
-.nb-bitable-time-item:hover {
-  background: var(--toolbar-hover, #f1f5f9);
-}
-
-.nb-bitable-time-item:active {
-  background: var(--toolbar-active, #e2e8f0);
-  transform: scale(0.94);
-}
-
-.nb-bitable-time-item.is-selected,
-.nb-bitable-time-item.is-selected:hover {
-  background: var(--editor-accent, #3b82f6);
-  color: #ffffff;
-  font-weight: 600;
-}
-
-/* 日历月份翻页箭头 */
-.nb-bitable-cal-nav {
-  padding: 3px;
-  border-radius: 4px;
-}
-
-/* 时间列滚动区：细滚动条，避免抢视觉焦点 */
-.nb-bitable-scroll {
-  scrollbar-width: thin;
-}
-
-/* 字段类型二级菜单的一级项：展开态保持高亮，右侧箭头指示可延伸 */
-.nb-bitable-menu-item.has-submenu {
-  justify-content: space-between;
-}
-
-.nb-bitable-menu-item.is-submenu-open {
-  background: var(--toolbar-hover, #f1f5f9);
-}
+/* 画布类编辑器样式随对应编辑器装载，见 canvasEditors.css。 */
 
 /* ═════════════════════════════════════════════════════════
  * Tooltip 悬浮提示微动效与主题适配
@@ -5725,7 +4790,7 @@ input[type='number'] {
   justify-content: center;
   padding: 16px;
   background: rgb(20 18 14 / .32);
-  backdrop-filter: blur(3px);
+  /* 输入与校验提示可高频变化，不让这些小更新触发全窗口虚化。 */
   animation: nb-prompt-fade 0.16s ease-out;
 }
 
@@ -5975,6 +5040,43 @@ input[type='number'] {
   line-height: 16px;
 }
 
+/* ── 导出结果弹窗：沿用 nb-prompt 外观，图标按成功 / 失败着色 ── */
+.nb-export-result.is-success .nb-prompt-icon {
+  background: color-mix(in srgb, var(--success-600) 12%, var(--editor-surface));
+  color: var(--success-600);
+}
+
+.nb-export-result.is-error .nb-prompt-icon {
+  background: color-mix(in srgb, var(--error-600) 12%, var(--editor-surface));
+  color: var(--error-600);
+}
+
+/* 导出路径：完整展示并允许选中复制，长路径任意处换行 */
+.nb-export-result-path,
+.nb-export-result-error {
+  padding: 9px 12px;
+  border: 1px solid var(--editor-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--editor-bg) 70%, var(--editor-surface));
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--editor-text-muted);
+  word-break: break-all;
+  user-select: text;
+}
+
+.nb-export-result-error {
+  color: var(--error-600);
+  word-break: break-word;
+}
+
+.nb-export-result-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
 /* 移动端：放大触控区域，按钮通栏排列，输入字号 ≥16px 防止 WebView 聚焦自动缩放 */
 [data-platform='mobile'] .nb-prompt {
   width: min(420px, 100%);
@@ -6065,7 +5167,7 @@ input[type='number'] {
 
 /* ═════════════════════════════════════════════════════════
  * 沉浸阅读
- * Markdown 收窄行宽、加大上下留白，隐藏编辑辅助标记；进度条与退出胶囊（各格式共用）浮在正文之上
+ * Markdown 收窄行宽、加大上下留白，隐藏编辑辅助标记；进度条与窗口控件（各格式共用）浮在正文之上
  * ═════════════════════════════════════════════════════════ */
 
 /* 正文列：约 46 字一行的舒适阅读宽度，内联样式需 !important 覆盖 */
@@ -6104,15 +5206,47 @@ input[type='number'] {
   transition: transform 120ms linear;
 }
 
+/* 顶部拖动条：外壳隐藏后窗口靠它移动；层级低于格式自带的浮动工具栏 */
+.nb-reading-drag {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 16px;
+  z-index: 15;
+  display: flex;
+}
+
+/* 胶囊展开时的透明遮罩：指针一离开热区就收起并移除，不影响正文点击；层级低于两种热区 */
+.nb-reading-hover-shield {
+  position: fixed;
+  inset: 0;
+  z-index: 14;
+}
+
+/* 右上角热区：常驻但不显示，胶囊是其子元素，指针移入胶囊不算离开 */
+.nb-reading-corner {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 40;
+  width: 120px;
+  height: 48px;
+}
+
+.nb-reading-corner[data-below-toolbar='true'] {
+  z-index: 15;
+}
+
 .nb-reading-capsule {
   position: absolute;
   top: 14px;
   right: 18px;
-  z-index: 40;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 4px 4px 12px;
+  gap: 2px;
+  padding: 4px;
+  white-space: nowrap;
   border-radius: 999px;
   border: 1px solid var(--editor-border);
   background: color-mix(in srgb, var(--editor-surface, var(--editor-bg)) 84%, transparent);
@@ -6124,14 +5258,36 @@ input[type='number'] {
   animation: nb-reading-capsule-in 320ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* 指针静止时淡出但不完全消失，退出入口始终可被找到 */
+/* 平时完全隐藏，不遮挡正文也不拦截指针 */
 .nb-reading-capsule[data-visible='false'] {
-  opacity: 0.45;
-  transform: translateY(-2px);
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+}
+
+/* 键盘聚焦到按钮时同样展开；单独成条，避免不支持 :has 时连带其它选择器失效 */
+.nb-reading-capsule:has(:focus-visible) {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+/* 触屏没有悬停：胶囊常驻低透明度，退出入口始终可被找到，热区不拦截正文触摸 */
+@media (hover: none) {
+  .nb-reading-corner {
+    pointer-events: none;
+  }
+
+  .nb-reading-capsule[data-visible='false'] {
+    opacity: 0.45;
+    transform: translateY(-2px);
+    pointer-events: auto;
+  }
 }
 
 .nb-reading-percent {
   min-width: 30px;
+  margin-left: 8px;
   text-align: right;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
@@ -6141,7 +5297,36 @@ input[type='number'] {
 .nb-reading-divider {
   width: 1px;
   height: 14px;
+  margin: 0 6px;
   background: var(--editor-border);
+}
+
+.nb-reading-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--editor-text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-reading-icon-btn:hover,
+.nb-reading-icon-btn:focus-visible {
+  background: var(--toolbar-hover);
+  color: var(--accent-strong);
+  outline: none;
+}
+
+.nb-reading-icon-btn:active,
+.nb-reading-icon-btn[data-pressed='true'] {
+  background: var(--toolbar-active);
+  transform: scale(0.92);
 }
 
 .nb-reading-exit {
@@ -6222,4 +5407,458 @@ input[type='number'] {
   display: flex;
   gap: 8px;
   padding: 10px 16px;
+}
+
+/* ── 设置 · 全局 · 新建入口布局 ──
+   「直接展示」为实体卡片（与主页卡片同质感），「收进更多」为虚线折叠区，靠视觉层级区分两种去向 */
+.nb-cf {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.nb-cf-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.nb-cf-head-text {
+  min-width: 0;
+}
+
+.nb-cf-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.nb-cf-title-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  color: var(--accent-strong);
+}
+
+.nb-cf-hint {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--editor-text-muted);
+}
+
+.nb-cf-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--editor-bg);
+  color: var(--editor-text-secondary, var(--editor-text));
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-cf-reset:not(:disabled):hover {
+  background: var(--toolbar-hover);
+  border-color: var(--editor-border-focus, var(--accent-strong));
+  color: var(--editor-text);
+}
+
+.nb-cf-reset:not(:disabled):active {
+  background: var(--toolbar-active);
+  transform: scale(0.96);
+}
+
+.nb-cf-reset:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.nb-cf-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.nb-cf-board.is-stacked {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.nb-cf-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  /* 「直接展示」与「收进更多」外观一致，仅靠标题区分 */
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-md, 8px);
+  background: var(--editor-bg);
+  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+}
+
+/* 拖动项当前所在分区：强调色描边 + 光晕 */
+.nb-cf-zone.is-target {
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-strong) 14%, transparent);
+}
+
+.nb-cf-zone-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  padding: 0 2px;
+  font-size: 12px;
+}
+
+.nb-cf-zone-title {
+  font-weight: 600;
+}
+
+.nb-cf-zone-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--toolbar-hover);
+  color: var(--editor-text-muted);
+  font-size: 10.5px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.nb-cf-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 76px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nb-cf-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 4px;
+  border: 1px solid var(--control-border, var(--editor-border));
+  background: var(--editor-surface);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.04));
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--editor-text);
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+}
+
+.nb-cf-chip:hover {
+  border-color: var(--editor-border-focus, var(--accent-strong));
+}
+
+.nb-cf-chip:active {
+  cursor: grabbing;
+}
+
+.nb-cf-chip:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 1px;
+}
+
+/* 原位占位：淡出并改为虚线，示意松手后的落点 */
+.nb-cf-chip.is-placeholder {
+  opacity: 0.35;
+  border-style: dashed;
+  border-color: var(--accent-strong);
+  box-shadow: none;
+}
+
+.nb-cf-chip.is-overlay {
+  border-color: var(--accent-strong);
+  background: var(--editor-surface);
+  box-shadow: var(--shadow-lg, 0 10px 30px rgba(0, 0, 0, 0.18));
+  transform: scale(1.03);
+  cursor: grabbing;
+  font-family: var(--ui-font-family, inherit);
+}
+
+.nb-cf-chip.is-flash {
+  animation: nb-cf-flash 700ms ease-out;
+}
+
+@keyframes nb-cf-flash {
+  0% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-strong) 35%, transparent);
+    background: color-mix(in srgb, var(--accent-strong) 14%, var(--editor-surface));
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.nb-cf-grip {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--editor-text-muted);
+  opacity: 0.55;
+  transition: opacity 120ms ease;
+}
+
+.nb-cf-chip:hover .nb-cf-grip,
+.nb-cf-chip.is-overlay .nb-cf-grip {
+  opacity: 1;
+}
+
+.nb-cf-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--nb-cf-color) 12%, transparent);
+}
+
+.nb-cf-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.nb-cf-move {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--editor-text-muted);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, opacity 120ms ease, transform 120ms ease;
+}
+
+.nb-cf-move:hover {
+  background: var(--toolbar-hover);
+  color: var(--accent-strong);
+}
+
+.nb-cf-move:active {
+  background: var(--toolbar-active);
+  transform: scale(0.9);
+}
+
+/* 有悬停能力的设备上移动按钮平时淡显，悬停条目时再完整显示；触屏始终可见 */
+@media (hover: hover) {
+  .nb-cf-move {
+    opacity: 0.4;
+  }
+  .nb-cf-chip:hover .nb-cf-move,
+  .nb-cf-move:focus-visible {
+    opacity: 1;
+  }
+}
+
+.nb-cf-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 72px;
+  border: 1px dashed var(--editor-border);
+  border-radius: 8px;
+  color: var(--editor-text-muted);
+  font-size: 11.5px;
+}
+
+/* 移动端：加大条目与按钮点按区域 */
+[data-platform='mobile'] .nb-cf-chip {
+  height: 42px;
+}
+
+[data-platform='mobile'] .nb-cf-move {
+  width: 34px;
+  height: 34px;
+}
+
+/* ── 极窄模式格式提示条 ── */
+.nb-compact-notice-action {
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--accent-strong) 35%, transparent);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent-strong);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-compact-notice-action:hover {
+  background: color-mix(in srgb, var(--accent-strong) 12%, transparent);
+}
+
+.nb-compact-notice-action:active {
+  transform: scale(0.95);
+}
+
+.nb-compact-notice-close {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--editor-text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-compact-notice-close:hover {
+  background: var(--toolbar-hover);
+  color: var(--editor-text);
+}
+
+.nb-compact-notice-close:active {
+  background: var(--toolbar-active);
+  transform: scale(0.92);
+}
+
+/* ── 极窄模式：各格式自带的顶部工具栏 ──
+ * 沿用移动端思路：空间不足时换行而非横向滚动（工具栏内有绝对定位的下拉菜单，滚动容器会把它们裁掉）；
+ * 带图标的按钮只保留图标，文字说明由按钮自带的 Tooltip 承担。
+ */
+[data-compact='true'] .nb-editor-topbar {
+  height: auto !important;
+  min-height: 36px !important;
+  flex-wrap: wrap;
+  row-gap: 4px;
+  column-gap: 6px;
+  padding: 4px 8px !important;
+}
+
+[data-compact='true'] .nb-editor-topbar > div {
+  flex-wrap: wrap;
+  row-gap: 4px;
+  min-width: 0;
+}
+
+[data-compact='true'] .nb-editor-topbar-title {
+  display: none !important;
+}
+
+[data-compact='true'] .nb-editor-pill-btn {
+  padding: 4px 7px;
+}
+
+[data-compact='true'] .nb-editor-pill-btn:has(> svg) > span,
+[data-compact='true'] .nb-editor-toolbar-btn:has(> svg) > span,
+[data-compact='true'] .nb-editor-primary-btn:has(> svg) > span {
+  display: none;
+}
+
+/* 多维表格：视图 Tab 与操作分两行，导出 CSV 收起，分组 / 排序工具条单行横向滚动 */
+[data-compact='true'] .nb-bitable-toolbar {
+  height: auto !important;
+  min-height: 0 !important;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px !important;
+}
+
+[data-compact='true'] .nb-bitable-views {
+  flex: 1 1 100% !important;
+  min-width: 0;
+  scrollbar-width: none;
+}
+
+[data-compact='true'] .nb-bitable-views::-webkit-scrollbar,
+[data-compact='true'] .nb-bitable-subbar::-webkit-scrollbar {
+  display: none;
+}
+
+[data-compact='true'] .nb-bitable-actions {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+[data-compact='true'] .nb-bitable-search {
+  flex: 1;
+  width: auto !important;
+  min-width: 0;
+}
+
+[data-compact='true'] .nb-bitable-export {
+  display: none !important;
+}
+
+[data-compact='true'] .nb-bitable-btn-secondary,
+[data-compact='true'] .nb-bitable-btn-primary,
+[data-compact='true'] .nb-bitable-btn-ghost,
+[data-compact='true'] .nb-bitable-tab {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+[data-compact='true'] .nb-bitable-subbar {
+  flex-wrap: nowrap !important;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 6px 8px !important;
+}
+
+[data-compact='true'] .nb-bitable-subbar > *,
+[data-compact='true'] .nb-bitable-subbar span {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* 文本对比：按钮只留图标，文件名收起，放不下时换行 */
+[data-compact='true'] .nb-diff-toolbar {
+  flex-wrap: wrap;
+  row-gap: 2px;
+  padding: 4px 6px !important;
+}
+
+[data-compact='true'] .nb-diff-tbtn {
+  padding: 3px 6px !important;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+[data-compact='true'] .nb-diff-tbtn:has(> svg) > span,
+[data-compact='true'] .nb-diff-name {
+  display: none;
+}
+
+/* 信息图布局 / 模板按钮与图表复制导出按钮：极窄模式同样只留图标 */
+[data-compact='true'] .nb-ig-layout-btn:has(> svg) > span,
+[data-compact='true'] .nb-ig-icon-btn:has(> svg) > span,
+[data-compact='true'] .nb-chart-export-btn:has(> svg) > span {
+  display: none;
 }

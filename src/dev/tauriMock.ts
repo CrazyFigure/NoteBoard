@@ -11,6 +11,52 @@ interface MockFile {
 }
 
 const WORKSPACE = '/data/user/0/com.crazyfigure.noteboard/workspace';
+
+/** 本地文件搜索模拟：按空白切词，全部词都出现才算命中；高亮片段与真实接口结构一致 */
+function mockLocalSearch(cmd: string, query: string, files: Map<string, { content: string; mtime: number }>, dirs: Set<string>): unknown {
+  const terms = [...new Set(query.toLowerCase().split(/\s+/).filter(Boolean))];
+  const parts = (text: string) => {
+    const lower = text.toLowerCase();
+    const marks = new Array<boolean>(text.length).fill(false);
+    for (const t of terms) {
+      for (let i = lower.indexOf(t); i >= 0; i = lower.indexOf(t, i + t.length)) marks.fill(true, i, i + t.length);
+    }
+    const out: { text: string; hit: boolean }[] = [];
+    for (let i = 0; i < text.length; i++) {
+      const last = out[out.length - 1];
+      if (last && last.hit === marks[i]) last.text += text[i];
+      else out.push({ text: text[i], hit: marks[i] });
+    }
+    return out;
+  };
+  const split = (path: string) => ({ name: path.slice(path.lastIndexOf('/') + 1), dir: path.slice(0, path.lastIndexOf('/')) });
+  if (terms.length === 0) return cmd === 'local_search_names' ? { hits: [], total: 0 } : { hits: [], truncated: false };
+  if (cmd === 'local_search_names') {
+    const entries = [...[...files.keys()].map((p) => ({ path: p, isDir: false })), ...[...dirs].map((p) => ({ path: p, isDir: true }))];
+    const hits = entries
+      .filter((e) => terms.every((t) => split(e.path).name.toLowerCase().includes(t)))
+      .map((e) => {
+        const { name, dir } = split(e.path);
+        const file = files.get(e.path);
+        return { path: e.path, name, nameParts: parts(name), dir, isDir: e.isDir, size: file?.content.length ?? 0, mtime: file?.mtime ?? Date.now() };
+      });
+    return { hits: hits.slice(0, 200), total: hits.length };
+  }
+  const hits = [...files.entries()]
+    .filter(([, f]) => terms.every((t) => f.content.toLowerCase().includes(t)))
+    .map(([path, f]) => {
+      const { name, dir } = split(path);
+      const lines = f.content.split('\n');
+      const snippets = lines
+        .map((line, i) => ({ line: i + 1, text: line.trim() }))
+        .filter((l) => terms.some((t) => l.text.toLowerCase().includes(t)))
+        .slice(0, 3)
+        .map((l) => ({ line: l.line, parts: parts(l.text.slice(0, 160)) }));
+      const matches = terms.reduce((n, t) => n + (f.content.toLowerCase().split(t).length - 1), 0);
+      return { path, name, dir, size: f.content.length, mtime: f.mtime, snippets, matches };
+    });
+  return { hits: hits.slice(0, 100), truncated: false };
+}
 const EXTERNAL_ROOT = '/storage/emulated/0';
 
 const now = Date.now();
@@ -21,8 +67,8 @@ function seed(path: string, content: string, ageMinutes: number): void {
   files.set(path, { content, mtime: now - ageMinutes * 60_000 });
 }
 
-seed(`${WORKSPACE}/欢迎使用 NoteBoard.md`, '# 欢迎使用 NoteBoard\n\n这是你的笔记工作区。\n\n- 点击右下角 **＋** 新建\n- 长按文件查看更多操作\n\n> [!TIP]\n> 从其它应用分享文件到 NoteBoard 即可编辑。\n', 3);
-seed(`${WORKSPACE}/周报.md`, '* 本周完成\n* 下周计划\n\n_重点_：移动端适配\n', 60 * 30);
+seed(`${WORKSPACE}/欢迎使用 NoteBoard.md`, '# 欢迎使用 NoteBoard\n\n这是你的笔记工作区。\n\n- 点击右下角 **＋** 新建\n- 长按文件查看更多操作\n- 输入 `[[` 链接其它笔记：[[周报]]、[[需求#目标|项目目标]]、[[尚未同步的笔记]]\n\n> [!TIP]\n> 从其它应用分享文件到 NoteBoard 即可编辑。\n\n![[需求]]\n', 3);
+seed(`${WORKSPACE}/周报.md`, '* 本周完成\n* 下周计划\n\n_重点_：移动端适配，见 [[需求]]\n', 60 * 30);
 seed(`${WORKSPACE}/购物清单.txt`, '牛奶\n面包\n鸡蛋\n', 60 * 24 * 40);
 seed(`${WORKSPACE}/架构草图.excalidraw`, '', 60 * 5);
 seed(`${WORKSPACE}/项目笔记/需求.md`, '# 需求\n\n## 背景\n\n## 目标\n', 90);
@@ -30,7 +76,39 @@ seed(`${WORKSPACE}/读书/摘录.md`, '# 摘录\n', 2000);
 seed(`${WORKSPACE}/任务看板.bitable`, serializeBitableDocument(createDefaultBitableDocument('任务看板')), 30);
 // 预览插件和跨文件工作台的开发样例，二进制由测试目录按需提供。
 seed(`${WORKSPACE}/快捷笔记.bitable`, serializeBitableDocument(createDefaultBitableDocument('快捷笔记')), 15);
-for(const name of ['sample.doc','sample.docx','sample.xls','sample.xlsx','sample.ppt','sample.pptx','sample.pdf','sample.dwg','sample.dxf','sample.epub'])seed(`${WORKSPACE}/${name}`,'',10);
+// HTML 分屏预览样例：外链样式表验证本地样式内联
+seed(`${WORKSPACE}/产品介绍.html`, `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>产品介绍</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 32px; color: #1e293b; }
+    .card { padding: 16px 20px; border-radius: 12px; background: #eff6ff; border: 1px solid #bfdbfe; }
+  </style>
+</head>
+<body>
+  <h1>NoteBoard</h1>
+  <p class="lead">一站式笔记、画板与图表工具。</p>
+  <div class="card">
+    <h2>功能</h2>
+    <ul>
+      <li>Markdown 笔记</li>
+      <li>思维导图</li>
+      <li><a href="#more">了解更多</a></li>
+    </ul>
+  </div>
+  <script>document.body.innerHTML = "脚本不应执行";</script>
+  <h2 id="more">更多</h2>
+  <p>预览不运行脚本。</p>
+</body>
+</html>
+`, 8);
+seed(`${WORKSPACE}/style.css`, `h1 { color: #2563eb; }
+.lead { font-size: 18px; color: #475569; }
+`, 8);
+for(const name of ['sample.doc','sample.docx','sample.xls','sample.xlsx','sample.ppt','sample.pptx','sample.pdf','sample.dwg','sample.dxf','sample.epub','sample.note','sample.goodnotes'])seed(`${WORKSPACE}/${name}`,'',10);
 
 let mockFontPackState: 'ready' | 'missing' = 'ready';
 
@@ -77,10 +155,17 @@ function mockUpdateResult() {
 
 /** 同步配置样例（保存后在内存中保留，便于预览交互） */
 const emptyGit = { baseUrl: '', owner: '', repo: '', branch: '', token: '', remoteDir: '' };
+/** 每个入口创建独立对象，便于浏览器预览验证切换后配置与密钥互不覆盖。 */
+const emptyStorage = () => ({ endpoint: '', region: '', bucket: '', accessKeyId: '', secretAccessKey: '', prefix: '', pathStyle: false, customDomain: false, headers: [] });
 const mockProvider = {
   kind: 'webdav',
-  webdav: { url: 'https://dav.jianguoyun.com/dav/', username: 'me@example.com', password: 'app-password', userAgent: '', remoteDir: 'NoteBoard' },
-  s3: { endpoint: '', region: '', bucket: '', accessKeyId: '', secretAccessKey: '', prefix: '', pathStyle: false, userAgent: '' },
+  webdav: { url: 'https://dav.jianguoyun.com/dav/', username: 'me@example.com', password: 'app-password', headers: [], remoteDir: 'NoteBoard' },
+  s3: emptyStorage(),
+  oss: emptyStorage(),
+  zos: emptyStorage(),
+  oos: emptyStorage(),
+  obs: emptyStorage(),
+  cos: emptyStorage(),
   github: { ...emptyGit },
   gitee: { ...emptyGit },
   gitcode: { ...emptyGit },
@@ -322,7 +407,7 @@ function kindOf(name: string): string | null {
   if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) return 'image';
   if (['mindmap', 'xmind'].includes(ext)) return 'mindmap';
   if (['bitable', 'table'].includes(ext)) return 'bitable';
-  if (['doc','docx','xls','xlsx','ppt','pptx','pdf','dwg','dxf','epub'].includes(ext))return 'preview';
+  if (['doc','docx','xls','xlsx','ppt','pptx','pdf','dwg','dxf','epub','note','goodnotes'].includes(ext))return 'preview';
   if (['drawio', 'dio'].includes(ext)) return 'drawio';
   return 'code';
 }
@@ -332,6 +417,7 @@ function languageOf(name: string): string {
   if (ext === 'md') return 'markdown';
   if (ext === 'json' || ext === 'excalidraw') return 'json';
   if (ext === 'sql') return 'sql';
+  if (ext === 'html' || ext === 'htm') return 'html';
   return 'plaintext';
 }
 
@@ -370,6 +456,7 @@ function payloadOf(path: string) {
 }
 
 let listenerId = 0;
+let mockFullscreen = false;
 
 /** 安装模拟（必须在应用首次 invoke 之前调用） */
 export function installTauriMock(): void {
@@ -381,6 +468,14 @@ export function installTauriMock(): void {
       case 'plugin_command': return import('./pluginMock').then((m)=>m.mockPluginCommand(args));
       case 'read_preview_file': return fetch(`/test-results/plugin-fixtures/${nameOf(String(args.path))}`).then((r)=>{if(!r.ok)throw new Error('请先准备插件查看测试文件');return r.arrayBuffer();});
       case 'plugin:dialog|open': return `${WORKSPACE}/快捷笔记.bitable`;
+      // 窗口全屏：只记录状态，mock 不改变实际视口，也不发原生 resize 事件
+      case 'plugin:window|is_fullscreen': return mockFullscreen;
+      case 'plugin:window|set_fullscreen':
+        mockFullscreen = Boolean(args.value);
+        return null;
+      case 'plugin:window|minimize':
+      case 'set_traffic_lights_hidden':
+        return null;
       // ── 事件与插件 ──
       case 'plugin:event|listen':
       case 'plugin:app|register_listener':
@@ -406,6 +501,9 @@ export function installTauriMock(): void {
       case 'record_web_spans':
       case 'delete_staged_file':
         return null;
+      case 'list_incoming_transfers':
+        // 浏览器开发没有跨原生窗口迁移，保持新握手接口返回空队列。
+        return [];
       case 'list_open_requests':
       case 'stash_documents':
       case 'list_system_fonts':
@@ -419,6 +517,7 @@ export function installTauriMock(): void {
       case 'load_session':
         return null;
       case 'is_perf_spans_enabled':
+      case 'claim_tab_drop':
         return false;
       case 'get_font_pack_status':
       case 'refresh_font_pack_status':
@@ -440,10 +539,14 @@ export function installTauriMock(): void {
         return { platform: 'android', isMobile: true, defaultWorkspace: WORKSPACE, externalRoot: EXTERNAL_ROOT, allFilesAccess: false };
       case 'ensure_default_workspace':
         return WORKSPACE;
+      // 系统剪贴板写入（clipboard_write_*）在浏览器预览中只验证调用链路
       case 'request_all_files_access':
       case 'move_app_to_background':
       case 'set_system_bar_style':
       case 'share_file':
+      case 'clipboard_write_image':
+      case 'clipboard_write_image_file':
+      case 'clipboard_write_files':
         return null;
       // ── 多端同步与备份（界面预览用样例数据） ──
       case 'sync_get_config':
@@ -547,6 +650,12 @@ export function installTauriMock(): void {
       case 'history_clear_all':
         mockHistories.clear();
         return null;
+      // ── 本地文件搜索：在模拟文件系统中做简单的逐词匹配（真实实现见 src-tauri/src/local_search） ──
+      case 'local_search_names':
+      case 'local_search_content':
+        return mockLocalSearch(cmd, String(args.query ?? ''), files, dirs);
+      case 'local_search_drives':
+        return [{ path: 'C:\\', label: '系统 (C:)' }, { path: 'D:\\', label: '资料 (D:)' }];
       // ── 文件系统 ──
       case 'read_dir':
         return listDir(String(args.path));
@@ -581,6 +690,10 @@ export function installTauriMock(): void {
       case 'create_dir':
         dirs.add(`${String(args.dir)}/${String(args.name)}`);
         return null;
+      // 二进制保存（粘贴图片等）：只记录文件存在，浏览器预览不需要真实字节
+      case 'save_binary_file':
+      case 'save_binary_file_raw':
+        return { ok: true, mtime: Math.floor(Date.now() / 1000), size: 0, error: null };
       case 'rename_path': {
         const from = String(args.from);
         const to = String(args.to);
@@ -593,6 +706,12 @@ export function installTauriMock(): void {
           dirs.add(to);
         }
         return null;
+      }
+      // 插件 fs 读取文本文件（HTML 预览内联样式表等）
+      case 'plugin:fs|read_file': {
+        const file = files.get(String(args.path));
+        if (!file) throw new Error(`文件不存在: ${String(args.path)}`);
+        return new TextEncoder().encode(file.content).buffer;
       }
       case 'move_to_trash':
         files.delete(String(args.path));

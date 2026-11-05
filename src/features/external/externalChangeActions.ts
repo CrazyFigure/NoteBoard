@@ -11,25 +11,33 @@ import * as ipc from '../../core/ipc/commands';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { getEditorCapabilities } from '../../core/editor/editorRegistry';
-import { serializeMarkdown, getBaseline } from '../editor-md/serialize';
+import { getBaseline } from '../editor-md/serialize';
 import {
+  applyDocumentContentAsChange,
   initializeDocumentHistory,
-  synchronizeCurrentDocumentHistoryContent,
 } from '../history/documentHistory';
 import { showToast } from '../../stores/toastStore';
 import { flushPendingSourceSnapshot, flushPendingVisualSnapshot } from '../editor-md/visualSnapshot';
+import { drainDocumentWrites, getSessionGeneration } from '../session/documentSession';
 
 /**
  * 🔴 R3-10：重新加载——确认并应用磁盘内容到当前会话。
- * 读盘成功：正文进 store、内核经能力 flush 语义对齐（无实例则只改镜像——挂载时
- * 以 store 内容重建）、基线重置为磁盘内容、历史首节点同步、解除冲突；
+ * 读盘成功：经当前内核的替换能力或历史适配器呈现新正文，再对齐镜像与磁盘基线；
+ * 无实例时更新镜像供下次挂载重建，全部成功后才解除冲突；
  * 读盘失败（外部删除/权限）：保持冲突状态，提示可重试。
  */
 export async function reloadFromDisk(docKey: string, options?: { silent?: boolean }): Promise<boolean> {
   // 多端同步拉取远端改动后自动重新加载：结果已由同步提示统一展示，这里不再单独弹提示
   const silent = options?.silent ?? false;
+  // 文件关闭重开或迁移后，旧读盘结果不能改写新会话；自身排队保存必须先排空。
+  const generation = getSessionGeneration(docKey);
+  const originalDoc = useDocumentStore.getState().getDocument(docKey);
+  if (!originalDoc) return false;
   try {
+    await drainDocumentWrites(docKey);
+    if (getSessionGeneration(docKey) !== generation) return false;
     const payload = await ipc.readDocument(docKey);
+    if (getSessionGeneration(docKey) !== generation) return false;
     const store = useDocumentStore.getState();
     const doc = store.getDocument(docKey);
     if (!doc) return false;
@@ -43,21 +51,27 @@ export async function reloadFromDisk(docKey: string, options?: { silent?: boolea
       if (!silent) showToast('读取到的文件内容为空引用，冲突状态保留', 'error');
       return false;
     }
-    store.setContent(docKey, diskContent);
+    // 先把正文应用到已挂载内核，成功后再提交基线；仅改 store 会留下旧 CodeMirror /
+    // TipTap / 画板内容，并在下一次输入或卸载时把旧内容写回。
+    const capabilities = getEditorCapabilities(docKey);
+    if (capabilities) {
+      const applied = capabilities.replaceContent
+        ? capabilities.replaceContent(diskContent)
+        : applyDocumentContentAsChange(docKey, diskContent);
+      if (!applied) {
+        if (!silent) showToast('编辑器尚未就绪，当前内容和冲突保护已保留，请稍后重试', 'warning');
+        return false;
+      }
+    } else {
+      // 后台已回收的文档下次挂载直接读取新镜像，不保留旧正文的时间线。
+      initializeDocumentHistory(docKey, diskContent, 'code');
+    }
+    // 同步外部版本的编码、行尾和权限，避免后续保存仍使用旧文件属性。
+    store.upsertFromPayload({ ...payload, key: docKey });
     store.updateBaseline(docKey, diskContent, payload.mtime, payload.size);
     getBaseline(docKey).updateBaseline(diskContent);
     store.setDirty(docKey, false);
     useWindowStore.getState().setTabDirty(docKey, false);
-    // 内核对齐：无实例（后台/未挂载）时挂载以 store 重建；有实例时经能力 flush
-    // 的镜像屏障之后，模式切换/挂载流程应用新内容；统一历史以新内容为首节点基准
-    const capabilities = getEditorCapabilities(docKey);
-    if (!capabilities) {
-      initializeDocumentHistory(docKey, diskContent, 'code');
-    } else {
-      // 有实例时以当前模式对齐（内核经挂载/模式切换应用 store 内容）
-      const mode = useWindowStore.getState().getTab(docKey)?.viewMode === 'source' ? 'source' : 'visual';
-      synchronizeCurrentDocumentHistoryContent(docKey, diskContent, mode);
-    }
     // 解除冲突（文档与标签双侧）
     store.setExternalStatus(docKey, 'clean');
     useWindowStore.getState().setTabExternalStatus(docKey, 'clean');
@@ -119,6 +133,3 @@ export async function overwriteFromEditor(docKey: string): Promise<boolean> {
     return false;
   }
 }
-
-// 供测试断言/后续“覆盖所有可写类型入口”扩展引用（serializeMarkdown 保持模块边界内可用）
-void serializeMarkdown;

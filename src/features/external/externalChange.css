@@ -1,0 +1,37 @@
+/* 复用应用输入弹窗与按钮的主题色、动效；仅补充文件信息和窄屏布局。 */
+.nb-external-overlay {
+  z-index: 1250;
+  padding-top: max(16px, env(safe-area-inset-top));
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+
+.nb-external-dialog .nb-prompt-title,
+.nb-external-dialog .nb-prompt-desc {
+  margin: 0;
+}
+
+.nb-external-dialog .nb-prompt-desc { margin-top: 4px; }
+
+.nb-external-file {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-md);
+  background: var(--editor-bg);
+}
+
+.nb-external-file > svg { flex-shrink: 0; margin-top: 2px; color: var(--editor-text-muted); }
+.nb-external-file > div { min-width: 0; }
+.nb-external-name { font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.nb-external-path { margin-top: 4px; font-size: 11.5px; line-height: 1.5; color: var(--editor-text-muted); overflow-wrap: anywhere; }
+.nb-external-description { margin: 0; font-size: 13px; line-height: 1.7; color: var(--editor-text-secondary); }
+.nb-external-protection { margin: 0; font-size: 12px; line-height: 1.6; color: var(--editor-text-muted); }
+.nb-external-actions { flex-wrap: wrap; }
+.nb-external-actions > button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+
+/* 桌面窄窗口也允许换行，移动端沿用现有 44px 触控按钮与圆角。 */
+@media (max-width: 480px) {
+  .nb-external-actions > button { flex: 1; min-height: 44px; white-space: nowrap; }
+}

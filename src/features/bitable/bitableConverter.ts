@@ -212,12 +212,6 @@ export function createDefaultBitableDocument(title = '项目与任务管理多�
       groupByColumnId: 'col_status',
     },
     {
-      id: 'view_kanban_priority',
-      name: '按优先级看板',
-      type: 'kanban',
-      groupByColumnId: 'col_priority',
-    },
-    {
       id: 'view_gantt',
       name: '任务甘特图',
       type: 'gantt',

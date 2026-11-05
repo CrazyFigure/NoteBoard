@@ -3,6 +3,7 @@
 // 通过 Portal 挂到 body：避免 ProseMirror 截获鼠标事件（拖动时误选节点），也不受编辑区祖先 transform 影响
 
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
+import '../../styles/canvasEditors.css';
 import { createPortal } from 'react-dom';
 import { X, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';

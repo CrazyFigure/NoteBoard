@@ -36,6 +36,8 @@ export function buildLongTextExtensions(placeholder = DEFAULT_PLACEHOLDER, onOpe
     onOpenLinkModal,
     // 与笔记本一致：粘贴含 Markdown / HTML 的纯文本时提示转换
     pasteFormatDetect: true,
+    // 单元格内容属于多维表格文件，没有笔记仓库语境：`[[...]]` 按普通文字保留
+    wikiLinks: false,
   });
 }
 

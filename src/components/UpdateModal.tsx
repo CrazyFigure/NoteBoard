@@ -21,6 +21,7 @@ import * as ipc from '../core/ipc/commands';
 import { IS_MOBILE_UI, IS_NATIVE_MOBILE, USES_MANUAL_UPDATE_INSTALL } from '../core/platform';
 import { useBackDismiss } from '../mobile/components';
 import { resumeSnapshotTracking, saveCurrentWindowSnapshot } from '../features/session/closedWindowSession';
+import { RELEASE_CHANNELS, useUpdateChannel } from '../core/releaseChannel';
 import './update-modal.css';
 
 interface UpdateModalProps {
@@ -66,6 +67,9 @@ export function UpdateModal({
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<UpdateDownloadProgress | null>(null);
   const [installError, setInstallError] = useState<string | null>(null);
+  // 当前已保存的下载渠道，检测成功后随可用渠道自动切换。
+  const channel = useUpdateChannel();
+  const channelLabel = RELEASE_CHANNELS[channel].label;
 
   // 移动端返回键关闭弹窗（下载中不响应，避免中断进度展示）
   useBackDismiss(IS_MOBILE_UI && isOpen && !downloading, onClose);
@@ -186,7 +190,7 @@ export function UpdateModal({
   if (!isOpen) return null;
 
   const showDetail = Boolean(result?.updateAvailable && !checkError && !checking);
-  // 免安装版不在应用内下载安装，主按钮改为前往 GitHub Release 页面
+  // 免安装版不在应用内下载安装，主按钮改为前往当前渠道的 Release 页面
   const portableUpdate = Boolean(showDetail && result?.portable);
   const latestDate = formatDate(result?.publishedAt);
 
@@ -204,7 +208,7 @@ export function UpdateModal({
         alignItems: 'center',
         justifyContent: 'center',
         background: 'rgba(0, 0, 0, 0.45)',
-        backdropFilter: 'blur(4px)',
+        // 下载进度和鼠标反馈只绘制弹窗本身，不重复虚化整窗背景。
       }}
       onClick={downloading ? undefined : onClose}
     >
@@ -330,7 +334,7 @@ export function UpdateModal({
                 color="var(--accent-strong)"
               />
               <span style={{ fontSize: 13, color: 'var(--editor-text-secondary)' }}>
-                正在连接 GitHub 检查最新版本
+                正在检查最新版本，优先 GitHub，失败后尝试腾讯云 CNB
               </span>
             </div>
           )}
@@ -353,7 +357,7 @@ export function UpdateModal({
                 }}
               >
                 <AlertCircle size={18} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />
-                <div>{checkError}</div>
+                <div style={{ whiteSpace: 'pre-wrap' }}>{checkError}</div>
               </div>
             </div>
           )}
@@ -518,7 +522,7 @@ export function UpdateModal({
             </button>
           )}
 
-          {/* 重新检查按钮 */}
+          {/* 两个渠道均失败时重新按 GitHub、CNB 顺序检测，成功前保留现有下载渠道。 */}
           {checkError && onRecheck && (
             <button
               type="button"
@@ -538,7 +542,7 @@ export function UpdateModal({
             </button>
           )}
 
-          {/* 免安装版：前往 GitHub 下载 */}
+          {/* 免安装版：前往当前渠道的 Release 页面下载 */}
           {portableUpdate && result && (
             <button
               type="button"
@@ -554,7 +558,7 @@ export function UpdateModal({
               }}
             >
               <ExternalLink size={14} />
-              <span>前往 GitHub 下载</span>
+              <span>前往 {channelLabel} 下载</span>
             </button>
           )}
 

@@ -13,6 +13,7 @@ import type {
   SyncLocalChange,
   SyncReportEvent,
   SyncStatus,
+  NativeTabDragInfo,
 } from './types';
 
 // ── 事件名常量 ──
@@ -35,6 +36,7 @@ export const EVENTS = {
   SYNC_APPLIED: 'nb://sync-applied',
   SYNC_CONFIG_CHANGED: 'nb://sync-config-changed',
   HISTORY_CHANGED: 'nb://history-changed',
+  LOCAL_SEARCH_UPDATED: 'nb://local-search-updated',
 } as const;
 
 // ── 监听封装 ──
@@ -49,6 +51,27 @@ export function onTransferCommitted(
   cb: (p: { transferId: string; key: string }) => void,
 ): Promise<UnlistenFn> {
   return listen<{ transferId: string; key: string }>(EVENTS.TRANSFER_COMMITTED, (e) => cb(e.payload));
+}
+
+/** 已有窗口接收迁移：只唤醒拉取，正文不通过广播传递。 */
+/** 自动贴边状态：吸附的边（未吸附为 null，底部不吸附）与是否已收起；所有窗口都会收到，按 label 过滤 */
+export interface EdgeDockEvent {
+  label: string;
+  edge: 'left' | 'right' | 'top' | null;
+  hidden: boolean;
+}
+
+export function onEdgeDock(cb: (event: EdgeDockEvent) => void): Promise<UnlistenFn> {
+  return listen<EdgeDockEvent>('nb://edge-dock', (e) => cb(e.payload));
+}
+
+export function onTransferAvailable(cb: (transferId: string) => void): Promise<UnlistenFn> {
+  return listen<string>('nb://transfer-available', (e) => cb(e.payload));
+}
+
+/** 跨窗口同步拖动摘要，悬停坐标只由各窗口自己的原生事件提供。 */
+export function onTabDragState(cb: (info: NativeTabDragInfo | null) => void): Promise<UnlistenFn> {
+  return listen<NativeTabDragInfo | null>('nb://tab-drag-state', (e) => cb(e.payload));
 }
 
 /** 迁移中止：源解锁本地编辑，目标删除临时 session */
@@ -76,6 +99,11 @@ export function onExplorerRescan(cb: (p: { root: string }) => void): Promise<Unl
 
 export function onSettingsChanged(cb: (s: Settings) => void): Promise<UnlistenFn> {
   return listen<Settings>(EVENTS.SETTINGS_CHANGED, (e) => cb(e.payload));
+}
+
+/** 本地搜索索引有更新（建索引进展或文件变化），打开中的搜索面板据此静默刷新结果 */
+export function onLocalSearchUpdated(cb: () => void): Promise<UnlistenFn> {
+  return listen<null>(EVENTS.LOCAL_SEARCH_UPDATED, () => cb());
 }
 
 export function onBeforeQuit(cb: () => void): Promise<UnlistenFn> {

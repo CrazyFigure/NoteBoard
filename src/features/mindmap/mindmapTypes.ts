@@ -17,8 +17,11 @@ export interface MindNode {
   icon?: string;
   // 节点文字备注
   note?: string;
-  // 节点挂载图片（Data URL Base64 或网络/本地路径）
-  image?: string;
+  // 节点挂载图片（Data URL Base64 或网络/本地路径），按顺序展示，最多 10 张；
+  // 旧版文档的单图字段 image 在解析时并入此处
+  images?: string[];
+  // 本地文件超链接（相对导图所在目录的路径或绝对路径），最多 10 个；Ctrl/Cmd + 单击在应用内打开
+  files?: string[];
   isExpanded?: boolean;
   color?: string;
   // 手动拉伸后的节点宽度（px）；未设置时按设置中的最大宽度自适应
@@ -48,9 +51,13 @@ export interface MindNodeRange {
   endId: string;
 }
 
-/** 概要：大括号 + 概要文字 */
+/**
+ * 概要：大括号 + 概要主题。
+ * 概要主题是一个完整节点（标题 / 图标 / 备注 / 图片等），可继续挂子节点；
+ * 旧版文档只有概要文字 text，解析时迁移为概要主题
+ */
 export interface MindSummary extends MindNodeRange {
-  text: string;
+  topic: MindNode;
 }
 
 /** 外框：虚线圆角框 + 可选标题 */

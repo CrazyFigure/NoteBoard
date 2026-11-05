@@ -3,6 +3,9 @@
 // 负责移动端系统集成：Android 返回键、进入后台自动保存、回到前台刷新与接收外部文件、"另存为"命名。
 
 import { useEffect, useRef } from 'react';
+// 移动端外壳就绪前由模块预载样式，桌面首页不再下载移动端专用规则。
+import '../styles/mobile.css';
+import { isMultiUser } from '../features/account/accountState';
 import { onBackButtonPress } from '@tauri-apps/api/app';
 import * as ipc from '../core/ipc/commands';
 import { IS_NATIVE_MOBILE, IS_WEB } from '../core/platform';
@@ -14,8 +17,11 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { showToast } from '../stores/toastStore';
 import { ToastContainer } from '../components/Toast';
 import { PromptDialogHost } from '../components/PromptDialogHost';
+import { ExportResultDialogHost } from '../components/ExportResultDialogHost';
+import { WikiLinkDialogHost } from '../features/wikilink/WikiLinkDialogHost';
 import { UnsavedGuardDialog } from '../features/editor-code/UnsavedGuardDialog';
 import { MissingFileDialog } from '../features/external/MissingFileDialog';
+import { ExternalChangeDialog } from '../features/external/ExternalChangeDialog';
 import { checkActiveDocumentStillExists } from '../features/external/missingFileGuard';
 import { saveDocument, setSaveAsPathPicker } from '../features/editor-code/orchestration/saveDocument';
 import { useCloseGuardHandlers, useMarkdownEditorRegistry, useRestoredTabLoader } from '../components/shell/shellHooks';
@@ -26,6 +32,7 @@ import { consumeIncomingFiles, navigateUp, refreshCurrentFolder, switchLocation,
 import { readRememberedLocation, useMobileStore } from './mobileStore';
 import { cancelSaveAs, mobileSaveAsPicker, resolveSaveAs, useMobileSaveAsStore } from './mobileSaveAs';
 import { useVersionHistoryStore } from '../features/versionHistory/versionHistoryStore';
+import { invalidateNoteIndexOnFocus, registerVaultRootProvider } from '../features/wikilink/noteIndex';
 
 /** 两次返回键退出的判定间隔 */
 const EXIT_CONFIRM_MS = 2000;
@@ -58,7 +65,7 @@ async function initializeStorage(): Promise<void> {
   const workspace = await ipc.ensureDefaultWorkspace();
   useMobileStore.getState().setPlatform({ ...info, defaultWorkspace: workspace });
   const remembered = readRememberedLocation();
-  const location = remembered.location === 'device' && info.allFilesAccess && info.externalRoot ? 'device' : 'workspace';
+  const location = remembered.location === 'device' && info.allFilesAccess && info.externalRoot ? 'device' : remembered.location === 'shared' && isMultiUser() ? 'shared' : 'workspace';
   await switchLocation(location, remembered.folder);
 }
 
@@ -128,6 +135,9 @@ export function MobileShell() {
     if (IS_WEB && page === 'home') void refreshCurrentFolder();
   }, [page]);
 
+  // 双链以当前存储位置的根目录作为笔记仓库
+  useEffect(() => registerVaultRootProvider(() => useMobileStore.getState().locationRoot || null), []);
+
   // 进入后台立即保存；回到前台刷新权限、文件列表、外部修改检测并接收新传入文件
   useEffect(() => {
     const handleVisibility = () => {
@@ -139,6 +149,8 @@ export function MobileShell() {
       void refreshCurrentFolder();
       void checkActiveDocumentStillExists(true).catch(() => {});
       void consumeIncomingFiles();
+      // 后台期间同步或其它应用可能增删了笔记，双链索引需重建
+      invalidateNoteIndexOnFocus();
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
@@ -253,8 +265,13 @@ export function MobileShell() {
         onCancel={handleCancelClose}
       />
       <MissingFileDialog />
+      <ExternalChangeDialog />
       <ToastContainer />
       <PromptDialogHost />
+      <ExportResultDialogHost />
+
+      {/* 双向链接插入 / 编辑弹窗 */}
+      <WikiLinkDialogHost />
     </div>
   );
 }

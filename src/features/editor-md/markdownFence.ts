@@ -3,6 +3,7 @@
 // 保证内容中出现 ``` 时围栏不被提前闭合，且图表块不会因缺少序列化器而在保存时丢失。
 
 import type { JSONContent, MarkdownParseHelpers, MarkdownToken } from '@tiptap/core';
+import { emitRawSegment } from './rawMarkdownSegments';
 
 /**
  * 在源码打开时直接还原为可视化预览块的围栏语言。
@@ -46,7 +47,8 @@ function isUsableFence(fence: string | null | undefined, code: string): fence is
 export function renderFencedCode(language: string, code: string, preferredFence?: string | null): string {
   const fence = isUsableFence(preferredFence, code) ? preferredFence : fenceFor(code);
   if (code === '') return `${fence}${language}\n\n${fence}`;
-  return `${fence}${language}\n${code}\n${fence}`;
+  // 代码正文必须逐字保留；引用和列表会给围栏加前缀，全文后处理不能靠顶层围栏正则识别它。
+  return `${fence}${language}\n${emitRawSegment(code)}\n${fence}`;
 }
 
 /** 读取围栏代码块原文的开围栏（缩进代码块等非围栏写法返回 null）。 */

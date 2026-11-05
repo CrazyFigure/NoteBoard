@@ -37,6 +37,7 @@ import {
   Boxes,
   Minus,
   Link2,
+  Waypoints,
   Image as ImageIcon,
   Calendar,
   Clock,
@@ -44,12 +45,14 @@ import {
   PlusSquare,
   BarChart3,
   Smile,
+  Ellipsis,
 } from 'lucide-react';
 import {
   ToolbarButton,
   ToolbarDivider,
   ToolbarDropdown,
   ToolbarDropdownItem,
+  ToolbarDropdownSeparator,
   HighlightColorPicker,
 } from './ToolbarComponents';
 import {
@@ -73,8 +76,10 @@ import { alertSourceBlock, codeSourceBlock, quoteSourceBlock, wrapSourceLines } 
 import { ALERT_KINDS, AlertMenuIcon, alertMenuLabel, type AlertKind } from '../editor-md/alertExtension';
 import { CALLOUT_PRESETS, CalloutPresetIcon, type CalloutPreset } from '../editor-md/calloutPickers';
 import { RAW_HTML_SOURCE_SNIPPET, insertRawHtmlContent } from '../editor-md/rawHtmlBlockView';
+import { insertWikiLinkInEditor, insertWikiLinkInSource } from '../wikilink/wikiLinkActions';
 import { InlineEmojiGrid, insertInlineEmoji } from '../editor-md/inlineEmoji';
-import { renderHighlightSource } from '../editor-md/markdownInlineMarks';
+import { renderHighlightSource, renderTextColorSource } from '../editor-md/markdownInlineMarks';
+import { TextColorGrid, TextColorIcon } from '../editor-md/formatPickers';
 // 🔴 S03：从 editor-md 边界内实例表获取内核实例（不再依赖编辑器组件文件的 getter 导出）
 import { getMdTipTapEditor as getActiveTipTapEditor, getMdSourceView as getActiveSourceView } from '../editor-md/editorInstances';
 import { emit } from '../../core/emitter';
@@ -119,7 +124,21 @@ interface MarkdownToolbarProps {
   onOpenLink?: () => void;
   /** 空间不足时按钮换行排列（侧栏等窄容器） */
   wrap?: boolean;
+  /** 极窄模式：只保留常用按钮且仅显示图标，其余收进「更多」菜单 */
+  compact?: boolean;
+  /** 极窄模式「更多」菜单末尾追加的条目（如历史记录） */
+  moreItems?: React.ReactNode;
 }
+
+/** 极窄模式标题按钮用对应级别的图标代替文字，不占额外宽度 */
+const HEADING_ICONS: Record<string, typeof Heading> = {
+  H1: Heading1,
+  H2: Heading2,
+  H3: Heading3,
+  H4: Heading4,
+  H5: Heading5,
+  H6: Heading6,
+};
 
 export function MarkdownToolbar({
   docKey,
@@ -128,10 +147,14 @@ export function MarkdownToolbar({
   history,
   onOpenLink,
   wrap,
+  compact = false,
+  moreItems,
 }: MarkdownToolbarProps) {
   // 保证获取到最新的 TipTap editor 实例
   const editor = propEditor || getActiveTipTapEditor(docKey) || null;
   const isSourceMode = viewMode === 'source';
+  // 双链只在启用了该节点的编辑器中提供（多维表格单元格编辑器未启用）；源码模式首开时可能尚无可视化实例
+  const canInsertWikiLink = editor ? Boolean(editor.schema.nodes.wikiLink) : isSourceMode;
   // Hook 必须无条件调用；嵌入式编辑器传入 history 时以其为准
   const documentHistory = useDocumentHistory(docKey);
   const canUndo = history ? history.canUndo() : documentHistory.canUndo;
@@ -161,6 +184,13 @@ export function MarkdownToolbar({
   const [headingDropdownOpen, setHeadingDropdownOpen] = useState(false);
   const [insertDropdownOpen, setInsertDropdownOpen] = useState(false);
   const [highlightDropdownOpen, setHighlightDropdownOpen] = useState(false);
+  const [textColorDropdownOpen, setTextColorDropdownOpen] = useState(false);
+  const [moreDropdownOpen, setMoreDropdownOpen] = useState(false);
+  /** 「更多」菜单内的操作执行后收起菜单 */
+  const runFromMore = (action: () => void) => () => {
+    setMoreDropdownOpen(false);
+    action();
+  };
 
   // ── 获取当前标题状态 ──
   const currentHeadingLabel = useMemo(() => {
@@ -298,6 +328,29 @@ export function MarkdownToolbar({
     setHighlightDropdownOpen(false);
     if (!editor || isSourceMode) return;
     editor.chain().focus().unsetHighlight().run();
+  };
+
+  // ── 字体颜色操作 ──
+  const handleSelectTextColor = (color: string) => {
+    setTextColorDropdownOpen(false);
+    if (isSourceMode) {
+      executeSourceAction((view) => {
+        const { from, to } = view.state.selection.main;
+        const selText = view.state.sliceDoc(from, to);
+        // 与可视化模式序列化写法一致，切换模式时不触发规范化
+        const insert = renderTextColorSource(selText, color);
+        view.dispatch({ changes: { from, to, insert } });
+      });
+      return;
+    }
+    if (!editor) return;
+    editor.chain().focus().setMark('textColor', { color }).run();
+  };
+
+  const handleRemoveTextColor = () => {
+    setTextColorDropdownOpen(false);
+    if (!editor || isSourceMode) return;
+    editor.chain().focus().unsetMark('textColor').run();
   };
 
   // ── 插入元素处理 ──
@@ -522,6 +575,17 @@ export function MarkdownToolbar({
     emit('open-link-modal', { key: docKey });
   };
 
+  // 双向链接：弹窗中选择笔记、标题、显示名与链接 / 嵌入方式（直接输入 `[[` 是快捷写法）
+  const handleInsertWikiLink = () => {
+    setInsertDropdownOpen(false);
+    if (isSourceMode) {
+      const view = getActiveSourceView(docKey);
+      if (view) void insertWikiLinkInSource(view, docKey);
+      return;
+    }
+    if (editor) void insertWikiLinkInEditor(editor, docKey);
+  };
+
   const handleInsertLocalImage = async () => {
     setInsertDropdownOpen(false);
     if (isSourceMode) {
@@ -619,13 +683,14 @@ export function MarkdownToolbar({
         } else {
           text = view.state.sliceDoc(from, to);
         }
-        // 清除行首块级语法（标题 #, 引用 >, 列表 -, 1.）及行内语法（加粗 **, 斜体 *, 删除线 ~~, 高亮 ==, 行内代码 `, 链接 [t](u)）
+        // 清除行首块级语法（标题 #, 引用 >, 列表 -, 1.）及行内语法（加粗 **, 斜体 *, 删除线 ~~, 高亮 ==, 字体颜色 <span>, 行内代码 `, 链接 [t](u)）
         const cleaned = text
           .replace(/^(#{1,6}\s+|>+\s*|[-*+]\s+(?:\[[ xX]\]\s+)?|\d+\.\s+)/gm, '')
           .replace(/(\*\*|__)(.*?)\1/g, '$2')
           .replace(/(\*|_)(.*?)\1/g, '$2')
           .replace(/(~~)(.*?)\1/g, '$2')
           .replace(/(==)(.*?)\1/g, '$2')
+          .replace(/<span style="color: [^"<>;]+">(.*?)<\/span>/g, '$1')
           .replace(/(`)(.*?)\1/g, '$2')
           .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
 
@@ -710,8 +775,8 @@ export function MarkdownToolbar({
         onOpenChange={setHeadingDropdownOpen}
         trigger={
           <ToolbarButton
-            icon={<Heading size={15} />}
-            label={currentHeadingLabel}
+            icon={React.createElement(compact ? HEADING_ICONS[currentHeadingLabel] ?? Heading : Heading, { size: 15 })}
+            label={compact ? undefined : currentHeadingLabel}
             hasDropdown
             title="标题等级"
             active={currentHeadingLabel !== '正文'}
@@ -786,6 +851,8 @@ export function MarkdownToolbar({
         active={!isSourceMode && Boolean(editor?.isActive('italic'))}
         onClick={() => toggleMark('italic')}
       />
+      {/* 极窄模式：下划线、删除线、行内代码、颜色与高亮收进「更多」 */}
+      {!compact && (<>
       <ToolbarButton
         icon={<Underline size={15} strokeWidth={2.4} />}
         title="下划线"
@@ -807,6 +874,28 @@ export function MarkdownToolbar({
         onClick={() => toggleMark('code')}
       />
 
+      {/* ── 字体颜色与色板下拉（色条显示当前颜色） ── */}
+      <ToolbarDropdown
+        isOpen={textColorDropdownOpen}
+        onOpenChange={setTextColorDropdownOpen}
+        trigger={
+          <ToolbarButton
+            icon={<TextColorIcon color={isSourceMode ? null : editor?.getAttributes('textColor').color} size={15} />}
+            title="字体颜色"
+            hasDropdown
+            active={!isSourceMode && Boolean(editor?.isActive('textColor'))}
+          />
+        }
+      >
+        <div style={{ padding: '6px 4px', width: 176 }}>
+          <TextColorGrid
+            activeColor={isSourceMode ? null : editor?.getAttributes('textColor').color}
+            onSelect={handleSelectTextColor}
+            onClear={handleRemoveTextColor}
+          />
+        </div>
+      </ToolbarDropdown>
+
       {/* ── 文本高亮与调色盘下拉（二级调色盘） ── */}
       <ToolbarDropdown
         isOpen={highlightDropdownOpen}
@@ -825,10 +914,12 @@ export function MarkdownToolbar({
           onRemoveHighlight={handleRemoveHighlight}
         />
       </ToolbarDropdown>
+      </>)}
 
       <ToolbarDivider />
 
-      {/* ── 列表组（按快捷键数字 7 / 8 / 9 排列） ── */}
+      {/* ── 列表组（按快捷键数字 7 / 8 / 9 排列）；极窄模式只保留任务列表，其余收进「更多」 ── */}
+      {!compact && (<>
       <ToolbarButton
         icon={<ListOrdered size={15} strokeWidth={2.2} />}
         title="有序列表"
@@ -843,6 +934,7 @@ export function MarkdownToolbar({
         active={!isSourceMode && Boolean(editor?.isActive('bulletList'))}
         onClick={() => toggleList('bullet')}
       />
+      </>)}
       <ToolbarButton
         icon={<CheckSquare size={15} strokeWidth={2.2} />}
         title="任务列表"
@@ -860,7 +952,7 @@ export function MarkdownToolbar({
         trigger={
           <ToolbarButton
             icon={<PlusSquare size={15} />}
-            label="插入"
+            label={compact ? undefined : '插入'}
             hasDropdown
             title="插入超链接、图片、表格、公式、图表、GitHub 提示块、高亮块、折叠块、分栏、HTML 块、表情、日期时间等"
           />
@@ -1044,6 +1136,16 @@ export function MarkdownToolbar({
           onClick={handleOpenLink}
         />
 
+        {/* 7.5 双向链接（多维表格单元格等未启用双链的编辑器不显示） */}
+        {canInsertWikiLink && (
+          <ToolbarDropdownItem
+            icon={<Waypoints size={14} color="#8b5cf6" />}
+            label="双向链接"
+            shortcut="[["
+            onClick={handleInsertWikiLink}
+          />
+        )}
+
         {/* 8. 日期时间二级菜单 */}
         <ToolbarDropdownItem
           icon={<Calendar size={14} />}
@@ -1078,14 +1180,108 @@ export function MarkdownToolbar({
       </ToolbarDropdown>
 
       {/* 超链接与图片入口统一收在「插入」菜单内 */}
-      <ToolbarDivider />
+      {!compact && <ToolbarDivider />}
 
       {/* ── 清除格式 ── */}
-      <ToolbarButton
-        icon={<RemoveFormatting size={15} color="#ef4444" />}
-        title="清除选中文本格式"
-        onClick={handleClearFormat}
-      />
+      {!compact && (
+        <ToolbarButton
+          icon={<RemoveFormatting size={15} color="#ef4444" />}
+          title="清除选中文本格式"
+          onClick={handleClearFormat}
+        />
+      )}
+
+      {/* ── 极窄模式「更多」菜单：收纳次常用格式与外部追加条目 ── */}
+      {compact && (
+        <ToolbarDropdown
+          isOpen={moreDropdownOpen}
+          onOpenChange={setMoreDropdownOpen}
+          align="right"
+          trigger={
+            <ToolbarButton
+              icon={<Ellipsis size={15} strokeWidth={2.2} />}
+              title="更多"
+              active={moreDropdownOpen}
+            />
+          }
+        >
+          <ToolbarDropdownItem
+            icon={<Underline size={14} />}
+            label="下划线"
+            shortcut="Ctrl+U"
+            active={!isSourceMode && Boolean(editor?.isActive('underline'))}
+            onClick={runFromMore(() => toggleMark('underline'))}
+          />
+          <ToolbarDropdownItem
+            icon={<Strikethrough size={14} />}
+            label="删除线"
+            active={!isSourceMode && Boolean(editor?.isActive('strike'))}
+            onClick={runFromMore(() => toggleMark('strike'))}
+          />
+          <ToolbarDropdownItem
+            icon={<Code size={14} />}
+            label="行内代码"
+            shortcut="`"
+            active={!isSourceMode && Boolean(editor?.isActive('code'))}
+            onClick={runFromMore(() => toggleMark('code'))}
+          />
+          <ToolbarDropdownItem
+            icon={<TextColorIcon color={isSourceMode ? null : editor?.getAttributes('textColor').color} size={14} />}
+            label="字体颜色"
+            submenuWidth={190}
+            submenu={
+              <div style={{ padding: '6px 4px', width: 176 }}>
+                <TextColorGrid
+                  activeColor={isSourceMode ? null : editor?.getAttributes('textColor').color}
+                  onSelect={(color) => runFromMore(() => handleSelectTextColor(color))()}
+                  onClear={runFromMore(handleRemoveTextColor)}
+                />
+              </div>
+            }
+          />
+          <ToolbarDropdownItem
+            icon={<Highlighter size={14} />}
+            label="文本高亮"
+            submenuWidth={190}
+            submenu={
+              <HighlightColorPicker
+                onSelectColor={(color) => runFromMore(() => handleSelectHighlightColor(color))()}
+                onRemoveHighlight={runFromMore(handleRemoveHighlight)}
+              />
+            }
+          />
+          <ToolbarDropdownSeparator />
+          <ToolbarDropdownItem
+            icon={<ListOrdered size={14} />}
+            label="有序列表"
+            shortcut="Ctrl+Shift+7"
+            active={!isSourceMode && Boolean(editor?.isActive('orderedList'))}
+            onClick={runFromMore(() => toggleList('ordered'))}
+          />
+          <ToolbarDropdownItem
+            icon={<List size={14} />}
+            label="无序列表"
+            shortcut="Ctrl+Shift+8"
+            active={!isSourceMode && Boolean(editor?.isActive('bulletList'))}
+            onClick={runFromMore(() => toggleList('bullet'))}
+          />
+          <ToolbarDropdownSeparator />
+          <ToolbarDropdownItem
+            icon={<RemoveFormatting size={14} color="#ef4444" />}
+            label="清除格式"
+            onClick={runFromMore(handleClearFormat)}
+          />
+          {moreItems && (
+            <>
+              <ToolbarDropdownSeparator />
+              {/* 外部条目点击后同样收起菜单：捕获阶段先记下关闭意图，不干扰条目自身处理 */}
+              <div onClickCapture={() => setMoreDropdownOpen(false)} style={{ display: 'contents' }}>
+                {moreItems}
+              </div>
+            </>
+          )}
+        </ToolbarDropdown>
+      )}
     </div>
   );
 }

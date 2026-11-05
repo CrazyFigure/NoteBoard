@@ -3,6 +3,8 @@
 // 详见 docs/08-数据契约与持久化.md §2
 
 import { invoke } from '@tauri-apps/api/core';
+import type { DialogFilter } from '@tauri-apps/plugin-dialog';
+import { IS_WEB } from '../platform';
 import type {
   DocumentPayload,
   FileTreeNode,
@@ -26,6 +28,7 @@ import type {
   Eol,
   Encoding,
   UpdateCheckResult,
+  UpdateChannel,
   StagingDocument,
   StagingResult,
   SessionSnapshot,
@@ -44,9 +47,19 @@ import type {
   HistoryReadResult,
   HistoryUsage,
   HistoryCheckpointReason,
+  TabDragResult,
+  TabTransferTarget,
+  LocalSearchNameResult,
+  LocalSearchContentResult,
+  LocalSearchDrive,
 } from './types';
 
 // ── 窗口（S04 打开队列 + 迁移协议） ──
+
+/** Linux 打开文件/文件夹时显式显示 GTK 路径输入框；取消返回 null。 */
+export function openLinuxPathDialog(directory: boolean, filters: DialogFilter[] = []): Promise<string[] | null> {
+  return invoke<string[] | null>('open_linux_path_dialog', { directory, filters });
+}
 
 /** 监听就绪握手：返回 consumer 代际与启动模式；不显示窗口、不消费请求 */
 export function windowListenersReady(label: string): Promise<WindowBootDto> {
@@ -107,12 +120,30 @@ export function beginDocumentTransfer(
   sourceLabel: string,
   doc: TransferredDocument,
   expectedRevision: number,
+  target?: TabTransferTarget,
 ): Promise<BeginTransferResponse> {
   return invoke<BeginTransferResponse>('begin_document_transfer', {
     sourceLabel,
     doc,
     expectedRevision,
+    targetLabel: target?.targetLabel ?? null,
+    position: target?.position ?? null,
   });
+}
+
+/** 原生系统拖放只传票据；正文继续通过迁移协议发送。 */
+export function startTabDrag(key: string, image: string, displayName: string): Promise<TabDragResult> {
+  return invoke<TabDragResult>('start_tab_drag', { key, image, displayName });
+}
+
+/** 判断并消费内部票据，避免把临时票据当作普通文件打开。 */
+export function claimTabDrop(paths: string[], beforeKey: string | null): Promise<boolean> {
+  return invoke<boolean>('claim_tab_drop', { paths, beforeKey });
+}
+
+/** 目标初始化或重载后补拉，避免丢失迁移唤醒事件。 */
+export function listIncomingTransfers(): Promise<string[]> {
+  return invoke<string[]>('list_incoming_transfers');
 }
 
 /** 目标窗口一次性拉取迁移载荷 */
@@ -168,6 +199,26 @@ export function setShowWindowShortcut(shortcut: string): Promise<void> {
   return invoke<void>('set_show_window_shortcut', { shortcut });
 }
 
+/** 开启 / 关闭当前窗口的自动贴边（极窄模式）；桌面环境不支持时抛出原因 */
+export function setEdgeDock(enabled: boolean): Promise<void> {
+  return invoke<void>('set_edge_dock', { enabled });
+}
+
+/** 极窄模式由 Rust 驱动标题栏拖动（避开系统贴靠 / 平铺），按下时开始；constrain 为真时不允许拖出桌面 */
+export function beginDockDrag(constrain: boolean): Promise<void> {
+  return invoke<void>('begin_dock_drag', { constrain });
+}
+
+/** 结束自动贴边的拖动（松开鼠标或失去指针捕获） */
+export function endDockDrag(): Promise<void> {
+  return invoke<void>('end_dock_drag');
+}
+
+/** 显示 / 隐藏当前窗口的 macOS 红绿灯（沉浸阅读隐藏外壳时使用，其它平台为空操作） */
+export function setTrafficLightsHidden(hidden: boolean): Promise<void> {
+  return invoke<void>('set_traffic_lights_hidden', { hidden });
+}
+
 // ── 文档注册表 ──
 
 export function registerDocument(
@@ -212,6 +263,11 @@ export async function readPreviewFile(path: string): Promise<Uint8Array> {
   return new Uint8Array(await invoke<ArrayBuffer>('read_preview_file', { path }));
 }
 
+/** PDF 每次最多读取 1 MiB，避免大文件在宿主与插件间完整复制。 */
+export async function readPdfFileRange(path: string, begin: number, end: number, size: number): Promise<Uint8Array> {
+  return new Uint8Array(await invoke<ArrayBuffer>('read_pdf_file_range', { path, begin, end, size }));
+}
+
 export function probeDocument(path: string): Promise<ProbeResult> {
   return invoke<ProbeResult>('probe_document', { path });
 }
@@ -234,13 +290,21 @@ export function writeDocument(
 }
 
 // 保存二进制文件（如粘贴或插入的图片数据）
+// 桌面与移动端以原始字节正文传输、路径放在请求头：原先转成 JSON 数字数组并在主线程反序列化，
+// 3 MB 截图要约 0.7 秒且期间界面卡住，二进制正文约 50 毫秒。网页端适配层仍按原接口转为 Base64 上传。
 export function saveBinaryFile(
   path: string,
   data: Uint8Array | number[],
 ): Promise<WriteResult> {
-  return invoke<WriteResult>('save_binary_file', {
-    path,
-    data: Array.from(data),
+  if (IS_WEB) {
+    return invoke<WriteResult>('save_binary_file', {
+      path,
+      data: Array.from(data),
+    });
+  }
+  const bytes = data instanceof Uint8Array ? data : Uint8Array.from(data);
+  return invoke<WriteResult>('save_binary_file_raw', bytes, {
+    headers: { 'x-nb-path': encodeURIComponent(path) },
   });
 }
 
@@ -283,6 +347,30 @@ export function revealInExplorer(path: string): Promise<void> {
 
 export function openWithDefaultApp(path: string): Promise<void> {
   return invoke<void>('open_with_default_app', { path });
+}
+
+// ── 系统剪贴板（桌面端原生格式） ──
+
+/** 复制本地图片文件的位图：只传路径，由原生端读盘解码（不经 IPC 传输像素） */
+export function clipboardWriteImageFile(path: string): Promise<void> {
+  return invoke<void>('clipboard_write_image_file', { path });
+}
+
+/** 复制图片位图：正文为原始文件字节（PNG / JPEG / GIF / WebP / BMP / ICO），由原生端解码 */
+export function clipboardWriteImageEncoded(bytes: Uint8Array): Promise<void> {
+  return invoke<void>('clipboard_write_image', bytes, { headers: { 'x-nb-encoding': 'encoded' } });
+}
+
+/** 复制图片位图：正文为自上而下的 RGBA 像素（每像素 4 字节、非预乘），宽高放在请求头 */
+export function clipboardWriteImagePixels(rgba: Uint8Array, width: number, height: number): Promise<void> {
+  return invoke<void>('clipboard_write_image', rgba, {
+    headers: { 'x-nb-encoding': 'rgba', 'x-nb-width': String(width), 'x-nb-height': String(height) },
+  });
+}
+
+/** 把文件以「文件」形式放入系统剪贴板，可在文件管理器或聊天软件中直接粘贴 */
+export function clipboardWriteFiles(paths: string[]): Promise<void> {
+  return invoke<void>('clipboard_write_files', { paths });
 }
 
 // ── 设置与系统 ──
@@ -399,9 +487,9 @@ export function saveFavorites(favorites: FavoritesData): Promise<void> {
 
 // ── 应用更新与外部链接 ──
 
-// 检查 GitHub 最新版本
-export function checkForUpdates(): Promise<UpdateCheckResult> {
-  return invoke<UpdateCheckResult>('check_for_updates');
+// 指定渠道检查最新版本，不提前改写设置；未传渠道时兼容原有调用。
+export function checkForUpdates(channel?: UpdateChannel): Promise<UpdateCheckResult> {
+  return invoke<UpdateCheckResult>('check_for_updates', { channel });
 }
 
 // 下载更新安装包并在落盘后启动安装器
@@ -584,4 +672,21 @@ export function historyUsage(): Promise<HistoryUsage> {
 
 export function historyClearAll(): Promise<void> {
   return invoke<void>('history_clear_all');
+}
+
+// ── 本地文件搜索（仅桌面端） ──
+
+/** 文件名搜索；seq 为本窗口递增序号，被更新的查询取代时返回 null */
+export function localSearchNames(query: string, seq: number, limit?: number): Promise<LocalSearchNameResult | null> {
+  return invoke<LocalSearchNameResult | null>('local_search_names', { query, seq, limit: limit ?? null });
+}
+
+/** 内容搜索；被更新的查询取代时返回 null */
+export function localSearchContent(query: string, seq: number, limit?: number): Promise<LocalSearchContentResult | null> {
+  return invoke<LocalSearchContentResult | null>('local_search_content', { query, seq, limit: limit ?? null });
+}
+
+/** 列出可添加为索引位置的磁盘 */
+export function localSearchDrives(): Promise<LocalSearchDrive[]> {
+  return invoke<LocalSearchDrive[]>('local_search_drives');
 }

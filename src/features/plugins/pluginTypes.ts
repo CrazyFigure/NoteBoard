@@ -1,5 +1,5 @@
 // 官方插件协议独立于 React 和编辑器内核，插件更新不要求重新构建主程序。
-export type PluginId = 'word' | 'excel' | 'powerpoint' | 'pdf' | 'cad' | 'epub' | 'workbench';
+export type PluginId = 'word' | 'excel' | 'powerpoint' | 'pdf' | 'cad' | 'epub' | 'notability' | 'goodnotes' | 'workbench';
 
 export interface PluginManifest {
   id: PluginId;
@@ -27,7 +27,7 @@ export interface PluginCatalog { schemaVersion: number; plugins: CatalogPlugin[]
 export interface PluginReadingApi {
   /** 当前文档是否处于沉浸阅读 */
   get: () => boolean;
-  /** 进入或退出沉浸阅读（外壳隐藏与系统全屏由主程序处理） */
+  /** 进入或退出沉浸阅读（外壳隐藏与窗口控件由主程序处理） */
   set: (enabled: boolean) => void;
   /** 订阅阅读状态变化，返回取消订阅函数 */
   subscribe: (listener: (active: boolean) => void) => () => void;
@@ -38,11 +38,15 @@ export interface PluginContext {
   container: HTMLElement;
   name: string;
   bytes?: Uint8Array;
+  /** 新版 PDF 按需读取；旧宿主与内嵌 PDF 仍可提供 bytes。 */
+  source?: { size: number; read: (begin: number, end: number) => Promise<Uint8Array> };
   signal: AbortSignal;
   notify: (message: string) => void;
   reading?: PluginReadingApi;
 }
 export interface PluginModule {
+  /** 仅声明支持时才传入分块源，旧插件继续使用原有 50 MiB 字节入口。 */
+  supportsRangeRead?: boolean;
   mount: (context: PluginContext) => Promise<(() => void) | void>;
 }
 
@@ -54,6 +58,9 @@ export const OFFICIAL_PLUGINS: Array<{ id: PluginId; name: string; description: 
   { id: 'pdf', name: 'PDF 查看', description: '分页阅读、缩放与文字选择', formats: 'PDF' },
   { id: 'cad', name: 'CAD 查看', description: '本地图纸阅读、平移缩放与文字复制', formats: 'DWG · DXF' },
   { id: 'epub', name: 'EPUB 阅读', description: '目录跳转、字号调节与阅读进度', formats: 'EPUB' },
+  // 私有笔记只读兼容解析，复杂内容可能不完整。
+  { id: 'notability', name: 'Notability 阅读', description: '只读查看笔迹、内嵌预览与附件，复杂内容可能不完整', formats: 'NOTE' },
+  { id: 'goodnotes', name: 'Goodnotes 阅读', description: '只读查看笔迹、内嵌预览与附件，复杂内容可能不完整', formats: 'GOODNOTES' },
   { id: 'workbench', name: '多维表格工作台', description: '自由组合数据、任务、日程与笔记', formats: '多维表格视图' },
 ];
 
@@ -65,6 +72,8 @@ export function previewPluginFor(path: string): PluginId | null {
   if (ext === 'ppt' || ext === 'pptx') return 'powerpoint';
   if (ext === 'dwg' || ext === 'dxf') return 'cad';
   if (ext === 'epub') return 'epub';
+  if (ext === 'note') return 'notability';
+  if (ext === 'goodnotes') return 'goodnotes';
   return ext === 'pdf' ? 'pdf' : null;
 }
 

@@ -142,6 +142,27 @@ describe('serialize 真实往返集成（真实 TipTap Editor）', () => {
     editor.destroy();
   });
 
+  it.each([
+    ['普通长文', Array.from({ length: 100 }, (_, index) => `第 ${index + 1} 段正文`).join('\n\n'), 1],
+    ['列表开头', '- 第一项\n- 第二项\n\n末段', 3],
+    ['分隔线开头', '---\n\n正文\n\n末段', 0],
+    ['空文档', '', 1],
+  ] as const)('打开%s时光标位于文档开头，不随整篇替换映射到末尾', (_name, markdown, expectedStart) => {
+    const editor = createEditor();
+    try {
+      // 模拟复用过的内核：加载新内容前已有文档与末尾光标。
+      parseMarkdown(editor, '旧正文');
+      editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+      expect(parseMarkdown(editor, markdown)).toBe(true);
+      const { selection } = editor.state;
+      // 普通段落从 1 开始、列表需进入两层节点；分隔线是不可输入的首块，选中节点本身。
+      expect(selection.from).toBe(expectedStart);
+      expect(undoDepth(editor.state)).toBe(0);
+    } finally {
+      editor.destroy();
+    }
+  });
+
   it('源码内容未变化时跳过整篇替换并保留可视化撤销与重做', () => {
     const editor = createEditor();
     parseMarkdown(editor, '# 原内容\n');

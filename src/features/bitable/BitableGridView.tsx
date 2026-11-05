@@ -18,6 +18,7 @@ import {
 import { BitableCellEditor } from './BitableCellEditor';
 import { SelectOptionsPanel, OptionBadge } from './BitableOptions';
 import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
+import { BitableContextMenu } from './BitableContextMenu';
 import { usePointerReorder } from './usePointerReorder';
 import { getFieldTypeMeta, FieldSelectButton } from './BitableFieldMeta';
 import { SortRulesPanel } from './BitableSortPanel';
@@ -73,6 +74,8 @@ import {
   Copy,
   Pin,
   PinOff,
+  Rows3,
+  Columns3,
 } from 'lucide-react';
 import { formatShortcut } from '../../core/shortcuts';
 
@@ -203,6 +206,8 @@ interface FlatTreeRow {
  * 用于把落点夹在本组内——跨组拖动等价于改写分组字段的值，不属于「换顺序」。
  */
 interface RowSlot {
+  /** 渲染实例键（同 GridItem.instanceKey）：多选分组下同一行会出现在多个分组里，不能只用行 ID 定位 */
+  key: string;
   rowId: string;
   parentId?: string;
   groupStart: number;
@@ -212,7 +217,17 @@ interface RowSlot {
 /** 表格视图渲染项：分组标题行或普通数据行 */
 type GridItem =
   | { type: 'group'; key: string; label: string; count: number; color?: SelectOptionColor }
-  | { type: 'row'; treeNode: FlatTreeRow };
+  | {
+      type: 'row';
+      treeNode: FlatTreeRow;
+      groupKey: string | null;
+      /**
+       * 渲染实例键：行首次出现用行 ID，多选分组下的重复出现再带上分组键。
+       * 首次出现保持行 ID 的好处：行因改值换到别的分组时 React 只是挪动 DOM 而不是重挂载，
+       * 单元格里打开着的选项面板不会因此被关掉（连续点选多个标签时尤其明显）。
+       */
+      instanceKey: string;
+    };
 
 // 表头 / 行头的选中与拖拽高亮色（半透明蓝色叠加层，透明度即高亮强度）
 const HEADER_SELECTED_TINT = 'rgba(59, 130, 246, 0.12)';
@@ -466,12 +481,20 @@ export function BitableGridView({
 
   const gridItems = useMemo(() => {
     if (!groupByColumnId || !groupColumn) {
-      return flatTreeRows.map<GridItem>((node) => ({ type: 'row', treeNode: node }));
+      return flatTreeRows.map<GridItem>((node) => ({
+        type: 'row',
+        treeNode: node,
+        groupKey: null,
+        instanceKey: node.row.id,
+      }));
     }
 
-    const groups = groupFlatTreeRows(flatTreeRows, groupColumn);
+    // 多选字段展开为「每个选项一组」：同一行选了几个标签就出现在几个分组下
+    const groups = groupFlatTreeRows(flatTreeRows, groupColumn, { expandMultiSelect: true });
     const items: GridItem[] = [];
     let visibleCounter = 0;
+    // 已渲染过的行 ID：再次出现时实例键改用「分组键 + 行 ID」，保证同一 tbody 内键唯一
+    const renderedRowIds = new Set<string>();
 
     groups.forEach((group) => {
       items.push({
@@ -485,9 +508,14 @@ export function BitableGridView({
       if (!collapsed) {
         group.rows.forEach((node) => {
           visibleCounter += 1;
+          const rowId = node.row.id;
+          const instanceKey = renderedRowIds.has(rowId) ? `${group.meta.key}::${rowId}` : rowId;
+          renderedRowIds.add(rowId);
           items.push({
             type: 'row',
             treeNode: { ...node, rowNumber: visibleCounter },
+            groupKey: group.meta.key,
+            instanceKey,
           });
         });
       }
@@ -495,6 +523,19 @@ export function BitableGridView({
 
     return items;
   }, [flatTreeRows, groupByColumnId, groupColumn, collapsedGroupKeys]);
+
+  /**
+   * 选区使用的行序列：与屏幕上的数据行一一对应（分组视图下即分组后的展示顺序，折叠组内的行不参与）。
+   * 选区里存的是行实例键而不是行 ID：多选分组下同一行会出现多次，只有实例键能区分点的是哪一处；
+   * 若沿用分组前的树序索引，点击位置和高亮位置就会错开（点上面、选中下面）。
+   */
+  const selectableRows = useMemo(
+    () =>
+      gridItems.flatMap((item) =>
+        item.type === 'row' ? [{ ...item.treeNode, instanceKey: item.instanceKey }] : [],
+      ),
+    [gridItems],
+  );
 
   /** 切换分组折叠/展开 */
   const toggleGroupCollapse = (key: string) => {
@@ -520,17 +561,14 @@ export function BitableGridView({
    * 两趟构造：先按分组划出连续区间，再把区间回填到每一行上。
    */
   const rowSlots = useMemo<RowSlot[]>(() => {
-    const raw: Array<{ rowId: string; parentId?: string; groupKey: string | null }> = [];
-    let currentKey: string | null = null;
+    const raw: Array<{ key: string; rowId: string; parentId?: string; groupKey: string | null }> = [];
     gridItems.forEach((item) => {
-      if (item.type === 'group') {
-        currentKey = item.key;
-        return;
-      }
+      if (item.type === 'group') return;
       raw.push({
+        key: item.instanceKey,
         rowId: item.treeNode.row.id,
         parentId: item.treeNode.row.parentId,
-        groupKey: currentKey,
+        groupKey: item.groupKey,
       });
     });
 
@@ -543,13 +581,19 @@ export function BitableGridView({
 
     return raw.map((slot) => {
       const range = ranges.get(slot.groupKey)!;
-      return { rowId: slot.rowId, parentId: slot.parentId, groupStart: range.start, groupEnd: range.end };
+      return {
+        key: slot.key,
+        rowId: slot.rowId,
+        parentId: slot.parentId,
+        groupStart: range.start,
+        groupEnd: range.end,
+      };
     });
   }, [gridItems]);
 
-  /** 行 ID → 槽位索引，供渲染层按行取用拖拽状态 */
+  /** 行实例键 → 槽位索引，供渲染层按行取用拖拽状态 */
   const rowSlotIndex = useMemo(
-    () => new Map(rowSlots.map((slot, idx) => [slot.rowId, idx])),
+    () => new Map(rowSlots.map((slot, idx) => [slot.key, idx])),
     [rowSlots],
   );
 
@@ -576,8 +620,9 @@ export function BitableGridView({
       const before = rest[cursor] ?? null;
 
       const restWithoutSubtree = rest.filter((slot) => !descendants.has(slot.rowId));
+      // 按槽位对象定位而不是按行 ID：多选分组下同一行可能在别的分组里也有槽位
       const insertIdx = before
-        ? restWithoutSubtree.findIndex((slot) => slot.rowId === before.rowId)
+        ? restWithoutSubtree.indexOf(before)
         : restWithoutSubtree.length;
 
       // 插入位置与子树原起点重合 → 顺序不变，按无效落点处理，避免产生空撤销记录
@@ -594,14 +639,14 @@ export function BitableGridView({
     [rowSlots, rows],
   );
 
-  // 行 ID -> 扁平行序号的快速映射
+  // 行实例键 -> 展示行序号的快速映射（与渲染层 data-cell-row-idx 同一套索引）
   const rowIdxMap = useMemo(() => {
     const map = new Map<string, number>();
-    flatTreeRows.forEach((item, idx) => {
-      map.set(item.row.id, idx);
+    selectableRows.forEach((item, idx) => {
+      map.set(item.instanceKey, idx);
     });
     return map;
-  }, [flatTreeRows]);
+  }, [selectableRows]);
 
   // 列 ID -> 列序号的快速映射
   const colIdxMap = useMemo(() => {
@@ -628,7 +673,7 @@ export function BitableGridView({
 
       const selectedRowIds: string[] = [];
       for (let r = minRowIdx; r <= maxRowIdx; r += 1) {
-        if (flatTreeRows[r]) selectedRowIds.push(flatTreeRows[r].row.id);
+        if (selectableRows[r]) selectedRowIds.push(selectableRows[r].row.id);
       }
       const selectedColIds: string[] = [];
       for (let c = minColIdx; c <= maxColIdx; c += 1) {
@@ -642,7 +687,8 @@ export function BitableGridView({
         maxColIdx,
         anchorRowIdx: sRowIdx,
         anchorColIdx: sColIdx,
-        selectedRowIds,
+        // 同一行可能在多个分组里都被框进来，批量操作前去重
+        selectedRowIds: Array.from(new Set(selectedRowIds)),
         selectedColIds,
         isSingleCell: minRowIdx === maxRowIdx && minColIdx === maxColIdx,
       };
@@ -660,7 +706,7 @@ export function BitableGridView({
 
       const selectedRowIds: string[] = [];
       for (let r = minRowIdx; r <= maxRowIdx; r += 1) {
-        if (flatTreeRows[r]) selectedRowIds.push(flatTreeRows[r].row.id);
+        if (selectableRows[r]) selectedRowIds.push(selectableRows[r].row.id);
       }
 
       return {
@@ -670,7 +716,7 @@ export function BitableGridView({
         maxColIdx,
         anchorRowIdx: sRowIdx,
         anchorColIdx: 0,
-        selectedRowIds,
+        selectedRowIds: Array.from(new Set(selectedRowIds)),
         selectedColIds: columns.map((c) => c.id),
         isSingleCell: false,
       };
@@ -682,7 +728,7 @@ export function BitableGridView({
       if (sColIdx < 0) return null;
 
       const minRowIdx = 0;
-      const maxRowIdx = flatTreeRows.length - 1;
+      const maxRowIdx = selectableRows.length - 1;
       const minColIdx = Math.min(sColIdx, eColIdx);
       const maxColIdx = Math.max(sColIdx, eColIdx);
 
@@ -698,14 +744,14 @@ export function BitableGridView({
         maxColIdx,
         anchorRowIdx: 0,
         anchorColIdx: sColIdx,
-        selectedRowIds: flatTreeRows.map((n) => n.row.id),
+        selectedRowIds: Array.from(new Set(selectableRows.map((n) => n.row.id))),
         selectedColIds,
         isSingleCell: false,
       };
     }
 
     return null;
-  }, [selection, rowIdxMap, colIdxMap, flatTreeRows, columns]);
+  }, [selection, rowIdxMap, colIdxMap, selectableRows, columns]);
 
   // 单元格鼠标按下：开始框选或 Shift 扩展选区
   const handleCellMouseDown = (e: React.MouseEvent, rowId: string, colId: string) => {
@@ -785,7 +831,8 @@ export function BitableGridView({
     setCellContextMenu({
       x: e.clientX,
       y: e.clientY,
-      targetRowId: rowId,
+      // rowId 是行实例键，菜单操作需要真实行 ID
+      targetRowId: selectableRows[rIdx]?.row.id ?? rowId,
       targetColId: colId,
     });
   };
@@ -832,7 +879,7 @@ export function BitableGridView({
     if (selection.type === 'range') {
       const lines: string[] = [];
       for (let r = normalizedSelection.minRowIdx; r <= normalizedSelection.maxRowIdx; r += 1) {
-        const rowNode = flatTreeRows[r];
+        const rowNode = selectableRows[r];
         if (!rowNode) continue;
         const rowCells: string[] = [];
         for (let c = normalizedSelection.minColIdx; c <= normalizedSelection.maxColIdx; c += 1) {
@@ -848,7 +895,7 @@ export function BitableGridView({
     if (selection.type === 'row') {
       const lines: string[] = [];
       for (let r = normalizedSelection.minRowIdx; r <= normalizedSelection.maxRowIdx; r += 1) {
-        const rowNode = flatTreeRows[r];
+        const rowNode = selectableRows[r];
         if (!rowNode) continue;
         lines.push(columns.map((c) => formatCellValue(c, rowNode.row[c.id])).join('\t'));
       }
@@ -857,8 +904,8 @@ export function BitableGridView({
 
     if (selection.type === 'col') {
       const lines: string[] = [];
-      for (let r = 0; r < flatTreeRows.length; r += 1) {
-        const rowNode = flatTreeRows[r];
+      for (let r = 0; r < selectableRows.length; r += 1) {
+        const rowNode = selectableRows[r];
         const rowCells: string[] = [];
         for (let c = normalizedSelection.minColIdx; c <= normalizedSelection.maxColIdx; c += 1) {
           const col = columns[c];
@@ -870,7 +917,7 @@ export function BitableGridView({
     }
 
     return null;
-  }, [normalizedSelection, selection.type, flatTreeRows, columns]);
+  }, [normalizedSelection, selection.type, selectableRows, columns]);
 
   /** 剪切：内容写入剪贴板后清空选区数据 */
   const clearSelectedRange = useCallback(() => {
@@ -879,7 +926,7 @@ export function BitableGridView({
     if (selection.type === 'range') {
       const updates: Array<{ rowId: string; colId: string; value: unknown }> = [];
       for (let r = normalizedSelection.minRowIdx; r <= normalizedSelection.maxRowIdx; r += 1) {
-        const rowNode = flatTreeRows[r];
+        const rowNode = selectableRows[r];
         if (!rowNode) continue;
         for (let c = normalizedSelection.minColIdx; c <= normalizedSelection.maxColIdx; c += 1) {
           const col = columns[c];
@@ -897,10 +944,7 @@ export function BitableGridView({
     }
 
     if (selection.type === 'row') {
-      for (let r = normalizedSelection.minRowIdx; r <= normalizedSelection.maxRowIdx; r += 1) {
-        const rowNode = flatTreeRows[r];
-        if (rowNode) onDeleteRow(rowNode.row.id);
-      }
+      normalizedSelection.selectedRowIds.forEach((id) => onDeleteRow(id));
       setSelection({ type: 'none' });
       showToast('已删除选中行');
       return;
@@ -916,7 +960,7 @@ export function BitableGridView({
   }, [
     normalizedSelection,
     selection.type,
-    flatTreeRows,
+    selectableRows,
     columns,
     onBatchUpdateCells,
     onUpdateRow,
@@ -954,11 +998,11 @@ export function BitableGridView({
       finalMatrix.forEach((line, rOffset) => {
         const rIdx = startRowIdx + rOffset;
         let targetRowId: string;
-        if (rIdx < flatTreeRows.length) {
-          targetRowId = flatTreeRows[rIdx].row.id;
+        if (rIdx < selectableRows.length) {
+          targetRowId = selectableRows[rIdx].row.id;
         } else {
           // 行数不足时新建行
-          const anchorParentId = flatTreeRows[startRowIdx]?.row.parentId;
+          const anchorParentId = selectableRows[startRowIdx]?.row.parentId;
           const newRow = { ...createRow(columns), parentId: anchorParentId };
           newRowsToAppend.push(newRow);
           targetRowId = newRow.id;
@@ -976,14 +1020,14 @@ export function BitableGridView({
         onBatchUpdateCells(updates, newRowsToAppend);
         showToast(updates.length > 1 ? '已粘贴区域数据' : '已粘贴数据');
       } else if (onPasteCells) {
-        onPasteCells(flatTreeRows[startRowIdx].row.id, columns[startColIdx].id, matrix);
+        onPasteCells(selectableRows[startRowIdx].row.id, columns[startColIdx].id, matrix);
         showToast('已粘贴数据');
       } else {
         updates.forEach((u) => onUpdateRow(u.rowId, u.colId, u.value));
         showToast('已粘贴数据');
       }
     },
-    [normalizedSelection, flatTreeRows, columns, onBatchUpdateCells, onPasteCells, onUpdateRow],
+    [normalizedSelection, selectableRows, columns, onBatchUpdateCells, onPasteCells, onUpdateRow],
   );
 
   /** 智能自动补齐执行入口 */
@@ -1013,10 +1057,10 @@ export function BitableGridView({
 
         const targetRowIds: string[] = [];
         for (let r = preview.fromRow; r <= preview.toRow; r += 1) {
-          if (r < flatTreeRows.length) {
-            targetRowIds.push(flatTreeRows[r].row.id);
+          if (r < selectableRows.length) {
+            targetRowIds.push(selectableRows[r].row.id);
           } else {
-            const anchorParentId = flatTreeRows[range.maxRowIdx]?.row.parentId;
+            const anchorParentId = selectableRows[range.maxRowIdx]?.row.parentId;
             const newRow = { ...createRow(columns), parentId: anchorParentId };
             newRowsToAppend.push(newRow);
             targetRowIds.push(newRow.id);
@@ -1029,7 +1073,7 @@ export function BitableGridView({
 
           const sourceValues: unknown[] = [];
           for (let r = range.minRowIdx; r <= range.maxRowIdx; r += 1) {
-            sourceValues.push(flatTreeRows[r]?.row[col.id]);
+            sourceValues.push(selectableRows[r]?.row[col.id]);
           }
 
           const filledValues = calculateAutoFillValues(
@@ -1049,10 +1093,11 @@ export function BitableGridView({
 
         const newMinRow = Math.min(range.minRowIdx, preview.fromRow);
         const newMaxRow = Math.max(range.maxRowIdx, preview.toRow);
-        const newStartRowId = flatTreeRows[newMinRow]?.row.id || targetRowIds[0];
+        // 选区存的是实例键；新建行首次出现时实例键即行 ID
+        const newStartRowId = selectableRows[newMinRow]?.instanceKey || targetRowIds[0];
         const newEndRowId =
-          newMaxRow < flatTreeRows.length
-            ? flatTreeRows[newMaxRow].row.id
+          newMaxRow < selectableRows.length
+            ? selectableRows[newMaxRow].instanceKey
             : targetRowIds[targetRowIds.length - 1];
 
         if (onBatchUpdateCells) {
@@ -1078,7 +1123,7 @@ export function BitableGridView({
         if (targetColCount <= 0) return;
 
         for (let r = range.minRowIdx; r <= range.maxRowIdx; r += 1) {
-          const rowNode = flatTreeRows[r];
+          const rowNode = selectableRows[r];
           if (!rowNode) continue;
 
           const sourceValues: unknown[] = [];
@@ -1109,16 +1154,16 @@ export function BitableGridView({
         setSelection({
           type: 'range',
           range: {
-            startRowId: flatTreeRows[range.minRowIdx].row.id,
+            startRowId: selectableRows[range.minRowIdx].instanceKey,
             startColId: columns[newMinCol].id,
-            endRowId: flatTreeRows[range.maxRowIdx].row.id,
+            endRowId: selectableRows[range.maxRowIdx].instanceKey,
             endColId: columns[newMaxCol].id,
           },
         });
         showToast('已自动填充数据');
       }
     },
-    [flatTreeRows, columns, onBatchUpdateCells, onUpdateRow],
+    [selectableRows, columns, onBatchUpdateCells, onUpdateRow],
   );
 
   function newEndEndId(id: string): string {
@@ -1161,7 +1206,7 @@ export function BitableGridView({
           const tbodyRect = tbody.getBoundingClientRect();
           if (ev.clientY > tbodyRect.bottom) {
             const extraRows = Math.floor((ev.clientY - tbodyRect.bottom) / 38) + 1;
-            hoverRow = flatTreeRows.length - 1 + extraRows;
+            hoverRow = selectableRows.length - 1 + extraRows;
           }
         }
       }
@@ -1241,7 +1286,7 @@ export function BitableGridView({
     e.preventDefault();
     e.stopPropagation();
 
-    if (range.maxRowIdx >= flatTreeRows.length - 1) {
+    if (range.maxRowIdx >= selectableRows.length - 1) {
       showToast('已到达表格末尾');
       return;
     }
@@ -1254,8 +1299,8 @@ export function BitableGridView({
     for (const cIdx of checkColIdxs) {
       const col = columns[cIdx];
       let lastFilledRow = range.maxRowIdx;
-      for (let r = range.maxRowIdx + 1; r < flatTreeRows.length; r += 1) {
-        const v = flatTreeRows[r].row[col.id];
+      for (let r = range.maxRowIdx + 1; r < selectableRows.length; r += 1) {
+        const v = selectableRows[r].row[col.id];
         if (v !== null && v !== undefined && v !== '') {
           lastFilledRow = r;
         } else {
@@ -1268,7 +1313,7 @@ export function BitableGridView({
     }
 
     if (targetLastRowIdx <= range.maxRowIdx) {
-      targetLastRowIdx = flatTreeRows.length - 1;
+      targetLastRowIdx = selectableRows.length - 1;
     }
 
     if (targetLastRowIdx <= range.maxRowIdx) {
@@ -1336,14 +1381,14 @@ export function BitableGridView({
 
       // Ctrl + A / Meta + A 全选表格
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
-        if (flatTreeRows.length > 0 && columns.length > 0) {
+        if (selectableRows.length > 0 && columns.length > 0) {
           e.preventDefault();
           setSelection({
             type: 'range',
             range: {
-              startRowId: flatTreeRows[0].row.id,
+              startRowId: selectableRows[0].instanceKey,
               startColId: columns[0].id,
-              endRowId: flatTreeRows[flatTreeRows.length - 1].row.id,
+              endRowId: selectableRows[selectableRows.length - 1].instanceKey,
               endColId: columns[columns.length - 1].id,
             },
           });
@@ -1373,9 +1418,9 @@ export function BitableGridView({
         if (e.key === 'ArrowLeft') dCol = -1;
         if (e.key === 'ArrowRight') dCol = 1;
 
-        const nextRowIdx = Math.max(0, Math.min(flatTreeRows.length - 1, currentEndRowIdx + dRow));
+        const nextRowIdx = Math.max(0, Math.min(selectableRows.length - 1, currentEndRowIdx + dRow));
         const nextColIdx = Math.max(0, Math.min(columns.length - 1, currentEndColIdx + dCol));
-        const nextRowId = flatTreeRows[nextRowIdx]?.row.id;
+        const nextRowId = selectableRows[nextRowIdx]?.instanceKey;
         const nextColId = columns[nextColIdx]?.id;
 
         if (nextRowId && nextColId) {
@@ -1415,10 +1460,9 @@ export function BitableGridView({
       if (e.key === 'Tab') {
         if (normalizedSelection && (selection.type === 'row' || selection.type === 'range')) {
           e.preventDefault();
-          const targetRowId =
-            selection.type === 'row'
-              ? selection.startRowId
-              : selection.range.startRowId;
+          // 选区存的是实例键，按锚点索引取回真实行 ID
+          const targetRowId = selectableRows[normalizedSelection.anchorRowIdx]?.row.id;
+          if (!targetRowId) return;
           if (e.shiftKey) {
             if (onOutdentRow) onOutdentRow(targetRowId);
           } else if (onIndentRow) {
@@ -1433,7 +1477,7 @@ export function BitableGridView({
   }, [
     normalizedSelection,
     selection,
-    flatTreeRows,
+    selectableRows,
     columns,
     rowIdxMap,
     colIdxMap,
@@ -1503,7 +1547,7 @@ export function BitableGridView({
     consumeDraggedFlag: consumeRowDraggedFlag,
   } = usePointerReorder<RowSlot>({
     items: rowSlots,
-    getElement: (slot) => rowRefs.current.get(slot.rowId),
+    getElement: (slot) => rowRefs.current.get(slot.key),
     axis: 'y',
     disabled: !rowDragEnabled,
     // 把落点夹在本组范围内，越界时贴到组边界
@@ -2716,8 +2760,9 @@ export function BitableGridView({
             }
 
             const { row, depth, hasChildren, isCollapsed, rowNumber } = item.treeNode;
-            const rowSlotIdx = rowSlotIndex.get(row.id) ?? -1;
-            const rIdx = rowSlotIdx >= 0 ? rowSlotIdx : (rowIdxMap.get(row.id) ?? -1);
+            const { instanceKey } = item;
+            const rowSlotIdx = rowSlotIndex.get(instanceKey) ?? -1;
+            const rIdx = rowSlotIdx >= 0 ? rowSlotIdx : (rowIdxMap.get(instanceKey) ?? -1);
             const isRowSelected =
               normalizedSelection !== null &&
               selection.type === 'row' &&
@@ -2738,10 +2783,10 @@ export function BitableGridView({
 
             return (
               <tr
-                key={row.id}
+                key={instanceKey}
                 ref={(el) => {
-                  if (el) rowRefs.current.set(row.id, el);
-                  else rowRefs.current.delete(row.id);
+                  if (el) rowRefs.current.set(instanceKey, el);
+                  else rowRefs.current.delete(instanceKey);
                 }}
                 style={{
                   // 存在全显示多行文本列时，height 退化为最小高度，实际行高由内容撑开
@@ -2767,17 +2812,17 @@ export function BitableGridView({
                       setSelection({
                         type: 'row',
                         startRowId: selection.startRowId,
-                        endRowId: row.id,
+                        endRowId: instanceKey,
                       });
                     } else {
-                      setSelection({ type: 'row', startRowId: row.id, endRowId: row.id });
+                      setSelection({ type: 'row', startRowId: instanceKey, endRowId: instanceKey });
                     }
                   }}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     if (!isRowSelected) {
-                      setSelection({ type: 'row', startRowId: row.id, endRowId: row.id });
+                      setSelection({ type: 'row', startRowId: instanceKey, endRowId: instanceKey });
                     }
                     setCellContextMenu({
                       x: e.clientX,
@@ -3048,9 +3093,9 @@ export function BitableGridView({
                       key={col.id}
                       data-cell-row-idx={rIdx}
                       data-cell-col-idx={cIdx}
-                      onMouseDown={(e) => handleCellMouseDown(e, row.id, col.id)}
-                      onMouseEnter={() => handleCellMouseEnter(row.id, col.id)}
-                      onContextMenu={(e) => handleCellContextMenu(e, row.id, col.id)}
+                      onMouseDown={(e) => handleCellMouseDown(e, instanceKey, col.id)}
+                      onMouseEnter={() => handleCellMouseEnter(instanceKey, col.id)}
+                      onContextMenu={(e) => handleCellContextMenu(e, instanceKey, col.id)}
                       style={{
                         borderBottom: '1px solid var(--editor-border, #f1f5f9)',
                         borderRight: isLastFrozen
@@ -3267,235 +3312,185 @@ export function BitableGridView({
         </DragGhost>
       )}
 
-      {/* 单元格与选区悬浮右键上下文菜单 */}
+      {/* 单元格与选区悬浮右键上下文菜单：行、列相关操作分别收进二级菜单 */}
       {cellContextMenu && (
-        <div
-          ref={contextMenuRef}
-          data-no-drag
-          style={{
-            position: 'fixed',
-            left: Math.min(cellContextMenu.x, window.innerWidth - 180),
-            top: Math.min(cellContextMenu.y, window.innerHeight - 380),
-            zIndex: 9999,
-            background: 'var(--editor-surface, #ffffff)',
-            border: '1px solid var(--editor-border, #cbd5e1)',
-            borderRadius: 8,
-            boxShadow: '0 10px 25px rgba(15,23,42,0.15)',
-            padding: 4,
-            minWidth: 160,
-            fontSize: 12,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 2,
-          }}
-          // 阻止 mousedown 冒泡，防止外部监听提前关闭菜单导致按钮 onClick 无法触发
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            className="nb-bitable-menu-item"
-            onClick={() => {
-              const payload = buildClipboardPayload();
-              if (payload !== null) {
-                if (navigator.clipboard?.writeText) {
-                  navigator.clipboard.writeText(payload).catch(() => {});
+        <BitableContextMenu
+          x={cellContextMenu.x}
+          y={cellContextMenu.y}
+          menuRef={contextMenuRef}
+          onClose={() => setCellContextMenu(null)}
+          entries={[
+            {
+              kind: 'item',
+              key: 'copy',
+              icon: <Copy size={13} color="var(--editor-text-muted, #64748b)" />,
+              label: '复制',
+              shortcut: formatShortcut('Ctrl+C'),
+              onSelect: () => {
+                const payload = buildClipboardPayload();
+                if (payload !== null) {
+                  if (navigator.clipboard?.writeText) {
+                    navigator.clipboard.writeText(payload).catch(() => {});
+                  }
+                  showToast(
+                    normalizedSelection?.isSingleCell
+                      ? '已复制单元格数据'
+                      : '已复制选区数据',
+                  );
                 }
-                showToast(
-                  normalizedSelection?.isSingleCell
-                    ? '已复制单元格数据'
-                    : '已复制选区数据',
-                );
-              }
-              setCellContextMenu(null);
-            }}
-          >
-            <Copy size={13} color="var(--editor-text-muted, #64748b)" />
-            <span style={{ flex: 1 }}>复制</span>
-            <span style={{ fontSize: 10, opacity: 0.5 }}>{formatShortcut('Ctrl+C')}</span>
-          </button>
-
-          <button
-            type="button"
-            className="nb-bitable-menu-item"
-            onClick={() => {
-              const payload = buildClipboardPayload();
-              if (payload !== null) {
-                if (navigator.clipboard?.writeText) {
-                  navigator.clipboard.writeText(payload).catch(() => {});
-                }
-              }
-              clearSelectedRange();
-              setCellContextMenu(null);
-            }}
-          >
-            <Scissors size={13} color="var(--editor-text-muted, #64748b)" />
-            <span style={{ flex: 1 }}>剪切</span>
-            <span style={{ fontSize: 10, opacity: 0.5 }}>{formatShortcut('Ctrl+X')}</span>
-          </button>
-
-          <button
-            type="button"
-            className="nb-bitable-menu-item"
-            onClick={async () => {
-              setCellContextMenu(null);
-              try {
-                if (navigator.clipboard?.readText) {
-                  const text = await navigator.clipboard.readText();
-                  if (text) {
-                    applyPaste(text);
-                    return;
+              },
+            },
+            {
+              kind: 'item',
+              key: 'cut',
+              icon: <Scissors size={13} color="var(--editor-text-muted, #64748b)" />,
+              label: '剪切',
+              shortcut: formatShortcut('Ctrl+X'),
+              onSelect: () => {
+                const payload = buildClipboardPayload();
+                if (payload !== null) {
+                  if (navigator.clipboard?.writeText) {
+                    navigator.clipboard.writeText(payload).catch(() => {});
                   }
                 }
-              } catch {
-                // fallback
-              }
-              showToast(formatShortcut('请使用快捷键 Ctrl+V 粘贴'));
-            }}
-          >
-            <Clipboard size={13} color="var(--editor-text-muted, #64748b)" />
-            <span style={{ flex: 1 }}>粘贴</span>
-            <span style={{ fontSize: 10, opacity: 0.5 }}>{formatShortcut('Ctrl+V')}</span>
-          </button>
-
-          <button
-            type="button"
-            className="nb-bitable-menu-item"
-            onClick={() => {
-              clearSelectedRange();
-              setCellContextMenu(null);
-            }}
-          >
-            <Eraser size={13} color="var(--editor-text-muted, #64748b)" />
-            <span style={{ flex: 1 }}>清空选区</span>
-            <span style={{ fontSize: 10, opacity: 0.5 }}>Del</span>
-          </button>
-
-          <div style={{ height: 1, background: 'var(--editor-border, #e2e8f0)', margin: '3px 0' }} />
-
-          {onInsertRowAbove && (
-            <button
-              type="button"
-              className="nb-bitable-menu-item"
-              onClick={() => {
-                onInsertRowAbove(cellContextMenu.targetRowId);
-                setCellContextMenu(null);
-                showToast('已在上方插入行');
-              }}
-            >
-              <ArrowUp size={13} color="var(--editor-text-muted, #64748b)" />
-              <span>在上方插入行</span>
-            </button>
-          )}
-
-          {onInsertRowBelow && (
-            <button
-              type="button"
-              className="nb-bitable-menu-item"
-              onClick={() => {
-                onInsertRowBelow(cellContextMenu.targetRowId);
-                setCellContextMenu(null);
-                showToast('已在下方插入行');
-              }}
-            >
-              <ArrowDown size={13} color="var(--editor-text-muted, #64748b)" />
-              <span>在下方插入行</span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            className="nb-bitable-menu-item"
-            style={{ color: '#ef4444' }}
-            onClick={() => {
-              if (normalizedSelection && selection.type === 'row') {
-                normalizedSelection.selectedRowIds.forEach((id) => onDeleteRow(id));
-              } else {
-                onDeleteRow(cellContextMenu.targetRowId);
-              }
-              setSelection({ type: 'none' });
-              setCellContextMenu(null);
-              showToast('已删除行');
-            }}
-          >
-            <Trash2 size={13} color="#ef4444" />
-            <span>删除行</span>
-          </button>
-
-          <div style={{ height: 1, background: 'var(--editor-border, #e2e8f0)', margin: '3px 0' }} />
-
-          <button
-            type="button"
-            className="nb-bitable-menu-item"
-            onClick={() => {
-              onAddColumn('left', cellContextMenu.targetColId);
-              setCellContextMenu(null);
-              showToast('已在左侧插入列');
-            }}
-          >
-            <MoveLeft size={13} color="var(--editor-text-muted, #64748b)" />
-            <span>在左侧插入列</span>
-          </button>
-
-          <button
-            type="button"
-            className="nb-bitable-menu-item"
-            onClick={() => {
-              onAddColumn('right', cellContextMenu.targetColId);
-              setCellContextMenu(null);
-              showToast('已在右侧插入列');
-            }}
-          >
-            <MoveRight size={13} color="var(--editor-text-muted, #64748b)" />
-            <span>在右侧插入列</span>
-          </button>
-
-          {onClearColumn && (
-            <button
-              type="button"
-              className="nb-bitable-menu-item"
-              onClick={() => {
-                onClearColumn(cellContextMenu.targetColId);
-                setCellContextMenu(null);
-                showToast('已清空整列数据');
-              }}
-            >
-              <Eraser size={13} color="var(--editor-text-muted, #64748b)" />
-              <span>清空整列数据</span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            className="nb-bitable-menu-item"
-            style={{ color: '#ef4444' }}
-            onClick={() => {
-              onDeleteColumn(cellContextMenu.targetColId);
-              setSelection({ type: 'none' });
-              setCellContextMenu(null);
-            }}
-          >
-            <Trash2 size={13} color="#ef4444" />
-            <span>删除列</span>
-          </button>
-
-          {onOpenRecord && cellContextMenu.targetRowId && (
-            <>
-              <div style={{ height: 1, background: 'var(--editor-border, #e2e8f0)', margin: '3px 0' }} />
-              <button
-                type="button"
-                className="nb-bitable-menu-item"
-                onClick={() => {
-                  onOpenRecord(cellContextMenu.targetRowId);
-                  setCellContextMenu(null);
-                }}
-              >
-                <Maximize2 size={13} color="var(--editor-accent, #3b82f6)" />
-                <span>展开记录详情</span>
-              </button>
-            </>
-          )}
-        </div>
+                clearSelectedRange();
+              },
+            },
+            {
+              kind: 'item',
+              key: 'paste',
+              icon: <Clipboard size={13} color="var(--editor-text-muted, #64748b)" />,
+              label: '粘贴',
+              shortcut: formatShortcut('Ctrl+V'),
+              onSelect: async () => {
+                try {
+                  if (navigator.clipboard?.readText) {
+                    const text = await navigator.clipboard.readText();
+                    if (text) {
+                      applyPaste(text);
+                      return;
+                    }
+                  }
+                } catch {
+                  // fallback
+                }
+                showToast(formatShortcut('请使用快捷键 Ctrl+V 粘贴'));
+              },
+            },
+            {
+              kind: 'item',
+              key: 'clear-range',
+              icon: <Eraser size={13} color="var(--editor-text-muted, #64748b)" />,
+              label: '清空选区',
+              shortcut: 'Del',
+              onSelect: clearSelectedRange,
+            },
+            { kind: 'divider', key: 'd1' },
+            {
+              kind: 'submenu',
+              key: 'row',
+              icon: <Rows3 size={13} color="var(--editor-text-muted, #64748b)" />,
+              label: '行操作',
+              children: [
+                onInsertRowAbove && {
+                  kind: 'item',
+                  key: 'row-above',
+                  icon: <ArrowUp size={13} color="var(--editor-text-muted, #64748b)" />,
+                  label: '在上方插入行',
+                  onSelect: () => {
+                    onInsertRowAbove(cellContextMenu.targetRowId);
+                    showToast('已在上方插入行');
+                  },
+                },
+                onInsertRowBelow && {
+                  kind: 'item',
+                  key: 'row-below',
+                  icon: <ArrowDown size={13} color="var(--editor-text-muted, #64748b)" />,
+                  label: '在下方插入行',
+                  onSelect: () => {
+                    onInsertRowBelow(cellContextMenu.targetRowId);
+                    showToast('已在下方插入行');
+                  },
+                },
+                { kind: 'divider', key: 'row-d' },
+                {
+                  kind: 'item',
+                  key: 'row-delete',
+                  icon: <Trash2 size={13} color="#ef4444" />,
+                  label: '删除行',
+                  danger: true,
+                  onSelect: () => {
+                    if (normalizedSelection && selection.type === 'row') {
+                      normalizedSelection.selectedRowIds.forEach((id) => onDeleteRow(id));
+                    } else {
+                      onDeleteRow(cellContextMenu.targetRowId);
+                    }
+                    setSelection({ type: 'none' });
+                    showToast('已删除行');
+                  },
+                },
+              ],
+            },
+            {
+              kind: 'submenu',
+              key: 'col',
+              icon: <Columns3 size={13} color="var(--editor-text-muted, #64748b)" />,
+              label: '列操作',
+              children: [
+                {
+                  kind: 'item',
+                  key: 'col-left',
+                  icon: <MoveLeft size={13} color="var(--editor-text-muted, #64748b)" />,
+                  label: '在左侧插入列',
+                  onSelect: () => {
+                    onAddColumn('left', cellContextMenu.targetColId);
+                    showToast('已在左侧插入列');
+                  },
+                },
+                {
+                  kind: 'item',
+                  key: 'col-right',
+                  icon: <MoveRight size={13} color="var(--editor-text-muted, #64748b)" />,
+                  label: '在右侧插入列',
+                  onSelect: () => {
+                    onAddColumn('right', cellContextMenu.targetColId);
+                    showToast('已在右侧插入列');
+                  },
+                },
+                onClearColumn && {
+                  kind: 'item',
+                  key: 'col-clear',
+                  icon: <Eraser size={13} color="var(--editor-text-muted, #64748b)" />,
+                  label: '清空整列数据',
+                  onSelect: () => {
+                    onClearColumn(cellContextMenu.targetColId);
+                    showToast('已清空整列数据');
+                  },
+                },
+                { kind: 'divider', key: 'col-d' },
+                {
+                  kind: 'item',
+                  key: 'col-delete',
+                  icon: <Trash2 size={13} color="#ef4444" />,
+                  label: '删除列',
+                  danger: true,
+                  onSelect: () => {
+                    onDeleteColumn(cellContextMenu.targetColId);
+                    setSelection({ type: 'none' });
+                  },
+                },
+              ],
+            },
+            { kind: 'divider', key: 'd2' },
+            onOpenRecord && cellContextMenu.targetRowId ? {
+              kind: 'item',
+              key: 'open-record',
+              icon: <Maximize2 size={13} color="var(--editor-accent, #3b82f6)" />,
+              label: '展开记录详情',
+              onSelect: () => onOpenRecord(cellContextMenu.targetRowId),
+            } : null,
+          ]}
+        />
       )}
     </div>
   );

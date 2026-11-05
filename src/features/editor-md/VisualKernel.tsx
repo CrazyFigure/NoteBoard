@@ -9,6 +9,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEditorActive } from '../../core/editor/EditorActivityContext';
 import { EditorContent, useEditor } from '@tiptap/react';
+import { installNodeViewPortalStore } from './nodeViewPortalStore';
 import type { Editor } from '@tiptap/core';
 import { undoDepth as prosemirrorUndoDepth } from '@tiptap/pm/history';
 import { isInTable, __pastedCells } from '@tiptap/pm/tables';
@@ -32,6 +33,7 @@ import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { bumpDocumentRevision, getDocumentRevision } from '../../core/editor/editorRegistry';
 import { autoSaveDocument } from './markdownAutoSave';
+import { getAutoSaveDelayMs } from '../../stores/settingsStore';
 import { registerHistoryMaterializeHook } from '../history/documentHistory';
 import { saveViewState } from '../session/editorSuspension';
 import { findVisualScrollContainer } from './visualScroller';
@@ -88,6 +90,7 @@ export function VisualKernel({
   const extensions = useMemo(() => buildExtensions(docKey, {
     onOpenLinkModal: makeLinkModalOpener(docKey),
     pasteFormatDetect: true,
+    markdownClipboard: true,
   }), [docKey]);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
   // 超链接插入与编辑弹窗状态
@@ -107,6 +110,8 @@ export function VisualKernel({
     //    泄漏一个完整 editor 圈（真机内存持续增长根因）
     extensions,
     content: '',
+    // 早于 EditorContent 挂载接管节点视图门户登记表（官方实现每次登记复制整张表，长文档平方复杂度）
+    onBeforeCreate: installNodeViewPortalStore,
     onUpdate: ({ editor, transaction }) => {
       // 🔴 程序事务识别：仅忽略初始化/程序化设置内容的事务（同步作用域锁）；
       //    显示即输入：界面宣布可输入后的第一笔真实按键必须立即进入保护队列
@@ -160,13 +165,13 @@ export function VisualKernel({
         flushPendingVisualSnapshot(docKey);
       }, 500);
 
-      // 800ms → 盘（auto 策略；先物化保证镜像为最新组末内容）
+      // 自动保存间隔（默认 1s）→ 盘（auto 策略；先物化保证镜像为最新组末内容）
       if (diskTimerRef.current) clearTimeout(diskTimerRef.current);
       diskTimerRef.current = setTimeout(async () => {
         flushPendingVisualSnapshot(docKey);
         const latest = useDocumentStore.getState().getDocument(docKey)?.content ?? '';
         await autoSaveDocument(docKey, latest);
-      }, 800);
+      }, getAutoSaveDelayMs());
     },
     editorProps: {
       attributes: {
@@ -401,8 +406,9 @@ export function VisualKernel({
   }, [editor, linkModalState]);
 
   return (
+    // 只在编辑状态统一鼠标指针，沉浸阅读继续使用浏览器默认样式。
     <div
-      className="nb-md-visual-scroller"
+      className={readOnly ? 'nb-md-visual-scroller' : 'nb-md-visual-scroller nb-text-editor-surface'}
       style={{
         height: '100%',
         overflow: 'auto',

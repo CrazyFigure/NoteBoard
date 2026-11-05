@@ -38,3 +38,6 @@ mod tests_history;
 
 #[cfg(test)]
 mod tests_webdav;
+
+#[cfg(test)]
+mod tests_s3;

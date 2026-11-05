@@ -8,6 +8,7 @@ import type { MindNode, MindmapLayout } from '@/features/mindmap/mindmapTypes';
 import {
   computeMindmapStructures,
   dragRangeEnd,
+  layoutTreeRootOf,
   rangeFixedEndId,
   getSiblingRangeForSelection,
   pruneMindmapStructures,
@@ -32,7 +33,7 @@ function sample(): MindNode {
   return {
     id: 'root',
     text: '中心',
-    summaries: [{ id: 's1', startId: 'a', endId: 'b', text: '前两项' }],
+    summaries: [{ id: 's1', startId: 'a', endId: 'b', topic: { id: 's1-topic', text: '前两项', isExpanded: true, children: [] } }],
     boundaries: [{ id: 'b1', startId: 'c', endId: 'c', title: '重点' }],
     children: [
       {
@@ -81,11 +82,11 @@ describe('范围与数据操作', () => {
     expect(root.boundaries).toBeUndefined();
   });
 
-  test('选中同级节点得到首尾范围，层级不同或选中根节点给出原因', () => {
+  test('选中同级节点得到首尾范围，层级不同时提升到共同上级，选中根节点给出原因', () => {
     const root = sample();
     expect(getSiblingRangeForSelection(root, ['c', 'a'])).toEqual({ ok: true, parentId: 'root', startId: 'a', endId: 'c' });
     expect(getSiblingRangeForSelection(root, ['a1'])).toEqual({ ok: true, parentId: 'a', startId: 'a1', endId: 'a1' });
-    expect(getSiblingRangeForSelection(root, ['a1', 'b']).ok).toBe(false);
+    expect(getSiblingRangeForSelection(root, ['a1', 'b'])).toEqual({ ok: true, parentId: 'root', startId: 'a', endId: 'b' });
     expect(getSiblingRangeForSelection(root, ['root']).ok).toBe(false);
   });
 
@@ -94,9 +95,9 @@ describe('范围与数据操作', () => {
     const cloned = cloneMindmapTree(root);
     setStructureText(cloned, { kind: 'summary', id: 's1' }, '改写');
     removeStructure(cloned, { kind: 'boundary', id: 'b1' });
-    expect(root.summaries![0].text).toBe('前两项');
+    expect(root.summaries![0].topic.text).toBe('前两项');
     expect(root.boundaries).toHaveLength(1);
-    expect(cloned.summaries![0].text).toBe('改写');
+    expect(cloned.summaries![0].topic.text).toBe('改写');
     expect(cloned.boundaries).toBeUndefined();
   });
 
@@ -104,7 +105,7 @@ describe('范围与数据操作', () => {
     const root = sample();
     (root.summaries as unknown[]).push({ id: 'bad' });
     const parsed = parseMindmapDocument(serializeMindmapDocument(root));
-    expect(parsed.summaries).toEqual([{ id: 's1', startId: 'a', endId: 'b', text: '前两项' }]);
+    expect(parsed.summaries).toEqual([{ id: 's1', startId: 'a', endId: 'b', topic: expect.objectContaining({ id: 's1-topic', text: '前两项', children: [] }) }]);
     expect(parsed.boundaries).toEqual([{ id: 'b1', startId: 'c', endId: 'c', title: '重点' }]);
     expect(parsed.children[0].relations).toEqual([{ id: 'r1', targetId: 'c', title: '依赖' }]);
   });
@@ -192,10 +193,10 @@ describe('几何跟随节点', () => {
     expect(rangeFixedEndId(owner, { startId: 'a', endId: 'b' }, bottom)).toBe('a');
     expect(rangeFixedEndId(owner, { startId: 'a', endId: 'b' }, top)).toBe('b');
     const c = nodes.find((n) => n.node.id === 'c')!;
-    expect(dragRangeEnd(owner, 'a', { x: bottom.x, y: c.y + c.height / 2 })).toEqual({ startId: 'a', endId: 'c' });
+    expect(dragRangeEnd(owner, 'a', { x: bottom.x, y: c.y + c.height / 2 })).toEqual({ ownerId: 'root', startId: 'a', endId: 'c' });
     // 拖过固定端时顺序自动交换
     const a = nodes.find((n) => n.node.id === 'a')!;
-    expect(dragRangeEnd(owner, 'b', { x: top.x, y: a.y - 100 })).toEqual({ startId: 'a', endId: 'b' });
+    expect(dragRangeEnd(owner, 'b', { x: top.x, y: a.y - 100 })).toEqual({ ownerId: 'root', startId: 'a', endId: 'b' });
     // 预览覆盖立即反映到几何
     const extended = computeMindmapStructures(nodes, { rangeOverrides: new Map([['s1', { startId: 'a', endId: 'c' }]]) }).summaries[0];
     expect(extended.handles[1].y).toBeGreaterThan(c.y + c.height);
@@ -216,7 +217,7 @@ describe('XMind 双向转换', () => {
 
     const root = await importFromXmindZip(buffer);
     expect(root.children.map((n) => n.text)).toEqual(['分支 A', '分支 B', '分支 C']);
-    expect(root.summaries).toEqual([{ id: 's1', startId: 'a', endId: 'b', text: '前两项' }]);
+    expect(root.summaries).toEqual([{ id: 's1', startId: 'a', endId: 'b', topic: expect.objectContaining({ id: 's1-topic', text: '前两项', children: [] }) }]);
     expect(root.boundaries).toEqual([{ id: 'b1', startId: 'c', endId: 'c', title: '重点' }]);
     expect(root.children[0].relations).toEqual([{ id: 'r1', targetId: 'c', title: '依赖' }]);
   });
@@ -233,7 +234,7 @@ describe('XMind 双向转换', () => {
     const prepared = prepareXmindSheet(archive, (await readXmindSheets(archive))[0]);
     const root = prepared.root;
     expect(root.children.map((n) => n.text)).toEqual(['A', 'B']);
-    expect(root.summaries).toEqual([{ id: 'sx', startId: 'a', endId: 'b', text: '小结' }]);
+    expect(root.summaries).toEqual([{ id: 'sx', startId: 'a', endId: 'b', topic: expect.objectContaining({ id: 'st', text: '小结', children: [] }) }]);
     expect(root.boundaries).toHaveLength(2);
     expect(root.boundaries).toEqual(expect.arrayContaining([
       { id: 'm', startId: 'a', endId: 'a', title: '自身' },
@@ -264,7 +265,7 @@ describe('跨父节点的同层范围', () => {
       id: 'root',
       text: '中心',
       boundaries: [{ id: 'x1', startId: 'a2', endId: 'b1', title: '跨父' }],
-      summaries: [{ id: 'x2', startId: 'a2', endId: 'b1', text: '跨父概要' }],
+      summaries: [{ id: 'x2', startId: 'a2', endId: 'b1', topic: { id: 'x2-topic', text: '跨父概要', isExpanded: true, children: [] } }],
       children: [
         {
           id: 'a',
@@ -292,10 +293,11 @@ describe('跨父节点的同层范围', () => {
   const overlaps = (a: ReturnType<typeof rectOf>, b: ReturnType<typeof rectOf>) =>
     a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 
-  test('同层不同父的选中挂在共同祖先上，层级不同时给出原因', () => {
+  test('同层不同父的选中挂在共同祖先上，层级不同时提升到共同上级', () => {
     const root = cousins();
     expect(getSiblingRangeForSelection(root, ['b1', 'a2'])).toEqual({ ok: true, parentId: 'root', startId: 'a2', endId: 'b1' });
-    expect(getSiblingRangeForSelection(root, ['a1', 'b'])).toEqual({ ok: false, reason: '请选择同一层级的节点' });
+    expect(getSiblingRangeForSelection(root, ['a1', 'b'])).toEqual({ ok: true, parentId: 'root', startId: 'a', endId: 'b' });
+    expect(getSiblingRangeForSelection(root, ['a3', 'b', 'c'])).toEqual({ ok: true, parentId: 'root', startId: 'a', endId: 'c' });
   });
 
   test('范围覆盖首尾之间的全部同层节点，不含中间的父节点；XMind 导出提升为子主题区间', () => {
@@ -353,10 +355,35 @@ describe('跨父节点的同层范围', () => {
     const owner = nodes.find((n) => n.level === 0)!;
     const b2 = nodes.find((n) => n.node.id === 'b2')!;
     const a1 = nodes.find((n) => n.node.id === 'a1')!;
-    expect(dragRangeEnd(owner, 'a2', { x: b2.x, y: b2.y + b2.height / 2 })).toEqual({ startId: 'a2', endId: 'b2' });
-    expect(dragRangeEnd(owner, 'b1', { x: a1.x, y: a1.y + a1.height / 2 })).toEqual({ startId: 'a1', endId: 'b1' });
+    expect(dragRangeEnd(owner, 'a2', { x: b2.x, y: b2.y + b2.height / 2 })).toEqual({ ownerId: 'root', startId: 'a2', endId: 'b2' });
+    expect(dragRangeEnd(owner, 'b1', { x: a1.x, y: a1.y + a1.height / 2 })).toEqual({ ownerId: 'root', startId: 'a1', endId: 'b1' });
     const [top, bottom] = computeMindmapStructures(nodes).boundaries[0].handles;
     expect(rangeFixedEndId(owner, { startId: 'a2', endId: 'b1' }, bottom)).toBe('a2');
     expect(rangeFixedEndId(owner, { startId: 'a2', endId: 'b1' }, top)).toBe('b1');
+  });
+
+  test('同父概要的端点拖到相邻分支的同层节点：改挂共同祖先，预览即按新所属节点绘制', () => {
+    const tree = cousins();
+    tree.boundaries = undefined;
+    tree.summaries = undefined;
+    tree.children[0].summaries = [{ id: 'sa', startId: 'a1', endId: 'a2', topic: { id: 'sa-topic', text: '小结', isExpanded: true, children: [] } }];
+    const { nodes } = computeMindmapLayout(tree, 'right', 6);
+    const root = nodes.find((n) => n.level === 0)!;
+    const owner = nodes.find((n) => n.node.id === 'a')!;
+    const b1 = nodes.find((n) => n.node.id === 'b1')!;
+    const a3 = nodes.find((n) => n.node.id === 'a3')!;
+    expect(layoutTreeRootOf(nodes, owner)).toBe(root);
+    // 不给树根时只在原父节点内伸缩
+    expect(dragRangeEnd(owner, 'a1', { x: b1.x, y: b1.y + b1.height / 2 })).toEqual({ ownerId: 'a', startId: 'a1', endId: 'a3' });
+    // 给出树根：拖到 B1 时改挂根节点，拖回 A3 时仍挂原父节点
+    const across = dragRangeEnd(owner, 'a1', { x: b1.x, y: b1.y + b1.height / 2 }, root);
+    expect(across).toEqual({ ownerId: 'root', startId: 'a1', endId: 'b1' });
+    expect(dragRangeEnd(owner, 'a1', { x: a3.x, y: a3.y + a3.height / 2 }, root)).toEqual({ ownerId: 'a', startId: 'a1', endId: 'a3' });
+    // 预览：概要从 A 移到根节点上绘制，大括号覆盖到 B1，概要主题仍然显示
+    const preview = computeMindmapStructures(nodes, { rangeOverrides: new Map([['sa', across!]]) });
+    expect(preview.summaries).toHaveLength(1);
+    expect(preview.summaries[0].ownerId).toBe('root');
+    expect(preview.summaries[0].handles[1].y).toBeGreaterThan(b1.y + b1.height / 2);
+    expect(preview.nodes.map((n) => n.node.id)).toEqual(['sa-topic']);
   });
 });

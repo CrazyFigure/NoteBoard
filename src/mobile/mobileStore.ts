@@ -10,7 +10,8 @@ export type MobilePage = 'home' | 'editor';
 /** 首页分段 */
 export type HomeSection = 'files' | 'favorites' | 'open';
 /** 存储位置：应用私有工作区 / 手机存储（需所有文件访问权限） */
-export type StorageLocation = 'workspace' | 'device';
+// shared：网页多用户的“共享给我”虚拟目录
+export type StorageLocation = 'workspace' | 'device' | 'shared';
 
 /** 可被返回键关闭的覆盖层 */
 interface OverlayEntry {
@@ -80,7 +81,8 @@ const FOLDER_KEY = 'nb-mobile-folder';
 /** 读取上次使用的存储位置与文件夹 */
 export function readRememberedLocation(): { location: StorageLocation; folder: string | null } {
   try {
-    const location = window.localStorage.getItem(LOCATION_KEY) === 'device' ? 'device' : 'workspace';
+    const saved = window.localStorage.getItem(LOCATION_KEY);
+    const location: StorageLocation = saved === 'device' || saved === 'shared' ? saved : 'workspace';
     return { location, folder: window.localStorage.getItem(FOLDER_KEY) };
   } catch {
     return { location: 'workspace', folder: null };

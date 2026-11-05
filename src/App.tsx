@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { lazy, Suspense } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { AppShell } from './components/AppShell';
-import { IS_MOBILE_UI } from './core/platform';
+import { IS_MOBILE_UI, IS_WEB } from './core/platform';
+import { useShareStore } from './features/account/shareStore';
+import { isMultiUser } from './features/account/accountState';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { TooltipProvider } from './components/Tooltip';
 import { useSettingsStore } from './stores/settingsStore';
@@ -37,6 +40,8 @@ import {
 } from './features/session/closedWindowSession';
 import { startSyncEffects } from './features/sync/syncEffects';
 import { useSyncStore } from './stores/syncStore';
+import { installAnchorNavigationGuard } from './core/anchorNavigation';
+import { SUPPORTS_LOCAL_SEARCH, useLocalSearchStore } from './features/localSearch/localSearchStore';
 
 // 🔴 S05：全局弹窗首次触发才装载（E 节 6）——未打开时不渲染即不加载，
 //    装载后保持挂载以保留关闭动画；安全关闭保护（UnsavedGuardDialog）仍轻量常驻
@@ -59,6 +64,10 @@ const SyncTrashDialog = lazy(() =>
 
 // 自动同步也可能需要更新确认，弹窗挂在全局，不依赖用户是否打开设置页。
 const SyncUpdateDialog = lazy(() => import('./features/sync/SyncUpdateDialog').then((m) => ({ default: m.SyncUpdateDialog })));
+// 网页多用户的共享对话框：首次从右键菜单或账号页打开时装载
+const ShareDialogHost = lazy(() => import('./features/account/ShareDialog').then((m) => ({ default: m.ShareDialogHost })));
+// 本地文件搜索面板（Ctrl + Shift + F 首次打开时装载）
+const LocalSearchPanel = lazy(() => import('./features/localSearch/LocalSearchPanel').then((m) => ({ default: m.LocalSearchPanel })));
 // 移动端界面独立分包：桌面构建入口不加载移动端外壳
 const MobileShell = lazy(() =>
   import('./mobile/MobileShell').then((m) => ({ default: m.MobileShell })),
@@ -74,13 +83,16 @@ function useEverOpened(open: boolean): boolean {
 }
 
 export default function App() {
-  const { init, initialized } = useSettingsStore();
+  // 根组件只订阅启动与弹窗所需字段，设置中的其他变化由实际使用它的界面处理。
+  const { init, initialized } = useSettingsStore(useShallow((s) => ({ init: s.init, initialized: s.initialized })));
   const fontPackInitialized = useFontPackStore((s) => s.initialized);
   // 🔴 S04：启动失败状态（监听/握手异常时呈现可重试错误界面）
   const [bootError, setBootError] = useState<string | null>(null);
   // 🔴 R08：错误壳重试计数（驱动启动 effect 重跑；不整页 reload）
   const [bootRetryAttempt, setBootRetryAttempt] = useState(0);
-  const { settingsModalVisible, setSettingsModalVisible } = useLayoutStore();
+  const { settingsModalVisible, setSettingsModalVisible } = useLayoutStore(useShallow((s) => ({
+    settingsModalVisible: s.settingsModalVisible, setSettingsModalVisible: s.setSettingsModalVisible,
+  })));
   const activeKey = useWindowStore((s) => s.activeKey);
   const {
     modalOpen: updateModalOpen,
@@ -90,7 +102,10 @@ export default function App() {
     checking: checkingUpdate,
     checkForUpdates,
     initAutoUpdateTimer,
-  } = useUpdateStore();
+  } = useUpdateStore(useShallow((s) => ({
+    modalOpen: s.modalOpen, closeModal: s.closeModal, updateResult: s.updateResult, checkError: s.checkError,
+    checking: s.checking, checkForUpdates: s.checkForUpdates, initAutoUpdateTimer: s.initAutoUpdateTimer,
+  })));
 
   useEffect(() => {
     let disposed = false;
@@ -153,16 +168,8 @@ export default function App() {
     };
     window.addEventListener('contextmenu', handleContextMenu);
 
-    // 全局捕获阶段拦截所有 a 标签的原生默认行为，防止 WebView2 底层触发新窗口或导航
-    const handleGlobalAnchorClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      const anchor = target?.closest('a');
-      if (anchor) {
-        e.preventDefault();
-      }
-    };
-    window.addEventListener('click', handleGlobalAnchorClick, true);
-    window.addEventListener('auxclick', handleGlobalAnchorClick, true);
+    // 普通链接继续禁止原生导航；导出下载按浏览器或原生文件系统分别处理。
+    const stopAnchorNavigationGuard = installAnchorNavigationGuard();
 
     // 从其他软件或任务切回 NoteBoard 时检查活动文件是否在运行期间被删除，
     // 并重新消费打开队列（窗口重新获得焦点时的恢复机制）。
@@ -203,6 +210,20 @@ export default function App() {
       description: '打开文件夹',
     });
 
+    // Ctrl+Shift+F 本地文件搜索（仅桌面端；面板打开期间由面板自行处理按键）
+    const unregLocalSearch = SUPPORTS_LOCAL_SEARCH && !IS_MOBILE_UI
+      ? registerShortcut({
+        key: 'Ctrl+Shift+F',
+        action: () => {
+          // 设置弹窗层级更高，先收起以免遮住搜索面板
+          useLayoutStore.getState().setSettingsModalVisible(false);
+          useLocalSearchStore.getState().setOpen(true);
+        },
+        scope: 'global',
+        description: '本地文件搜索',
+      })
+      : () => {};
+
     return () => {
       disposed = true;
       stopAutoUpdate();
@@ -211,13 +232,13 @@ export default function App() {
       stopClosedWindowSessionTracker();
       stopSyncEffects();
       window.removeEventListener('contextmenu', handleContextMenu);
-      window.removeEventListener('click', handleGlobalAnchorClick, true);
-      window.removeEventListener('auxclick', handleGlobalAnchorClick, true);
+      stopAnchorNavigationGuard();
       window.removeEventListener('focus', handleWindowFocus);
       disposeWindowManager();
       unregNewWindow();
       unregOpenFile();
       unregOpenFolder();
+      unregLocalSearch();
     };
   }, [init, initAutoUpdateTimer, bootRetryAttempt]);
 
@@ -231,6 +252,12 @@ export default function App() {
   const addFavoriteEverOpened = useEverOpened(addFavoriteOpen);
   const syncTrashOpen = useSyncStore((s) => s.trashOpen);
   const syncUpdatePending = useSyncStore((s) => !!s.status?.updateConfirmation);
+  const shareDialogOpen = useShareStore((s) => !!s.dialogPath);
+  const localSearchEverOpened = useEverOpened(useLocalSearchStore((s) => s.open));
+  // 网页多用户：启动后读取自己已共享的路径，资源管理器据此显示共享标记
+  useEffect(() => {
+    if (IS_WEB && isMultiUser()) void useShareStore.getState().refresh().catch(() => undefined);
+  }, []);
   const syncTrashEverOpened = useEverOpened(syncTrashOpen);
 
   // Ctrl+Shift+S 另存为
@@ -378,6 +405,8 @@ export default function App() {
               <SyncTrashDialog />
             </Suspense>
           )}
+          {shareDialogOpen && <Suspense fallback={null}><ShareDialogHost /></Suspense>}
+          {localSearchEverOpened && <Suspense fallback={null}><LocalSearchPanel /></Suspense>}
         </div>
       </TooltipProvider>
     </ErrorBoundary>

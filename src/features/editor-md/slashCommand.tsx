@@ -27,6 +27,7 @@ import {
   Sigma,
   Workflow,
   Link2,
+  Waypoints,
   Calendar,
   Clock,
   RemoveFormatting,
@@ -46,6 +47,7 @@ import { insertLocalImageWithDialog } from './imagePaste';
 import { promptImageUrl } from '../../components/promptPresets';
 import { useWindowStore } from '../../stores/windowStore';
 import { emit } from '../../core/emitter';
+import { insertWikiLinkInEditor } from '../wikilink/wikiLinkActions';
 import { IS_MOBILE_UI } from '../../core/platform';
 import { isTouchInteraction } from '../../core/inputModality';
 import { DEFAULT_INFOGRAPHIC_CODE, INFOGRAPHIC_TEMPLATES } from '../infographic/infographicTemplates';
@@ -601,6 +603,21 @@ const LINK_LEAF: LeafCommandItem = {
   },
 };
 
+const WIKI_LINK_LEAF: LeafCommandItem = {
+  id: 'wikiLink',
+  label: '双向链接',
+  description: '链接到仓库内的其它笔记',
+  shortcutHint: '[[',
+  icon: <Waypoints size={17} color="#8b5cf6" />,
+  aliases: ['wiki', 'wikilink', 'shuanglian', 'sl', 'backlink', 'note', 'biji'],
+  keywords: '双向链接 双链 笔记链接 反向链接 wiki wikilink shuanglian sl',
+  // 弹窗中选择笔记、标题、显示名与链接 / 嵌入方式
+  action: (editor, range) => {
+    editor.chain().focus().deleteRange(range).run();
+    void insertWikiLinkInEditor(editor, useWindowStore.getState().activeKey ?? '');
+  },
+};
+
 const DIVIDER_LEAF: LeafCommandItem = {
   id: 'divider',
   label: '水平分割线',
@@ -736,13 +753,14 @@ const ALL_LEAFS: LeafCommandItem[] = [
   IMAGE_LOCAL_LEAF,
   IMAGE_URL_LEAF,
   LINK_LEAF,
+  WIKI_LINK_LEAF,
   ...DATETIME_LEAFS,
   DIVIDER_LEAF,
   CLEAR_FORMAT_LEAF,
   ...EMOJI_LEAFS,
 ];
 
-/** 默认根级菜单项（严格遵循优先级：标题 > 列表 > 代码块 > GitHub提示 > 高亮块 > 引用块 > 折叠块 > 分栏 > HTML 块 > 表格 > 公式与图表 > 本地图片 > 网络图片 > 超链接 > 表情 > 日期时间 > 分割线 > 清除格式） */
+/** 默认根级菜单项（严格遵循优先级：标题 > 列表 > 代码块 > GitHub提示 > 高亮块 > 引用块 > 折叠块 > 分栏 > HTML 块 > 表格 > 公式与图表 > 本地图片 > 网络图片 > 超链接 > 双向链接 > 表情 > 日期时间 > 分割线 > 清除格式） */
 const ROOT_MENU_ENTRIES: MenuEntry[] = [
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'headings')! },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'lists')! },
@@ -758,6 +776,7 @@ const ROOT_MENU_ENTRIES: MenuEntry[] = [
   { type: 'leaf', item: IMAGE_LOCAL_LEAF },
   { type: 'leaf', item: IMAGE_URL_LEAF },
   { type: 'leaf', item: LINK_LEAF },
+  { type: 'leaf', item: WIKI_LINK_LEAF },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'emoji')! },
   { type: 'group', item: ROOT_GROUPS.find((g) => g.id === 'datetime')! },
   { type: 'leaf', item: DIVIDER_LEAF },
@@ -865,6 +884,14 @@ function SlashGridSubmenu({
   );
 }
 
+/** 主菜单 300 + 间距 6 + 子菜单 290 + 两侧留白：窗口窄于此值时侧边子菜单左右都放不下 */
+const SLASH_FLYOUT_MIN_VIEWPORT = 300 + 6 + 290 + 32;
+
+/** 是否改用覆盖主面板的下钻式子页：移动端，或桌面窗口过窄（如极窄模式） */
+function prefersSlashDrillDown(): boolean {
+  return IS_MOBILE_UI || window.innerWidth < SLASH_FLYOUT_MIN_VIEWPORT;
+}
+
 /** 斜杠命令菜单组件（支持右键风格的悬展式二级菜单） */
 function SlashMenu({
   editor,
@@ -879,6 +906,8 @@ function SlashMenu({
   const [subSelectedIndex, setSubSelectedIndex] = useState(0);
   // 二级子菜单是否因右侧空间不足而向左翻转
   const [flipSubmenuLeft, setFlipSubmenuLeft] = useState(false);
+  // 窄窗口子菜单改为下钻式子页（与移动端一致）；菜单存续期间不随窗口尺寸切换
+  const [drillDown] = useState(prefersSlashDrillDown);
   // 二级子菜单的垂直布局：top 对齐到当前选中/悬展的一级项，maxHeight 限制以不撑出视口
   const [submenuLayout, setSubmenuLayout] = useState<{ top: number; maxHeight: number }>({
     top: 0,
@@ -1103,7 +1132,7 @@ function SlashMenu({
           backdropFilter: 'blur(10px)',
           overflow: 'hidden',
           // 窄屏（手机）下不超出视口：弹层左侧固定留 16px，右侧同样保留 16px
-          width: IS_MOBILE_UI ? 'min(300px, calc(100vw - 32px))' : 300,
+          width: drillDown ? 'min(300px, calc(100vw - 32px))' : 300,
           maxHeight: 370,
           display: 'flex',
           flexDirection: 'column',
@@ -1124,7 +1153,7 @@ function SlashMenu({
           }}
         >
           <span>{isSearching ? `搜索命令: "${query}"` : '插入块或命令'}</span>
-          {!IS_MOBILE_UI && <span style={{ fontSize: 10, opacity: 0.8 }}>↑↓ 移动 · → 伸展子项</span>}
+          {!drillDown && <span style={{ fontSize: 10, opacity: 0.8 }}>↑↓ 移动 · → 伸展子项</span>}
         </div>
 
         <div
@@ -1309,12 +1338,12 @@ function SlashMenu({
       {/* ── 伸展式二级子菜单面板 (Flyout Submenu) ──
           移动端屏宽放不下侧边浮层（左右翻转都会落到屏幕外），改为覆盖主面板的下钻式子页，
           且仅在进入子菜单（点按 / 回车 / →）后显示，键盘在一级项间移动时不遮挡主列表 */}
-      {!isSearching && activeGroup && (!IS_MOBILE_UI || isFocusInSubmenu) && (
+      {!isSearching && activeGroup && (!drillDown || isFocusInSubmenu) && (
         <div
           onMouseEnter={() => setIsFocusInSubmenu(true)}
           style={{
             position: 'absolute',
-            ...(IS_MOBILE_UI
+            ...(drillDown
               ? { top: 0, left: 0, right: 0, bottom: 0 }
               : {
                   top: submenuLayout.top,
@@ -1348,8 +1377,8 @@ function SlashMenu({
               justifyContent: 'space-between',
             }}
           >
-            {IS_MOBILE_UI ? (
-              // 移动端下钻子页：标题即返回按钮
+            {drillDown ? (
+              // 下钻子页（移动端 / 窄窗口）：标题即返回按钮
               <button
                 type="button"
                 className="nb-slash-submenu-back"
@@ -1525,11 +1554,12 @@ export const slashSuggestion = {
 
       const menuWidth = 300;
       const submenuWidth = 270;
-      const totalWidth = menuWidth + 6 + submenuWidth; // ~576px
+      const windowWidth = window.innerWidth;
+      // 下钻式子页覆盖在主面板上，只需容纳主面板本身
+      const totalWidth = prefersSlashDrillDown() ? menuWidth : menuWidth + 6 + submenuWidth; // ~576px
       const menuHeight = 370;
       const statusbarHeight = 36;
       const topbarHeight = 40;
-      const windowWidth = window.innerWidth;
       const windowHeight = window.innerHeight;
 
       // 1. 水平位置计算：优先跟随光标，若右侧空间不足则向左移动，确保二级子菜单完整显示

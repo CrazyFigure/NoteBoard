@@ -1,11 +1,11 @@
 // NoteBoard 浮层菜单与表格工具条
-// 支持选中文本浮层菜单（粗体/斜体/多色高亮/代码/链接/清除格式等）与精美表格操作工具条
+// 支持选中文本浮层菜单（缩进和对齐/粗体/斜体/代码/字体颜色/多色高亮/链接/清除格式等）与精美表格操作工具条
 // 详见 docs/09-开发路线图.md 8.8, 8.9
 
-import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, type CSSProperties, type ReactNode } from 'react';
 import { type Editor } from '@tiptap/core';
 import { BubbleMenu } from '@tiptap/react/menus';
-import { NodeSelection, type Selection } from '@tiptap/pm/state';
+import { NodeSelection, PluginKey, type Selection } from '@tiptap/pm/state';
 import {
   Bold,
   Italic,
@@ -22,8 +22,11 @@ import {
 } from 'lucide-react';
 import { handleLinkClick } from './linkHandler';
 import { normalizeHighlightAttributes } from './markdownInlineMarks';
+import { activeBlockAlign, canChangeBlockIndent, canSetBlockAlign, changeBlockIndent, setBlockAlign } from './blockFormat';
+import { ALIGN_OPTIONS, AlignIcon, INDENT_OPTIONS, TextColorGrid, TextColorIcon } from './formatPickers';
 import { useWindowStore } from '../../stores/windowStore';
 import { Tooltip } from '../../components/Tooltip';
+import { useViewportClamp } from '../../components/useViewportClamp';
 import { promptLinkUrl } from '../../components/promptPresets';
 import { formatShortcut } from '../../core/shortcuts';
 
@@ -133,7 +136,155 @@ const HIGHLIGHT_COLORS = [
   { name: '湖水青', color: '#a5f3fc', border: '#22d3ee' },
 ];
 
-/** 多色高亮调色盘组件 */
+/** 悬浮菜单下拉按钮：触发按钮 + 下方弹出面板（点击外部关闭，再次点击触发按钮收起） */
+function BubbleDropdown({
+  tip,
+  icon,
+  active,
+  open,
+  onOpenChange,
+  panelStyle,
+  children,
+}: {
+  tip: string;
+  icon: ReactNode;
+  active?: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  panelStyle?: CSSProperties;
+  children: ReactNode;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [hovered, setHovered] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  // 窄窗口中居中展开的面板可能越出编辑区两侧，展开后平移回可见区域
+  const panelClamp = useViewportClamp<HTMLDivElement>(open);
+
+  useEffect(() => {
+    if (!open) return;
+    // 以整个下拉（含触发按钮）为界：点击触发按钮交给其自身的开关逻辑，避免先关闭又被重新打开
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) onOpenChange(false);
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [open, onOpenChange]);
+
+  let background = 'transparent';
+  if (active) {
+    background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.15))';
+  } else if (pressed) {
+    background = 'var(--toolbar-active, rgba(0, 0, 0, 0.12))';
+  } else if (open || hovered) {
+    background = 'var(--editor-hover-background, rgba(0,0,0,0.06))';
+  }
+
+  return (
+    <div ref={rootRef} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+      <Tooltip content={tip} side="top" sideOffset={6} disabled={open}>
+        <button
+          type="button"
+          // 阻止默认行为，保留编辑器选区
+          onMouseDown={(e) => {
+            e.preventDefault();
+            setPressed(true);
+          }}
+          onMouseUp={() => setPressed(false)}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => {
+            setHovered(false);
+            setPressed(false);
+          }}
+          onClick={() => onOpenChange(!open)}
+          style={{
+            height: 32,
+            padding: '0 6px',
+            border: 'none',
+            background,
+            color: active ? 'var(--accent-500, #3b82f6)' : 'var(--editor-text)',
+            cursor: 'pointer',
+            borderRadius: 6,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 2,
+            transform: pressed ? 'scale(0.94)' : 'scale(1)',
+            transition: 'all 120ms ease',
+          }}
+          aria-label={tip}
+          aria-expanded={open}
+        >
+          {icon}
+          <ChevronDown size={12} style={{ opacity: 0.7 }} />
+        </button>
+      </Tooltip>
+
+      {open && (
+        <div
+          ref={panelClamp.ref}
+          onMouseDown={(e) => e.stopPropagation()}
+          style={{
+            ...panelClamp.style,
+            position: 'absolute',
+            top: 'calc(100% + 6px)',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'var(--editor-surface, #ffffff)',
+            border: '1px solid var(--editor-border, rgba(0,0,0,0.12))',
+            borderRadius: 8,
+            boxShadow: '0 8px 24px -4px rgba(0, 0, 0, 0.15), 0 2px 6px -1px rgba(0, 0, 0, 0.08)',
+            padding: '8px 10px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+            zIndex: 1010,
+            minWidth: 180,
+            ...panelStyle,
+          }}
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 缩进和对齐面板：左 / 中 / 右对齐（列表项、表格内不可用）+ 增加 / 减少缩进 */
+function AlignIndentPanel({ editor, onDone }: { editor: Editor; onDone: () => void }) {
+  const alignable = canSetBlockAlign(editor);
+  const currentAlign = activeBlockAlign(editor);
+  return (
+    <>
+      {ALIGN_OPTIONS.map(({ align, label, Icon }) => (
+        <TableMenuItemButton
+          key={align}
+          item={{
+            label,
+            icon: <Icon size={15} />,
+            active: alignable && currentAlign === align,
+            disabled: !alignable,
+            onClick: () => setBlockAlign(editor, align),
+          }}
+          onDone={onDone}
+        />
+      ))}
+      <div style={{ height: 1, background: 'var(--editor-border, rgba(0,0,0,0.08))', margin: '2px 0' }} />
+      {INDENT_OPTIONS.map(({ delta, label, Icon }) => (
+        <TableMenuItemButton
+          key={delta}
+          item={{
+            label,
+            icon: <Icon size={15} />,
+            disabled: !canChangeBlockIndent(editor, delta),
+            onClick: () => changeBlockIndent(editor, delta),
+          }}
+          onDone={onDone}
+        />
+      ))}
+    </>
+  );
+}
+
+/** 多色高亮调色盘内容 */
 function HighlightPalette({
   editor,
   onClose,
@@ -141,39 +292,8 @@ function HighlightPalette({
   editor: Editor;
   onClose: () => void;
 }) {
-  const popoverRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    document.addEventListener('mousedown', handleOutsideClick);
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, [onClose]);
-
   return (
-    <div
-      ref={popoverRef}
-      onMouseDown={(e) => e.stopPropagation()}
-      style={{
-        position: 'absolute',
-        top: 'calc(100% + 6px)',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        background: 'var(--editor-surface, #ffffff)',
-        border: '1px solid var(--editor-border, rgba(0,0,0,0.12))',
-        borderRadius: 8,
-        boxShadow: '0 8px 24px -4px rgba(0, 0, 0, 0.15), 0 2px 6px -1px rgba(0, 0, 0, 0.08)',
-        padding: '8px 10px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 6,
-        zIndex: 1010,
-        minWidth: 180,
-      }}
-    >
+    <>
       <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--editor-text-secondary, #64748b)', paddingLeft: 2 }}>
         选择高亮背景颜色
       </div>
@@ -240,7 +360,7 @@ function HighlightPalette({
         <X size={13} />
         <span>清除高亮</span>
       </button>
-    </div>
+    </>
   );
 }
 
@@ -275,7 +395,15 @@ export function EditorBubbleMenu({
   editor: Editor;
   onOpenLinkModal?: () => void;
 }) {
-  const [showColorPicker, setShowColorPicker] = useState(false);
+  // 当前展开的下拉面板（同一时间只展开一个）
+  const [openPanel, setOpenPanel] = useState<'align' | 'textColor' | 'highlight' | null>(null);
+  const closePanel = useCallback(() => setOpenPanel(null), []);
+  // 各下拉的开关回调保持稳定引用，避免每次渲染重新注册外部点击监听
+  const panelToggles = useMemo(() => ({
+    align: (open: boolean) => setOpenPanel(open ? 'align' : null),
+    textColor: (open: boolean) => setOpenPanel(open ? 'textColor' : null),
+    highlight: (open: boolean) => setOpenPanel(open ? 'highlight' : null),
+  }), []);
 
   // EditorContent 挂载时会把正文从 TipTap 临时容器迁入页面；必须等挂载完成后再查找滚动边界。
   // 同时记录编辑器身份，切换实例时不让新菜单沿用旧编辑器的容器。
@@ -287,6 +415,12 @@ export function EditorBubbleMenu({
     setMountedContainer({ editor, scrollParent: findScrollParent(editor.view.dom) });
   }, [editor]);
   const scrollParent = mountedContainer?.editor === editor ? mountedContainer.scrollParent : undefined;
+
+  // 鼠标按住拖选期间不弹出菜单，避免浮层挡住正在选择的文本；松开后再按最终选区显示。
+  // 用 ref 记录而非 state，保持 shouldShow 引用稳定
+  const pointerSelectingRef = useRef(false);
+  // 自定义插件键，供松开鼠标时派发 show 事务（默认键每个实例自动生成，外部无法引用）
+  const [pluginKey] = useState(() => new PluginKey('nbBubbleMenu'));
 
   // TipTap 3.30 的 BubbleMenu 会在 shouldShow/options 引用变化时派发更新事务。
   // 选区变化期间若每次渲染都创建新对象，会形成 React → TipTap 事务 → React 的
@@ -300,6 +434,8 @@ export function EditorBubbleMenu({
   }) => {
     const { selection } = state;
     if (selection.empty) return false;
+    // 鼠标仍按住（正在拖选）时暂不显示
+    if (pointerSelectingRef.current) return false;
     // 不在代码块中显示浮层菜单
     if (currentEditor.isActive('codeBlock')) return false;
     // 跨单元格多选时不弹出行内文本气泡菜单，交由表格工具栏处理
@@ -309,6 +445,44 @@ export function EditorBubbleMenu({
     if (selection instanceof NodeSelection && selection.node.isAtom) return false;
     return true;
   }, []);
+
+  useEffect(() => {
+    const editorDom = editor.view.dom;
+    let frame = 0;
+    const handleMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      pointerSelectingRef.current = true;
+    };
+    const handleMouseUp = () => {
+      if (!pointerSelectingRef.current) return;
+      pointerSelectingRef.current = false;
+      // 等 ProseMirror 处理完松开时的选区同步后，再按最终选区决定是否显示
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (editor.isDestroyed) return;
+        if (!shouldShow({ editor, state: editor.state })) return;
+        // 插件处理 show 时先定位后显示，隐藏态下定位会被跳过，显示后需再补一次定位
+        editor.view.dispatch(editor.state.tr.setMeta(pluginKey, 'show'));
+        editor.view.dispatch(editor.state.tr.setMeta(pluginKey, 'updatePosition'));
+      });
+    };
+    // 窗口失焦（如拖选中切走）时收不到 mouseup，复位标记避免菜单再也不出现
+    const handleBlur = () => {
+      pointerSelectingRef.current = false;
+    };
+    editorDom.addEventListener('mousedown', handleMouseDown);
+    // 松开位置可能在编辑器外，监听窗口捕获阶段
+    window.addEventListener('mouseup', handleMouseUp, true);
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      cancelAnimationFrame(frame);
+      pointerSelectingRef.current = false;
+      editorDom.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mouseup', handleMouseUp, true);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, [editor, shouldShow, pluginKey]);
+
   const menuElementRef = useRef<HTMLDivElement>(null);
   const bubbleMenuOptions = useMemo(() => ({
     // 首次弹出定位修正：插件在算完第一次位置后才给浮层写入 position: fixed 与 width: max-content，
@@ -344,10 +518,12 @@ export function EditorBubbleMenu({
     <BubbleMenu
       ref={menuElementRef}
       editor={editor}
+      pluginKey={pluginKey}
       shouldShow={shouldShow}
       options={bubbleMenuOptions}
     >
       <div
+        className="nb-bubble-menu"
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -361,6 +537,20 @@ export function EditorBubbleMenu({
           gap: 2,
         }}
       >
+        {/* 缩进和对齐下拉：触发图标随当前对齐方式变化 */}
+        <BubbleDropdown
+          tip="缩进和对齐"
+          icon={<AlignIcon align={activeBlockAlign(editor)} />}
+          open={openPanel === 'align'}
+          onOpenChange={panelToggles.align}
+          // 位于菜单最左侧：面板与按钮左对齐，避免居中展开时越出窄屏左边缘
+          panelStyle={{ padding: 4, gap: 0, minWidth: 140, left: 0, transform: 'none' }}
+        >
+          <AlignIndentPanel editor={editor} onDone={closePanel} />
+        </BubbleDropdown>
+
+        <MenuDivider />
+
         <BubbleButton
           title={formatShortcut('粗体 (Ctrl+B)')}
           icon={<Bold size={16} />}
@@ -395,41 +585,37 @@ export function EditorBubbleMenu({
           active={editor.isActive('code')}
         />
 
-        {/* 多色高亮按钮与调色盘 */}
-        <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-          <Tooltip content="文本多色高亮" side="top" sideOffset={6} disabled={showColorPicker}>
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => setShowColorPicker((v) => !v)}
-              style={{
-                height: 32,
-                padding: '0 6px',
-                border: 'none',
-                background: editor.isActive('highlight')
-                  ? 'var(--editor-selection-background, rgba(59, 130, 246, 0.15))'
-                  : showColorPicker
-                  ? 'var(--editor-hover-background, rgba(0,0,0,0.06))'
-                  : 'transparent',
-                color: editor.isActive('highlight') ? 'var(--accent-500, #3b82f6)' : 'var(--editor-text)',
-                cursor: 'pointer',
-                borderRadius: 6,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 2,
-                transition: 'all 120ms ease',
-              }}
-              aria-label="文本多色高亮"
-            >
-              <Highlighter size={16} />
-              <ChevronDown size={12} style={{ opacity: 0.7 }} />
-            </button>
-          </Tooltip>
+        {/* 字体颜色按钮与色板：色条显示当前颜色 */}
+        <BubbleDropdown
+          tip="字体颜色"
+          icon={<TextColorIcon color={editor.getAttributes('textColor').color} />}
+          active={editor.isActive('textColor')}
+          open={openPanel === 'textColor'}
+          onOpenChange={panelToggles.textColor}
+        >
+          <TextColorGrid
+            activeColor={editor.getAttributes('textColor').color}
+            onSelect={(color) => {
+              editor.chain().focus().setMark('textColor', { color }).run();
+              closePanel();
+            }}
+            onClear={() => {
+              editor.chain().focus().unsetMark('textColor').run();
+              closePanel();
+            }}
+          />
+        </BubbleDropdown>
 
-          {showColorPicker && (
-            <HighlightPalette editor={editor} onClose={() => setShowColorPicker(false)} />
-          )}
-        </div>
+        {/* 多色高亮按钮与调色盘 */}
+        <BubbleDropdown
+          tip="文本高亮"
+          icon={<Highlighter size={16} />}
+          active={editor.isActive('highlight')}
+          open={openPanel === 'highlight'}
+          onOpenChange={panelToggles.highlight}
+        >
+          <HighlightPalette editor={editor} onClose={closePanel} />
+        </BubbleDropdown>
 
         <MenuDivider />
 
@@ -609,15 +795,23 @@ interface TableMenuItem {
   icon: ReactNode;
   onClick: () => void;
   danger?: boolean;
+  /** 当前生效的选项（如当前对齐方式） */
+  active?: boolean;
+  /** 当前选区不可用（如列表项内的对齐） */
+  disabled?: boolean;
 }
 
-/** 表格下拉菜单项 */
+/** 表格下拉菜单项（悬浮菜单的缩进和对齐面板共用） */
 function TableMenuItemButton({ item, onDone }: { item: TableMenuItem; onDone: () => void }) {
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
 
   let background = 'transparent';
-  if (pressed) {
+  if (item.disabled) {
+    background = 'transparent';
+  } else if (item.active) {
+    background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.15))';
+  } else if (pressed) {
     background = item.danger ? 'rgba(239, 68, 68, 0.18)' : 'var(--toolbar-active, rgba(0, 0, 0, 0.12))';
   } else if (hovered) {
     background = item.danger ? 'rgba(239, 68, 68, 0.12)' : 'var(--editor-hover-background, rgba(0, 0, 0, 0.06))';
@@ -638,6 +832,8 @@ function TableMenuItemButton({ item, onDone }: { item: TableMenuItem; onDone: ()
         setHovered(false);
         setPressed(false);
       }}
+      disabled={item.disabled}
+      aria-checked={item.active}
       onClick={() => {
         item.onClick();
         onDone();
@@ -651,8 +847,9 @@ function TableMenuItemButton({ item, onDone }: { item: TableMenuItem; onDone: ()
         border: 'none',
         borderRadius: 5,
         background,
-        color: item.danger ? '#ef4444' : 'var(--editor-text)',
-        cursor: 'pointer',
+        color: item.danger ? '#ef4444' : item.active ? 'var(--accent-500, #3b82f6)' : 'var(--editor-text)',
+        opacity: item.disabled ? 0.4 : 1,
+        cursor: item.disabled ? 'not-allowed' : 'pointer',
         fontSize: 13,
         textAlign: 'left',
         whiteSpace: 'nowrap',
@@ -715,6 +912,8 @@ function TableDropdown({
 
   // 危险项（删除）前加一条分隔线
   const dangerIndex = items.findIndex((item) => item.danger);
+  // 窄窗口中菜单可能越出编辑区右侧，展开后平移回可见区域
+  const menuClamp = useViewportClamp<HTMLDivElement>(open);
 
   return (
     <div ref={rootRef} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
@@ -757,8 +956,10 @@ function TableDropdown({
 
       {open && (
         <div
+          ref={menuClamp.ref}
           role="menu"
           style={{
+            ...menuClamp.style,
             position: 'absolute',
             top: 'calc(100% + 6px)',
             left: 0,

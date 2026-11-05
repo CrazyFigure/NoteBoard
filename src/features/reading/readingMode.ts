@@ -1,36 +1,108 @@
 // NoteBoard 沉浸阅读模式控制（各格式共用）
-// 只切换窗口临时布局状态与原生全屏，不触碰文档内容与撤销历史
-// 外壳隐藏逻辑见 AppShell，退出胶囊与 Esc 处理见 ReadingModeOverlay，插件经 mount 上下文的 reading 接入
+// 只切换窗口临时布局状态，不触碰文档内容与撤销历史；进入时保持当前窗口大小，全屏由阅读内的按钮按需切换
+// 外壳隐藏逻辑见 AppShell，窗口控件见 ReadingWindowControls，Esc 处理见 ReadingModeOverlay，插件经 mount 上下文的 reading 接入
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { IS_MOBILE_UI } from '../../core/platform';
+import { IS_MOBILE_UI, IS_WEB, USES_MAC_TRAFFIC_LIGHTS } from '../../core/platform';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { useWindowStore, type Tab } from '../../stores/windowStore';
+import { showToast } from '../../stores/toastStore';
 
 /** 用户最新期望值：异步全屏请求排队执行，过期请求据此跳过 */
 let desiredReadingMode = false;
 /** 串行化原生窗口全屏请求，避免快速连点时较晚完成的旧请求覆盖最新状态 */
 let fullscreenOperation: Promise<void> = Promise.resolve();
+/** 全屏是否由阅读内的按钮打开：退出阅读只撤销这种全屏，不动用户进入阅读前自己开的全屏 */
+let fullscreenOwnedByReading = false;
+/** 全屏切换完成后通知订阅者：最大化窗口切全屏时尺寸可能不变（如任务栏自动隐藏），不能只靠 resize 同步 */
+const fullscreenListeners = new Set<() => void>();
 
-/** 进入或退出沉浸阅读：先更新布局（即时生效），再排队切换系统全屏 */
+function enqueueFullscreenOperation(task: () => Promise<void>): Promise<void> {
+  fullscreenOperation = fullscreenOperation.catch(() => undefined).then(task);
+  return fullscreenOperation;
+}
+
+/** 进入或退出沉浸阅读：更新布局即时生效，退出时再排队撤销阅读内打开的全屏 */
 export function requestReadingMode(enabled: boolean): void {
   if (desiredReadingMode === enabled && useLayoutStore.getState().readingMode === enabled) return;
+  // 沉浸阅读可切换系统全屏，而极窄模式限制了窗口尺寸，两者互斥
+  if (enabled && useLayoutStore.getState().compactMode) {
+    showToast('极窄模式下不支持沉浸阅读', 'info');
+    return;
+  }
   desiredReadingMode = enabled;
   useLayoutStore.getState().setReadingMode(enabled);
+  if (enabled) return;
 
-  fullscreenOperation = fullscreenOperation
-    .catch(() => undefined)
-    .then(async () => {
-      if (desiredReadingMode !== enabled) return;
-      try {
-        // 移动端应用本身即全屏，只隐藏外壳 chrome（窗口全屏为桌面专属 API）
-        if (!IS_MOBILE_UI) await getCurrentWindow().setFullscreen(enabled);
-      } catch (error) {
-        // 全屏失败不影响阅读排版，外壳隐藏仍然生效
-        console.error(enabled ? '进入沉浸阅读全屏失败:' : '退出沉浸阅读全屏失败:', error);
-      }
-    });
+  void enqueueFullscreenOperation(async () => {
+    if (desiredReadingMode || !fullscreenOwnedByReading) return;
+    fullscreenOwnedByReading = false;
+    try {
+      await getCurrentWindow().setFullscreen(false);
+    } catch (error) {
+      console.error('退出沉浸阅读全屏失败:', error);
+    }
+  });
+}
+
+/** 阅读中切换系统全屏（移动端应用本身即全屏，不提供） */
+export function toggleReadingFullscreen(): Promise<void> {
+  return enqueueFullscreenOperation(async () => {
+    if (!desiredReadingMode || IS_MOBILE_UI) return;
+    try {
+      const win = getCurrentWindow();
+      const next = !(await win.isFullscreen());
+      await win.setFullscreen(next);
+      fullscreenOwnedByReading = next;
+      fullscreenListeners.forEach((listener) => listener());
+    } catch (error) {
+      // 全屏失败不影响阅读排版，继续留在当前窗口大小
+      console.error('切换沉浸阅读全屏失败:', error);
+      showToast('无法切换全屏', 'warning');
+    }
+  });
+}
+
+/** 是否提供全屏按钮：移动端应用本身即全屏；网页取决于浏览器是否允许（内嵌 iframe 可能被禁用） */
+export function canToggleReadingFullscreen(): boolean {
+  if (IS_MOBILE_UI) return false;
+  return !IS_WEB || document.fullscreenEnabled;
+}
+
+/** 是否提供最小化按钮：网页无权操作浏览器窗口，移动端无此概念，macOS 原生全屏窗口无法最小化 */
+export function canMinimizeReadingWindow(isFullscreen: boolean): boolean {
+  if (IS_MOBILE_UI || IS_WEB) return false;
+  return !(USES_MAC_TRAFFIC_LIGHTS && isFullscreen);
+}
+
+/** 窗口当前是否全屏：随阅读内切换与窗口尺寸变化同步（含系统快捷键触发的全屏）；enabled 为假时不订阅并恒为 false */
+export function useWindowFullscreen(enabled: boolean): boolean {
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    if (!enabled || IS_MOBILE_UI) {
+      setIsFullscreen(false);
+      return;
+    }
+    const win = getCurrentWindow();
+    let disposed = false;
+    const sync = () => {
+      win.isFullscreen().then((value) => {
+        if (!disposed) setIsFullscreen(value);
+      }).catch(() => {});
+    };
+    sync();
+    fullscreenListeners.add(sync);
+    const unlisten = win.onResized(sync);
+    return () => {
+      disposed = true;
+      fullscreenListeners.delete(sync);
+      unlisten.then((fn) => fn());
+    };
+  }, [enabled]);
+
+  return enabled && isFullscreen;
 }
 
 /** 画板另有全屏演示，文本对比与加载中的恢复标签不提供沉浸阅读 */

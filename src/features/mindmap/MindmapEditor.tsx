@@ -53,6 +53,7 @@ import { Tooltip } from '../../components/Tooltip';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
+import { showExportError, showExportSuccess } from '../../stores/exportResultStore';
 import { buildExportFileName, exportBlobWithDialog } from '../export/chartExport';
 import {
   initializeDocumentHistory,
@@ -74,7 +75,7 @@ import { takeViewState } from '../session/editorSuspension';
 import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
 import { ReadingModeButton } from '../reading/ReadingModeButton';
 import { ReadingModeOverlay } from '../reading/ReadingModeOverlay';
-import { requestReadingMode, useIsReading } from '../reading/readingMode';
+import { requestReadingMode, useIsReading, useWindowFullscreen } from '../reading/readingMode';
 import type { EditorCapabilities } from '../../core/editor/editorTypes';
 import {
   createMindmapSearchCapabilities,
@@ -149,16 +150,17 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
   // 沉浸阅读：隐藏顶部工具栏与撤销栏，画布独占屏幕
   const isReading = useIsReading(docKey);
   const exitReading = useCallback(() => requestReadingMode(false), []);
-  // 进入/退出阅读后画布尺寸变化（外壳隐藏与系统全屏动画），稍后把内容移回画面中央；首次挂载不触发，保留恢复的视图
-  const readingMountedRef = useRef(false);
+  const readingFullscreen = useWindowFullscreen(isReading);
+  // 进入/退出阅读或阅读内切换全屏后画布尺寸变化（外壳隐藏与系统全屏动画），稍后把内容移回画面中央；首次挂载不触发，保留恢复的视图
+  // 按前后值比较而非「是否首次」标记：StrictMode 重放 effect 时标记已置位，会误判为切换并在挂载后跳动一次
+  const prevReadingViewRef = useRef({ isReading, readingFullscreen });
   useEffect(() => {
-    if (!readingMountedRef.current) {
-      readingMountedRef.current = true;
-      return;
-    }
+    const prev = prevReadingViewRef.current;
+    if (prev.isReading === isReading && prev.readingFullscreen === readingFullscreen) return;
+    prevReadingViewRef.current = { isReading, readingFullscreen };
     const timer = setTimeout(() => rendererRef.current?.centerContent(), 360);
     return () => clearTimeout(timer);
-  }, [isReading]);
+  }, [isReading, readingFullscreen]);
   // 导出默认文件名：已保存的文档用文件名，未保存的新文档统一叫「思维导图」
   const exportBaseName = docKey.startsWith('untitled:')
     ? '思维导图'
@@ -314,7 +316,7 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
       setContent(docKey, serialized);
       setDirty(docKey, true);
       setTabDirty(docKey, true);
-      // auto 策略下停止编辑 800ms 后自动写盘
+      // auto 策略下停止编辑达到自动保存间隔后写盘
       scheduleAutoSave(docKey);
       recordDocumentChange(docKey, serialized, {
         mode: 'mindmap',
@@ -405,11 +407,11 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
       // 唤起原生对话框保存文件
       const saved = await exportBlobWithDialog(blob, defaultFilename, filters);
       if (saved) {
-        showToast('成功导出为 XMind 文件', 'success');
+        showExportSuccess(saved, '已导出 XMind 文件');
       }
     } catch (err) {
       console.error('导出 XMind 失败:', err);
-      showToast('导出 XMind 失败', 'error');
+      showExportError(err, '导出 XMind 失败');
     }
   };
 
@@ -426,11 +428,11 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
       // 唤起原生对话框保存文件
       const saved = await exportBlobWithDialog(blob, defaultFilename, filters);
       if (saved) {
-        showToast('成功导出为 Markdown 大纲', 'success');
+        showExportSuccess(saved, '已导出 Markdown 大纲');
       }
     } catch (err) {
       console.error('导出 Markdown 失败:', err);
-      showToast('导出 Markdown 失败', 'error');
+      showExportError(err, '导出 Markdown 失败');
     }
   };
 
@@ -468,11 +470,11 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
       ];
       const saved = await exportBlobWithDialog(blob, `${exportBaseName}.${extension}`, filters);
       if (saved) {
-        showToast(`成功导出为 ${extension.toUpperCase()} 图片`, 'success');
+        showExportSuccess(saved, `已导出 ${extension.toUpperCase()} 图片`);
       }
     } catch (err) {
       console.error('导出图片失败:', err);
-      showToast('导出图片失败', 'error');
+      showExportError(err, '导出图片失败');
     }
   };
 
@@ -788,12 +790,14 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
             defaultTextAlign={defaultTextAlign}
             defaultImageFit={defaultImageFit}
             searchHighlight={searchHighlight}
+            docKey={docKey}
           />
         ) : (
           <OutlinerEditor
             root={displayedRoot}
             onChange={handleRootChange}
             searchHighlight={searchHighlight}
+            docKey={docKey}
           />
         )}
 

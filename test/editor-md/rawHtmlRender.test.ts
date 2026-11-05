@@ -125,6 +125,9 @@ describe('块级 HTML：往返逐字不变', () => {
 
   it('不含图片的 <a> 仍转为普通链接', () => {
     expect(parseMarkdown(editor, '<a href="https://x.example">文字</a> tail')).toBe(true);
+    // 未编辑时按原文保留；按规则重写（去掉原文记录）时转为 Markdown 链接
+    expect(serializeMarkdown(editor)).toBe('<a href="https://x.example">文字</a> tail');
+    editor.view.dispatch(editor.state.tr.setDocAttribute('sourceBlocks', null));
     expect(serializeMarkdown(editor)).toBe('[文字](https://x.example) tail');
   });
 });

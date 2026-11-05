@@ -3,6 +3,8 @@
 // 覆盖在编辑区之上，编辑器保持挂载；Esc 或「返回文档」退出。
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+// 历史查看器可直接打开各类画布快照，不依赖原编辑器是否已经装载过。
+import '../../styles/canvasEditors.css';
 import { ArrowLeft, ChevronDown, ChevronUp, HelpCircle, ListOrdered, Loader2, Pin, PinOff, RotateCcw, Settings, Trash2 } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 import { IS_MOBILE_UI } from '../../core/platform';

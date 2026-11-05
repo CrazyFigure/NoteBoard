@@ -15,7 +15,7 @@ import { createBoardMinimapScene } from './boardMinimap';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { useWindowStore } from '../../stores/windowStore';
-import { useSettingsStore } from '../../stores/settingsStore';
+import { getAutoSaveDelayMs, useSettingsStore } from '../../stores/settingsStore';
 import { showToast } from '../../stores/toastStore';
 import {
   bumpDocumentRevision,
@@ -161,6 +161,8 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
   const [liveElements, setLiveElements] = useState<ExcalidrawScene['elements']>([]);
   const boardPresentationMode = useLayoutStore((s) => s.boardPresentationMode);
   const setBoardPresentationMode = useLayoutStore((s) => s.setBoardPresentationMode);
+  // 极窄模式画布本就狭小，收起缩略图把空间留给画板
+  const compactMode = useLayoutStore((s) => s.compactMode);
   const storeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const diskTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** 串行化原生窗口全屏请求，避免快速连点造成较晚完成的旧请求覆盖最新状态 */
@@ -399,7 +401,7 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
         setZoomLevel(zoom);
       }, 300);
 
-      // 800ms 防抖自动写入磁盘（auto 策略；🔴 S09：统一走每文档写队列与基线/脏态屏障）
+      // 按设置的自动保存间隔防抖写入磁盘（auto 策略；🔴 S09：统一走每文档写队列与基线/脏态屏障）
       if (diskTimerRef.current) clearTimeout(diskTimerRef.current);
       diskTimerRef.current = setTimeout(async () => {
         try {
@@ -407,7 +409,7 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
         } catch (e) {
           console.error('画板自动保存失败:', e);
         }
-      }, 800);
+      }, getAutoSaveDelayMs());
     },
     [refreshHistoryAvailability],
   );
@@ -755,8 +757,8 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
             />
           </div>
         )}
-        {/* 右下角缩略图：避开 Excalidraw 底栏帮助按钮；演示模式与移动端不显示 */}
-        {!boardPresentationMode && !IS_MOBILE_UI && (
+        {/* 右下角缩略图：避开 Excalidraw 底栏帮助按钮；演示模式、极窄模式与移动端不显示 */}
+        {!boardPresentationMode && !IS_MOBILE_UI && !compactMode && (
           <CanvasMinimap
             storageKey="nb-minimap-visible:board"
             getScene={getMinimapScene}

@@ -10,3 +10,7 @@
 .nb-web-dialog button:disabled { opacity: .5; cursor: wait; }
 .nb-web-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .nb-web-error { color: #dc2626; font-size: 13px; margin-bottom: 10px; }
+.nb-web-places { display: flex; gap: 6px; margin-bottom: 10px; }
+.nb-web-places button { flex: 1; text-align: center; }
+.nb-web-dialog button[aria-pressed=true] { border-color: var(--accent-strong, #3b82f6); }
+.nb-web-empty { margin: 24px 0; text-align: center; color: var(--editor-text-muted, #94a3b8); font-size: 13px; }

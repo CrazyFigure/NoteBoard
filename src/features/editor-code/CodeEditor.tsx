@@ -22,7 +22,7 @@ import {
   lineEndingCompartment,
   showLineEndingsExtension,
 } from './setup';
-import { loadLanguageExtension } from './languages';
+import { loadEditorLanguage } from './languages';
 import { getLinterForLanguage } from './lint';
 import {
   handleExpandJson,
@@ -32,7 +32,7 @@ import {
 import type { LanguageId } from '../../core/ipc/types';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
-import { useSettingsStore } from '../../stores/settingsStore';
+import { getAutoSaveDelayMs, useSettingsStore } from '../../stores/settingsStore';
 import { normalizeEol } from '../editor-md/serialize';
 import {
   bumpDocumentRevision,
@@ -44,7 +44,8 @@ import {
 import { queuedAutoSave } from '../session/documentSession';
 import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
 // 🔴 S11：回收前的视图状态在重挂载时恢复（选区/滚动/折叠）
-import { takeViewState } from '../session/editorSuspension';
+import { takeReadingViewState } from '../session/editorSuspension';
+import { restoreTextScroll } from '../reading/restoreTextPosition';
 import { foldEffect } from '@codemirror/language';
 import { createCodeEditorCapabilities } from './editorCapabilities';
 import { CodeEditorContextMenu } from './CodeEditorContextMenu';
@@ -59,6 +60,7 @@ import {
 import { discardPendingSourceSnapshot, flushPendingSourceSnapshot, hasPendingSourceSnapshot, stagePendingSourceSnapshot } from '../editor-md/visualSnapshot';
 import { ReadingModeOverlay } from '../reading/ReadingModeOverlay';
 import { isDocumentReading, requestReadingMode, useIsReading } from '../reading/readingMode';
+import { isSharedReadonly, useSharedReadonly } from '../account/sharedReadonly';
 
 /** 沉浸阅读时代码视图只读（compartment 仅作标识，可在多个实例间共享） */
 const readingReadOnlyCompartment = new Compartment();
@@ -86,6 +88,8 @@ interface CodeEditorProps {
 export function CodeEditor({ docKey }: CodeEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+  // StrictMode 会重放挂载 effect；一次性读取的恢复点须交给同一次挂载产生的每个内核。
+  const initialViewStateRef = useRef<{ docKey: string; state: unknown } | null>(null);
   const doc = useDocumentStore((s) => s.documents.get(docKey));
   const setContent = useDocumentStore((s) => s.setContent);
   const setTabDirty = useWindowStore((s) => s.setTabDirty);
@@ -96,16 +100,18 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
   const closeMenu = useCallback(() => setMenuPos(null), []);
   const rootRef = useRef<HTMLDivElement>(null);
   const isReading = useIsReading(docKey);
+  // 网页只读共享同样锁定编辑
+  const sharedReadonly = useSharedReadonly(docKey);
   const exitReading = useCallback(() => requestReadingMode(false), []);
 
   // 沉浸阅读期间只读，防止误触改动正文；退出后恢复编辑
   useEffect(() => {
     viewRef.current?.dispatch({
       effects: readingReadOnlyCompartment.reconfigure(
-        isReading ? readingLockExtension : [],
+        isReading || sharedReadonly ? readingLockExtension : [],
       ),
     });
-  }, [isReading]);
+  }, [isReading, sharedReadonly]);
 
   // 监听编辑器设置变化并热重配（空格、换行符、行号、软换行等）
   useEffect(() => {
@@ -185,7 +191,7 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
     const initialEditorSettings = useSettingsStore.getState().settings.editor;
     initializeDocumentHistory(docKey, currentDoc.content ?? '', 'code');
 
-    // 内容变更监听 → 更新 store（防抖 500ms）及自动保存（800ms，仅在 auto 策略时）
+    // 内容变更监听 → 更新 store（防抖 500ms）及自动保存（按设置间隔，仅在 auto 策略时）
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
     // 基线仅在真实保存/外部重载后重建，输入时用 Text.eq 保持即时精确脏态，避免每键转全文字符串。
@@ -229,7 +235,7 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
         flushPendingSourceSnapshot(key);
       }, 500);
 
-      // 若处于 auto 自动保存策略，800ms 防抖写入磁盘
+      // 若处于 auto 自动保存策略，按设置的自动保存间隔防抖写入磁盘
       // 🔴 S09：统一走每文档写队列（策略/外部状态/基线检查 + flush-and-compare 脏态 + 带证明暂存清理）
       if (targetDoc?.savePolicy === 'auto') {
         if (autoSaveTimer) clearTimeout(autoSaveTimer);
@@ -240,7 +246,7 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
           } catch (e) {
             console.error('代码/文本文件自动保存失败:', e);
           }
-        }, 800);
+        }, getAutoSaveDelayMs());
       }
     });
 
@@ -358,7 +364,7 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
         jsonOperationsKeymap,
         // 重挂载时若已在阅读中，直接以只读创建
         readingReadOnlyCompartment.of(
-          isDocumentReading(docKey) ? readingLockExtension : [],
+          isDocumentReading(docKey) || isSharedReadonly(docKey) ? readingLockExtension : [],
         ),
       ],
     });
@@ -386,7 +392,10 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
     perfMarkEditorInstanceReady(docKey, instanceId);
 
     // 🔴 S11：恢复回收前保存的视图状态（选区/滚动/折叠；一次性消费）
-    const restoredState = takeViewState(docKey) as {
+    if (initialViewStateRef.current?.docKey !== docKey) {
+      initialViewStateRef.current = { docKey, state: takeReadingViewState(docKey) };
+    }
+    const restoredState = initialViewStateRef.current.state as {
       kind: 'code';
       selection: { anchor: number; head: number } | null;
       scrollTop: number;
@@ -395,7 +404,8 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
     if (restoredState?.kind === 'code') {
       if (restoredState.foldedRanges.length > 0) {
         view.dispatch({
-          effects: restoredState.foldedRanges.map((range) => foldEffect.of(range)),
+          // 文件在关闭期间可能被外部缩短，越界折叠不能使重新打开失败。
+          effects: restoredState.foldedRanges.filter((range) => range.to <= view.state.doc.length).map((range) => foldEffect.of(range)),
         });
       }
       if (restoredState.selection) {
@@ -407,9 +417,7 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
           },
         });
       }
-      if (restoredState.scrollTop > 0 && view.scrollDOM) {
-        view.scrollDOM.scrollTop = restoredState.scrollTop;
-      }
+      restoreTextScroll(view, restoredState.scrollTop);
     }
 
     // 将统一历史节点应用到当前代码编辑器；程序化替换明确不进入原生历史
@@ -441,8 +449,8 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
       effects: typographyCompartment.reconfigure(typographyExt),
     });
 
-    // 动态异步加载语言语法高亮与 Linter 扩展
-    loadLanguageExtension(lang as LanguageId).then((ext) => {
+    // 动态异步加载语言语法高亮与 Linter 扩展（纯文本按文件名细分配置方言）
+    loadEditorLanguage(lang as LanguageId, currentDoc.displayName, currentDoc.content).then((ext) => {
       const lintExt = getLinterForLanguage(lang as LanguageId);
       view.dispatch({
         effects: languageCompartment.reconfigure([
@@ -498,8 +506,9 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
   if (!doc) return null;
 
   return (
-    // 外层 Flex 容器负责居中与背景色，避免内部 .cm-content 居中导致坐标偏移
+    // 外层负责居中与背景色，并在编辑状态统一正文和空白的鼠标指针，避免内部 .cm-content 居中导致坐标偏移。
     <div
+      className={isReading ? undefined : 'nb-text-editor-surface'}
       ref={rootRef}
       style={{
         position: 'relative',

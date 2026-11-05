@@ -118,6 +118,30 @@ jobs:
           $body | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           '__NOTEBOARD_RELEASE_BODY__' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
+      # 先建好 Release，tauri-action 只负责上传附件：0.7.2 起 GITHUB_TOKEN 创建 Release 被拒（上传附件仍可用），
+      # 被拒时改用仓库拥有者的 PACKAGE_PUBLISH_TOKEN 创建。
+      - name: Ensure release exists
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.PACKAGE_PUBLISH_TOKEN }}
+          RELEASE_BODY: ${{ steps.release_notes.outputs.body }}
+        run: |
+          gh release view $env:GITHUB_REF_NAME *> $null
+          if ($LASTEXITCODE -eq 0) { exit 0 }
+          $notes = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          $env:RELEASE_BODY | Set-Content -Encoding utf8 $notes
+          $createArgs = @('release', 'create', $env:GITHUB_REF_NAME, '--verify-tag', '--title', "NoteBoard $env:GITHUB_REF_NAME", '--notes-file', $notes)
+          if ($env:GITHUB_REF_NAME -like '*-*') { $createArgs += '--prerelease' }
+          gh @createArgs
+          if ($LASTEXITCODE -ne 0 -and $env:FALLBACK_TOKEN) {
+            Write-Host '::warning::GITHUB_TOKEN 创建 Release 被拒，改用 PACKAGE_PUBLISH_TOKEN'
+            $env:GH_TOKEN = $env:FALLBACK_TOKEN
+            gh @createArgs
+          }
+          if ($LASTEXITCODE -ne 0) { throw '创建 Release 失败' }
+
       # 使用 tauri-action 构建 Windows NSIS 安装包并发布到 Release
       - name: Build and publish Tauri release
         uses: tauri-apps/tauri-action@v0
@@ -132,7 +156,7 @@ jobs:
           # 规范产物文件命名
           assetNamePattern: NoteBoard_[version]_[platform]_[arch][setup][ext]
 
-      # 免安装版：前端资源已内嵌于主程序，直接复用上一步编译出的 exe；数据仍写入 %APPDATA%\NoteBoard，与安装版共享
+      # 免安装版复用同一 EXE；程序按旁边是否存在 NSIS uninstall.exe 区分，数据独立写入 EXE 同目录 data/NoteBoard。
       - name: Collect portable EXE
         id: portable
         shell: pwsh
@@ -160,6 +184,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${env:GITHUB_REF_NAME}" "${{ steps.portable.outputs.path }}" --clobber
+
+  # Windows 与安卓安装包上传后同步到腾讯云 CNB 镜像；macOS / Linux 包由各自工作流上传后再补同步。
+  sync-cnb:
+    name: Sync release to CNB
+    needs: [build-windows, build-android]
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') && needs.build-windows.result == 'success' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/cnb-release.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit
 
   # 正式标签的 Windows 安装包上传后，以仓库拥有者的跨仓库令牌提交 WinGet 更新申请。
   # 与 APK 构建并行；预发布和仅验证安卓的手动运行不向官方软件源提交。

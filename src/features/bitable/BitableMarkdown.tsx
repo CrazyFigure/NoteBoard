@@ -13,6 +13,8 @@ import { matchInlineMath } from '../editor-md/mathSyntax';
 import { ALERT_META, type AlertKind } from '../editor-md/alertExtension';
 import { sanitizeRenderedMarkdown } from '../editor-md/rawHtmlRender';
 import { resolveDocumentImageSrc } from '../editor-md/rawHtmlBlockView';
+import { handleLinkClick } from '../editor-md/linkHandler';
+import { useWindowStore } from '../../stores/windowStore';
 // 公式排版样式（KaTeX 运行时本身按需懒加载）
 import 'katex/dist/katex.min.css';
 
@@ -24,7 +26,7 @@ interface BitableMarkdownProps {
   source: string;
   /** 排版密度，默认 normal */
   density?: MarkdownDensity;
-  /** 点击链接时的回调；未提供时链接不可跳转，避免 WebView 内部导航破坏应用 */
+  /** 点击链接时的回调；未提供时复用文档链接路由及全局 HTML 打开方式 */
   onOpenLink?: (href: string) => void;
 }
 
@@ -393,6 +395,47 @@ function renderLatex(katex: typeof import('katex'), latex: string, displayMode: 
   return html;
 }
 
+/** 把容器内的公式占位替换为 KaTeX 排版结果；返回取消函数（容器重渲染前调用） */
+function typesetMathPlaceholders(root: HTMLElement): () => void {
+  const placeholders = Array.from(root.querySelectorAll<HTMLElement>('.nb-md-math:not(.is-rendered)'));
+  if (placeholders.length === 0) return () => {};
+  let cancelled = false;
+  loadKatex()
+    .then((katex) => {
+      if (cancelled) return;
+      for (const element of placeholders) {
+        if (!element.isConnected) continue;
+        try {
+          element.innerHTML = renderLatex(katex, element.textContent ?? '', element.tagName === 'DIV');
+          element.classList.add('is-rendered');
+        } catch {
+          // 单个公式异常保留源码展示
+        }
+      }
+    })
+    .catch(() => {
+      // KaTeX 加载失败时保持源码展示
+    });
+  return () => {
+    cancelled = true;
+  };
+}
+
+/**
+ * 在原生 DOM 容器中渲染只读 Markdown（双链嵌入等不经 React 的场景），样式与公式排版同单元格渲染。
+ * @returns 取消函数：再次渲染或销毁前调用，丢弃尚未完成的公式排版
+ */
+export function renderReadonlyMarkdownInto(
+  container: HTMLElement,
+  source: string,
+  resolveSrc?: (src: string) => string,
+): () => void {
+  ensureStyleInjected();
+  container.classList.add('nb-bitable-md');
+  container.innerHTML = renderBitableMarkdown(source, resolveSrc);
+  return typesetMathPlaceholders(container);
+}
+
 /** 首次渲染时把样式表挂到 document.head，供所有单元格共享 */
 function ensureStyleInjected() {
   if (styleInjected || typeof document === 'undefined') return;
@@ -426,39 +469,22 @@ export function BitableMarkdown({
   useEffect(() => {
     const root = containerRef.current;
     if (!root) return;
-    const placeholders = Array.from(root.querySelectorAll<HTMLElement>('.nb-md-math:not(.is-rendered)'));
-    if (placeholders.length === 0) return;
-    let cancelled = false;
-    loadKatex()
-      .then((katex) => {
-        if (cancelled) return;
-        for (const element of placeholders) {
-          if (!element.isConnected) continue;
-          try {
-            element.innerHTML = renderLatex(katex, element.textContent ?? '', element.tagName === 'DIV');
-            element.classList.add('is-rendered');
-          } catch {
-            // 单个公式异常保留源码展示
-          }
-        }
-      })
-      .catch(() => {
-        // KaTeX 加载失败时保持源码展示
-      });
-    return () => {
-      cancelled = true;
-    };
+    return typesetMathPlaceholders(root);
   }, [html]);
 
-  // 拦截链接点击：默认阻止 WebView 内部导航，交由上层决定打开方式
+  // 只读单元格/看板中的链接可直接单击或中键打开，同时阻止 WebView 原生导航与卡片点击。
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const anchor = (e.target as HTMLElement | null)?.closest('a');
     if (!anchor) return;
     const href = anchor.getAttribute('href');
-    if (!href) return;
     e.preventDefault();
     e.stopPropagation();
-    if (onOpenLink) onOpenLink(href);
+    if (!href || (e.button !== 0 && e.button !== 1)) return;
+    if (onOpenLink) {
+      onOpenLink(href);
+    } else {
+      void handleLinkClick(href, useWindowStore.getState().activeKey ?? '');
+    }
   };
 
   if (!source) return null;
@@ -468,6 +494,7 @@ export function BitableMarkdown({
       ref={containerRef}
       className={`nb-bitable-md${density === 'compact' ? ' compact' : ''}`}
       onClick={handleClick}
+      onAuxClick={handleClick}
       dangerouslySetInnerHTML={innerHtml}
     />
   );

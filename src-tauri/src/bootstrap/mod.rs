@@ -2,6 +2,9 @@
 #[cfg(desktop)]
 pub mod single_instance;
 pub mod cli_args;
+// Windows 旧安装器的文件关联恢复也必须覆盖直接替换 EXE 和免安装版启动。
+#[cfg(windows)]
+pub(crate) mod file_associations;
 
 use crate::dto::WindowIntent;
 use crate::state::AppState;
@@ -11,7 +14,10 @@ use tauri::Manager;
 
 /// setup 钩子
 pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    // 移动端与 Unix 桌面端使用系统标准数据/缓存目录；Windows 保留已有 APPDATA 位置。
+    #[cfg(windows)]
+    file_associations::start(app);
+
+    // 移动端与 Unix 桌面端使用系统标准数据/缓存目录；Windows 隔离配置已在创建 WebView 前初始化。
     // 必须先于任何设置、会话、同步配置读写，不能依赖 GUI 进程的当前工作目录。
     #[cfg(any(mobile, target_os = "macos", target_os = "linux"))]
     {
@@ -34,7 +40,12 @@ pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     // 按设置启用关闭到托盘与全局唤起快捷键（数据目录已初始化，可读取设置）
     #[cfg(desktop)]
-    crate::window::apply_system_settings(app.handle(), &crate::settings::model::load());
+    {
+        let settings = crate::settings::model::load();
+        crate::window::apply_system_settings(app.handle(), &settings);
+        // 本地文件搜索：开启时在后台延迟数秒加载索引快照并与磁盘对账
+        crate::local_search::init(app.handle(), &settings.local_search);
+    }
 
     // 多端同步后台调度线程（进程唯一；启动后延迟数秒在后台同步，不阻塞窗口显示）
     crate::sync::scheduler::init(app.handle().clone());

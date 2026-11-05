@@ -35,13 +35,14 @@ export async function mount({ container, name, bytes, signal, notify, reading })
   const reflow = button('阅读排版', () => {
     const on = page.classList.toggle('reading'); reflow.setAttribute('aria-pressed', String(on));
     if (on) setZoom(1); else fitWidth();
-  }, { icon:'book', tip:'按应用字体与主题重排正文' });
+  }, { icon:'text', tip:'按应用字体与主题重排正文' });
   reflow.setAttribute('aria-pressed', 'false');
   view.toolbar.append(zoomer.element, iconButton('fit-width', '适合宽度', fitWidth), separator(), reflow);
   try {
     if (/\.docx$/i.test(name)) {
       // 禁止嵌入 HTML 内容块，修订和批注按静态文档呈现，不启用编辑器。
-      const cleanBytes=await cleanOpenXml(bytes);if(signal.aborted){view.destroy();return;}
+      // 100 MiB 原文件可含较多图片，资源解压最多 256 MiB，正文 XML 保护仍由共享层执行。
+      const cleanBytes=await cleanOpenXml(bytes,undefined,{maxBytes:256*1024*1024,signal,pruneMedia:true});if(signal.aborted){view.destroy();return;}
       const options={ inWrapper:true, ignoreLastRenderedPageBreak:false, renderAltChunks:false, renderChanges:false, renderComments:false, renderHeaders:true, renderFooters:true, useBase64URL:true };
       // 手动分页后紧接的历史分页标记表示同一页边界，渲染前去重，保留真正的空白页。
       const document=await parseAsync(cleanBytes,options);if(signal.aborted){view.destroy();return;}

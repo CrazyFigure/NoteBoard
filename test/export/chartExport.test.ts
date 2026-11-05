@@ -1,7 +1,7 @@
 // NoteBoard 图表导出工具的单元测试
-// 覆盖 SVG 尺寸解析、SVG 归一化与导出文件名生成三条纯函数链路
+// 覆盖 SVG 解析、导出命名，以及浏览器下载、桌面路径和安卓 content URI 保存链路
 
-import { describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   buildExportFileName,
   elementToSvgString,
@@ -144,11 +144,140 @@ describe('导出文件名', () => {
 });
 
 describe('exportBlobWithDialog 与 saveBlobToFile 导出保存', () => {
-  test('非 Tauri 浏览器环境下调用 exportBlobWithDialog 触发浏览器下载并返回 true', async () => {
+  // 仅替换原生 IPC 边界，保留 dialog / fs 插件真实的命令名、路径编码与二进制序列化。
+  const invoke = vi.fn();
+  const filters = [{ name: 'PNG 图片 (*.png)', extensions: ['png'] }];
+  // 包含零字节和高位字节，确保图片按二进制原样传递，而非经过文本转换。
+  const bytes = new Uint8Array([0, 137, 80, 255]);
+
+  /** jsdom 的 Blob 不提供 arrayBuffer；仅补齐读取接口，保留 Blob 类型和内容。 */
+  function imageBlob(type = 'image/png'): Blob {
+    const blob = new Blob([bytes], { type });
+    Object.defineProperty(blob, 'arrayBuffer', { value: vi.fn().mockResolvedValue(bytes.buffer) });
+    return blob;
+  }
+
+  beforeEach(() => {
+    invoke.mockReset();
+    vi.stubGlobal('__TAURI_INTERNALS__', { invoke });
+    vi.stubGlobal('isTauri', false);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  test('非 Tauri 浏览器环境下调用 exportBlobWithDialog 触发浏览器下载，结果不含磁盘路径', async () => {
+    vi.useFakeTimers();
+    const createObjectURL = vi.fn().mockReturnValue('blob:export-test');
+    const revokeObjectURL = vi.fn();
+    // URL 的静态方法在 jsdom 下缺失，仅补齐浏览器下载所需能力。
+    vi.stubGlobal('URL', Object.assign(class extends URL {}, { createObjectURL, revokeObjectURL }));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      expect(this.isConnected).toBe(true);
+      expect(this.download).toBe('test.txt');
+      expect(this.href).toBe('blob:export-test');
+    });
     const blob = new Blob(['test content'], { type: 'text/plain' });
     const result = await exportBlobWithDialog(blob, 'test.txt', [
       { name: '文本文件 (*.txt)', extensions: ['txt'] },
     ]);
-    expect(result).toBe(true);
+    expect(result).toEqual({ path: null, fileName: 'test.txt' });
+    expect(createObjectURL).toHaveBeenCalledWith(blob);
+    expect(click).toHaveBeenCalledOnce();
+    expect(document.querySelector('a[download="test.txt"]')).toBeNull();
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+    vi.runAllTimers();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:export-test');
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ['png', 'image/png', ['png']],
+    ['jpg', 'image/jpeg', ['jpg', 'jpeg']],
+    ['svg', 'image/svg+xml', ['svg']],
+    ['xmind', 'application/zip', ['xmind']],
+    ['md', 'text/markdown', ['md']],
+    ['csv', 'text/csv', ['csv']],
+  ])('安卓导出 %s：通过 fs 插件向 content URI 写入原始字节，结果不含磁盘路径', async (extension, mime, extensions) => {
+    vi.stubGlobal('isTauri', true);
+    const target = `content://com.android.providers.downloads.documents/document/导图%3A1.${extension}`;
+    vi.mocked(invoke).mockImplementation(async (command) => {
+      if (command === 'plugin:dialog|save') return target;
+      if (command === 'plugin:fs|write_file') return;
+      throw new Error(`不应调用：${command}`);
+    });
+    const imageFilters = [{ name: '图片', extensions }];
+
+    await expect(exportBlobWithDialog(imageBlob(mime), `导图.${extension}`, imageFilters))
+      .resolves.toEqual({ path: null, fileName: `导图.${extension}` });
+
+    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(invoke).toHaveBeenNthCalledWith(1, 'plugin:dialog|save', {
+      options: { defaultPath: `导图.${extension}`, filters: imageFilters },
+    }, undefined);
+    expect(invoke).toHaveBeenNthCalledWith(2, 'plugin:fs|write_file', bytes, {
+      headers: { path: encodeURIComponent(target), options: undefined },
+    });
+  });
+
+  test.each(['C:\\Users\\测试\\导图.png', '/Users/test/导图.png', '/home/test/导图.png'])(
+    'Windows / macOS / Linux 普通路径导出由 Rust 以二进制正文写盘：%s', async (target) => {
+    vi.stubGlobal('isTauri', true);
+    vi.mocked(invoke).mockImplementation(async (command) => {
+      if (command === 'plugin:dialog|save') return target;
+      if (command === 'save_binary_file_raw') return { ok: true };
+      throw new Error(`不应调用：${command}`);
+    });
+
+    // 返回实际选择的磁盘路径，供结果弹窗打开文件与定位
+    await expect(exportBlobWithDialog(imageBlob(), '导图.png', filters)).resolves.toEqual({ path: target, fileName: '导图.png' });
+    expect(invoke).toHaveBeenCalledTimes(2);
+    // 原始字节作为正文、路径放在请求头，不再转换为 JSON 数字数组
+    expect(invoke).toHaveBeenLastCalledWith('save_binary_file_raw', bytes, {
+      headers: { 'x-nb-path': encodeURIComponent(target) },
+    });
+  });
+
+  test('浏览器缺少下载能力时报告失败，不能返回成功', async () => {
+    const UnsupportedURL = class extends URL {};
+    Object.defineProperty(UnsupportedURL, 'createObjectURL', { value: undefined });
+    vi.stubGlobal('URL', UnsupportedURL);
+    await expect(exportBlobWithDialog(imageBlob(), '导图.png', filters)).rejects.toThrow('当前环境不支持下载文件');
+  });
+
+  test('取消系统保存对话框时不读取图片或写入文件', async () => {
+    vi.stubGlobal('isTauri', true);
+    vi.mocked(invoke).mockResolvedValue(null);
+    const blob = imageBlob();
+
+    await expect(exportBlobWithDialog(blob, '导图.png', filters)).resolves.toBeNull();
+    expect(blob.arrayBuffer).not.toHaveBeenCalled();
+    expect(invoke).toHaveBeenCalledOnce();
+  });
+
+  test('安卓 URI 写入失败时向调用方报告错误，不能回退成普通路径写盘', async () => {
+    vi.stubGlobal('isTauri', true);
+    const error = new Error('URI 写入权限失效');
+    vi.mocked(invoke).mockImplementation(async (command) => {
+      if (command === 'plugin:dialog|save') return 'content://provider/document/1';
+      throw error;
+    });
+
+    await expect(exportBlobWithDialog(imageBlob(), '导图.png', filters)).rejects.toBe(error);
+    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(invoke).mock.calls[1][0]).toBe('plugin:fs|write_file');
+  });
+
+  test('普通路径写入失败时保留现有错误提示', async () => {
+    vi.stubGlobal('isTauri', true);
+    vi.mocked(invoke).mockImplementation(async (command) => {
+      if (command === 'plugin:dialog|save') return 'C:\\导图.png';
+      return { ok: false, error: { kind: 'disk-full' } };
+    });
+
+    await expect(exportBlobWithDialog(imageBlob(), '导图.png', filters)).rejects.toThrow('磁盘空间不足');
   });
 });

@@ -25,6 +25,15 @@ test('拒绝损坏、未来宿主与伪造官方标识',()=>{
   assert.throws(()=>validatePackage({...value,manifest:{...value.manifest,minAppVersion:'99.0.0'}},'pdf','0.5.8'));
 });
 
+test('Notability 和 Goodnotes 独立插件接受合法包，旧宿主拒绝安装',()=>{
+  for(const id of ['notability','goodnotes']){
+    const value=pkg(); value.manifest={...value.manifest,id,minAppVersion:'0.7.4'};
+    assert.equal(validatePackage(value,id,'0.7.4'),value);
+    assert.throws(()=>validatePackage(value,id,'0.7.3'));
+    assert.equal(classify(`document.${id==='notability'?'note':'goodnotes'}`)[0],'preview');
+  }
+});
+
 test('新装默认禁用，升级保留开关并删除旧版，失败保留可用版本',async(t)=>{
   const dir=await fs.mkdtemp(path.join(os.tmpdir(),'noteboard-plugin-test-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
   const userFile=path.join(dir,'notes.bitable');await fs.writeFile(userFile,'用户数据');

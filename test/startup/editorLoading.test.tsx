@@ -34,6 +34,8 @@ describe('编辑器入口映射（resolveEditorKind）', () => {
     expect(resolveEditorKind({ kind: 'code', language: 'mermaid' })).toBe('diagram');
     expect(resolveEditorKind({ kind: 'code', language: 'plantuml' })).toBe('diagram');
     expect(resolveEditorKind({ kind: 'code', language: 'infographic' })).toBe('infographic');
+    // HTML 网页走源码 + 预览分屏编辑器
+    expect(resolveEditorKind({ kind: 'code', language: 'html' })).toBe('html');
   });
 
   it('其余 kind 一一对应', () => {

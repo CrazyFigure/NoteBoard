@@ -11,6 +11,7 @@
 // 用法：
 //   node scripts/check-budget.mjs           # 报告模式
 //   node scripts/check-budget.mjs --check   # 门禁模式
+//   node scripts/check-budget.mjs --check --web # 网页生产包使用相同预算与依赖检查
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -18,8 +19,10 @@ import { fileURLToPath } from 'node:url';
 import { init, parse } from 'es-module-lexer';
 
 const rootDir = fileURLToPath(new URL('../', import.meta.url));
-const distDir = path.join(rootDir, 'dist');
-const reportPath = path.join(rootDir, 'test-results', 'performance', 'budget-report.json');
+// 桌面和网页入口分别检查，避免桌面达标掩盖网页构建的重依赖回流。
+const outputDir = process.argv.includes('--web') ? 'dist-web' : 'dist';
+const distDir = path.join(rootDir, outputDir);
+const reportPath = path.join(rootDir, 'test-results', 'performance', outputDir === 'dist' ? 'budget-report.json' : 'budget-report-web.json');
 
 // ── 预算规则 ──
 // 入口静态闭包中禁止出现的标志性重依赖 chunk 模式（S05 逐类型懒加载后应全部移出）。
@@ -74,7 +77,7 @@ await init;
 
 const htmlPath = path.join(distDir, 'index.html');
 if (!fs.existsSync(htmlPath)) {
-  console.error('未找到 dist/index.html，请先运行 pnpm build');
+  console.error(`未找到 ${outputDir}/index.html，请先运行对应构建`);
   process.exit(2);
 }
 const html = fs.readFileSync(htmlPath, 'utf8');
@@ -219,7 +222,7 @@ console.log(`入口闭包：${report.closure.files} 个 JS，共 ${report.closur
 console.log(`modulepreload：${preloads.length} 个；入口脚本：${scripts.length} 个`);
 console.log(`字节预算：JS ≤ ${BUDGET.initialJsKiB} KiB / CSS ≤ ${BUDGET.initialCssKiB} KiB ${budgetViolations.length === 0 ? '（达标）' : '（超限！）'}`);
 if (moduleSources) {
-  console.log('模块来源追踪：dist/.module-sources.json（按包名检出禁止库）');
+  console.log(`模块来源追踪：${outputDir}/.module-sources.json（按包名检出禁止库）`);
 }
 if (dedupedViolations.length > 0) {
   console.log(`\n❌ 首屏闭包含 ${dedupedViolations.length} 个禁止模块（合计 ${Math.round(report.violationBytes / 1024)} KiB）：`);

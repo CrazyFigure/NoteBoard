@@ -1,9 +1,12 @@
 // NoteBoard 本地图片粘贴与拖拽落盘系统
 // 自动在 Markdown 文档所在目录同一层创建 /img 目录（名称可在设置修改）
 // 兼容新建未保存文档的 Base64 即时显示与提示，支持从本地对话框选择图片导入
+// 保存期间在插入位置显示图片预览与加载动画（imageUploadPlaceholder），完成后原位替换为正式图片
 
 import type { Editor } from '@tiptap/core';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import * as ipc from '../../core/ipc/commands';
+import { beginImageInsertion } from './imageUploadPlaceholder';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useExplorerStore } from '../explorer/explorerStore';
@@ -41,6 +44,34 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+/** 最多等待新图片预解码的时长：超时也照常插入，只是可能闪一下 */
+const PRELOAD_TIMEOUT_MS = 1500;
+
+/**
+ * 预先解码刚保存的图片：图片节点随后以同一地址加载时直接命中页面内的已解码图片，
+ * 占位替换为正式图片时不出现空白闪烁。失败或超时都直接返回。
+ */
+function preloadSavedImage(path: string): Promise<void> {
+  let url: string;
+  try {
+    url = convertFileSrc(path);
+  } catch {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(resolve, PRELOAD_TIMEOUT_MS);
+    const done = () => {
+      window.clearTimeout(timer);
+      resolve();
+    };
+    const image = new Image();
+    // 与图片节点的 <img> 保持一致的请求方式，确保复用同一份已加载图片
+    image.referrerPolicy = 'no-referrer';
+    image.src = url;
+    image.decode().then(done, done);
+  });
+}
+
 /**
  * 处理粘贴/拖入的单个图片文件
  * 将图片保存到 Markdown 文档同级的 img/ 目录，或未保存时使用 Base64 兼容
@@ -62,6 +93,9 @@ export async function handlePastedImageFile(
   const timestamp = Date.now();
   const fileName = `${timestamp}_${safeName}.${ext}`;
 
+  // 立即在插入位置显示这张图的预览与加载动画，用户能确认粘贴已被接收
+  const insertion = beginImageInsertion(editor, file);
+
   // 1. 若文档已保存（拥有物理目录），直接写入本地磁盘图片目录
   if (docDirPath) {
     // 按平台分隔符拼接（Windows 反斜杠 / Android 正斜杠）
@@ -73,13 +107,14 @@ export async function handlePastedImageFile(
       const arrayBuffer = await file.arrayBuffer();
       const bytes = new Uint8Array(arrayBuffer);
 
-      // 调用 Rust 端 save_binary_file 进行二进制写入（内部会自动 create_dir_all）
+      // 调用 Rust 端以二进制正文写入（内部会自动 create_dir_all）
       const result = await ipc.saveBinaryFile(targetPath, bytes);
 
       if (result.ok) {
-        // 构建标准 Markdown 相对路径引用
+        // 构建标准 Markdown 相对路径引用；先预解码再替换占位，避免闪烁
         const relativePath = `./${imageDirName}/${fileName}`;
-        editor.chain().focus().setImage({ src: relativePath, alt: safeName }).run();
+        await preloadSavedImage(targetPath);
+        insertion.commit({ src: relativePath, alt: safeName });
         showToast(`图片已保存至 /${imageDirName} 并插入`, 'success');
       } else {
         const errMsg = typeof result.error === 'string' ? result.error : JSON.stringify(result.error) || '保存图片失败';
@@ -90,9 +125,10 @@ export async function handlePastedImageFile(
       // 写入失败时优雅回退到 Base64
       try {
         const base64Url = await fileToBase64(file);
-        editor.chain().focus().setImage({ src: base64Url, alt: safeName }).run();
+        insertion.commit({ src: base64Url, alt: safeName });
         showToast('图片落盘失败，已临时以 Base64 嵌入', 'warning');
       } catch {
+        insertion.cancel();
         showToast('图片插入失败', 'error');
       }
     }
@@ -100,10 +136,11 @@ export async function handlePastedImageFile(
     // 2. 新建文档尚未保存时的兼容方案：采用 Base64 即时预览，并提醒保存
     try {
       const base64Url = await fileToBase64(file);
-      editor.chain().focus().setImage({ src: base64Url, alt: safeName }).run();
+      insertion.commit({ src: base64Url, alt: safeName });
       showToast(formatShortcut(`图片已插入。当前文档尚未保存，建议按 Ctrl+S 保存文档以自动管理 /${imageDirName} 目录`), 'info');
     } catch (e) {
       console.error('Base64 转换失败:', e);
+      insertion.cancel();
       showToast('插入图片失败', 'error');
     }
   }
@@ -114,6 +151,8 @@ export async function handlePastedImageFile(
  */
 export async function pickAndSaveLocalImage(
   docKey: string,
+  /** 选定文件后、开始复制前回调（用于立即显示插入占位） */
+  onPicked?: (filePath: string) => void,
 ): Promise<{ src: string; alt: string } | null> {
   try {
     const selected = await open({
@@ -132,6 +171,7 @@ export async function pickAndSaveLocalImage(
     }
 
     const filePath = selected;
+    onPicked?.(filePath);
     const currentDoc = useDocumentStore.getState().getDocument(docKey);
     const docDirPath = currentDoc?.dirPath || useExplorerStore.getState().root;
     const settings = useSettingsStore.getState().settings;
@@ -151,10 +191,14 @@ export async function pickAndSaveLocalImage(
         const fileBytes = await readFile(filePath);
         await ipc.saveBinaryFile(targetPath, fileBytes);
       } catch (e) {
-        console.warn('复制本地图片失败，尝试以源文件路径插入:', e);
+        // 复制失败时直接引用源文件，而不是插入一个并不存在的相对路径
+        console.warn('复制本地图片失败，改为以源文件路径插入:', e);
+        showToast(`图片未能导入 /${imageDirName}，已引用原文件`, 'warning');
+        return { src: filePath, alt: safeBaseName };
       }
 
       const relativePath = `./${imageDirName}/${newFileName}`;
+      await preloadSavedImage(targetPath);
       showToast(`图片已导入至 /${imageDirName}`, 'success');
       return { src: relativePath, alt: safeBaseName };
     } else {
@@ -177,9 +221,23 @@ export async function insertLocalImageWithDialog(
   editor: Editor,
   docKey: string,
 ): Promise<void> {
-  const imageInfo = await pickAndSaveLocalImage(docKey);
+  let insertion: ReturnType<typeof beginImageInsertion> | null = null;
+  const imageInfo = await pickAndSaveLocalImage(docKey, (filePath) => {
+    // 选定文件后立即显示占位：预览直接加载源文件，复制完成后原位替换
+    let previewUrl: string | null = null;
+    try {
+      previewUrl = convertFileSrc(filePath);
+    } catch {
+      // 无法转换地址时只显示加载徽标
+    }
+    insertion = beginImageInsertion(editor, previewUrl);
+  });
+  const pending = insertion as ReturnType<typeof beginImageInsertion> | null;
   if (imageInfo) {
-    editor.chain().focus().setImage(imageInfo).run();
+    if (pending) pending.commit(imageInfo);
+    else editor.chain().focus().setImage(imageInfo).run();
+  } else {
+    pending?.cancel();
   }
 }
 

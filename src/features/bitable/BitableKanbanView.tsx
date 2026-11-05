@@ -156,7 +156,8 @@ export function BitableKanbanView({
           selectedIds = rawVal.includes(',') ? rawVal.split(',').map((s) => s.trim()) : [rawVal.trim()];
         }
 
-        const validIds = selectedIds.filter((id) => options.some((o) => o.id === id));
+        // 去重：重复 ID 会让同一张卡片在一个泳道里出现两次（且卡片键冲突）
+        const validIds = Array.from(new Set(selectedIds)).filter((id) => options.some((o) => o.id === id));
         if (validIds.length === 0) {
           // 未选任何有效标签归入未分类
           const list = laneMap.get(null) || [];
@@ -918,7 +919,10 @@ export function BitableKanbanView({
                             : typeof val === 'string' && val.trim() !== ''
                               ? (val.includes(',') ? val.split(',').map((s) => s.trim()) : [val.trim()])
                               : [];
-                          const selectedOptions = (c.options || []).filter((o) => ids.includes(o.id));
+                          // 按选中先后排列，与单元格中的展示顺序一致
+                          const selectedOptions = ids
+                            .map((id) => (c.options || []).find((o) => o.id === id))
+                            .filter((o): o is NonNullable<typeof o> => Boolean(o));
                           if (selectedOptions.length === 0) return null;
                           return (
                             <div key={c.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>

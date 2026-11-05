@@ -1,254 +1,142 @@
 // NoteBoard Markdown 现代图片扩展与交互组件
-// 支持本地相对路径动态解析、悬停工具栏、大图预览查看器、多级缩放与拖拽拉伸、居左/居中/居右对齐
+// 支持本地相对路径动态解析、悬停工具栏、大图预览查看器、多级缩放与拖拽拉伸、居左/居中/居右对齐，
+// 以及图片专属右键菜单（复制图片 / 复制为文件 / 另存为 / 重命名文件 / 编辑说明 / 删除等）
 
-import React, { useState, useEffect } from 'react';
-import { Node, mergeAttributes, type JSONContent, type MarkdownParseHelpers, type MarkdownToken } from '@tiptap/core';
+import React, { useState, useEffect, useRef } from 'react';
 import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
 import {
-  ZoomIn,
-  ZoomOut,
   Maximize2,
   AlignLeft,
   AlignCenter,
   AlignRight,
   Trash2,
-  ExternalLink,
-  FolderOpen,
-  RotateCw,
-  X,
   AlertCircle,
   RefreshCw,
   Link2,
+  Link,
+  Copy,
+  Files,
+  Download,
+  ExternalLink,
+  FolderOpen,
+  Globe,
+  Share2,
+  Captions,
+  PenLine,
 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import * as ipc from '../../core/ipc/commands';
+import { IS_NATIVE_MOBILE, TARGET_PLATFORM } from '../../core/platform';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
+import { showToast } from '../../stores/toastStore';
+import { showPrompt } from '../../stores/promptDialogStore';
 import { useExplorerStore } from '../explorer/explorerStore';
+import { basenameOf } from '../explorer/pathUtils';
+import { stopReactPropagation } from '../bitable/bitableUtils';
 import { handleLinkClick, isAbsoluteLocalPath, resolveRelativeDocPath } from './linkHandler';
 import { openDocument } from '../editor-code/orchestration/openDocument';
 import { Tooltip } from '../../components/Tooltip';
+import { EnhancedImageBlockCore } from './imageCore';
+import { ImagePreviewOverlay } from '../image-viewer/ImagePreviewOverlay';
+import {
+  CAN_COPY_IMAGE_FILE,
+  copyImageFileToClipboard,
+  copyImageLocation,
+  copyImageToClipboard,
+  describeError,
+  saveImageAs,
+  type ImageSource,
+} from '../image-viewer/imageClipboard';
+import { ImageContextMenu, type ImageAlign, type ImageMenuItem, type ImageMenuSection } from './ImageContextMenu';
+import { renameImageFile, splitFileName, validateFileStem } from './imageActions';
 
-/** 大图预览 Lightbox 模态框组件 */
-function ImageLightboxModal({
-  src,
-  alt,
-  onClose,
-  onOpenInTab,
-  onRevealInDir,
-}: {
-  src: string;
-  alt?: string;
-  onClose: () => void;
-  onOpenInTab?: () => void;
-  onRevealInDir?: () => void;
-}) {
-  const [scale, setScale] = useState(1);
-  const [rotate, setRotate] = useState(0);
+// 保留既有导出入口，界面和调用方继续使用同一份核心规则。
+export { parseLinkedImageToken, normalizeImageWidth, normalizeImageAlign, renderImageMarkdown, formatMarkdownDestination } from './imageCore';
 
-  // 监听 Esc 键快速关闭
-  // 捕获阶段处理并标记 defaultPrevented：外层弹层（如多维表格单元格编辑弹层）据此不再随之关闭
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      e.preventDefault();
-      onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown, true);
-    return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [onClose]);
+/** 图片节点视图根元素标记：右键插件据此识别点击是否落在图片上 */
+const IMAGE_VIEW_ATTRIBUTE = 'data-nb-image-view';
 
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 9999,
-        background: 'rgba(0, 0, 0, 0.82)',
-        backdropFilter: 'blur(6px)',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        userSelect: 'none',
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      {/* 顶部悬浮控制栏 */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 16,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          background: 'rgba(30, 41, 59, 0.85)',
-          padding: '6px 14px',
-          borderRadius: 24,
-          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
-          color: '#ffffff',
-          zIndex: 10000,
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <Tooltip content="缩小 (Zoom Out)" side="bottom" sideOffset={6}>
-          <button
-            type="button"
-            aria-label="缩小"
-            onClick={() => setScale((s) => Math.max(0.2, s - 0.2))}
-            style={modalBtnStyle}
-          >
-            <ZoomOut size={16} />
-          </button>
-        </Tooltip>
-        <span style={{ fontSize: 12, minWidth: 44, textAlign: 'center' }}>
-          {Math.round(scale * 100)}%
-        </span>
-        <Tooltip content="放大 (Zoom In)" side="bottom" sideOffset={6}>
-          <button
-            type="button"
-            aria-label="放大"
-            onClick={() => setScale((s) => Math.min(4, s + 0.2))}
-            style={modalBtnStyle}
-          >
-            <ZoomIn size={16} />
-          </button>
-        </Tooltip>
-        <Tooltip content="顺时针旋转 90°" side="bottom" sideOffset={6}>
-          <button
-            type="button"
-            aria-label="顺时针旋转 90°"
-            onClick={() => setRotate((r) => (r + 90) % 360)}
-            style={modalBtnStyle}
-          >
-            <RotateCw size={16} />
-          </button>
-        </Tooltip>
-        <Tooltip content="还原 100%" side="bottom" sideOffset={6}>
-          <button
-            type="button"
-            aria-label="还原 100%"
-            onClick={() => {
-            setScale(1);
-            setRotate(0);
-          }}
-            style={modalBtnStyle}
-          >
-            <Maximize2 size={16} />
-          </button>
-        </Tooltip>
-
-        {onOpenInTab && (
-          <Tooltip content="在独立图片标签页中打开" side="bottom" sideOffset={6}>
-            <button
-              type="button"
-              aria-label="在独立图片标签页中打开"
-              onClick={onOpenInTab}
-              style={modalBtnStyle}
-            >
-              <ExternalLink size={16} />
-            </button>
-          </Tooltip>
-        )}
-
-        {onRevealInDir && (
-          <Tooltip content="在文件夹中显示原图" side="bottom" sideOffset={6}>
-            <button
-              type="button"
-              aria-label="在文件夹中显示原图"
-              onClick={onRevealInDir}
-              style={modalBtnStyle}
-            >
-              <FolderOpen size={16} />
-            </button>
-          </Tooltip>
-        )}
-
-        <Tooltip content="关闭 (Esc)" side="bottom" sideOffset={6}>
-          <button
-            type="button"
-            aria-label="关闭预览"
-            onClick={onClose}
-            style={{ ...modalBtnStyle, color: '#f87171' }}
-          >
-            <X size={18} />
-          </button>
-        </Tooltip>
-      </div>
-
-      {/* 图片主视图 */}
-      <div
-        style={{
-          maxWidth: '90vw',
-          maxHeight: '85vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          overflow: 'hidden',
-          transition: 'transform 120ms ease',
-          transform: `scale(${scale}) rotate(${rotate}deg)`,
-        }}
-      >
-        {/* 禁用 Referer 携带，防止防盗链拦截 */}
-        <img
-          src={src}
-          alt={alt || 'Image Preview'}
-          referrerPolicy="no-referrer"
-          style={{
-            maxWidth: '100%',
-            maxHeight: '85vh',
-            objectFit: 'contain',
-            borderRadius: 4,
-            boxShadow: '0 12px 36px rgba(0, 0, 0, 0.5)',
-          }}
-        />
-      </div>
-
-      {/* 底部信息 */}
-      {alt && (
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 20,
-            color: 'rgba(255, 255, 255, 0.75)',
-            fontSize: 13,
-            background: 'rgba(0, 0, 0, 0.5)',
-            padding: '4px 12px',
-            borderRadius: 12,
-          }}
-        >
-          {alt}
-        </div>
-      )}
-    </div>
-  );
+/** 是否为打开右键菜单的点击：右键，或 macOS 上的 Control+左键 */
+function isContextClick(event: MouseEvent): boolean {
+  return event.button === 2 || (TARGET_PLATFORM === 'macos' && event.button === 0 && event.ctrlKey);
 }
 
-const modalBtnStyle: React.CSSProperties = {
-  background: 'transparent',
-  border: 'none',
-  color: '#ffffff',
-  cursor: 'pointer',
-  padding: '4px 6px',
-  borderRadius: 4,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  transition: 'background 120ms ease',
-};
+/** 事件目标是否位于当前编辑器内的图片节点视图中 */
+function isInImageView(view: EditorView, target: EventTarget | null): boolean {
+  const element = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+  const imageView = element?.closest(`[${IMAGE_VIEW_ATTRIBUTE}]`);
+  return Boolean(imageView && view.dom.contains(imageView));
+}
+
+/** 菜单信息头显示的名称：本地图片取文件名，网络图片取地址末段，内嵌图片统一称呼 */
+function describeImageName(rawSrc: string, absPath: string | null): string {
+  if (absPath) return basenameOf(absPath);
+  if (rawSrc.startsWith('data:')) return '内嵌图片';
+  try {
+    const url = new URL(rawSrc);
+    const segment = url.pathname.split('/').filter(Boolean).pop();
+    return segment ? decodeURIComponent(segment) : url.host;
+  } catch {
+    return rawSrc || '图片';
+  }
+}
+
+/** 图片格式简称（PNG / JPG / SVG …），用于菜单信息头 */
+function describeImageFormat(rawSrc: string, absPath: string | null): string {
+  const dataMime = /^data:image\/([a-z0-9.+-]+)[;,]/i.exec(rawSrc)?.[1];
+  if (dataMime) return dataMime.replace(/\+xml$/i, '').toUpperCase();
+  const name = absPath ? basenameOf(absPath) : rawSrc.split(/[?#]/)[0];
+  const ext = /\.([a-z0-9]{2,5})$/i.exec(name)?.[1];
+  return ext ? ext.toUpperCase() : '';
+}
+
+/**
+ * 解析图片的显示地址与本地绝对路径：
+ * 网络地址 / Base64 原样使用；相对路径按当前文档目录（或工作区根目录）解析为本地文件。
+ */
+function resolveImageSource(rawSrc: string): { display: string; absPath: string | null } {
+  if (!rawSrc) return { display: '', absPath: null };
+
+  // 1. 网络 URL 或 Base64
+  if (
+    rawSrc.startsWith('http://') ||
+    rawSrc.startsWith('https://') ||
+    rawSrc.startsWith('data:') ||
+    rawSrc.startsWith('asset:')
+  ) {
+    return { display: rawSrc, absPath: null };
+  }
+
+  // 2. 本地相对路径或绝对路径
+  const activeKey = useWindowStore.getState().activeKey;
+  const currentDoc = activeKey ? useDocumentStore.getState().getDocument(activeKey) : null;
+  const baseDir = currentDoc?.dirPath || useExplorerStore.getState().root;
+  const absPath = baseDir ? resolveRelativeDocPath(baseDir, rawSrc) : isAbsoluteLocalPath(rawSrc) ? rawSrc : null;
+  if (!absPath) return { display: rawSrc, absPath: null };
+  try {
+    return { display: convertFileSrc(absPath), absPath };
+  } catch {
+    return { display: rawSrc, absPath };
+  }
+}
 
 /** TipTap 图片 NodeView 组件 */
-export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewProps) {
+export function ImageComponent({ node, editor, updateAttributes, deleteNode }: NodeViewProps) {
   const [hovered, setHovered] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
-  const [resolvedDisplaySrc, setResolvedDisplaySrc] = useState<string>('');
-  const [resolvedAbsPath, setResolvedAbsPath] = useState<string | null>(null);
+  // 首次渲染就解析出图片地址：不再先渲染一个空 src 的 <img>（粘贴图片替换占位时会闪一下空白）
+  const [initialSource] = useState(() => resolveImageSource(node.attrs.src || ''));
+  const [resolvedDisplaySrc, setResolvedDisplaySrc] = useState<string>(initialSource.display);
+  const [resolvedAbsPath, setResolvedAbsPath] = useState<string | null>(initialSource.absPath);
+  const resolvedForRef = useRef<string>(node.attrs.src || '');
+  // 右键菜单位置（视口坐标）；打开期间图片显示描边，标明菜单作用对象
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  // 原图像素尺寸，显示在右键菜单信息头
+  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
 
   const rawSrc: string = node.attrs.src || '';
   const alt: string = node.attrs.alt || '';
@@ -256,51 +144,16 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
   const width: string = node.attrs.width || '100%';
   const linkHref: string = node.attrs.href || '';
 
-  // 动态解析图片真实 URL
+  // 图片地址变化（如重命名文件）时重新解析；首次解析已在初始状态中完成，
+  // 不能在此重置尺寸——缓存命中的图片可能在本副作用执行前就已触发 onLoad
   useEffect(() => {
+    if (resolvedForRef.current === rawSrc) return;
+    resolvedForRef.current = rawSrc;
     setLoadError(false);
-    if (!rawSrc) {
-      setResolvedDisplaySrc('');
-      setResolvedAbsPath(null);
-      return;
-    }
-
-    // 1. 网络 URL 或 Base64
-    if (
-      rawSrc.startsWith('http://') ||
-      rawSrc.startsWith('https://') ||
-      rawSrc.startsWith('data:') ||
-      rawSrc.startsWith('asset:')
-    ) {
-      setResolvedDisplaySrc(rawSrc);
-      setResolvedAbsPath(null);
-      return;
-    }
-
-    // 2. 本地相对路径或绝对路径
-    const activeKey = useWindowStore.getState().activeKey;
-    const currentDoc = activeKey ? useDocumentStore.getState().getDocument(activeKey) : null;
-    const baseDir = currentDoc?.dirPath || useExplorerStore.getState().root;
-
-    if (baseDir) {
-      const absPath = resolveRelativeDocPath(baseDir, rawSrc);
-      setResolvedAbsPath(absPath);
-      try {
-        setResolvedDisplaySrc(convertFileSrc(absPath));
-      } catch {
-        setResolvedDisplaySrc(rawSrc);
-      }
-    } else if (isAbsoluteLocalPath(rawSrc)) {
-      setResolvedAbsPath(rawSrc);
-      try {
-        setResolvedDisplaySrc(convertFileSrc(rawSrc));
-      } catch {
-        setResolvedDisplaySrc(rawSrc);
-      }
-    } else {
-      setResolvedDisplaySrc(rawSrc);
-      setResolvedAbsPath(null);
-    }
+    setNaturalSize(null);
+    const next = resolveImageSource(rawSrc);
+    setResolvedDisplaySrc(next.display);
+    setResolvedAbsPath(next.absPath);
   }, [rawSrc]);
 
   // 处理对齐样式
@@ -349,12 +202,188 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
   // 在系统文件夹中显示
   const handleRevealInDir = async () => {
     if (resolvedAbsPath) {
-      await ipc.revealInExplorer(resolvedAbsPath);
+      await ipc.revealInExplorer(resolvedAbsPath).catch((error) => {
+        showToast(describeError(error, '无法打开文件夹'), 'error');
+      });
     }
   };
 
+  // ── 右键菜单 ──
+
+  const isRemote = /^https?:\/\//i.test(rawSrc);
+  // 菜单与预览中复制、另存为读取的图片来源：本地图片按磁盘路径读取原文件
+  const imageSource: ImageSource = { path: resolvedAbsPath, url: resolvedDisplaySrc || rawSrc };
+
+  /** 执行异步操作并以 Toast 反馈结果 */
+  const runWithToast = async (task: () => Promise<unknown>, success: string, failure: string) => {
+    try {
+      await task();
+      showToast(success, 'success');
+    } catch (error) {
+      showToast(describeError(error, failure), 'error');
+    }
+  };
+
+  const handleCopyImage = () => runWithToast(() => copyImageToClipboard(imageSource), '图片已复制', '复制图片失败');
+
+  const handleSaveAs = async () => {
+    try {
+      // 取消保存不提示
+      if (await saveImageAs(imageSource)) showToast('图片已保存', 'success');
+    } catch (error) {
+      showToast(describeError(error, '保存图片失败'), 'error');
+    }
+  };
+
+  // 编辑替代文本（显示在图片下方的说明文字）
+  const handleEditCaption = async () => {
+    const value = await showPrompt({
+      title: '编辑图片说明',
+      icon: <Captions size={17} />,
+      defaultValue: alt,
+      placeholder: '显示在图片下方，可留空',
+      confirmLabel: '保存',
+      allowEmpty: true,
+    });
+    if (value === null || editor.isDestroyed) return;
+    try {
+      updateAttributes({ alt: value });
+    } catch {
+      // 弹窗期间图片已被删除或撤销，忽略
+    }
+  };
+
+  // 重命名磁盘上的图片文件（扩展名不变），并同步文档中的引用
+  const handleRenameFile = async () => {
+    if (!resolvedAbsPath) return;
+    const absPath = resolvedAbsPath;
+    const { stem, ext } = splitFileName(basenameOf(absPath));
+    const value = await showPrompt({
+      title: '重命名图片文件',
+      icon: <PenLine size={17} />,
+      description: ext ? `扩展名 ${ext} 保持不变` : undefined,
+      defaultValue: stem,
+      confirmLabel: '重命名',
+      validate: validateFileStem,
+    });
+    if (value === null || editor.isDestroyed) return;
+    try {
+      const newName = await renameImageFile(editor, { absPath, rawSrc, newStem: value });
+      if (newName) showToast(`已重命名为 ${newName}`, 'success');
+    } catch (error) {
+      showToast(describeError(error, '重命名失败'), 'error');
+    }
+  };
+
+  // 右键（触屏长按）图片：弹出图片菜单，不再走通用的文本右键菜单
+  const handleContextMenu = (event: React.MouseEvent) => {
+    event.preventDefault();
+    // 只拦 React 树（编辑器容器的右键处理），原生事件继续冒泡，其他菜单的「点外部关闭」照常生效
+    stopReactPropagation(event);
+    setHovered(false);
+    setContextMenu({ x: event.clientX, y: event.clientY });
+  };
+
+  /** 按图片来源、可编辑状态与平台组装菜单 */
+  const buildMenuSections = (): ImageMenuSection[] => {
+    const editable = editor.isEditable;
+    const isLocal = Boolean(resolvedAbsPath);
+    const usable = !loadError && Boolean(resolvedDisplaySrc);
+    const pick = (items: Array<ImageMenuItem | false>) => items.filter((item): item is ImageMenuItem => Boolean(item));
+
+    const sections: ImageMenuSection[] = [
+      {
+        kind: 'items',
+        key: 'view',
+        items: pick([
+          usable && { key: 'preview', label: '查看大图', Icon: Maximize2, onSelect: () => setLightboxOpen(true) },
+          // 移动端没有标签页，图片以单独页面打开
+          isLocal && {
+            key: 'open-tab',
+            label: IS_NATIVE_MOBILE ? '单独打开' : '在独立标签页中打开',
+            Icon: ExternalLink,
+            onSelect: () => void handleOpenInTab(),
+          },
+          // 移动端没有可定位文件的系统文件管理器
+          isLocal && !IS_NATIVE_MOBILE && { key: 'reveal', label: '在文件夹中显示', Icon: FolderOpen, onSelect: () => void handleRevealInDir() },
+          isRemote && { key: 'open-url', label: '在浏览器中打开', Icon: Globe, onSelect: () => void ipc.openExternalUrl(rawSrc) },
+          Boolean(linkHref) && {
+            key: 'open-link',
+            label: '打开图片链接',
+            Icon: Link2,
+            onSelect: () => void handleLinkClick(linkHref, useWindowStore.getState().activeKey ?? ''),
+          },
+        ]),
+      },
+      {
+        kind: 'items',
+        key: 'copy',
+        items: pick([
+          usable && { key: 'copy-image', label: '复制图片', Icon: Copy, onSelect: () => void handleCopyImage() },
+          // 文件形式只在桌面端可用：可直接粘贴到文件管理器或聊天软件
+          usable && isLocal && CAN_COPY_IMAGE_FILE && {
+            key: 'copy-file',
+            label: '复制为文件',
+            Icon: Files,
+            onSelect: () => void runWithToast(() => copyImageFileToClipboard(resolvedAbsPath!), '已复制图片文件', '复制文件失败'),
+          },
+          (isLocal || isRemote) && {
+            key: 'copy-path',
+            label: isLocal ? '复制文件路径' : '复制图片链接',
+            Icon: Link,
+            onSelect: () => void runWithToast(() => copyImageLocation(imageSource), isLocal ? '已复制文件路径' : '已复制图片链接', '复制失败'),
+          },
+          // 移动端以系统分享代替文件复制
+          usable && isLocal && IS_NATIVE_MOBILE && {
+            key: 'share',
+            label: '分享图片',
+            Icon: Share2,
+            onSelect: () => void ipc.shareFile(resolvedAbsPath!).catch((error) => showToast(describeError(error, '分享失败'), 'error')),
+          },
+          usable && { key: 'save-as', label: '另存为…', Icon: Download, onSelect: () => void handleSaveAs() },
+        ]),
+      },
+    ];
+
+    // 沉浸阅读等只读状态不提供修改类操作
+    if (editable) {
+      sections.push(
+        {
+          kind: 'layout',
+          key: 'layout',
+          align,
+          width,
+          onAlign: (next: ImageAlign) => updateAttributes({ align: next }),
+          onWidth: (next: string) => updateAttributes({ width: next }),
+        },
+        {
+          kind: 'items',
+          key: 'edit',
+          items: pick([
+            { key: 'caption', label: '编辑说明文字…', Icon: Captions, onSelect: () => void handleEditCaption() },
+            // 图片加载失败时文件多半已不存在，不提供重命名
+            usable && isLocal && { key: 'rename', label: '重命名文件…', Icon: PenLine, onSelect: () => void handleRenameFile() },
+          ]),
+        },
+        {
+          kind: 'items',
+          key: 'delete',
+          items: [{ key: 'delete', label: '删除图片', Icon: Trash2, danger: true, onSelect: deleteNode }],
+        },
+      );
+    }
+    return sections;
+  };
+
+  const format = describeImageFormat(rawSrc, resolvedAbsPath);
+  const menuMeta = [format, naturalSize && `${naturalSize.width} × ${naturalSize.height}`].filter(Boolean).join(' · ');
+  // 菜单打开期间以强调色描边标明作用对象（替代整块选中底板）
+  const contextOutline: React.CSSProperties = contextMenu
+    ? { outline: '2px solid var(--accent-500, #3b82f6)', outlineOffset: 2 }
+    : {};
+
   return (
-    <NodeViewWrapper style={alignContainerStyle}>
+    <NodeViewWrapper style={alignContainerStyle} {...{ [IMAGE_VIEW_ATTRIBUTE]: '' }} onContextMenu={handleContextMenu}>
       <div
         style={{
           position: 'relative',
@@ -367,8 +396,8 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
-        {/* 悬停浮层快捷操作工具栏 */}
-        {hovered && (
+        {/* 悬停浮层快捷操作工具栏（右键菜单打开期间隐藏，避免与菜单重复） */}
+        {hovered && !contextMenu && (
           <div
             style={{
               position: 'absolute',
@@ -541,6 +570,7 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
               gap: 8,
               color: 'var(--editor-text)',
               fontSize: 13,
+              ...contextOutline,
             }}
           >
             <AlertCircle size={24} color="#ef4444" />
@@ -576,6 +606,10 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
             src={resolvedDisplaySrc}
             alt={alt}
             referrerPolicy="no-referrer"
+            onLoad={(event) => {
+              const image = event.currentTarget;
+              setNaturalSize(image.naturalWidth > 0 ? { width: image.naturalWidth, height: image.naturalHeight } : null);
+            }}
             onError={() => setLoadError(true)}
             onDoubleClick={() => setLightboxOpen(true)}
             style={{
@@ -591,12 +625,13 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
                 ? '1px solid var(--editor-border-focus)'
                 : '1px solid var(--editor-border)',
               transition: 'box-shadow 150ms ease, border-color 150ms ease',
+              ...contextOutline,
             }}
           />
         )}
 
         {/* 拖拽缩放手柄（右下角） */}
-        {hovered && !loadError && (
+        {hovered && !contextMenu && !loadError && (
           <Tooltip content="拖拽拉伸调节图片尺寸" side="left" sideOffset={6}>
             <div
               onMouseDown={handleResizeStart}
@@ -634,14 +669,28 @@ export function ImageComponent({ node, updateAttributes, deleteNode }: NodeViewP
         )}
       </div>
 
-      {/* 大图预览 Lightbox 模态框 */}
+      {/* 大图预览：与思维导图图片共用浮层，支持滚轮滚动、Ctrl/⌘+滚轮缩放、拖动平移 */}
       {lightboxOpen && resolvedDisplaySrc && (
-        <ImageLightboxModal
+        <ImagePreviewOverlay
           src={resolvedDisplaySrc}
           alt={alt}
           onClose={() => setLightboxOpen(false)}
+          onCopyImage={() => copyImageToClipboard(imageSource)}
           onOpenInTab={resolvedAbsPath ? handleOpenInTab : undefined}
-          onRevealInDir={resolvedAbsPath ? handleRevealInDir : undefined}
+          // 移动端没有可定位文件的系统文件管理器
+          onRevealInDir={resolvedAbsPath && !IS_NATIVE_MOBILE ? handleRevealInDir : undefined}
+        />
+      )}
+
+      {/* 图片右键菜单 */}
+      {contextMenu && (
+        <ImageContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          title={describeImageName(rawSrc, resolvedAbsPath)}
+          meta={menuMeta}
+          sections={buildMenuSections()}
+          onClose={() => setContextMenu(null)}
         />
       )}
     </NodeViewWrapper>
@@ -661,171 +710,32 @@ const actionBtnStyle: React.CSSProperties = {
   transition: 'background var(--transition-fast)',
 };
 
-// ── 图片 Markdown 序列化 ──
-
-const DEFAULT_IMAGE_WIDTH = '100%';
-const DEFAULT_IMAGE_ALIGN = 'center';
-
-/** 解析 <img width> 属性：纯数字按像素处理，百分比/像素原样保留，其余回退默认宽度。 */
-export function normalizeImageWidth(value: string | null | undefined): string {
-  const trimmed = (value ?? '').trim();
-  if (/^\d+(?:\.\d+)?%$/.test(trimmed) || /^\d+(?:\.\d+)?px$/.test(trimmed)) return trimmed;
-  if (/^\d+(?:\.\d+)?$/.test(trimmed)) return `${trimmed}px`;
-  return DEFAULT_IMAGE_WIDTH;
-}
-
-/** 解析 <img align> 属性：仅接受左/中/右三种对齐。 */
-export function normalizeImageAlign(value: string | null | undefined): string {
-  const lowered = (value ?? '').trim().toLowerCase();
-  return lowered === 'left' || lowered === 'right' || lowered === 'center' ? lowered : DEFAULT_IMAGE_ALIGN;
-}
-
-/** HTML 属性值转义 */
-function escapeHtmlAttribute(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-}
-
-/** Markdown 图片地址：含空白、括号或尖括号时用 <...> 包裹，避免链接目标被截断。 */
-function formatImageDestination(src: string): string {
-  if (!/[\s()<>]/.test(src)) return src;
-  return `<${src.replace(/[<>]/g, (character) => encodeURIComponent(character))}>`;
-}
-
-/**
- * 图片序列化：默认尺寸与对齐输出标准 `![alt](src "title")`；
- * 用户调整过尺寸或对齐时输出 `<img>`，保证重新打开后排版可恢复（GitHub 等渲染器同样识别 width / align）。
- */
-export function renderImageMarkdown(attrs: Record<string, unknown>): string {
-  const src = String(attrs.src ?? '');
-  const alt = String(attrs.alt ?? '');
-  const title = String(attrs.title ?? '');
-  const width = String(attrs.width ?? DEFAULT_IMAGE_WIDTH) || DEFAULT_IMAGE_WIDTH;
-  const align = String(attrs.align ?? DEFAULT_IMAGE_ALIGN) || DEFAULT_IMAGE_ALIGN;
-
-  if (width !== DEFAULT_IMAGE_WIDTH || align !== DEFAULT_IMAGE_ALIGN) {
-    const parts = [`src="${escapeHtmlAttribute(src)}"`];
-    if (alt) parts.push(`alt="${escapeHtmlAttribute(alt)}"`);
-    if (title) parts.push(`title="${escapeHtmlAttribute(title)}"`);
-    if (width !== DEFAULT_IMAGE_WIDTH) parts.push(`width="${escapeHtmlAttribute(width)}"`);
-    if (align !== DEFAULT_IMAGE_ALIGN) parts.push(`align="${escapeHtmlAttribute(align)}"`);
-    return `<img ${parts.join(' ')}>`;
-  }
-
-  // alt 中的方括号需转义（反斜杠保持原样，避免 Windows 路径类文本被翻倍）；title 中的双引号需转义
-  const safeAlt = alt.replace(/([[\]])/g, '\\$1');
-  const destination = formatImageDestination(src);
-  return title
-    ? `![${safeAlt}](${destination} "${title.replace(/(["\\])/g, '\\$1')}")`
-    : `![${safeAlt}](${destination})`;
-}
-
-/** 带链接的图片：外层包裹 `[...](href "title")`，与 README 徽章等写法 `[![alt](src)](href)` 一致 */
-function wrapImageLink(image: string, attrs: Record<string, unknown>): string {
-  const href = typeof attrs.href === 'string' ? attrs.href : '';
-  if (!href) return image;
-  const linkTitle = typeof attrs.linkTitle === 'string' ? attrs.linkTitle : '';
-  const destination = formatImageDestination(href);
-  return linkTitle
-    ? `[${image}](${destination} "${linkTitle.replace(/(["\\])/g, '\\$1')}")`
-    : `[${image}](${destination})`;
-}
-
-/**
- * 解析 `[![alt](src)](href)`：图片是独立节点，无法承载链接标记，原先外层链接会在解析时丢失。
- * 链接内容仅为一张图片时返回带 href 的图片节点；其余链接返回 null，由 Link 扩展按原逻辑处理。
- */
-export function parseLinkedImageToken(token: MarkdownToken, helpers: MarkdownParseHelpers): JSONContent | null {
-  const children = (token.tokens ?? []).filter((child) => !(child.type === 'text' && !child.raw?.trim()));
-  const image = children.length === 1 && children[0].type === 'image' ? children[0] : null;
-  if (!image) return null;
-  return helpers.createNode('image', {
-    src: image.href,
-    title: image.title,
-    alt: image.text,
-    width: '100%',
-    align: 'center',
-    href: token.href,
-    linkTitle: token.title || null,
-  });
-}
-
 /** TipTap 增强版 Image 扩展定义 */
-export const EnhancedImageBlock = Node.create({
-  name: 'image',
-  group: 'block',
-  inline: false,
-  draggable: true,
-  selectable: true,
-  isolating: true,
-
-  addAttributes() {
-    return {
-      src: {
-        default: null,
-      },
-      alt: {
-        default: null,
-      },
-      title: {
-        default: null,
-      },
-      width: {
-        default: '100%',
-      },
-      align: {
-        default: 'center',
-      },
-      // 图片外层链接（`[![alt](src)](href)`）及其标题，仅用于 Markdown 往返与悬停工具栏中的打开链接
-      href: {
-        default: null,
-        rendered: false,
-      },
-      linkTitle: {
-        default: null,
-        rendered: false,
-      },
-    };
-  },
-
-  parseHTML() {
-    return [
-      {
-        tag: 'img[src]',
-        getAttrs: (dom) => {
-          if (typeof dom === 'string') return {};
-          const el = dom as HTMLImageElement;
-          return {
-            src: el.getAttribute('data-raw-src') || el.getAttribute('src'),
-            alt: el.getAttribute('alt'),
-            title: el.getAttribute('title'),
-            // 兼容序列化输出的标准 width / align 属性（Markdown 中以 <img> 保存尺寸与对齐）
-            width: el.getAttribute('data-width') || normalizeImageWidth(el.getAttribute('width')),
-            align: el.getAttribute('data-align') || normalizeImageAlign(el.getAttribute('align')),
-          };
-        },
-      },
-    ];
-  },
-
-  renderHTML({ HTMLAttributes }) {
-    // 渲染 HTML 时默认添加 referrerpolicy，确保导出或预览时不被防盗链拦截
-    return ['img', mergeAttributes({ referrerpolicy: 'no-referrer' }, HTMLAttributes)];
-  },
-
-  parseMarkdown: (token, helpers) => {
-    return helpers.createNode('image', {
-      src: token.href,
-      title: token.title,
-      alt: token.text,
-      width: '100%',
-      align: 'center',
-    });
-  },
-
-  renderMarkdown: (node) => wrapImageLink(renderImageMarkdown(node.attrs ?? {}), node.attrs ?? {}),
+export const EnhancedImageBlock = EnhancedImageBlockCore.extend({
 
   addNodeView() {
     return ReactNodeViewRenderer(ImageComponent);
+  },
+
+  addProseMirrorPlugins() {
+    return [
+      ...(this.parent?.() ?? []),
+      new Plugin({
+        key: new PluginKey('nbImageContextClick'),
+        props: {
+          handleDOMEvents: {
+            // 右键图片时跳过 ProseMirror 的点击选中：原先图片会被选为整块（底板盖住图片），
+            // 右键菜单也因此误判为「选中文本」而弹出文字格式菜单。图片菜单由节点视图自行弹出。
+            mousedown: (view, event) => {
+              if (!isContextClick(event) || !isInImageView(view, event.target)) return false;
+              // 同时阻止浏览器默认行为：避免原生选区移动到图片两侧后又被同步为整块选中
+              event.preventDefault();
+              return true;
+            },
+          },
+        },
+      }),
+    ];
   },
 
   addCommands() {
@@ -839,6 +749,6 @@ export const EnhancedImageBlock = Node.create({
           });
         },
     } as never;
-  },
+  }
 });
 

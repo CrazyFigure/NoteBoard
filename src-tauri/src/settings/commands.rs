@@ -31,6 +31,10 @@ pub fn save_settings(
     #[cfg(desktop)]
     crate::window::apply_system_settings(&app, &s);
 
+    // 本地文件搜索的开关与索引位置即时生效（索引在后台线程调整，不阻塞保存）
+    #[cfg(desktop)]
+    crate::local_search::apply_settings(&app, &s.local_search);
+
     // 🔴 emit 在 v2 里是广播 —— 这里是故意的（FR-1004 所有窗口同步）
     // 不需要 emit_to(label, ...)
     let _ = app.emit("nb://settings-changed", &s);

@@ -12,12 +12,16 @@
 // 7. 主题切换时重渲染
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer, NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
 import { observe } from './viewportActivation';
-import { diagramFenceMarkdown } from './markdownFence';
 import { scheduleTask, cancelTask } from './viewportWorkScheduler';
 import { useEditorActive } from '../../core/editor/EditorActivityContext';
+import { Tooltip } from '../../components/Tooltip';
+import { Maximize2, Edit2, AlertCircle } from 'lucide-react';
+import { ChartExportMenu } from '../export/ChartExportMenu';
+import { DiagramFullscreenModal } from './DiagramFullscreenModal';
+import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
+import { MermaidBlockCore } from './mermaidCore';
 
 /** 🔴 S14：任务身份 = editor 实例（文档）+ 节点位置——不同节点互不覆盖 */
 const editorTaskIds = new WeakMap<object, number>();
@@ -30,7 +34,6 @@ function editorTaskId(editor: object): number {
   }
   return id;
 }
-import { Tooltip } from '../../components/Tooltip';
 
 // ── 全局串行渲染队列 ──
 
@@ -125,11 +128,6 @@ function getCurrentMermaidTheme(): 'default' | 'dark' | 'forest' {
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   return isDark ? 'dark' : 'default';
 }
-
-import { Maximize2, Edit2, AlertCircle } from 'lucide-react';
-import { ChartExportMenu } from '../export/ChartExportMenu';
-import { DiagramFullscreenModal } from './DiagramFullscreenModal';
-import { buildExportFileName, type ChartImageSource } from '../export/chartExport';
 
 // ── React NodeView ──
 
@@ -498,30 +496,7 @@ function MermaidComponent({ node, updateAttributes, selected, editor, getPos }: 
 // ── TipTap 节点定义 ──
 
 /** Mermaid 块节点 */
-export const MermaidBlock = Node.create({
-  name: 'mermaidBlock',
-  // Markdown 往返：序列化为 ```mermaid 围栏，打开时同语言围栏还原为预览块（缺失时内容会在保存时丢失）
-  ...diagramFenceMarkdown('mermaidBlock', 'mermaid'),
-  group: 'block',
-  atom: true,
-  selectable: true,
-  isolating: true,
-  addAttributes() {
-    return {
-      code: {
-        default: '',
-      },
-    };
-  },
-  parseHTML() {
-    return [
-      { tag: 'div[data-mermaid]' },
-      { tag: 'pre[data-language="mermaid"]' },
-    ];
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ['div', mergeAttributes(HTMLAttributes, { 'data-mermaid': '' })];
-  },
+export const MermaidBlock = MermaidBlockCore.extend({
   addNodeView() {
     return ReactNodeViewRenderer(MermaidComponent);
   },
@@ -536,7 +511,7 @@ export const MermaidBlock = Node.create({
           });
         },
     } as never;
-  },
+  }
 });
 
 /** 清除 Mermaid 模块（主题切换时重置初始化） */

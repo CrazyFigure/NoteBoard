@@ -44,13 +44,14 @@ export function createView(container, name, reading) {
 /** 沉浸阅读入口固定在工具栏末尾；阅读时工具栏浮于顶部并收起，指针靠近顶部或键盘聚焦时展开。 */
 function readingControl(host, toolbar, reading) {
   let active = false, timer = 0;
-  const b = button('', () => reading.set(!active), { icon: 'maximize', className: 'np-icon np-ghost np-reading' });
+  // 图标与主程序各格式的入口一致：书本进入、收拢箭头退出，避免被误认作全屏按钮
+  const b = button('', () => reading.set(!active), { icon: 'book', className: 'np-icon np-ghost np-reading' });
   tip(b, () => (active ? '退出沉浸阅读（Esc）' : '沉浸阅读'));
   const reveal = (show, delay = 0) => { clearTimeout(timer); if (show) toolbar.classList.add('np-reveal'); else timer = setTimeout(() => toolbar.classList.remove('np-reveal'), delay); };
   const sync = (next) => {
     active = next; host.toggleAttribute('data-reading', active);
     b.setAttribute('aria-pressed', String(active)); b.setAttribute('aria-label', active ? '退出沉浸阅读' : '沉浸阅读');
-    b.replaceChildren(icon(active ? 'minimize' : 'maximize', 15));
+    b.replaceChildren(icon(active ? 'minimize' : 'book', 15));
     // 进入阅读时短暂展示工具栏，提示它收在顶部
     if (active) { reveal(true); reveal(false, 1600); } else reveal(false);
   };
@@ -79,7 +80,7 @@ const ICONS = {
   grip: 'M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01', settings: 'M20 7h-9M14 17H5M17 17a3 3 0 1 0 6 0 3 3 0 1 0-6 0M7 7a3 3 0 1 0-6 0 3 3 0 1 0 6 0',
   list: 'M3 12h.01M3 18h.01M3 6h.01M8 12h13M8 18h13M8 6h13',
   external: 'M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6',
-  maximize: 'M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7', minimize: 'M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7',
+  minimize: 'M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7',
 };
 
 /** 内联 SVG 图标，颜色跟随 currentColor。 */

@@ -1,0 +1,13 @@
+/* 拖放覆盖层完全透传鼠标，颜色、圆角和浮层均跟随现有主题。 */
+.nb-tab-drop-feedback { position: fixed; inset: 0; z-index: 9500; pointer-events: none; opacity: 0; transition: opacity 120ms ease; }
+.nb-tab-drop-feedback.is-visible { opacity: 1; }
+.nb-tab-drop-outline { position: absolute; inset: 5px; border: 2px solid var(--accent-strong); border-radius: 9px; background: rgba(59, 130, 246, 0.025); background: color-mix(in srgb, var(--accent-strong) 3%, transparent); }
+.nb-tab-drop-hint { position: absolute; top: 45px; left: 50%; display: flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid var(--editor-border); border-radius: 8px; color: var(--accent-strong); background: var(--editor-surface); box-shadow: var(--shadow-md); font-family: var(--ui-font-family, sans-serif); font-size: 12px; transform: translate(-50%, -5px); transition: transform 160ms ease; }
+.nb-tab-drop-feedback.is-visible .nb-tab-drop-hint { transform: translate(-50%, 0); }
+.nb-tab-drop-marker { position: fixed; width: 3px; border-radius: 2px; background: var(--accent-strong); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-strong) 13%, transparent); transition: left 90ms ease; }
+/* 动画只在接收标签时短暂生效；窗口内排序仍由 dnd-kit 控制。 */
+@keyframes nb-tab-arrive { from { opacity: 0; transform: translateY(5px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .nb-tab-drop-feedback, .nb-tab-drop-hint, .nb-tab-drop-marker { transition: none; }
+  [data-tab-arriving] { animation: none !important; }
+}

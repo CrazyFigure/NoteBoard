@@ -1,0 +1,111 @@
+/* 悬停由浏览器按实际命中位置计算，避免快速移动或提示浮层切换时漏掉离开事件而残留行内高亮。 */
+.nb-favorites-row {
+  border: 1px solid var(--editor-border, rgba(0, 0, 0, 0.06));
+  background: var(--editor-surface, #ffffff);
+}
+
+/* 失效文件离开悬停后恢复原有底色，拖拽透明度仍由行组件独立控制。 */
+.nb-favorites-row[data-missing='true'] {
+  background: var(--editor-bg, #f8fafc);
+}
+
+.nb-favorites-tree-node {
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+.nb-favorites-tree-node[data-active='true'] {
+  background: var(--toolbar-active, rgba(0, 0, 0, 0.08));
+}
+
+/* 操作图标、菜单、关闭与面包屑同样交给 CSS 恢复颜色，避免子控件保留行内悬停样式。 */
+.nb-favorites-hover-button {
+  --favorites-button-hover: var(--toolbar-hover);
+  background: transparent;
+}
+
+.nb-favorites-danger-button {
+  --favorites-button-hover: var(--error-surface, rgba(239, 68, 68, 0.1));
+}
+
+.nb-favorites-close-button {
+  background: transparent;
+  color: var(--editor-text-muted, #64748b);
+}
+
+.nb-favorites-breadcrumb {
+  color: var(--editor-text-muted);
+}
+
+.nb-favorites-action-button {
+  border: 1px solid var(--control-border);
+  background: var(--editor-surface);
+}
+
+/* 仅支持悬停的主指针启用 hover，避免触摸端点击后保持模拟悬停；按下反馈覆盖所有端。 */
+@media (hover: hover) {
+  .nb-favorites-row:hover {
+    background: var(--toolbar-hover, rgba(0, 0, 0, 0.03));
+    border-color: var(--editor-border-focus, rgba(0, 0, 0, 0.15));
+  }
+
+  .nb-favorites-tree-node:where([data-active='false']):hover {
+    background: var(--toolbar-hover, rgba(0, 0, 0, 0.04));
+  }
+
+  .nb-favorites-hover-button:hover {
+    background: var(--favorites-button-hover);
+  }
+
+  .nb-favorites-close-button:hover {
+    background: var(--toolbar-hover, rgba(0, 0, 0, 0.06));
+    color: var(--editor-text, #0f172a);
+  }
+
+  .nb-favorites-breadcrumb:hover {
+    color: var(--editor-accent);
+  }
+
+  .nb-favorites-action-button:hover {
+    background: var(--toolbar-hover);
+    border-color: var(--editor-border-focus);
+  }
+}
+
+.nb-favorites-row:active {
+  background: var(--toolbar-hover, rgba(0, 0, 0, 0.03));
+  border-color: var(--editor-border-focus, rgba(0, 0, 0, 0.15));
+}
+
+.nb-favorites-tree-node:where([data-active='false']):active {
+  background: var(--toolbar-hover, rgba(0, 0, 0, 0.04));
+}
+
+.nb-favorites-hover-button:active {
+  background: var(--favorites-button-hover);
+}
+
+.nb-favorites-close-button:active {
+  background: var(--toolbar-hover, rgba(0, 0, 0, 0.06));
+  color: var(--editor-text, #0f172a);
+}
+
+.nb-favorites-breadcrumb:active {
+  color: var(--editor-accent);
+}
+
+.nb-favorites-action-button:active {
+  background: var(--toolbar-hover);
+  border-color: var(--editor-border-focus);
+}
+
+/* 拖拽落点优先于悬停、按下和选中状态，保留原有虚线边框与底色。 */
+.nb-favorites-row[data-drop-target='true'] {
+  border: 1px dashed var(--editor-accent, #3b82f6);
+  background: var(--accent-surface, rgba(59, 130, 246, 0.08));
+}
+
+.nb-favorites-tree-node[data-drop-target='true'] {
+  border: 1px dashed var(--editor-accent);
+  background: var(--accent-surface, rgba(59, 130, 246, 0.15));
+}

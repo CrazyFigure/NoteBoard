@@ -45,9 +45,9 @@ export const SPEC: TagStyleSpec[] = [
     tag: [t.string, t.special(t.string), t.docString],
     color: cssVar('--hljs-string'),
   },
-  // number/integer/float/bool/null → --hljs-number
+  // number/integer/float/bool/null/atom → --hljs-number（atom 为 toml 等旧式模式的布尔/常量）
   {
-    tag: [t.number, t.integer, t.float, t.bool, t.null],
+    tag: [t.number, t.integer, t.float, t.bool, t.null, t.atom],
     color: cssVar('--hljs-number'),
   },
   // typeName → --hljs-number (与 hljs 的 type→number 一致)

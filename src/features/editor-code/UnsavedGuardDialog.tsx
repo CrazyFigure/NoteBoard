@@ -122,7 +122,7 @@ export function UnsavedGuardDialog({
     right: 0,
     bottom: 0,
     background: 'rgba(0,0,0,0.45)',
-    backdropFilter: 'blur(2px)',
+    // 关闭保护不使用整窗实时虚化，避免按钮悬停时连带重绘后台编辑器。
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

@@ -10,6 +10,7 @@ import { createPortal } from 'react-dom';
 import { Copy, Download, Check, ChevronDown, FileImage, Loader2, Image as ImageIcon } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 import { showToast } from '../../stores/toastStore';
+import { showExportError, showExportSuccess } from '../../stores/exportResultStore';
 import {
   copyChartImage,
   exportChartImage,
@@ -229,13 +230,19 @@ export function ChartExportMenu({
           const saved = await exportChartImage(source, format, fileName, rasterOptions);
           // 用户主动取消另存为对话框不算失败，不提示
           if (saved) {
-            showToast(`已导出 ${format.toUpperCase()} 图片`, 'success');
+            showExportSuccess(saved, `已导出 ${format.toUpperCase()} 图片`);
           }
         }
         setOpen(false);
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        showToast(`${action === 'copy' ? '复制' : '导出'}失败：${message}`, 'error');
+        if (action === 'copy') {
+          const message = err instanceof Error ? err.message : String(err);
+          showToast(`复制失败：${message}`, 'error');
+        } else {
+          // 导出失败走统一结果弹窗
+          setOpen(false);
+          showExportError(err, '导出图片失败');
+        }
       } finally {
         setBusy(false);
       }

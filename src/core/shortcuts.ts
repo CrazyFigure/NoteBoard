@@ -116,7 +116,8 @@ export function shouldPreventBrowserDefault(e: KeyboardEvent): boolean {
   }
 
   // 6. 浏览器后退/前进导航: Alt+Left, Alt+Right
-  if (e.altKey && (key === 'ArrowLeft' || key === 'ArrowRight')) {
+  // Mac 的后退是 Cmd+←，Option+←/→ 是系统标准的按词移动，这里拦下会让编辑器收不到按键
+  if (!USES_COMMAND_KEY && e.altKey && (key === 'ArrowLeft' || key === 'ArrowRight')) {
     return true;
   }
 

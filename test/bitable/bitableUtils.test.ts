@@ -227,6 +227,36 @@ describe('多维表格通用工具测试', () => {
     expect(groups[0].rows).toHaveLength(2);
   });
 
+  test('groupFlatTreeRows 展开多选时同一行进入每个选中选项的分组', () => {
+    const col: BitableColumn = {
+      id: 'c3',
+      key: 'tags',
+      name: '标签',
+      type: 'multiSelect',
+      options: [
+        { id: 'tag_a', label: '前端', color: 'blue' },
+        { id: 'tag_b', label: '后端', color: 'purple' },
+      ],
+    };
+    const node = (row: BitableRow) => ({ row, depth: 0, hasChildren: false, isCollapsed: false, rowNumber: 1 });
+    const flatRows = [
+      node({ id: 'r1', c3: ['tag_b', 'tag_a', 'tag_b'] } as BitableRow),
+      node({ id: 'r2', c3: ['tag_a'] } as BitableRow),
+      // 只引用了已删除选项的行归入空值组，不为悬空 ID 单独建组
+      node({ id: 'r3', c3: ['tag_gone'] } as BitableRow),
+    ];
+    const groups = groupFlatTreeRows(flatRows, col, { expandMultiSelect: true });
+    expect(groups.map((g) => g.meta.label)).toEqual(['后端', '前端', '未指定']);
+    expect(groups[0].rows.map((n) => n.row.id)).toEqual(['r1']);
+    expect(groups[1].rows.map((n) => n.row.id)).toEqual(['r1', 'r2']);
+    expect(groups[2].rows.map((n) => n.row.id)).toEqual(['r3']);
+
+    // 不展开时仍按首个选中选项分组（甘特图口径）
+    const legacy = groupFlatTreeRows(flatRows, col);
+    expect(legacy.find((g) => g.meta.key === 'tag_b')?.rows.map((n) => n.row.id)).toEqual(['r1']);
+    expect(legacy.find((g) => g.meta.key === 'tag_a')?.rows.map((n) => n.row.id)).toEqual(['r2']);
+  });
+
   test('compareRowsBySortRules 支持多字段联合排序', () => {
     const numberCol: BitableColumn = { id: 'cn', key: 'priority', name: '优先级', type: 'number' };
     const nameCol: BitableColumn = { id: 'c1', key: 'name', name: '名称', type: 'text' };

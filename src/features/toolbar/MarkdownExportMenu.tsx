@@ -6,6 +6,7 @@ import type { Editor } from '@tiptap/core';
 import { Download, FileText, Loader2 } from 'lucide-react';
 import type { Tab } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
+import { showExportError, showExportSuccess } from '../../stores/exportResultStore';
 import { getMdTipTapEditor } from '../editor-md/editorInstances';
 import { defaultPdfPath, exportMarkdownPdf } from '../export/markdownPdfExport';
 import { ToolbarButton, ToolbarDropdown, ToolbarDropdownItem } from './ToolbarComponents';
@@ -33,10 +34,9 @@ export function MarkdownExportMenu({ tab, editor: propEditor }: MarkdownExportMe
     setExporting(true);
     try {
       const saved = await exportMarkdownPdf(editor, { defaultPath: defaultPdfPath(tab.displayName, tab.path) });
-      if (saved) showToast('已导出 PDF', 'success');
+      if (saved) showExportSuccess(saved, '已导出 PDF');
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      showToast(`导出 PDF 失败：${message}`, 'error');
+      showExportError(error, '导出 PDF 失败');
     } finally {
       setExporting(false);
     }

@@ -1,9 +1,11 @@
 [
-  {"id":"word","name":"Word 查看","description":"DOC / DOCX 只读阅读","version":"1.2.0","changelog":"新增沉浸阅读，全屏阅读时工具栏自动收起。"},
-  {"id":"excel","name":"Excel 查看","description":"XLS / XLSX 只读表格","version":"1.2.0","changelog":"新增沉浸阅读，全屏阅读时工具栏自动收起。"},
-  {"id":"powerpoint","name":"PowerPoint 查看","description":"PPT / PPTX 幻灯片阅读","version":"1.2.0","changelog":"新增沉浸阅读，全屏阅读时工具栏自动收起。"},
-  {"id":"pdf","name":"PDF 查看","description":"PDF 分页阅读","version":"1.2.0","changelog":"新增沉浸阅读，全屏阅读时工具栏自动收起。"},
-  {"id":"cad","name":"CAD 查看","description":"DWG / DXF 本地图纸阅读","version":"1.3.0","changelog":"新增沉浸阅读，全屏阅读时工具栏自动收起。"},
-  {"id":"epub","name":"EPUB 阅读","description":"EPUB 电子书阅读","version":"1.1.0","changelog":"新增沉浸阅读，全屏阅读时工具栏自动收起。"},
+  {"id":"word","name":"Word 查看","description":"DOC / DOCX 只读阅读","version":"1.3.1","changelog":"沉浸阅读入口改为书本图标，与其他格式一致。阅读排版改用文字图标。"},
+  {"id":"excel","name":"Excel 查看","description":"XLS / XLSX 只读表格","version":"1.3.1","changelog":"沉浸阅读入口改为书本图标，与其他格式一致。"},
+  {"id":"powerpoint","name":"PowerPoint 查看","description":"PPT / PPTX 幻灯片阅读","version":"1.3.1","changelog":"沉浸阅读入口改为书本图标，与其他格式一致。"},
+  {"id":"pdf","name":"PDF 查看","description":"PDF 分页阅读","version":"1.3.1","changelog":"沉浸阅读入口改为书本图标，与其他格式一致。"},
+  {"id":"cad","name":"CAD 查看","description":"DWG / DXF 本地图纸阅读","version":"1.3.1","changelog":"沉浸阅读入口改为书本图标，与其他格式一致。"},
+  {"id":"epub","name":"EPUB 阅读","description":"EPUB 电子书阅读","version":"1.1.1","changelog":"沉浸阅读入口改为书本图标，与其他格式一致。"},
+  {"id":"notability","name":"Notability 阅读","description":"NOTE 笔迹、预览及附件只读兼容解析","version":"1.0.1","minAppVersion":"0.7.5","changelog":"沉浸阅读入口改为书本图标，与其他格式一致。"},
+  {"id":"goodnotes","name":"Goodnotes 阅读","description":"GOODNOTES 笔迹、预览及附件只读兼容解析","version":"1.0.1","minAppVersion":"0.7.5","changelog":"沉浸阅读入口改为书本图标，与其他格式一致。"},
   {"id":"workbench","name":"多维表格工作台","description":"自由组合多表格数据","version":"1.1.2","changelog":"修复组件拖手无法拖动排序，支持触屏拖动与方向键微调。"}
 ]

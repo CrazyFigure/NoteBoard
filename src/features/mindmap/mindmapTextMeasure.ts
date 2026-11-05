@@ -42,6 +42,19 @@ export const NOTE_MAX_LINES = 8;
 export const IMAGE_BLOCK_HEIGHT = 60;
 /** 挂载图片的节点最小宽度 */
 export const IMAGE_MIN_WIDTH = 160;
+/** 多图网格：节点最小宽度、单元格间距与直接展示的最多张数（其余在末格以 +N 呈现） */
+export const GALLERY_MIN_WIDTH = 196;
+export const GALLERY_GAP = 4;
+export const GALLERY_MAX_VISIBLE = 6;
+/** 文件链接列表：上间距、行高、行间距与字号 */
+export const FILE_LIST_TOP_GAP = 6;
+export const FILE_ROW_HEIGHT = 22;
+export const FILE_ROW_GAP = 2;
+export const FILE_FONT_SIZE = 12;
+/** 文件行除文件名外的水平占用（左内边距 6 + 图标 13 + 间距 6 + 间距 6 + 移除按钮 16 + 右内边距 3） */
+export const FILE_ROW_CHROME = 50;
+/** 挂载文件链接的节点最小宽度 */
+export const FILE_MIN_WIDTH = 150;
 /** 非根节点边框宽度 */
 export const NODE_BORDER_WIDTH = 1.5;
 

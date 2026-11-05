@@ -3,8 +3,9 @@
 // 详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud, ChevronRight, Monitor, History } from 'lucide-react';
-import { useSettingsStore } from '../../stores/settingsStore';
+import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud, ChevronRight, Monitor, History, PanelTop, UserRound, Users, Globe, RotateCcw } from 'lucide-react';
+import { AUTO_SAVE_DELAY_MAX_MS, AUTO_SAVE_DELAY_MIN_MS, DEFAULT_SETTINGS, clampAutoSaveDelayMs, useSettingsStore, useTitleBarButtons } from '../../stores/settingsStore';
+import { ConfirmDialog } from '../../features/sync/SyncControls';
 import { THEMES } from '../../core/theme/themes';
 import { contentWidthToPercent, CONTENT_WIDTH_PERCENT_MAP } from '../../core/theme/applyTheme';
 import { FontSelect } from './FontSelect';
@@ -16,8 +17,12 @@ import { showToast } from '../../stores/toastStore';
 import { FontPackSettingsCard } from './FontPackSettingsCard';
 import { SettingsRange } from './SettingsRange';
 import { SettingsSelect } from './SettingsSelect';
+import { TabSizeSelect } from './TabSizeSelect';
+import { ReleaseNotes } from './ReleaseNotes';
+import { UPDATE_CHANNEL_ORDER, UpdateChannelSelector } from './UpdateChannelSelector';
+import { RELEASE_CHANNELS } from '../../core/releaseChannel';
 import { Tooltip } from '../Tooltip';
-import type { MarkdownNormalizationPolicy } from '../../core/ipc/types';
+import type { ExplorerOpenMode, HtmlOpenMode, TitleBarButtons } from '../../core/ipc/types';
 import { IS_MOBILE_UI, IS_NATIVE_MOBILE, IS_WEB } from '../../core/platform';
 import { GlobalShortcutRecorder } from './GlobalShortcutRecorder';
 import { formatShortcut } from '../../core/shortcuts';
@@ -25,28 +30,54 @@ import { formatShortcut } from '../../core/shortcuts';
 import { SyncPanel } from '../../features/sync/SyncPanel';
 // 插件管理随设置窗口加载，查看器重库仍由已安装包按需提供。
 import { PluginsPanel } from '../../features/plugins/PluginsPanel';
+// 网页多用户：账号与用户管理面板（原生端与公开部署不显示入口）
+import { AccountPanel } from '../../features/account/AccountPanel';
+import { UserManagementPanel } from '../../features/account/UserManagementPanel';
+import { isAdmin, isMultiUser } from '../../features/account/accountState';
 // 历史记录设置随设置窗口加载（只含设置表单，不含查看界面）
 import { HistorySettingsPanel } from '../../features/versionHistory/HistorySettingsPanel';
 import { useLayoutStore } from '../../stores/layoutStore';
+import { CreateFormatsSettings } from './CreateFormatsSettings';
+import { supportsCompactMode } from '../../features/window/compactMode';
+// 本地文件搜索设置（仅桌面端展示）
+import { LocalSearchSettingsCard } from '../../features/localSearch/LocalSearchSettings';
+import { SUPPORTS_LOCAL_SEARCH } from '../../features/localSearch/localSearchStore';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-type TabType = 'appearance' | 'typography' | 'editor' | 'file' | 'sync' | 'history' | 'plugins' | 'shortcuts' | 'general' | 'about';
+type TabType = 'account' | 'users' | 'appearance' | 'typography' | 'editor' | 'file' | 'sync' | 'history' | 'plugins' | 'shortcuts' | 'general' | 'about';
+
+// 多端同步仅管理员可用：多用户部署中普通用户不显示同步页
+const SHOW_ACCOUNT = () => IS_WEB && isMultiUser();
+const SHOW_SYNC = () => !IS_WEB || !isMultiUser() || isAdmin();
 
 // 托盘与全局快捷键仅原生桌面端可用（网页与移动端没有系统托盘）
 const SUPPORTS_SYSTEM_INTEGRATION = !IS_NATIVE_MOBILE && !IS_WEB;
+
+// 标题栏可隐藏的按钮：检查更新仅桌面端，极窄模式仅桌面端支持时提供
+const TITLE_BAR_BUTTON_OPTIONS: { key: keyof TitleBarButtons; label: string; available: () => boolean }[] = [
+  { key: 'home', label: '回到主界面', available: () => true },
+  { key: 'checkUpdate', label: '检查更新', available: () => !IS_WEB },
+  { key: 'theme', label: '切换主题', available: () => true },
+  { key: 'compactMode', label: '极窄模式', available: supportsCompactMode },
+];
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('appearance');
   const settingsTarget = useLayoutStore((state) => state.settingsTarget);
   // 打开入口携带目标，字体按钮与缺少查看器的文件页均能直达安装区域。
-  useEffect(() => { if (isOpen && settingsTarget) setActiveTab(settingsTarget === 'history' ? 'history' : 'plugins'); }, [isOpen, settingsTarget]);
+  useEffect(() => {
+    if (!isOpen || !settingsTarget) return;
+    // 本地文件搜索面板的「前往设置」定位到全局页
+    setActiveTab(settingsTarget === 'history' ? 'history' : settingsTarget === 'localSearch' ? 'general' : 'plugins');
+  }, [isOpen, settingsTarget]);
   // 关闭后清除一次性定位，普通设置入口沿用上次查看的栏目。
   useEffect(() => { if (!isOpen && settingsTarget) useLayoutStore.setState({settingsTarget:null}); }, [isOpen, settingsTarget]);
-  const { settings, resolvedTheme, setThemeMode, setTypography, setEditor, setFile, setSystem } = useSettingsStore();
+  const { settings, resolvedTheme, setThemeMode, setTypography, setEditor, setFile, setLayout, setSystem } = useSettingsStore();
+  const titleBarButtons = useTitleBarButtons();
 
   // 使用全局更新状态 Store
   const { checking: checkingUpdate, checkForUpdates } = useUpdateStore();
@@ -56,10 +87,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     checkForUpdates(false);
   };
 
-  // 在系统默认浏览器打开 GitHub 仓库
-  const handleOpenGithub = () => {
-    ipc.openExternalUrl('https://github.com/CrazyFigure/NoteBoard').catch((err) => {
-      console.error('无法打开 GitHub 链接:', err);
+  // 在系统默认浏览器打开 GitHub / 腾讯云 CNB 仓库
+  const handleOpenRepo = (url: string) => {
+    ipc.openExternalUrl(url).catch((err) => {
+      console.error('无法打开仓库链接:', err);
     });
   };
 
@@ -82,6 +113,22 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     } catch (error) {
       showToast(`无法打开暂存区：${error instanceof Error ? error.message : String(error)}`, 'error', 5000);
     }
+  };
+
+  // 「恢复默认」确认框的目标分区，null 表示未打开
+  const [resetTarget, setResetTarget] = useState<'typography' | 'editor' | null>(null);
+  // 回车键互换在快捷键页设置，编辑器页恢复默认时保留，避免改动其它页的设置项
+  const editorDefaults = { ...DEFAULT_SETTINGS.editor, swapEnterKeys: settings.editor.swapEnterKeys ?? false };
+  const isTypographyDefault = matchesDefaults(settings.typography, DEFAULT_SETTINGS.typography);
+  const isEditorDefault = matchesDefaults(settings.editor, editorDefaults);
+
+  /** 将确认的分区整体写回默认值 */
+  const handleConfirmReset = async () => {
+    const target = resetTarget;
+    setResetTarget(null);
+    if (target === 'typography') await setTypography({ ...DEFAULT_SETTINGS.typography });
+    else if (target === 'editor') await setEditor(editorDefaults);
+    if (target) showToast('已恢复默认设置', 'success');
   };
 
   // 设置右侧内容区域的容器引用
@@ -220,21 +267,26 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               flexShrink: 0,
             }}
           >
+            {SHOW_ACCOUNT() && (
+              <>
+                <NavBtn active={activeTab === 'account'} icon={<UserRound size={15} />} label="账号" onClick={() => setActiveTab('account')} />
+                {isAdmin() && <NavBtn active={activeTab === 'users'} icon={<Users size={15} />} label="用户管理" onClick={() => setActiveTab('users')} />}
+                <div className="nb-settings-nav-divider" style={{ height: 1, background: 'var(--editor-border)', margin: '2px 6px' }} />
+              </>
+            )}
             <NavBtn
               active={activeTab === 'appearance'}
               icon={<Palette size={15} />}
               label="外观主题"
               onClick={() => setActiveTab('appearance')}
             />
-            {/* 全局：窗口行为等系统集成选项，网页与移动端没有托盘，隐藏该分组 */}
-            {SUPPORTS_SYSTEM_INTEGRATION && (
-              <NavBtn
-                active={activeTab === 'general'}
-                icon={<Monitor size={15} />}
-                label="全局"
-                onClick={() => setActiveTab('general')}
-              />
-            )}
+            {/* 全局：新建入口布局各端通用；窗口与托盘仅原生桌面端在页内展示 */}
+            <NavBtn
+              active={activeTab === 'general'}
+              icon={<Monitor size={15} />}
+              label="全局"
+              onClick={() => setActiveTab('general')}
+            />
             <NavBtn
               active={activeTab === 'typography'}
               icon={<Type size={15} />}
@@ -253,12 +305,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               label="文件与保存"
               onClick={() => setActiveTab('file')}
             />
-            <NavBtn
-              active={activeTab === 'sync'}
-              icon={<Cloud size={15} />}
-              label="同步与备份"
-              onClick={() => setActiveTab('sync')}
-            />
+            {SHOW_SYNC() && (
+              <NavBtn
+                active={activeTab === 'sync'}
+                icon={<Cloud size={15} />}
+                label="同步与备份"
+                onClick={() => setActiveTab('sync')}
+              />
+            )}
             <NavBtn
               active={activeTab === 'history'}
               icon={<History size={15} />}
@@ -286,14 +340,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
           {/* 右侧设置面板 */}
           <div ref={contentRef} className="nb-settings-content" style={{ flex: 1, padding: '24px 30px', overflowY: 'auto' }}>
-            {/* 1. 外观主题 */}
+            {/* 1. 外观主题：页级仅保留标题，主题卡片继续展示配色说明。 */}
             {activeTab === 'appearance' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
                 <div>
                   <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>主题配色方案</h3>
-                  <p style={{ fontSize: 12, color: 'var(--editor-text-muted)', margin: 0 }}>
-                    精心设计的经典配色，针对 Markdown 代码块与行内代码深度调优。
-                  </p>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
@@ -345,14 +396,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </div>
             )}
 
-            {/* 2. 排版与字体 */}
+            {/* 2. 排版与字体：页级仅保留标题，具体排版规则由设置项说明。 */}
             {activeTab === 'typography' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-                <div>
-                  <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>排版参数自定义</h3>
-                  <p style={{ fontSize: 12, color: 'var(--editor-text-muted)', margin: 0 }}>
-                    独立配置软件界面、Markdown 正文、代码与纯文本以及文件树的排版与版心宽度参数。
-                  </p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <h3 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>排版参数自定义</h3>
+                  <ResetDefaultsButton disabled={isTypographyDefault} onClick={() => setResetTarget('typography')} />
                 </div>
 
                 {/* 应用字体包独立于安装包，设置页提供下载、修复、导入和删除的长期入口。 */}
@@ -940,14 +989,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </div>
             )}
 
-            {/* 3. 编辑器配置 */}
+            {/* 3. 编辑器配置：页级仅保留标题，具体编辑行为由设置项说明。 */}
             {activeTab === 'editor' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-                <div>
-                  <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>编辑器与代码设置</h3>
-                  <p style={{ fontSize: 12, color: 'var(--editor-text-muted)', margin: 0 }}>
-                    配置纯文本、SQL、JSON 等代码编辑器的显示效果及 Markdown 增强选项。
-                  </p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <h3 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>编辑器与代码设置</h3>
+                  <ResetDefaultsButton disabled={isEditorDefault} onClick={() => setResetTarget('editor')} />
                 </div>
 
                 {/* ── 3.1 代码与纯文本展示 ── */}
@@ -1021,6 +1068,19 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       onChange={(e) => setEditor({ showIndentGuides: e.target.checked })}
                     />
                   </div>
+
+                  {/* 列编辑模式：关闭时已进入的编辑器立即退出 */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
+                    <div>
+                      <div>列编辑模式</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>{formatShortcut('Alt')} + 拖动或中键拖动，多行同时编辑</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.editor.enableColumnEdit !== false}
+                      onChange={(e) => setEditor({ enableColumnEdit: e.target.checked })}
+                    />
+                  </div>
                 </div>
 
                 {/* ── 3.2 缩进与编辑参数 ── */}
@@ -1035,13 +1095,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <div>Tab 缩进宽度</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>每个 Tab 对应的空格数量</div>
                     </div>
-                    <input
-                      type="number"
-                      min="1"
-                      max="8"
+                    {/* 常用宽度使用下拉选择，旧配置中的其他宽度保留为自定义项。 */}
+                    <TabSizeSelect
                       value={settings.editor.tabSize}
-                      onChange={(e) => setEditor({ tabSize: parseInt(e.target.value, 10) || 2 })}
-                      style={{ ...inputStyle, width: 60, textAlign: 'center' }}
+                      onChange={(tabSize) => setEditor({ tabSize })}
                     />
                   </div>
 
@@ -1070,24 +1127,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         { value: 'source', label: '源码模式' },
                       ]}
                       onChange={(v) => setEditor({ defaultViewMode: v })}
-                    />
-                  </div>
-
-                  {/* 进入可视化模式时，若源码写法会被统一格式调整，按此策略处理（默认每次询问） */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
-                    <div>
-                      <div>Markdown 格式规范化</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>可视化模式会以统一写法保存源码（如列表符号统一为 -）</div>
-                    </div>
-                    <SettingsSelect<MarkdownNormalizationPolicy>
-                      ariaLabel="Markdown 格式规范化"
-                      value={settings.editor.markdownNormalization ?? 'ask'}
-                      options={[
-                        { value: 'ask', label: '每次询问' },
-                        { value: 'always', label: '总是规范化' },
-                        { value: 'never', label: '保持源码模式' },
-                      ]}
-                      onChange={(v) => setEditor({ markdownNormalization: v })}
                     />
                   </div>
 
@@ -1212,14 +1251,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </div>
             )}
 
-            {/* 4. 文件与保存设置 */}
+            {/* 4. 文件与保存设置：页级仅保留标题，保留保存策略等操作提示。 */}
             {activeTab === 'file' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                 <div>
                   <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>文件与保存设置</h3>
-                  <p style={{ fontSize: 12, color: 'var(--editor-text-muted)', margin: 0 }}>
-                    按文件类型独立配置自动保存策略，以及本地文件管理选项。
-                  </p>
                 </div>
 
                 {/* ── 4.1 自动保存设置 ── */}
@@ -1229,14 +1265,21 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <Save size={15} color="var(--accent-strong)" />
                       <span>自动保存设置 (分类型独立配置)</span>
                     </div>
-                    <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>{formatShortcut('默认关闭：使用 Ctrl+S 手动保存，关闭时自动拦截确认')}</span>
+                  </div>
+
+                  {/* 自动保存间隔：所有类型共用，停止编辑达到该时长后写盘 */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
+                    <div>保存间隔 (秒)</div>
+                    <AutoSaveDelayInput
+                      valueMs={clampAutoSaveDelayMs(settings.file.autoSaveDelayMs)}
+                      onCommit={(ms) => setFile({ autoSaveDelayMs: ms })}
+                    />
                   </div>
 
                   {/* Markdown 笔记自动保存 */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>Markdown 笔记 (.md / .markdown)</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>停止输入 800ms 后自动写入磁盘；未开启时需手动保存</div>
                     </div>
                     <input
                       type="checkbox"
@@ -1249,7 +1292,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>自由画板 (.excalidraw / .board / .canvas)</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>绘制操作停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
                     </div>
                     <input
                       type="checkbox"
@@ -1262,7 +1304,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>思维导图 (.mindmap / .mm)</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>编辑停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
                     </div>
                     <input
                       type="checkbox"
@@ -1275,7 +1316,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>Draw.io 图表 (.drawio / .dio)</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>绘制操作停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
                     </div>
                     <input
                       type="checkbox"
@@ -1288,7 +1328,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>多维表格 (.bitable / .table)</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>编辑停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
                     </div>
                     <input
                       type="checkbox"
@@ -1301,7 +1340,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>信息图 (.infographic / .ig)</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>编辑停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
                     </div>
                     <input
                       type="checkbox"
@@ -1314,7 +1352,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>代码与文本 (.txt / .sql / .json / .yaml 等)</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>编辑停止 800ms 后自动写入磁盘；未开启时需手动保存</div>
                     </div>
                     <input
                       type="checkbox"
@@ -1428,20 +1465,20 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             )}
 
             {/* 5. 同步与备份：与其他页签一样直接渲染，配置未就绪的提示由面板自身处理。 */}
-            {activeTab === 'sync' && <SyncPanel />}
+            {activeTab === 'account' && <AccountPanel />}
+            {activeTab === 'users' && isAdmin() && <UserManagementPanel />}
+            {activeTab === 'sync' && SHOW_SYNC() && <SyncPanel />}
             {activeTab === 'history' && <HistorySettingsPanel />}
             {activeTab === 'plugins' && <PluginsPanel target={settingsTarget} />}
 
-            {/* 全局：窗口与托盘等系统集成选项（仅原生桌面端） */}
-            {activeTab === 'general' && SUPPORTS_SYSTEM_INTEGRATION && (
+            {/* 全局：页级仅保留标题；新建入口各端通用，托盘行为仅原生桌面端展示。 */}
+            {activeTab === 'general' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                 <div>
                   <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>全局设置</h3>
-                  <p style={{ fontSize: 12, color: 'var(--editor-text-muted)', margin: 0 }}>
-                    窗口行为与系统托盘等应用级选项。
-                  </p>
                 </div>
 
+                {SUPPORTS_SYSTEM_INTEGRATION && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
                     <Monitor size={15} color="var(--accent-strong)" />
@@ -1461,17 +1498,106 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     />
                   </div>
                 </div>
+                )}
+
+                {/* 本地文件搜索：开关与索引位置（文件夹 / 整个磁盘，可添加多个） */}
+                {SUPPORTS_LOCAL_SEARCH && !IS_MOBILE_UI && <LocalSearchSettingsCard />}
+
+                {/* 新建入口：主页与「+」菜单中哪些格式直接展示、哪些收进更多 */}
+                <div style={{ padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                  <CreateFormatsSettings />
+                </div>
+
+                {/* 标题栏按钮：可选入口是否展示（移动端没有标题栏，不展示） */}
+                {!IS_MOBILE_UI && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
+                    <PanelTop size={15} color="var(--accent-strong)" />
+                    <span>标题栏按钮</span>
+                  </div>
+
+                  {TITLE_BAR_BUTTON_OPTIONS.filter((option) => option.available()).map((option) => (
+                    <div key={option.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
+                      <div>{option.label}</div>
+                      <input
+                        type="checkbox"
+                        checked={titleBarButtons[option.key]}
+                        onChange={(e) => setLayout({ titleBarButtons: { ...titleBarButtons, [option.key]: e.target.checked } })}
+                      />
+                    </div>
+                  ))}
+                </div>
+                )}
+
+                {/* 资源管理器：文件树中打开文件的方式（默认双击） */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
+                    <Folder size={15} color="var(--accent-strong)" />
+                    <span>资源管理器</span>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                    <div>
+                      <div>打开文件的方式</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>在左侧文件树中打开文件</div>
+                    </div>
+                    <SettingsSelect<ExplorerOpenMode>
+                      ariaLabel="打开文件的方式"
+                      value={settings.file.explorerOpenMode ?? 'double'}
+                      options={[
+                        { value: 'double', label: '双击打开' },
+                        { value: 'single', label: '单击打开' },
+                      ]}
+                      onChange={(v) => setFile({ explorerOpenMode: v })}
+                    />
+                  </div>
+                </div>
+
+                {/* HTML 链接：笔记等文档中点击本地 HTML 链接时交给系统浏览器还是在本软件中分屏预览
+                    （仅桌面端；资源管理器、拖入等入口始终在本软件打开，网页端与移动端始终应用内预览） */}
+                {SUPPORTS_SYSTEM_INTEGRATION && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
+                    <Globe size={15} color="var(--accent-strong)" />
+                    <span>HTML 链接</span>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                    <div>
+                      <div>打开方式</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>点击文档中的本地 HTML 链接</div>
+                    </div>
+                    <SettingsSelect<HtmlOpenMode>
+                      ariaLabel="HTML 链接打开方式"
+                      value={settings.file.htmlOpenMode ?? 'browser'}
+                      options={[
+                        { value: 'browser', label: '系统浏览器' },
+                        { value: 'app', label: '本软件' },
+                      ]}
+                      onChange={(v) => setFile({ htmlOpenMode: v })}
+                    />
+                  </div>
+                </div>
+                )}
+
+                {/* 阅读位置各端通用，与启动时是否恢复文件标签独立，默认开启。 */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)', fontSize: 13 }}>
+                  <div>重新打开时恢复上次阅读位置</div>
+                  <input
+                    type="checkbox"
+                    aria-label="重新打开时恢复上次阅读位置"
+                    checked={settings.file.restoreReadingPosition ?? true}
+                    onChange={(e) => setFile({ restoreReadingPosition: e.target.checked })}
+                  />
+                </div>
               </div>
             )}
 
-            {/* 6. 快捷键指南 */}
+            {/* 6. 快捷键指南：页级仅保留标题，具体操作说明保留在快捷键条目中。 */}
             {activeTab === 'shortcuts' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                 <div>
                   <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>快捷键一览</h3>
-                  <p style={{ fontSize: 12, color: 'var(--editor-text-muted)', margin: 0 }}>
-                    支持选中文本局部操作或全文操作，兼容 VS Code 与 JetBrains 常用快捷键。
-                  </p>
                 </div>
 
                 {/* JSON 与代码快捷操作 */}
@@ -1509,6 +1635,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <ShortcutItem keyCombo="Ctrl + O" label="打开文件" />
                   <ShortcutItem keyCombo="Ctrl + Shift + O" label="打开文件夹" />
                   <ShortcutItem keyCombo="Ctrl + Shift + N" label="新建空窗口" />
+                  {SUPPORTS_LOCAL_SEARCH && <ShortcutItem keyCombo="Ctrl + Shift + F" label="本地文件搜索" tip="搜索文件名与内容，需先在 设置 → 全局 中开启" />}
                   <ShortcutItem keyCombo="Ctrl + S" label="保存当前文档" />
                   <ShortcutItem keyCombo="Ctrl + Shift + S" label="文档另存为" />
                   <ShortcutItem keyCombo="Ctrl + W" label="关闭当前标签页" />
@@ -1644,8 +1771,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   版本 v{APP_VERSION} · AGPL-3.0 License
                 </div>
 
-                {/* 快捷操作：检测更新与 GitHub 仓库 */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
+                {/* 快捷操作：检测更新与 GitHub / 腾讯云 CNB 仓库 */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 12, marginTop: 8 }}>
                   <button
                     type="button"
                     className="nb-btn-secondary"
@@ -1701,10 +1828,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <span>{checkingUpdate ? '正在检查' : '检测更新'}</span>
                   </button>
 
+                  {UPDATE_CHANNEL_ORDER.map((id) => (
+                  <Tooltip key={id} content={RELEASE_CHANNELS[id].repoUrl} side="top" sideOffset={4}>
                   <button
                     type="button"
                     className="nb-btn-secondary"
-                    onClick={handleOpenGithub}
+                    onClick={() => handleOpenRepo(RELEASE_CHANNELS[id].repoUrl)}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -1744,15 +1873,33 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     }}
                   >
                     <ExternalLink size={15} />
-                    <span>GitHub 仓库</span>
+                    <span>{RELEASE_CHANNELS[id].label} 仓库</span>
                   </button>
+                  </Tooltip>
+                  ))}
                 </div>
+
+                {/* 更新渠道：检测更新、安装包、字体与插件的下载来源 */}
+                <UpdateChannelSelector />
+
+                {/* 最近版本更新日志，默认收起 */}
+                <ReleaseNotes />
               </div>
             )}
           </div>
         </div>
       </div>
 
+      {/* 恢复默认二次确认：仅重置当前页的设置项 */}
+      <ConfirmDialog
+        open={resetTarget !== null}
+        title="恢复默认设置"
+        confirmLabel="恢复默认"
+        onConfirm={() => void handleConfirmReset()}
+        onClose={() => setResetTarget(null)}
+      >
+        <div>{resetTarget === 'typography' ? '「排版与字体」' : '「编辑器」'}页的设置将恢复为默认值。</div>
+      </ConfirmDialog>
     </div>
   );
 }
@@ -1899,6 +2046,32 @@ function ShortcutLabel({ label, tip }: { label: string; tip?: string }) {
 }
 
 /** 排版分组底部的效果预览：折叠块，默认收起，展开后随本分组参数实时变化 */
+/** 分区设置是否与默认值一致：旧配置缺失的可选字段按默认值看待 */
+function matchesDefaults<T extends object>(current: Partial<T>, defaults: T): boolean {
+  return (Object.keys(defaults) as (keyof T)[]).every((key) => (current[key] ?? defaults[key]) === defaults[key]);
+}
+
+/** 设置页标题行右侧的「恢复默认」按钮；已是默认值时禁用 */
+function ResetDefaultsButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
+  return (
+    <Tooltip content={disabled ? '已是默认设置' : '恢复本页默认设置'}>
+      {/* 禁用的按钮不响应指针事件，外包一层保证提示仍可显示 */}
+      <span style={{ display: 'inline-flex' }}>
+        <button
+          type="button"
+          className="nb-btn-secondary"
+          disabled={disabled}
+          onClick={onClick}
+          style={{ padding: '4px 10px', fontSize: 12 }}
+        >
+          <RotateCcw size={13} />
+          恢复默认
+        </button>
+      </span>
+    </Tooltip>
+  );
+}
+
 function PreviewCollapse({ children }: { children: React.ReactNode }) {
   const [expanded, setExpanded] = useState(false);
   return (
@@ -1985,5 +2158,83 @@ const inputStyle: React.CSSProperties = {
   width: '100%',
   boxSizing: 'border-box',
 };
+
+/** 毫秒转为秒的展示文本：1000 → "1"，1500 → "1.5" */
+function formatDelaySeconds(ms: number): string {
+  return String(Math.round(ms / 100) / 10);
+}
+
+/**
+ * 自动保存间隔输入框（单位：秒）。
+ * 使用 text + inputMode=decimal 而非 type=number：没有右侧微调按钮，滚轮滑过也不会改动数值；
+ * 输入过程中不写设置，失焦或回车时规整到 0.2 ~ 60 秒再提交，Esc 放弃修改。
+ */
+function AutoSaveDelayInput({ valueMs, onCommit }: { valueMs: number; onCommit: (ms: number) => void }) {
+  const [text, setText] = useState(() => formatDelaySeconds(valueMs));
+  const [hover, setHover] = useState(false);
+  const [focused, setFocused] = useState(false);
+  // Esc 撤销时跳过随后的失焦提交（blur 同步触发，此时 text 仍是旧闭包里的输入值）
+  const cancelRef = useRef(false);
+  // 外部设置变化（如另一窗口修改）时同步展示，编辑中不打断输入
+  useEffect(() => {
+    if (!focused) setText(formatDelaySeconds(valueMs));
+  }, [valueMs, focused]);
+
+  const commit = () => {
+    const seconds = parseFloat(text);
+    // 空值 / 非法值回退到当前设置；合法值按 0.1 秒精度规整到可调范围
+    const ms = Number.isFinite(seconds)
+      ? Math.min(AUTO_SAVE_DELAY_MAX_MS, Math.max(AUTO_SAVE_DELAY_MIN_MS, Math.round(seconds * 10) * 100))
+      : valueMs;
+    setText(formatDelaySeconds(ms));
+    if (ms !== valueMs) onCommit(ms);
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      autoComplete="off"
+      aria-label="自动保存间隔（秒）"
+      value={text}
+      onChange={(e) => {
+        // 只保留数字与第一个小数点，小数最多一位
+        const raw = e.target.value.replace(/[^\d.]/g, '');
+        const [int = '', ...rest] = raw.split('.');
+        const next = rest.length > 0 ? `${int.slice(0, 2)}.${rest.join('').slice(0, 1)}` : int.slice(0, 2);
+        setText(next);
+      }}
+      onFocus={() => setFocused(true)}
+      onBlur={() => {
+        setFocused(false);
+        if (cancelRef.current) {
+          cancelRef.current = false;
+          return;
+        }
+        commit();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.currentTarget.blur();
+        } else if (e.key === 'Escape') {
+          // 阻止冒泡关闭设置弹窗，仅撤销本次输入
+          e.stopPropagation();
+          cancelRef.current = true;
+          setText(formatDelaySeconds(valueMs));
+          e.currentTarget.blur();
+        }
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        ...inputStyle,
+        width: 60,
+        textAlign: 'center',
+        borderColor: focused ? 'var(--accent-strong)' : hover ? 'var(--editor-text-muted)' : 'var(--editor-border)',
+        transition: 'border-color 0.15s',
+      }}
+    />
+  );
+}
 
 

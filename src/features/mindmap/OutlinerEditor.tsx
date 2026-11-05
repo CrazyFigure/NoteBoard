@@ -17,11 +17,13 @@ import {
   Braces,
   SquareDashed,
   Spline,
+  Link2,
 } from 'lucide-react';
 import type { MindNode } from './mindmapTypes';
 import { generateNodeId, moveMindNode, isMindNodeDescendant } from './mindmapConverter';
-import { cloneMindmapTree, findMindNode, walkMindNodes } from './mindmapTree';
+import { cloneMindmapTree, findMindNode, findMindNodeParent, walkMindNodes } from './mindmapTree';
 import {
+  pruneMindmapStructures,
   removeStructure,
   resolveRangeNodes,
   setStructureText,
@@ -30,7 +32,13 @@ import {
   type MindStructureRef,
 } from './mindmapStructures';
 import { MindmapIconPicker } from './MindmapIconPicker';
-import { MindmapImagePreview } from './MindmapImagePreview';
+import { MindmapConfirmDialog } from './MindmapConfirmDialog';
+import { ImagePreviewOverlay } from '../image-viewer/ImagePreviewOverlay';
+import { MindmapFileLink } from './MindmapFileLink';
+import { openFileLink, pickFileLinks } from './mindmapFileLinks';
+import { appendWithLimit, getNodeFiles, getNodeImages, MAX_NODE_FILES, MAX_NODE_IMAGES } from './mindmapAttachments';
+import { showToast } from '../../stores/toastStore';
+import { IS_MOBILE_UI } from '../../core/platform';
 import { adjustMarksForTextChange, restoreLineBreaks, toSingleLineText } from './mindmapRichText';
 import { Tooltip } from '../../components/Tooltip';
 import type { MindmapSearchHighlight } from './mindmapSearch';
@@ -41,6 +49,8 @@ interface OutlinerEditorProps {
   onChange: (newRoot: MindNode) => void;
   /** 搜索匹配高亮与当前项定位 */
   searchHighlight?: MindmapSearchHighlight;
+  /** 所属文档（解析节点文件链接的相对路径） */
+  docKey?: string;
 }
 
 interface FlatItem {
@@ -51,6 +61,8 @@ interface FlatItem {
   depth: number;
   hasChildren: boolean;
   isExpanded: boolean;
+  /** 概要主题行：所属概要与说明（覆盖项数）；普通行为空 */
+  summary?: { ref: MindStructureRef; caption: string };
 }
 
 type DropPosition = 'before' | 'inside' | 'after';
@@ -113,7 +125,7 @@ function OutlineStructureChip({
   );
 }
 
-export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEditorProps) {
+export function OutlinerEditor({ root, onChange, searchHighlight, docKey }: OutlinerEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
@@ -133,8 +145,11 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
     y: number;
   } | null>(null);
 
-  // 图片全屏预览弹窗
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  // 图片全屏预览弹窗：记录节点与图片序号，预览中可左右切换
+  const [previewImage, setPreviewImage] = useState<{ nodeId: string; index: number } | null>(null);
+
+  // 删除按钮的二次确认：要删的行下还有子要点时弹出，记录目标行与子孙数量
+  const [deleteConfirm, setDeleteConfirm] = useState<{ item: FlatItem; index: number; descendantCount: number } | null>(null);
 
   // Pointer Events 拖拽会话状态
   const dragSessionRef = useRef<DragSession | null>(null);
@@ -143,14 +158,33 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
   const [dropTarget, setDropTarget] = useState<{ targetId: string; pos: DropPosition } | null>(null);
 
   // 展平节点树（用于顺序键盘导航与渲染）
+  // 概要主题作为一行排在所覆盖的末尾节点（及其子树）之后，与被概括的节点同级缩进，其子节点照常逐层缩进
   const flatItems = React.useMemo(() => {
     const list: FlatItem[] = [];
+    // 范围末尾节点 id → 排在它之后的概要主题
+    const summariesAfter = new Map<string, Array<{ topic: MindNode; ref: MindStructureRef; caption: string }>>();
+    for (const owner of walkMindNodes(root)) {
+      for (const summary of owner.summaries ?? []) {
+        const covered = resolveRangeNodes(owner, summary);
+        if (!covered) continue;
+        const lastId = covered[covered.length - 1].id;
+        const entry = {
+          topic: summary.topic,
+          ref: { kind: 'summary' as const, ownerId: owner.id, id: summary.id },
+          caption: covered.length > 1 ? `概要 ${covered.length} 项` : '概要',
+        };
+        const after = summariesAfter.get(lastId);
+        if (after) after.push(entry);
+        else summariesAfter.set(lastId, [entry]);
+      }
+    }
 
-    const stack: Array<{ node: MindNode; parent: MindNode | null; parentArray: MindNode[]; indexInParent: number; depth: number }> = [
+    type StackEntry = { node: MindNode; parent: MindNode | null; parentArray: MindNode[]; indexInParent: number; depth: number; summary?: FlatItem['summary'] };
+    const stack: StackEntry[] = [
       { node: root, parent: null, parentArray: [], indexInParent: 0, depth: 0 },
     ];
     while (stack.length > 0) {
-      const { node, parent, parentArray, indexInParent, depth } = stack.pop()!;
+      const { node, parent, parentArray, indexInParent, depth, summary } = stack.pop()!;
       const hasChildren = Boolean(node.children && node.children.length > 0);
       const isExpanded = node.isExpanded !== false;
 
@@ -162,8 +196,17 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
         depth,
         hasChildren,
         isExpanded,
+        summary,
       });
 
+      // 先压概要主题再压子节点：出栈时本节点的整棵子树在前，概要主题紧随其后
+      const after = summariesAfter.get(node.id);
+      if (after) {
+        for (let index = after.length - 1; index >= 0; index -= 1) {
+          const { topic, ref, caption } = after[index];
+          stack.push({ node: topic, parent: null, parentArray: [], indexInParent: 0, depth, summary: { ref, caption } });
+        }
+      }
       if (hasChildren && isExpanded && node.children) {
         for (let index = node.children.length - 1; index >= 0; index -= 1) {
           stack.push({ node: node.children[index], parent: node, parentArray: node.children, indexInParent: index, depth: depth + 1 });
@@ -174,7 +217,7 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
     return list;
   }, [root]);
 
-  // 结构元素在大纲中的挂载行：概要挂在范围末尾节点下，外框挂在范围首个节点下，联系线挂在起点节点下
+  // 结构元素在大纲中的挂载行：外框挂在范围首个节点下，联系线挂在起点节点下（概要主题本身就是大纲中的一行）
   const structureItems = React.useMemo(() => {
     const result = new Map<string, OutlineStructureItem[]>();
     const push = (rowId: string, item: OutlineStructureItem) => {
@@ -187,12 +230,6 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
     for (const node of walkMindNodes(root)) {
       textOf.set(node.id, node.text);
       // 范围可能跨父节点（同层后代），按覆盖节点列表取首尾
-      for (const summary of node.summaries ?? []) {
-        const covered = resolveRangeNodes(node, summary);
-        if (!covered) continue;
-        const count = covered.length;
-        push(covered[count - 1].id, { kind: 'summary', ownerId: node.id, id: summary.id, text: summary.text, caption: count > 1 ? `概要 ${count} 项` : '概要' });
-      }
       for (const boundary of node.boundaries ?? []) {
         const covered = resolveRangeNodes(node, boundary);
         if (!covered) continue;
@@ -286,75 +323,108 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
     },
     [root, onChange],
   );
+  // 异步操作（文件选择对话框、读取图片）结束时大纲可能已变化，需基于最新的树修改
+  const rootRef = useRef(root);
+  rootRef.current = root;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const updateLatestTree = useCallback((mutator: (clonedRoot: MindNode) => void) => {
+    const cloned = cloneMindmapTree(rootRef.current);
+    mutator(cloned);
+    onChangeRef.current(cloned);
+  }, []);
 
-  // 更新指定节点的文本
+  // 更新指定节点的文本（节点查找覆盖概要主题及其子树）
   const handleTextChange = (id: string, text: string) => {
     updateTree((cloned) => {
-      function findAndSet(n: MindNode) {
-        if (n.id === id) {
-          // 大纲模式编辑纯文本时，导图中设置的格式随文字平移
-          n.marks = adjustMarksForTextChange(n.text, text, n.marks);
-          if (!n.marks) delete n.marks;
-          n.text = text;
-          return true;
-        }
-        for (const child of n.children || []) {
-          if (findAndSet(child)) return true;
-        }
-        return false;
-      }
-      findAndSet(cloned);
+      const n = findMindNode(cloned, id);
+      if (!n) return;
+      // 大纲模式编辑纯文本时，导图中设置的格式随文字平移
+      n.marks = adjustMarksForTextChange(n.text, text, n.marks);
+      if (!n.marks) delete n.marks;
+      n.text = text;
     });
   };
 
   // 更新指定节点的图标
   const handleIconChange = (id: string, icon?: string) => {
     updateTree((cloned) => {
-      function findAndSet(n: MindNode) {
-        if (n.id === id) {
-          n.icon = icon;
-          return true;
-        }
-        for (const child of n.children || []) {
-          if (findAndSet(child)) return true;
-        }
-        return false;
-      }
-      findAndSet(cloned);
+      const n = findMindNode(cloned, id);
+      if (n) n.icon = icon;
     });
   };
 
   // 更新指定节点的备注文字
   const handleNoteChange = (id: string, note?: string) => {
     updateTree((cloned) => {
-      function findAndSet(n: MindNode) {
-        if (n.id === id) {
-          n.note = note;
-          return true;
-        }
-        for (const child of n.children || []) {
-          if (findAndSet(child)) return true;
-        }
-        return false;
-      }
-      findAndSet(cloned);
+      const n = findMindNode(cloned, id);
+      if (n) n.note = note;
     });
   };
 
-  // 更新指定节点的图片
-  const handleImageChange = (id: string, image?: string) => {
+  /** 读取图片文件并追加为节点图片（上传与粘贴共用），超出 10 张的部分忽略并提示 */
+  const addImagesFromFiles = (id: string, files: readonly File[]) => {
+    const imageFiles = files.filter((file) => file.type.startsWith('image/'));
+    if (imageFiles.length === 0) return;
+    void Promise.all(imageFiles.map((file) => new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    }))).then((results) => {
+      const sources = results.filter((src): src is string => Boolean(src));
+      if (sources.length === 0) return;
+      let dropped = 0;
+      updateLatestTree((cloned) => {
+        const node = findMindNode(cloned, id);
+        if (!node) return;
+        const result = appendWithLimit(node.images, sources, MAX_NODE_IMAGES);
+        node.images = result.next;
+        dropped = result.dropped;
+      });
+      if (dropped > 0) showToast(`每个节点最多 ${MAX_NODE_IMAGES} 张图片，已忽略 ${dropped} 张`, 'warning');
+    });
+  };
+
+  // 删除节点中的某张图片
+  const handleRemoveImage = (id: string, index: number) => {
     updateTree((cloned) => {
-      function findAndSet(n: MindNode) {
-        if (n.id === id) {
-          n.image = image;
-          return true;
-        }
-        for (const child of n.children || []) {
-          if (findAndSet(child)) return true;
-        }
-        return false;
-      }
-      findAndSet(cloned);
+      const node = findMindNode(cloned, id);
+      if (!node) return;
+      const next = (node.images ?? []).filter((_, i) => i !== index);
+      if (next.length > 0) node.images = next;
+      else delete node.images;
+    });
+  };
+
+  /** 选择本地文件并追加为节点文件链接（同一路径不重复添加） */
+  const handleAddFileLinks = async (id: string) => {
+    const target = findMindNode(rootRef.current, id);
+    if (target && getNodeFiles(target).length >= MAX_NODE_FILES) {
+      showToast(`每个节点最多链接 ${MAX_NODE_FILES} 个文件`, 'warning');
+      return;
+    }
+    const links = await pickFileLinks(docKey);
+    if (links.length === 0) return;
+    let dropped = 0;
+    updateLatestTree((cloned) => {
+      const node = findMindNode(cloned, id);
+      if (!node) return;
+      const result = appendWithLimit(node.files, links, MAX_NODE_FILES, true);
+      node.files = result.next;
+      dropped = result.dropped;
+    });
+    if (dropped > 0) showToast(`每个节点最多链接 ${MAX_NODE_FILES} 个文件，已忽略 ${dropped} 个`, 'warning');
+  };
+
+  // 移除节点中的某个文件链接
+  const handleRemoveFileLink = (id: string, index: number) => {
+    updateTree((cloned) => {
+      const node = findMindNode(cloned, id);
+      if (!node) return;
+      const next = (node.files ?? []).filter((_, i) => i !== index);
+      if (next.length > 0) node.files = next;
+      else delete node.files;
     });
   };
 
@@ -374,61 +444,35 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
     });
   };
 
-  // 上传图片处理 (转 Base64 Data URL)
+  // 上传图片处理（可多选，转 Base64 Data URL 后追加）
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files ?? []);
     const targetNodeId = uploadTargetNodeIdRef.current;
-    if (!file || !targetNodeId) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        handleImageChange(targetNodeId, reader.result);
-      }
-    };
-    reader.readAsDataURL(file);
     e.target.value = '';
+    if (files.length === 0 || !targetNodeId) return;
+    addImagesFromFiles(targetNodeId, files);
   };
 
-  // 粘贴图片处理
+  // 粘贴图片处理：剪贴板中的全部图片追加到节点
   const handlePasteInNote = (e: React.ClipboardEvent, nodeId: string) => {
-    const items = e.clipboardData.items;
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].type.indexOf('image') !== -1) {
-        const file = items[i].getAsFile();
-        if (file) {
-          e.preventDefault();
-          const reader = new FileReader();
-          reader.onload = () => {
-            if (typeof reader.result === 'string') {
-              handleImageChange(nodeId, reader.result);
-            }
-          };
-          reader.readAsDataURL(file);
-          return;
-        }
-      }
-    }
+    const files = Array.from(e.clipboardData.items)
+      .filter((item) => item.type.indexOf('image') !== -1)
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file));
+    if (files.length === 0) return;
+    e.preventDefault();
+    addImagesFromFiles(nodeId, files);
   };
 
   // 切换节点的展开/折叠
   const handleToggleExpand = (id: string) => {
     updateTree((cloned) => {
-      function findAndToggle(n: MindNode) {
-        if (n.id === id) {
-          n.isExpanded = !n.isExpanded;
-          return true;
-        }
-        for (const child of n.children || []) {
-          if (findAndToggle(child)) return true;
-        }
-        return false;
-      }
-      findAndToggle(cloned);
+      const n = findMindNode(cloned, id);
+      if (n) n.isExpanded = !n.isExpanded;
     });
   };
 
-  // 回车：在当前行下方创建新的同级兄弟节点
+  // 回车：在当前行下方创建新的同级兄弟节点；根节点与概要主题没有同级，改为插入第一个子节点
   const handleEnterKey = (item: FlatItem) => {
     const newNode: MindNode = {
       id: generateNodeId(),
@@ -439,22 +483,16 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
 
     updateTree((cloned) => {
       if (!item.parent) {
-        if (!cloned.children) cloned.children = [];
-        cloned.children.unshift(newNode);
-        cloned.isExpanded = true;
+        const target = findMindNode(cloned, item.node.id);
+        if (!target) return;
+        if (!target.children) target.children = [];
+        target.children.unshift(newNode);
+        target.isExpanded = true;
       } else {
-        function findParentAndInsert(n: MindNode): boolean {
-          if (n.id === item.parent?.id) {
-            if (!n.children) n.children = [];
-            n.children.splice(item.indexInParent + 1, 0, newNode);
-            return true;
-          }
-          for (const c of n.children || []) {
-            if (findParentAndInsert(c)) return true;
-          }
-          return false;
-        }
-        findParentAndInsert(cloned);
+        const parent = findMindNode(cloned, item.parent.id);
+        if (!parent) return;
+        if (!parent.children) parent.children = [];
+        parent.children.splice(item.indexInParent + 1, 0, newNode);
       }
     });
 
@@ -465,58 +503,52 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
   const handleTabKey = (item: FlatItem) => {
     if (!item.parent || item.indexInParent === 0) return;
 
-    const prevSibling = item.parentArray[item.indexInParent - 1];
-    if (!prevSibling) return;
+    const prevSiblingId = item.parentArray[item.indexInParent - 1]?.id;
+    if (!prevSiblingId) return;
 
     updateTree((cloned) => {
-      function doIndent(n: MindNode): boolean {
-        if (n.id === item.parent?.id) {
-          const [extracted] = n.children.splice(item.indexInParent, 1);
-          if (!prevSibling.children) prevSibling.children = [];
-          prevSibling.children.push(extracted);
-          prevSibling.isExpanded = true;
-          return true;
-        }
-        for (const c of n.children || []) {
-          if (doIndent(c)) return true;
-        }
-        return false;
-      }
-      doIndent(cloned);
+      const parent = findMindNode(cloned, item.parent!.id);
+      const prevSibling = parent?.children[item.indexInParent - 1];
+      if (!parent || !prevSibling || prevSibling.id !== prevSiblingId) return;
+      const [extracted] = parent.children.splice(item.indexInParent, 1);
+      if (!prevSibling.children) prevSibling.children = [];
+      prevSibling.children.push(extracted);
+      prevSibling.isExpanded = true;
     });
 
     focusTargetIdRef.current = item.node.id;
   };
 
-  // Shift+Tab：升级（提升到父节点的同级）
+  // Shift+Tab：升级（提升到父节点的同级）；概要主题的直接子节点没有更上一级，保持不动
   const handleShiftTabKey = (item: FlatItem) => {
     if (!item.parent || item.depth <= 1) return;
+    // 父节点是概要主题（没有上一级）时不提交，避免产生空的撤销步
+    if (!findMindNodeParent(root, item.parent.id)) return;
 
     updateTree((cloned) => {
-      function findParentAndLift(n: MindNode, grandParent: MindNode | null): boolean {
-        if (n.id === item.parent?.id && grandParent) {
-          const idx = n.children.findIndex((c) => c.id === item.node.id);
-          if (idx !== -1) {
-            const [extracted] = n.children.splice(idx, 1);
-            const parentIdx = grandParent.children.findIndex((c) => c.id === n.id);
-            grandParent.children.splice(parentIdx + 1, 0, extracted);
-            return true;
-          }
-        }
-        for (const c of n.children || []) {
-          if (findParentAndLift(c, n)) return true;
-        }
-        return false;
-      }
-      findParentAndLift(cloned, null);
+      const parentInfo = findMindNodeParent(cloned, item.parent!.id);
+      if (!parentInfo) return;
+      const parent = parentInfo.parent.children[parentInfo.index];
+      const idx = parent.children.findIndex((c) => c.id === item.node.id);
+      if (idx === -1) return;
+      const [extracted] = parent.children.splice(idx, 1);
+      parentInfo.parent.children.splice(parentInfo.index + 1, 0, extracted);
     });
 
     focusTargetIdRef.current = item.node.id;
   };
 
-  // Backspace：空行时删除并跳到前一个节点
-  const handleBackspaceKey = (item: FlatItem, currentIdx: number) => {
-    if (item.node.text.length > 0 || !item.parent) return;
+  /** 删除概要（连同概要主题及其子节点），焦点回到上一行 */
+  const removeSummaryRow = (item: FlatItem, currentIdx: number) => {
+    if (!item.summary) return;
+    const prevItem = flatItems[currentIdx - 1];
+    if (prevItem) focusTargetIdRef.current = prevItem.node.id;
+    handleStructureRemove(item.summary.ref);
+  };
+
+  /** 删除一个要点（连同子要点），焦点回到上一行 */
+  const removeNodeRow = (item: FlatItem, currentIdx: number) => {
+    if (!item.parent) return;
 
     const prevItem = flatItems[currentIdx - 1];
     if (prevItem) {
@@ -524,24 +556,41 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
     }
 
     updateTree((cloned) => {
-      function doDelete(n: MindNode): boolean {
-        if (n.id === item.parent?.id) {
-          n.children.splice(item.indexInParent, 1);
-          return true;
-        }
-        for (const c of n.children || []) {
-          if (doDelete(c)) return true;
-        }
-        return false;
-      }
-      doDelete(cloned);
+      const parent = findMindNode(cloned, item.parent!.id);
+      if (parent?.children[item.indexInParent]?.id === item.node.id) parent.children.splice(item.indexInParent, 1);
+      // 所覆盖节点全部被删的概要 / 外框、指向被删节点的联系线随之清理，与导图模式删除一致
+      pruneMindmapStructures(cloned);
     });
+  };
+
+  // Backspace：空行时删除并跳到前一个节点；没有子节点的空白概要主题按删除概要处理
+  const handleBackspaceKey = (item: FlatItem, currentIdx: number) => {
+    if (item.summary) {
+      if (item.node.text.length === 0 && item.node.children.length === 0) removeSummaryRow(item, currentIdx);
+      return;
+    }
+    if (item.node.text.length > 0) return;
+    removeNodeRow(item, currentIdx);
+  };
+
+  // 删除按钮：不论有无文字都删除该行（概要行删除整个概要）；下面还有子要点时先二次确认
+  const requestDeleteRow = (item: FlatItem, currentIdx: number) => {
+    if (!item.parent && !item.summary) return;
+    let descendantCount = -1;
+    for (const _node of walkMindNodes(item.node)) descendantCount += 1;
+    if (descendantCount > 0) {
+      setDeleteConfirm({ item, index: currentIdx, descendantCount });
+      return;
+    }
+    if (item.summary) removeSummaryRow(item, currentIdx);
+    else removeNodeRow(item, currentIdx);
   };
 
   // ── Pointer Events 拖拽核心实现 ──
 
   const handlePointerDownHandle = (e: React.PointerEvent, item: FlatItem) => {
-    if (e.button !== 0 || item.depth === 0) return;
+    // 根节点与概要主题不能拖动
+    if (e.button !== 0 || item.depth === 0 || item.summary) return;
     e.preventDefault();
     e.stopPropagation();
 
@@ -602,7 +651,8 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
         const offsetY = e.clientY - rect.top;
         let pos: DropPosition = 'after';
 
-        if (item.depth === 0) {
+        if (item.depth === 0 || item.summary) {
+          // 根节点与概要主题没有同级，只能挂为子节点
           pos = 'inside';
         } else if (offsetY < rect.height * 0.35) {
           pos = 'before';
@@ -706,6 +756,7 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        multiple
         style={{ display: 'none' }}
         onChange={handleFileSelect}
       />
@@ -713,12 +764,17 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
       <div style={{ maxWidth: 860, margin: '0 auto', position: 'relative', height: virtualized ? virtualizer.getTotalSize() : undefined }}>
         {renderedItems.map(({ item, idx, virtualRow }) => {
           const isRoot = item.depth === 0;
+          // 概要主题行：不能拖动、没有同级，Enter 新增子要点
+          const isSummaryRow = Boolean(item.summary);
           const paddingLeft = item.depth * 28;
           const isTarget = dropTarget?.targetId === item.node.id;
           const dropPos = isTarget ? dropTarget?.pos : null;
           const isInsideTarget = isTarget && dropPos === 'inside';
           const hasNote = item.node.note !== undefined;
-          const hasImage = Boolean(item.node.image);
+          const nodeImages = getNodeImages(item.node);
+          const nodeFiles = getNodeFiles(item.node);
+          const hasImage = nodeImages.length > 0;
+          const hasFiles = nodeFiles.length > 0;
           // 搜索命中：标题底色标出命中行，当前项再加强调色描边
           const isSearchMatch = Boolean(searchHighlight?.ranges.has(item.node.id));
           const isSearchCurrent = searchHighlight?.currentId === item.node.id;
@@ -812,8 +868,11 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
                   position: 'relative',
                 }}
               >
+                {/* 概要主题不能拖动：留出与把手等宽的空位，保持与同级行对齐 */}
+                {isSummaryRow && <div style={{ width: 18, marginRight: 2, flexShrink: 0 }} />}
+
                 {/* 拖拽把手 */}
-                {!isRoot && (
+                {!isRoot && !isSummaryRow && (
                   <Tooltip content="按住拖拽整行换到其他行或调整层级" side="left" sideOffset={4}>
                     <div
                       className="nb-drag-handle"
@@ -891,6 +950,9 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
                     >
                       {item.isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     </button>
+                  ) : isSummaryRow ? (
+                    // 无子节点的概要主题用大括号代替圆点
+                    <Braces size={13} style={{ color: 'var(--editor-accent, #3b82f6)' }} />
                   ) : (
                     <div
                       style={{
@@ -902,6 +964,16 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
                     />
                   )}
                 </div>
+
+                {/* 概要主题标签：标明概括了几项，悬停说明来源 */}
+                {item.summary && (
+                  <Tooltip content="概要：概括上方的同级要点" side="top" sideOffset={4}>
+                    <span className="nb-outliner-summary-tag">
+                      <Braces size={11} />
+                      {item.summary.caption}
+                    </span>
+                  </Tooltip>
+                )}
 
                 {/* 节点前置图标按钮（有图标则直接渲染，点击可修改或移除） */}
                 {item.node.icon && (
@@ -950,7 +1022,7 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
                   className="nb-outliner-title"
                   // 单行输入框：导图中的节点内换行显示为空格，编辑时未改动处的换行保留
                   value={toSingleLineText(item.node.text)}
-                  placeholder={isRoot ? '输入中心主题' : '输入大纲要点 (按 Enter 换行，Shift+Enter 添加备注)'}
+                  placeholder={isRoot ? '输入中心主题' : isSummaryRow ? '输入概要 (Enter 添加子要点)' : '输入大纲要点 (按 Enter 换行，Shift+Enter 添加备注)'}
                   onChange={(e) => handleTextChange(item.node.id, restoreLineBreaks(item.node.text, e.target.value))}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
@@ -1091,15 +1163,23 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
                     </button>
                   </Tooltip>
 
-                  {/* 插入图片按钮 */}
-                  <Tooltip content="上传/添加图片" side="top" sideOffset={4}>
+                  {/* 插入图片按钮（可多选，最多 10 张） */}
+                  <Tooltip
+                    content={nodeImages.length >= MAX_NODE_IMAGES ? `已达 ${MAX_NODE_IMAGES} 张上限` : hasImage ? `添加图片（${nodeImages.length}/${MAX_NODE_IMAGES}）` : '添加图片'}
+                    side="top"
+                    sideOffset={4}
+                  >
                     <button
                       type="button"
                       onClick={() => {
+                        if (nodeImages.length >= MAX_NODE_IMAGES) {
+                          showToast(`每个节点最多 ${MAX_NODE_IMAGES} 张图片`, 'warning');
+                          return;
+                        }
                         uploadTargetNodeIdRef.current = item.node.id;
                         fileInputRef.current?.click();
                       }}
-                      aria-label="上传/添加图片"
+                      aria-label="添加图片"
                       style={{
                         background: 'transparent',
                         border: '1px solid transparent',
@@ -1129,12 +1209,28 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
                     </button>
                   </Tooltip>
 
+                  {/* 链接本地文件按钮（可多选，最多 10 个） */}
+                  <Tooltip
+                    content={nodeFiles.length >= MAX_NODE_FILES ? `已达 ${MAX_NODE_FILES} 个上限` : hasFiles ? `链接文件（${nodeFiles.length}/${MAX_NODE_FILES}）` : '链接文件'}
+                    side="top"
+                    sideOffset={4}
+                  >
+                    <button
+                      type="button"
+                      className={`nb-outliner-action-btn${hasFiles ? ' is-active' : ''}`}
+                      onClick={() => void handleAddFileLinks(item.node.id)}
+                      aria-label="链接文件"
+                    >
+                      <Link2 size={13} />
+                    </button>
+                  </Tooltip>
+
                   {/* 添加同级要点按钮 */}
-                  <Tooltip content="添加同级要点 (Enter)" side="top" sideOffset={4}>
+                  <Tooltip content={isSummaryRow ? '添加子要点 (Enter)' : '添加同级要点 (Enter)'} side="top" sideOffset={4}>
                     <button
                       type="button"
                       onClick={() => handleEnterKey(item)}
-                      aria-label="添加同级要点 (Enter)"
+                      aria-label={isSummaryRow ? '添加子要点 (Enter)' : '添加同级要点 (Enter)'}
                       style={{
                         background: 'transparent',
                         border: '1px solid transparent',
@@ -1166,11 +1262,11 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
 
                   {/* 删除此要点 */}
                   {!isRoot && (
-                    <Tooltip content="删除此要点及子要点" side="top" sideOffset={4}>
+                    <Tooltip content={isSummaryRow ? '删除此概要' : '删除此要点及子要点'} side="top" sideOffset={4}>
                       <button
                         type="button"
-                        onClick={() => handleBackspaceKey(item, idx)}
-                        aria-label="删除此要点及子要点"
+                        onClick={() => requestDeleteRow(item, idx)}
+                        aria-label={isSummaryRow ? '删除此概要' : '删除此要点及子要点'}
                         style={{
                           background: 'transparent',
                           border: '1px solid transparent',
@@ -1225,8 +1321,8 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
                 </div>
               )}
 
-              {/* 节点备注区域（浅色小字多行输入 + 图片） */}
-              {(hasNote || hasImage) && (
+              {/* 节点备注区域（浅色小字多行输入 + 图片 + 文件链接） */}
+              {(hasNote || hasImage || hasFiles) && (
                 <div
                   style={{
                     paddingLeft: paddingLeft + 32,
@@ -1305,61 +1401,45 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
                     </div>
                   )}
 
-                  {/* 节点挂载图片缩略图 */}
-                  {hasImage && item.node.image && (
-                    <div
-                      style={{
-                        position: 'relative',
-                        display: 'inline-block',
-                        maxWidth: 320,
-                        borderRadius: 6,
-                        overflow: 'hidden',
-                        border: '1px solid var(--editor-border, #e2e8f0)',
-                        background: 'var(--editor-surface, #ffffff)',
-                      }}
-                    >
-                      <Tooltip content="点击全屏放大预览" side="top" sideOffset={4}>
-                        <img
-                          src={item.node.image}
-                          alt="节点图片"
-                          onClick={() => setPreviewImage(item.node.image!)}
-                          style={{
-                            display: 'block',
-                            maxWidth: '100%',
-                            maxHeight: 180,
-                            objectFit: 'contain',
-                            cursor: 'zoom-in',
-                            transition: 'transform 0.15s ease',
-                          }}
+                  {/* 节点挂载图片缩略图：单图保持较大预览，多图并排换行 */}
+                  {hasImage && (
+                    <div className="nb-outline-attachments nb-outline-images" data-multiple={nodeImages.length > 1 || undefined}>
+                      {nodeImages.map((src, index) => (
+                        <div key={index} className="nb-outline-image">
+                          <Tooltip content="点击全屏放大预览" side="top" sideOffset={4}>
+                            <img
+                              src={src}
+                              alt={`节点图片 ${index + 1}`}
+                              onClick={() => setPreviewImage({ nodeId: item.node.id, index })}
+                            />
+                          </Tooltip>
+                          <Tooltip content="删除图片" side="top" sideOffset={4}>
+                            <button
+                              type="button"
+                              className="nb-mindmap-image-remove"
+                              onClick={() => handleRemoveImage(item.node.id, index)}
+                              aria-label="删除图片"
+                            >
+                              <X size={11} />
+                            </button>
+                          </Tooltip>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 本地文件链接：Ctrl/Cmd + 单击（触屏点按）在应用内打开 */}
+                  {hasFiles && (
+                    <div className={`nb-outline-files${IS_MOBILE_UI ? ' nb-touch-links' : ''}`}>
+                      {nodeFiles.map((path, index) => (
+                        <MindmapFileLink
+                          key={`${index}:${path}`}
+                          variant="chip"
+                          path={path}
+                          onOpen={() => openFileLink(path, docKey)}
+                          onRemove={() => handleRemoveFileLink(item.node.id, index)}
                         />
-                      </Tooltip>
-                      <Tooltip content="删除图片" side="top" sideOffset={4}>
-                        <button
-                          type="button"
-                          onClick={() => handleImageChange(item.node.id, undefined)}
-                          aria-label="删除图片"
-                          style={{
-                            position: 'absolute',
-                            top: 4,
-                            right: 4,
-                            background: 'rgba(0, 0, 0, 0.65)',
-                            color: '#ffffff',
-                            border: 'none',
-                            borderRadius: '50%',
-                            width: 20,
-                            height: 20,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            transition: 'background 0.15s ease',
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.9)')}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(0, 0, 0, 0.65)')}
-                        >
-                          <X size={12} />
-                        </button>
-                      </Tooltip>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -1387,8 +1467,41 @@ export function OutlinerEditor({ root, onChange, searchHighlight }: OutlinerEdit
       )}
 
       {/* 图片放大预览：Portal 到 body，支持滚轮缩放与拖动 */}
-      {previewImage && (
-        <MindmapImagePreview src={previewImage} onClose={() => setPreviewImage(null)} />
+      {previewImage && (() => {
+        // 从最新的树取图片列表：预览中删除图片后序号自动收敛到有效范围
+        const target = findMindNode(root, previewImage.nodeId);
+        const list = target ? getNodeImages(target) : [];
+        if (list.length === 0) return null;
+        const index = Math.min(previewImage.index, list.length - 1);
+        return (
+          <ImagePreviewOverlay
+            src={list[index]}
+            index={index}
+            count={list.length}
+            onNavigate={(next) => setPreviewImage({ nodeId: previewImage.nodeId, index: next })}
+            onDelete={() => {
+              handleRemoveImage(previewImage.nodeId, index);
+              if (list.length === 1) setPreviewImage(null);
+            }}
+            onClose={() => setPreviewImage(null)}
+          />
+        );
+      })()}
+
+      {/* 删除含子要点的行前二次确认（文案与导图模式一致） */}
+      {deleteConfirm && (
+        <MindmapConfirmDialog
+          title={deleteConfirm.item.summary ? '删除概要' : '删除要点'}
+          message={formatShortcut(`该${deleteConfirm.item.summary ? '概要' : '要点'}下还有 ${deleteConfirm.descendantCount} 个子要点，将一并删除。删除后可用 Ctrl+Z 撤销。`)}
+          confirmLabel="删除"
+          onCancel={() => setDeleteConfirm(null)}
+          onConfirm={() => {
+            const { item, index } = deleteConfirm;
+            setDeleteConfirm(null);
+            if (item.summary) removeSummaryRow(item, index);
+            else removeNodeRow(item, index);
+          }}
+        />
       )}
 
       {/* 浮动拖拽跟随胶囊 */}

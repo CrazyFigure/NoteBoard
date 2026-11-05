@@ -5,23 +5,9 @@
 // 采用最小扩展集装配。
 // 不包含：AI 补全/建议/diff 预览、sync/、SQLite 层、全局单例 tab 状态。
 
-import StarterKit from '@tiptap/starter-kit';
-import { Code } from '@tiptap/extension-code';
-// 引入图片扩展的类型增强，使自定义图片节点的 setImage 命令在全局链式 API 中可见。
-import '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import CharacterCount from '@tiptap/extension-character-count';
-import { TaskItem, ListItem, getListMarker } from '@tiptap/extension-list';
-import { Table } from '@tiptap/extension-table';
-import { TableRow } from '@tiptap/extension-table';
-import { TableCell } from '@tiptap/extension-table';
-import { TableHeader } from '@tiptap/extension-table';
-import { Markdown } from '@tiptap/markdown';
-import { createIsolatedMarkdownParser } from '../markdownBlockStart';
-import { Link } from '@tiptap/extension-link';
-
 import { CodeBlockView } from '../codeBlockView';
-import { SafeMarkdownHighlight, SafeMarkdownUnderline } from '../markdownInlineMarks';
 import { searchReplaceExtension } from '../searchReplace';
 import { MathInline, MathBlock } from '../katexExtensions';
 import { MermaidBlock } from '../mermaidExtension';
@@ -31,31 +17,38 @@ import { GitHubAlert } from '../alertExtension';
 import { DetailsBlock } from '../detailsExtension';
 import { ColumnBlock, ColumnsBlock } from '../columnsExtension';
 import { CalloutBlock } from '../calloutExtension';
-import { FootnoteDefinitionBlock, FootnoteReference, FrontMatterBlock, RawHtmlBlock, RawHtmlBlockMerge, RawHtmlInline } from '../markdownPreserveExtensions';
+import { RawHtmlBlock, RawHtmlInline } from '../markdownPreserveExtensions';
 import { slashSuggestion } from '../slashCommand';
-
+import { WikiLink } from '../wikiLinkNode';
+import { WikiLinkSuggestion } from '../wikiLinkSuggestion';
 import { handleLinkClick } from '../linkHandler';
 import { TableClipboard } from '../tableClipboard';
-import { fixTableEditingSelection } from '../tableSelectionFix';
-import { renderTableMarkdown, tableMarkdownStyleOf, type TableMarkdownStyle } from '../markdownTable';
-import { MarkdownHtmlEntity } from '../markdownHtmlEntities';
-import { MarkdownBulletList, MarkdownOrderedList, MarkdownTaskList } from '../markdownListSpacing';
+import { MarkdownClipboard } from '../markdownClipboard';
 import { PasteFormatDetect } from '../pasteFormatDetect';
 import { ListEmptyItemBackspaceFix } from '../listItemBackspace';
 import { SelectionHighlight } from '../selectionHighlight';
 import { InlineEmojiRender } from '../inlineEmoji';
 import { MultiClickSelectionFix } from '../multiClickSelection';
+import { CollapsedBlockSelection } from '../collapsedBlockSelection';
 import { EnterKeyBehavior } from '../enterKeyBehavior';
 import { SelectAllBehavior } from '../selectAllBehavior';
+import { TabKeyBehavior } from '../tabKeyBehavior';
 import { useWindowStore } from '../../../stores/windowStore';
-
 import Suggestion from '@tiptap/suggestion';
-import { Extension, type Extensions, type JSONContent, type MarkdownParseHelpers, type MarkdownParseResult, type MarkdownToken, type MarkdownTokenizer } from '@tiptap/core';
+import { Extension, type Extensions } from '@tiptap/core';
 import { Plugin, TextSelection } from '@tiptap/pm/state';
-import {
-  redoDocumentHistory,
-  undoDocumentHistory,
-} from '../../history/documentHistory';
+import { redoDocumentHistory, undoDocumentHistory } from '../../history/documentHistory';
+import { EnhancedImageBlock } from '../imageNodeView';
+import { ImageUploadPlaceholder } from '../imageUploadPlaceholder';
+import { buildCoreExtensions, MarkdownTable } from './core';
+// 引入图片扩展的类型增强，使自定义图片节点的 setImage 命令在全局链式 API 中可见。
+import '@tiptap/extension-image';
+import { fixTableEditingSelection } from '../tableSelectionFix';
+
+/** 表格选区修正属于界面行为，核心表格继续共享相同属性与 Markdown 规则。 */
+const MarkdownTableView = MarkdownTable.extend({
+  addProseMirrorPlugins() { return fixTableEditingSelection(this.parent?.() ?? []); },
+});
 
 export interface LinkClickHandlerOptions {
   onOpenLinkModal?: () => void;
@@ -169,133 +162,6 @@ const UnifiedDocumentHistoryKeys = Extension.create<{ docKey: string }>({
   },
 });
 
-import { EnhancedImageBlock, parseLinkedImageToken } from '../imageNodeView';
-import { formatShortcut } from '../../../core/shortcuts';
-
-/**
- * 文档级属性：记录源文件末尾的换行（Markdown 解析会丢弃它）、不可见空白的书写方式（实体或字符）。
- * 序列化时据此还原，避免"仅切换模式就让文件末尾换行消失"等假差异。
- */
-const MarkdownDocumentAttributes = Extension.create({
-  name: 'markdownDocumentAttributes',
-  addGlobalAttributes() {
-    return [
-      {
-        types: ['doc'],
-        attributes: {
-          trailingNewline: {
-            default: '',
-            rendered: false,
-          },
-          // 原文是否以实体（&nbsp; 等）书写不可见空白：是则序列化写回实体，否则保持字符原样
-          invisibleCharEntities: {
-            default: false,
-            rendered: false,
-          },
-        },
-      },
-    ];
-  },
-});
-
-/**
- * 表格：按原文风格（紧凑 / 对齐）序列化，见 markdownTable.ts。
- * 序列化结果首尾自带换行，与块间分隔叠加后会多出空行（原文 `p\n\n| a |` 变成 `p\n\n\n| a |`）。
- * 顶层表格去掉首部空行（块间距离由文档级分隔控制）；列表等容器内依赖首部换行与前一段落隔开，保持原样。
- * 尾部空白行在任何位置都去掉。
- */
-const MarkdownTable = Table.extend({
-  // 表格起点只依赖前两行；不可为每个普通段落反复拆分剩余全文。
-  markdownTokenizer: {
-    ...(Table.config.markdownTokenizer as MarkdownTokenizer),
-    start: (src: string) => {
-      const firstEnd = src.indexOf('\n');
-      if (firstEnd < 0 || !src.slice(0, firstEnd).includes('|')) return -1;
-      const secondEnd = src.indexOf('\n', firstEnd + 1);
-      const separator = src.slice(firstEnd + 1, secondEnd < 0 ? src.length : secondEnd);
-      return /^[ \t|:]*-[ \t|:-]*$/.test(separator) && separator.includes('|') ? 0 : -1;
-    },
-  },
-  // markdownStyle：原文的表格书写风格，仅用于序列化时沿用原写法，不参与渲染
-  addAttributes() {
-    return {
-      ...this.parent?.(),
-      markdownStyle: {
-        default: null,
-        rendered: false,
-      },
-    };
-  },
-  parseMarkdown(token, helpers) {
-    const parentParse = (this as unknown as {
-      parent?: (token: unknown, helpers: unknown) => JSONContent | JSONContent[];
-    }).parent;
-    const parsed = parentParse?.(token, helpers);
-    if (!parsed || Array.isArray(parsed)) return parsed ?? [];
-    return { ...parsed, attrs: { ...parsed.attrs, markdownStyle: tableMarkdownStyleOf(token) } };
-  },
-  renderMarkdown(node, helpers, context) {
-    // 新建的表格没有原文风格，默认按显示宽度对齐
-    const style = (node.attrs?.markdownStyle as TableMarkdownStyle | null | undefined) ?? 'aligned';
-    const rendered = renderTableMarkdown(node, helpers, style);
-    const withoutTrailing = rendered.replace(/(?:\n[ \t]*)+$/, '');
-    // 折叠块正文、分栏的单栏、高亮块正文与文档一样以空行分隔子块，首部换行同样会多出一个空行
-    const isTopLevel =
-      !context?.parentType ||
-      ['doc', 'detailsBlock', 'columnBlock', 'calloutBlock'].includes(String(context.parentType));
-    return isTopLevel ? withoutTrailing.replace(/^(?:[ \t]*\n)+/, '') : withoutTrailing;
-  },
-  // 从表格外的空段落拖选进表格时，官方选区规整会把选区收缩成单元格内的光标，这里修正
-  addProseMirrorPlugins() {
-    return fixTableEditingSelection(this.parent?.() ?? []);
-  },
-});
-
-/**
- * 列表项：续段与子列表缩进到列表标记之后的文字位置（`- ` 为 2 格，`1. ` 为 3 格，`10. ` 为 4 格）。
- * 官方实现统一缩进 2 格，CommonMark 要求有序列表项的续行至少缩进到编号宽度，
- * 否则在 GitHub 等标准渲染器中续段 / 子列表会脱离列表（NoteBoard 自身的解析器较宽松，看不出差异）。
- */
-const MarkdownListItem = ListItem.extend({
-  renderMarkdown(node, helpers, context) {
-    const parentType = context?.parentType;
-    let prefix = '- ';
-    if (parentType === 'orderedList') {
-      const parentAttrs = context?.meta?.parentAttrs as { start?: number; type?: string } | undefined;
-      const index = (parentAttrs?.start || 1) - 1 + (context?.index || 0);
-      prefix = getListMarker(parentAttrs?.type, index, '. ');
-    }
-    const [first, ...rest] = node.content ?? [];
-    if (!first) return prefix;
-    const childIndent = ' '.repeat(prefix.length);
-    let output = `${prefix}${helpers.renderChildren([first])}`;
-    rest.forEach((child, index) => {
-      const rendered = helpers.renderChild?.(child, index + 1) ?? helpers.renderChildren([child]);
-      if (rendered === undefined || rendered === null) return;
-      // 与官方实现一致：子块内部的空行同样带缩进，保证无序列表的输出与旧版逐字相同
-      const indented = rendered.split('\n').map((line) => childIndent + line).join('\n');
-      output += child.type === 'paragraph' ? `\n\n${indented}` : `\n${indented}`;
-    });
-    return output;
-  },
-});
-
-/**
- * 链接：`[![alt](src)](href)` 的内容只有一张图片，而图片是独立节点、无法承载链接标记，
- * 官方解析会丢掉外层链接（README 徽章点击不再跳转）。这种情况生成带 href 的图片节点，其余照常。
- * 注意：行内 token 只会交给第一个注册的处理器，无法另注册扩展"让出"，因此直接扩展 Link。
- */
-const MarkdownLink = Link.extend({
-  parseMarkdown(token, helpers) {
-    const linkedImage = parseLinkedImageToken(token, helpers);
-    if (linkedImage) return linkedImage;
-    const parentParse = (this as unknown as {
-      parent?: (token: MarkdownToken, helpers: MarkdownParseHelpers) => MarkdownParseResult;
-    }).parent;
-    return parentParse?.(token, helpers) ?? [];
-  },
-});
-
 export interface BuildExtensionsOptions {
   onOpenLinkModal?: () => void;
   /**
@@ -307,63 +173,27 @@ export interface BuildExtensionsOptions {
   placeholder?: string;
   /** 是否跟踪纯文本粘贴以提示转换 Markdown / HTML（md 文档可视化编辑器与多维表格多行文本编辑器启用，默认 false） */
   pasteFormatDetect?: boolean;
+  /** Markdown 文档复制、剪切输出源码；嵌入式富文本编辑器仍沿用原有剪贴板规则。 */
+  markdownClipboard?: boolean;
+  /** 是否启用双向链接 `[[笔记]]`（解析、补全与跳转；默认 true，多维表格单元格不需要仓库内跳转时关闭） */
+  wikiLinks?: boolean;
 }
 
-// Markdown 允许粗体、斜体等标记包裹行内代码；默认 Code 的 excludes: '_'
-// 会让合法的 **文字 `code`** 在解析时生成非法 marks，并触发整篇纯文本降级。
-const MarkdownCompatibleCode = Code.extend({
-  excludes: '',
-});
-
 /**
- * 构建 TipTap 扩展列表
- * 这是唯一的扩展装配点，不分散到各组件
+ * 构建完整 TipTap 扩展列表：复用核心规则，再补充节点视图和交互。
+ * 这是唯一的界面装配点，不分散到各组件，也不修改核心解析、属性或序列化定义。
  */
 export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): Extensions {
   const useDocumentHistory = options?.documentHistory !== false;
+  // 只按节点名称补充视图；核心扩展的顺序、属性默认值和 Markdown 规则均保持原样。
+  const views = new Map([EnhancedImageBlock, CodeBlockView, MathInline, MathBlock, MermaidBlock, PlantUmlBlock, InfographicBlock, GitHubAlert, DetailsBlock, ColumnsBlock, ColumnBlock, CalloutBlock, RawHtmlInline, RawHtmlBlock, WikiLink, MarkdownTableView].map((extension) => [extension.name, extension]));
+  const core = buildCoreExtensions(options).map((extension) => {
+    const view = views.get(extension.name);
+    // 配置沿用核心实例；双链的文档身份仅供主线程跳转，不进入后台解析状态。
+    return view ? view.configure({ ...extension.options, ...(extension.name === 'wikiLink' ? { docKey } : {}) }) : extension;
+  });
   return [
-    // StarterKit 包含：bold, italic, strike, code, heading, bulletList, orderedList,
-    // listItem, blockquote, horizontalRule, history, paragraph, text, document,
-    // 但不含 codeBlock（我们用自定义的）
-    StarterKit.configure({
-      // 改由允许 Markdown 标记嵌套的 Code 扩展注册，避免同名扩展和 schema 冲突
-      code: false,
-      codeBlock: false, // 用自定义的 CodeBlockView
-      // 改由 SafeMarkdownUnderline 注册：官方 `++` tokenizer 会误伤 `C++` 等普通文本
-      underline: false,
-      // 改由 MarkdownListItem 注册：续段缩进需与列表标记宽度一致
-      listItem: false,
-      // 改由 MarkdownBulletList / MarkdownOrderedList 注册：记住并写回列表项间距（紧凑 / 宽松）
-      bulletList: false,
-      orderedList: false,
-      // 缩短连续输入的合并窗口，并保留更多编辑步骤；保存操作不会重建该历史栈
-      undoRedo: {
-        depth: 200,
-        newGroupDelay: 300,
-      },
-      // 改由 MarkdownLink 注册：需接管 `[![alt](src)](href)` 的解析
-      link: false,
-      dropcursor: {
-        width: 2,
-        color: 'var(--editor-accent)',
-        class: 'nb-dropcursor',
-      },
-    }),
-
-    // 行内代码需允许与粗体/斜体共存，才能无损承载合法 Markdown 的嵌套结构
-    MarkdownCompatibleCode,
-
-    // 列表项（续段缩进与列表标记等宽）
-    MarkdownListItem,
-    // 无序 / 有序列表（项间距：紧凑 / 宽松）
-    MarkdownBulletList,
-    MarkdownOrderedList,
-
-    // HTML 实体（&copy;、&nbsp;、&#169; 等）解码为对应字符
-    MarkdownHtmlEntity,
-
-    // 文档末尾换行等源文件级信息
-    MarkdownDocumentAttributes,
+    ...core,
 
     // 撤销/重做由文件级时间线统一接管，原生历史仅用于判断输入分组边界；
     // 嵌入式编辑器关闭接管后，Mod-z 等快捷键回落到 StarterKit 自带的撤销栈
@@ -373,25 +203,6 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
     ListEmptyItemBackspaceFix,
     LinkClickHandler.configure({
       onOpenLinkModal: options?.onOpenLinkModal,
-    }),
-
-    // 链接（带链接的图片解析为带 href 的图片节点，其余与官方一致）
-    MarkdownLink.configure({
-      openOnClick: false,
-      HTMLAttributes: {
-        rel: 'noopener noreferrer',
-        target: null, // 🔴 必须为 null，绝不能设置 _blank，避免 WebView2 底层触发系统新窗口
-        title: formatShortcut('Ctrl + 单击以访问链接'),
-      },
-    }),
-
-    // 本地图片增强扩展（支持 Base64、本地相对路径 Asset 解析、大图预览与排版调节）
-    EnhancedImageBlock,
-    // 下划线（安全的 `++` Markdown tokenizer）
-    SafeMarkdownUnderline,
-    // 文本高亮扩展（支持多色配置；安全的 `==` Markdown tokenizer，避免误伤 `a == b`）
-    SafeMarkdownHighlight.configure({
-      multicolor: true,
     }),
 
     // 占位符
@@ -405,79 +216,30 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // 选区可视化：完整选中的块（列表、代码块、折叠块、图片等）整体显示底板
     SelectionHighlight,
+    // 粘贴 / 拖入 / 选择本地图片时，保存期间在插入位置显示预览与加载动画
+    ImageUploadPlaceholder,
     // 正文表情：表情库内的 Unicode 表情显示为与表情面板一致的 Noto SVG（文件中仍是标准字符）
     InlineEmojiRender,
     // 双击 / 三击选区不跨越段落边界：行尾空白双击不再选中换行，段落间隙判给更近的文本块
     MultiClickSelectionFix,
+    // 拖选经过收起的代码块 / 折叠块时整块选中，不被浏览器吸附到块外
+    CollapsedBlockSelection,
     // 回车类按键统一行为：Enter 换段落、Shift+Enter 段内换行、Ctrl+Enter 跳出到下方（支持 Enter 与 Shift+Enter 互换）
     EnterKeyBehavior,
     // 全选：Ctrl+A 第一次选中当前文本块，再按一次全选文档
     SelectAllBehavior,
-
-    // 任务列表（项间距：紧凑 / 宽松）
-    MarkdownTaskList,
-    TaskItem.configure({
-      nested: true,
-      HTMLAttributes: {
-        'data-type': 'taskItem',
-      },
-    }),
+    // 正文 Tab 插入空格；块内已有快捷键优先，无法继续缩进或导航时也不触发浏览器焦点遍历。
+    TabKeyBehavior,
 
     // 表格及表格剪贴板增强（支持标准 TSV 复制与二维矩阵粘贴）
     TableClipboard,
-    MarkdownTable.configure({
-      resizable: true,
-      HTMLAttributes: {
-        class: 'nb-table',
-      },
-    }),
-    TableRow,
-    TableCell,
-    TableHeader,
-
-    // 普通 CodeBlock + 自定义 NodeView 不消费 lowlight 选项；语言选择、复制及 Markdown 序列化保持原样。
-    // 高亮库仍由真正使用它的视图加载，不能为无效选项在首开注册全部语法。
-    // 语法高亮由 CodeBlockView 内置的 codeHighlightPlugin 负责，遇到需高亮的代码块才动态加载 lowlight。
-    CodeBlockView,
+    // Markdown 文档优先输出源码；表格粘贴增强继续由 TableClipboard 处理。
+    ...(options?.markdownClipboard ? [MarkdownClipboard] : []),
 
     // 查找/替换
     searchReplaceExtension(),
-
-    // KaTeX 数学公式
-    MathInline,
-    MathBlock,
-
-    // Mermaid 图表
-    MermaidBlock,
-
-    // PlantUML / UML 图表
-    PlantUmlBlock,
-
-    // Infographic 现代化信息图
-    InfographicBlock,
-
-    // GitHub Alerts
-    GitHubAlert,
-
-    // 被空行拆开的完整 HTML 合并为一块：marked 中后注册者先执行，须排在折叠块/分栏/高亮块之前，让其标准写法优先
-    RawHtmlBlockMerge,
-
-    // 折叠块：只接管标准写法的 <details>，须先于块级 HTML 原样保留注册
-    DetailsBlock,
-
-    // 分栏卡片：只接管标准写法的 <div class="nb-columns">，同样须先于块级 HTML 原样保留注册
-    ColumnsBlock,
-    ColumnBlock,
-
-    // 高亮块：只接管标准写法的 <div class="nb-callout">，同样须先于块级 HTML 原样保留注册
-    CalloutBlock,
-
-    // 原样保留语法：front matter、脚注、块级 HTML（可视化中只读展示，保证往返不丢失）
-    FrontMatterBlock,
-    FootnoteDefinitionBlock,
-    FootnoteReference,
-    RawHtmlBlock,
-    RawHtmlInline,
+    // 双链补全只在界面中运行，核心仍保留 wikiLink 节点与 Markdown 规则。
+    ...(options?.wikiLinks !== false ? [WikiLinkSuggestion.configure({ docKey })] : []),
 
     // 斜杠命令
     Extension.create({
@@ -497,11 +259,7 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
       },
     }),
 
-    // 每个编辑器独占解析器，避免回收重建和多文档不断向全局 marked 追加相同规则。
-    // TipTap 的注入类型沿用可调用的全局 marked；实际只使用 Marked 同样提供的解析/词法 API。
-    Markdown.configure({ marked: createIsolatedMarkdownParser() }),
-
     // 粘贴格式检测：放在最后，其它扩展的粘贴处理优先
-    ...(options?.pasteFormatDetect ? [PasteFormatDetect] : []),
+    ...(options?.pasteFormatDetect ? [PasteFormatDetect] : [])
   ];
 }

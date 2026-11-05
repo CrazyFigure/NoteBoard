@@ -3,12 +3,15 @@
 // 详见 docs/09-开发路线图.md
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import '../../styles/canvasEditors.css';
 import { Download, FileCode, RefreshCw, WifiOff } from 'lucide-react';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
+import { showExportError, showExportSuccess } from '../../stores/exportResultStore';
 import { saveDocument } from '../editor-code/orchestration/saveDocument';
 import { buildExportFileName, exportBlobWithDialog } from '../export/chartExport';
+import { dataUrlToBlob } from '../../core/dataUrl';
 import { Tooltip } from '../../components/Tooltip';
 // 🔴 S12：回收接入——能力注册表（flush 经导出回包确认）与内容版本
 import {
@@ -145,6 +148,15 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
         // Drawio 无独立键盘焦点入口，焦点由 iframe 自身接管
       },
       getSelectedText: () => '',
+      // 外部重载必须通知 iframe 内核；只改 store 不会触发 Draw.io 再次加载 XML。
+      replaceContent: (content) => {
+        const frame = iframeRef.current?.contentWindow;
+        if (!frame || !isLoadedRef.current) return false;
+        // 作废重载前的导出回包，防止迟到 XML 覆盖刚接受的磁盘版本。
+        pendingExportRef.current?.resolve(null);
+        frame.postMessage(JSON.stringify({ action: 'load', autosave: 1, xml: content }), '*');
+        return true;
+      },
       // 🔴 S12：引擎加载成功且无错误时可回收（内容经 autosave 同步 store +
       //    flush 导出回包双重确认；挂载时从 store XML 重新 load 完整恢复）
       canSuspend: () => isLoadedRef.current && !loadErrorRef.current,
@@ -181,9 +193,12 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
         return;
       }
 
+      // 仅图片导出的失败显示导出错误，其他引擎协议异常保留原有处理。
+      let imageExport = false;
       try {
         const msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
         if (!msg || typeof msg !== 'object') return;
+        imageExport = msg.event === 'export' && msg.format !== 'xml';
 
         // 1. 处理配置请求 (若服务端发送 configure)
         if (msg.event === 'configure') {
@@ -231,7 +246,7 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
             setContent(docKey, msg.xml);
             setDirty(docKey, true);
             setTabDirty(docKey, true);
-            // 引擎每次内容变化都会推送 autosave 事件；auto 策略下停止编辑 800ms 后写盘
+            // 引擎每次内容变化都会推送 autosave 事件；auto 策略下停止编辑达到自动保存间隔后写盘
             if (msg.event === 'autosave') scheduleAutoSave(docKey);
           }
           if (msg.event === 'save') {
@@ -255,8 +270,8 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
             const format = msg.format === 'svg' ? 'svg' : 'png';
             let blob: Blob;
             if (typeof msg.data === 'string' && msg.data.startsWith('data:')) {
-              const resp = await fetch(msg.data);
-              blob = await resp.blob();
+              // 原生 CSP 不允许 fetch(data:)；直接解码图片字节，保留中文 SVG 与 PNG 二进制。
+              blob = dataUrlToBlob(msg.data);
             } else if (typeof msg.data === 'string' && format === 'svg') {
               blob = new Blob([msg.data], { type: 'image/svg+xml;charset=utf-8' });
             } else {
@@ -279,12 +294,16 @@ export function DrawioEditor({ docKey }: DrawioEditorProps) {
             // 唤起系统原生保存文件对话框
             const saved = await exportBlobWithDialog(blob, defaultFilename, filters);
             if (saved) {
-              showToast(`绘图已成功导出为 ${format.toUpperCase()}`, 'success');
+              showExportSuccess(saved, `已导出 ${format.toUpperCase()} 图片`);
             }
           }
         }
       } catch (err) {
         console.error('解析 Draw.io 消息失败:', err);
+        // 图片生成、解码或写盘失败时给出反馈，不能只记录在用户看不到的控制台。
+        if (imageExport) {
+          showExportError(err);
+        }
       }
     };
 

@@ -536,7 +536,7 @@ export interface GroupMeta {
 /**
  * 获取行的分组键与展示标签
  * - select：按选项 ID 分组，返回选项标签与颜色
- * - multiSelect：按首个选中选项分组（不支持多个分组），未选归到空值
+ * - multiSelect：按首个选中选项分组，未选归到空值（表格视图另走 resolveMultiSelectGroupKeys 展开为多组）
  * - 其他字段：按原始值字符串分组，空/undefined/null 归到空值组
  */
 export function resolveGroupKey(
@@ -586,25 +586,58 @@ export function resolveGroupKey(
 }
 
 /**
+ * 多选字段的「每个选中选项一个分组」：一行选了几个有效选项就进几个分组。
+ * 已被删除的选项 ID 不再单独成组；一个有效选项都没有时归入空值组。
+ */
+export function resolveMultiSelectGroupKeys(
+  row: BitableRow,
+  column: BitableColumn,
+): GroupMeta[] {
+  const raw = row[column.id];
+  const ids = Array.isArray(raw)
+    ? raw.map(String)
+    : typeof raw === 'string' && raw.trim() !== ''
+      ? raw.split(',').map((s) => s.trim()).filter(Boolean)
+      : [];
+  const options = column.options || [];
+  const metas: GroupMeta[] = [];
+  ids.forEach((id) => {
+    const opt = options.find((o) => o.id === id);
+    // 重复 ID 只算一次，避免同一行在同一组里出现两遍
+    if (opt && !metas.some((m) => m.key === id)) {
+      metas.push({ key: id, label: opt.label, color: opt.color });
+    }
+  });
+  return metas.length > 0 ? metas : [{ key: '__empty__', label: '未指定' }];
+}
+
+/**
  * 对扁平树行按指定列分组
  * 保持组内原有顺序；组与组之间通过渲染层插入间距实现视觉分隔。
+ *
+ * @param options.expandMultiSelect 多选字段是否展开为「每个选项一组」（同一行会出现在多个分组下）；
+ *   关闭时退回按首个选中选项分组——甘特图的选区按渲染顺序计算，不能容纳重复行，因此仍用旧口径。
  */
 export function groupFlatTreeRows(
   flatRows: { row: BitableRow; depth: number; hasChildren: boolean; isCollapsed: boolean; rowNumber: number }[],
   column: BitableColumn | undefined,
+  options: { expandMultiSelect?: boolean } = {},
 ): Array<{ meta: GroupMeta; rows: typeof flatRows[number][] }> {
   const groupMap = new Map<string, { meta: GroupMeta; rows: typeof flatRows[number][] }>();
   const order: string[] = [];
+  const expand = Boolean(options.expandMultiSelect) && column?.type === 'multiSelect';
 
   flatRows.forEach((node) => {
-    const { key, label, color } = resolveGroupKey(node.row, column);
-    let group = groupMap.get(key);
-    if (!group) {
-      group = { meta: { key, label, color }, rows: [] };
-      groupMap.set(key, group);
-      order.push(key);
-    }
-    group.rows.push(node);
+    const metas = expand && column ? resolveMultiSelectGroupKeys(node.row, column) : [resolveGroupKey(node.row, column)];
+    metas.forEach(({ key, label, color }) => {
+      let group = groupMap.get(key);
+      if (!group) {
+        group = { meta: { key, label, color }, rows: [] };
+        groupMap.set(key, group);
+        order.push(key);
+      }
+      group.rows.push(node);
+    });
   });
 
   // 空值组始终放在最后

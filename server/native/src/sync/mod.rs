@@ -28,9 +28,10 @@ pub mod runtime {
     use std::sync::OnceLock;
     pub trait EventSink: Send + Sync + 'static { fn emit_json(&self, event: &str, payload: serde_json::Value); }
     // 同一个 Tokio 运行时供主命令线程和原调度线程复用，避免每次请求重建连接池执行器。
+    // 多用户部署每人一个工作进程，固定两个工作线程，避免按 CPU 核数堆积空闲线程。
     pub fn block_on<F: Future>(future: F) -> F::Output {
         static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
-        RUNTIME.get_or_init(|| tokio::runtime::Runtime::new().expect("创建同步运行时失败")).block_on(future)
+        RUNTIME.get_or_init(|| tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().expect("创建同步运行时失败")).block_on(future)
     }
 }
 
@@ -39,6 +40,10 @@ pub mod runtime {
 
 #[cfg(test)]
 #[path = "../../../../src-tauri/src/sync/tests_webdav.rs"] mod tests_webdav;
+
+// Web 部署复用相同对象存储实现，同时复用真实 HTTP 与备份恢复回归。
+#[cfg(test)]
+#[path = "../../../../src-tauri/src/sync/tests_s3.rs"] mod tests_s3;
 
 #[cfg(test)]
 #[path = "../../../../src-tauri/src/sync/tests_history.rs"] mod tests_history;

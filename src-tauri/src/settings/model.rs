@@ -1,11 +1,11 @@
 // NoteBoard 设置模型
-// 持久化在 %APPDATA%\NoteBoard\settings.json
+// 持久化在 app_dirs 选择的应用数据目录中，免安装版与安装版互不读取设置。
 // 读取容错：任一字段缺失用默认值填充，不整体丢弃
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-// 应用数据目录统一由 app_dirs 提供（桌面兼容 APPDATA 下的 NoteBoard 目录，移动端为应用私有目录）
+// 应用数据目录统一由 app_dirs 提供（兼容 Windows 安装版、免安装版及其他端的平台目录）。
 pub(crate) fn app_data_dir() -> PathBuf {
     crate::app_dirs::app_data_dir()
 }
@@ -35,6 +35,9 @@ pub struct Settings {
     // 系统集成：关闭到托盘、全局唤起快捷键（仅桌面端生效）
     #[serde(default)]
     pub system: SystemSettings,
+    // 本地文件搜索：开关与索引位置（仅桌面端生效）
+    #[serde(default)]
+    pub local_search: LocalSearchSettings,
 }
 
 impl Default for Settings {
@@ -48,8 +51,21 @@ impl Default for Settings {
             file: FileSettings::default(),
             layout: LayoutSettings::default(),
             system: SystemSettings::default(),
+            local_search: LocalSearchSettings::default(),
         }
     }
+}
+
+/// 本地文件搜索设置
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalSearchSettings {
+    // 总开关（默认关闭）
+    #[serde(default)]
+    pub enabled: bool,
+    // 索引位置：文件夹或整个磁盘的绝对路径（有序，先添加的优先建立内容索引）
+    #[serde(default)]
+    pub roots: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -193,9 +209,9 @@ pub struct EditorSettings {
     // 显示换行符号（默认 false）
     #[serde(default)]
     pub show_line_endings: bool,
-    // Markdown 进入可视化模式时的格式规范化策略：ask（每次询问）/ always（总是规范化）/ never（保持源码模式）
-    #[serde(default = "default_markdown_normalization")]
-    pub markdown_normalization: String,
+    // 允许进入列编辑模式（默认 true；关闭时已进入的编辑器立即退出）
+    #[serde(default = "default_true")]
+    pub enable_column_edit: bool,
     // 可视化模式中代码块默认展开（默认 true，仅影响显示，不写入文件）
     #[serde(default = "default_true")]
     pub code_block_default_expanded: bool,
@@ -231,7 +247,7 @@ impl Default for EditorSettings {
             enable_block_handle: true,
             show_whitespace: false,
             show_line_endings: false,
-            markdown_normalization: default_markdown_normalization(),
+            enable_column_edit: true,
             code_block_default_expanded: true,
             details_default_expanded: false,
             swap_enter_keys: false,
@@ -262,12 +278,18 @@ pub struct FileSettings {
     pub auto_save_drawio: bool,
     #[serde(default)]
     pub auto_save_bitable: bool,
+    // 自动保存间隔（毫秒）：停止编辑多久后写盘；旧配置缺失时为 1000
+    #[serde(default = "default_auto_save_delay_ms")]
+    pub auto_save_delay_ms: u32,
     #[serde(default)]
     pub force_manual_save: bool,
     #[serde(default)]
     pub show_hidden_files: bool,
     #[serde(default = "default_true")]
     pub restore_session: bool,
+    // 阅读位置与恢复标签列表独立；旧配置缺失时默认启用。
+    #[serde(default = "default_true")]
+    pub restore_reading_position: bool,
     #[serde(default = "default_image_dir")]
     pub image_dir_name: String,
     #[serde(default = "default_large_file_mb")]
@@ -275,6 +297,12 @@ pub struct FileSettings {
     // 暂存目录使用绝对路径；旧版设置缺失该字段时自动补为应用数据目录下的 staging。
     #[serde(default = "default_staging_directory")]
     pub staging_directory: String,
+    // 资源管理器打开文件的方式：double（双击打开）/ single（单击打开）
+    #[serde(default = "default_explorer_open_mode")]
+    pub explorer_open_mode: String,
+    // 文档中本地 HTML 链接的打开方式：browser（系统默认浏览器）/ app（本软件分屏预览）
+    #[serde(default = "default_html_open_mode")]
+    pub html_open_mode: String,
 }
 
 impl Default for FileSettings {
@@ -287,12 +315,16 @@ impl Default for FileSettings {
             auto_save_mindmap: false,
             auto_save_drawio: false,
             auto_save_bitable: false,
+            auto_save_delay_ms: default_auto_save_delay_ms(),
             force_manual_save: false,
             show_hidden_files: false,
             restore_session: true,
+            restore_reading_position: true,
             image_dir_name: "img".to_string(),
             large_file_confirm_mb: 50,
             staging_directory: default_staging_directory(),
+            explorer_open_mode: default_explorer_open_mode(),
+            html_open_mode: default_html_open_mode(),
         }
     }
 }
@@ -304,6 +336,12 @@ pub struct LayoutSettings {
     pub status_bar_visible: bool,
     #[serde(default = "default_ui_scale")]
     pub ui_scale: u32,
+    // 新建格式入口布局（主页与「+」菜单共用）；前端负责剔除未知 id 并补齐新增格式
+    #[serde(default)]
+    pub create_formats: CreateFormatsLayout,
+    // 标题栏可选按钮是否展示（默认全部展示）
+    #[serde(default)]
+    pub title_bar_buttons: TitleBarButtons,
 }
 
 impl Default for LayoutSettings {
@@ -311,11 +349,58 @@ impl Default for LayoutSettings {
         Self {
             status_bar_visible: true,
             ui_scale: 100,
+            create_formats: CreateFormatsLayout::default(),
+            title_bar_buttons: TitleBarButtons::default(),
         }
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TitleBarButtons {
+    // 回到主界面
+    #[serde(default = "default_true")]
+    pub home: bool,
+    // 检查更新
+    #[serde(default = "default_true")]
+    pub check_update: bool,
+    // 快捷切换主题
+    #[serde(default = "default_true")]
+    pub theme: bool,
+    // 极窄模式入口
+    #[serde(default = "default_true")]
+    pub compact_mode: bool,
+}
+
+impl Default for TitleBarButtons {
+    fn default() -> Self {
+        Self { home: true, check_update: true, theme: true, compact_mode: true }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateFormatsLayout {
+    // 直接展示的格式 id（有序）
+    #[serde(default)]
+    pub primary: Vec<String>,
+    // 收进「更多」的格式 id（有序）
+    #[serde(default)]
+    pub more: Vec<String>,
+}
+
+impl Default for CreateFormatsLayout {
+    // 默认值与前端 DEFAULT_CREATE_FORMATS 保持一致
+    fn default() -> Self {
+        let ids = |list: &[&str]| list.iter().map(|s| s.to_string()).collect();
+        Self {
+            primary: ids(&["markdown", "text", "bitable", "mindmap", "board", "drawio"]),
+            more: ids(&["textdiff", "infographic", "mermaid", "plantuml", "json", "sql"]),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SystemSettings {
     // 关闭按钮最小化到托盘（默认 false）：开启后关闭仅隐藏窗口，不再弹出未保存确认
@@ -324,6 +409,19 @@ pub struct SystemSettings {
     // 全局唤起窗口快捷键（默认留空不注册），格式如 Ctrl+Alt+N
     #[serde(default)]
     pub show_window_shortcut: String,
+    // 更新渠道：github（默认）或 cnb；同时决定安装包、字体包与插件的下载来源
+    #[serde(default = "default_update_channel")]
+    pub update_channel: String,
+}
+
+impl Default for SystemSettings {
+    fn default() -> Self {
+        Self {
+            close_to_tray: false,
+            show_window_shortcut: String::new(),
+            update_channel: default_update_channel(),
+        }
+    }
 }
 
 // 默认值函数
@@ -352,7 +450,6 @@ fn default_mono_content_width() -> String { "full".to_string() }
 fn default_mono_padding_y() -> u32 { 16 }
 fn default_mono_padding_x() -> u32 { 24 }
 fn default_view_mode() -> String { "visual".to_string() }
-fn default_markdown_normalization() -> String { "ask".to_string() }
 fn default_true() -> bool { true }
 fn default_tab_size() -> u32 { 2 }
 fn default_mindmap_node_max_width() -> u32 { 280 }
@@ -360,11 +457,15 @@ fn default_mindmap_text_align() -> String { "left".to_string() }
 fn default_mindmap_image_fit() -> String { "original".to_string() }
 fn default_image_dir() -> String { "img".to_string() }
 fn default_large_file_mb() -> u32 { 50 }
+fn default_auto_save_delay_ms() -> u32 { 1000 }
+fn default_explorer_open_mode() -> String { "double".to_string() }
+fn default_html_open_mode() -> String { "browser".to_string() }
 // 默认暂存目录与设置文件同属应用数据区，避免依赖用户是否存在“文档”库。
 pub fn default_staging_directory() -> String {
     app_data_dir().join("staging").to_string_lossy().to_string()
 }
 fn default_ui_scale() -> u32 { 100 }
+fn default_update_channel() -> String { "github".to_string() }
 
 /// 读取设置（容错：缺字段填默认，损坏文件不 panic）
 pub fn load() -> Settings {
@@ -396,7 +497,7 @@ pub fn load() -> Settings {
 
 /// 保存设置（原子写 + revision 递增）
 pub fn save(settings: &mut Settings) -> Result<u64, String> {
-    // 确保 APPDATA 目录存在
+    // 确保当前运行模式选择的数据目录存在，不另行推导 APPDATA。
     let dir = app_data_dir();
     if !dir.exists() {
         std::fs::create_dir_all(&dir).map_err(|e| format!("创建数据目录失败: {}", e))?;
@@ -405,7 +506,7 @@ pub fn save(settings: &mut Settings) -> Result<u64, String> {
     // revision 递增
     settings.revision += 1;
 
-    let json = serde_json::to_string_pretty(settings)
+    let json = serialize_settings_for_disk(settings, crate::app_dirs::portable_data_root().is_some())
         .map_err(|e| format!("序列化设置失败: {}", e))?;
 
     let path = settings_path();
@@ -417,9 +518,46 @@ pub fn save(settings: &mut Settings) -> Result<u64, String> {
     Ok(settings.revision)
 }
 
+/// 免安装版的默认暂存目录随程序位置重新推导；仅磁盘存储省略默认值，IPC 仍返回完整路径。
+/// 用户自选目录必须原样保留，安装版及其他端的持久化格式保持兼容。
+fn serialize_settings_for_disk(settings: &Settings, portable: bool) -> Result<String, serde_json::Error> {
+    // 只有免安装默认暂存需要省略字段，其余情况沿用原序列化，避免无关平台的配置文件变化。
+    if !portable || !crate::path::same_key(&settings.file.staging_directory, &default_staging_directory()) {
+        return serde_json::to_string_pretty(settings);
+    }
+    let mut value = serde_json::to_value(settings)?;
+    if let Some(file) = value.get_mut("file").and_then(serde_json::Value::as_object_mut) {
+        file.remove("stagingDirectory");
+    }
+    serde_json::to_string_pretty(&value)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 默认暂存路径不绑定旧的盘符或程序位置，读取时补全到当前数据目录；普通版仍保留原字段。
+    #[test]
+    fn portable_default_staging_follows_the_current_data_directory() {
+        let settings = Settings::default();
+        let portable_json = serialize_settings_for_disk(&settings, true).unwrap();
+        let stored: serde_json::Value = serde_json::from_str(&portable_json).unwrap();
+        assert!(stored["file"].get("stagingDirectory").is_none());
+        let restored: Settings = serde_json::from_str(&portable_json).unwrap();
+        assert_eq!(restored.file.staging_directory, default_staging_directory());
+        assert_eq!(settings.file.staging_directory, restored.file.staging_directory);
+        let installed: serde_json::Value = serde_json::from_str(&serialize_settings_for_disk(&settings, false).unwrap()).unwrap();
+        assert_eq!(installed["file"]["stagingDirectory"], settings.file.staging_directory);
+    }
+
+    /// 用户明确指定的暂存位置不因免安装模式而被重写。
+    #[test]
+    fn portable_custom_staging_directory_is_preserved() {
+        let mut settings = Settings::default();
+        settings.file.staging_directory = "custom-staging".to_string();
+        let stored: Settings = serde_json::from_str(&serialize_settings_for_disk(&settings, true).unwrap()).unwrap();
+        assert_eq!(stored.file.staging_directory, "custom-staging");
+    }
 
     /// 旧版 settings.json 不含暂存字段时必须无损迁移到默认目录，不能导致整份设置解析失败。
     #[test]
@@ -428,6 +566,30 @@ mod tests {
             .expect("旧版设置应能补全新字段");
         assert_eq!(settings.file.image_dir_name, "images");
         assert_eq!(settings.file.staging_directory, default_staging_directory());
+        // 旧版设置缺失打开方式时保持双击打开
+        assert_eq!(settings.file.explorer_open_mode, "double");
+        // 旧版设置缺失 HTML 链接打开方式时保持系统浏览器打开
+        assert_eq!(settings.file.html_open_mode, "browser");
+        assert!(settings.file.restore_reading_position);
+    }
+
+    /// 阅读位置开关显式关闭后，保存和重新加载不能被默认开启覆盖。
+    #[test]
+    fn reading_position_can_be_disabled_and_round_tripped() {
+        let settings: Settings = serde_json::from_str(r#"{"file":{"restoreReadingPosition":false}}"#).unwrap();
+        assert!(!settings.file.restore_reading_position);
+        let restored: Settings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+        assert!(!restored.file.restore_reading_position);
+    }
+
+    /// 旧版设置缺少列编辑开关时默认开启；显式关闭后保存和重新加载不被默认值覆盖。
+    #[test]
+    fn column_edit_defaults_on_and_can_be_disabled() {
+        let legacy: Settings = serde_json::from_str(r#"{"editor":{"softWrap":false}}"#).unwrap();
+        assert!(legacy.editor.enable_column_edit);
+        let disabled: Settings = serde_json::from_str(r#"{"editor":{"enableColumnEdit":false}}"#).unwrap();
+        let restored: Settings = serde_json::from_str(&serde_json::to_string(&disabled).unwrap()).unwrap();
+        assert!(!restored.editor.enable_column_edit);
     }
 
     /// 旧版设置不含 system 分组时，托盘与全局快捷键均保持关闭
@@ -437,5 +599,28 @@ mod tests {
             .expect("旧版设置应能补全 system 分组");
         assert!(!settings.system.close_to_tray);
         assert!(settings.system.show_window_shortcut.is_empty());
+    }
+
+    /// 旧版 layout 不含新建格式布局时补齐默认分组
+    #[test]
+    fn old_settings_receive_default_create_formats() {
+        let settings: Settings = serde_json::from_str(r#"{"layout":{"uiScale":110}}"#)
+            .expect("旧版设置应能补全新建格式布局");
+        assert_eq!(settings.layout.create_formats.primary.first().map(String::as_str), Some("markdown"));
+        assert_eq!(settings.layout.create_formats.more.len(), 6);
+    }
+
+    /// 旧版 layout 不含标题栏按钮开关时默认全部展示，缺失的单项同样补为展示
+    #[test]
+    fn old_settings_show_all_title_bar_buttons() {
+        let settings: Settings = serde_json::from_str(r#"{"layout":{"uiScale":110}}"#)
+            .expect("旧版设置应能补全标题栏按钮开关");
+        let buttons = &settings.layout.title_bar_buttons;
+        assert!(buttons.home && buttons.check_update && buttons.theme && buttons.compact_mode);
+
+        let partial: Settings = serde_json::from_str(r#"{"layout":{"titleBarButtons":{"theme":false}}}"#)
+            .expect("部分字段应能补全");
+        assert!(!partial.layout.title_bar_buttons.theme);
+        assert!(partial.layout.title_bar_buttons.home);
     }
 }

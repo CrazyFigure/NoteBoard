@@ -8,7 +8,7 @@
 //    首次进入 visual 时挂载，此后常驻（display 切换保留撤销栈与选区）。
 // 2. 初始化锁为同步程序事务作用域（不再使用 50ms 时间窗忽略真实输入）。
 // 3. 编辑器内核持有内容权威副本，store 里的是防抖后镜像。
-// 4. onUpdate 500ms → store；800ms → 盘（auto 策略，VisualKernel/源码模式各自实现）。
+// 4. onUpdate 500ms → store；自动保存间隔（默认 1s）→ 盘（auto 策略，VisualKernel/源码模式各自实现）。
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Editor } from '@tiptap/core';
@@ -25,12 +25,9 @@ import {
   hasMarkdownContentChanged,
   normalizeEol,
 } from './serialize';
-import { MarkdownNormalizeDialog } from './MarkdownNormalizeDialog';
-import {
-  rememberNormalizationChoice,
-  resolveNormalizationPolicy,
-  type NormalizationChoice,
-} from './markdownNormalization';
+import { VisualPreparationDialog, type VisualPreparationProgress } from './VisualPreparationDialog';
+import { mountVisualDocument, prepareVisualDocument, yieldVisualTask, VISUAL_PREPARATION_THRESHOLD } from './visualPreparation';
+import type { PreparedVisualDocument } from './visualPreparation.worker';
 import { useToastStore } from '../../stores/toastStore';
 import { judgeLargeDoc } from './largeDoc';
 import { nbEditorTheme } from '../editor-code/theme';
@@ -38,14 +35,16 @@ import { nbSyntaxHighlighting } from '../editor-code/highlightStyle';
 import { createBaseExtensions, typographyCompartment } from '../editor-code/setup';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
-import { useSettingsStore } from '../../stores/settingsStore';
+import { getAutoSaveDelayMs, useSettingsStore } from '../../stores/settingsStore';
 import { on, off, emit } from '../../core/emitter';
 import { MarkdownModeToggle } from './MarkdownModeToggle';
 import { ReadingModeOverlay } from '../reading/ReadingModeOverlay';
 import { requestReadingMode } from '../reading/readingMode';
+import { useSharedReadonly } from '../account/sharedReadonly';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { ExternalChangeBanner } from './ExternalChangeBanner';
 import { markdownPlainBracketExtension } from './sourcePlainBracket';
+import { markdownWikiLinkExtension } from './sourceWikiLink';
 import {
   getCurrentDocumentHistoryContent,
   initializeDocumentHistory,
@@ -78,11 +77,14 @@ import {
   registerMdSourceView,
   unregisterMdTipTapEditor,
   unregisterMdSourceView,
+  notifyMdSourceViewUpdate,
 } from './editorInstances';
 import { registerEditorCapabilities, bumpDocumentRevision, getDocumentRevision } from '../../core/editor/editorRegistry';
 import { createMarkdownEditorCapabilities } from './editorCapabilities';
 // 🔴 S12：回收恢复——挂载时一次性消费捕获的选区/滚动视图状态
-import { takeViewState } from '../session/editorSuspension';
+import { takeReadingViewState } from '../session/editorSuspension';
+import { readReadingPosition } from '../reading/readingPosition';
+import { restoreTextScroll } from '../reading/restoreTextPosition';
 // 🔴 N10.2：实例就绪终点标记（requestId 与打开请求对齐）
 import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
 import { findVisualScrollContainer } from './visualScroller';
@@ -148,6 +150,11 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   const [hasVisualKernel, setHasVisualKernel] = useState(false);
   // editor 实例由 VisualKernel onReady 回传（替代原 useEditor 返回值）
   const [editor, setEditorState] = useState<Editor | null>(null);
+  // 大文档的 CPU 准备与 DOM 装载分开；代际由取消信号保护，旧任务绝不能覆盖后来的源码。
+  const [visualProgress, setVisualProgress] = useState<VisualPreparationProgress | null>(null);
+  const visualTaskRef = useRef<AbortController | null>(null);
+  const preparedReferenceRef = useRef<{ doc: Editor['state']['doc']; content: string } | null>(null);
+  useEffect(() => () => { visualTaskRef.current?.abort(); visualTaskRef.current = null; }, [docKey]);
   const editorRef = useRef<HTMLDivElement>(null);
   // 持有最新 TipTap 实例，供仅按 docKey 注册的卸载清理读取，避免模式切换触发误清理
   const tipTapEditorRef = useRef<Editor | null>(null);
@@ -160,7 +167,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   const visualSyncedRef = useRef(false);
   // 惰性挂载 visual 时待填充的内容（首次切换 visual 的源码内容）
   const pendingVisualContentRef = useRef<string | null>(null);
-  // 沉浸阅读发起的可视化切换：只在无需改写源码时进入，否则静默留在源码阅读
+  // 沉浸阅读发起的可视化切换：解析失败时静默留在源码阅读，不弹出提示
   const readingVisualEntryRef = useRef(false);
   // TipTap 原生历史仅用来识别连续输入是否属于同一分组，快捷键由文档级历史接管
   const visualUndoDepthRef = useRef(0);
@@ -175,13 +182,15 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   const readingModeEnabled = useLayoutStore((s) => s.readingMode);
   const isActiveDocument = useWindowStore((s) => s.activeKey === docKey);
   const isReading = readingModeEnabled && isActiveDocument;
+  // 网页只读共享：正文不可编辑（不进入沉浸阅读外观）
+  const sharedReadonly = useSharedReadonly(docKey);
 
   /**
    * 🔴 S12：恢复回收前捕获的视图状态（选区/滚动；裁剪到合法范围，一次性消费）。
    * visual 内核重挂载在填充 effect 末尾调用；source 内核在 initSourceEditor 后调用。
    */
   const restoreMarkdownViewState = useCallback(() => {
-    const restored = takeViewState(docKey) as RestoredMarkdownViewState | null;
+    const restored = takeReadingViewState(docKey) as RestoredMarkdownViewState | null;
     if (!restored || restored.kind !== 'markdown' || !restored.selection) return;
     const { anchor, head } = restored.selection;
     const scrollTop = restored.scrollTop ?? 0;
@@ -193,7 +202,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       const clampedAnchor = Math.max(0, Math.min(anchor, docLength));
       const clampedHead = Math.max(0, Math.min(head, docLength));
       view.dispatch({ selection: { anchor: clampedAnchor, head: clampedHead } });
-      view.scrollDOM.scrollTop = scrollTop;
+      restoreTextScroll(view, scrollTop);
       return;
     }
 
@@ -205,9 +214,9 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     editor
       .chain()
       .setTextSelection({ from: clampedAnchor, to: clampedHead })
-      .scrollIntoView()
       .run();
-    // TipTap 的 contenteditable 与 EditorContent 包裹层都不自身滚动，滚动发生在外层 scroller
+    // 按保存的阅读位置恢复外层滚动，不滚动到可能已不在视口内的旧光标。
+    // TipTap 的 contenteditable 与 EditorContent 包裹层都不自身滚动，滚动发生在外层 scroller。
     const container = findVisualScrollContainer(editor.view.dom);
     if (container) container.scrollTop = scrollTop;
   }, [docKey]);
@@ -256,7 +265,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   useEffect(() => {
     const instanceId = `md-${(nextTipTapInstanceId += 1)}`;
     const disposeCapabilities = registerEditorCapabilities(
-      createMarkdownEditorCapabilities(docKey, instanceId),
+      createMarkdownEditorCapabilities(docKey, instanceId, () => viewModeRef.current),
     );
     // 🔴 N10.2：Markdown 实例就绪终点（会话能力注册完成；source/visual 均适用）
     perfMarkEditorInstanceReady(docKey, instanceId);
@@ -273,7 +282,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       registerMdTipTapEditor(docKey, editor);
       const instanceId = `md-${(nextTipTapInstanceId += 1)}`;
       const disposeCapabilities = registerEditorCapabilities(
-        createMarkdownEditorCapabilities(docKey, instanceId),
+        createMarkdownEditorCapabilities(docKey, instanceId, () => viewModeRef.current),
       );
       // 🔴 N10.2：visual 内核就绪（更精确的可交互终点——实例+能力注册完成）
       perfMarkEditorInstanceReady(docKey, instanceId);
@@ -323,6 +332,8 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
 
     // 源码模式输入监听与自动标脏
     const updateListener = EditorView.updateListener.of((update) => {
+      // 大纲等订阅者跟随源码的文档、选区与视口变化
+      notifyMdSourceViewUpdate(update);
       if (!update.docChanged) return;
       // 🔴 内容版本递增：源码模式真实修改同样推进 revision
       bumpDocumentRevision(docKey);
@@ -365,7 +376,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
         flushPendingSourceSnapshot(docKey);
         const latest = useDocumentStore.getState().getDocument(docKey)?.content ?? '';
         await autoSaveDocument(docKey, latest);
-      }, 800);
+      }, getAutoSaveDelayMs());
     });
 
     const state = EditorState.create({
@@ -400,6 +411,8 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
         markdown(),
         // 裸 `[文本]` 是普通正文时取消 CodeMirror 的链接下划线与括号框，真实链接保持高亮。
         markdownPlainBracketExtension,
+        // 双向链接：高亮、Ctrl + 单击跳转与 `[[` 笔记补全
+        markdownWikiLinkExtension(docKey),
         nbSyntaxHighlighting,
         nbEditorTheme,
         EditorView.lineWrapping,
@@ -425,7 +438,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
 
   // 当前可见模式负责呈现统一历史节点，另一内核会在下次切换时无历史地同步到同一内容
   useEffect(() => {
-    if (!editor) return;
+    // 源码首开和大文档不挂载 TipTap，仍必须注册适配器以支持重载磁盘正文。
     return registerDocumentHistoryAdapter(docKey, {
       applyEntry: (entry, navigation) => {
         if (viewModeRef.current === 'source') {
@@ -453,6 +466,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
           return;
         }
 
+        if (!editor) throw new Error('可视化编辑器尚未就绪');
         const previousVisualDocument = editor.state.doc;
         if (hasMarkdownContentChanged(editor, entry.content)) {
           // 统一历史应用属于导航而非新编辑，整篇替换明确排除出 TipTap 原生历史
@@ -500,15 +514,16 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     setLargeVerdict(verdict);
     // 先确定初始模式，文件历史的首节点必须采用当前权威内核实际展示的内容
     const tab = useWindowStore.getState().getTab(docKey);
-    const requestedMode = tab?.viewMode ?? (verdict.isLarge ? 'source' : settings.editor.defaultViewMode);
-    // 🔴 R4-03/D02：resolvedMode 单次决策——"用户意图（标签/设置）+ 大文档限制"
-    //    合并后只应用一次，分支间不得互相覆盖。大文档强制 source（visual 内核
-    //    不挂载）；resolvedMode 决定后续全部初始化（内核/历史/基线），不再被
-    //    tab 恢复的 initialMode 二次改写。
-    const resolvedMode: 'visual' | 'source' = verdict.isLarge ? 'source' : requestedMode;
+    // 选区坐标和像素位置属于具体模式；重新打开时先沿用记录的模式，避免源码/可视化错用坐标。
+    const savedReading = readReadingPosition(docKey);
+    const requestedMode = tab?.viewMode ?? (savedReading?.kind === 'markdown' ? savedReading.mode : settings.editor.defaultViewMode);
+    // 大文档首次打开仍默认源码；已有可视化阅读记录时沿用用户上次选择，
+    // 后续仍走后台准备/分批装载和取消回退，避免位置恢复绕过大文档保护。
+    const restoreLargeVisual = savedReading?.kind === 'markdown' && savedReading.mode === 'visual' && requestedMode === 'visual';
+    const resolvedMode: 'visual' | 'source' = verdict.isLarge && !restoreLargeVisual ? 'source' : requestedMode;
     const historyInitialContent = content;
 
-    if (verdict.isLarge) {
+    if (verdict.isLarge && resolvedMode === 'source') {
       setShowLargeBanner(true);
       // 强制 source 模式；大文档不设置内容到 TipTap（太大会卡）→ visual 内核保持未挂载
       setViewMode('source');
@@ -539,6 +554,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     //    历史与 source 内核按 resolvedMode 初始化——不再被 initialMode 覆盖）
     viewModeRef.current = resolvedMode;
     setViewMode(resolvedMode);
+    useWindowStore.getState().setTabViewMode(docKey, resolvedMode);
     initializeDocumentHistory(docKey, historyInitialContent, resolvedMode);
     if (resolvedMode === 'source') {
       // 延迟确保源码容器完成挂载；历史本身已独立于编辑器模式初始化
@@ -551,55 +567,40 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     }
   }, [docKey, settings.editor.defaultViewMode, initSourceEditor]);
 
-  // ── Markdown 规范化确认（进入可视化前"解析→序列化"与原文不同时由用户决定）──
-  const [normalizePrompt, setNormalizePrompt] = useState<{ original: string; normalized: string } | null>(null);
+  // ── 进入可视化：不再整篇规范化。解析时记录顶层块原文，未编辑的块序列化时逐字写回 ──
 
   /**
-   * 解析待进入可视化的源码并判定结果：
-   * same（序列化与原文一致，可直接进入）/ normalize（策略为总是规范化）/
-   * keepSource（策略为保持源码）/ ask（需要询问）/ failed（解析降级，必须留在源码模式）。
+   * 解析待进入可视化的源码：ready 可直接进入；failed 表示解析降级，必须留在源码模式。
    * skipParse 为 true 表示编辑器文档已与源码一致（避免整篇 setContent 破坏撤销栈）。
    */
   const resolveVisualEntry = useCallback((
     targetEditor: Editor,
     content: string,
     skipParse: boolean,
-  ): { kind: 'same' | 'normalize' | 'keepSource' | 'ask' | 'failed'; serialized: string } => {
-    if (!skipParse) {
-      // 🔴 程序化内容设置：同步作用域初始化锁（显示即输入——无 50ms 忽略窗口）
-      isInitializingRef.current = true;
-      let parsedOk: boolean;
-      try {
-        parsedOk = parseMarkdown(targetEditor, content);
-      } finally {
-        // 同步作用域结束即解锁：真实输入立即生效
-        isInitializingRef.current = false;
-      }
-      if (!parsedOk) return { kind: 'failed', serialized: content };
+  ): { kind: 'ready' | 'failed' } => {
+    if (skipParse) return { kind: 'ready' };
+    // 🔴 程序化内容设置：同步作用域初始化锁（显示即输入——无 50ms 忽略窗口）
+    isInitializingRef.current = true;
+    let parsedOk: boolean;
+    try {
+      parsedOk = parseMarkdown(targetEditor, content);
+    } finally {
+      // 同步作用域结束即解锁：真实输入立即生效
+      isInitializingRef.current = false;
     }
-    const serialized = serializeMarkdown(targetEditor);
-    if (normalizeEol(serialized) === normalizeEol(content)) return { kind: 'same', serialized };
-    const policy = resolveNormalizationPolicy(docKey, useSettingsStore.getState().settings.editor.markdownNormalization);
-    if (policy === 'always') return { kind: 'normalize', serialized };
-    if (policy === 'never') return { kind: 'keepSource', serialized };
-    return { kind: 'ask', serialized };
-  }, [docKey]);
+    return { kind: parsedOk ? 'ready' : 'failed' };
+  }, []);
 
-  /** 正式进入可视化模式；normalized 为 true 时把规范化文本写入文档并如实标脏 */
-  const commitVisualMode = useCallback((targetEditor: Editor, serialized: string, normalized: boolean) => {
-    // Markdown 等价格式的表示只更新当前历史节点，不得伪造成新的编辑步骤
-    synchronizeCurrentDocumentHistoryContent(docKey, serialized, 'visual');
-    const baseline = getBaseline(docKey);
-    if (!normalized || baseline.isClean(serialized)) {
-      // 内容未变（不变式 I-14）：保持非脏态
-      if (baseline.isClean(serialized)) {
-        useDocumentStore.getState().setDirty(docKey, false);
-        useWindowStore.getState().setTabDirty(docKey, false);
-      }
-    } else {
-      // 用户同意规范化：内容确实改变，标记为已修改，由用户/自动保存策略决定何时写盘
-      useDocumentStore.getState().setContent(docKey, serialized);
-      useWindowStore.getState().setTabDirty(docKey, true);
+  /**
+   * 正式进入可视化模式：源码保持原文，历史只同步当前节点，不标脏、不写盘。
+   * 未编辑的块按原文写回，只有用户真正编辑后才由快照流程按新内容回写。
+   */
+  const commitVisualMode = useCallback((targetEditor: Editor, content: string) => {
+    synchronizeCurrentDocumentHistoryContent(docKey, content, 'visual');
+    // 内容未变（不变式 I-14）：保持非脏态
+    if (getBaseline(docKey).isClean(content)) {
+      useDocumentStore.getState().setDirty(docKey, false);
+      useWindowStore.getState().setTabDirty(docKey, false);
     }
     markDocumentHistoryModeBoundary(docKey);
     viewModeRef.current = 'visual';
@@ -608,7 +609,8 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     emit('view-mode-changed', { key: docKey, mode: 'visual' });
     visualUndoDepthRef.current = prosemirrorUndoDepth(targetEditor.state);
     setTimeout(() => {
-      targetEditor.commands.focus();
+      // 初始化或模式切换只交还焦点，保留文首或已恢复的滚动位置；移动端仍由聚焦守卫控制键盘。
+      if (!targetEditor.isDestroyed && viewModeRef.current === 'visual') targetEditor.commands.focus(undefined, { scrollIntoView: false });
     }, 20);
   }, [docKey]);
 
@@ -624,56 +626,96 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     emit('view-mode-changed', { key: docKey, mode: 'source' });
   }, [docKey, initSourceEditor]);
 
-  /** 按判定结果应用：进入可视化、保持源码或弹出询问 */
+  /** 取消只丢弃隐藏的准备结果；源码、文件基线与文件级撤销记录始终保留。 */
+  const cancelVisualPreparation = useCallback(() => {
+    visualTaskRef.current?.abort();
+    visualTaskRef.current = null;
+    const content = getCurrentDocumentHistoryContent(docKey) ?? sourceViewRef.current?.state.doc.toString()
+      ?? useDocumentStore.getState().getDocument(docKey)?.content ?? '';
+    pendingVisualContentRef.current = null;
+    visualSyncedRef.current = false;
+    preparedReferenceRef.current = null;
+    readingVisualEntryRef.current = false;
+    isInitializingRef.current = false;
+    setVisualProgress(null);
+    setHasVisualKernel(false);
+    stayInSourceMode(content);
+    sourceViewRef.current?.focus();
+  }, [docKey, stayInSourceMode]);
+
+  /** 装载、显示全部成功后才同步历史和脏态，取消或失败不会留下半篇正文。 */
+  const finishPreparedVisual = useCallback(async (targetEditor: Editor, content: string, prepared: PreparedVisualDocument, controller: AbortController) => {
+    const assertCurrent = () => {
+      if (controller.signal.aborted || targetEditor.isDestroyed || initializedDocKeyRef.current !== docKey) throw new DOMException('已取消', 'AbortError');
+      const current = getCurrentDocumentHistoryContent(docKey) ?? useDocumentStore.getState().getDocument(docKey)?.content;
+      if (current !== content) throw new Error('准备期间原文已更新，请从最新源码重新进入可视化。');
+    };
+    assertCurrent();
+    setVisualProgress({ stage: 'mounting', loaded: 0 });
+    // 模态等待期间正文隐藏且只读，异步挂载的节点视图也属于程序初始化，不能物化或保存半篇正文。
+    isInitializingRef.current = true;
+    try {
+      await mountVisualDocument(targetEditor, prepared.document, controller.signal, (loaded, total) => setVisualProgress({ stage: 'mounting', loaded, total }), isInitializingRef);
+      assertCurrent();
+      setVisualProgress({ stage: 'revealing' });
+      // 保持等待面板直到首轮排版完成；离屏正文由浏览器按需布局，避免一次排完整篇长文档。
+      await yieldVisualTask(controller.signal);
+      assertCurrent();
+      preparedReferenceRef.current = { doc: targetEditor.state.doc, content };
+      commitVisualMode(targetEditor, content);
+      restoreMarkdownViewState();
+    } finally {
+      // 宣布可以编辑之前必须解锁，第一笔真实输入不能落入初始化忽略窗口。
+      isInitializingRef.current = false;
+    }
+  }, [docKey, commitVisualMode, restoreMarkdownViewState]);
+
+  /** 大文档不在点击回调中解析或创建整篇 DOM：后台解析后分批装载。 */
+  const runPreparedVisualEntry = useCallback(async (targetEditor: Editor, content: string) => {
+    visualTaskRef.current?.abort();
+    const controller = new AbortController();
+    visualTaskRef.current = controller;
+    setVisualProgress({ stage: 'starting' });
+    try {
+      await yieldVisualTask(controller.signal);
+      const prepared = await prepareVisualDocument(content, controller.signal, (stage) => {
+        if (!controller.signal.aborted) setVisualProgress({ stage });
+      });
+      if (controller.signal.aborted || targetEditor.isDestroyed || initializedDocKeyRef.current !== docKey) return;
+      // 文件监听、历史导航或其他窗口可能在准备期间更新原文；旧结果不能覆盖新内容。
+      const current = getCurrentDocumentHistoryContent(docKey) ?? useDocumentStore.getState().getDocument(docKey)?.content;
+      if (current !== content) throw new Error('准备期间原文已更新，请从最新源码重新进入可视化。');
+      readingVisualEntryRef.current = false;
+      await finishPreparedVisual(targetEditor, content, prepared, controller);
+    } catch (error) {
+      if (!controller.signal.aborted && visualTaskRef.current === controller) {
+        cancelVisualPreparation();
+        useToastStore.getState().showToast(error instanceof Error ? error.message : '可视化准备失败，已保留源码。', 'warning');
+      }
+    } finally {
+      if (visualTaskRef.current === controller) {
+        visualTaskRef.current = null;
+        setVisualProgress(null);
+      }
+    }
+  }, [docKey, finishPreparedVisual, cancelVisualPreparation]);
+
+  /** 按判定结果应用：进入可视化；解析失败时留在源码 */
   const applyVisualEntry = useCallback((
     targetEditor: Editor,
     content: string,
     outcome: ReturnType<typeof resolveVisualEntry>,
   ) => {
-    // 阅读不得改写文档或弹出询问：需要规范化（或解析失败）时直接留在源码
-    if (readingVisualEntryRef.current) {
-      readingVisualEntryRef.current = false;
-      if (outcome.kind !== 'same') {
-        stayInSourceMode(content);
-        return;
-      }
-    }
-    switch (outcome.kind) {
-      case 'same':
-        commitVisualMode(targetEditor, outcome.serialized, false);
-        return;
-      case 'normalize':
-        commitVisualMode(targetEditor, outcome.serialized, true);
-        return;
-      case 'keepSource':
-        stayInSourceMode(content);
-        useToastStore.getState().showToast('此文档的部分写法会被可视化模式规范化，已按设置保持源码模式', 'info');
-        return;
-      case 'ask':
-        stayInSourceMode(content);
-        setNormalizePrompt({ original: content, normalized: outcome.serialized });
-        return;
-      case 'failed':
-        stayInSourceMode(content);
-        useToastStore.getState().showToast('Markdown 解析失败，已保持源码模式以免内容受损', 'warning');
-        return;
-    }
-  }, [commitVisualMode, stayInSourceMode]);
-
-  /** 规范化确认框的用户选择 */
-  const handleNormalizeChoice = useCallback((choice: NormalizationChoice, remember: boolean) => {
-    const prompt = normalizePrompt;
-    setNormalizePrompt(null);
-    if (remember) rememberNormalizationChoice(docKey, choice);
-    if (!prompt || choice !== 'normalize') {
-      sourceViewRef.current?.focus();
+    const readingEntry = readingVisualEntryRef.current;
+    readingVisualEntryRef.current = false;
+    if (outcome.kind === 'failed') {
+      stayInSourceMode(content);
+      // 沉浸阅读不打扰：解析失败时静默留在源码阅读
+      if (!readingEntry) useToastStore.getState().showToast('Markdown 解析失败，已保持源码模式以免内容受损', 'warning');
       return;
     }
-    const targetEditor = tipTapEditorRef.current;
-    if (!targetEditor) return;
-    // 询问期间源码不可编辑（模态框遮挡）；编辑器文档仍为原文解析结果，可直接提交
-    commitVisualMode(targetEditor, prompt.normalized, true);
-  }, [normalizePrompt, docKey, commitVisualMode]);
+    commitVisualMode(targetEditor, content);
+  }, [commitVisualMode, stayInSourceMode]);
 
   // ── S08 visual 内核内容填充（初始化或首次从 source 切入 visual 时执行一次）──
   useEffect(() => {
@@ -700,16 +742,50 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       baseline.setBaseline(content);
     }
 
-    applyVisualEntry(editor, content, resolveVisualEntry(editor, content, false));
-    // 🔴 S12：visual 内核重挂载（回收后）——恢复捕获的选区/滚动视图状态
-    restoreMarkdownViewState();
-  }, [editor, docKey, restoreMarkdownViewState, applyVisualEntry, resolveVisualEntry]);
+    if (content.length >= VISUAL_PREPARATION_THRESHOLD) {
+      void runPreparedVisualEntry(editor, content);
+      return;
+    }
+
+    const outcome = resolveVisualEntry(editor, content, false);
+    if (viewModeRef.current === 'visual') {
+      applyVisualEntry(editor, content, outcome);
+      // 🔴 S12：visual 内核重挂载（回收后）——恢复捕获的选区/滚动视图状态
+      restoreMarkdownViewState();
+      return;
+    }
+    // 从源码切入时可视化容器仍隐藏。节点视图（代码块等）的 React 内容在微任务里批量挂载，
+    // 每挂载一个都会读取选区并强制同步布局：隐藏时几乎无开销，若与显示同批提交，
+    // 大文档会在可见的整篇 DOM 上重复布局数百次而长时间卡死。故挂载完成后（下一个宏任务）再显示。
+    // 不随 effect 清理取消：visualSyncedRef 已置位，取消会让切换永远停在源码。
+    setTimeout(() => {
+      if (editor.isDestroyed || initializedDocKeyRef.current !== docKey) return;
+      applyVisualEntry(editor, content, outcome);
+      restoreMarkdownViewState();
+    }, 0);
+  }, [editor, docKey, restoreMarkdownViewState, applyVisualEntry, resolveVisualEntry, runPreparedVisualEntry]);
 
   /** 请求进入可视化模式（切换按钮、快捷键、大文档"仍要可视化"共用） */
   const requestVisualMode = useCallback((md: string) => {
+    if (visualTaskRef.current || visualProgress) return;
+    if (md.length >= VISUAL_PREPARATION_THRESHOLD) {
+      if (editor) {
+        const reference = preparedReferenceRef.current;
+        // 未编辑的往返切换复用已确认的文档根，不重新解析，也不破坏可视化原生撤销栈。
+        if (reference?.doc === editor.state.doc && normalizeEol(md) === normalizeEol(reference.content)) {
+          commitVisualMode(editor, reference.content);
+        } else void runPreparedVisualEntry(editor, md);
+      } else {
+        setVisualProgress({ stage: 'starting' });
+        pendingVisualContentRef.current = md;
+        visualSyncedRef.current = false;
+        setHasVisualKernel(true);
+      }
+      return;
+    }
     if (!editor) {
       // 🔴 S08：内核尚未创建（source 初始模式）——惰性挂载 VisualKernel，
-      //    规范化判定与内容填充由「visual 填充 effect」在内核 ready 后执行
+      //    解析与内容填充由「visual 填充 effect」在内核 ready 后执行
       pendingVisualContentRef.current = md;
       visualSyncedRef.current = false;
       setHasVisualKernel(true);
@@ -717,8 +793,10 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     }
     // 编辑器文档已与源码一致时跳过整篇解析，保留撤销栈
     const skipParse = !hasMarkdownContentChanged(editor, md);
-    applyVisualEntry(editor, md, resolveVisualEntry(editor, md, skipParse));
-  }, [editor, applyVisualEntry, resolveVisualEntry]);
+    const outcome = resolveVisualEntry(editor, md, skipParse);
+    // 已有内核重新解析时也要等节点视图挂载后再显示，与惰性首开保持相同约束。
+    setTimeout(() => { if (!editor.isDestroyed && initializedDocKeyRef.current === docKey) applyVisualEntry(editor, md, outcome); }, 0);
+  }, [editor, applyVisualEntry, resolveVisualEntry, visualProgress, docKey, commitVisualMode, runPreparedVisualEntry]);
 
   // 切换可视化 / 源码模式（可指定目标模式 targetMode，只影响当前活动文档）
   const toggleViewMode = useCallback((targetMode?: 'visual' | 'source') => {
@@ -750,7 +828,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       // 模式同步不产生历史节点；文件级时间线已经逐步记录了源码阶段的真实编辑
       if (storeTimerRef.current) clearTimeout(storeTimerRef.current);
       useDocumentStore.getState().setContent(docKey, md);
-      // 规范化判定：与原文一致直接进入；否则按策略规范化 / 保持源码 / 询问（不再静默改写）
+      // 直接进入可视化：未编辑的块按原文写回，不再整篇规范化
       requestVisualMode(md);
     }
   }, [editor, viewMode, docKey, initSourceEditor, requestVisualMode]);
@@ -784,10 +862,10 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     if (!view) return;
     view.dispatch({
       effects: sourceReadOnlyCompartment.reconfigure(
-        isReading ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : [],
+        isReading || sharedReadonly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : [],
       ),
     });
-  }, [isReading, viewMode]);
+  }, [isReading, sharedReadonly, viewMode]);
 
   const exitReading = useCallback(() => requestReadingMode(false), []);
 
@@ -877,7 +955,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
           const content = getCurrentDocumentHistoryContent(docKey)
             ?? useDocumentStore.getState().getDocument(docKey)?.content
             ?? '';
-          // 用户显式确认大文件仍用可视化：与普通切换走同一判定（含规范化确认与基线/历史同步）
+          // 用户显式确认大文件仍用可视化：与普通切换走同一流程（含基线/历史同步）
           requestVisualMode(content);
         }}
       >
@@ -888,7 +966,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
 
   return (
     <div
-      className={isReading ? 'nb-md-reading' : undefined}
+      className={[isReading ? 'nb-md-reading' : '', (largeVerdict?.charCount ?? 0) >= VISUAL_PREPARATION_THRESHOLD ? 'nb-md-large-visual' : ''].filter(Boolean).join(' ') || undefined}
       style={{ height: '100%', overflow: 'hidden', position: 'relative' }}
       ref={editorRef}
     >
@@ -897,18 +975,19 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       {hasVisualKernel && (
         <VisualKernel
           docKey={docKey}
-          visible={viewMode === 'visual'}
+          visible={visualProgress?.stage === 'revealing' || (viewMode === 'visual' && !visualProgress)}
           onReady={handleKernelReady}
           isInitializingRef={isInitializingRef}
           visualUndoDepthRef={visualUndoDepthRef}
           storeTimerRef={storeTimerRef}
           diskTimerRef={diskTimerRef}
-          readOnly={isReading}
+          readOnly={isReading || sharedReadonly || !!visualProgress}
         />
       )}
 
-      {/* 源码模式容器（常驻 DOM，确保 sourceDivRef.current 始终有效挂载） */}
+      {/* 源码模式容器常驻 DOM，确保 sourceDivRef.current 始终有效挂载；编辑状态统一 I 形鼠标指针，阅读状态保留默认样式。 */}
       <div
+        className={isReading ? undefined : 'nb-text-editor-surface'}
         style={{
           height: '100%',
           overflow: 'hidden',
@@ -941,15 +1020,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       {/* 沉浸阅读：进度条与退出按钮 */}
       {isReading && !showLargeBanner && <ReadingModeOverlay rootRef={editorRef} onExit={exitReading} />}
 
-      {/* 格式规范化确认：仅在用户请求进入可视化且会改变源码写法时出现 */}
-      {normalizePrompt && (
-        <MarkdownNormalizeDialog
-          displayName={useWindowStore.getState().getTab(docKey)?.displayName ?? docKey}
-          original={normalizePrompt.original}
-          normalized={normalizePrompt.normalized}
-          onChoose={handleNormalizeChoice}
-        />
-      )}
+      {visualProgress && <VisualPreparationDialog displayName={useWindowStore.getState().getTab(docKey)?.displayName ?? docKey} progress={visualProgress} onCancel={cancelVisualPreparation} />}
     </div>
   );
 }

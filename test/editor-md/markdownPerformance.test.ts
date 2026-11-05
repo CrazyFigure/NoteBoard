@@ -75,4 +75,23 @@ describe('Markdown 解析性能回归', () => {
       editor.destroy();
     }
   });
+
+  it('大量有序列表只切分列表所在行，结尾列表与换行仍保持往返', () => {
+    const editor = createEditor('ordered-list-parser');
+    try {
+      // 每个有序列表都会收到剩余全文；保留足以暴露整段拆分（平方复杂度）的规模。
+      const filler = '正文内容。'.repeat(40);
+      const blocks = Array.from({ length: 1_500 }, (_, index) => `${filler}\n\n${index + 1}. 第一步\n2. 第二步`);
+      const parsed = editor.storage.markdown.manager.parse(blocks.join('\n\n'));
+      const lists = parsed.content?.filter((node) => node.type === 'orderedList') ?? [];
+      expect(lists).toHaveLength(1_500);
+      expect(lists.at(-1)?.attrs?.start).toBe(1_500);
+      for (const markdown of ['1. 一\n2. 二\n', '段落\n\n1. 一\n   续行\n\n2. 二', '1. 一\n   ```\n   1. 代码\n   ```']) {
+        expect(parseMarkdown(editor, markdown)).toBe(true);
+        expect(serializeMarkdown(editor)).toBe(markdown);
+      }
+    } finally {
+      editor.destroy();
+    }
+  });
 });

@@ -38,6 +38,17 @@ export function emitRawSegment(text: string): string {
     .join('\n');
 }
 
+/**
+ * 整段登记为一个占位符：仅用于文档顶层（不会被父节点逐行加前缀）的大段原文，
+ * 避免长文档逐行登记产生海量片段，使全文后处理按行扫描的成本与原文行数无关。
+ */
+export function emitRawBlock(text: string): string {
+  const segments = activeSegments;
+  if (!segments) return text;
+  segments.push(text);
+  return `${PLACEHOLDER_OPEN}${segments.length - 1}${PLACEHOLDER_CLOSE}`;
+}
+
 /** 把占位符替换回原文（片段缺失时保留空字符串，避免输出私有区字符）。 */
 export function restoreRawSegments(markdown: string, segments: readonly string[]): string {
   if (segments.length === 0) return markdown;

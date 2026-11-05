@@ -45,7 +45,8 @@ export function rowSizes(rows = [], count) {
 }
 
 export async function mount({ container, name, bytes, signal, notify, reading }) {
-  const workbook = XLSX.read(/\.xlsx$/i.test(name)?await cleanOpenXml(bytes):bytes, { type:'array', cellStyles:true, cellDates:true, cellFormula:true });
+  // 100 MiB 原文件的资源可解压至 256 MiB，正文 XML 仍保持有界，表格继续只渲染可见区域。
+  const workbook = XLSX.read(/\.xlsx$/i.test(name)?await cleanOpenXml(bytes,undefined,{maxBytes:256*1024*1024,signal,pruneMedia:true}):bytes, { type:'array', cellStyles:true, cellDates:true, cellFormula:true });
   if (signal.aborted) return;
   const view = createView(container, name, reading);
   view.style.textContent += `

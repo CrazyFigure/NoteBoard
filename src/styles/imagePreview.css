@@ -1,0 +1,198 @@
+/* 图片放大预览浮层：Markdown 文档图片与思维导图节点图片共用（ImagePreviewOverlay）。
+   浮层固定为深色底，不随主题变化。 */
+
+.nb-image-preview {
+  position: fixed;
+  inset: 0;
+  /* 需高于多维表格单元格编辑弹层（100002），低于全局输入弹窗（100010） */
+  z-index: 100006;
+  /* 不用 backdrop-filter：全屏毛玻璃在图片每帧移动时都要重新模糊，拖动缩放会明显掉帧 */
+  background: rgba(0, 0, 0, 0.84);
+  overflow: hidden;
+  outline: none;
+  cursor: zoom-out;
+  /* 触屏拖动与双指捏合由指针事件接管，不交给浏览器滚动 / 页面缩放 */
+  touch-action: none;
+  overscroll-behavior: contain;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  animation: nbFadeIn 0.15s ease-out;
+}
+
+.nb-image-preview[data-dragging] {
+  cursor: grabbing;
+}
+
+.nb-image-preview-img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  max-width: none;
+  max-height: none;
+  border-radius: 4px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  transform: translate(-50%, -50%);
+  transform-origin: center center;
+  cursor: grab;
+  -webkit-user-drag: none;
+}
+
+.nb-image-preview[data-dragging] .nb-image-preview-img {
+  cursor: grabbing;
+}
+
+.nb-image-preview-error {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 10px 18px;
+  border-radius: 10px;
+  background: rgba(30, 41, 59, 0.88);
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 13px;
+}
+
+/* 顶部悬浮工具栏 */
+.nb-image-preview-toolbar {
+  position: absolute;
+  left: 50%;
+  top: max(16px, env(safe-area-inset-top));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100vw - 32px);
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 6px 12px;
+  border-radius: 24px;
+  background: rgba(30, 41, 59, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  color: #ffffff;
+  cursor: default;
+}
+
+.nb-image-preview-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.nb-image-preview-btn {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
+}
+
+.nb-image-preview-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.nb-image-preview-btn:active {
+  background: rgba(255, 255, 255, 0.24);
+  transform: scale(0.93);
+}
+
+.nb-image-preview-percent {
+  min-width: 54px;
+}
+
+/* 删除 / 关闭：红色强调 */
+.nb-image-preview-btn.is-danger {
+  color: #f87171;
+}
+
+.nb-image-preview-btn.is-danger:hover {
+  background: rgba(239, 68, 68, 0.24);
+  color: #fecaca;
+}
+
+.nb-image-preview-btn.is-danger:active {
+  background: rgba(239, 68, 68, 0.38);
+}
+
+.nb-image-preview-divider {
+  flex-shrink: 0;
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* 多图预览：当前序号 / 总数 */
+.nb-image-preview-counter {
+  flex-shrink: 0;
+  padding: 0 6px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.86);
+  white-space: nowrap;
+}
+
+/* 底部图片说明 */
+.nb-image-preview-caption {
+  position: absolute;
+  left: 50%;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  max-width: calc(100vw - 48px);
+  overflow: hidden;
+  padding: 5px 14px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.55);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+/* 多图预览左右切换按钮 */
+.nb-image-preview-nav {
+  position: absolute;
+  top: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 50%;
+  background: rgba(30, 41, 59, 0.82);
+  color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transform: translateY(-50%);
+  cursor: pointer;
+  transition: background-color var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
+}
+
+.nb-image-preview-nav.is-prev {
+  left: max(16px, env(safe-area-inset-left));
+}
+
+.nb-image-preview-nav.is-next {
+  right: max(16px, env(safe-area-inset-right));
+}
+
+.nb-image-preview-nav:hover {
+  background: rgba(51, 65, 85, 0.95);
+  color: #ffffff;
+}
+
+.nb-image-preview-nav:active {
+  transform: translateY(-50%) scale(0.92);
+}

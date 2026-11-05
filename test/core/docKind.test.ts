@@ -46,6 +46,8 @@ describe('docKind 扩展名映射', () => {
       'table',
       'infographic',
       'ig',
+      'html',
+      'htm',
     ];
     for (const ext of requiredExts) {
       expect(KIND_BY_EXT[ext]).toBeDefined();
@@ -102,6 +104,8 @@ describe('docKind 扩展名映射', () => {
     expect(languageFromPath('test.md')).toBe('markdown');
     expect(languageFromPath('schema.sql')).toBe('sql');
     expect(languageFromPath('config.yaml')).toBe('yaml');
+    expect(languageFromPath('index.html')).toBe('html');
+    expect(languageFromPath('legacy.HTM')).toBe('html');
     expect(languageFromPath('config.yml')).toBe('yaml');
     expect(languageFromPath('data.xml')).toBe('xml');
     expect(languageFromPath('flow.mmd')).toBe('mermaid');

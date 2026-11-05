@@ -6,7 +6,7 @@ import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { useExplorerStore } from '../explorer/explorerStore';
 import { showToast } from '../../stores/toastStore';
-import { openDocument } from '../editor-code/orchestration/openDocument';
+import { openLinkedDocument } from '../editor-code/orchestration/openDocument';
 import { USES_WINDOWS_PATHS } from '../../core/platform';
 
 /** 是否为本地绝对路径（Windows 盘符路径或 POSIX 根路径） */
@@ -149,8 +149,8 @@ export async function handleLinkClick(rawHref: string, currentDocKey: string): P
         // 如果是文件夹，在资源管理器中定位
         await ipc.revealInExplorer(targetPath);
       } else {
-        // 如果是文件，在 NoteBoard 内部打开
-        await openDocument(targetPath);
+        // 如果是文件，在 NoteBoard 内部打开（HTML 按「HTML 链接打开方式」设置可交给系统浏览器）
+        await openLinkedDocument(targetPath);
       }
       return true;
     } else {

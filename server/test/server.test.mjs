@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import { brotliCompressSync, gzipSync } from 'node:zlib';
 import { createFiles } from '../files.mjs';
 import { createWebServer } from '../index.mjs';
 
@@ -21,7 +22,7 @@ async function fixture(t, options = {}) {
   async function call(command, args = {}, extra = {}) {
     return fetch(`${url}/api/command`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-NoteBoard-Request': '1', 'X-NoteBoard-Client': 'test-client-1234', ...extra }, body: JSON.stringify({ command, args }) });
   }
-  return { temp, dataDir, url, call };
+  return { temp, dataDir, staticDir, url, call };
 }
 
 test('共享笔记、收藏和设置在服务重启后仍可读取', async (t) => {
@@ -64,6 +65,54 @@ test('二进制插件查看不解码正文，文本保存被拒绝且原始字�
   assert.equal(write.status,400);assert.deepEqual(await fs.readFile(disk),original);
 });
 
+test('大 PDF 元信息与分块端点支持 512 MiB，其他读取和上传仍保持 50 MiB', async (t) => {
+  const {dataDir,url,call}=await fixture(t);
+  const disk=path.join(dataDir,'workspace','large.PDF'),size=512*1024*1024;
+  const handle=await fs.open(disk,'w');
+  await handle.truncate(size);await handle.write(Buffer.from('%PDF-1.7'),0,8,0);await handle.close();
+  const prepared=await call('prepare_document',{path:'/workspace/large.PDF'});
+  assert.equal(prepared.status,200);
+  const payload=(await prepared.json()).result.payload;
+  assert.equal(payload.size,size);assert.equal(payload.content,null);assert.equal(payload.readonly,true);
+  const route=`${url}/api/file?path=/workspace/large.PDF&pdfRange=1&size=${size}`;
+  const first=await fetch(route,{headers:{Range:'bytes=0-7'}});
+  assert.equal(first.status,206);assert.equal(first.headers.get('content-range'),`bytes 0-7/${size}`);
+  assert.equal(await first.text(),'%PDF-1.7');
+  const tail=await fetch(route,{headers:{Range:`bytes=${size-8}-${size-1}`}});
+  assert.equal(tail.status,206);assert.equal((await tail.arrayBuffer()).byteLength,8);
+  for(const range of ['bytes=0-1048576','bytes=-1-8',`bytes=${size-1}-${size}`,'bytes=9-3']) assert.equal((await fetch(route,{headers:{Range:range}})).status,416);
+  assert.equal((await fetch(route)).status,416);
+  assert.equal((await fetch(route.replace(`size=${size}`,'size=10'),{headers:{Range:'bytes=0-7'}})).status,409);
+  assert.equal((await fetch(`${url}/api/file?path=/workspace/large.PDF`)).status,413);
+  await fs.rename(disk,disk.replace('.PDF','.docx'));
+  assert.equal((await call('read_document',{path:'/workspace/large.docx'})).status,413);
+  assert.equal((await fetch(route.replace('large.PDF','large.docx'),{headers:{Range:'bytes=0-7'}})).status,400);
+  await fs.rename(disk.replace('.PDF','.docx'),disk);await fs.truncate(disk,size+1);
+  assert.equal((await call('read_document',{path:'/workspace/large.PDF'})).status,413);
+  assert.equal((await fetch(route.replace(`size=${size}`,`size=${size+1}`),{headers:{Range:'bytes=0-7'}})).status,413);
+});
+
+test('Office 只读预览按格式允许 100/512 MiB，元信息与 HEAD 不读取正文，写入和普通附件不放宽', async (t) => {
+  const {dataDir,url,call}=await fixture(t);
+  for(const [ext,mb] of [['doc',100],['DOCX',100],['xls',100],['XLSX',100],['ppt',512],['PPTX',512],['epub',50]]){
+    const key=`/workspace/limit.${ext}`,disk=path.join(dataDir,'workspace',`limit.${ext}`),size=mb*1024*1024;
+    const handle=await fs.open(disk,'w');await handle.truncate(size);await handle.close();
+    const route=`${url}/api/file?path=${encodeURIComponent(key)}&preview=1`;
+    const prepared=await call('prepare_document',{path:key});assert.equal(prepared.status,200,ext);
+    const payload=(await prepared.json()).result.payload;
+    assert.equal(payload.size,size);assert.equal(payload.content,null);assert.equal(payload.readonly,true);
+    const head=await fetch(route,{method:'HEAD'});assert.equal(head.status,200,ext);assert.equal(head.headers.get('content-length'),String(size));
+    if(mb>50)assert.equal((await fetch(`${url}/api/file?path=${encodeURIComponent(key)}`)).status,413);
+    assert.equal((await call('write_document',{path:key,content:'',encoding:'utf8',eol:'lf'})).status,400);
+    await fs.truncate(disk,size+1);
+    assert.equal((await fetch(route,{method:'HEAD'})).status,413,ext);
+    assert.equal((await call('read_document',{path:key})).status,413,ext);
+    const bytes=Buffer.from([80,75,0,255]);await fs.writeFile(disk,bytes);
+    assert.deepEqual(Buffer.from(await (await fetch(route)).arrayBuffer()),bytes);
+  }
+  assert.equal((await fetch(`${url}/api/file?path=/workspace/limit.txt&preview=1`)).status,400);
+});
+
 test('拒绝路径穿越、Windows 路径、根目录修改和符号链接', async (t) => {
   const { call, dataDir, temp } = await fixture(t);
   for (const key of ['/etc/passwd', '/workspace/../secret', '/workspace\\secret', '/workspace/NUL.txt']) {
@@ -80,15 +129,29 @@ test('拒绝路径穿越、Windows 路径、根目录修改和符号链接', asy
 
 test('可选认证覆盖页面、API、附件；健康检查独立；拒绝跨站写入', async (t) => {
   const { url, call } = await fixture(t, { username: 'admin', password: '测试密码' });
-  const auth = `Basic ${Buffer.from('admin:测试密码').toString('base64')}`;
-  for (const route of ['/', '/api/file?path=/workspace/a.md']) assert.equal((await fetch(url + route)).status, 401);
+  for (const route of ['/', '/api/file?path=/workspace/a.md']) assert.equal((await fetch(url + route, { redirect: 'manual' })).status, 401);
+  // 浏览器页面请求转到登录页并带回原地址。
+  const redirect = await fetch(url + '/', { redirect: 'manual', headers: { Accept: 'text/html' } });
+  assert.equal(redirect.status, 302);
+  assert.equal(redirect.headers.get('location'), '/login?next=%2F');
   assert.equal((await call('read_dir', { path: '/workspace' })).status, 401);
   assert.equal((await fetch(url + '/api/health')).status, 200);
-  const page = await fetch(url + '/', { headers: { Authorization: auth } });
+  // 旧版 HTTP Basic 凭据不再被接受，避免浏览器缓存凭据导致无法退出登录。
+  assert.equal((await call('read_dir', { path: '/workspace' }, { Authorization: `Basic ${Buffer.from('admin:测试密码').toString('base64')}` })).status, 401);
+  const login = await fetch(url + '/login');
+  assert.equal(login.status, 200);
+  assert.match(login.headers.get('content-security-policy'), /sha256-/);
+  const signed = await fetch(url + '/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-NoteBoard-Request': '1' }, body: JSON.stringify({ username: 'admin', password: '测试密码' }) });
+  assert.equal(signed.status, 200);
+  const cookie = signed.headers.get('set-cookie');
+  assert.match(cookie, /HttpOnly/);
+  assert.match(cookie, /SameSite=Lax/);
+  const auth = cookie.split(';')[0];
+  const page = await fetch(url + '/', { headers: { Cookie: auth } });
   assert.equal(page.status, 200);
   assert.match(page.headers.get('content-security-policy'), /sha256-/);
-  assert.equal((await call('read_dir', { path: '/workspace' }, { Authorization: auth })).status, 200);
-  assert.equal((await call('read_dir', { path: '/workspace' }, { Authorization: auth, Origin: 'https://attacker.example' })).status, 403);
+  assert.equal((await call('read_dir', { path: '/workspace' }, { Cookie: auth })).status, 200);
+  assert.equal((await call('read_dir', { path: '/workspace' }, { Cookie: auth, Origin: 'https://attacker.example' })).status, 403);
 });
 
 test('暂存复用路径，删除进入回收目录，GBK 保存不丢字', async (t) => {
@@ -114,4 +177,48 @@ test('Linux 文件名大小写分别存储，附件脚本禁止同源执行', as
   assert.equal((await fetch(`${url}/api/upload?path=/workspace/test.svg`, { method: 'POST', headers: { 'X-NoteBoard-Request': '1' }, body: '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>' })).status, 200);
   const response = await fetch(`${url}/api/file?path=/workspace/test.svg`);
   assert.match(response.headers.get('content-security-policy'), /^sandbox;/);
+});
+
+test('构建资源按权重发送预压缩副本，HEAD 保留编码与长度', async (t) => {
+  const { staticDir, url } = await fixture(t);
+  const content = 'console.log("网页资源压缩回归");\n'.repeat(1000);
+  const raw = Buffer.from(content);
+  const gzip = gzipSync(raw);
+  const brotli = brotliCompressSync(raw);
+  await fs.writeFile(path.join(staticDir, 'entry.js'), raw);
+  await fs.writeFile(path.join(staticDir, 'entry.js.gz'), gzip);
+  await fs.writeFile(path.join(staticDir, 'entry.js.br'), brotli);
+  for (const [accept, expected] of [
+    ['gzip, br', 'br'], ['gzip;q=1, br;q=0.5', 'gzip'], ['br;q=0, gzip', 'gzip'],
+    ['*;q=1, br;q=0', 'gzip'], ['gzip;q=0, br;q=0', null], ['identity', null],
+  ]) {
+    const response = await fetch(`${url}/entry.js`, { headers: { 'Accept-Encoding': accept } });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-encoding'), expected);
+    assert.equal(response.headers.get('vary'), 'Accept-Encoding');
+    assert.match(response.headers.get('content-type'), /^text\/javascript/);
+    assert.equal(Number(response.headers.get('content-length')), expected === 'br' ? brotli.length : expected === 'gzip' ? gzip.length : raw.length);
+    // fetch 自动解压，核对最终脚本与原始字节一致，不能只检查压缩头。
+    assert.equal(await response.text(), content);
+  }
+  const head = await fetch(`${url}/entry.js`, { method: 'HEAD', headers: { 'Accept-Encoding': 'gzip' } });
+  assert.equal(head.headers.get('content-encoding'), 'gzip');
+  assert.equal(Number(head.headers.get('content-length')), gzip.length);
+  assert.equal((await head.arrayBuffer()).byteLength, 0);
+});
+
+test('缺少预压缩副本的旧构建回退原文件，API 与 HTML 仍禁止缓存', async (t) => {
+  const { staticDir, url, call } = await fixture(t);
+  const content = 'body { color: red; }\n'.repeat(100);
+  await fs.writeFile(path.join(staticDir, 'style.css'), content);
+  const response = await fetch(`${url}/style.css`, { headers: { 'Accept-Encoding': 'br,gzip' } });
+  assert.equal(response.headers.get('content-encoding'), null);
+  assert.equal(await response.text(), content);
+  const page = await fetch(url);
+  assert.equal(page.headers.get('cache-control'), 'no-store');
+  assert.match(page.headers.get('content-security-policy'), /sha256-/);
+  const api = await call('web_capabilities', {}, { 'Accept-Encoding': 'gzip' });
+  assert.equal(api.headers.get('content-encoding'), null);
+  assert.equal(api.headers.get('cache-control'), 'no-store');
+  assert.equal((await api.json()).result.authEnabled, false);
 });

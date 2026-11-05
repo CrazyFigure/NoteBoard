@@ -264,7 +264,7 @@ describe('对齐、图片显示与富文本排版', () => {
     text: '根',
     children: [
       { id: 'plain', text: '普通节点', children: [] },
-      { id: 'pic', text: '带图', image: img, children: [] },
+      { id: 'pic', text: '带图', images: [img], children: [] },
     ],
   };
   const sizeOf = () => ({ width: 800, height: 400 });

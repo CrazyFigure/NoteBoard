@@ -9,11 +9,15 @@ import { Markdown } from '@tiptap/markdown';
 import { CellSelection } from '@tiptap/pm/tables';
 import { VisualKernel } from '@/features/editor-md/VisualKernel';
 import { TableClipboard } from '@/features/editor-md/tableClipboard';
+import { MarkdownClipboard } from '@/features/editor-md/markdownClipboard';
 import { handlePastedImageFile } from '@/features/editor-md/imagePaste';
 
 // 只裁掉无关浮层与扩展，保留真实 React 内核、ProseMirror 粘贴链路和表格插件。
 vi.mock('@/features/editor-md/extensions', () => ({
-  buildExtensions: () => [StarterKit, TableClipboard, Table, TableRow, TableCell, TableHeader, Markdown],
+  buildExtensions: (_docKey: string, options?: { markdownClipboard?: boolean }) => [
+    StarterKit, TableClipboard, Table, TableRow, TableCell, TableHeader, Markdown,
+    ...(options?.markdownClipboard ? [MarkdownClipboard] : []),
+  ],
 }));
 vi.mock('@/features/editor-md/bubbleMenu', () => ({ EditorBubbleMenu: () => null, TableToolbar: () => null }));
 vi.mock('@/features/editor-md/blockDragHandle', () => ({ BlockDragHandle: () => null }));
@@ -107,6 +111,29 @@ beforeEach(() => {
 
 afterEach(async () => {
   while (cleanups.length) await cleanups.pop()!();
+});
+
+describe('Markdown 可视化内核复制与剪切', () => {
+  it.each(['copy', 'cut'] as const)('%s 从实际内核入口输出 Markdown 源码', async (type) => {
+    const editor = await createKernel();
+    await act(async () => {
+      editor.commands.setContent('<h2>标题</h2><p><strong>正文</strong></p>');
+      editor.commands.selectAll();
+    });
+    const data = new Map<string, string>();
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', {
+      value: {
+        clearData: () => data.clear(),
+        setData: (mime: string, text: string) => data.set(mime, text),
+      },
+    });
+    await act(async () => { editor.view.dom.dispatchEvent(event); });
+    expect(data.get('text/plain')).toBe('## 标题\n\n**正文**');
+    expect([...data.keys()]).toEqual(['text/plain']);
+    expect(event.defaultPrevented).toBe(true);
+    expect(editor.state.doc.textContent).toBe(type === 'copy' ? '标题正文' : '');
+  });
 });
 
 describe('Markdown 表格内 Excel 多格式剪贴板粘贴', () => {

@@ -3,6 +3,7 @@
 // 功能：平移拖拽、无级缩放（自适应/1:1/自定义）、旋转/翻转、棋盘网格背景切换、元数据展示及快捷操作
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import '../../styles/canvasEditors.css';
 // 🔴 S11：回收视图状态存取与能力注册
 import { takeViewState } from '../session/editorSuspension';
 import { registerEditorCapabilities } from '../../core/editor/editorRegistry';
@@ -17,17 +18,20 @@ import {
   FolderOpen,
   Copy,
   Check,
+  Link,
   Sparkles,
   Grid,
 } from 'lucide-react';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import * as ipc from '../../core/ipc/commands';
 import { extFromPath } from '../../core/docKind';
+import { IS_NATIVE_MOBILE } from '../../core/platform';
 import { showToast } from '../../stores/toastStore';
+import { copyImageLocation, copyImageToClipboard, describeError } from './imageClipboard';
 import { Tooltip } from '../../components/Tooltip';
 import { ReadingModeButton } from '../reading/ReadingModeButton';
 import { ReadingModeOverlay } from '../reading/ReadingModeOverlay';
-import { requestReadingMode, useIsReading } from '../reading/readingMode';
+import { requestReadingMode, useIsReading, useWindowFullscreen } from '../reading/readingMode';
 
 interface ImageViewerProps {
   docKey: string;
@@ -80,6 +84,8 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [copied, setCopied] = useState(false);
+  // 大图解码与写入剪贴板需要一点时间，期间忽略重复点击
+  const [copying, setCopying] = useState(false);
 
   // 查看器变换状态：缩放比例、平移位移 (tx, ty)、旋转角度 (0/90/180/270)、水平/垂直翻转
   const [scale, setScale] = useState<number>(1);
@@ -145,6 +151,7 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
   const imgRef = useRef<HTMLImageElement>(null);
   // 沉浸阅读：隐藏工具栏与信息条，只留图片
   const isReading = useIsReading(docKey);
+  const readingFullscreen = useWindowFullscreen(isReading);
   const exitReading = useCallback(() => requestReadingMode(false), []);
 
   // 自适应窗口缩放
@@ -173,7 +180,7 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
     setTranslate({ x: 0, y: 0 });
   }, [naturalSize, rotation]);
 
-  // 进入/退出阅读后视口尺寸变化（外壳隐藏与系统全屏动画），稍后重新自适应；首次挂载不触发，保留恢复的视图
+  // 进入/退出阅读或阅读内切换全屏后视口尺寸变化（外壳隐藏与系统全屏动画），稍后重新自适应；首次挂载不触发，保留恢复的视图
   const fitToWindowRef = useRef(fitToWindow);
   fitToWindowRef.current = fitToWindow;
   const readingMountedRef = useRef(false);
@@ -184,7 +191,7 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
     }
     const timer = setTimeout(() => fitToWindowRef.current(), 320);
     return () => clearTimeout(timer);
-  }, [isReading]);
+  }, [isReading, readingFullscreen]);
 
   // 当图片首次加载完成时
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -263,38 +270,31 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
     setIsDragging(false);
   };
 
-  // 复制图片到系统剪贴板（绘制到 Canvas 并通过 Clipboard API 写入）
+  // 复制图片位图到系统剪贴板。
+  // 原实现把 <img> 画进画布再导出：asset 协议图片属于跨域资源，画布被污染后导出失败，
+  // 再静默回退为复制路径，用户粘贴得到的只是一串路径。现改为读取原文件解码后写入原生剪贴板。
   const handleCopyImage = async () => {
-    if (!imgRef.current || !naturalSize) return;
+    if (copying) return;
+    setCopying(true);
     try {
-      const canvas = document.createElement('canvas');
-      canvas.width = naturalSize.width;
-      canvas.height = naturalSize.height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('无法创建 2D 上下文');
-      ctx.drawImage(imgRef.current, 0, 0);
+      await copyImageToClipboard({ path: filePath });
+      setCopied(true);
+      showToast('图片已复制到剪贴板', 'success');
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      showToast(describeError(error, '复制图片失败'), 'error');
+    } finally {
+      setCopying(false);
+    }
+  };
 
-      canvas.toBlob(async (blob) => {
-        if (!blob) {
-          showToast('复制图片失败', 'error');
-          return;
-        }
-        try {
-          await navigator.clipboard.write([
-            new ClipboardItem({ [blob.type]: blob }),
-          ]);
-          setCopied(true);
-          showToast('图片已复制到剪贴板', 'success');
-          setTimeout(() => setCopied(false), 2000);
-        } catch {
-          // 若浏览器权限限制，则复制文件路径
-          navigator.clipboard.writeText(filePath);
-          showToast('已复制图片文件完整路径', 'info');
-        }
-      }, 'image/png');
-    } catch {
-      navigator.clipboard.writeText(filePath);
-      showToast('已复制图片文件路径', 'info');
+  // 复制图片文件的完整路径
+  const handleCopyPath = async () => {
+    try {
+      await copyImageLocation({ path: filePath });
+      showToast('已复制文件路径', 'success');
+    } catch (error) {
+      showToast(describeError(error, '复制路径失败'), 'error');
     }
   };
 
@@ -365,7 +365,7 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
           <button
             type="button"
             onClick={zoomOut}
-            style={btnStyle}
+            className="nb-image-toolbar-btn"
             aria-label="缩小"
           >
             <ZoomOut size={15} />
@@ -377,8 +377,9 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
           <button
             type="button"
             onClick={resetToActual}
+            className="nb-image-toolbar-btn"
             style={{
-              ...btnStyle,
+              width: 'auto',
               minWidth: 48,
               fontSize: 12,
               fontWeight: 500,
@@ -395,7 +396,7 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
           <button
             type="button"
             onClick={zoomIn}
-            style={btnStyle}
+            className="nb-image-toolbar-btn"
             aria-label="放大"
           >
             <ZoomIn size={15} />
@@ -407,7 +408,7 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
           <button
             type="button"
             onClick={fitToWindow}
-            style={btnStyle}
+            className="nb-image-toolbar-btn"
             aria-label="自适应窗口"
           >
             <Maximize2 size={15} />
@@ -421,7 +422,7 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
           <button
             type="button"
             onClick={rotateCcw}
-            style={btnStyle}
+            className="nb-image-toolbar-btn"
             aria-label="逆时针旋转 90°"
           >
             <RotateCcw size={15} />
@@ -433,7 +434,7 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
           <button
             type="button"
             onClick={rotateCw}
-            style={btnStyle}
+            className="nb-image-toolbar-btn"
             aria-label="顺时针旋转 90°"
           >
             <RotateCw size={15} />
@@ -445,11 +446,11 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
           <button
             type="button"
             onClick={toggleFlipH}
-            style={{
-              ...btnStyle,
-              background: flipH ? 'var(--toolbar-hover)' : 'transparent',
-            }}
+            className="nb-image-toolbar-btn"
+            // 仅在已翻转时以底色标出开启状态；未开启时不写内联底色，保留样式类的悬停反馈
+            style={flipH ? { background: 'var(--toolbar-active)' } : undefined}
             aria-label="水平翻转"
+            aria-pressed={flipH}
           >
             <FlipHorizontal size={15} />
           </button>
@@ -470,7 +471,7 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
               };
               setBgMode(nextMode[bgMode]);
             }}
-            style={btnStyle}
+            className="nb-image-toolbar-btn"
             aria-label="切换背景"
           >
             <Grid size={15} />
@@ -484,31 +485,50 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
           <button
             type="button"
             onClick={handleCopyImage}
-            style={btnStyle}
+            style={copying ? { cursor: 'progress' } : undefined}
+            className="nb-image-toolbar-btn"
             aria-label="复制图片"
+            aria-busy={copying}
+            disabled={loadError}
           >
             {copied ? <Check size={15} color="var(--success-600)" /> : <Copy size={15} />}
           </button>
         </Tooltip>
 
-        {/* 在文件管理器中定位 */}
-        <Tooltip content="在文件管理器中定位" side="bottom" sideOffset={6}>
+        {/* 复制文件路径 */}
+        <Tooltip content="复制文件路径" side="bottom" sideOffset={6}>
           <button
             type="button"
-            onClick={() => ipc.revealInExplorer(filePath)}
-            style={btnStyle}
-            aria-label="在文件管理器中定位"
+            onClick={handleCopyPath}
+            className="nb-image-toolbar-btn"
+            aria-label="复制文件路径"
           >
-            <FolderOpen size={15} />
+            <Link size={15} />
           </button>
         </Tooltip>
+
+        {/* 在文件管理器中定位（移动端没有可定位文件的系统文件管理器） */}
+        {!IS_NATIVE_MOBILE && (
+          <Tooltip content="在文件管理器中定位" side="bottom" sideOffset={6}>
+            <button
+              type="button"
+              onClick={() => {
+                ipc.revealInExplorer(filePath).catch((error) => showToast(describeError(error, '无法打开文件管理器'), 'error'));
+              }}
+              className="nb-image-toolbar-btn"
+              aria-label="在文件管理器中定位"
+            >
+              <FolderOpen size={15} />
+            </button>
+          </Tooltip>
+        )}
 
         {/* 用系统默认应用打开 */}
         <Tooltip content="用系统默认程序打开" side="bottom" sideOffset={6}>
           <button
             type="button"
             onClick={() => ipc.openWithDefaultApp(filePath)}
-            style={btnStyle}
+            className="nb-image-toolbar-btn"
             aria-label="用系统默认程序打开"
           >
             <ExternalLink size={15} />
@@ -662,17 +682,4 @@ export function ImageViewer({ docKey, filePath, fileName, fileSize }: ImageViewe
   );
 }
 
-const btnStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: 28,
-  height: 28,
-  padding: 0,
-  border: 'none',
-  borderRadius: 4,
-  background: 'transparent',
-  color: 'inherit',
-  cursor: 'pointer',
-  transition: 'background var(--transition-fast)',
-};
+// 工具栏按钮统一使用 .nb-image-toolbar-btn（canvasEditors.css）：原内联透明底色会盖掉样式类的悬停 / 按压反馈

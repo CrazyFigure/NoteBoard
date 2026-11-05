@@ -368,9 +368,12 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
   },
 
   setTabDirty: (key, isDirty) => {
-    set((state) => ({
-      tabs: state.tabs.map((t) => (t.key === key ? { ...t, isDirty } : t)),
-    }));
+    set((state) => {
+      // 连续输入会重复标脏：状态未翻转时不广播窗口更新，正文暂存仍由 documentStore 独立驱动。
+      const tab = state.tabs.find((item) => item.key === key);
+      if (!tab || tab.isDirty === isDirty) return state;
+      return { tabs: state.tabs.map((item) => item === tab ? { ...item, isDirty } : item) };
+    });
   },
 
   setTabPreview: (key, isPreview) => {
