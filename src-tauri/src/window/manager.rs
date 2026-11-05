@@ -147,9 +147,9 @@ pub fn create_window_at(app: &tauri::AppHandle, label: String, position: Option<
         // 窗口层拖拽开关是 Windows 专有 API；其他系统保留默认启用的 WebView 文件拖拽处理。
         #[cfg(target_os = "windows")]
         let builder = builder.drag_and_drop(true);
-        // 动态新建窗口与主窗口使用同一免安装 WebView 资料目录，防止重新落回 LOCALAPPDATA。
+        // 动态新建窗口与主窗口复用开发版或免安装版的 WebView 资料目录。
         #[cfg(target_os = "windows")]
-        let builder = if let Some(root) = crate::app_dirs::portable_data_root() {
+        let builder = if let Some(root) = crate::app_dirs::isolated_data_root() {
             builder.data_directory(root.join("webview"))
         } else {
             builder

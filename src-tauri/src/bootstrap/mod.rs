@@ -17,7 +17,7 @@ pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(windows)]
     file_associations::start(app);
 
-    // 移动端与 Unix 桌面端使用系统标准数据/缓存目录；Windows 免安装目录已在创建 WebView 前初始化。
+    // 移动端与 Unix 桌面端使用系统标准数据/缓存目录；Windows 隔离配置已在创建 WebView 前初始化。
     // 必须先于任何设置、会话、同步配置读写，不能依赖 GUI 进程的当前工作目录。
     #[cfg(any(mobile, target_os = "macos", target_os = "linux"))]
     {

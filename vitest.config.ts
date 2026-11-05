@@ -20,6 +20,8 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // 测试存储统一使用当前 jsdom 实例，避免 Node 的同名全局属性遮蔽浏览器实现。
+    setupFiles: ['./test/setup.ts'],
     globals: true,
     include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
     css: true, // 加载 CSS 用于对比度测试

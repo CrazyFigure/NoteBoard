@@ -438,7 +438,8 @@ fn associations(config: &tauri::Config) -> Vec<(String, String)> {
 /// 安装完成时同步恢复，退出码 0 为完成、1 为部分恢复、2 为执行失败；提示留到用户首次打开应用。
 pub(crate) fn run_from_installer(config: &tauri::Config) -> i32 {
     let run = || -> io::Result<i32> {
-        crate::app_dirs::init_portable()?;
+        // 安装器恢复复用应用的目录初始化入口，备份按当前运行配置归档。
+        crate::app_dirs::init_windows_profile()?;
         let registry = Registry::open()?;
         let report = repair(
             &registry,

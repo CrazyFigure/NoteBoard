@@ -93,8 +93,8 @@ describe('S08 源码首屏不创建隐藏 TipTap 实例', () => {
       expect(getMdTipTapEditor(KEY)).toBeUndefined();
       // 源码模式 CM 实例已创建
       expect(getMdSourceView(KEY)).toBeDefined();
-      // tab.viewMode 保持 null（跟随默认模式的原语义，不强制写回）
-      expect(useWindowStore.getState().getTab(KEY)?.viewMode).toBeNull();
+      // 初始化后记录实际模式，供阅读位置恢复与后续内核分派使用。
+      expect(useWindowStore.getState().getTab(KEY)?.viewMode).toBe('source');
     } finally {
       act(() => root.unmount());
       host.remove();

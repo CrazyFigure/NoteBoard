@@ -1,17 +1,17 @@
 // NoteBoard 应用目录统一入口
-// Windows 免安装发布版使用 EXE 同目录的 data/NoteBoard；安装版与开发版保留已有 APPDATA 路径。
+// Windows 安装版使用 APPDATA/NoteBoard，开发版使用其 dev 子目录，免安装发布版使用 EXE 同目录的 data/NoteBoard。
 // macOS / Linux 与移动端在 setup 中使用 Tauri 平台目录，不能套用 Windows 的免安装判定。
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-// 免安装版必须在插件和 WebView 创建前写入；其他非 Windows 平台在 setup 时写入。
+// Windows 开发版与免安装版必须在插件和 WebView 创建前写入；其他平台在 setup 时写入。
 static DATA_ROOT_OVERRIDE: OnceLock<PathBuf> = OnceLock::new();
 static CACHE_ROOT_OVERRIDE: OnceLock<PathBuf> = OnceLock::new();
 // 只在 Windows 免安装发布版初始化，供更新器、资源包及所有窗口共用同一运行模式。
 static PORTABLE_DATA_ROOT: OnceLock<PathBuf> = OnceLock::new();
 
-/// NSIS 安装目录带 uninstall.exe；开发构建始终沿用原路径，EXE 改名不影响免安装判定。
+/// NSIS 安装目录带 uninstall.exe；开发构建使用独立配置，EXE 改名不影响免安装判定。
 #[cfg(any(windows, test))]
 fn windows_portable_root(exe: &Path, development: bool) -> Option<PathBuf> {
     let directory = exe.parent()?;
@@ -27,6 +27,24 @@ pub fn portable_data_root() -> Option<&'static Path> {
     PORTABLE_DATA_ROOT.get().map(PathBuf::as_path)
 }
 
+/// Windows 开发版与免安装版的浏览器资料、窗口状态与原生数据共用同一隔离根目录。
+pub fn isolated_data_root() -> Option<&'static Path> {
+    if cfg!(all(windows, desktop, debug_assertions)) {
+        DATA_ROOT_OVERRIDE.get().map(PathBuf::as_path)
+    } else {
+        portable_data_root()
+    }
+}
+
+/// 开发配置集中存放在 dev 子目录，发布配置按传入的正式根目录解析。
+fn profile_data_root(root: PathBuf, development: bool) -> PathBuf {
+    if development {
+        root.join("dev")
+    } else {
+        root
+    }
+}
+
 /// 按数据目录生成稳定的实例标识：同目录覆盖升级/改名仍合并实例，不同副本与安装版互不接管。
 // 网页服务也复用本模块，但不装配桌面路径模块；实例标识只由桌面宿主编译。
 #[cfg(all(desktop, any(windows, test)))]
@@ -39,10 +57,17 @@ pub(crate) fn portable_identifier(identifier: &str, root: &Path) -> String {
 
 /// 在主窗口和插件创建前准备本地数据目录；不可写时返回错误，禁止静默回退到安装版数据。
 #[cfg(windows)]
-pub fn init_portable() -> std::io::Result<()> {
-    let exe = std::env::current_exe()?;
-    if let Some(root) = windows_portable_root(&exe, cfg!(debug_assertions)) {
-        activate_portable_root(root)?;
+pub fn init_windows_profile() -> std::io::Result<()> {
+    if cfg!(all(desktop, debug_assertions)) {
+        let root = app_data_dir();
+        prepare_profile_root(&root)?;
+        set_cache_root(root.join("cache"));
+        set_data_root(root);
+    } else {
+        let exe = std::env::current_exe()?;
+        if let Some(root) = windows_portable_root(&exe, false) {
+            activate_portable_root(root)?;
+        }
     }
     Ok(())
 }
@@ -83,6 +108,12 @@ fn prepare_portable_root(root: &Path) -> std::io::Result<()> {
         Err(error) if error.kind() == ErrorKind::AlreadyExists && marker.is_file() => {}
         Err(error) => return Err(error),
     }
+    prepare_profile_root(root)
+}
+
+/// 初始化隔离配置所需的目录并验证可写性，调用方在成功后才登记全局根目录。
+#[cfg(any(windows, test))]
+fn prepare_profile_root(root: &Path) -> std::io::Result<()> {
     for directory in [root.to_path_buf(), root.join("cache"), root.join("webview")] {
         std::fs::create_dir_all(&directory)?;
         // 临时探针离开作用域即删除，不覆盖用户已有文件。
@@ -111,10 +142,13 @@ pub fn app_data_dir() -> PathBuf {
     let base = std::env::var("APPDATA")
         .or_else(|_| std::env::var("HOME"))
         .unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(base).join("NoteBoard")
+    profile_data_root(
+        PathBuf::from(base).join("NoteBoard"),
+        cfg!(all(windows, desktop, debug_assertions)),
+    )
 }
 
-/// 临时/缓存目录：免安装版使用 data/NoteBoard/cache，其他端由系统或平台路径初始化。
+/// 临时/缓存目录：Windows 隔离配置使用其 cache 子目录，其他端由系统或平台路径初始化。
 pub fn cache_dir() -> PathBuf {
     if let Some(root) = CACHE_ROOT_OVERRIDE.get() {
         return root.clone();
@@ -135,6 +169,110 @@ pub fn inbox_dir() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 开发配置只增加 dev 层级，发布配置与带空格、中文的正式目录均按原路径解析。
+    #[test]
+    fn development_profile_uses_a_dedicated_subdirectory() {
+        let installed = PathBuf::from("用户配置/NoteBoard data");
+        assert_eq!(
+            profile_data_root(installed.clone(), true),
+            installed.join("dev")
+        );
+        assert_eq!(profile_data_root(installed.clone(), false), installed);
+    }
+
+    /// 独立进程走真实 Windows 初始化入口，验证所有开发写入与正式配置分目录。
+    #[cfg(all(windows, desktop, debug_assertions))]
+    #[test]
+    fn development_profile_keeps_installed_settings_and_data_separate() {
+        const TEST_ROOT: &str = "NOTEBOARD_DEVELOPMENT_TEST_ROOT";
+        let Ok(root) = std::env::var(TEST_ROOT) else {
+            let directory = tempfile::tempdir().unwrap();
+            let installed = directory.path().join("roaming/NoteBoard");
+            std::fs::create_dir_all(&installed).unwrap();
+            // 正式配置和旧开发会话作为哨兵，开发初始化后逐字核对其内容。
+            let settings = br#"{"revision":99}"#;
+            std::fs::write(installed.join("settings.json"), settings).unwrap();
+            std::fs::write(installed.join("session-dev.json"), b"old development session")
+                .unwrap();
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "app_dirs::tests::development_profile_keeps_installed_settings_and_data_separate"])
+                .env(TEST_ROOT, installed.join("dev"))
+                .env("APPDATA", directory.path().join("roaming"))
+                .env("LOCALAPPDATA", directory.path().join("local"))
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert_eq!(
+                std::fs::read(installed.join("settings.json")).unwrap(),
+                settings
+            );
+            assert_eq!(
+                std::fs::read(installed.join("session-dev.json")).unwrap(),
+                b"old development session"
+            );
+            assert_eq!(std::fs::read_dir(&installed).unwrap().count(), 3);
+            assert!(!directory.path().join("local").exists());
+            return;
+        };
+        let root = PathBuf::from(root);
+        // 初始化前的路径查询同样定位到开发目录，初始化后各持久化模块共用这一根目录。
+        assert_eq!(app_data_dir(), root);
+        init_windows_profile().unwrap();
+        assert_eq!(cache_dir(), root.join("cache"));
+        assert_eq!(isolated_data_root(), Some(root.as_path()));
+        assert!(portable_data_root().is_none());
+        assert!(root.join("webview").is_dir());
+        assert_eq!(
+            crate::font_pack::font_packs_root_dir(),
+            root.join("font-packs")
+        );
+        assert_eq!(crate::settings::model::load().revision, 0);
+        assert!(crate::session::commands::load_session().unwrap().is_none());
+        let mut settings = crate::settings::model::Settings::default();
+        crate::settings::model::save(&mut settings).unwrap();
+        crate::session::commands::save_session(crate::session::Session::default()).unwrap();
+        crate::session::commands::push_recent("C:/test/note.md".into(), false).unwrap();
+        crate::session::commands::write_draft(
+            "untitled:dev".into(),
+            "开发草稿".into(),
+            "markdown".into(),
+        )
+        .unwrap();
+        crate::favorites::commands::save_favorites(crate::favorites::FavoritesData::default())
+            .unwrap();
+        crate::sync::config::save(&crate::sync::config::SyncConfigFile::default()).unwrap();
+        for relative in [
+            "settings.json",
+            "session-dev.json",
+            "recent.json",
+            "favorites.json",
+            "sync/config.json",
+        ] {
+            assert!(root.join(relative).is_file(), "{relative} 应写入开发数据目录");
+        }
+        assert_eq!(std::fs::read_dir(root.join("drafts")).unwrap().count(), 1);
+        // 重复初始化复用同一配置，已写入文件保持可读取。
+        init_windows_profile().unwrap();
+        assert_eq!(crate::session::commands::list_drafts().unwrap().len(), 1);
+    }
+
+    /// 目录被文件占用时上报错误并保留冲突文件，防止开发配置静默使用其他目录。
+    #[test]
+    fn development_profile_rejects_conflicting_storage_paths() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().join("dev");
+        prepare_profile_root(&root).unwrap();
+        std::fs::remove_dir(root.join("webview")).unwrap();
+        std::fs::write(root.join("webview"), b"keep").unwrap();
+        assert!(prepare_profile_root(&root).is_err());
+        assert_eq!(std::fs::read(root.join("webview")).unwrap(), b"keep");
+    }
 
     /// 安装器和免安装分发复用同一 EXE，必须依据安装目录判定，不能依赖文件名或工作目录。
     #[test]

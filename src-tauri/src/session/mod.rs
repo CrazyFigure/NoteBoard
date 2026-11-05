@@ -62,8 +62,7 @@ pub struct SessionTab {
 }
 
 /// 会话快照文件名。
-/// 开发版（tauri dev 的 debug 构建）与安装版共用 %APPDATA%\NoteBoard 数据目录且可并行运行，
-/// 若共用同一快照，开发版启动恢复/退出改写会覆盖安装版记住的标签，因此开发版单独使用一份。
+/// 开发版在独立数据目录内沿用 session-dev.json，兼容已生成的开发配置与其他平台会话。
 fn session_file_name() -> &'static str {
     if cfg!(debug_assertions) {
         "session-dev.json"

@@ -52,12 +52,12 @@ pub fn run() {
     #[cfg(windows)]
     let context = {
         let mut context = context;
-        // 免安装数据必须先于单实例插件与自动创建的主 WebView 初始化，setup 阶段已经太晚。
-        if let Err(error) = app_dirs::init_portable() {
+        // 开发版与免安装版数据必须先于单实例插件与主 WebView 初始化，统一隔离原生和浏览器存储。
+        if let Err(error) = app_dirs::init_windows_profile() {
             use windows::core::HSTRING;
             use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
             let message = HSTRING::from(format!(
-                "无法使用程序旁的 data/NoteBoard 目录。请确认该目录可写且没有其他程序的同名数据。\n\n{error}"
+                "无法使用 NoteBoard 数据目录。请确认该目录可写且没有其他程序的同名数据。\n\n{error}"
             ));
             // 发布版没有控制台，原生提示明确说明原因；此时不启动任何读写安装版数据的后台任务。
             unsafe { MessageBoxW(None, &message, &HSTRING::from("NoteBoard"), MB_OK | MB_ICONERROR); }
@@ -72,8 +72,8 @@ pub fn run() {
         for window_config in &mut context.config_mut().app.windows {
             window_config.additional_browser_args =
                 Some(window::render_recovery::WINDOWS_BROWSER_ARGS.to_string());
-            // localStorage / IndexedDB / 浏览器缓存也必须随免安装目录隔离，所有窗口共用同一资料目录。
-            if let Some(root) = app_dirs::portable_data_root() {
+            // localStorage / IndexedDB / 浏览器缓存随开发版或免安装版数据隔离，所有窗口共用同一资料目录。
+            if let Some(root) = app_dirs::isolated_data_root() {
                 window_config.data_directory = Some(root.join("webview"));
             }
         }
@@ -105,8 +105,8 @@ pub fn run() {
                     & !tauri_plugin_window_state::StateFlags::DECORATIONS
                     & !tauri_plugin_window_state::StateFlags::VISIBLE,
             );
-        // 插件默认使用系统配置目录；免安装版将状态文件显式写入同目录 data。
-        let window_state = if let Some(root) = app_dirs::portable_data_root() {
+        // 开发版与免安装版将窗口状态写入各自的数据目录，与设置和草稿归属一致。
+        let window_state = if let Some(root) = app_dirs::isolated_data_root() {
             window_state.with_filename(root.join("window-state.json").to_string_lossy().into_owned())
         } else {
             window_state
