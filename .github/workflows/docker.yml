@@ -12,9 +12,9 @@ jobs:
   image:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # 构建前先验证服务端的目录边界、认证和文件持久化契约。
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - run: npm ci --prefix server
@@ -24,13 +24,13 @@ jobs:
       - run: npm run test:web
         env:
           NOTEBOARD_SYNC_BINARY: ${{ github.workspace }}/server/native/target/debug/noteboard-sync-server
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/metadata-action@v5
+      - uses: docker/metadata-action@v6
         id: meta
         with:
           images: crazyfigure/noteboard
