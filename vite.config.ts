@@ -3,7 +3,64 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from 'node:url';
 import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
+import { createRequire } from 'node:module';
+import fs from 'node:fs';
+import path from 'node:path';
 import { visualWorkerBudgetPlugin } from './scripts/visualWorkerBudget';
+
+// Excalidraw 画布字体的发布目录；必须与 src/features/board/excalidrawAssetPath.ts 保持一致。
+const EXCALIDRAW_ASSET_DIR = 'excalidraw-assets';
+
+/**
+ * Excalidraw 0.18 不随 npm 包自动加载字体：未设置 EXCALIDRAW_ASSET_PATH 时会去 esm.sh 下载，
+ * 被桌面版 CSP 拦截且离线不可用。这里把包内 dist/prod/fonts 原样发布到同源目录，
+ * 开发期用中间件直接读 node_modules，构建期逐文件输出（woff2 已压缩，Xiaolai 按 unicode-range 分片按需加载）。
+ */
+function excalidrawFontsPlugin(): import('vite').Plugin {
+  const require = createRequire(import.meta.url);
+  // 包入口解析到 dist/prod/index.js，字体目录与其同级
+  const fontsDir = path.join(path.dirname(require.resolve('@excalidraw/excalidraw')), 'fonts');
+  const routePrefix = `/${EXCALIDRAW_ASSET_DIR}/fonts/`;
+
+  const listFonts = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const fullPath = path.join(dir, entry.name);
+    return entry.isDirectory() ? listFonts(fullPath) : entry.name.endsWith('.woff2') ? [fullPath] : [];
+  });
+
+  return {
+    name: 'noteboard-excalidraw-fonts',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = req.url?.split('?')[0] ?? '';
+        if (!url.startsWith(routePrefix)) return next();
+        const relative = decodeURIComponent(url.slice(routePrefix.length));
+        const filePath = path.resolve(fontsDir, relative);
+        // 只允许读取字体目录内的文件，防止 ../ 越界
+        if (!filePath.startsWith(fontsDir + path.sep) || !fs.existsSync(filePath)) return next();
+        res.setHeader('Content-Type', 'font/woff2');
+        res.setHeader('Cache-Control', 'max-age=31536000, immutable');
+        fs.createReadStream(filePath).pipe(res);
+      });
+    },
+    // 🔴 createUrls 总会在本地地址之后追加 esm.sh 回退；Chromium 构造 FontFace 时会预先请求跨域回退地址，
+    //    导致每次打开画板都向 esm.sh 发出约 230 个请求（桌面版被 CSP 拦截刷报错，网页版会真实下载）。
+    //    改为仅在未配置 EXCALIDRAW_ASSET_PATH（本地地址为空）时才追加回退；同时匹配压缩版与开发版写法。
+    transform(code, id) {
+      if (!code.includes('ASSETS_FALLBACK_URL') || !(id.includes('excalidraw') || id.includes('chunk-'))) return null;
+      const modified = code.replace(
+        /([\w$]+)\.push\(new URL\(([\w$]+),\s*([\w$]+)\.ASSETS_FALLBACK_URL\)\)/g,
+        '$1.length||$1.push(new URL($2,$3.ASSETS_FALLBACK_URL))',
+      );
+      return modified !== code ? { code: modified, map: null } : null;
+    },
+    generateBundle() {
+      for (const filePath of listFonts(fontsDir)) {
+        const relative = path.relative(fontsDir, filePath).split(path.sep).join('/');
+        this.emitFile({ type: 'asset', fileName: `${EXCALIDRAW_ASSET_DIR}/fonts/${relative}`, source: fs.readFileSync(filePath) });
+      }
+    },
+  };
+}
 
 // Excalidraw zh-CN 语言包增补插件（补齐官方 zh-CN 语言包中遗漏的 fontList、quickSearch、commandPalette 等词条）
 function excalidrawLocalesPlugin() {
@@ -248,7 +305,7 @@ const devPort = hasAllocatedDevPort ? configuredDevPort : 1421;
 // Vite 与 Tauri 必须使用同一端口；动态端口已预选完成时禁止 Vite 静默切换，避免 WebView 串线。
 export default defineConfig(({ command, mode }) => ({
   base: './',
-  plugins: [react(), tailwindcss(), excalidrawLocalesPlugin(), moduleSourceManifestPlugin(), ...(mode === 'web' ? [webCompressionPlugin()] : [])],
+  plugins: [react(), tailwindcss(), excalidrawLocalesPlugin(), excalidrawFontsPlugin(), moduleSourceManifestPlugin(), ...(mode === 'web' ? [webCompressionPlugin()] : [])],
   define: {
     // 构建目标平台（Tauri CLI 运行 beforeDev/BuildCommand 时注入 TAURI_ENV_PLATFORM），供前端同步判定桌面/移动端
     // 网页构建使用独立运行时；原生构建仍由 Tauri 注入真实平台。

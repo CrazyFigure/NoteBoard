@@ -7,6 +7,7 @@ import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'rea
 import '@excalidraw/excalidraw/index.css';
 import { parseScene, cleanAppState, type ExcalidrawScene } from '../../board/sceneIo';
 import { mapTheme } from '../../board/excalidrawTheme';
+import { configureExcalidrawAssetPath } from '../../board/excalidrawAssetPath';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import { diffBoards, type BoardChange } from '../diff/boardDiff';
 import type { VersionViewerProps } from './viewerTypes';
@@ -20,7 +21,11 @@ let excalidrawPromise: Promise<AnyComponent> | null = null;
 let sceneSeq = 0;
 
 function loadExcalidraw(): Promise<AnyComponent> {
-  if (!excalidrawPromise) excalidrawPromise = import('@excalidraw/excalidraw').then((m) => m.Excalidraw as AnyComponent);
+  if (!excalidrawPromise) {
+    // 历史版本画布同样需要本地字体路径，须在模块加载前设置
+    configureExcalidrawAssetPath();
+    excalidrawPromise = import('@excalidraw/excalidraw').then((m) => m.Excalidraw as AnyComponent);
+  }
   return excalidrawPromise;
 }
 

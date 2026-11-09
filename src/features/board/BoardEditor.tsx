@@ -30,6 +30,7 @@ import { takeViewState } from '../session/editorSuspension';
 import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
 import type { EditorCapabilities } from '../../core/editor/editorTypes';
 import { IS_MOBILE_UI } from '../../core/platform';
+import { configureExcalidrawAssetPath } from './excalidrawAssetPath';
 import {
   getDocumentHistoryAvailability,
   initializeDocumentHistory,
@@ -59,6 +60,8 @@ let loadingPromise: Promise<typeof import('@excalidraw/excalidraw')> | null = nu
 async function loadExcalidraw() {
   if (ExcalidrawComponent) return ExcalidrawComponent;
   if (!loadingPromise) {
+    // 字体路径须在 Excalidraw 模块注册字体前设置
+    configureExcalidrawAssetPath();
     loadingPromise = import('@excalidraw/excalidraw').then((mod) => {
       ExcalidrawComponent = mod.Excalidraw;
       return mod;

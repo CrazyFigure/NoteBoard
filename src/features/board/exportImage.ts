@@ -25,7 +25,8 @@ export async function exportBoardImage(
   files: Record<string, ExcalidrawFileData>,
   options: ExportOptions,
 ): Promise<ExportResult> {
-  // 动态导入 Excalidraw 工具
+  // 动态导入 Excalidraw 工具；导出 SVG 内嵌字体同样依赖本地字体路径
+  configureExcalidrawAssetPath();
   const { exportToBlob, exportToSvg } = await import('@excalidraw/excalidraw');
 
   const exportOpts = {
@@ -63,6 +64,7 @@ export async function exportBoardImage(
 
 // 导入类型（运行时不加载）
 import type { ExcalidrawElement, ExcalidrawAppState, ExcalidrawFileData } from './sceneIo';
+import { configureExcalidrawAssetPath } from './excalidrawAssetPath';
 
 /**
  * 触发下载
