@@ -740,7 +740,7 @@ dependencies = [
 
 [[package]]
 name = "noteboard-sync-server"
-version = "0.7.8"
+version = "0.7.9"
 dependencies = [
  "base64",
  "chardetng",
