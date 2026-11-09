@@ -40,7 +40,7 @@ export function PluginBoardFont() {
     <div className="nb-plugin-fonts-heading">
       <div>
         <h4>画板手写字体</h4>
-        <p>画板中文显示为手写体{status ? ` · 约 ${formatMb(status.downloadSizeBytes)}` : ''}</p>
+        <p>画板选 Excalifont 时中文显示为手写体{status ? ` · 约 ${formatMb(status.downloadSizeBytes)}` : ''}</p>
       </div>
       {!IS_WEB && <div className="nb-plugin-actions">
         {ready ? confirming ? <>
@@ -58,7 +58,7 @@ export function PluginBoardFont() {
       <div className="nb-plugin-icon"><PenLine size={18} /></div>
       <div className="nb-plugin-info">
         <div className="nb-plugin-name">小赖 Xiaolai</div>
-        <div className="nb-plugin-meta"><span>画板中文 · SIL OFL 1.1</span><span className={`nb-plugin-chip${ready ? ' is-ready' : ''}`}>{state}</span></div>
+        <div className="nb-plugin-meta"><span>Excalifont 中文 · SIL OFL 1.1</span><span className={`nb-plugin-chip${ready ? ' is-ready' : ''}`}>{state}</span></div>
         <p className="nb-font-sample" style={{ fontFamily: ready ? 'Xiaolai, var(--ui-font-family)' : undefined }}>{SAMPLE}</p>
       </div>
     </article>

@@ -9,6 +9,7 @@ import { parseScene, serializeScene, createEmptyScene, cleanAppState, isVersionS
 import { mapTheme } from './excalidrawTheme';
 import { BoardPresentationToggle } from './BoardPresentationToggle';
 import { FlowchartQuickConnect } from './FlowchartQuickConnect';
+import { BoardFontTooltip } from './BoardFontTooltip';
 import { Tooltip } from '../../components/Tooltip';
 import { CanvasMinimap } from '../../components/minimap/CanvasMinimap';
 import { createBoardMinimapScene } from './boardMinimap';
@@ -777,6 +778,8 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
           enabled={boardPresentationMode}
           onToggle={handleTogglePresentationMode}
         />
+        {/* 字体按钮的中英文说明提示（替代 Excalidraw 原生 title） */}
+        <BoardFontTooltip rootRef={boardRootRef} />
       </div>
 
       {/* 状态栏画板区段 */}
