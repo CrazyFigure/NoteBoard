@@ -42,6 +42,24 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev patchelf libfuse2 libfontconfig1-dev
       - run: pnpm install --frozen-lockfile
+      # Tauri 打 AppImage 时才从 GitHub 下载 linuxdeploy 等工具，偶发 504 且不重试（0.8.0 曾因此失败）；
+      # 预先下载到其缓存目录 ~/.cache/tauri，已存在时打包直接复用。先写临时文件再改名，避免残缺文件被当作已下载
+      - name: Prefetch AppImage tools
+        if: runner.os == 'Linux'
+        run: |
+          TOOLS="${HOME}/.cache/tauri"
+          mkdir -p "${TOOLS}"
+          fetch() {
+            curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 -o "${TOOLS}/$1.part" "$2" \
+              && chmod +x "${TOOLS}/$1.part" && mv "${TOOLS}/$1.part" "${TOOLS}/$1"
+          }
+          fetch AppRun-x86_64 https://github.com/tauri-apps/binary-releases/releases/download/apprun-old/AppRun-x86_64
+          fetch linuxdeploy-x86_64.AppImage https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy/linuxdeploy-x86_64.AppImage
+          fetch linuxdeploy-plugin-gtk.sh https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh
+          fetch linuxdeploy-plugin-gstreamer.sh https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gstreamer/master/linuxdeploy-plugin-gstreamer.sh
+          # 该插件 Tauri 也视为可选，下载失败时回退内置版本
+          fetch linuxdeploy-plugin-appimage.AppImage https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage \
+            || echo "::warning title=AppImage 插件::下载失败，打包时使用内置版本"
       - name: Build package
         env:
           # 未配置 Apple 开发者证书时使用 ad-hoc 签名，不宣称已通过 Apple 公证。
