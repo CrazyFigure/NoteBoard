@@ -9,7 +9,7 @@ import { emitRawSegment } from './rawMarkdownSegments';
 /** 数学 tokenizer 附加在 marked token 上的 LaTeX 原文。 */
 export type MathMarkdownToken = MarkdownToken & { latex?: string };
 
-/** 行内 `$...$` tokenizer：不跨行，并跳过转义或不满足边界约束的美元符号。 */
+/** 行内 `$...$` / `\(...\)` tokenizer：在 Markdown 转义规则消费反斜杠前识别公式。 */
 export const inlineMathTokenizer: MarkdownTokenizer = {
   name: 'mathInline',
   level: 'inline',
@@ -25,30 +25,24 @@ export const inlineMathTokenizer: MarkdownTokenizer = {
   },
 };
 
-/** 查找独占一行或单行闭合的 `$$...$$` 块公式起点。 */
-export const findBlockMathStart = createIndexedBlockStart(/^ {0,3}\$\$(?=[ \t]*(?:\r?\n|[^\r\n]*\$\$[ \t]*(?:\r?\n|$)))/m);
+/** 查找 `$$...$$` / `\[...\]` 块公式起点，方括号定界符也允许与公式正文同行。 */
+export const findBlockMathStart = createIndexedBlockStart(/^ {0,3}(?:\$\$(?=[ \t]*(?:\r?\n|[^\r\n]*\$\$[ \t]*(?:\r?\n|$)))|\\\[)/m);
 
-/** 块级 `$$...$$` tokenizer：同时支持标准多行形式与单行形式。 */
+/** 块级 `$$...$$` / `\[...\]` tokenizer：支持多行与单行，成对定界符不能混用。 */
 export const blockMathTokenizer: MarkdownTokenizer = {
   name: 'mathBlock',
   level: 'block',
   start: findBlockMathStart,
   tokenize(source) {
-    const multiline = /^ {0,3}\$\$[ \t]*\r?\n([\s\S]*?)\r?\n {0,3}\$\$[ \t]*(?:\r?\n|$)/.exec(source);
-    if (multiline) {
-      return {
-        type: 'mathBlock',
-        raw: multiline[0],
-        latex: multiline[1],
-      };
-    }
-
-    const singleLine = /^ {0,3}\$\$[ \t]*([^\r\n]*?)[ \t]*\$\$[ \t]*(?:\r?\n|$)/.exec(source);
-    if (!singleLine) return undefined;
+    // 方括号内的反斜杠按 LaTeX 原文成对读取，避免把转义后的 \\] 当作块公式结尾。
+    const match = /^ {0,3}\$\$[ \t]*\r?\n([\s\S]*?)\r?\n {0,3}\$\$[ \t]*(?:\r?\n|$)/.exec(source)
+      ?? /^ {0,3}\$\$[ \t]*([^\r\n]*?)[ \t]*\$\$[ \t]*(?:\r?\n|$)/.exec(source)
+      ?? /^ {0,3}\\\[[ \t]*(?:\r?\n)?((?:[^\\]|\\[\s\S])*?)(?:\r?\n {0,3})?[ \t]*\\\][ \t]*(?:\r?\n|$)/.exec(source);
+    if (!match) return undefined;
     return {
       type: 'mathBlock',
-      raw: singleLine[0],
-      latex: singleLine[1],
+      raw: match[0],
+      latex: match[1],
     };
   },
 };

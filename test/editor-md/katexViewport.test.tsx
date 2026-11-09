@@ -79,14 +79,14 @@ it('屏外公式应延迟到进入预加载范围后再渲染', async () => {
     await act(async () => root.render(<Host />));
     expect(activeEditor).not.toBeNull();
     await act(async () => {
-      parseMarkdown(activeEditor as Editor, '首个 $x^2$，第二个 $y^2$。');
+      parseMarkdown(activeEditor as Editor, '首个 \\(x^2\\)，第二个 $y^2$。\n\n\\[\n\\frac{a}{b}\n\\]');
     });
 
     const observer = ManualIntersectionObserver.current;
-    expect(observer?.targets.size).toBe(2);
+    expect(observer?.targets.size).toBe(3);
     expect(host.querySelectorAll('.katex')).toHaveLength(0);
 
-    const [firstTarget, secondTarget] = [...observer!.targets];
+    const [firstTarget, secondTarget, blockTarget] = [...observer!.targets];
     await act(async () => observer!.activate(firstTarget));
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -98,6 +98,14 @@ it('屏外公式应延迟到进入预加载范围后再渲染', async () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
     });
     expect(host.querySelectorAll('.katex')).toHaveLength(2);
+
+    // 方括号公式使用既有块级 NodeView，进入视口后应生成 KaTeX 的 displayMode 布局。
+    await act(async () => observer!.activate(blockTarget));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    expect(host.querySelectorAll('.katex')).toHaveLength(3);
+    expect(host.querySelectorAll('.katex-display')).toHaveLength(1);
   } finally {
     await act(async () => root.unmount());
     host.remove();

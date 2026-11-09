@@ -50,6 +50,8 @@ interface SerializableJsonNode {
 
 /** 在单行行首的块结构字面量前插入哨兵。 */
 function markLineStart(line: string): string {
+  // 行首字面量 [ 若转义为 \[，会与 LaTeX 块公式冲突；使用实体保护，避免再次打开时改变结构。
+  line = line.replace(/^([ \t]{0,3})\[/, (_match, prefix: string) => prefix + emitRawSegment('&#91;'));
   for (const pattern of [LINE_START_HEADING, LINE_START_ORDERED, LINE_START_BULLET, LINE_START_RULE]) {
     const match = pattern.exec(line);
     if (match) {

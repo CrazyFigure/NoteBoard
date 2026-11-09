@@ -59,7 +59,6 @@ const CONTEXTS: Array<[string, string]> = [
   ['标题与显示名含空格和符号', '[[我的 笔记#第 1 节|看 *这里*]]'],
   ['路径写法', '[[../上级/笔记]] [[C:/笔记/外部]] [[./同级]]'],
   ['嵌入与尺寸', '![[图.png|300]]\n\n![[笔记#小节|400]]'],
-  ['转义的方括号保持文字', '\\[\\[不是链接\\]\\] 与 [[是链接]]'],
   ['行内代码与代码块中不解析', '`[[代码]]` 与 [[链接]]\n\n```\n[[代码块]]\n```'],
   ['脚注定义中', '正文[^1]\n\n[^1]: 脚注里的 [[a]]'],
   ['折叠块中', '<details>\n<summary>标题</summary>\n\n折叠里的 [[a]]\n\n</details>'],
@@ -77,6 +76,17 @@ describe('已是规范写法：含双链逐字往返', () => {
     const markdown = CONTEXTS.map(([, text]) => text).join('\n\n');
     const normalized = normalize(markdown);
     expect(normalized).toBe(markdown);
+  });
+
+  it('转义的方括号保持文字，重写时避免与 LaTeX 块公式定界符冲突', () => {
+    const markdown = '\\[\\[不是链接\\]\\] 与 [[是链接]]';
+    expect(normalize(markdown)).toBe(markdown);
+    // 未编辑时仍保留原文；重写行首字面量方括号时使用实体保护，真实双链的写法保持一致。
+    const rewritten = rewriteAll(markdown);
+    expect(rewritten).toBe('&#91;[不是链接]] 与 [[是链接]]');
+    expect(normalize(rewritten)).toBe(rewritten);
+    expect(editor.getText()).toContain('[[不是链接]]');
+    expect(wikiNodes()).toEqual(['[[是链接]]']);
   });
 });
 
