@@ -1,5 +1,6 @@
 // 共享文档规则：后台解析与主线程使用同一份定义，禁止引入界面、store 或原生 API。
 import { Node, mergeAttributes, type JSONContent, type MarkdownParseHelpers, type MarkdownToken } from '@tiptap/core';
+import { Tokenizer } from 'marked';
 import { emitRawSegment } from './rawMarkdownSegments';
 
 // ── 图片 Markdown 序列化 ──
@@ -31,6 +32,78 @@ export function escapeHtmlAttribute(value: string): string {
 export function formatMarkdownDestination(src: string): string {
   if (!/[\s()<>]/.test(src)) return src;
   return `<${src.replace(/[<>]/g, (character) => encodeURIComponent(character))}>`;
+}
+
+// 标题沿用 Markdown 的三种定界符，且必须紧接图片结束括号，避免把文件名中间的引号当成标题。
+const IMAGE_TITLE_SUFFIX = /^[ \t]+("(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|\((?:\\.|[^()\\\r\n])*\))[ \t]*\)/;
+
+/**
+ * 为原生分词器无法识别的裸空格图片地址补充兼容。只扫描当前行内的图片，
+ * 标签、转义、标题仍交给原生分词器校验；返回原地址供 Windows 路径保护使用。
+ */
+export function tokenizeImageWithSpaces(source: string, tokenizer: Tokenizer) {
+  if (!source.startsWith('![')) return undefined;
+  let labelDepth = 1;
+  let index = 2;
+  // 跳过转义和行内代码，支持替代文字中的嵌套方括号。
+  for (; index < source.length && labelDepth > 0; index += 1) {
+    const character = source[index];
+    if (character === '\r' || character === '\n') return undefined;
+    if (character === '\\') {
+      index += 1;
+    } else if (character === '`') {
+      const code = Tokenizer.prototype.codespan.call(tokenizer, source.slice(index));
+      if (code) index += code.raw.length - 1;
+    } else if (character === '[') {
+      labelDepth += 1;
+    } else if (character === ']') {
+      labelDepth -= 1;
+    }
+  }
+  if (labelDepth !== 0 || source[index] !== '(') return undefined;
+  index += 1;
+  while (source[index] === ' ' || source[index] === '\t') index += 1;
+  const destinationStart = index;
+  // 尖括号地址已经由标准语法支持，不在兼容规则中重新解释。
+  if (source[index] === '<') return undefined;
+  let parentheses = 0;
+  let destinationEnd = index;
+  let title = '';
+  for (; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === '\r' || character === '\n') return undefined;
+    if (parentheses === 0 && (character === ' ' || character === '\t')) {
+      const suffix = IMAGE_TITLE_SUFFIX.exec(source.slice(index));
+      if (suffix) {
+        destinationEnd = index;
+        title = ` ${suffix[1]}`;
+        index += suffix[0].length - 1;
+        break;
+      }
+      // 连续空白只探测一次标题，避免长文件名中的空白序列导致重复扫描。
+      while (source[index + 1] === ' ' || source[index + 1] === '\t') index += 1;
+    }
+    if (character === '\\') {
+      index += 1;
+    } else if (character === '(') {
+      parentheses += 1;
+    } else if (character === ')') {
+      if (parentheses === 0) {
+        destinationEnd = index;
+        break;
+      }
+      parentheses -= 1;
+    }
+  }
+  if (index >= source.length) return undefined;
+  const destination = source.slice(destinationStart, destinationEnd).trimEnd();
+  if (!/[^\S\r\n]/.test(destination)) return undefined;
+  // 临时使用标准尖括号写法解析，保留真实 raw，避免打开或切换模式时改写源码。
+  const canonical = `${source.slice(0, destinationStart)}${formatMarkdownDestination(destination)}${title})`;
+  const token = Tokenizer.prototype.link.call(tokenizer, canonical);
+  if (!token || token.type !== 'image' || token.raw.length !== canonical.length) return undefined;
+  token.raw = source.slice(0, index + 1);
+  return { token, destination };
 }
 
 /**

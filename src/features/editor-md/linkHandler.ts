@@ -22,7 +22,13 @@ export function resolveRelativeDocPath(baseDir: string, relativePath: string): s
   }
 
   // 去除可能的 file:/// 协议头与 URL 编码
-  let cleanRel = decodeURIComponent(relativePath.replace(/^file:[\\/]+/, '')).replace(/\//g, '\\');
+  let cleanRel = relativePath.replace(/^file:[\\/]+/, '');
+  try {
+    cleanRel = decodeURIComponent(cleanRel);
+  } catch {
+    // 文件名可含字面量百分号，无法按 URL 解码时与 POSIX 平台一样保留原文。
+  }
+  cleanRel = cleanRel.replace(/\//g, '\\');
 
   // 若已经是 Windows 绝对路径直接返回
   if (/^[a-zA-Z]:\\/.test(cleanRel)) {

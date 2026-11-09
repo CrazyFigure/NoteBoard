@@ -1,5 +1,6 @@
 // 特殊块起点按一次块解析建立索引，避免每个普通段落重复扫描剩余全文。
 import { Marked, Tokenizer, type marked, type Token, type TokensList } from 'marked';
+import { tokenizeImageWithSpaces } from './imageCore';
 
 interface BlockContext { source: string; positions: Map<RegExp, number[]> }
 const contexts = new WeakMap<object, BlockContext>();
@@ -76,10 +77,13 @@ export function createIsolatedMarkdownParser(): typeof marked {
         return Tokenizer.prototype.emStrong.call(this, source, maskedSource, cjkOpening ? ' ' : previousCharacter) || false;
       },
       link(source) {
-        const token = Tokenizer.prototype.link.call(this, source);
+        // 图片兼容规则只接管含空白的裸地址，也避免原生规则把目录中的括号误当标题后提前截断。
+        const standard = Tokenizer.prototype.link.call(this, source);
+        const spacedImage = tokenizeImageWithSpaces(source, this);
+        const token = spacedImage?.token ?? standard;
         if (!token) return false;
         // 用已经通过原分词器校验、截断的 raw 再提取地址，沿用其嵌套括号与标题规则。
-        const raw = this.rules.inline.link.exec(token.raw)?.[2]?.trim();
+        const raw = spacedImage?.destination ?? this.rules.inline.link.exec(token.raw)?.[2]?.trim();
         token.href = preserveLocalDestination(raw, token.href);
         return token;
       },
