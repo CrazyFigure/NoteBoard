@@ -5,7 +5,7 @@
 //    画布于是退回系统字体。vite.config.ts 的 excalidrawFontsPlugin 把包内字体发布到同源目录，
 //    这里必须在 import('@excalidraw/excalidraw') 之前把路径指过去。
 //
-// 小赖中文手写体（约 13 MB）桌面/安卓不随安装包分发，改由「设置 → 插件 → 字体」下载画板手写字体包：
+// 小赖中文手写体（约 13 MB）桌面/安卓不随安装包分发，改由「设置 → 插件和字体」下载画板手写字体包：
 //   - 启动画板时包已就绪：把包目录追加为第二个资源根目录（Excalidraw 对每个分片依次尝试各根目录），
 //     画布渲染与 SVG 导出内嵌字体都能使用；
 //   - 画板已加载后才下载：Excalidraw 的小赖字体面已固定为旧地址，改为按分片补注册同名 FontFace
@@ -86,7 +86,7 @@ export function hintBoardHandwritingIfMissing(elements: readonly unknown[]): voi
   if (!needsHandwriting) return;
   handwritingHinted = true;
   void import('../../stores/toastStore').then(({ showToast }) => {
-    showToast('中文手写体需下载：设置 → 插件 → 字体', 'info', 6000, 'board-handwriting-font');
+    showToast('中文手写体需下载：设置 → 插件和字体', 'info', 6000, 'board-handwriting-font');
   });
 }
 

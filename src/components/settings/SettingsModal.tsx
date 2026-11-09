@@ -320,7 +320,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               onClick={() => setActiveTab('history')}
             />
             {/* 移动端没有物理键盘快捷键，隐藏该分组 */}
-            <NavBtn active={activeTab === 'plugins'} icon={<LayoutTemplate size={15} />} label="插件" onClick={() => setActiveTab('plugins')} />
+            <NavBtn active={activeTab === 'plugins'} icon={<LayoutTemplate size={15} />} label="插件和字体" onClick={() => setActiveTab('plugins')} />
             {/* 插件管理在桌面、移动与网页端使用相同入口。 */}
             {!IS_MOBILE_UI && (
               <NavBtn

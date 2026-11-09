@@ -18,7 +18,7 @@ const PANELS: { key: PanelKey; label: string }[] = [
   { key: 'typography', label: '排版' },
   { key: 'editor', label: '编辑器' },
   { key: 'file', label: '文件' },
-  { key: 'plugins', label: '插件' },
+  { key: 'plugins', label: '插件和字体' },
   { key: 'about', label: '关于' },
 ];
 

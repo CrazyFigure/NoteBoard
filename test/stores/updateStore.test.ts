@@ -128,23 +128,40 @@ describe('useUpdateStore 状态管理与检查逻辑', () => {
     });
   });
 
-  it.each([false, true])('原渠道为 CNB 时仍优先 GitHub，无新版本也保存 GitHub，静默模式为 %s', async (silent) => {
+  it.each([false, true])('所选渠道为 CNB 时优先检测 CNB，可用则不改设置，静默模式为 %s', async (silent) => {
     useSettingsStore.setState({ settings: {
       ...DEFAULT_SETTINGS, system: { ...DEFAULT_SETTINGS.system, updateChannel: 'cnb' },
     } });
     vi.mocked(ipc.checkForUpdates).mockResolvedValueOnce({
       currentVersion: '0.1.0', latestVersion: '0.1.0', updateAvailable: false,
-      releaseUrl: 'https://github.com/CrazyFigure/NoteBoard/releases',
+      releaseUrl: 'https://cnb.cool/crazy-figure/NoteBoard/-/releases',
     });
 
     await useUpdateStore.getState().checkForUpdates(silent);
 
-    expect(ipc.checkForUpdates).toHaveBeenCalledExactlyOnceWith('github');
+    expect(ipc.checkForUpdates).toHaveBeenCalledExactlyOnceWith('cnb');
+    expect(useSettingsStore.getState().settings.system?.updateChannel).toBe('cnb');
+    expect(ipc.saveSettings).not.toHaveBeenCalled();
+    expect(useUpdateStore.getState().hasUpdate).toBe(false);
+  });
+
+  it('所选渠道为 CNB 且不通时回退 GitHub，并把渠道改为 GitHub', async () => {
+    useSettingsStore.setState({ settings: {
+      ...DEFAULT_SETTINGS, system: { ...DEFAULT_SETTINGS.system, updateChannel: 'cnb' },
+    } });
+    vi.mocked(ipc.checkForUpdates)
+      .mockRejectedValueOnce(new Error('update_error:network:超时'))
+      .mockResolvedValueOnce({
+        currentVersion: '0.1.0', latestVersion: '0.1.0', updateAvailable: false, releaseUrl: '',
+      });
+
+    await useUpdateStore.getState().checkForUpdates(true);
+
+    expect(vi.mocked(ipc.checkForUpdates).mock.calls).toEqual([['cnb'], ['github']]);
     expect(useSettingsStore.getState().settings.system?.updateChannel).toBe('github');
     expect(ipc.saveSettings).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
       system: expect.objectContaining({ updateChannel: 'github' }),
     }));
-    expect(useUpdateStore.getState().hasUpdate).toBe(false);
   });
 
   it('探测结束前保留原渠道，重复检测不会启动额外请求', async () => {
@@ -163,6 +180,24 @@ describe('useUpdateStore 状态管理与检查逻辑', () => {
     expect(useSettingsStore.getState().settings.system?.updateChannel).toBe('cnb');
   });
 
+  it('探测期间用户手动改选渠道时，回退成功也不覆盖用户选择', async () => {
+    let rejectGithub!: (reason: Error) => void;
+    vi.mocked(ipc.checkForUpdates)
+      .mockImplementationOnce(() => new Promise((_, reject) => { rejectGithub = reject; }))
+      .mockResolvedValueOnce({
+        currentVersion: '0.1.0', latestVersion: '0.1.0', updateAvailable: false, releaseUrl: '',
+      });
+    const pending = useUpdateStore.getState().checkForUpdates(true);
+    // 模拟用户在 GitHub 探测中手动改选 CNB：回退结果不应再写入设置
+    useSettingsStore.setState({ settings: {
+      ...DEFAULT_SETTINGS, system: { ...DEFAULT_SETTINGS.system, updateChannel: 'cnb' },
+    } });
+    rejectGithub(new Error('update_error:network:超时'));
+    await pending;
+    expect(ipc.saveSettings).not.toHaveBeenCalled();
+    expect(useSettingsStore.getState().settings.system?.updateChannel).toBe('cnb');
+  });
+
   it('两个渠道静默检测均失败时保留原设置和已有更新提醒', async () => {
     useSettingsStore.setState({ settings: {
       ...DEFAULT_SETTINGS, system: { ...DEFAULT_SETTINGS.system, updateChannel: 'cnb' },
@@ -172,7 +207,7 @@ describe('useUpdateStore 状态管理与检查逻辑', () => {
 
     await useUpdateStore.getState().checkForUpdates(true);
 
-    expect(vi.mocked(ipc.checkForUpdates).mock.calls).toEqual([['github'], ['cnb']]);
+    expect(vi.mocked(ipc.checkForUpdates).mock.calls).toEqual([['cnb'], ['github']]);
     expect(ipc.saveSettings).not.toHaveBeenCalled();
     expect(useSettingsStore.getState().settings.system?.updateChannel).toBe('cnb');
     expect(useUpdateStore.getState()).toMatchObject({
@@ -180,7 +215,7 @@ describe('useUpdateStore 状态管理与检查逻辑', () => {
     });
   });
 
-  it('启动和定时自动检测都优先 GitHub，恢复可用后从 CNB 切回 GitHub', async () => {
+  it('启动回退到 CNB 后，定时检测优先 CNB，不再自动切回 GitHub', async () => {
     vi.useFakeTimers();
     const result: UpdateCheckResult = {
       currentVersion: '0.1.0', latestVersion: '0.1.0', updateAvailable: false, releaseUrl: '',
@@ -194,8 +229,8 @@ describe('useUpdateStore 状态管理与检查逻辑', () => {
     await vi.advanceTimersByTimeAsync(3000);
     expect(useSettingsStore.getState().settings.system?.updateChannel).toBe('cnb');
     await vi.advanceTimersByTimeAsync(5 * 60 * 1000 - 3000);
-    expect(vi.mocked(ipc.checkForUpdates).mock.calls).toEqual([['github'], ['cnb'], ['github']]);
-    expect(useSettingsStore.getState().settings.system?.updateChannel).toBe('github');
+    expect(vi.mocked(ipc.checkForUpdates).mock.calls).toEqual([['github'], ['cnb'], ['cnb']]);
+    expect(useSettingsStore.getState().settings.system?.updateChannel).toBe('cnb');
     expect(useUpdateStore.getState().modalOpen).toBe(false);
     stop();
     expect(vi.getTimerCount()).toBe(0);

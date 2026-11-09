@@ -21,7 +21,7 @@ import * as ipc from '../core/ipc/commands';
 import { IS_MOBILE_UI, IS_NATIVE_MOBILE, USES_MANUAL_UPDATE_INSTALL } from '../core/platform';
 import { useBackDismiss } from '../mobile/components';
 import { resumeSnapshotTracking, saveCurrentWindowSnapshot } from '../features/session/closedWindowSession';
-import { RELEASE_CHANNELS, useUpdateChannel } from '../core/releaseChannel';
+import { RELEASE_CHANNELS, alternateUpdateChannel, useUpdateChannel } from '../core/releaseChannel';
 import './update-modal.css';
 
 interface UpdateModalProps {
@@ -334,7 +334,7 @@ export function UpdateModal({
                 color="var(--accent-strong)"
               />
               <span style={{ fontSize: 13, color: 'var(--editor-text-secondary)' }}>
-                正在检查最新版本，优先 GitHub，失败后尝试腾讯云 CNB
+                正在检查最新版本，优先 {channelLabel}，不通时尝试 {RELEASE_CHANNELS[alternateUpdateChannel(channel)].label}
               </span>
             </div>
           )}
@@ -522,7 +522,7 @@ export function UpdateModal({
             </button>
           )}
 
-          {/* 两个渠道均失败时重新按 GitHub、CNB 顺序检测，成功前保留现有下载渠道。 */}
+          {/* 两个渠道均失败时重新按所选渠道优先的顺序检测，成功前保留现有下载渠道。 */}
           {checkError && onRecheck && (
             <button
               type="button"

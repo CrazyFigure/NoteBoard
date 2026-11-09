@@ -15,7 +15,8 @@ interface PluginStore {
   busy: string;
   error: string | null;
   refresh: () => Promise<void>;
-  check: () => Promise<void>;
+  /** 检查插件目录更新；silent 为 true 时失败不展示错误（进入页面自动检查） */
+  check: (silent?: boolean) => Promise<void>;
   act: (operation: 'install' | 'toggle' | 'remove', id: PluginId, enabled?: boolean) => Promise<void>;
 }
 
@@ -25,11 +26,12 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
     try { set({ installed: await listPlugins(), initialized: true }); }
     catch (error) { set({ initialized: true, error: String(error) }); }
   },
-  check: async () => {
+  check: async (silent = false) => {
     if (get().busy) return;
-    set({ busy: 'catalog', error: null });
+    set({ busy: 'catalog', ...(silent ? {} : { error: null }) });
     try { set({ catalog: (await fetchPluginCatalog()).plugins }); }
-    catch (error) { set({ error: String(error) }); }
+    // 静默检查失败不展示错误，保留手动检查的提示
+    catch (error) { if (!silent) set({ error: String(error) }); }
     finally { set({ busy: '' }); }
   },
   act: async (operation, id, enabled) => {

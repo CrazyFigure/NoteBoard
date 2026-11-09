@@ -1,5 +1,5 @@
 // 发布渠道：GitHub 主仓库与腾讯云 CNB 镜像
-// 检测更新按 GitHub、CNB 顺序探测并保存可用渠道，安装包、字体包与插件使用该渠道下载。
+// 检测更新优先探测所选渠道，不通时才尝试另一个并在其可用时切换；安装包、字体包与插件使用该渠道下载。
 
 import type { UpdateChannel } from './ipc/types';
 import { useSettingsStore } from '../stores/settingsStore';
@@ -44,7 +44,7 @@ export function useUpdateChannel(): UpdateChannel {
   return useSettingsStore((state) => normalizeUpdateChannel(state.settings.system?.updateChannel));
 }
 
-/** 另一个可选渠道，用于检测失败时建议切换 */
+/** 另一个可选渠道，所选渠道检测失败时回退探测 */
 export function alternateUpdateChannel(channel: UpdateChannel): UpdateChannel {
   return channel === 'cnb' ? 'github' : 'cnb';
 }

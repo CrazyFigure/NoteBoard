@@ -633,11 +633,26 @@ fn parse_release_response(
     serde_json::from_str(&response.body).map_err(|err| format!("update_error:parse:{err}"))
 }
 
+/// 当前平台能否从该 Release 下载到更新包：免安装版找 portable 附件，其余找本平台安装包。
+fn release_has_platform_package(release: &GitHubReleaseResponse, portable: bool) -> bool {
+    if portable {
+        return release
+            .assets
+            .iter()
+            .any(|asset| asset.name.to_ascii_lowercase().contains("portable"));
+    }
+    select_update_installer_asset(&release.assets).is_some()
+}
+
 /// 从 Release 列表中挑选最新正式版，并按版本从新到旧收集高于当前版本的其余正式版。
+/// 新 tag 发布后安装包仍在构建、上传或同步镜像，此时跳过尚无本平台更新包的较新版本，
+/// 以已有更新包的最高版本作为最新版，避免提示了更新却无法下载；
+/// 整个列表都没有本平台更新包时（如未支持的平台）退回最高版本。
 /// 返回 (最新版本, 更早的未安装版本)；没有任何可解析的正式版时返回 None。
 fn collect_pending_releases(
     releases: Vec<GitHubReleaseResponse>,
     current_version: &str,
+    has_package: impl Fn(&GitHubReleaseResponse) -> bool,
 ) -> Option<(GitHubReleaseResponse, Vec<GitHubReleaseResponse>)> {
     // 仅保留版本号可解析的正式版，按语义化版本从高到低排序（不依赖 GitHub 的创建时间顺序）
     let mut stable: Vec<(Vec<u64>, GitHubReleaseResponse)> = releases
@@ -653,6 +668,11 @@ fn collect_pending_releases(
         })
         .collect();
     stable.sort_by(|left, right| right.0.cmp(&left.0));
+
+    // 跳过最前面尚无本平台更新包的版本；全部都没有时保持原列表
+    if let Some(first_ready) = stable.iter().position(|(_, release)| has_package(release)) {
+        stable.drain(..first_ready);
+    }
 
     let mut iter = stable.into_iter().map(|(_, release)| release);
     let latest = iter.next()?;
@@ -702,13 +722,15 @@ pub async fn check_for_updates(
     let releases = parse_release_response(response)?;
     // 列表满页时，更早的未安装版本可能落在下一页，需提示前端日志不完整
     let page_full = releases.len() >= GITHUB_RELEASE_PAGE_SIZE;
-    let (release, older_pending) = collect_pending_releases(releases, &current_version)
-        .ok_or_else(|| "update_error:parse:未找到已发布的正式版本".to_string())?;
+    // 免安装版不下载运行安装包，避免在旁边另装一份安装版
+    let portable = crate::app_dirs::portable_data_root().is_some();
+    let (release, older_pending) = collect_pending_releases(releases, &current_version, |release| {
+        release_has_platform_package(release, portable)
+    })
+    .ok_or_else(|| "update_error:parse:未找到已发布的正式版本".to_string())?;
 
     let latest_version = release.tag_name.trim_start_matches(['v', 'V']).to_string();
     let update_available = is_newer_version(&release.tag_name, &current_version);
-    // 免安装版不下载运行安装包，避免在旁边另装一份安装版
-    let portable = crate::app_dirs::portable_data_root().is_some();
     let installer_asset = if portable {
         None
     } else {
@@ -942,10 +964,38 @@ mod tests {
             release("v0.4.7", false),
             release("v0.4.6", false),
         ];
-        let (latest, pending) = collect_pending_releases(releases, "0.4.7").unwrap();
+        let (latest, pending) = collect_pending_releases(releases, "0.4.7", |_| true).unwrap();
         assert_eq!(latest.tag_name, "v0.4.10");
         let tags: Vec<&str> = pending.iter().map(|item| item.tag_name.as_str()).collect();
         assert_eq!(tags, ["v0.4.9", "v0.4.8"]);
+    }
+
+    /// 新 tag 的安装包尚未上传时跳过它，以已有更新包的版本为最新版；全部缺包时退回最高版本。
+    #[test]
+    fn skips_newest_releases_without_platform_package() {
+        let ready = |release: &GitHubReleaseResponse| release.tag_name != "v0.4.10";
+        let releases = vec![
+            release("v0.4.10", false),
+            release("v0.4.9", false),
+            release("v0.4.8", false),
+        ];
+        let (latest, pending) = collect_pending_releases(releases, "0.4.7", ready).unwrap();
+        assert_eq!(latest.tag_name, "v0.4.9");
+        let tags: Vec<&str> = pending.iter().map(|item| item.tag_name.as_str()).collect();
+        assert_eq!(tags, ["v0.4.8"]);
+
+        // 只有一个版本且尚未上传安装包：最新版仍是已安装版本，不提示更新
+        let (latest, _) = collect_pending_releases(
+            vec![release("v0.4.10", false), release("v0.4.7", false)],
+            "0.4.7",
+            ready,
+        )
+        .unwrap();
+        assert_eq!(latest.tag_name, "v0.4.7");
+
+        let (latest, _) =
+            collect_pending_releases(vec![release("v0.4.10", false)], "0.4.7", |_| false).unwrap();
+        assert_eq!(latest.tag_name, "v0.4.10");
     }
 
     /// 启动清理：已安装 / 过期的安装包与下载残留被删除，比当前版本新的安装包保留以便直接安装。
@@ -964,10 +1014,10 @@ mod tests {
     #[test]
     fn up_to_date_has_no_pending_releases() {
         let (latest, pending) =
-            collect_pending_releases(vec![release("v0.4.6", false)], "0.4.6").unwrap();
+            collect_pending_releases(vec![release("v0.4.6", false)], "0.4.6", |_| true).unwrap();
         assert_eq!(latest.tag_name, "v0.4.6");
         assert!(pending.is_empty());
-        assert!(collect_pending_releases(vec![release("v1.0.0", true)], "0.4.6").is_none());
+        assert!(collect_pending_releases(vec![release("v1.0.0", true)], "0.4.6", |_| true).is_none());
     }
 
     /// 默认出口被 403 / 429 限流时，必须等待并使用直连出口的成功结果。

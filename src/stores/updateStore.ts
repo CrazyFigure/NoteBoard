@@ -6,7 +6,7 @@ import type { UpdateCheckResult } from '../core/ipc/types';
 import * as ipc from '../core/ipc/commands';
 import { translateUpdateCheckError } from '../core/updates';
 import { IS_WEB } from '../core/platform';
-import { RELEASE_CHANNELS, currentUpdateChannel } from '../core/releaseChannel';
+import { RELEASE_CHANNELS, alternateUpdateChannel, currentUpdateChannel } from '../core/releaseChannel';
 import { useSettingsStore } from './settingsStore';
 
 interface UpdateStore {
@@ -61,9 +61,11 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
         ...(silent ? {} : { modalOpen: true, updateResult: null }),
       });
 
-      // 手动与自动检测始终优先 GitHub，失败后才探测 CNB；两者均失败时保留原设置。
+      // 优先探测用户所选渠道（首次安装默认 GitHub），不通时才尝试另一个；
+      // 只有另一个渠道探测成功才切换设置，两者均失败时保留原设置。
+      const preferred = currentUpdateChannel();
       const errors: string[] = [];
-      for (const channel of ['github', 'cnb'] as const) {
+      for (const channel of [preferred, alternateUpdateChannel(preferred)]) {
         let result: UpdateCheckResult;
         try {
           result = await ipc.checkForUpdates(channel);
@@ -74,8 +76,9 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
           continue;
         }
 
-        // 有效结果即代表渠道可用，即使没有新版本也同步保存，后续下载统一使用该渠道。
-        if (currentUpdateChannel() !== channel) {
+        // 备用渠道返回有效结果即代表其可用，即使没有新版本也同步保存，后续下载统一使用该渠道；
+        // 探测期间用户已手动改选渠道时尊重用户选择，不覆盖。
+        if (channel !== preferred && currentUpdateChannel() === preferred) {
           await useSettingsStore.getState().setSystem({ updateChannel: channel });
         }
         set({ updateResult: result, hasUpdate: Boolean(result.updateAvailable) });

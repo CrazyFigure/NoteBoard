@@ -38,7 +38,7 @@ export function describeBoardFont(fontId: number, handwritingReady: boolean): st
   const name = FONT_NAMES[fontId];
   if (!name) return null;
   if (fontId !== EXCALIFONT_ID) return `${name} · 中文显示为系统字体`;
-  return handwritingReady ? `${name} · 中文显示为小赖手写体` : `${name} · 中文需先在 设置 › 插件 下载小赖`;
+  return handwritingReady ? `${name} · 中文显示为小赖手写体` : `${name} · 中文需先在 设置 › 插件和字体 下载小赖`;
 }
 
 /** 解析悬停目标对应的提示文本 */

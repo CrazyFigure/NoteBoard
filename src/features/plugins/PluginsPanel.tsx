@@ -32,6 +32,8 @@ export function PluginsPanel({ target }: { target?: string | null }) {
   // 网页多用户部署中插件按实例共享，普通用户只能使用管理员安装并启用的插件。
   const manage = canManageInstance();
   useEffect(() => { void initializePlugins(); }, []);
+  // 每次进入本页自动检查插件更新；静默失败，避免离线时每次都弹出错误。
+  useEffect(() => { void check(true); }, [check]);
   useEffect(() => {
     if (!target || target === 'plugins') return;
     const element = target === 'fonts' ? 'nb-plugin-fonts' : `nb-plugin-${target.slice('plugin:'.length)}`;
@@ -42,7 +44,7 @@ export function PluginsPanel({ target }: { target?: string | null }) {
     return () => { cancelAnimationFrame(frame); window.clearTimeout(timer); };
   }, [target]);
   return <div className="nb-plugins">
-    <div className="nb-plugins-heading"><h2>插件</h2>
+    <div className="nb-plugins-heading"><h2>插件和字体</h2>
       <button type="button" className="nb-plugin-button" disabled={!!busy} onClick={() => void check()}><RefreshCw size={14} className={busy === 'catalog' ? 'nb-spin' : undefined} />{busy === 'catalog' ? '正在检查…' : '检查更新'}</button>
     </div>
     <div className="nb-plugins-tabs" role="tablist" aria-label="插件分类">
