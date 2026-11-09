@@ -251,7 +251,8 @@ jobs:
 
           # 固定官方工具版本并验证发布摘要，更新时保留已收录的安装范围及多语言元数据。
           $tool = Join-Path $env:RUNNER_TEMP 'wingetcreate.exe'
-          Invoke-WebRequest 'https://github.com/microsoft/winget-create/releases/download/v1.12.13.0/wingetcreate.exe' -OutFile $tool
+          # GitHub 附件下载偶发 504（0.7.9 曾因此失败），失败时间隔重试
+          Invoke-WebRequest 'https://github.com/microsoft/winget-create/releases/download/v1.12.13.0/wingetcreate.exe' -OutFile $tool -MaximumRetryCount 5 -RetryIntervalSec 20
           if ((Get-FileHash $tool -Algorithm SHA256).Hash -ne '24042BD37915805615E6CF969AC57C6439124C3FE85823327F5F3FB24BD9FFEA') {
             throw 'WinGet Create 校验失败。'
           }
@@ -361,6 +362,18 @@ jobs:
             echo "keyAlias=${ANDROID_KEY_ALIAS}"
             echo "keyPassword=${ANDROID_KEY_PASSWORD:-${ANDROID_KEYSTORE_PASSWORD}}"
           } > keystore.properties
+
+      # Gradle 发行包从 GitHub 附件下载，偶发 504（0.7.9 曾因此失败）；
+      # 构建前单独预取并重试，避免整轮 Rust 编译后才因下载失败中断
+      - name: Prefetch Gradle distribution
+        working-directory: src-tauri/gen/android
+        run: |
+          for attempt in 1 2 3 4 5; do
+            ./gradlew --version > /dev/null && exit 0
+            echo "::warning title=Gradle 下载::第 ${attempt} 次下载失败，稍后重试"
+            sleep 30
+          done
+          exit 1
 
       - name: Build APK
         run: pnpm tauri android build --apk --target aarch64
