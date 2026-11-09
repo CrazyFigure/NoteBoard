@@ -5,6 +5,7 @@ import viewerCss from 'pdfjs-dist/web/pdf_viewer.css?raw';
 import assets from 'noteboard:pdf-assets';
 import { createView, el, iconButton, zoomControl, pager, separator } from '../shared/view.mjs';
 import { createRangeTransport, RANGE_CHUNK_BYTES } from './range.mjs';
+import { createSidebar, sidebarCss } from './sidebar.mjs';
 
 // 宿主通过能力声明选择分块源；旧宿主和 NOTE 内嵌 PDF 继续传入 bytes。
 export const supportsRangeRead = true;
@@ -24,11 +25,13 @@ export async function mount({container,name,bytes,source,signal,reading}) {
   const workerUrl=URL.createObjectURL(new Blob([workerCode],{type:'text/javascript'}));
   GlobalWorkerOptions.workerSrc=workerUrl;
   // zoom 为绝对比例（1 = 100%）；fit 为真时随窗口宽度自适应，手动缩放后保持用户比例。
-  let doc,observer,zoom=1,fit=true,generation=0,repaint=0,resizeFrame=0,current=1;
+  let doc,observer,sidebar,zoom=1,fit=true,generation=0,repaint=0,resizeFrame=0,current=1;
   const renders=new Map(),pages=[];
-  view.style.textContent+=viewerCss+`.np-scroll{background:var(--np-backdrop)}.np-pdf-pages{width:max-content;min-width:100%;padding:${PAD}px}.np-pdf-page{position:relative;background:white;box-shadow:var(--np-paper-shadow);margin:0 auto ${GAP}px;overflow:hidden;max-width:none}.np-pdf-page:last-child{margin-bottom:0}.np-pdf-page canvas{position:absolute;inset:0;width:100%;height:100%}.np-pdf-page .textLayer{position:absolute;inset:0;z-index:1;user-select:text;opacity:1}.np-pdf-page .textLayer ::selection{background:color-mix(in srgb,var(--editor-accent) 40%,transparent)}.np-pdf-error{padding:24px;color:#b91c1c;font-size:12px}@media(max-width:760px){.np-pdf-pages{padding:8px}.np-pdf-page{margin-bottom:10px}}`;
+  view.style.textContent+=viewerCss+`.np-scroll{background:var(--np-backdrop)}.np-pdf-pages{width:max-content;min-width:100%;padding:${PAD}px}.np-pdf-page{position:relative;background:white;box-shadow:var(--np-paper-shadow);margin:0 auto ${GAP}px;overflow:hidden;max-width:none}.np-pdf-page:last-child{margin-bottom:0}.np-pdf-page canvas{position:absolute;inset:0;width:100%;height:100%}.np-pdf-page .textLayer{position:absolute;inset:0;z-index:1;user-select:text;opacity:1}.np-pdf-page .textLayer ::selection{background:color-mix(in srgb,var(--editor-accent) 40%,transparent)}.np-pdf-error{padding:24px;color:#b91c1c;font-size:12px}@media(max-width:760px){.np-pdf-pages{padding:8px}.np-pdf-page{margin-bottom:10px}}`+sidebarCss;
   const list=el('div','np-pdf-pages');view.viewport.append(list);
-  const pageControl=pager({go:(n)=>{current=n;const page=pages[n-1]?.element;if(page)view.viewport.scrollTop=page.offsetTop-PAD;}});
+  // 正文与右侧导航栏横向排列；导航栏在文档解析完成后插入。
+  const body=el('div','np-pdf-body');view.viewport.replaceWith(body);body.append(view.viewport);
+  const pageControl=pager({go:(n)=>goTo({index:n-1,left:null,top:null})});
   const zoomer=zoomControl({min:.25,max:4,step:.1,target:view.viewport,get:()=>zoom,set:(next,anchor)=>{fit=false;zoom=next;layout(anchor);}});
   view.toolbar.append(pageControl.element,separator(),zoomer.element,iconButton('fit-width','适合宽度',()=>{fit=true;layout();}));
 
@@ -69,6 +72,20 @@ export async function mount({container,name,bytes,source,signal,reading}) {
     observer=new IntersectionObserver((entries)=>{for(const entry of entries){const item=pages[Number(entry.target.dataset.page)];if(entry.isIntersecting)void paint(item,token);else release(item);}}, {root:view.viewport,rootMargin:'600px 0px'});
     pages.forEach((item)=>observer.observe(item.element));
   }
+  /** 跳到页首；书签带页内坐标时再按真实页面换算位置，占位尺寸不同也按比例对齐。 */
+  async function goTo({index,left,top}) {
+    const item=pages[index];if(!item)return;
+    const vp=view.viewport;current=index+1;pageControl.set(current,pages.length);sidebar?.setCurrent(index);
+    vp.scrollTop=item.element.offsetTop-PAD;
+    if(top==null)return;
+    try {
+      const page=await doc.getPage(index+1);if(destroyed||signal.aborted)return;
+      const viewport=page.getViewport({scale:1}),[x,y]=viewport.convertToViewportPoint(left??0,top);
+      vp.scrollTop=item.element.offsetTop+Math.max(0,y/viewport.height)*item.element.offsetHeight-8;
+      // 只有页面宽于视口时才需要横向定位
+      if(left!=null&&item.element.offsetWidth>vp.clientWidth)vp.scrollLeft=item.element.offsetLeft+Math.max(0,x/viewport.width)*item.element.offsetWidth-8;
+    }catch{/* 目标页读取失败时停留在页首 */}
+  }
   /** 立即更新页面尺寸并保持锚点位置不动；重绘延迟到缩放停顿后，连续滚轮缩放保持流畅。 */
   function layout(anchor) {
     if(!pages.length)return;
@@ -87,18 +104,18 @@ export async function mount({container,name,bytes,source,signal,reading}) {
     clearTimeout(repaint);repaint=setTimeout(observe,anchor?140:0);
   }
   // 页码取实际可见页，预加载下一页不会提前跳动页码输入框。
-  view.viewport.addEventListener('scroll',()=>{let low=0,high=pages.length-1;while(low<high){const mid=Math.floor((low+high)/2),page=pages[mid].element;if(page.offsetTop+page.offsetHeight<view.viewport.scrollTop+40)low=mid+1;else high=mid;}if(pages.length){current=low+1;pageControl.set(current,pages.length);}},{passive:true});
+  view.viewport.addEventListener('scroll',()=>{let low=0,high=pages.length-1;while(low<high){const mid=Math.floor((low+high)/2),page=pages[mid].element;if(page.offsetTop+page.offsetHeight<view.viewport.scrollTop+40)low=mid+1;else high=mid;}if(pages.length){current=low+1;pageControl.set(current,pages.length);sidebar?.setCurrent(low);}},{passive:true});
   let rejectRange;
   const rangeFailure=new Promise((_,reject)=>{rejectRange=reject;});
   const range=source?createRangeTransport(PDFDataRangeTransport,source,signal,(error)=>{
     rejectRange(error);
     // 首屏之后的读取失败同样终止解析并给出反馈，不能让某页永久等待。
-    if(doc){generation++;clearTimeout(repaint);cancelAnimationFrame(resizeFrame);observer?.disconnect();resize?.disconnect();pages.forEach(release);view.viewport.replaceChildren(el('div','np-pdf-error',`PDF 读取失败：${error.message}`));void task.destroy();}
+    if(doc){generation++;clearTimeout(repaint);cancelAnimationFrame(resizeFrame);observer?.disconnect();resize?.disconnect();pages.forEach(release);sidebar?.destroy();view.viewport.replaceChildren(el('div','np-pdf-error',`PDF 读取失败：${error.message}`));void task.destroy();}
   }):null;
   // 旧宿主与笔记附件保留字节所有权；新版分块源不再复制整份文件。
   const task=getDocument({...(range?{range,length:source.size,rangeChunkSize:RANGE_CHUNK_BYTES,disableAutoFetch:true,disableStream:true}:{data:bytes.slice()}),isEvalSupported:false,useWasm:false,isOffscreenCanvasSupported:false,CMapReaderFactory:CMaps,StandardFontDataFactory:Fonts,useSystemFonts:true});
   let destroyed=false,resize;
-  const destroy=()=>{if(destroyed)return;destroyed=true;generation++;clearTimeout(repaint);cancelAnimationFrame(resizeFrame);observer?.disconnect();resize?.disconnect();range?.abort();pages.forEach(release);void task.destroy();URL.revokeObjectURL(workerUrl);view.destroy();};
+  const destroy=()=>{if(destroyed)return;destroyed=true;generation++;clearTimeout(repaint);cancelAnimationFrame(resizeFrame);observer?.disconnect();resize?.disconnect();range?.abort();sidebar?.destroy();pages.forEach(release);void task.destroy();URL.revokeObjectURL(workerUrl);view.destroy();};
   signal.addEventListener('abort',destroy,{once:true});
   try {
     doc=await Promise.race([task.promise,rangeFailure]);if(signal.aborted){destroy();return;}
@@ -109,6 +126,9 @@ export async function mount({container,name,bytes,source,signal,reading}) {
     const fragment=document.createDocumentFragment();
     for(let i=0;i<doc.numPages;i++){const element=el('div','np-pdf-page');element.dataset.page=String(i);element.setAttribute('aria-label',`第 ${i+1} 页`);pages.push({index:i,width:v.width,height:v.height,userUnit:first.userUnit,scale:1,element});fragment.append(element);}
     list.append(fragment);
+    // 侧栏占位尺寸沿用正文页面记录，缩略图渲染后再换成真实比例。
+    sidebar=createSidebar({doc,count:doc.numPages,size:(i)=>pages[i],go:(target)=>void goTo(target),busy:(i)=>renders.has(i)});
+    body.append(sidebar.resizer,sidebar.side);const sep=separator();sep.classList.add('np-pdf-side-sep');view.toolbar.append(sep,sidebar.toggle);
     layout();
     // 窗口尺寸变化只在自适应模式下重新计算比例，手动缩放保持不变。
     let width=view.viewport.clientWidth;

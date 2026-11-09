@@ -2,7 +2,7 @@
   {"id":"word","name":"Word 查看","description":"DOC / DOCX 只读阅读","version":"1.3.1","changelog":"沉浸阅读入口改为书本图标，与其他格式一致。阅读排版改用文字图标。"},
   {"id":"excel","name":"Excel 查看","description":"XLS / XLSX 只读表格","version":"1.3.1","changelog":"沉浸阅读入口改为书本图标，与其他格式一致。"},
   {"id":"powerpoint","name":"PowerPoint 查看","description":"PPT / PPTX 幻灯片阅读","version":"1.3.1","changelog":"沉浸阅读入口改为书本图标，与其他格式一致。"},
-  {"id":"pdf","name":"PDF 查看","description":"PDF 分页阅读","version":"1.3.1","changelog":"沉浸阅读入口改为书本图标，与其他格式一致。"},
+  {"id":"pdf","name":"PDF 查看","description":"PDF 分页阅读","version":"1.4.0","changelog":"新增右侧导航栏，可切换书签大纲与页面缩略图，支持收起和拖动调整宽度。"},
   {"id":"cad","name":"CAD 查看","description":"DWG / DXF 本地图纸阅读","version":"1.4.1","changelog":"修复图纸中未绘制的占位坐标拉大缩略图范围，导致主体挤在角落的问题；总览按实际绘制内容适配，并同步校正视口框和导航坐标。"},
   {"id":"epub","name":"EPUB 阅读","description":"EPUB 电子书阅读","version":"1.1.1","changelog":"沉浸阅读入口改为书本图标，与其他格式一致。"},
   {"id":"notability","name":"Notability 阅读","description":"NOTE 笔迹、预览及附件只读兼容解析","version":"1.0.1","minAppVersion":"0.7.5","changelog":"沉浸阅读入口改为书本图标，与其他格式一致。"},

@@ -82,6 +82,7 @@ const ICONS = {
   external: 'M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6',
   minimize: 'M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7',
   map: 'm3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6M9 3v15M15 6v15',
+  'panel-right': 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM15 3v18',
 };
 
 /** 内联 SVG 图标，颜色跟随 currentColor。 */
