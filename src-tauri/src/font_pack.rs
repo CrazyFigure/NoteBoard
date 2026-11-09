@@ -87,14 +87,14 @@ const FONT_FILES: &[FontFileSpec] = &[
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct FontPackDownloadProgressEvent {
+pub(crate) struct FontPackDownloadProgressEvent {
     downloaded_bytes: u64,
     total_bytes: Option<u64>,
     percent: Option<u32>,
 }
 
 /// 后端只暴露稳定错误码，用户可见中文由前端统一生成。
-fn font_pack_error(code: &str, detail: impl AsRef<str>) -> String {
+pub(crate) fn font_pack_error(code: &str, detail: impl AsRef<str>) -> String {
     let detail = detail.as_ref();
     if detail.is_empty() {
         format!("font_pack_error:{code}")
@@ -127,7 +127,7 @@ fn pack_version_dir(root: &Path) -> PathBuf {
     root.join(FONT_PACK_ID).join(FONT_PACK_VERSION)
 }
 
-fn sha256_file(path: &Path) -> Result<String, String> {
+pub(crate) fn sha256_file(path: &Path) -> Result<String, String> {
     let mut file =
         fs::File::open(path).map_err(|error| font_pack_error("read", error.to_string()))?;
     let mut hasher = Sha256::new();
@@ -398,15 +398,44 @@ fn emit_changed(app_handle: &AppHandle, status: &FontPackStatus) {
     let _ = app_handle.emit(FONT_PACK_CHANGED_EVENT, status);
 }
 
+/// 下载来源描述：核心字体包与画板手写字体包共用同一套流式下载、限额与代理回退逻辑。
+pub(crate) struct ArchiveSource<'a> {
+    /// GitHub Release 附件地址（CNB 渠道自动改写）
+    pub url: &'a str,
+    /// 附件体积上限，Content-Length 与实际接收字节均受约束
+    pub max_bytes: u64,
+    /// 进度事件名，不同资源包互不干扰
+    pub progress_event: &'a str,
+}
+
+/// 下载附件到指定临时文件；系统代理失败或返回 403 时回退直连。失败时由调用方清理临时文件。
+pub(crate) async fn download_archive_with_fallback(
+    app_handle: &AppHandle,
+    archive_path: &Path,
+    source: &ArchiveSource<'_>,
+) -> Result<(), String> {
+    let client = build_update_http_client(FONT_PACK_DOWNLOAD_TIMEOUT)
+        .map_err(|error| font_pack_error("download", error))?;
+    match download_archive(app_handle, &client, archive_path, source).await {
+        Err(error) if error.contains("403") => {
+            let direct_client = build_direct_http_client(FONT_PACK_DOWNLOAD_TIMEOUT)
+                .map_err(|direct_error| font_pack_error("download", direct_error))?;
+            download_archive(app_handle, &direct_client, archive_path, source).await
+        }
+        result => result,
+    }
+}
+
 /// 流式下载到唯一临时文件，并以固定上限约束 Content-Length 与实际接收字节数。
 async fn download_archive(
     app_handle: &AppHandle,
     client: &reqwest::Client,
     archive_path: &Path,
+    source: &ArchiveSource<'_>,
 ) -> Result<(), String> {
     // 登记地址固定为 GitHub，选择 CNB 渠道时替换为镜像中同名附件
-    let download_url = crate::release_channel::ReleaseChannel::current()
-        .rewrite_download_url(FONT_PACK_DOWNLOAD_URL);
+    let download_url =
+        crate::release_channel::ReleaseChannel::current().rewrite_download_url(source.url);
     let mut response = client
         .get(download_url)
         .header(reqwest::header::USER_AGENT, "NoteBoard")
@@ -416,7 +445,7 @@ async fn download_archive(
         .error_for_status()
         .map_err(|error| font_pack_error("download", error.to_string()))?;
     let total_bytes = response.content_length();
-    if total_bytes.is_some_and(|size| size == 0 || size > FONT_PACK_ARCHIVE_MAX_BYTES) {
+    if total_bytes.is_some_and(|size| size == 0 || size > source.max_bytes) {
         return Err(font_pack_error("archive_size", "content-length"));
     }
 
@@ -430,7 +459,7 @@ async fn download_archive(
         .map_err(|error| font_pack_error("download", error.to_string()))?
     {
         downloaded_bytes += chunk.len() as u64;
-        if downloaded_bytes > FONT_PACK_ARCHIVE_MAX_BYTES {
+        if downloaded_bytes > source.max_bytes {
             return Err(font_pack_error("archive_size", "downloaded"));
         }
         output
@@ -443,7 +472,7 @@ async fn download_archive(
                     .round() as u32
             });
             let _ = app_handle.emit(
-                FONT_PACK_PROGRESS_EVENT,
+                source.progress_event,
                 &FontPackDownloadProgressEvent {
                     downloaded_bytes,
                     total_bytes,
@@ -460,7 +489,7 @@ async fn download_archive(
         return Err(font_pack_error("archive_size", "empty"));
     }
     let _ = app_handle.emit(
-        FONT_PACK_PROGRESS_EVENT,
+        source.progress_event,
         &FontPackDownloadProgressEvent {
             downloaded_bytes,
             total_bytes: total_bytes.or(Some(downloaded_bytes)),
@@ -629,17 +658,16 @@ pub async fn download_font_pack(app_handle: AppHandle) -> Result<FontPackStatus,
         Uuid::new_v4()
     ));
 
-    let client = build_update_http_client(FONT_PACK_DOWNLOAD_TIMEOUT)
-        .map_err(|error| font_pack_error("download", error))?;
-    let first_attempt = download_archive(&app_handle, &client, &archive_path).await;
-    let download_result = match first_attempt {
-        Err(error) if error.contains("403") => {
-            let direct_client = build_direct_http_client(FONT_PACK_DOWNLOAD_TIMEOUT)
-                .map_err(|direct_error| font_pack_error("download", direct_error))?;
-            download_archive(&app_handle, &direct_client, &archive_path).await
-        }
-        result => result,
-    };
+    let download_result = download_archive_with_fallback(
+        &app_handle,
+        &archive_path,
+        &ArchiveSource {
+            url: FONT_PACK_DOWNLOAD_URL,
+            max_bytes: FONT_PACK_ARCHIVE_MAX_BYTES,
+            progress_event: FONT_PACK_PROGRESS_EVENT,
+        },
+    )
+    .await;
     if let Err(error) = download_result {
         let _ = fs::remove_file(&archive_path);
         return Err(error);

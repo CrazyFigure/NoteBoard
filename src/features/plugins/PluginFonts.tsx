@@ -8,6 +8,7 @@ import { resolveSystemFontFallbackPatch } from '../../app/fontPack';
 import { showToast } from '../../stores/toastStore';
 import { Tooltip } from '../../components/Tooltip';
 import { ProgressRing } from './ProgressRing';
+import { PluginBoardFont } from './PluginBoardFont';
 import { canManageInstance } from '../account/accountState';
 
 const FONTS = [
@@ -70,5 +71,7 @@ export function PluginFonts() {
       </article>;
     })}</div>
     {error && <p className="nb-plugin-error" role="alert">{error}</p>}
+    {/* 画板手写字体独立下载，不并入上面的字体增强包 */}
+    <PluginBoardFont />
   </section>;
 }

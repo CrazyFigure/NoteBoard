@@ -30,7 +30,7 @@ import { takeViewState } from '../session/editorSuspension';
 import { perfMarkEditorInstanceReady } from '../../core/perf/editorReadyMark';
 import type { EditorCapabilities } from '../../core/editor/editorTypes';
 import { IS_MOBILE_UI } from '../../core/platform';
-import { configureExcalidrawAssetPath } from './excalidrawAssetPath';
+import { configureExcalidrawAssetPath, hintBoardHandwritingIfMissing } from './excalidrawAssetPath';
 import {
   getDocumentHistoryAvailability,
   initializeDocumentHistory,
@@ -60,9 +60,8 @@ let loadingPromise: Promise<typeof import('@excalidraw/excalidraw')> | null = nu
 async function loadExcalidraw() {
   if (ExcalidrawComponent) return ExcalidrawComponent;
   if (!loadingPromise) {
-    // 字体路径须在 Excalidraw 模块注册字体前设置
-    configureExcalidrawAssetPath();
-    loadingPromise = import('@excalidraw/excalidraw').then((mod) => {
+    // 字体路径（含已下载的画板手写字体包）须在 Excalidraw 模块注册字体前设置
+    loadingPromise = configureExcalidrawAssetPath().then(() => import('@excalidraw/excalidraw')).then((mod) => {
       ExcalidrawComponent = mod.Excalidraw;
       return mod;
     });
@@ -336,6 +335,8 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
       };
 
       sceneRef.current = newScene;
+      // 手写体中文缺少画板手写字体包时提示下载（会话内最多一次，内部节流）
+      hintBoardHandwritingIfMissing(elements);
 
       // 实时更新浮层所依赖的状态（连线箭头、节点扩展等交互）
       setLiveAppState(appState);

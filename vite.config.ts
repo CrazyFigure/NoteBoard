@@ -11,16 +11,23 @@ import { visualWorkerBudgetPlugin } from './scripts/visualWorkerBudget';
 // Excalidraw 画布字体的发布目录；必须与 src/features/board/excalidrawAssetPath.ts 保持一致。
 const EXCALIDRAW_ASSET_DIR = 'excalidraw-assets';
 
+// 开发期 mock 环境模拟「已下载的画板手写字体包」目录（见 src/dev/tauriMock.ts），只在开发服务器提供。
+const MOCK_BOARD_FONT_PACK_PREFIX = '/__mock-board-font-pack/fonts/';
+
 /**
  * Excalidraw 0.18 不随 npm 包自动加载字体：未设置 EXCALIDRAW_ASSET_PATH 时会去 esm.sh 下载，
  * 被桌面版 CSP 拦截且离线不可用。这里把包内 dist/prod/fonts 原样发布到同源目录，
- * 开发期用中间件直接读 node_modules，构建期逐文件输出（woff2 已压缩，Xiaolai 按 unicode-range 分片按需加载）。
+ * 开发期用中间件直接读 node_modules，构建期逐文件输出（woff2 已压缩）。
+ * 🔴 小赖中文手写体约 13 MB，只随网页版（Docker）发布；桌面/安卓为控制安装包体积，
+ *    改由「设置 → 插件 → 字体」下载画板手写字体包（scripts/build-board-font-pack.mjs）。
  */
-function excalidrawFontsPlugin(): import('vite').Plugin {
+function excalidrawFontsPlugin(mode: string): import('vite').Plugin {
   const require = createRequire(import.meta.url);
-  // 包入口解析到 dist/prod/index.js，字体目录与其同级
-  const fontsDir = path.join(path.dirname(require.resolve('@excalidraw/excalidraw')), 'fonts');
+  // 入口可能按 development 条件解析到 dist/dev，固定取包根目录下 dist/prod/fonts
+  const fontsDir = path.join(require.resolve('@excalidraw/excalidraw').split(/[\\/]dist[\\/]/)[0], 'dist', 'prod', 'fonts');
   const routePrefix = `/${EXCALIDRAW_ASSET_DIR}/fonts/`;
+  const bundleXiaolai = mode === 'web';
+  const isXiaolai = (relative: string) => relative.split(/[\\/]/)[0] === 'Xiaolai';
 
   const listFonts = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const fullPath = path.join(dir, entry.name);
@@ -32,8 +39,11 @@ function excalidrawFontsPlugin(): import('vite').Plugin {
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const url = req.url?.split('?')[0] ?? '';
-        if (!url.startsWith(routePrefix)) return next();
-        const relative = decodeURIComponent(url.slice(routePrefix.length));
+        const prefix = [routePrefix, MOCK_BOARD_FONT_PACK_PREFIX].find((item) => url.startsWith(item));
+        if (!prefix) return next();
+        const relative = decodeURIComponent(url.slice(prefix.length));
+        // 与构建产物一致：非网页模式的内置目录不提供小赖；mock 字体包目录只提供小赖
+        if (prefix === routePrefix ? !bundleXiaolai && isXiaolai(relative) : !isXiaolai(relative)) return next();
         const filePath = path.resolve(fontsDir, relative);
         // 只允许读取字体目录内的文件，防止 ../ 越界
         if (!filePath.startsWith(fontsDir + path.sep) || !fs.existsSync(filePath)) return next();
@@ -42,9 +52,9 @@ function excalidrawFontsPlugin(): import('vite').Plugin {
         fs.createReadStream(filePath).pipe(res);
       });
     },
-    // 🔴 createUrls 总会在本地地址之后追加 esm.sh 回退；Chromium 构造 FontFace 时会预先请求跨域回退地址，
-    //    导致每次打开画板都向 esm.sh 发出约 230 个请求（桌面版被 CSP 拦截刷报错，网页版会真实下载）。
-    //    改为仅在未配置 EXCALIDRAW_ASSET_PATH（本地地址为空）时才追加回退；同时匹配压缩版与开发版写法。
+    // 🔴 createUrls 总会在本地地址之后追加 esm.sh 回退：本地缺少的字体（如未下载的小赖）会转去第三方下载，
+    //    桌面版被 CSP 拦截，网页版则会访问外网。改为仅在未配置 EXCALIDRAW_ASSET_PATH（本地地址为空）时才追加回退；
+    //    同时匹配压缩版与开发版写法。
     transform(code, id) {
       if (!code.includes('ASSETS_FALLBACK_URL') || !(id.includes('excalidraw') || id.includes('chunk-'))) return null;
       const modified = code.replace(
@@ -56,6 +66,7 @@ function excalidrawFontsPlugin(): import('vite').Plugin {
     generateBundle() {
       for (const filePath of listFonts(fontsDir)) {
         const relative = path.relative(fontsDir, filePath).split(path.sep).join('/');
+        if (!bundleXiaolai && isXiaolai(relative)) continue;
         this.emitFile({ type: 'asset', fileName: `${EXCALIDRAW_ASSET_DIR}/fonts/${relative}`, source: fs.readFileSync(filePath) });
       }
     },
@@ -305,7 +316,7 @@ const devPort = hasAllocatedDevPort ? configuredDevPort : 1421;
 // Vite 与 Tauri 必须使用同一端口；动态端口已预选完成时禁止 Vite 静默切换，避免 WebView 串线。
 export default defineConfig(({ command, mode }) => ({
   base: './',
-  plugins: [react(), tailwindcss(), excalidrawLocalesPlugin(), excalidrawFontsPlugin(), moduleSourceManifestPlugin(), ...(mode === 'web' ? [webCompressionPlugin()] : [])],
+  plugins: [react(), tailwindcss(), excalidrawLocalesPlugin(), excalidrawFontsPlugin(mode), moduleSourceManifestPlugin(), ...(mode === 'web' ? [webCompressionPlugin()] : [])],
   define: {
     // 构建目标平台（Tauri CLI 运行 beforeDev/BuildCommand 时注入 TAURI_ENV_PLATFORM），供前端同步判定桌面/移动端
     // 网页构建使用独立运行时；原生构建仍由 Tauri 注入真实平台。

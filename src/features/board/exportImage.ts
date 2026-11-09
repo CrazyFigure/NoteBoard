@@ -26,7 +26,7 @@ export async function exportBoardImage(
   options: ExportOptions,
 ): Promise<ExportResult> {
   // 动态导入 Excalidraw 工具；导出 SVG 内嵌字体同样依赖本地字体路径
-  configureExcalidrawAssetPath();
+  await configureExcalidrawAssetPath();
   const { exportToBlob, exportToSvg } = await import('@excalidraw/excalidraw');
 
   const exportOpts = {

@@ -8,6 +8,7 @@ import type {
   DownloadProgress,
   ExternalChangePayload,
   FontPackStatus,
+  BoardFontPackStatus,
   Settings,
   SyncConfigFile,
   SyncLocalChange,
@@ -31,6 +32,8 @@ export const EVENTS = {
   CLOSE_REQUESTED: 'nb://close-requested',
   FONT_PACK_DOWNLOAD_PROGRESS: 'noteboard-font-pack-download-progress',
   FONT_PACK_CHANGED: 'noteboard-font-pack-changed',
+  BOARD_FONT_PACK_DOWNLOAD_PROGRESS: 'noteboard-board-font-pack-download-progress',
+  BOARD_FONT_PACK_CHANGED: 'noteboard-board-font-pack-changed',
   SYNC_STATUS: 'nb://sync-status',
   SYNC_REPORT: 'nb://sync-report',
   SYNC_APPLIED: 'nb://sync-applied',
@@ -122,6 +125,16 @@ export function onFontPackDownloadProgress(cb: (progress: DownloadProgress) => v
 /** 多窗口同步字体包安装、修复和删除结果。 */
 export function onFontPackChanged(cb: (status: FontPackStatus) => void): Promise<UnlistenFn> {
   return listen<FontPackStatus>(EVENTS.FONT_PACK_CHANGED, (e) => cb(e.payload));
+}
+
+/** 监听画板手写字体包下载进度。 */
+export function onBoardFontPackDownloadProgress(cb: (progress: DownloadProgress) => void): Promise<UnlistenFn> {
+  return listen<DownloadProgress>(EVENTS.BOARD_FONT_PACK_DOWNLOAD_PROGRESS, (e) => cb(e.payload));
+}
+
+/** 多窗口同步画板手写字体包安装与删除结果。 */
+export function onBoardFontPackChanged(cb: (status: BoardFontPackStatus) => void): Promise<UnlistenFn> {
+  return listen<BoardFontPackStatus>(EVENTS.BOARD_FONT_PACK_CHANGED, (e) => cb(e.payload));
 }
 
 // ── 多端同步 ──

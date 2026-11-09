@@ -11,10 +11,10 @@ import viteConfig from '../../vite.config';
 const require = createRequire(import.meta.url);
 const excalidrawDist = path.dirname(path.dirname(require.resolve('@excalidraw/excalidraw')));
 
-/** 取出字体插件（配置为函数形式，按生产构建参数求值） */
-const getFontsPlugin = (): Plugin => {
+/** 取出字体插件（配置为函数形式，按构建参数求值） */
+const getFontsPlugin = (mode = 'production'): Plugin => {
   const resolved = typeof viteConfig === 'function'
-    ? viteConfig({ command: 'build', mode: 'production', isSsrBuild: false, isPreview: false })
+    ? viteConfig({ command: 'build', mode, isSsrBuild: false, isPreview: false })
     : viteConfig;
   const plugin = (resolved as { plugins: unknown[] }).plugins
     .flat()
@@ -36,6 +36,28 @@ describe('Excalidraw 画布字体本地化', () => {
     const fontsDir = path.join(excalidrawDist, 'prod', 'fonts');
     expect(fs.readdirSync(path.join(fontsDir, 'Excalifont')).some((file) => file.endsWith('.woff2'))).toBe(true);
     expect(fs.readdirSync(path.join(fontsDir, 'Xiaolai')).length).toBeGreaterThan(100);
+  });
+
+  /** 收集插件在构建期输出的字体路径 */
+  const emittedFonts = (mode: string) => {
+    const names: string[] = [];
+    const generateBundle = getFontsPlugin(mode).generateBundle as (this: unknown) => void;
+    generateBundle.call({ emitFile: (file: { fileName: string }) => names.push(file.fileName) });
+    return names;
+  };
+
+  it('桌面/安卓构建不内置小赖（改为下载画板手写字体包），网页构建内置', () => {
+    const desktop = emittedFonts('production');
+    expect(desktop.some((name) => name.includes('/Excalifont/'))).toBe(true);
+    expect(desktop.some((name) => name.includes('/Xiaolai/'))).toBe(false);
+    expect(emittedFonts('web').filter((name) => name.includes('/Xiaolai/')).length).toBeGreaterThan(100);
+  });
+
+  it('内嵌的画板手写字体清单与当前 Excalidraw 分片一致（升级后须提升字体包版本并重新发布）', async () => {
+    // @ts-expect-error 纯 JS 制包脚本，无类型声明
+    const { buildManifest } = await import('../../scripts/build-board-font-pack.mjs');
+    const embedded = JSON.parse(fs.readFileSync(path.resolve('src-tauri/src/board_font_pack.json'), 'utf8'));
+    expect(buildManifest()).toEqual(embedded);
   });
 
   it.each(['prod', 'dev'])('%s 产物中的 esm.sh 回退仅在未配置本地路径时追加', (flavor) => {

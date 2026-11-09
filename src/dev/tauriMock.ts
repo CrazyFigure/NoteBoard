@@ -111,6 +111,18 @@ seed(`${WORKSPACE}/style.css`, `h1 { color: #2563eb; }
 for(const name of ['sample.doc','sample.docx','sample.xls','sample.xlsx','sample.ppt','sample.pptx','sample.pdf','sample.dwg','sample.dxf','sample.epub','sample.note','sample.goodnotes'])seed(`${WORKSPACE}/${name}`,'',10);
 
 let mockFontPackState: 'ready' | 'missing' = 'ready';
+// 画板手写字体包：默认未下载，URL 参数 mockBoardFont=ready 时视为已安装；目录由 vite 开发服务器提供小赖分片
+const MOCK_BOARD_FONT_PACK_DIR = '/__mock-board-font-pack';
+let mockBoardFontPackReady = new URLSearchParams(location.search).get('mockBoardFont') === 'ready';
+const mockBoardFontPackStatus = async () => {
+  const manifest = (await import('../../src-tauri/src/board_font_pack.json')).default;
+  const total = manifest.files.reduce((sum, file) => sum + file.size, 0);
+  return {
+    id: 'board', version: manifest.version, state: mockBoardFontPackReady ? 'ready' : 'missing', family: manifest.family,
+    installedSizeBytes: total, downloadSizeBytes: total, baseDir: MOCK_BOARD_FONT_PACK_DIR,
+    faces: mockBoardFontPackReady ? manifest.files.map((file) => ({ file: file.name, unicodeRange: file.unicodeRange })) : [],
+  };
+};
 
 /** 更新样例模式：URL 参数 mockUpdate=1（多个版本）/ single（单个版本），未设置时为 null */
 function mockUpdateMode(): 'multi' | 'single' | null {
@@ -527,6 +539,13 @@ export function installTauriMock(): void {
         // 字体包卸载与下载只切换样例状态，供设置页验证按钮与确认流程。
         mockFontPackState = cmd === 'remove_font_pack' ? 'missing' : 'ready';
         return { id: 'mock', version: '0', state: mockFontPackState, installedSizeBytes: 0, downloadSizeBytes: 0, downloadUrl: '', faces: [] };
+      case 'get_board_font_pack_status':
+        return mockBoardFontPackStatus();
+      case 'download_board_font_pack':
+      case 'remove_board_font_pack':
+        // 只切换样例状态；下载延迟片刻，便于观察按钮进行中状态
+        mockBoardFontPackReady = cmd === 'download_board_font_pack';
+        return new Promise((resolve) => setTimeout(resolve, 600)).then(mockBoardFontPackStatus);
       case 'check_for_updates':
         // URL 带 mockUpdate=1 时返回跨多个版本的更新样例（mockUpdate=single 为单个版本），否则模拟离线
         if (mockUpdateMode()) return mockUpdateResult();
@@ -722,4 +741,12 @@ export function installTauriMock(): void {
         return null;
     }
   });
+  // 只为 mock 画板字体包目录提供 convertFileSrc；其它路径保持未模拟（调用抛错，图片等组件走原有回退）
+  const internals = (window as unknown as { __TAURI_INTERNALS__?: { convertFileSrc?: (path: string) => string } }).__TAURI_INTERNALS__;
+  if (internals && !internals.convertFileSrc) {
+    internals.convertFileSrc = (path) => {
+      if (path.startsWith(MOCK_BOARD_FONT_PACK_DIR)) return path;
+      throw new Error('convertFileSrc 未模拟');
+    };
+  }
 }

@@ -33,6 +33,7 @@ import type {
   StagingResult,
   SessionSnapshot,
   FontPackStatus,
+  BoardFontPackStatus,
   FavoritesData,
   PlatformInfo,
   SyncConfigFile,
@@ -438,6 +439,21 @@ export function importFontPack(sourcePath: string): Promise<FontPackStatus> {
 /** 删除当前应用字体包，不会触碰 Windows 系统字体。 */
 export function removeFontPack(): Promise<FontPackStatus> {
   return invoke<FontPackStatus>('remove_font_pack');
+}
+
+/** 查询画板手写字体包（小赖）状态；后端逐文件校验大小与 SHA-256。 */
+export function getBoardFontPackStatus(): Promise<BoardFontPackStatus> {
+  return invoke<BoardFontPackStatus>('get_board_font_pack_status');
+}
+
+/** 下载、校验并原子安装画板手写字体包。 */
+export function downloadBoardFontPack(): Promise<BoardFontPackStatus> {
+  return invoke<BoardFontPackStatus>('download_board_font_pack');
+}
+
+/** 删除画板手写字体包。 */
+export function removeBoardFontPack(): Promise<BoardFontPackStatus> {
+  return invoke<BoardFontPackStatus>('remove_board_font_pack');
 }
 
 // ── 会话 ──

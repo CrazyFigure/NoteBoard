@@ -13,6 +13,8 @@ pub mod settings;
 pub mod session;
 pub mod sysfont;
 pub mod font_pack;
+// 画板手写字体包（小赖），按需下载以控制安装包体积。
+pub mod board_font_pack;
 // 可独立更新的官方查看器与工作台插件。
 pub mod plugins;
 pub mod bootstrap;
@@ -239,6 +241,9 @@ pub fn run() {
             font_pack::download_font_pack,
             font_pack::import_font_pack,
             font_pack::remove_font_pack,
+            board_font_pack::get_board_font_pack_status,
+            board_font_pack::download_board_font_pack,
+            board_font_pack::remove_board_font_pack,
             plugins::plugin_command,
             // updater
             updater::commands::check_for_updates,

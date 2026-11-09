@@ -258,6 +258,26 @@ export interface FontPackStatus {
   faces: FontPackFace[];
 }
 
+/** 画板手写字体（小赖）单个 unicode-range 分片；file 位于 baseDir/fonts/<family>/ 下。 */
+export interface BoardFontFace {
+  file: string;
+  unicodeRange: string;
+}
+
+/** 画板手写字体包状态；网页版小赖随前端内置，不使用该包。 */
+export interface BoardFontPackStatus {
+  id: string;
+  version: string;
+  state: 'missing' | 'ready' | 'invalid';
+  family: string;
+  installedSizeBytes: number;
+  downloadSizeBytes: number;
+  /** 包目录，作为 Excalidraw 资源根目录（其下为 fonts/<family>/<分片>） */
+  baseDir: string;
+  /** 仅 ready 时非空 */
+  faces: BoardFontFace[];
+}
+
 /** 下载进度事件统一使用字节数，totalBytes 在服务端未返回长度时允许为空。 */
 export interface DownloadProgress {
   downloadedBytes: number;

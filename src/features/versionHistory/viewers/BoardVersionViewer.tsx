@@ -23,8 +23,9 @@ let sceneSeq = 0;
 function loadExcalidraw(): Promise<AnyComponent> {
   if (!excalidrawPromise) {
     // 历史版本画布同样需要本地字体路径，须在模块加载前设置
-    configureExcalidrawAssetPath();
-    excalidrawPromise = import('@excalidraw/excalidraw').then((m) => m.Excalidraw as AnyComponent);
+    excalidrawPromise = configureExcalidrawAssetPath()
+      .then(() => import('@excalidraw/excalidraw'))
+      .then((m) => m.Excalidraw as AnyComponent);
   }
   return excalidrawPromise;
 }
