@@ -38,7 +38,7 @@ function MacTrafficLightsSpacer() {
   }, []);
 
   if (isFullscreen) return null;
-  return <TitleBarDragRegion width={MAC_TRAFFIC_LIGHTS_WIDTH} maximizeOnDoubleClick={false} />;
+  return <TitleBarDragRegion width={MAC_TRAFFIC_LIGHTS_WIDTH} />;
 }
 
 // 极窄模式标题栏按钮宽度：比常规 36px 更紧凑，提高信息密度

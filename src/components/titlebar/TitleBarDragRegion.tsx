@@ -1,11 +1,11 @@
 // NoteBoard 标题栏拖拽空白区
 // 有菜单打开时临时解除拖动，点击直接关闭菜单且避免触发原生窗口拖动。
-// 常规模式：沿用 data-tauri-drag-region（系统拖动，双击最大化）。
+// 常规模式：由 data-tauri-drag-region 统一处理系统拖动与双击最大化/还原。
+// 不再叠加 React 双击回调，避免 macOS 在 mouseup 缩放后又被 dblclick 切回原尺寸。
 // 极窄模式：不挂 data-tauri-drag-region（其内置双击最大化会突破极窄宽度），改由 Rust 驱动拖动：
 //   不走系统拖动循环，从而不触发系统贴靠 / 平铺改写窗口尺寸；开启自动贴边时还不允许拖出桌面。
 
 import { useCallback, useEffect, useRef } from 'react';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import { emit } from '../../core/emitter';
 import { beginDockDrag, endDockDrag } from '../../core/ipc/commands';
 import { useLayoutStore } from '../../stores/layoutStore';
@@ -16,11 +16,9 @@ interface TitleBarDragRegionProps {
   width?: number;
   /** 最小宽度：极窄模式下标签可能占满，保留保底拖拽区确保窗口始终可移动 */
   minWidth?: number;
-  /** 常规模式双击是否额外切换最大化（macOS 红绿灯占位只依赖 Tauri 内置处理，保持原样） */
-  maximizeOnDoubleClick?: boolean;
 }
 
-export function TitleBarDragRegion({ width, minWidth = 0, maximizeOnDoubleClick = true }: TitleBarDragRegionProps) {
+export function TitleBarDragRegion({ width, minWidth = 0 }: TitleBarDragRegionProps) {
   // 当前是否有打开的标题栏/标签页菜单
   const hasActiveMenu = useLayoutStore((s) => s.activeMenuCount > 0);
   const compactMode = useLayoutStore((s) => s.compactMode);
@@ -72,9 +70,6 @@ export function TitleBarDragRegion({ width, minWidth = 0, maximizeOnDoubleClick 
       onPointerUp={finishDockDrag}
       onPointerCancel={finishDockDrag}
       onLostPointerCapture={finishDockDrag}
-      onDoubleClick={() => {
-        if (!IS_WEB && !compactMode && maximizeOnDoubleClick) getCurrentWindow().toggleMaximize();
-      }}
     />
   );
 }
