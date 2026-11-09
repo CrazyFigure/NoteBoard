@@ -20,6 +20,7 @@ import { SelectOptionsPanel, OptionBadge } from './BitableOptions';
 import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
 import { BitableContextMenu } from './BitableContextMenu';
 import { usePointerReorder } from './usePointerReorder';
+import { limitFrozenCount, useMobileViewportWidth } from './useMobileLayout';
 import { getFieldTypeMeta, FieldSelectButton } from './BitableFieldMeta';
 import { SortRulesPanel } from './BitableSortPanel';
 import { Tooltip } from '../../components/Tooltip';
@@ -354,6 +355,12 @@ export function BitableGridView({
   // ── 固定列（冻结左侧若干列）──
   // 冻结列采用「前缀固定」语义：前 N 列被固定在左侧，横向滚动时保持可见。
   const frozenCount = Math.max(0, Math.min(frozenColumnCount, columns.length));
+  // 竖屏手机上固定列过宽会占满屏幕、无法横向查看其余字段：渲染时按视口宽度减少实际固定的列（设置值不变）
+  const viewportWidth = useMobileViewportWidth();
+  const stickyCount = useMemo(
+    () => limitFrozenCount(columns.map((col) => col.width || 160), frozenCount, 50, viewportWidth),
+    [columns, frozenCount, viewportWidth],
+  );
   // 冻结列配置浮层
   const [freezePanelOpen, setFreezePanelOpen] = useState(false);
   const [freezeAnchor, setFreezeAnchor] = useState<AnchorRect | null>(null);
@@ -2023,8 +2030,8 @@ export function BitableGridView({
               const sortRuleForCol = sortRules.find((r) => r.columnId === col.id);
               const sortPriority = sortRuleForCol ? sortRules.findIndex((r) => r.columnId === col.id) + 1 : null;
               const isOptionField = col.type === 'select' || col.type === 'multiSelect';
-              const isFrozen = colIdx < frozenCount;
-              const isLastFrozen = isFrozen && colIdx === frozenCount - 1;
+              const isFrozen = colIdx < stickyCount;
+              const isLastFrozen = isFrozen && colIdx === stickyCount - 1;
               // 表头底色必须完全不透明：表头纵向吸附，半透明底色会让滚过的行数据直接透出来。
               // 冻结列与非冻结列统一用 opaqueTint，顺带修掉原先冻结列硬编码浅色值在暖色/深色主题下失配的问题
               const headerBg =
@@ -3041,8 +3048,8 @@ export function BitableGridView({
                   const isFillRight = isInFillPreview && cIdx === fillPreview.toCol;
 
                   const isFirstCol = colIdx === 0;
-                  const isFrozen = colIdx < frozenCount;
-                  const isLastFrozen = isFrozen && colIdx === frozenCount - 1;
+                  const isFrozen = colIdx < stickyCount;
+                  const isLastFrozen = isFrozen && colIdx === stickyCount - 1;
                   const isExpandedLongText =
                     col.type === 'longText' && resolveLongTextConfig(col).displayMode === 'full';
 

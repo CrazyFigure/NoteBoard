@@ -28,6 +28,7 @@ import { WorkbenchView } from '../plugins/WorkbenchView';
 import { takeBitableRecordRequest } from './recordOpenRequests';
 import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
 import { usePointerReorder } from './usePointerReorder';
+import { useCollapsibleChrome } from './useMobileLayout';
 import { Tooltip } from '../../components/Tooltip';
 import { ReadingModeButton } from '../reading/ReadingModeButton';
 import { ReadingWindowControls } from '../reading/ReadingWindowControls';
@@ -245,6 +246,8 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
 
   // 编辑器根容器（canSuspend 检查进行中的单元格编辑：焦点仍在本编辑器内时不回收）
   const editorRootRef = useRef<HTMLDivElement>(null);
+  // 手机横屏高度紧张：内容向下滚动时收起顶部工具栏与视图子工具条，向上滚动再展开
+  const chromeCollapsed = useCollapsibleChrome(editorRootRef, '.nb-bitable-toolbar, .nb-bitable-subbar');
   const searchQueryRef = useRef(searchQuery);
   searchQueryRef.current = searchQuery;
   // 表格自带的记录搜索框：Ctrl+F 直接聚焦它（不使用全局搜索栏）
@@ -1138,6 +1141,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
   return (
     <div
       ref={editorRootRef}
+      className={`nb-bitable-root${chromeCollapsed ? ' is-chrome-collapsed' : ''}`}
       style={{
         width: '100%',
         height: '100%',

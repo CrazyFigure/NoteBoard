@@ -153,6 +153,7 @@ export function BitableRecordPanel({
   return (
     <div
       ref={panelRef}
+      className="nb-bitable-record-panel"
       // 键盘隔离区：tabIndex=-1 让点击空白处时焦点停在侧栏自身而非 body，
       // 表格的全局快捷键据此识别并放行，避免 Backspace 删掉背后选中的行
       {...{ [KEYBOARD_SCOPE_ATTR]: '' }}

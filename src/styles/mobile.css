@@ -1250,17 +1250,14 @@ html[data-platform='mobile'] body {
 
 /* ── 多维表格：窄屏 / 横屏工具栏 ── */
 
-/* 顶部工具栏改为两行：第一行视图 Tab（可横向滚动），第二行搜索 + 新建记录 */
 [data-platform='mobile'] .nb-bitable-toolbar {
   height: auto !important;
   min-height: 0 !important;
-  flex-wrap: wrap;
   gap: 6px;
   padding: 6px 8px !important;
 }
 
 [data-platform='mobile'] .nb-bitable-views {
-  flex: 1 1 100% !important;
   min-width: 0;
   scrollbar-width: none;
 }
@@ -1269,16 +1266,56 @@ html[data-platform='mobile'] body {
   display: none;
 }
 
-[data-platform='mobile'] .nb-bitable-actions {
-  flex: 1 1 100%;
-  min-width: 0;
-}
-
 [data-platform='mobile'] .nb-bitable-search {
-  flex: 1;
-  width: auto !important;
   min-width: 0;
   min-height: 34px;
+}
+
+/* 窄屏（竖屏手机）：工具栏改为两行，第一行视图 Tab（可横向滚动），第二行搜索 + 新建记录 */
+@media (max-width: 599px) {
+  [data-platform='mobile'] .nb-bitable-toolbar {
+    flex-wrap: wrap;
+  }
+
+  [data-platform='mobile'] .nb-bitable-views {
+    flex: 1 1 100% !important;
+  }
+
+  [data-platform='mobile'] .nb-bitable-actions {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  [data-platform='mobile'] .nb-bitable-search {
+    flex: 1;
+    width: auto !important;
+  }
+}
+
+[data-platform='mobile'] .nb-bitable-record-panel {
+  max-width: 100%;
+}
+
+/* 窄屏记录详情侧栏占满宽度：保存的桌面宽度（360px 起）在竖屏手机上只会剩下一条无法操作的窄缝 */
+@media (max-width: 599px) {
+  [data-platform='mobile'] .nb-bitable-record-panel {
+    width: 100% !important;
+  }
+}
+
+/* 宽屏（横屏手机 / 平板）：一行放得下，视图 Tab 与搜索、新建记录同行，省出一整行高度 */
+@media (min-width: 600px) {
+  [data-platform='mobile'] .nb-bitable-views {
+    flex: 1 1 auto !important;
+  }
+
+  [data-platform='mobile'] .nb-bitable-actions {
+    flex: 0 0 auto;
+  }
+
+  [data-platform='mobile'] .nb-bitable-search {
+    width: 180px !important;
+  }
 }
 
 [data-platform='mobile'] .nb-bitable-search input {
@@ -1316,4 +1353,63 @@ html[data-platform='mobile'] body {
 [data-platform='mobile'] .nb-bitable-subbar span {
   flex-shrink: 0;
   white-space: nowrap;
+}
+
+/* 视图 Tab 内的下拉箭头只是小图标：不套用按钮最小高度，否则会把整个 Tab 撑高到 44px */
+[data-platform='mobile'] .nb-bitable-tab .nb-bitable-btn-ghost {
+  min-height: 0;
+}
+
+/* ── 矮视口（手机横屏）：顶栏单行、工具栏紧凑，表格内容向下滚动时收起工具栏 ── */
+@media (max-height: 500px) {
+  /* 顶栏只保留文档名一行（所在文件夹副标题在横屏下价值低），对所有编辑器生效 */
+  [data-platform='mobile'] {
+    --nb-m-topbar-h: 40px;
+  }
+
+  [data-platform='mobile'] .nb-m-topbar-sub {
+    display: none;
+  }
+
+  /* 顶栏按钮保持 44px 触控宽度，高度随顶栏收窄 */
+  [data-platform='mobile'] .nb-m-topbar .nb-m-icon-btn {
+    height: 36px;
+  }
+
+  [data-platform='mobile'] .nb-bitable-toolbar,
+  [data-platform='mobile'] .nb-bitable-subbar {
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
+    /* 收起 / 展开时高度与透明度平滑过渡 */
+    max-height: 64px;
+    overflow: hidden;
+    transition: max-height 0.2s ease, padding 0.2s ease, opacity 0.16s ease;
+  }
+
+  [data-platform='mobile'] .nb-bitable-subbar {
+    overflow-x: auto;
+  }
+
+  [data-platform='mobile'] .nb-bitable-btn-secondary,
+  [data-platform='mobile'] .nb-bitable-btn-primary,
+  [data-platform='mobile'] .nb-bitable-btn-ghost,
+  [data-platform='mobile'] .nb-bitable-tab,
+  [data-platform='mobile'] .nb-bitable-search {
+    min-height: 30px;
+  }
+
+  [data-platform='mobile'] .nb-bitable-tab .nb-bitable-btn-ghost {
+    min-height: 0;
+  }
+
+  /* 向下滚动内容时收起：表头与记录占满剩余高度；向上滚动或回到顶部即恢复 */
+  [data-platform='mobile'] .nb-bitable-root.is-chrome-collapsed .nb-bitable-toolbar,
+  [data-platform='mobile'] .nb-bitable-root.is-chrome-collapsed .nb-bitable-subbar {
+    max-height: 0;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    border-bottom-width: 0 !important;
+    opacity: 0;
+    pointer-events: none;
+  }
 }

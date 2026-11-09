@@ -21,6 +21,7 @@ import { OptionBadge } from './BitableOptions';
 import { SortRulesPanel } from './BitableSortPanel';
 import { BITABLE_PALETTE, getOptionColor } from './bitableConverter';
 import { usePointerReorder } from './usePointerReorder';
+import { fitPaneWidths, useMobileViewportWidth } from './useMobileLayout';
 import { useCnHolidays } from './holidayCn';
 import { Tooltip } from '../../components/Tooltip';
 import { showToast } from '../../stores/toastStore';
@@ -1147,19 +1148,26 @@ export function BitableGanttView({
     return map;
   }, [rows, startCol, endCol, axis, workdaysOnly, isRestDay]);
 
+  // ── 左侧固定列实际显示宽度：竖屏手机上按比例压缩，左侧栏不超过半屏，给时间轴留出空间（保存的列宽不变） ──
+  const viewportWidth = useMobileViewportWidth();
+  const leftWidths = useMemo(
+    () => fitPaneWidths(leftColumns.map((col) => col.width || 160), NUM_COL_WIDTH, viewportWidth),
+    [leftColumns, viewportWidth],
+  );
+
   // ── 左侧固定列偏移量 ──
   const leftOffsets = useMemo(() => {
     const offsets: number[] = [];
     let acc = NUM_COL_WIDTH;
-    leftColumns.forEach((col, idx) => {
+    leftWidths.forEach((width, idx) => {
       offsets[idx] = acc;
-      acc += col.width || 160;
+      acc += width;
     });
     return offsets;
-  }, [leftColumns]);
+  }, [leftWidths]);
   const leftPaneWidth = useMemo(
-    () => NUM_COL_WIDTH + leftColumns.reduce((sum, col) => sum + (col.width || 160), 0),
-    [leftColumns],
+    () => NUM_COL_WIDTH + leftWidths.reduce((sum, width) => sum + width, 0),
+    [leftWidths],
   );
 
   // ── 拖拽调整左侧固定列宽度（与表格视图共用字段宽度，最小 90） ──
@@ -1904,7 +1912,7 @@ export function BitableGanttView({
 
               {/* 左侧固定列表头 */}
               {leftColumns.map((col, idx) => {
-                const width = col.width || 160;
+                const width = leftWidths[idx];
                 const meta = getFieldTypeMeta(col.type);
                 const isLastLeft = idx === leftColumns.length - 1;
                 return (
@@ -2393,7 +2401,7 @@ export function BitableGanttView({
 
                   {/* 左侧固定字段列：可编辑、可框选、可右键、可拖拽填充 */}
                   {leftColumns.map((col, colIdx) => {
-                    const width = col.width || 160;
+                    const width = leftWidths[colIdx];
                     const isLastLeft = colIdx === leftColumns.length - 1;
                     const isCellSelected =
                       normalizedSelection !== null &&
