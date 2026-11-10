@@ -744,6 +744,27 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
 
   // 布局仍覆盖全部已展开节点，只有真正的节点和连线 DOM 按视口裁剪。
   const viewport = useMemo(() => getMindmapViewport(panRef.current, zoom, viewportSize.width, viewportSize.height), [pan, zoom, viewportSize]);
+  // 华为 WebView 会错误缩放 1×1 SVG 的溢出图形；用带缓冲的可见范围作为真实视口，
+  // CSS 偏移与 viewBox 原点相互抵消，连线继续使用节点的世界坐标（含负坐标）。
+  // 尺寸只随视口变化，不随整图增长，避免大导图重新分配巨大的 SVG 绘制表面。
+  const connectionLayerProps = useMemo<React.SVGProps<SVGSVGElement>>(() => {
+    const width = viewport.right - viewport.left;
+    const height = viewport.bottom - viewport.top;
+    return {
+      width,
+      height,
+      viewBox: `${viewport.left} ${viewport.top} ${width} ${height}`,
+      style: {
+        position: 'absolute',
+        left: viewport.left,
+        top: viewport.top,
+        width,
+        height,
+        pointerEvents: 'none',
+        overflow: 'visible',
+      },
+    };
+  }, [viewport]);
   // 多选集合（查找用）
   const multiSelectedSet = useMemo(() => new Set(multiSelectedIds), [multiSelectedIds]);
   const visibleNodes = useMemo(() => nodes.filter((node) =>
@@ -2192,18 +2213,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
         }}
       >
         {/* SVG 贝塞尔曲线连接线图层 */}
-        <svg
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            // 图形使用绝对坐标并允许溢出，无需为连线保留 8000² 的空白绘制表面。
-            width: 1,
-            height: 1,
-            pointerEvents: 'none',
-            overflow: 'visible',
-          }}
-        >
+        <svg {...connectionLayerProps}>
           {/* 外框：浅色底 + 虚线边，位于连线与节点之下；只有边线可点选，框内空白仍可拖动画布 */}
           {structures.boundaries.map((b) => {
             const ref: MindStructureRef = { kind: 'boundary', ownerId: b.ownerId, id: b.id };
@@ -3117,18 +3127,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
         })}
 
         {/* 联系线图层：位于节点之上；只有线条本身可点选 */}
-        <svg
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            // 与底层连线共用最小 SVG 视口，实际线条继续通过 overflow 绘制和命中。
-            width: 1,
-            height: 1,
-            pointerEvents: 'none',
-            overflow: 'visible',
-          }}
-        >
+        <svg {...connectionLayerProps}>
           {structures.relations.map((r) => {
             const ref: MindStructureRef = { kind: 'relation', ownerId: r.ownerId, id: r.id };
             const selected = isSameStructure(selectedStructure, ref);
@@ -3237,7 +3236,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
           if (!r) return null;
           return (
             <>
-              <svg style={{ position: 'absolute', left: 0, top: 0, width: 1, height: 1, overflow: 'visible', pointerEvents: 'none' }}>
+              <svg {...connectionLayerProps}>
                 {([[r.p1, r.cp1], [r.p2, r.cp2]] as const).map(([from, to], idx) => (
                   <line key={idx} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={ACCENT_COLOR} strokeWidth={1} strokeDasharray="3 3" opacity={0.7} />
                 ))}
