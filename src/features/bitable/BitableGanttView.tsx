@@ -1475,7 +1475,7 @@ export function BitableGanttView({
           flexWrap: 'wrap',
           gap: 10,
           rowGap: 6,
-          padding: '6px 12px',
+          padding: '4px 12px',
           borderBottom: '1px solid var(--editor-border, #e2e8f0)',
           background: 'var(--editor-surface, #f8fafc)',
           flexShrink: 0,
@@ -1585,6 +1585,7 @@ export function BitableGanttView({
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {/* 刻度切换：周 / 月 / 季 / 年 */}
           <div
+            className="nb-bitable-gantt-zoom-group"
             style={{
               display: 'flex',
               alignItems: 'center',

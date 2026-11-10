@@ -1254,7 +1254,13 @@ html[data-platform='mobile'] body {
   height: auto !important;
   min-height: 0 !important;
   gap: 6px;
-  padding: 6px 8px !important;
+  padding: 4px 8px !important;
+}
+
+/* 顶栏 / 工具条控件统一高度取触控尺寸，与下方按钮 min-height 保持一致 */
+[data-platform='mobile'] .nb-bitable-toolbar,
+[data-platform='mobile'] .nb-bitable-subbar {
+  --nb-bitable-control-h: 34px;
 }
 
 [data-platform='mobile'] .nb-bitable-views {
@@ -1342,7 +1348,7 @@ html[data-platform='mobile'] body {
   flex-wrap: nowrap !important;
   overflow-x: auto;
   scrollbar-width: none;
-  padding: 6px 8px !important;
+  padding: 4px 8px !important;
 }
 
 [data-platform='mobile'] .nb-bitable-subbar::-webkit-scrollbar {
@@ -1378,6 +1384,7 @@ html[data-platform='mobile'] body {
 
   [data-platform='mobile'] .nb-bitable-toolbar,
   [data-platform='mobile'] .nb-bitable-subbar {
+    --nb-bitable-control-h: 30px;
     padding-top: 4px !important;
     padding-bottom: 4px !important;
     /* 收起 / 展开时高度与透明度平滑过渡 */

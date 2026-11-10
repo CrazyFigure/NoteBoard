@@ -1605,6 +1605,30 @@
   opacity: 1;
 }
 
+/* 顶栏与工具条控件统一高度：视图 Tab、搜索框、轮廓/主按钮、字段选择、刻度切换对齐到同一条基线；
+   顶栏（38px 行高）按钮略高于工具条，上下只留 4px 边距，形成主次层级。
+   移动端在 mobile.css 中改写变量以保证触控尺寸。浮层经 Portal 渲染，不受此规则影响 */
+.nb-bitable-toolbar {
+  --nb-bitable-control-h: 30px;
+}
+
+.nb-bitable-subbar {
+  --nb-bitable-control-h: 28px;
+}
+
+.nb-bitable-toolbar :is(.nb-bitable-tab, .nb-bitable-search, .nb-bitable-btn-secondary, .nb-bitable-btn-primary),
+.nb-bitable-subbar :is(.nb-bitable-btn-secondary, .nb-bitable-btn-primary, .nb-bitable-gantt-zoom-group) {
+  height: var(--nb-bitable-control-h);
+  box-sizing: border-box;
+}
+
+/* 刻度切换分段按钮填满容器高度，文字垂直居中 */
+.nb-bitable-gantt-zoom-group > .nb-bitable-gantt-zoom {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+}
+
 /* 看板卡片悬浮与点击反馈 */
 .nb-bitable-kanban-card {
   transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);

@@ -1771,7 +1771,7 @@ export function BitableGridView({
             display: 'flex',
             alignItems: 'center',
             gap: 10,
-            padding: '6px 12px',
+            padding: '4px 12px',
             borderBottom: '1px solid var(--editor-border, #e2e8f0)',
             background: 'var(--editor-surface, #f8fafc)',
             flexShrink: 0,

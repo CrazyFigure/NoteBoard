@@ -1160,8 +1160,8 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
         className="nb-bitable-toolbar"
         {...readingDragRegion}
         style={{
-          height: 42,
-          minHeight: 42,
+          height: 38,
+          minHeight: 38,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -1351,8 +1351,8 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
                   }
                 }}
                 style={{
-                  width: 26,
-                  height: 26,
+                  // 宽度跟随统一控件高度，保持正方形（高度由 --nb-bitable-control-h 控制）
+                  width: 'var(--nb-bitable-control-h, 30px)',
                   padding: 0,
                   background: addViewMenu ? 'var(--editor-bg, #f1f5f9)' : undefined,
                   color: 'var(--editor-text-muted, #64748b)',
@@ -1448,7 +1448,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
           {/* 沉浸阅读 / 退出阅读 */}
           {/* 只隐藏应用外壳：视图切换与搜索仍是阅读所需，工具栏保留，按钮兼作退出；
               表格内 Esc 用于关闭各类浮层，因此不以 Esc 退出 */}
-          <ReadingModeButton docKey={docKey} className="nb-bitable-btn-secondary" escHint={false} style={{ padding: '4px 6px' }} />
+          <ReadingModeButton docKey={docKey} className="nb-bitable-btn-secondary" escHint={false} style={{ padding: '4px 6px', minWidth: 'var(--nb-bitable-control-h, 30px)' }} />
 
           {/* 导出下拉按钮（移动端隐藏：使用频率低，且挤占窄屏工具栏空间；收纳为菜单便于后续扩展格式） */}
           <div

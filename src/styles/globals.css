@@ -5788,7 +5788,7 @@ button.nb-callout-icon:active {
   min-height: 0 !important;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 6px 8px !important;
+  padding: 4px 8px !important;
 }
 
 [data-compact='true'] .nb-bitable-views {
@@ -5829,7 +5829,7 @@ button.nb-callout-icon:active {
   flex-wrap: nowrap !important;
   overflow-x: auto;
   scrollbar-width: none;
-  padding: 6px 8px !important;
+  padding: 4px 8px !important;
 }
 
 [data-compact='true'] .nb-bitable-subbar > *,

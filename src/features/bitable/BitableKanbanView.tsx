@@ -378,7 +378,7 @@ export function BitableKanbanView({
       <div
         className="nb-bitable-subbar"
         style={{
-          padding: '8px 16px',
+          padding: '4px 16px',
           borderBottom: '1px solid var(--editor-border, #e2e8f0)',
           background: 'var(--editor-surface, #ffffff)',
           display: 'flex',
