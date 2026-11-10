@@ -6,6 +6,7 @@ import React, { useState, useEffect, useRef, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight, Check } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 import { isTouchInteraction } from '../../core/inputModality';
+import { formatShortcut } from '../../core/shortcuts';
 import { useViewportClamp } from '../../components/useViewportClamp';
 
 // ── 基础工具栏按钮 ──
@@ -411,7 +412,8 @@ export function ToolbarDropdownItem({
         {active && !hasSubmenu && <Check size={13} strokeWidth={2.5} color="var(--accent-500, #3b82f6)" />}
         {shortcut && (
           <span style={{ fontSize: 11, color: 'var(--editor-text-muted, #9ca3af)', opacity: 0.8 }}>
-            {shortcut}
+            {/* 与按钮提示共用平台转换，Mac 下显示 Cmd / Option。 */}
+            {formatShortcut(shortcut)}
           </span>
         )}
         {hasSubmenu && (
