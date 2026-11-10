@@ -47,6 +47,22 @@ const FORM_INPUT_STYLE: React.CSSProperties = {
   color: 'var(--editor-text, #1e293b)',
 };
 
+/**
+ * 单元格外层已经绘制选区边框，内联输入框保持无边框、透明背景。
+ * 避免首列缩进旁多出一条内层竖线，也不遮挡外层选区；内边距与只读文本一致。
+ */
+const CELL_INPUT_STYLE: React.CSSProperties = {
+  width: '100%',
+  height: '100%',
+  border: 'none',
+  borderRadius: 0,
+  padding: '4px 8px',
+  fontSize: 13,
+  outline: 'none',
+  background: 'transparent',
+  color: 'var(--editor-text, #1e293b)',
+};
+
 /** 数字输入框的类名：隐藏原生上下微调箭头（样式见 globals.css 的 .nb-bitable-num-input） */
 const NUMBER_INPUT_CLASS = 'nb-bitable-num-input';
 
@@ -287,17 +303,7 @@ export function BitableCellEditor({
               setEditing(false);
             }
           }}
-          style={{
-            width: '100%',
-            height: '100%',
-            border: '2px solid var(--editor-accent, #3b82f6)',
-            borderRadius: 4,
-            padding: '4px 8px',
-            fontSize: 13,
-            outline: 'none',
-            background: 'var(--editor-surface, #ffffff)',
-            color: 'var(--editor-text, #1e293b)',
-          }}
+          style={CELL_INPUT_STYLE}
         />
       );
     }
@@ -462,17 +468,7 @@ export function BitableCellEditor({
               setEditing(false);
             }
           }}
-          style={{
-            width: '100%',
-            height: '100%',
-            border: '2px solid var(--editor-accent, #3b82f6)',
-            borderRadius: 4,
-            padding: '4px 8px',
-            fontSize: 13,
-            outline: 'none',
-            background: 'var(--editor-surface, #ffffff)',
-            color: 'var(--editor-text, #1e293b)',
-          }}
+          style={CELL_INPUT_STYLE}
         />
       );
     }
@@ -952,16 +948,7 @@ export function BitableCellEditor({
               setEditing(false);
             }
           }}
-          style={{
-            width: '100%',
-            height: '100%',
-            border: '2px solid var(--editor-accent, #3b82f6)',
-            borderRadius: 4,
-            padding: '4px 8px',
-            fontSize: 13,
-            outline: 'none',
-            background: 'var(--editor-surface, #ffffff)',
-          }}
+          style={CELL_INPUT_STYLE}
         />
       );
     }
