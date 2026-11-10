@@ -16,9 +16,12 @@ interface TitleBarDragRegionProps {
   width?: number;
   /** 最小宽度：极窄模式下标签可能占满，保留保底拖拽区确保窗口始终可移动 */
   minWidth?: number;
+  className?: string;
+  /** 仅作视觉装饰的子元素（如顶部拖动把手），需设置 pointer-events: none 让按下落在拖拽区本身 */
+  children?: React.ReactNode;
 }
 
-export function TitleBarDragRegion({ width, minWidth = 0 }: TitleBarDragRegionProps) {
+export function TitleBarDragRegion({ width, minWidth = 0, className, children }: TitleBarDragRegionProps) {
   // 当前是否有打开的标题栏/标签页菜单
   const hasActiveMenu = useLayoutStore((s) => s.activeMenuCount > 0);
   const compactMode = useLayoutStore((s) => s.compactMode);
@@ -44,6 +47,7 @@ export function TitleBarDragRegion({ width, minWidth = 0 }: TitleBarDragRegionPr
   return (
     <div
       {...(!hasActiveMenu && !compactMode ? { 'data-tauri-drag-region': '' } : {})}
+      className={className}
       style={{
         flex: width === undefined ? 1 : 'none',
         width,
@@ -70,6 +74,8 @@ export function TitleBarDragRegion({ width, minWidth = 0 }: TitleBarDragRegionPr
       onPointerUp={finishDockDrag}
       onPointerCancel={finishDockDrag}
       onLostPointerCapture={finishDockDrag}
-    />
+    >
+      {children}
+    </div>
   );
 }

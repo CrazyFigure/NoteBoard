@@ -49,6 +49,57 @@ body {
   -webkit-user-select: none;
 }
 
+/* 标题栏顶部拖动条：三段拖拽区横向排布，中段承载胶囊把手 */
+.nb-titlebar-grip {
+  display: flex;
+  flex-shrink: 0;
+}
+
+/* 把手不在 8px 条内居中：标签（含边框 28px）在 36px 主行内上方另有 4px 空隙，
+   把手放在「窗口顶 → 标签顶」共 12px 的正中，上下各留 4px，视觉上与标签间距对称 */
+.nb-titlebar-grip-handle {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+/* 胶囊把手：颜色取正文色混合透明，自动适配亮暗与自定义主题；平时隐藏，指针进入窗口后淡入 */
+.nb-titlebar-grip-pill {
+  width: 40px;
+  height: 4px;
+  margin-top: 4px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--editor-text) 22%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 200ms ease,
+    width 160ms ease,
+    background-color 160ms ease;
+}
+
+:root:hover .nb-titlebar-grip-pill {
+  opacity: 1;
+}
+
+/* 悬停把手：加宽加深，提示可拖动 */
+.nb-titlebar-grip-handle:hover .nb-titlebar-grip-pill {
+  width: 56px;
+  background: color-mix(in srgb, var(--editor-text) 45%, transparent);
+}
+
+/* 按下把手：进一步加深 */
+.nb-titlebar-grip-handle:active .nb-titlebar-grip-pill {
+  background: color-mix(in srgb, var(--editor-text) 60%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nb-titlebar-grip-pill {
+    transition: none;
+  }
+}
+
 /* 滚动条 */
 ::-webkit-scrollbar {
   width: 10px;

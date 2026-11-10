@@ -44,6 +44,23 @@ function MacTrafficLightsSpacer() {
 // 极窄模式标题栏按钮宽度：比常规 36px 更紧凑，提高信息密度
 const COMPACT_BUTTON_WIDTH = 30;
 
+// 顶部拖动条高度：桌面端在标题栏上方留出的拖动窗口空白（网页端无窗口可拖，不显示）。
+// 改动时同步 tauri.macos.conf.json 与 window/manager.rs 的红绿灯位置及新窗口对齐偏移。
+const GRIP_HEIGHT = 8;
+
+/** 顶部拖动条：中央胶囊把手在指针进入窗口后淡入，悬停把手时加宽加深；整条均可拖动窗口 */
+function TitleBarGrip() {
+  return (
+    <div className="nb-titlebar-grip" style={{ height: GRIP_HEIGHT }}>
+      <TitleBarDragRegion />
+      <TitleBarDragRegion width={96} className="nb-titlebar-grip-handle">
+        <span className="nb-titlebar-grip-pill" />
+      </TitleBarDragRegion>
+      <TitleBarDragRegion />
+    </div>
+  );
+}
+
 // 应用图标长按判定时长与拖动判定位移
 const ICON_LONG_PRESS_MS = 250;
 const ICON_DRAG_THRESHOLD_PX = 4;
@@ -120,10 +137,10 @@ export function TitleBar() {
   // 设置「全局 → 标题栏按钮」可隐藏的入口
   const titleBarButtons = useTitleBarButtons();
 
+  // 外层承载背景与底边框：上方拖动条 + 下方 36px 主行
   const titleBarStyle: React.CSSProperties = {
-    height: 36,
     display: 'flex',
-    alignItems: 'center',
+    flexDirection: 'column',
     background: 'var(--titlebar-bg)',
     borderBottom: '1px solid var(--editor-border)',
     userSelect: 'none',
@@ -132,209 +149,218 @@ export function TitleBar() {
     fontSize: 'var(--ui-font-size, 13px)',
   };
 
+  const titleBarRowStyle: React.CSSProperties = {
+    height: 36,
+    display: 'flex',
+    alignItems: 'center',
+  };
+
   return (
     <div style={titleBarStyle} role="banner">
-      {/* macOS 原生红绿灯叠加在标题栏左侧，需预留位置 */}
-      {USES_MAC_TRAFFIC_LIGHTS && <MacTrafficLightsSpacer />}
+      {!IS_WEB && <TitleBarGrip />}
+      <div style={titleBarRowStyle}>
+        {/* macOS 原生红绿灯叠加在标题栏左侧，需预留位置 */}
+        {USES_MAC_TRAFFIC_LIGHTS && <MacTrafficLightsSpacer />}
 
-      {/* 应用图标 16px，点击收起/展开左侧栏；长按或按住移动可拖动窗口（标签页占满标题栏时仍可移动窗口） */}
-      {/* 极窄模式不显示侧栏，图标随之收起，拖动交给下方保底拖拽区 */}
-      {!compactMode && <Tooltip
-        content={`${explorerVisible ? '收起侧栏' : '展开侧栏'}${IS_WEB ? '' : '，按住可拖动窗口'}`}
-        side="bottom"
-        sideOffset={6}
-      >
-        <div
-          style={{
-            width: 36,
-            height: 36,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-            cursor: 'pointer',
-            transition: 'all var(--transition-fast)',
-          }}
-          onClick={handleIconClick}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.transform = 'scale(1.05)';
-          }}
-          onMouseLeave={(e) => {
-            // 移出图标区域时取消未完成的长按
-            if (!iconPressRef.current?.longPressed) endIconPress();
-            resetIconStyle(e.currentTarget);
-          }}
-          onPointerDown={IS_WEB ? (e) => {
-            e.currentTarget.style.background = 'var(--toolbar-active)';
-            e.currentTarget.style.transform = 'scale(0.92)';
-          } : handleIconPointerDown}
-          onPointerMove={IS_WEB ? undefined : handleIconPointerMove}
-          onPointerUp={(e) => {
-            endIconPress();
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.transform = 'scale(1.05)';
-            e.currentTarget.style.cursor = 'pointer';
-          }}
-          onPointerCancel={(e) => {
-            endIconPress();
-            resetIconStyle(e.currentTarget);
-          }}
-          role="button"
-          aria-label={explorerVisible ? '收起侧栏' : '展开侧栏'}
-          aria-pressed={explorerVisible}
+        {/* 应用图标 16px，点击收起/展开左侧栏；长按或按住移动可拖动窗口（标签页占满标题栏时仍可移动窗口） */}
+        {/* 极窄模式不显示侧栏，图标随之收起，拖动交给下方保底拖拽区 */}
+        {!compactMode && <Tooltip
+          content={`${explorerVisible ? '收起侧栏' : '展开侧栏'}${IS_WEB ? '' : '，按住可拖动窗口'}`}
+          side="bottom"
+          sideOffset={6}
         >
-          <img
-            src="/logo.ico"
-            alt="NoteBoard"
-            width={16}
-            height={16}
-            style={{ pointerEvents: 'none' }}
-          />
-        </div>
-      </Tooltip>}
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              cursor: 'pointer',
+              transition: 'all var(--transition-fast)',
+            }}
+            onClick={handleIconClick}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              // 移出图标区域时取消未完成的长按
+              if (!iconPressRef.current?.longPressed) endIconPress();
+              resetIconStyle(e.currentTarget);
+            }}
+            onPointerDown={IS_WEB ? (e) => {
+              e.currentTarget.style.background = 'var(--toolbar-active)';
+              e.currentTarget.style.transform = 'scale(0.92)';
+            } : handleIconPointerDown}
+            onPointerMove={IS_WEB ? undefined : handleIconPointerMove}
+            onPointerUp={(e) => {
+              endIconPress();
+              e.currentTarget.style.background = 'var(--toolbar-hover)';
+              e.currentTarget.style.transform = 'scale(1.05)';
+              e.currentTarget.style.cursor = 'pointer';
+            }}
+            onPointerCancel={(e) => {
+              endIconPress();
+              resetIconStyle(e.currentTarget);
+            }}
+            role="button"
+            aria-label={explorerVisible ? '收起侧栏' : '展开侧栏'}
+            aria-pressed={explorerVisible}
+          >
+            <img
+              src="/logo.ico"
+              alt="NoteBoard"
+              width={16}
+              height={16}
+              style={{ pointerEvents: 'none' }}
+            />
+          </div>
+        </Tooltip>}
 
-      {/* 极窄模式左侧留白，避免首个标签紧贴窗口边缘（macOS 已有红绿灯占位） */}
-      {compactMode && !USES_MAC_TRAFFIC_LIGHTS && (
-        <TitleBarDragRegion width={6} />
-      )}
+        {/* 极窄模式左侧留白，避免首个标签紧贴窗口边缘（macOS 已有红绿灯占位） */}
+        {compactMode && !USES_MAC_TRAFFIC_LIGHTS && (
+          <TitleBarDragRegion width={6} />
+        )}
 
-      {/* Tab 栏 */}
-      <TabBar />
+        {/* Tab 栏 */}
+        <TabBar />
 
-      {/* 拖拽空白区：常规模式双击最大化；极窄模式标签可能占满，保留最小拖拽区确保窗口始终可移动 */}
-      <TitleBarDragRegion minWidth={compactMode ? 24 : 0} />
+        {/* 拖拽空白区：常规模式双击最大化；极窄模式标签可能占满，保留最小拖拽区确保窗口始终可移动 */}
+        <TitleBarDragRegion minWidth={compactMode ? 24 : 0} />
 
-      {/* 检测更新按钮（主动检测更新，有新版本时标上小红点） */}
-      {!IS_WEB && !compactMode && titleBarButtons.checkUpdate && <Tooltip content={hasUpdate ? '发现新版本 NoteBoard (点击查看)' : '检测更新'} side="bottom" sideOffset={6}>
-        <button
-          type="button"
-          onClick={() => checkForUpdates(false)}
-          style={{
-            width: 36,
-            height: 36,
-            position: 'relative',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            border: 'none',
-            background: 'transparent',
-            color: hasUpdate ? 'var(--accent-strong)' : 'var(--editor-text-secondary)',
-            cursor: checkingUpdate ? 'not-allowed' : 'pointer',
-            flexShrink: 0,
-            transition: 'all var(--transition-fast)',
-          }}
-          onMouseEnter={(e) => {
-            if (!checkingUpdate) {
+        {/* 检测更新按钮（主动检测更新，有新版本时标上小红点） */}
+        {!IS_WEB && !compactMode && titleBarButtons.checkUpdate && <Tooltip content={hasUpdate ? '发现新版本 NoteBoard (点击查看)' : '检测更新'} side="bottom" sideOffset={6}>
+          <button
+            type="button"
+            onClick={() => checkForUpdates(false)}
+            style={{
+              width: 36,
+              height: 36,
+              position: 'relative',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: 'none',
+              background: 'transparent',
+              color: hasUpdate ? 'var(--accent-strong)' : 'var(--editor-text-secondary)',
+              cursor: checkingUpdate ? 'not-allowed' : 'pointer',
+              flexShrink: 0,
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseEnter={(e) => {
+              if (!checkingUpdate) {
+                e.currentTarget.style.background = 'var(--toolbar-hover)';
+                e.currentTarget.style.color = 'var(--editor-text)';
+                e.currentTarget.style.transform = 'scale(1.05)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!checkingUpdate) {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = hasUpdate
+                  ? 'var(--accent-strong)'
+                  : 'var(--editor-text-secondary)';
+                e.currentTarget.style.transform = 'scale(1)';
+              }
+            }}
+            onMouseDown={(e) => {
+              if (!checkingUpdate) {
+                e.currentTarget.style.background = 'var(--toolbar-active)';
+                e.currentTarget.style.transform = 'scale(0.92)';
+              }
+            }}
+            onMouseUp={(e) => {
+              if (!checkingUpdate) {
+                e.currentTarget.style.background = 'var(--toolbar-hover)';
+                e.currentTarget.style.transform = 'scale(1.05)';
+              }
+            }}
+            aria-label="检测更新"
+          >
+            <RefreshCw
+              size={14}
+              className={checkingUpdate ? 'spin' : ''}
+              style={checkingUpdate ? { animation: 'spin 1s linear infinite' } : undefined}
+            />
+            {/* 新版本小红点提示 */}
+            {hasUpdate && (
+              <span
+                style={{
+                  position: 'absolute',
+                  top: 7,
+                  right: 7,
+                  width: 7,
+                  height: 7,
+                  borderRadius: '50%',
+                  background: '#ef4444',
+                  boxShadow: '0 0 0 1.5px var(--titlebar-bg)',
+                  pointerEvents: 'none',
+                }}
+              />
+            )}
+          </button>
+        </Tooltip>}
+
+        {/* 极窄模式：自动贴边 + 窗口置顶钉子 + 退出极窄 */}
+        {compactMode && <EdgeDockButton width={COMPACT_BUTTON_WIDTH} />}
+        {compactMode && <PinWindowButton width={COMPACT_BUTTON_WIDTH} />}
+        {compactMode && <CompactModeToggle width={COMPACT_BUTTON_WIDTH} />}
+
+        {/* 快捷主题切换菜单 */}
+        {!compactMode && titleBarButtons.theme && <ThemeMenu />}
+
+        {/* 极窄模式入口（位于主题与设置之间，仅桌面端） */}
+        {!compactMode && titleBarButtons.compactMode && supportsCompactMode() && <CompactModeToggle />}
+
+        {/* 设置中心按钮 */}
+        {!compactMode && <Tooltip content="设置" side="bottom" sideOffset={6}>
+          <button
+            type="button"
+            onClick={toggleSettingsModal}
+            style={{
+              width: 36,
+              height: 36,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--editor-text-secondary)',
+              cursor: 'pointer',
+              flexShrink: 0,
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseEnter={(e) => {
               e.currentTarget.style.background = 'var(--toolbar-hover)';
               e.currentTarget.style.color = 'var(--editor-text)';
               e.currentTarget.style.transform = 'scale(1.05)';
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!checkingUpdate) {
+            }}
+            onMouseLeave={(e) => {
               e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.color = hasUpdate
-                ? 'var(--accent-strong)'
-                : 'var(--editor-text-secondary)';
+              e.currentTarget.style.color = 'var(--editor-text-secondary)';
               e.currentTarget.style.transform = 'scale(1)';
-            }
-          }}
-          onMouseDown={(e) => {
-            if (!checkingUpdate) {
+            }}
+            onMouseDown={(e) => {
               e.currentTarget.style.background = 'var(--toolbar-active)';
               e.currentTarget.style.transform = 'scale(0.92)';
-            }
-          }}
-          onMouseUp={(e) => {
-            if (!checkingUpdate) {
+            }}
+            onMouseUp={(e) => {
               e.currentTarget.style.background = 'var(--toolbar-hover)';
               e.currentTarget.style.transform = 'scale(1.05)';
-            }
-          }}
-          aria-label="检测更新"
-        >
-          <RefreshCw
-            size={14}
-            className={checkingUpdate ? 'spin' : ''}
-            style={checkingUpdate ? { animation: 'spin 1s linear infinite' } : undefined}
-          />
-          {/* 新版本小红点提示 */}
-          {hasUpdate && (
-            <span
-              style={{
-                position: 'absolute',
-                top: 7,
-                right: 7,
-                width: 7,
-                height: 7,
-                borderRadius: '50%',
-                background: '#ef4444',
-                boxShadow: '0 0 0 1.5px var(--titlebar-bg)',
-                pointerEvents: 'none',
-              }}
-            />
-          )}
-        </button>
-      </Tooltip>}
+            }}
+            aria-label="打开设置"
+          >
+            <SettingsIcon size={15} />
+          </button>
+        </Tooltip>}
 
-      {/* 极窄模式：自动贴边 + 窗口置顶钉子 + 退出极窄 */}
-      {compactMode && <EdgeDockButton width={COMPACT_BUTTON_WIDTH} />}
-      {compactMode && <PinWindowButton width={COMPACT_BUTTON_WIDTH} />}
-      {compactMode && <CompactModeToggle width={COMPACT_BUTTON_WIDTH} />}
-
-      {/* 快捷主题切换菜单 */}
-      {!compactMode && titleBarButtons.theme && <ThemeMenu />}
-
-      {/* 极窄模式入口（位于主题与设置之间，仅桌面端） */}
-      {!compactMode && titleBarButtons.compactMode && supportsCompactMode() && <CompactModeToggle />}
-
-      {/* 设置中心按钮 */}
-      {!compactMode && <Tooltip content="设置" side="bottom" sideOffset={6}>
-        <button
-          type="button"
-          onClick={toggleSettingsModal}
-          style={{
-            width: 36,
-            height: 36,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            border: 'none',
-            background: 'transparent',
-            color: 'var(--editor-text-secondary)',
-            cursor: 'pointer',
-            flexShrink: 0,
-            transition: 'all var(--transition-fast)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.color = 'var(--editor-text)';
-            e.currentTarget.style.transform = 'scale(1.05)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = 'var(--editor-text-secondary)';
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
-          onMouseDown={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-active)';
-            e.currentTarget.style.transform = 'scale(0.92)';
-          }}
-          onMouseUp={(e) => {
-            e.currentTarget.style.background = 'var(--toolbar-hover)';
-            e.currentTarget.style.transform = 'scale(1.05)';
-          }}
-          aria-label="打开设置"
-        >
-          <SettingsIcon size={15} />
-        </button>
-      </Tooltip>}
-
-      {/* 窗口控制按钮（极窄模式只保留最小化与关闭） */}
-      {!IS_WEB && !USES_MAC_TRAFFIC_LIGHTS && (
-        <WindowControls compact={compactMode} buttonWidth={compactMode ? COMPACT_BUTTON_WIDTH : 36} />
-      )}
+        {/* 窗口控制按钮（极窄模式只保留最小化与关闭） */}
+        {!IS_WEB && !USES_MAC_TRAFFIC_LIGHTS && (
+          <WindowControls compact={compactMode} buttonWidth={compactMode ? COMPACT_BUTTON_WIDTH : 36} />
+        )}
+      </div>
     </div>
   );
 }

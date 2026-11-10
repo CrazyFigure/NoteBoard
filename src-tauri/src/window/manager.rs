@@ -138,12 +138,12 @@ pub fn create_window_at(app: &tauri::AppHandle, label: String, position: Option<
         #[cfg(target_os = "windows")]
         let builder = builder
             .additional_browser_args(crate::window::render_recovery::WINDOWS_BROWSER_ARGS);
-        // macOS 标题栏透明叠加到 WebView 上，标签栏与红绿灯同处一行（与 tauri.macos.conf.json 保持一致）。
+        // macOS 标题栏透明叠加到 WebView 上，红绿灯与标签栏同处一行（纵向让出顶部 8px 拖动条，与 tauri.macos.conf.json 保持一致）。
         #[cfg(target_os = "macos")]
         let builder = builder
             .title_bar_style(tauri::TitleBarStyle::Overlay)
             .hidden_title(true)
-            .traffic_light_position(tauri::LogicalPosition::new(14.0, 16.0));
+            .traffic_light_position(tauri::LogicalPosition::new(14.0, 24.0));
         // 窗口层拖拽开关是 Windows 专有 API；其他系统保留默认启用的 WebView 文件拖拽处理。
         #[cfg(target_os = "windows")]
         let builder = builder.drag_and_drop(true);
@@ -156,11 +156,11 @@ pub fn create_window_at(app: &tauri::AppHandle, label: String, position: Option<
         };
         if let Ok(window) = builder.build() {
             if let Some((x, y)) = position {
-                // Windows 原生拖放返回物理像素，macOS 返回逻辑点；对齐标签栏而不是窗口中心。
+                // Windows 原生拖放返回物理像素，macOS 返回逻辑点；对齐标签栏（顶部拖动条 8px + 半行 18px）而不是窗口中心。
                 #[cfg(target_os = "windows")]
-                let _ = window.set_position(tauri::PhysicalPosition::new(x.saturating_sub(60), y.saturating_sub(18)));
+                let _ = window.set_position(tauri::PhysicalPosition::new(x.saturating_sub(60), y.saturating_sub(26)));
                 #[cfg(target_os = "macos")]
-                let _ = window.set_position(tauri::LogicalPosition::new(x as f64 - 100.0, y as f64 - 18.0));
+                let _ = window.set_position(tauri::LogicalPosition::new(x as f64 - 100.0, y as f64 - 26.0));
             }
         }
     });
