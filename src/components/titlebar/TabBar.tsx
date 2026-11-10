@@ -674,6 +674,13 @@ const CREATE_FORMAT_ACTIONS: Record<CreateFormatId, () => void> = {
 
 // 滚动条轨道距 Tab 栏左右两端的内缩（与滚动容器 padding 对齐）
 const TAB_SCROLLBAR_INSET = 4;
+// 标题栏主行下方的留白高度（由 TitleBar 渲染为可拖动空白条）：与 Tab 下方 4px 空隙合计 8px，横向滚动条居中显示在其中。
+// 与顶部拖动条呼应，仅桌面端提供；网页端无顶部拖动条，Tab 上下空隙本就对称
+export const TITLEBAR_BOTTOM_GAP = IS_WEB ? 0 : 4;
+// Tab（含边框 28px）在 36px 主行内垂直居中，下方到主行底边的空隙
+const TAB_BOTTOM_SPACE = 4;
+// 滚动条命中区向下越过标题栏底边的距离，便于抓取
+const TAB_SCROLLBAR_HIT_OVERFLOW = 2;
 // 滑块最小宽度，标签很多时仍能稳定命中拖动
 const TAB_SCROLLBAR_MIN_THUMB = 24;
 
@@ -1069,7 +1076,7 @@ export function TabBar() {
           </DndContext>
         </div>
 
-        {/* 自绘横向滚动条：只占用 Tab 下方与标题栏底边之间的空隙，不挤占 Tab 及其激活指示线 */}
+        {/* 自绘横向滚动条：只占用 Tab 下方与标题栏底边之间的空隙（含主行下方留白条），不挤占 Tab 及其激活指示线 */}
         {scrollbar.visible && (
           <div
             aria-hidden="true"
@@ -1077,10 +1084,10 @@ export function TabBar() {
               position: 'absolute',
               left: TAB_SCROLLBAR_INSET,
               right: TAB_SCROLLBAR_INSET,
-              // 命中区向下越过标题栏底边 2px 以便抓取，可见滑块仍居中于空隙内
-              bottom: -2,
-              height: 6,
-              paddingBottom: 2,
+              // 命中区从 Tab 底边起，向下越过标题栏底边 2px 以便抓取；底部内边距抵消越界部分，可见滑块仍居中于空隙内
+              bottom: -(TITLEBAR_BOTTOM_GAP + TAB_SCROLLBAR_HIT_OVERFLOW),
+              height: TAB_BOTTOM_SPACE + TITLEBAR_BOTTOM_GAP + TAB_SCROLLBAR_HIT_OVERFLOW,
+              paddingBottom: TAB_SCROLLBAR_HIT_OVERFLOW,
               display: 'flex',
               alignItems: 'center',
               cursor: 'pointer',

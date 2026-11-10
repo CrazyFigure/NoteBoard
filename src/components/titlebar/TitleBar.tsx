@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Settings as SettingsIcon, RefreshCw } from 'lucide-react';
-import { TabBar } from './TabBar';
+import { TabBar, TITLEBAR_BOTTOM_GAP } from './TabBar';
 import { WindowControls } from './WindowControls';
 import { ThemeMenu } from './ThemeMenu';
 import { CompactModeToggle, EdgeDockButton, PinWindowButton } from './CompactModeButtons';
@@ -361,6 +361,12 @@ export function TitleBar() {
           <WindowControls compact={compactMode} buttonWidth={compactMode ? COMPACT_BUTTON_WIDTH : 36} />
         )}
       </div>
+      {/* 主行下方留白：与顶部拖动条上下呼应，Tab 铺满时横向滚动条显示在此；同样可拖动窗口 */}
+      {TITLEBAR_BOTTOM_GAP > 0 && (
+        <div style={{ display: 'flex', height: TITLEBAR_BOTTOM_GAP, flexShrink: 0 }}>
+          <TitleBarDragRegion />
+        </div>
+      )}
     </div>
   );
 }
