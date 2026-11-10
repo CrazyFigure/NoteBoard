@@ -6,6 +6,9 @@ import { AlignCenter, AlignLeft, AlignRight, IndentDecrease, IndentIncrease, X, 
 import { Tooltip } from '../../components/Tooltip';
 import { TEXT_COLORS } from './markdownInlineMarks';
 import type { BlockAlign } from './blockFormat';
+import { CustomColorSection } from '../../components/colorPicker/CustomColorPicker';
+
+const TEXT_COLOR_VALUES = TEXT_COLORS.map((item) => item.color);
 
 /** 对齐选项（顺序即菜单顺序） */
 export const ALIGN_OPTIONS: Array<{ align: BlockAlign; label: string; Icon: LucideIcon }> = [
@@ -105,7 +108,7 @@ function TextColorSwatch({
   );
 }
 
-/** 字体颜色色板：8 色网格 + 恢复默认颜色 */
+/** 字体颜色色板：8 色网格 + 自定义颜色 + 恢复默认颜色 */
 export function TextColorGrid({
   activeColor,
   onSelect,
@@ -132,6 +135,16 @@ export function TextColorGrid({
           />
         ))}
       </div>
+      {/* 自定义颜色：固定的颜色可直接选用，「+」展开取色盘 */}
+      <CustomColorSection
+        kind="text"
+        variant="text"
+        activeColor={activeColor}
+        presetColors={TEXT_COLOR_VALUES}
+        onSelect={onSelect}
+        swatchWidth={32}
+        swatchHeight={26}
+      />
       <button
         type="button"
         onMouseDown={(e) => e.preventDefault()}

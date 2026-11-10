@@ -910,6 +910,7 @@ export function MarkdownToolbar({
         }
       >
         <HighlightColorPicker
+          activeColor={isSourceMode ? null : editor?.getAttributes('highlight').color}
           onSelectColor={handleSelectHighlightColor}
           onRemoveHighlight={handleRemoveHighlight}
         />
@@ -1245,6 +1246,7 @@ export function MarkdownToolbar({
             submenuWidth={190}
             submenu={
               <HighlightColorPicker
+                activeColor={isSourceMode ? null : editor?.getAttributes('highlight').color}
                 onSelectColor={(color) => runFromMore(() => handleSelectHighlightColor(color))()}
                 onRemoveHighlight={runFromMore(handleRemoveHighlight)}
               />

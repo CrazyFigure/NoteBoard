@@ -14,6 +14,7 @@ import type {
   SystemSettings,
   TitleBarButtons,
   LocalSearchSettings,
+  CustomColorKind,
 } from '../core/ipc/types';
 import * as ipc from '../core/ipc/commands';
 import { onSettingsChanged } from '../core/ipc/events';
@@ -149,6 +150,37 @@ export const DEFAULT_SETTINGS: Settings = {
     roots: [],
   },
 };
+
+/** 每组最多固定的自定义颜色数，避免色板无限变长 */
+export const CUSTOM_COLOR_LIMIT = 24;
+
+const EMPTY_COLORS: string[] = [];
+
+/** 读取某一用途下已固定的自定义颜色（旧配置缺字段时为空数组，引用稳定） */
+export function useCustomColors(kind: CustomColorKind): string[] {
+  return useSettingsStore((s) => s.settings.editor.customColors?.[kind]) ?? EMPTY_COLORS;
+}
+
+/** 固定一个自定义颜色：已存在则不重复添加，超出上限时丢弃最早的 */
+export function pinCustomColor(kind: CustomColorKind, color: string): void {
+  const value = color.toLowerCase();
+  const store = useSettingsStore.getState();
+  const current = store.settings.editor.customColors ?? {};
+  const list = current[kind] ?? [];
+  if (list.includes(value)) return;
+  const next = [...list, value].slice(-CUSTOM_COLOR_LIMIT);
+  void store.setEditor({ customColors: { ...current, [kind]: next } });
+}
+
+/** 取消固定一个自定义颜色（不影响已经使用该颜色的内容） */
+export function unpinCustomColor(kind: CustomColorKind, color: string): void {
+  const value = color.toLowerCase();
+  const store = useSettingsStore.getState();
+  const current = store.settings.editor.customColors ?? {};
+  const list = current[kind] ?? [];
+  if (!list.includes(value)) return;
+  void store.setEditor({ customColors: { ...current, [kind]: list.filter((c) => c !== value) } });
+}
 
 /** 读取本地文件搜索设置：旧配置缺字段时按默认关闭补齐 */
 export function useLocalSearchSettings(): LocalSearchSettings {

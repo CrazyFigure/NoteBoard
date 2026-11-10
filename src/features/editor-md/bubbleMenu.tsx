@@ -27,6 +27,7 @@ import { ALIGN_OPTIONS, AlignIcon, INDENT_OPTIONS, TextColorGrid, TextColorIcon 
 import { useWindowStore } from '../../stores/windowStore';
 import { Tooltip } from '../../components/Tooltip';
 import { useViewportClamp } from '../../components/useViewportClamp';
+import { CustomColorSection } from '../../components/colorPicker/CustomColorPicker';
 import { promptLinkUrl } from '../../components/promptPresets';
 import { formatShortcut } from '../../core/shortcuts';
 
@@ -135,6 +136,8 @@ const HIGHLIGHT_COLORS = [
   { name: '珊瑚红', color: '#fecaca', border: '#f87171' },
   { name: '湖水青', color: '#a5f3fc', border: '#22d3ee' },
 ];
+
+const HIGHLIGHT_COLOR_VALUES = HIGHLIGHT_COLORS.map((item) => item.color);
 
 /** 悬浮菜单下拉按钮：触发按钮 + 下方弹出面板（点击外部关闭，再次点击触发按钮收起） */
 function BubbleDropdown({
@@ -335,6 +338,19 @@ function HighlightPalette({
           </Tooltip>
         ))}
       </div>
+      {/* 自定义高亮颜色：固定的颜色可直接选用，「+」展开取色盘 */}
+      <CustomColorSection
+        kind="highlight"
+        variant="fill"
+        activeColor={editor.getAttributes('highlight').color}
+        presetColors={HIGHLIGHT_COLOR_VALUES}
+        onSelect={(color) => {
+          editor.chain().focus().setHighlight({ color }).run();
+          onClose();
+        }}
+        swatchWidth={32}
+        swatchHeight={26}
+      />
       <button
         type="button"
         onMouseDown={(e) => e.preventDefault()}

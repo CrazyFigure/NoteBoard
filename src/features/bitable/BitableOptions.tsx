@@ -8,6 +8,7 @@ import { getOptionColor, BITABLE_PALETTE } from './bitableConverter';
 import { FloatingPanel, type AnchorRect } from './BitableFloating';
 import { Check, Edit2, Trash2, ChevronUp, ChevronDown, X } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
+import { CustomColorSection } from '../../components/colorPicker/CustomColorPicker';
 
 /** 彩色标签胶囊 */
 export function OptionBadge({
@@ -82,34 +83,47 @@ export function ColorPickerRow({
   size?: number;
 }) {
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '3px 0' }}>
-      {BITABLE_PALETTE.map((pal) => {
-        const isSelected = value === pal.id;
-        return (
-          <Tooltip key={pal.id} content={pal.label} side="top" sideOffset={4}>
-            <div
-              className="nb-bitable-color-swatch"
-              onClick={() => onChange(pal.id as SelectOptionColor)}
-              style={{
-                width: size,
-                height: size,
-                borderRadius: Math.max(4, Math.round(size * 0.3)),
-                background: pal.bg,
-                cursor: 'pointer',
-                boxSizing: 'border-box',
-                // 色板底色全是 50 级浅色，必须靠各自的 200 级描边才分得清相邻色块
-                border: `1px solid ${pal.border}`,
-                // 选中态用外描边而不是改边框色：改边框会把「标签本色预览」本身弄丢
-                outline: isSelected ? '2px solid var(--editor-accent, #3b82f6)' : 'none',
-                outlineOffset: 1,
-              }}
-            />
-          </Tooltip>
-        );
-      })}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '3px 0' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {BITABLE_PALETTE.map((pal) => {
+          const isSelected = value === pal.id;
+          return (
+            <Tooltip key={pal.id} content={pal.label} side="top" sideOffset={4}>
+              <div
+                className="nb-bitable-color-swatch"
+                onClick={() => onChange(pal.id as SelectOptionColor)}
+                style={{
+                  width: size,
+                  height: size,
+                  borderRadius: Math.max(4, Math.round(size * 0.3)),
+                  background: pal.bg,
+                  cursor: 'pointer',
+                  boxSizing: 'border-box',
+                  // 色板底色全是 50 级浅色，必须靠各自的 200 级描边才分得清相邻色块
+                  border: `1px solid ${pal.border}`,
+                  // 选中态用外描边而不是改边框色：改边框会把「标签本色预览」本身弄丢
+                  outline: isSelected ? '2px solid var(--editor-accent, #3b82f6)' : 'none',
+                  outlineOffset: 1,
+                }}
+              />
+            </Tooltip>
+          );
+        })}
+      </div>
+      {/* 自定义颜色：固定的色块与内置色同排外观（标签胶囊预览），「+」展开取色盘 */}
+      <CustomColorSection
+        kind="tag"
+        variant="tag"
+        activeColor={value}
+        presetColors={PRESET_IDS}
+        onSelect={(hex) => onChange(hex as SelectOptionColor)}
+        swatchWidth={size}
+      />
     </div>
   );
 }
+
+const PRESET_IDS = BITABLE_PALETTE.map((pal) => pal.id);
 
 interface SelectOptionsPanelProps {
   anchor: AnchorRect;

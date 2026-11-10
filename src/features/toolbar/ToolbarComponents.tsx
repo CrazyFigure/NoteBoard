@@ -8,6 +8,7 @@ import { Tooltip } from '../../components/Tooltip';
 import { isTouchInteraction } from '../../core/inputModality';
 import { formatShortcut } from '../../core/shortcuts';
 import { useViewportClamp } from '../../components/useViewportClamp';
+import { CustomColorSection } from '../../components/colorPicker/CustomColorPicker';
 
 // ── 基础工具栏按钮 ──
 
@@ -495,14 +496,19 @@ export const HIGHLIGHT_COLORS = [
   { name: '湖水青', color: '#a5f3fc', border: '#22d3ee' },
 ];
 
+const HIGHLIGHT_COLOR_VALUES = HIGHLIGHT_COLORS.map((item) => item.color);
+
 export interface HighlightColorPickerProps {
   onSelectColor: (color: string) => void;
   onRemoveHighlight: () => void;
+  /** 当前高亮颜色（源码模式等无法读取时不传） */
+  activeColor?: string | null;
 }
 
 export function HighlightColorPicker({
   onSelectColor,
   onRemoveHighlight,
+  activeColor,
 }: HighlightColorPickerProps) {
   return (
     <div style={{ padding: '6px 4px', width: 176 }}>
@@ -543,6 +549,18 @@ export function HighlightColorPicker({
             />
           </Tooltip>
         ))}
+      </div>
+      {/* 自定义高亮颜色：固定的颜色可直接选用，「+」展开取色盘 */}
+      <div style={{ marginBottom: 8 }}>
+        <CustomColorSection
+          kind="highlight"
+          variant="fill"
+          activeColor={activeColor}
+          presetColors={HIGHLIGHT_COLOR_VALUES}
+          onSelect={onSelectColor}
+          swatchWidth={32}
+          swatchHeight={24}
+        />
       </div>
       {/* 清除高亮按钮 */}
       <button

@@ -1,0 +1,232 @@
+/* NoteBoard 自定义颜色：已固定色块 + 内嵌取色盘 */
+
+.nb-cc {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.nb-cc-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 已固定的自定义色块；右上角删除徽标在悬停时出现 */
+.nb-cc-swatch {
+  position: relative;
+  box-sizing: border-box;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  line-height: 1;
+  background: transparent;
+  transition: transform 100ms ease, box-shadow 100ms ease, background-color 100ms ease;
+}
+
+.nb-cc-swatch:hover {
+  transform: scale(1.1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  z-index: 2;
+}
+
+.nb-cc-swatch:active {
+  transform: scale(0.94);
+}
+
+.nb-cc-swatch.is-active {
+  outline: 2px solid var(--editor-accent, #3b82f6);
+  outline-offset: 1px;
+}
+
+.nb-cc-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: #ef4444;
+  color: #ffffff;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 100ms ease, background-color 100ms ease;
+}
+
+.nb-cc-swatch:hover .nb-cc-remove,
+.nb-cc-swatch:focus-visible .nb-cc-remove {
+  display: inline-flex;
+}
+
+.nb-cc-remove:hover {
+  background: #dc2626;
+  transform: scale(1.15);
+}
+
+.nb-cc-remove:active {
+  transform: scale(0.9);
+}
+
+/* 打开取色盘的按钮：彩虹描边 + 加号 */
+.nb-cc-add {
+  box-sizing: border-box;
+  padding: 0;
+  border: 1px dashed var(--control-border, rgba(0, 0, 0, 0.2));
+  border-radius: 4px;
+  background: transparent;
+  color: var(--editor-text-secondary, #64748b);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 100ms ease, background-color 100ms ease, border-color 100ms ease, color 100ms ease;
+}
+
+.nb-cc-add:hover {
+  background: var(--editor-hover-background, rgba(0, 0, 0, 0.06));
+  border-color: var(--editor-accent, #3b82f6);
+  color: var(--editor-accent, #3b82f6);
+}
+
+.nb-cc-add:active {
+  transform: scale(0.92);
+}
+
+.nb-cc-add.is-open {
+  border-style: solid;
+  border-color: var(--editor-accent, #3b82f6);
+  color: var(--editor-accent, #3b82f6);
+}
+
+/* 取色盘 */
+.nb-cc-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 6px;
+  border: 1px solid var(--editor-border, rgba(0, 0, 0, 0.1));
+  background: var(--editor-bg, rgba(0, 0, 0, 0.02));
+}
+
+.nb-cc-sv {
+  position: relative;
+  height: 96px;
+  border-radius: 4px;
+  cursor: crosshair;
+  touch-action: none;
+  background-image: linear-gradient(to top, #000000, transparent), linear-gradient(to right, #ffffff, transparent);
+}
+
+.nb-cc-hue {
+  position: relative;
+  height: 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  touch-action: none;
+  background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
+}
+
+.nb-cc-thumb {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.3);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
+.nb-cc-hue .nb-cc-thumb {
+  top: 50%;
+}
+
+.nb-cc-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.nb-cc-preview {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  box-sizing: border-box;
+}
+
+.nb-cc-hex {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  padding: 0 6px;
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+  border: 1px solid var(--editor-border, #cbd5e1);
+  border-radius: 4px;
+  outline: none;
+  background: var(--editor-surface, #ffffff);
+  color: var(--editor-text, #1e293b);
+  box-sizing: border-box;
+}
+
+.nb-cc-hex:focus {
+  border-color: var(--editor-accent, #3b82f6);
+}
+
+.nb-cc-hex.is-invalid {
+  border-color: #ef4444;
+}
+
+.nb-cc-btn {
+  height: 22px;
+  padding: 0 7px;
+  flex-shrink: 0;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid var(--control-border, rgba(0, 0, 0, 0.12));
+  background: transparent;
+  color: var(--editor-text, #1e293b);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  transition: transform 100ms ease, background-color 100ms ease, border-color 100ms ease;
+}
+
+.nb-cc-btn:hover:not(:disabled) {
+  background: var(--editor-hover-background, rgba(0, 0, 0, 0.06));
+}
+
+.nb-cc-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.nb-cc-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.nb-cc-btn.is-primary {
+  border-color: var(--editor-accent, #3b82f6);
+  background: var(--editor-accent, #3b82f6);
+  color: #ffffff;
+}
+
+.nb-cc-btn.is-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--editor-accent, #3b82f6) 85%, #000000);
+}

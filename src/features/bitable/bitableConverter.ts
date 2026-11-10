@@ -11,6 +11,7 @@ import {
   type BitableRow,
   type BitableViewConfig,
 } from './bitableTypes';
+import { deriveTagColors, normalizeHex } from '../../components/colorPicker/colorMath';
 
 /**
  * 标准多维表格颜色清单。
@@ -48,6 +49,11 @@ const LEGACY_COLOR_ALIAS: Record<string, string> = {
 
 /** 获取标签颜色配置 */
 export function getOptionColor(colorName?: string) {
+  // 自定义十六进制色：按主色派生与内置色板同构的三色
+  const hex = normalizeHex(colorName);
+  if (hex && colorName?.startsWith('#')) {
+    return { id: hex, label: hex.toUpperCase(), ...deriveTagColors(hex) };
+  }
   const normalized = colorName ? LEGACY_COLOR_ALIAS[colorName] || colorName : undefined;
   const found = BITABLE_PALETTE.find((c) => c.id === normalized);
   return found || BITABLE_PALETTE[0];

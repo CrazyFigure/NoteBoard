@@ -230,6 +230,21 @@ pub struct EditorSettings {
     // 思维导图节点图片默认显示方式：original（原始比例）/ fill（宽度填充）
     #[serde(default = "default_mindmap_image_fit")]
     pub mindmap_image_fit: String,
+    // 用户固定的自定义颜色（十六进制），按用途分组；旧配置缺失时为空
+    #[serde(default)]
+    pub custom_colors: CustomColorSettings,
+}
+
+/// 固定的自定义颜色：多维表格标签 / Markdown 字体颜色 / Markdown 高亮
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomColorSettings {
+    #[serde(default)]
+    pub tag: Vec<String>,
+    #[serde(default)]
+    pub text: Vec<String>,
+    #[serde(default)]
+    pub highlight: Vec<String>,
 }
 
 impl Default for EditorSettings {
@@ -254,6 +269,7 @@ impl Default for EditorSettings {
             mindmap_node_max_width: default_mindmap_node_max_width(),
             mindmap_text_align: default_mindmap_text_align(),
             mindmap_image_fit: default_mindmap_image_fit(),
+            custom_colors: CustomColorSettings::default(),
         }
     }
 }

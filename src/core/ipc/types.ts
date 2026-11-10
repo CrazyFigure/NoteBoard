@@ -375,7 +375,18 @@ export interface EditorSettings {
   mindmapTextAlign?: 'left' | 'center';
   // 思维导图节点图片默认显示方式：原始比例 / 宽度填充（缺省视为 original）
   mindmapImageFit?: 'original' | 'fill';
+  // 用户固定的自定义颜色（十六进制小写），按用途分组；旧配置缺失时视为空
+  customColors?: CustomColorSettings;
 }
+
+/** 固定的自定义颜色分组：多维表格标签 / Markdown 字体颜色 / Markdown 高亮 */
+export interface CustomColorSettings {
+  tag?: string[];
+  text?: string[];
+  highlight?: string[];
+}
+
+export type CustomColorKind = keyof CustomColorSettings;
 
 export interface FileSettings {
   // 自动保存设置：Markdown / 画板 / 其他文本（默认均关闭，即手动保存）

@@ -25,6 +25,8 @@ import { insertWikiLinkInEditor } from '../wikilink/wikiLinkActions';
 import { activeBlockAlign, canChangeBlockIndent, canSetBlockAlign, changeBlockIndent, setBlockAlign } from './blockFormat';
 import { ALIGN_OPTIONS, AlignIcon, INDENT_OPTIONS, TextColorIcon } from './formatPickers';
 import { TEXT_COLORS } from './markdownInlineMarks';
+import { useCustomColors } from '../../stores/settingsStore';
+import { mixHex } from '../../components/colorPicker/colorMath';
 import {
   Bold,
   Italic,
@@ -147,6 +149,17 @@ export function EditorContextMenu({
   const submenuRef = useRef<HTMLDivElement>(null);
   // 当前激活的二级子菜单标识
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
+  // 已固定的自定义颜色追加在内置色之后（取色盘在工具栏与悬浮菜单中，右键菜单只负责快速选用）
+  const pinnedTextColors = useCustomColors('text');
+  const pinnedHighlightColors = useCustomColors('highlight');
+  const textColorItems = [
+    ...TEXT_COLORS,
+    ...pinnedTextColors.map((color) => ({ name: color.toUpperCase(), color })),
+  ];
+  const highlightColorItems = [
+    ...HIGHLIGHT_COLOR_OPTIONS,
+    ...pinnedHighlightColors.map((color) => ({ name: color.toUpperCase(), color, border: mixHex(color, '#000000', 0.8) })),
+  ];
   const [submenuPos, setSubmenuPos] = useState<{ top: number; left: number; flipLeft: boolean }>({
     top: 0,
     left: 0,
@@ -1155,7 +1168,7 @@ export function EditorContextMenu({
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--editor-text-secondary, #64748b)', padding: '4px 8px' }}>
                 选择字体颜色
               </div>
-              {TEXT_COLORS.map((item) => (
+              {textColorItems.map((item) => (
                 <button
                   key={item.color}
                   type="button"
@@ -1206,7 +1219,7 @@ export function EditorContextMenu({
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--editor-text-secondary, #64748b)', padding: '4px 8px' }}>
                 选择高亮颜色
               </div>
-              {HIGHLIGHT_COLOR_OPTIONS.map((item) => (
+              {highlightColorItems.map((item) => (
                 <button
                   key={item.color}
                   type="button"
