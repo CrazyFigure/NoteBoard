@@ -116,6 +116,41 @@ describe('Markdown 文档剪贴板', () => {
     expect(text).toMatch(/\|\s*-{3,}/);
     expect(text).not.toContain('\t');
     expect(text).not.toContain('H1');
+    expect(text).toBe('| **A1** | 001 |\n| --- | --- |\n| A2 | B2 |');
+    // 重新解析后仍只有所选的两行；首行带原有格式，源文档未被提升为表头。
+    const pasted = createEditor(text);
+    expect(pasted.state.doc.firstChild?.childCount).toBe(2);
+    expect(pasted.state.doc.firstChild?.firstChild?.firstChild?.textContent).toBe('A1');
+    expect(serializeMarkdown(editor)).toBe('| H1 | H2 |\n| --- | --- |\n| **A1** | 001 |\n| A2 | B2 |');
+  });
+
+  it.each([
+    ['单行', 'A2', 'B2', '| A2 | B2 |\n| --- | --- |'],
+    ['单格', 'A2', 'A2', '| A2 |\n| --- |'],
+    ['单列', 'A1', 'A2', '| A1 |\n| --- |\n| A2 |'],
+    ['反向矩形', 'B2', 'A1', '| A1 | B1 |\n| --- | --- |\n| A2 | B2 |'],
+    ['包含原表头', 'H1', 'B1', '| H1 | H2 |\n| --- | --- |\n| A1 | B1 |'],
+  ])('%s单元格复制不增加空行，剪切可撤销', (_name, anchor, head, expected) => {
+    const source = '| H1 | H2 | H3 |\n| --- | --- | --- |\n| A1 | B1 | C1 |\n| A2 | B2 | C2 |';
+    const editor = createEditor(source);
+    const before = editor.state.doc;
+    const cells = new Map<string, number>();
+    before.descendants((node, pos) => {
+      if (['cell', 'header_cell'].includes(node.type.spec.tableRole ?? '')) cells.set(node.textContent, pos);
+    });
+    editor.view.dispatch(editor.state.tr.setSelection(new CellSelection(
+      before.resolve(cells.get(anchor)!), before.resolve(cells.get(head)!),
+    )));
+    expect(copySelection(editor).text).toBe(expected);
+    expect(editor.state.doc).toBe(before);
+    expect(copySelection(editor, 'cut').text).toBe(expected);
+    expect(editor.commands.undo()).toBe(true);
+    expect(editor.state.doc.eq(before)).toBe(true);
+  });
+
+  it('真实选中的空白表头不会被删除', () => {
+    const source = '|  |  |\n| --- | --- |\n| 甲 | 乙 |';
+    expect(copySelection(createEditor(source)).text).toBe(source);
   });
 
   it('剪切同样写入 Markdown，只删除选区，且可撤销恢复', () => {

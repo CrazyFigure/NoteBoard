@@ -7,6 +7,8 @@ import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import type { Editor } from '@tiptap/core';
 import { isInTable } from '@tiptap/pm/tables';
 import { applyTablePaste } from './tableClipboard';
+import { serializeSelectionPlainText } from './plainTextClipboard';
+import { showToast } from '../../stores/toastStore';
 import { DEFAULT_DETAILS_SUMMARY, insertDetailsContent, requestDetailsSummaryFocus } from './detailsExtension';
 import { insertColumnsBlock } from './columnsExtension';
 import { insertCalloutBlock } from './calloutExtension';
@@ -245,6 +247,40 @@ export function EditorContextMenu({
     setActiveSubmenu(submenuKey);
   };
 
+  // 两种菜单都在“粘贴”下面提供纯文本复制；没有选区时禁用，避免误复制整篇。
+  const plainTextCopyButton = (
+    <button
+      type="button"
+      disabled={!hasSelection}
+      style={{ ...btnStyle, opacity: hasSelection ? 1 : 0.45, cursor: hasSelection ? 'pointer' : 'default' }}
+      onMouseDown={(e) => {
+        // 保留编辑器的文字/单元格选区，并提供与 hover 一致的按下反馈。
+        e.preventDefault();
+        if (hasSelection) e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
+      }}
+      onClick={async () => {
+        const text = serializeSelectionPlainText(editor);
+        onClose();
+        if (!text) return;
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch {
+          showToast('纯文本复制失败，请检查剪贴板权限后重试', 'error');
+        }
+      }}
+      onMouseEnter={(e) => {
+        setActiveSubmenu(null);
+        if (hasSelection) e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
+      }}
+      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <ClipboardType size={15} color="var(--accent-500, #3b82f6)" />
+        <span>纯文本复制</span>
+      </div>
+    </button>
+  );
+
   return (
     <>
       {/* ── 主右键菜单容器 ── */}
@@ -339,6 +375,8 @@ export function EditorContextMenu({
                 <span>{formatShortcut('粘贴 (Ctrl+V)')}</span>
               </div>
             </button>
+
+            {plainTextCopyButton}
 
             <div style={dividerStyle} />
 
@@ -650,34 +688,7 @@ export function EditorContextMenu({
               </div>
             </button>
 
-            <button
-              type="button"
-              style={btnStyle}
-              onClick={async () => {
-                onClose();
-                try {
-                  const text = await navigator.clipboard.readText();
-                  if (text) {
-                    if (isInTable(editor.state) && applyTablePaste(editor, text)) {
-                      return;
-                    }
-                    editor.chain().focus().insertContent({ type: 'text', text }).run();
-                  }
-                } catch {
-                  document.execCommand('paste');
-                }
-              }}
-              onMouseEnter={(e) => {
-                setActiveSubmenu(null);
-                e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
-              }}
-              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <ClipboardType size={15} color="var(--accent-500, #3b82f6)" />
-                <span>{formatShortcut('纯文本粘贴 (Ctrl+Shift+V)')}</span>
-              </div>
-            </button>
+            {plainTextCopyButton}
 
             <div style={dividerStyle} />
 

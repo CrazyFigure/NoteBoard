@@ -16,6 +16,28 @@ function restoreListStart(content: Fragment, from: ResolvedPos, openDepth: numbe
   return content.replaceChild(0, first.type.create(attrs, children, first.marks));
 }
 
+/** 片段缺少表头时用首个选中行承载 Markdown 表头，避免文件序列化规则凭空补出一行。 */
+function prepareClipboardTables(content: Fragment): Fragment {
+  const nodes = [];
+  for (let index = 0; index < content.childCount; index += 1) {
+    const node = content.child(index);
+    let children = prepareClipboardTables(node.content);
+    const firstRow = children.firstChild;
+    if (node.type.spec.tableRole === 'table' && firstRow) {
+      const cells = Array.from({ length: firstRow.childCount }, (_, cellIndex) => firstRow.child(cellIndex));
+      // 真实选中的空白表头也必须保留；仅转换完全由正文单元格组成的首行。
+      if (cells.every((cell) => cell.type.spec.tableRole === 'cell')) {
+        const header = node.type.schema.nodes.tableHeader;
+        children = children.replaceChild(0, firstRow.copy(Fragment.from(
+          cells.map((cell) => header.create(cell.attrs, cell.content, cell.marks)),
+        )));
+      }
+    }
+    nodes.push(node.copy(children));
+  }
+  return Fragment.from(nodes);
+}
+
 /** 将选区补成可独立序列化的文档；单元格选区等切片需要补回表格、段落或列表容器。 */
 function serializeClipboardMarkdown(editor: Editor, slice: Slice): string {
   const { doc, schema, selection } = editor.state;
@@ -26,7 +48,7 @@ function serializeClipboardMarkdown(editor: Editor, slice: Slice): string {
   }
   // 剪贴板片段不继承整份文件末尾的换行，正文中的空白和各节点源码属性仍交给共享流水线保留。
   // 整篇的顶层块原文记录只对应完整文档，片段一律按规则输出，结果不随复制范围变化。
-  const fragmentDoc = doc.type.create({ ...doc.attrs, trailingNewline: '', sourceBlocks: null }, content);
+  const fragmentDoc = doc.type.create({ ...doc.attrs, trailingNewline: '', sourceBlocks: null }, prepareClipboardTables(content));
   const manager = getMarkdownManager(editor);
   if (!manager) throw new Error('[NoteBoard] Markdown 剪贴板缺少 MarkdownManager');
   return serializeMarkdownFromDoc(manager, schema, fragmentDoc);
