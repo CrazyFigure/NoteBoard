@@ -1648,8 +1648,22 @@ export function BitableGridView({
   }, [colDrag, columns]);
 
 
-  // 代理输入框持有焦点后浏览器不再自动滚动表格，这里手工转发滚动键
+  // 仅绑定当前单选的单元格实例，兼容分组下同一条记录出现多次。
+  const selectedCellEditorRef = useRef<{ startEditing: () => void }>(null);
+
+  // 代理输入框承接选中后的空格编辑，并手工转发浏览器不再处理的滚动键。
   const handleProxyKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // 只响应单格选中时的独立空格；编辑框、弹层、组合键与输入法不走此入口。
+    if (
+      e.key === ' ' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey &&
+      !e.nativeEvent.isComposing && !e.defaultPrevented &&
+      selection.type === 'range' && normalizedSelection?.isSingleCell
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!e.repeat) selectedCellEditorRef.current?.startEditing();
+      return;
+    }
     const container = scrollContainerRef.current;
     if (!container) return;
     const lineHeight = 40;
@@ -3174,6 +3188,7 @@ export function BitableGridView({
                           }}
                         >
                           <BitableCellEditor
+                            ref={selection.type === 'range' && isAnchor && normalizedSelection?.isSingleCell ? selectedCellEditorRef : undefined}
                             column={col}
                             value={row[col.id]}
                             onChange={(newVal) => onUpdateRow(row.id, col.id, newVal)}

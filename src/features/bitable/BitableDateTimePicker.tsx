@@ -3,7 +3,7 @@
 // 也无法承载三种字段形态与列级的显示格式配置。
 // 交互约定：日期选中即提交并关闭；时间逐列调整即时提交；日期时间两者组合，点「完成」或外部点击收起。
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useImperativeHandle } from 'react';
 import type { BitableColumn, DateTimeFieldType } from './bitableTypes';
 import {
   formatDateTimeValue,
@@ -436,6 +436,8 @@ function TimePanel({ value, withSeconds, onPick }: TimePanelProps) {
 }
 
 interface DateTimeFieldEditorProps {
+  /** 允许表格的空格编辑请求打开同一个日期时间浮层。 */
+  ref?: React.Ref<{ startEditing: () => void }>;
   column: BitableColumn;
   value: unknown;
   onChange: (next: string | null) => void;
@@ -448,6 +450,7 @@ interface DateTimeFieldEditorProps {
  * 三种形态共用一套面板组件，仅按字段类型决定「显示日历 / 显示时间 / 两者都显示」。
  */
 export function DateTimeFieldEditor({
+  ref,
   column,
   value,
   onChange,
@@ -463,6 +466,13 @@ export function DateTimeFieldEditor({
   const displayText = raw ? formatDateTimeValue(raw, type, config) : '';
   const showSeconds = config.timeFormat === 'hms' || config.timeFormat === 'hms-cn';
 
+  /** 鼠标和键盘统一以字段触发器定位浮层。 */
+  const startEditing = () => {
+    const rect = getAnchorRect(triggerRef.current);
+    if (rect) setAnchor(rect);
+  };
+  useImperativeHandle(ref, () => ({ startEditing }));
+
   const togglePanel = (e: React.MouseEvent<HTMLElement>) => {
     e.stopPropagation();
     // 浮层的外部点击监听会放行触发器自身的点击，故这里必须自己完成 toggle，
@@ -471,8 +481,7 @@ export function DateTimeFieldEditor({
       setAnchor(null);
       return;
     }
-    const rect = getAnchorRect(e.currentTarget);
-    if (rect) setAnchor(rect);
+    startEditing();
   };
 
   // 拆出日期段与时间段：dateTime 存储为 'YYYY-MM-DD HH:mm:ss'

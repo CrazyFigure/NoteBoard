@@ -1,9 +1,9 @@
 // NoteBoard 多维表格单元格渲染与交互编辑器
 // 深度还原多维表格各类字段的视觉与交互体验
-// 单选/多选单元格统一通过「双击」唤出 Portal 选项面板，单击仅选中单元格
-// 多行文本单元格双击唤出编辑弹层，只读展示按列配置的显示模式（只显示第一行 / 全显示）
+// 单选/多选单元格通过双击或选中后按空格唤出 Portal 选项面板，单击仅选中单元格
+// 多行文本沿用相同编辑入口，只读展示按列配置的显示模式（只显示第一行 / 全显示）
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useImperativeHandle } from 'react';
 import {
   isDateTimeFieldType,
   type BitableColumn,
@@ -71,6 +71,8 @@ function blurNumberOnWheel(e: React.WheelEvent<HTMLInputElement>): void {
 }
 
 interface CellEditorProps {
+  /** 表格键盘入口复用双击编辑逻辑，不模拟鼠标事件。 */
+  ref?: React.Ref<{ startEditing: () => void }>;
   column: BitableColumn;
   value: unknown;
   onChange: (newValue: unknown) => void;
@@ -78,7 +80,7 @@ interface CellEditorProps {
   onManageColumnOption?: (colId: string, action: ColumnOptionAction) => void;
   /**
    * 呈现形态：
-   * - cell：表格单元格，紧凑、需双击进入编辑
+   * - cell：表格单元格，紧凑、双击或选中后按空格进入编辑
    * - form：记录详情侧边栏，舒展、始终可直接编辑（多行文本、即时日期选择等）
    */
   variant?: 'cell' | 'form';
@@ -169,6 +171,7 @@ function LongTextReadOnly({
 }
 
 export function BitableCellEditor({
+  ref,
   column,
   value,
   onChange,
@@ -185,15 +188,33 @@ export function BitableCellEditor({
 
   const cellRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // 日期时间字段由专用组件维护浮层，编辑请求继续转交给它。
+  const dateTimeEditorRef = useRef<{ startEditing: () => void }>(null);
 
   const showSelectPanel = panelAnchor !== null;
 
-  // 双击单元格：以单元格自身为锚点打开选项面板
-  const openSelectPanel = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  /** 双击、空格与表单单击共用选项面板，以单元格自身为锚点。 */
+  const openSelectPanel = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
     const anchor = getAnchorRect(cellRef.current);
     if (anchor) setPanelAnchor(anchor);
   };
+
+  /** 双击与空格共用编辑入口；直接交互的复选框、评分、进度字段保持原有行为。 */
+  const startEditing = () => {
+    if (variant !== 'cell') return;
+    if (column.type === 'text' || column.type === 'number' || column.type === 'link') {
+      setInputValue(String(value ?? ''));
+      setEditing(true);
+    } else if (column.type === 'longText') {
+      setLongTextEditorOpen(true);
+    } else if (column.type === 'select' || column.type === 'multiSelect') {
+      openSelectPanel();
+    } else if (isDateTimeFieldType(column.type)) {
+      dateTimeEditorRef.current?.startEditing();
+    }
+  };
+  useImperativeHandle(ref, () => ({ startEditing }));
 
   // 进入编辑状态时聚焦
   useEffect(() => {
@@ -283,10 +304,7 @@ export function BitableCellEditor({
 
     return (
       <div
-        onDoubleClick={() => {
-          setInputValue(String(value ?? ''));
-          setEditing(true);
-        }}
+        onDoubleClick={startEditing}
         style={{
           width: '100%',
           height: '100%',
@@ -366,7 +384,7 @@ export function BitableCellEditor({
         <LongTextReadOnly
           value={value}
           config={config}
-          onOpenEditor={() => setLongTextEditorOpen(true)}
+          onOpenEditor={startEditing}
         />
         {longTextEditorOpen && (
           <BitableLongTextPopover
@@ -461,10 +479,7 @@ export function BitableCellEditor({
 
     return (
       <div
-        onDoubleClick={() => {
-          setInputValue(value !== null && value !== undefined ? String(value) : '');
-          setEditing(true);
-        }}
+        onDoubleClick={startEditing}
         style={{
           width: '100%',
           height: '100%',
@@ -668,6 +683,7 @@ export function BitableCellEditor({
   if (isDateTimeFieldType(column.type)) {
     return (
       <DateTimeFieldEditor
+        ref={dateTimeEditorRef}
         column={column}
         value={value}
         onChange={onChange}
@@ -952,10 +968,7 @@ export function BitableCellEditor({
 
     return (
       <div
-        onDoubleClick={() => {
-          setInputValue(String(value ?? ''));
-          setEditing(true);
-        }}
+        onDoubleClick={startEditing}
         style={{
           width: '100%',
           height: '100%',
