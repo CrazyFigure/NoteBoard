@@ -190,6 +190,8 @@ export interface GanttViewConfig {
   excludeHolidays?: boolean;
   /** 左侧列表面板展示并固定的字段（顺序即列顺序） */
   leftColumnIds?: string[];
+  /** 移动端手动调整的左侧字段列宽；未调整的列仍自动适配窄屏，不影响桌面列宽。 */
+  mobileLeftColumnWidths?: Record<string, number>;
   /** 时间刻度，默认 month */
   zoom?: GanttZoom;
 }

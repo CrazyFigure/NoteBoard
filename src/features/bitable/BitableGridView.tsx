@@ -20,6 +20,7 @@ import { SelectOptionsPanel, OptionBadge } from './BitableOptions';
 import { DragGhost, FloatingPanel, getAnchorRect, type AnchorRect } from './BitableFloating';
 import { BitableContextMenu } from './BitableContextMenu';
 import { usePointerReorder } from './usePointerReorder';
+import { useColumnResize } from './useColumnResize';
 import { limitFrozenCount, useMobileViewportWidth } from './useMobileLayout';
 import { getFieldTypeMeta, FieldSelectButton } from './BitableFieldMeta';
 import { SortRulesPanel } from './BitableSortPanel';
@@ -349,8 +350,8 @@ export function BitableGridView({
   // 表格滚动容器：代理输入框持有焦点时用于手工转发滚动键
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // 拖拽调整列宽状态
-  const resizingColRef = useRef<{ colId: string; startX: number; startW: number } | null>(null);
+  // 与甘特图共用指针拖动，固定列和普通列均支持触摸调宽。
+  const startColumnResize = useColumnResize();
 
   // ── 固定列（冻结左侧若干列）──
   // 冻结列采用「前缀固定」语义：前 N 列被固定在左侧，横向滚动时保持可见。
@@ -1493,30 +1494,11 @@ export function BitableGridView({
     onIndentRow,
   ]);
   // 4. 拖拽调整列宽
-  const handleResizeStart = (e: React.MouseEvent, col: BitableColumn) => {
-    e.preventDefault();
-    e.stopPropagation();
-    resizingColRef.current = {
-      colId: col.id,
-      startX: e.clientX,
-      startW: col.width || 160,
-    };
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      if (!resizingColRef.current) return;
-      const delta = moveEvent.clientX - resizingColRef.current.startX;
-      const newWidth = Math.max(90, resizingColRef.current.startW + delta);
-      onUpdateColumn(resizingColRef.current.colId, { width: newWidth });
-    };
-
-    const handleMouseUp = () => {
-      resizingColRef.current = null;
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+  const handleResizeStart = (e: React.PointerEvent<HTMLDivElement>, col: BitableColumn) => {
+    startColumnResize(e, {
+      width: col.width || 160,
+      onResize: (width) => onUpdateColumn(col.id, { width }),
+    });
   };
 
   // 5. 表头指针拖拽换列排序
@@ -2228,16 +2210,8 @@ export function BitableGridView({
                     {/* 拖拽列宽调整把手 */}
                     <div
                       data-no-drag
-                      onMouseDown={(e) => handleResizeStart(e, col)}
-                      style={{
-                        position: 'absolute',
-                        right: -8,
-                        top: -4,
-                        bottom: -4,
-                        width: 6,
-                        cursor: 'col-resize',
-                        zIndex: 10,
-                      }}
+                      className="nb-bitable-grid-col-resizer"
+                      onPointerDown={(e) => handleResizeStart(e, col)}
                     />
 
                     {/* 列配置浮动菜单（Portal 渲染，避免被滚动容器裁剪；宽度设为 240px 保证中文日期/时间格式单行完整展示） */}
@@ -3118,6 +3092,8 @@ export function BitableGridView({
                       onMouseEnter={() => handleCellMouseEnter(instanceKey, col.id)}
                       onContextMenu={(e) => handleCellContextMenu(e, instanceKey, col.id)}
                       style={{
+                        // 内容不能反过来撑大列宽，否则触摸缩窄后仍会被长文本顶回原宽度。
+                        maxWidth: col.width || 160,
                         borderBottom: '1px solid var(--editor-border, #f1f5f9)',
                         borderRight: isLastFrozen
                           ? '1px solid var(--editor-border, #cbd5e1)'
@@ -3182,6 +3158,7 @@ export function BitableGridView({
                           data-nb-focus-scope=""
                           style={{
                             flex: 1,
+                            minWidth: 0,
                             height: isExpandedLongText ? 'auto' : '100%',
                             position: 'relative',
                             overflow: 'visible',

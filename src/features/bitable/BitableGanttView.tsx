@@ -22,6 +22,7 @@ import { SortRulesPanel } from './BitableSortPanel';
 import { BITABLE_PALETTE, getOptionColor } from './bitableConverter';
 import { usePointerReorder } from './usePointerReorder';
 import { fitPaneWidths, useMobileViewportWidth } from './useMobileLayout';
+import { useColumnResize } from './useColumnResize';
 import { useCnHolidays } from './holidayCn';
 import { Tooltip } from '../../components/Tooltip';
 import { showToast } from '../../stores/toastStore';
@@ -85,6 +86,8 @@ import { formatShortcut } from '../../core/shortcuts';
 
 /** 左侧序号列宽度 */
 const NUM_COL_WIDTH = 44;
+/** 字段列最小宽度；移动端手动调宽时至少为时间轴保留同样宽度。 */
+const MIN_COLUMN_WIDTH = 90;
 /** 数据行高 */
 const ROW_HEIGHT = 40;
 /** 双层表头总高（上下各 28） */
@@ -279,6 +282,8 @@ export function BitableGanttView({
   onCreateDateFields,
 }: GanttViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  // 与表格视图共用指针拖动及取消、卸载清理，列宽保存方式由各视图决定。
+  const startColumnResize = useColumnResize();
   // 行 DOM 节点表：用于测量行位置，支撑「拖拽 # 换行序」的落点计算
   const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
 
@@ -1148,11 +1153,22 @@ export function BitableGanttView({
     return map;
   }, [rows, startCol, endCol, axis, workdaysOnly, isRestDay]);
 
-  // ── 左侧固定列实际显示宽度：竖屏手机上按比例压缩，左侧栏不超过半屏，给时间轴留出空间（保存的列宽不变） ──
+  // ── 左侧固定列宽：移动端默认适配半屏，手动宽度优先；旋转后仍给时间轴留出空间 ──
   const viewportWidth = useMobileViewportWidth();
   const leftWidths = useMemo(
-    () => fitPaneWidths(leftColumns.map((col) => col.width || 160), NUM_COL_WIDTH, viewportWidth),
-    [leftColumns, viewportWidth],
+    () => {
+      const fitted = fitPaneWidths(leftColumns.map((col) => col.width || 160), NUM_COL_WIDTH, viewportWidth);
+      if (viewportWidth === null) return fitted;
+      const customized = fitted.map((width, idx) => {
+        const saved = config.mobileLeftColumnWidths?.[leftColumns[idx].id];
+        // 文档可能由外部编辑，忽略无效宽度，避免出现 NaN 或无限大的布局。
+        return typeof saved === 'number' && Number.isFinite(saved)
+          ? Math.max(MIN_COLUMN_WIDTH, saved)
+          : width;
+      });
+      return fitPaneWidths(customized, NUM_COL_WIDTH, viewportWidth, Math.max(0, 1 - MIN_COLUMN_WIDTH / viewportWidth));
+    },
+    [leftColumns, viewportWidth, config.mobileLeftColumnWidths],
   );
 
   // ── 左侧固定列偏移量 ──
@@ -1170,27 +1186,29 @@ export function BitableGanttView({
     [leftWidths],
   );
 
-  // ── 拖拽调整左侧固定列宽度（与表格视图共用字段宽度，最小 90） ──
-  const handleColumnResizeStart = (e: React.MouseEvent, col: BitableColumn) => {
+  // ── 鼠标、触摸和手写笔共用列宽拖动；以实际显示宽度起算，防止窄屏首次拖动跳变 ──
+  const handleColumnResizeStart = (e: React.PointerEvent<HTMLDivElement>, col: BitableColumn, width: number) => {
     if (!onUpdateColumn) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const startX = e.clientX;
-    const startW = col.width || 160;
-    // 拖拽期间锁定全局光标，避免划过其他元素时光标闪回
-    document.body.style.cursor = 'col-resize';
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      const newWidth = Math.max(90, startW + moveEvent.clientX - startX);
-      onUpdateColumn(col.id, { width: newWidth });
-    };
-    const handleMouseUp = () => {
-      document.body.style.cursor = '';
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    // 旋转屏幕后各列可能被压缩；固定本次可见宽度，避免旧配置使邻列再次挤压当前拖动列。
+    const visibleMobileWidths = Object.fromEntries(leftColumns.map((item, idx) => [item.id, leftWidths[idx]]));
+    // 限制移动端拖动范围，避免固定列占满屏幕、把调宽把手推到屏外。
+    const maxWidth = viewportWidth === null ? Infinity : Math.max(
+      MIN_COLUMN_WIDTH,
+      viewportWidth - NUM_COL_WIDTH - (leftPaneWidth - NUM_COL_WIDTH - width) - MIN_COLUMN_WIDTH,
+    );
+    startColumnResize(e, {
+      width,
+      minWidth: MIN_COLUMN_WIDTH,
+      maxWidth,
+      onResize: (newWidth) => {
+        if (viewportWidth === null) {
+          onUpdateColumn(col.id, { width: newWidth });
+        } else {
+          // 独立保存移动端宽度，既保留手动调整，也不缩窄桌面与普通表格的字段。
+          onUpdateConfig({ mobileLeftColumnWidths: { ...config.mobileLeftColumnWidths, ...visibleMobileWidths, [col.id]: newWidth } });
+        }
+      },
+    });
   };
 
   // ── 条形拖拽 ──
@@ -1952,7 +1970,7 @@ export function BitableGanttView({
                     {onUpdateColumn && (
                       <div
                         className="nb-bitable-gantt-col-resizer"
-                        onMouseDown={(e) => handleColumnResizeStart(e, col)}
+                        onPointerDown={(e) => handleColumnResizeStart(e, col, width)}
                       />
                     )}
                   </th>

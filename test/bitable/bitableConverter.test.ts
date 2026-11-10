@@ -27,6 +27,9 @@ describe('Bitable 多维表格转换与序列化测试', () => {
 
   test('JSON 双向序列化与反序列化保真（包含 parentId 与多视图）', () => {
     const original = createDefaultBitableDocument('项目进度跟踪');
+    // 移动端手动列宽随视图持久化，不能改写桌面使用的字段宽度。
+    const ganttView = original.views.find((view) => view.type === 'gantt')!;
+    ganttView.gantt!.mobileLeftColumnWidths = { col_name: 210 };
     const json = serializeBitableDocument(original);
     const parsed = parseBitableDocument(json);
 
@@ -35,6 +38,8 @@ describe('Bitable 多维表格转换与序列化测试', () => {
     expect(parsed.rows.length).toBe(original.rows.length);
     expect(parsed.views.length).toBe(original.views.length);
     expect(parsed.columns[0].name).toBe(original.columns[0].name);
+    expect(parsed.columns[0].width).toBe(original.columns[0].width);
+    expect(parsed.views.find((view) => view.type === 'gantt')?.gantt?.mobileLeftColumnWidths).toEqual({ col_name: 210 });
     // 子行 parentId 保真
     const subRow = parsed.rows.find((r) => r.id === 'row_1_1');
     expect(subRow?.parentId).toBe('row_1');
