@@ -169,6 +169,9 @@ function TabItem({ tab, isActive, onActivate, onClose, nativeDragging, arriving 
     };
   }, [menuPos]);
 
+  // 激活标签比普通标签多出的高度：原本到主行底边的空隙 + 向下延伸量
+  const activeBottomPad = getTabTopSpace(compactMode) + ACTIVE_TAB_EXTEND;
+
   // 单个 Tab 的外观样式（采用现代圆角卡片设计，短标题自动紧凑缩短，长标题受限截断）
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -183,11 +186,17 @@ function TabItem({ tab, isActive, onActivate, onClose, nativeDragging, arriving 
     maxWidth: compactMode ? 132 : 200,
     width: 'max-content',
     flex: '0 0 auto',
-    height: compactMode ? 26 : 28,
-    padding: compactMode ? '0 4px 0 7px' : '0 6px 0 10px',
+    // 激活标签拉伸到滚动容器底部（即标题栏底边），其余标签保持固定高度
+    height: isActive ? undefined : getTabHeight(compactMode),
+    alignSelf: isActive ? 'stretch' : undefined,
+    // 激活标签底部内边距等于向下延伸量，文字与图标仍停在原来的位置
+    padding: compactMode
+      ? `0 4px ${isActive ? activeBottomPad : 0}px 7px`
+      : `0 6px ${isActive ? activeBottomPad : 0}px 10px`,
     // 左右留出间距，防止边缘遮挡（相邻 Tab 间缝隙为 4px）
-    margin: '0 2px',
-    borderRadius: 6,
+    margin: `0 ${TAB_MARGIN_X}px`,
+    // 激活标签只留上方圆角，底部由外翻圆弧接到编辑区
+    borderRadius: isActive ? `${ACTIVE_TAB_FOOT}px ${ACTIVE_TAB_FOOT}px 0 0` : 6,
     background: isActive
       ? 'var(--tab-active-bg)'
       : 'var(--tab-inactive-bg)',
@@ -196,16 +205,17 @@ function TabItem({ tab, isActive, onActivate, onClose, nativeDragging, arriving 
       : 'var(--editor-text-secondary)',
     // 独立清晰的卡片边界线，确保左右与四周边界一目了然
     border: '1px solid var(--tab-border)',
-    borderBottom: isActive
-      ? '2px solid var(--tab-active-indicator)'
-      : '1px solid var(--tab-border)',
+    // 激活标签去掉底边，与下方编辑区之间不留分隔线；顶部改用 2px 强调色线标识
+    borderBottom: isActive ? 'none' : '1px solid var(--tab-border)',
     boxShadow: isActive
-      ? '0 1px 3px rgba(0, 0, 0, 0.08)'
+      ? 'inset 0 2px 0 var(--tab-active-indicator)'
       : 'none',
     cursor: 'pointer',
     flexShrink: 0,
     userSelect: 'none',
     position: 'relative',
+    // 外翻圆弧会压到相邻标签的边缘，激活标签需绘制在上层
+    zIndex: isActive ? 1 : undefined,
     boxSizing: 'border-box',
     fontFamily: 'var(--ui-font-family, inherit)',
     fontSize: 'var(--ui-font-size, 13px)',
@@ -234,6 +244,7 @@ function TabItem({ tab, isActive, onActivate, onClose, nativeDragging, arriving 
       <Tooltip content={tab.path ?? tab.displayName} disabled={Boolean(menuPos)} side="bottom" sideOffset={6}>
         <div
           ref={setNodeRef}
+          className={isActive ? 'nb-window-tab is-active' : 'nb-window-tab'}
           style={style}
           {...attributes}
           {...listeners}
@@ -684,6 +695,27 @@ const TAB_SCROLLBAR_HIT_OVERFLOW = 2;
 // 滑块最小宽度，标签很多时仍能稳定命中拖动
 const TAB_SCROLLBAR_MIN_THUMB = 24;
 
+// ── 激活标签外翻造型 ──
+
+// 标题栏主行高度（与 TitleBar 主行一致），标签在其中垂直居中
+const TAB_ROW_HEIGHT = 36;
+// 激活标签越过主行底边继续向下延伸：盖住下方留白与标题栏 1px 底边框，与编辑区连成一体
+const ACTIVE_TAB_EXTEND = TITLEBAR_BOTTOM_GAP + 1;
+// 激活标签底部外翻圆弧半径（与 globals.css 中 .nb-window-tab.is-active 伪元素尺寸一致）
+const ACTIVE_TAB_FOOT = 8;
+// 标签左右外边距
+const TAB_MARGIN_X = 2;
+
+/** 标签高度（含边框）：极窄模式更矮 */
+function getTabHeight(compact: boolean): number {
+  return compact ? 26 : 28;
+}
+
+/** 标签顶边到主行顶边的空隙（同时也是原本到主行底边的空隙） */
+function getTabTopSpace(compact: boolean): number {
+  return (TAB_ROW_HEIGHT - getTabHeight(compact)) / 2;
+}
+
 type TabScrollbarState = {
   visible: boolean;
   thumbLeft: number;
@@ -968,18 +1000,22 @@ export function TabBar() {
       : 'color-mix(in srgb, var(--editor-text-secondary) 30%, transparent)';
 
   // Tab 栏横向滚动容器（隐藏原生滚动条，改用下方自绘细滑块）
+  // 容器向下延伸到标题栏底边，激活标签才能伸出主行、与编辑区相连；普通标签靠顶部内边距停在原位
   const containerStyle: React.CSSProperties = {
     display: 'flex',
-    alignItems: 'center',
-    height: '100%',
+    alignItems: 'flex-start',
+    height: `calc(100% + ${ACTIVE_TAB_EXTEND}px)`,
     overflowX: 'auto',
     overflowY: 'hidden',
     scrollbarWidth: 'none',
     flex: '0 1 auto',
     minWidth: 0,
-    // 左侧不留内边距：应用图标容器自带 10px 留白，再叠加会让首个 Tab 离图标过远
-    padding: '0 4px 0 0',
+    // 左右内边距只给激活标签的外翻圆弧留位（扣除标签自身外边距），避免首尾标签激活时圆弧被裁切
+    padding: `${getTabTopSpace(compactMode)}px ${ACTIVE_TAB_FOOT - TAB_MARGIN_X}px 0`,
     boxSizing: 'border-box',
+    // 盖住标题栏下方留白与底边框；自绘滚动条在 DOM 中位于其后，同层级下仍显示在最上层
+    position: 'relative',
+    zIndex: 1,
   };
 
   // 渲染单个新建格式菜单项（首层与二级菜单同样式）

@@ -100,6 +100,44 @@ body {
   }
 }
 
+/* 激活窗口标签底部两侧的外翻圆弧（“八”字外张）：填充与标签同色，向下弯到标题栏底边与编辑区相连。
+   伪元素 9px 见方，向外伸出 8px（与 TabBar.tsx 中 ACTIVE_TAB_FOOT 一致），并多盖住 1px 边框列：
+   - 圆环（半径 8~9px）顶端正好落在标签 1px 竖边框上，竖线与圆弧无缝衔接；
+   - 圆环底端落在标题栏 1px 底边框所在行，接续两侧底边线；
+   - 圆环内侧的同色填充遮住圆弧段以下的竖边框，避免竖线伸出圆弧。
+   定位相对内边距盒：left/right 为 -9px 时右/左缘恰好与边框内沿对齐 */
+.nb-window-tab.is-active::before,
+.nb-window-tab.is-active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 9px;
+  height: 9px;
+  pointer-events: none;
+}
+
+.nb-window-tab.is-active::before {
+  left: -9px;
+  background: radial-gradient(
+    circle at 0 0,
+    transparent 7.6px,
+    var(--tab-border) 8.1px,
+    var(--tab-border) 8.9px,
+    var(--tab-active-bg) 9.4px
+  );
+}
+
+.nb-window-tab.is-active::after {
+  right: -9px;
+  background: radial-gradient(
+    circle at 100% 0,
+    transparent 7.6px,
+    var(--tab-border) 8.1px,
+    var(--tab-border) 8.9px,
+    var(--tab-active-bg) 9.4px
+  );
+}
+
 /* 滚动条 */
 ::-webkit-scrollbar {
   width: 10px;
