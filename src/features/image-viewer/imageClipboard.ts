@@ -8,12 +8,14 @@
 //   原生端解不了的格式（SVG、AVIF 等）才由前端解码后传像素。
 //   注意不能把 asset 协议加载的 <img> 直接画进画布再导出：跨域资源会污染画布导致导出失败，
 //   此前图片查看器的「复制图片」因此回退成了复制路径。前端解码一律先 fetch 原始字节再解码。
+//   例外：发版 CSP 的 connect-src 不含 data: 与 http(s)，内嵌图片直接解码，网络图片改走跨域 <img>。
 // - 网页 / 移动端：使用浏览器 Clipboard API 写入 PNG；ClipboardItem 直接接收 Promise，
 //   先同步发起写入再异步准备数据，避免 WebKit 等引擎因等待读取而判定用户手势失效。
 
 import { convertFileSrc } from '@tauri-apps/api/core';
 import * as ipc from '../../core/ipc/commands';
 import { IS_NATIVE_MOBILE, IS_WEB } from '../../core/platform';
+import { dataUrlToBlob } from '../../core/dataUrl';
 import { copyText, exportBlobWithDialog } from '../export/chartExport';
 
 export interface ImageSource {
@@ -64,6 +66,11 @@ function isRemoteUrl(url: string): boolean {
   return /^https?:\/\//i.test(url);
 }
 
+/** 本地文件的 asset 地址（Windows / 安卓为 http(s)://asset.localhost），在 connect-src 白名单内 */
+function isAssetUrl(url: string): boolean {
+  return /^https?:\/\/asset\.localhost(?:[/:?#]|$)/i.test(url);
+}
+
 /** 图片的加载地址：本地文件优先按路径转换，保证读取的是磁盘上的原文件 */
 function resolveLoadUrl(source: ImageSource): string {
   if (source.path) return convertFileSrc(source.path);
@@ -71,9 +78,37 @@ function resolveLoadUrl(source: ImageSource): string {
   throw new Error('图片地址为空');
 }
 
-/** 读取图片原始字节（保持原格式，不重新编码） */
+/** 经画布转码得到的 PNG（非原始字节），另存为时需把扩展名改为 .png */
+const transcodedBlobs = new WeakSet<Blob>();
+
+/**
+ * 原生端读取网络图片：发版 CSP 的 connect-src 不含 http(s)，fetch 必被拦截（开发态无 CSP 不会暴露）；
+ * img-src 放开了网络图片，改用跨域 <img> 加载后经画布转为 PNG。服务器未开放 CORS 时同样无法读取。
+ */
+async function loadRemoteImageAsPng(url: string): Promise<Blob> {
+  let image: HTMLImageElement;
+  try {
+    image = await loadImageElement(url, true);
+  } catch {
+    throw new Error('该网络图片不允许读取，可改为复制图片链接');
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = image.naturalWidth || VECTOR_FALLBACK_SIZE;
+  canvas.height = image.naturalHeight || VECTOR_FALLBACK_SIZE;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) throw new Error('图片尺寸过大，无法复制');
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const blob = await canvasToPng(canvas);
+  transcodedBlobs.add(blob);
+  return blob;
+}
+
+/** 读取图片原始字节（保持原格式，不重新编码；原生端网络图片例外，见 loadRemoteImageAsPng） */
 export async function loadImageBlob(source: ImageSource): Promise<Blob> {
   const url = resolveLoadUrl(source);
+  // 内嵌图片直接解码：原生 CSP 的 connect-src 不含 data:，fetch 会被拦截
+  if (/^data:/i.test(url)) return dataUrlToBlob(url);
+  if (!IS_WEB && isRemoteUrl(url) && !isAssetUrl(url)) return await loadRemoteImageAsPng(url);
   let response: Response;
   try {
     // 网络图片不携带 Referer，与页面显示时的防盗链处理一致
@@ -88,10 +123,15 @@ export async function loadImageBlob(source: ImageSource): Promise<Blob> {
   return await response.blob();
 }
 
-/** 用 <img> 加载同源地址（blob:），用于位图解码器不支持的格式 */
-function loadImageElement(url: string): Promise<HTMLImageElement> {
+/** 用 <img> 加载同源地址（blob:），用于位图解码器不支持的格式；crossOrigin 用于网络图片，避免污染画布 */
+function loadImageElement(url: string, crossOrigin = false): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
+    if (crossOrigin) {
+      image.crossOrigin = 'anonymous';
+      // 与页面显示时的防盗链处理一致，不携带 Referer
+      image.referrerPolicy = 'no-referrer';
+    }
     image.onload = () => resolve(image);
     image.onerror = () => reject(new Error('无法解码该图片'));
     image.src = url;
@@ -242,7 +282,9 @@ export function suggestImageFileName(source: ImageSource, mimeType = ''): string
 /** 另存为：弹出保存对话框写入原始字节（格式与画质不变）；取消返回 false */
 export async function saveImageAs(source: ImageSource): Promise<boolean> {
   const blob = await loadImageBlob(source);
-  const fileName = suggestImageFileName(source, blob.type);
+  let fileName = suggestImageFileName(source, blob.type);
+  // 已转码为 PNG 的网络图片，原扩展名（.jpg 等）与内容不符
+  if (transcodedBlobs.has(blob)) fileName = fileName.replace(/\.[a-z0-9]{2,5}$/i, '.png');
   const ext = fileName.split('.').pop()?.toLowerCase() || 'png';
   const saved = await exportBlobWithDialog(blob, fileName, [
     { name: `${ext.toUpperCase()} 图片`, extensions: [ext] },

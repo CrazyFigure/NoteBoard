@@ -3,6 +3,8 @@
 //         画进画布后导出被拒绝，随后回退为复制路径。
 // 回归 2：复制大图要约 4 秒——曾在前端解码后经 IPC 传数十 MB 像素、再由原生端编码 PNG。
 //         现在本地图片只传路径、网络图片传原始压缩字节，由原生端解码；解不了的格式才传像素。
+// 回归 3：发版 CSP 的 connect-src 不含 data: 与 http(s)，内嵌 / 网络图片的 fetch 必被拦截，
+//         而测试 stub 了 fetch 察觉不到；这里断言这两类图片不再调用 fetch。
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -67,11 +69,35 @@ describe('copyImageToClipboard（桌面端）', () => {
     expect(clipboardWriteImagePixels).not.toHaveBeenCalled();
   });
 
-  it('网络图片传原始压缩字节，由原生端解码', async () => {
-    await copyImageToClipboard({ url: 'https://example.com/a.png' });
-    expect(clipboardWriteImageEncoded).toHaveBeenCalledTimes(1);
+  it('内嵌 data 图片直接解码为原始字节，不发起被 connect-src 拦截的 fetch', async () => {
+    await copyImageToClipboard({ url: 'data:image/png;base64,AQID' });
+    expect(fetch).not.toHaveBeenCalled();
     expect(Array.from(clipboardWriteImageEncoded.mock.calls[0][0] as Uint8Array)).toEqual([1, 2, 3]);
     expect(drawImage).not.toHaveBeenCalled();
+  });
+
+  it('网络图片经跨域 <img> 转 PNG，不发起被 connect-src 拦截的 fetch', async () => {
+    const loaded: { crossOrigin?: string; referrerPolicy?: string; src?: string } = {};
+    vi.stubGlobal('Image', class {
+      naturalWidth = 4;
+      naturalHeight = 3;
+      crossOrigin = '';
+      referrerPolicy = '';
+      onload: (() => void) | null = null;
+      set src(value: string) {
+        Object.assign(loaded, { crossOrigin: this.crossOrigin, referrerPolicy: this.referrerPolicy, src: value });
+        queueMicrotask(() => this.onload?.());
+      }
+    });
+    // jsdom 没有画布编码实现：固定返回 PNG 字节
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (callback: BlobCallback) {
+      callback(new Blob([new Uint8Array([9, 8])], { type: 'image/png' }));
+    });
+    await copyImageToClipboard({ url: 'https://example.com/a.jpg' });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(loaded).toEqual({ crossOrigin: 'anonymous', referrerPolicy: 'no-referrer', src: 'https://example.com/a.jpg' });
+    expect(drawImage).toHaveBeenCalledTimes(1);
+    expect(Array.from(clipboardWriteImageEncoded.mock.calls[0][0] as Uint8Array)).toEqual([9, 8]);
   });
 
   it('原生端解不了的格式改由前端解码：读取原文件字节（经 asset 地址）后传 RGBA 像素', async () => {
@@ -117,9 +143,12 @@ describe('copyImageToClipboard（桌面端）', () => {
   });
 
   it('网络图片不允许跨域读取时给出可操作的提示，而不是静默复制路径', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      throw new TypeError('Failed to fetch');
-    }));
+    vi.stubGlobal('Image', class {
+      onerror: (() => void) | null = null;
+      set src(_value: string) {
+        queueMicrotask(() => this.onerror?.());
+      }
+    });
     await expect(copyImageToClipboard({ url: 'https://example.com/a.png' })).rejects.toThrow('复制图片链接');
     expect(clipboardWriteImageEncoded).not.toHaveBeenCalled();
   });
