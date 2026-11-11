@@ -19,6 +19,7 @@ import { ToastContainer } from '../components/Toast';
 import { PromptDialogHost } from '../components/PromptDialogHost';
 import { ExportResultDialogHost } from '../components/ExportResultDialogHost';
 import { WikiLinkDialogHost } from '../features/wikilink/WikiLinkDialogHost';
+import { LinkGraphHost } from '../features/wikilink/LinkGraphHost';
 import { UnsavedGuardDialog } from '../features/editor-code/UnsavedGuardDialog';
 import { MissingFileDialog } from '../features/external/MissingFileDialog';
 import { ExternalChangeDialog } from '../features/external/ExternalChangeDialog';
@@ -272,6 +273,9 @@ export function MobileShell() {
 
       {/* 双向链接插入 / 编辑弹窗 */}
       <WikiLinkDialogHost />
+
+      {/* 全屏关系图谱 */}
+      <LinkGraphHost />
     </div>
   );
 }

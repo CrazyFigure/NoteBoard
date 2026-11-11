@@ -1789,9 +1789,14 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   min-width: 0;
 }
 
+/* 三个页签在默认 200px 侧栏中刚好放下；更窄时允许收缩并省略 */
 .nb-outline-tab {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   height: 22px;
-  padding: 0 8px;
+  padding: 0 6px;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -1957,6 +1962,344 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   color: var(--editor-text-muted);
   text-align: center;
   line-height: 1.6;
+}
+
+/* ── 关系图谱 ── */
+.nb-graph-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.nb-graph-panel-status {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nb-graph-panel-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.nb-graph-panel-body,
+.nb-graph-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.nb-graph-view {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.nb-graph-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  /* 平移与缩放全部由画布自行处理，不交给浏览器滚动 / 缩放 */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 读取主题颜色与界面字体的探针（不可见） */
+.nb-graph-probe {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+  font-family: var(--ui-font-family);
+}
+
+/* 缩放控件 */
+.nb-graph-controls {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-md, 6px);
+  background: color-mix(in srgb, var(--editor-surface) 92%, transparent);
+  box-shadow: 0 2px 8px -4px rgb(0 0 0 / .18);
+}
+
+.nb-graph-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--editor-text-muted);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-graph-control:hover {
+  background: var(--toolbar-hover);
+  color: var(--editor-text);
+}
+
+.nb-graph-control:active {
+  transform: scale(0.9);
+}
+
+/* 分段切换（层数、范围） */
+.nb-graph-segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 1px;
+  border-radius: var(--radius-sm);
+  background: var(--toolbar-hover);
+}
+
+.nb-graph-segment-item {
+  height: 20px;
+  padding: 0 7px;
+  border: none;
+  border-radius: calc(var(--radius-sm) - 1px);
+  background: transparent;
+  color: var(--editor-text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-graph-segment-item:hover {
+  color: var(--editor-text);
+}
+
+.nb-graph-segment-item:active {
+  transform: scale(0.95);
+}
+
+.nb-graph-segment-item.is-active {
+  background: var(--editor-surface);
+  color: var(--editor-text);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgb(0 0 0 / .08);
+}
+
+.nb-graph-segment-item.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.nb-graph-segment-item.is-disabled:active {
+  transform: none;
+}
+
+/* 空状态提示：叠在画布上，不挡住交互 */
+.nb-graph-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 18%;
+  padding: 0 16px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--editor-text-muted);
+  text-align: center;
+  pointer-events: none;
+}
+
+/* 全屏图谱 */
+.nb-prompt-overlay.nb-graph-overlay {
+  /* 画布每帧重绘，背景模糊会拖慢合成 */
+  backdrop-filter: none;
+}
+
+.nb-graph-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(1180px, 100%);
+  height: min(820px, calc(100dvh - 32px));
+  background: var(--editor-surface);
+  border: 1px solid var(--editor-border);
+  border-radius: 12px;
+  box-shadow: 0 24px 48px -12px rgb(0 0 0 / .22), 0 6px 16px -6px rgb(0 0 0 / .12);
+  color: var(--editor-text);
+  font-family: var(--ui-font-family);
+  overflow: hidden;
+  animation: nb-prompt-pop 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+}
+
+.nb-graph-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 12px 8px 16px;
+  flex-shrink: 0;
+}
+
+.nb-graph-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.nb-graph-heading {
+  flex: 1;
+  min-width: 0;
+}
+
+.nb-graph-status {
+  margin-top: 1px;
+  font-size: 12px;
+  color: var(--editor-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nb-graph-head .nb-prompt-close {
+  margin-top: 0;
+}
+
+.nb-graph-refresh.is-loading svg {
+  animation: nb-backlinks-spin 0.9s linear infinite;
+}
+
+.nb-graph-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px 10px;
+  border-bottom: 1px solid var(--editor-border);
+  flex-shrink: 0;
+}
+
+.nb-graph-options .nb-graph-segment-item {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.nb-graph-chip {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--editor-border);
+  border-radius: 13px;
+  background: transparent;
+  color: var(--editor-text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-graph-chip:hover {
+  background: var(--toolbar-hover);
+  color: var(--editor-text);
+}
+
+.nb-graph-chip:active {
+  transform: scale(0.96);
+}
+
+.nb-graph-chip.is-active {
+  border-color: color-mix(in srgb, var(--accent-strong) 45%, var(--editor-border));
+  background: color-mix(in srgb, var(--accent-strong) 10%, var(--editor-surface));
+  color: var(--accent-strong);
+}
+
+.nb-graph-body {
+  background: var(--editor-bg, var(--editor-surface));
+}
+
+/* 图例 */
+.nb-graph-legend {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  max-width: calc(100% - 80px);
+  font-size: 11px;
+  color: var(--editor-text-muted);
+  pointer-events: none;
+}
+
+.nb-graph-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.nb-graph-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--editor-text-muted);
+}
+
+.nb-graph-legend i.is-focus {
+  background: var(--accent-strong);
+}
+
+.nb-graph-legend i.is-file {
+  border-radius: 2px;
+  background: var(--editor-link);
+}
+
+.nb-graph-legend i.is-unresolved {
+  background: transparent;
+  border: 1px dashed var(--editor-text-muted);
+}
+
+/* 移动端：图谱铺满全屏并避开安全区，控件放大到便于触控 */
+[data-platform='mobile'] .nb-prompt-overlay.nb-graph-overlay {
+  padding: 0;
+}
+
+[data-platform='mobile'] .nb-graph-dialog {
+  width: 100%;
+  height: 100dvh;
+  border: none;
+  border-radius: 0;
+  padding-top: var(--nb-m-safe-top, env(safe-area-inset-top, 0px));
+  padding-bottom: var(--nb-m-safe-bottom, env(safe-area-inset-bottom, 0px));
+}
+
+[data-platform='mobile'] .nb-graph-control {
+  width: 34px;
+  height: 34px;
+}
+
+[data-platform='mobile'] .nb-graph-segment-item {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+[data-platform='mobile'] .nb-graph-chip {
+  height: 30px;
+  padding: 0 12px;
+}
+
+/* 移动端大纲底部面板中的局部图要有足够高度 */
+[data-platform='mobile'] .nb-graph-panel-body {
+  min-height: 320px;
 }
 
 /* 列表 */

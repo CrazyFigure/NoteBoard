@@ -13,6 +13,7 @@ import { ToastContainer } from './Toast';
 import { PromptDialogHost } from './PromptDialogHost';
 import { ExportResultDialogHost } from './ExportResultDialogHost';
 import { WikiLinkDialogHost } from '../features/wikilink/WikiLinkDialogHost';
+import { LinkGraphHost } from '../features/wikilink/LinkGraphHost';
 import { RailToggle } from './rail/RailToggle';
 import { FileDropOverlay } from './FileDropOverlay';
 import { EditorStack } from './shell/EditorStack';
@@ -589,6 +590,9 @@ export function AppShell(_props: { children?: React.ReactNode }) {
 
       {/* 双向链接插入 / 编辑弹窗 */}
       <WikiLinkDialogHost />
+
+      {/* 全屏关系图谱 */}
+      <LinkGraphHost />
 
       {/* 全局文件拖拽释放提示 */}
       {!isShellHidden && <FileDropOverlay />}

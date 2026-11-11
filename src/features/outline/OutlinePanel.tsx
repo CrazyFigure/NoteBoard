@@ -2,7 +2,7 @@
 // NoteBoard 大纲面板
 // 24px 行、缩进 min(level-1,5)*12+8、字号阶梯、当前项高亮
 // 搜索过滤、h2/h3 折叠、双击就地重命名
-// 顶部可切换到「反链」：列出链接到当前文档的其它笔记
+// 顶部可切换到「反链」：列出链接到当前文档的其它笔记；「图谱」：以当前笔记为中心的链接关系图
 // 详见 docs/09-开发路线图.md 9.2-9.10
 
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
@@ -23,7 +23,10 @@ interface OutlinePanelProps {
 // 反向链接面板按需加载：大纲随首屏装载，扫描笔记的代码只在切到「反向链接」时下载
 const BacklinksPanel = lazy(() => import('../wikilink/BacklinksPanel').then((module) => ({ default: module.BacklinksPanel })));
 
-type OutlineTab = 'outline' | 'backlinks';
+// 关系图谱面板同样按需加载：布局与绘制代码只在切到「关系图谱」时下载
+const LinkGraphPanel = lazy(() => import('../wikilink/LinkGraphPanel').then((module) => ({ default: module.LinkGraphPanel })));
+
+type OutlineTab = 'outline' | 'backlinks' | 'graph';
 
 /** 本次运行中最后选择的分页：切换文档、收起再展开时保持 */
 let lastOutlineTab: OutlineTab = 'outline';
@@ -223,7 +226,7 @@ export function OutlinePanel({ editor, docKey = null }: OutlinePanelProps) {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0 10px',
+          padding: '0 6px',
           borderBottom: '1px solid var(--editor-border)',
           flexShrink: 0,
         }}
@@ -249,12 +252,28 @@ export function OutlinePanel({ editor, docKey = null }: OutlinePanelProps) {
           >
             反向链接
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'graph'}
+            className={`nb-outline-tab${tab === 'graph' ? ' is-active' : ''}`}
+            data-sheet-keep=""
+            onClick={() => setTab('graph')}
+          >
+            关系图谱
+          </button>
         </div>
       </div>
 
       {tab === 'backlinks' && (
         <Suspense fallback={null}>
           <BacklinksPanel />
+        </Suspense>
+      )}
+
+      {tab === 'graph' && (
+        <Suspense fallback={null}>
+          <LinkGraphPanel />
         </Suspense>
       )}
 
