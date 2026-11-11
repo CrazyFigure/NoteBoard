@@ -1056,15 +1056,7 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   }
 }
 
-/* 标题基础排版与相对定位（为左侧 Gutter 标题级别标识提供定位锚点） */
-.ProseMirror h1,
-.ProseMirror h2,
-.ProseMirror h3,
-.ProseMirror h4,
-.ProseMirror h5,
-.ProseMirror h6 {
-  position: relative;
-}
+/* 标题保持普通流定位：WebKit 在相对定位的空标题内首次确认 IME 时可能残留拼音。 */
 .ProseMirror h1 { font-size: 1.75em; font-weight: 600; line-height: 1.25; margin: 24px 0 16px; color: var(--editor-heading); padding-bottom: .3em; border-bottom: 1px solid var(--editor-border); }
 .ProseMirror h2 { font-size: 1.55em; font-weight: 600; line-height: 1.25; margin: 24px 0 16px; color: var(--editor-heading); padding-bottom: .3em; border-bottom: 1px solid var(--editor-border); }
 .ProseMirror h3 { font-size: 1.38em; font-weight: 600; line-height: 1.25; margin: 24px 0 16px; color: var(--editor-heading); }
@@ -1072,16 +1064,18 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
 .ProseMirror h5 { font-size: 1.13em; font-weight: 600; line-height: 1.25; margin: 24px 0 16px; color: var(--editor-heading); }
 .ProseMirror h6 { font-size: 1em; font-weight: 600; line-height: 1.25; margin: 24px 0 16px; color: var(--editor-heading); }
 
-/* 标题左侧装订线级别标签（H1 ~ H6），小巧优雅、自适应主题 */
+/* 标题左侧装订线级别标签（H1 ~ H6），小巧优雅、自适应主题。
+ * 用浮动和负边距定位，不再要求可编辑标题 position: relative；22px 宽度与左右边距
+ * 合计为 0，保留原标记位置，且不挤占正文宽度、不影响标题的对齐、缩进与换行。
+ */
 .ProseMirror h1::before,
 .ProseMirror h2::before,
 .ProseMirror h3::before,
 .ProseMirror h4::before,
 .ProseMirror h5::before,
 .ProseMirror h6::before {
-  position: absolute;
-  left: -44px;
-  top: 0.28em;
+  float: left;
+  margin: 0.28em 22px 0 -44px;
   width: 22px;
   display: inline-flex;
   align-items: center;
