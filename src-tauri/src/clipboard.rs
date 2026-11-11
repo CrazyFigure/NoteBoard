@@ -200,13 +200,13 @@ fn header_number(request: &tauri::ipc::Request<'_>, name: &str) -> Option<usize>
 pub async fn clipboard_write_image(window: tauri::WebviewWindow, request: tauri::ipc::Request<'_>) -> Result<(), String> {
     #[cfg(desktop)]
     {
-        let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        // 兼容 postMessage 回退通道传来的 JSON 数字数组
+        let Some(bytes) = crate::ipc_body::body_bytes(request.body()) else {
             return Err("图片数据格式无效".to_string());
         };
         let owner = ClipboardOwner::of(&window)?;
         let encoding = request.headers().get(ENCODING_HEADER).and_then(|value| value.to_str().ok());
         if encoding == Some("encoded") {
-            let bytes = bytes.clone();
             return run_blocking(move || write_decoded(owner, decode_image(bytes)?)).await;
         }
         if encoding != Some("rgba") {
@@ -224,7 +224,7 @@ pub async fn clipboard_write_image(window: tauri::WebviewWindow, request: tauri:
         {
             return Err("图片尺寸与像素数据不一致".to_string());
         }
-        let image = DecodedImage { width: width as u32, height: height as u32, rgba: bytes.clone(), png: None };
+        let image = DecodedImage { width: width as u32, height: height as u32, rgba: bytes, png: None };
         return run_blocking(move || write_decoded(owner, image)).await;
     }
     #[cfg(mobile)]

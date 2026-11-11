@@ -162,7 +162,8 @@ pub fn save_binary_file(path: String, data: Vec<u8>) -> Result<WriteResult, Stri
 /// 异步命令在工作线程写盘，不占用主线程；传输约为 JSON 数字数组的 1/14 耗时。
 #[tauri::command]
 pub async fn save_binary_file_raw(request: tauri::ipc::Request<'_>) -> Result<WriteResult, String> {
-    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+    // 兼容 postMessage 回退通道（安卓、CSP 拦截自定义协议后）传来的 JSON 数字数组
+    let Some(data) = crate::ipc_body::body_bytes(request.body()) else {
         return Err("文件数据格式无效".to_string());
     };
     let path = request
@@ -173,7 +174,6 @@ pub async fn save_binary_file_raw(request: tauri::ipc::Request<'_>) -> Result<Wr
         .map(|value| value.into_owned())
         .filter(|value| !value.is_empty())
         .ok_or_else(|| "缺少保存路径".to_string())?;
-    let data = bytes.clone();
     tauri::async_runtime::spawn_blocking(move || write_binary_file(Path::new(&path), &data))
         .await
         .map_err(|e| format!("保存文件的任务失败: {}", e))?
