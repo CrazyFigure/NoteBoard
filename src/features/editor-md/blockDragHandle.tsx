@@ -140,6 +140,8 @@ export function BlockDragHandle({
   const [isDragging, setIsDragging] = useState(false);
   const [dragFeedback, setDragFeedback] = useState<DragFeedbackState | null>(null);
   const [menu, setMenu] = useState<FormatMenuState | null>(null);
+  // 正文中按住鼠标拖选期间：把手跟随指针所在行出现在左侧留白，会截获指针使选区不再延伸，此时让指针穿透把手
+  const [isTextSelecting, setIsTextSelecting] = useState(false);
   const closeMenu = useCallback(() => setMenu(null), []);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleRef = useRef<HTMLButtonElement>(null);
@@ -260,6 +262,25 @@ export function BlockDragHandle({
       clearHideTimer();
     };
   }, [clearHideTimer, editor]);
+
+  // 跟踪正文拖选：编辑器内左键按下开始，松开（可能在编辑器外）或窗口失焦时结束
+  useEffect(() => {
+    if (!editor) return;
+    const editorDom = editor.view.dom;
+    const handleMouseDown = (event: MouseEvent) => {
+      if (event.button === 0) setIsTextSelecting(true);
+    };
+    const handleMouseUp = () => setIsTextSelecting(false);
+    editorDom.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mouseup', handleMouseUp, true);
+    window.addEventListener('blur', handleMouseUp);
+    return () => {
+      editorDom.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mouseup', handleMouseUp, true);
+      window.removeEventListener('blur', handleMouseUp);
+      setIsTextSelecting(false);
+    };
+  }, [editor]);
 
   // 窗口失焦、按 Esc 或组件卸载时必须取消拖动，避免残留抓取光标和半透明源块。
   useEffect(() => {
@@ -486,7 +507,7 @@ export function BlockDragHandle({
           <button
             ref={handleRef}
             type="button"
-            className={`nb-block-drag-handle${isHoveringHandle ? ' is-hovered' : ''}${isDragging ? ' is-dragging' : ''}`}
+            className={`nb-block-drag-handle${isHoveringHandle ? ' is-hovered' : ''}${isDragging ? ' is-dragging' : ''}${isTextSelecting ? ' is-passive' : ''}`}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}

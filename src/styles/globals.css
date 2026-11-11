@@ -807,6 +807,11 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   transform: scale(1.06);
 }
 
+/* 正文拖选期间指针穿透把手，避免截获指针使选区停止延伸（blockDragHandle.tsx） */
+.nb-block-drag-handle.is-passive {
+  pointer-events: none;
+}
+
 .nb-block-drag-handle:active,
 .nb-block-drag-handle.is-dragging {
   color: var(--editor-accent);
