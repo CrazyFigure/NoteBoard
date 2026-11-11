@@ -428,6 +428,9 @@ pub struct SystemSettings {
     // 更新渠道：github（默认）或 cnb；同时决定安装包、字体包与插件的下载来源
     #[serde(default = "default_update_channel")]
     pub update_channel: String,
+    // 自动检查更新（默认 true）：启动及每 5 分钟静默检查，由前端读取
+    #[serde(default = "default_true")]
+    pub auto_check_update: bool,
 }
 
 impl Default for SystemSettings {
@@ -436,6 +439,7 @@ impl Default for SystemSettings {
             close_to_tray: false,
             show_window_shortcut: String::new(),
             update_channel: default_update_channel(),
+            auto_check_update: true,
         }
     }
 }

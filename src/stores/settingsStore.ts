@@ -144,6 +144,7 @@ export const DEFAULT_SETTINGS: Settings = {
     closeToTray: false,
     showWindowShortcut: '',
     updateChannel: 'github',
+    autoCheckUpdate: true,
   },
   localSearch: {
     enabled: false,

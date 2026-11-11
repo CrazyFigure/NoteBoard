@@ -40,6 +40,11 @@ interface UpdateStore {
 // 自动检测轮询间隔：5 分钟（毫秒）
 const AUTO_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
+/** 自动检查更新开关：旧设置缺字段时视为开启 */
+function autoCheckEnabled(): boolean {
+  return useSettingsStore.getState().settings.system?.autoCheckUpdate !== false;
+}
+
 export const useUpdateStore = create<UpdateStore>((set, get) => ({
   checking: false,
   hasUpdate: false,
@@ -103,15 +108,15 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
   initAutoUpdateTimer: () => {
     // 网页由部署者更新镜像，访问者不能触发服务器安装桌面程序。
     if (IS_WEB) return () => {};
+    // 定时器常驻，触发时才读开关：关闭后跳过，重新开启后下一轮即恢复，无需重建定时器
+    const tick = () => {
+      if (autoCheckEnabled()) void get().checkForUpdates(true);
+    };
     // 1. 启动时延时 3 秒执行首次静默检查，避开应用冷启动高负载
-    const initialTimer = setTimeout(() => {
-      get().checkForUpdates(true);
-    }, 3000);
+    const initialTimer = setTimeout(tick, 3000);
 
     // 2. 注册每隔 5 分钟的定时静默检查任务
-    const intervalTimer = setInterval(() => {
-      get().checkForUpdates(true);
-    }, AUTO_CHECK_INTERVAL_MS);
+    const intervalTimer = setInterval(tick, AUTO_CHECK_INTERVAL_MS);
 
     // 返回清理函数
     return () => {

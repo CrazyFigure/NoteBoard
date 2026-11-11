@@ -48,6 +48,34 @@
   cursor: default;
 }
 
+/* 复选开关：整行可点，悬停高亮、按下轻缩 */
+.nb-about-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 6px 1px 2px;
+  margin-left: -2px;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  user-select: none;
+  transition: all var(--transition-fast);
+}
+
+.nb-about-check:hover {
+  background: var(--toolbar-hover);
+}
+
+.nb-about-check:active {
+  background: var(--toolbar-active);
+  transform: scale(0.97);
+}
+
+.nb-about-check input {
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent-strong);
+}
+
 /* 仓库外链：来源标签 + 仓库路径 */
 .nb-about-repo-link {
   display: inline-flex;

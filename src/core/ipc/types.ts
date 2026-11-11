@@ -504,6 +504,8 @@ export interface SystemSettings {
   showWindowShortcut: string;
   /** 更新渠道（默认 github）：同时决定安装包、字体包与插件的下载来源；旧设置文件可能缺失 */
   updateChannel?: UpdateChannel;
+  /** 自动检查更新（默认 true）：启动及每 5 分钟静默检查；旧设置文件可能缺失 */
+  autoCheckUpdate?: boolean;
 }
 
 /** 本地文件搜索设置（仅桌面端生效） */

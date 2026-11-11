@@ -236,6 +236,26 @@ describe('useUpdateStore 状态管理与检查逻辑', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('关闭自动检查更新后定时器跳过检查，重新开启后下一轮恢复', async () => {
+    vi.useFakeTimers();
+    useSettingsStore.setState({ settings: {
+      ...DEFAULT_SETTINGS, system: { ...DEFAULT_SETTINGS.system, autoCheckUpdate: false },
+    } });
+    vi.mocked(ipc.checkForUpdates).mockResolvedValue({
+      currentVersion: '0.1.0', latestVersion: '0.1.0', updateAvailable: false, releaseUrl: '',
+    });
+    const stop = useUpdateStore.getState().initAutoUpdateTimer();
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    expect(ipc.checkForUpdates).not.toHaveBeenCalled();
+
+    // 重新开启后无需重建定时器，下一轮即检查
+    useSettingsStore.setState({ settings: DEFAULT_SETTINGS });
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    expect(ipc.checkForUpdates).toHaveBeenCalledExactlyOnceWith('github');
+    stop();
+  });
+
   it('openModal 与 closeModal 能正常切换弹窗显示状态', () => {
     const { openModal, closeModal } = useUpdateStore.getState();
     openModal();
