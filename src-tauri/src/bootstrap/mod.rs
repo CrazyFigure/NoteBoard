@@ -2,6 +2,9 @@
 #[cfg(desktop)]
 pub mod single_instance;
 pub mod cli_args;
+// 生命周期状态机在 Windows 单测中同样编译，覆盖 Finder 冷启动先于 Ready 的事件顺序。
+#[cfg(any(target_os = "macos", test))]
+pub mod startup_file_opens;
 // Windows 旧安装器的文件关联恢复也必须覆盖直接替换 EXE 和免安装版启动。
 #[cfg(windows)]
 pub(crate) mod file_associations;

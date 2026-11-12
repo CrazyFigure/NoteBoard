@@ -12,9 +12,16 @@ use super::read;
 use super::trash;
 use super::write;
 
-/// 读取文档
+/// 外部修改核对与重载共用的读盘入口：磁盘等待和编码探测不能阻塞原生窗口事件循环。
 #[tauri::command]
-pub fn read_document(path: String) -> Result<DocumentPayload, String> {
+pub async fn read_document(path: String) -> Result<DocumentPayload, String> {
+    tauri::async_runtime::spawn_blocking(move || read_document_on_worker(path))
+        .await
+        .map_err(|error| format!("读取文档的任务失败: {}", error))?
+}
+
+/// 工作线程内构造完整载荷，保留文本解码和只读预览的原有边界。
+fn read_document_on_worker(path: String) -> Result<DocumentPayload, String> {
     let p = Path::new(&path);
 
     if !p.exists() {
@@ -53,6 +60,38 @@ pub fn read_document(path: String) -> Result<DocumentPayload, String> {
         mtime: result.mtime,
         readonly: result.readonly,
     })
+}
+
+#[cfg(test)]
+mod read_document_tests {
+    use super::read_document;
+
+    #[test]
+    fn async_reload_preserves_text_and_file_properties() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("外部更新.md");
+        let content = "# 磁盘新内容\r\n\r\n| 场景 | 说明 |\r\n";
+        std::fs::write(&path, content).unwrap();
+        let payload = tauri::async_runtime::block_on(read_document(path.to_string_lossy().into_owned())).unwrap();
+        assert_eq!(payload.content.as_deref(), Some(content));
+        assert_eq!(payload.size, content.len() as u64);
+        assert!(matches!(payload.encoding, crate::dto::Encoding::Utf8));
+        assert!(matches!(payload.eol, crate::dto::Eol::Crlf));
+    }
+
+    #[test]
+    fn async_reload_keeps_missing_file_error_and_binary_preview_boundary() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("外部删除.md");
+        assert!(tauri::async_runtime::block_on(read_document(path.to_string_lossy().into_owned())).is_err());
+        // 只读预览仍只返回文件属性，不能把 Office 二进制交给文本解码。
+        let preview = dir.path().join("预览.docx");
+        std::fs::write(&preview, [0xff, 0x00, 0xfe]).unwrap();
+        let payload = tauri::async_runtime::block_on(read_document(preview.to_string_lossy().into_owned())).unwrap();
+        assert!(payload.content.is_none());
+        assert!(payload.readonly);
+        assert_eq!(payload.size, 3);
+    }
 }
 
 /// 从应用文件层读取 XMind；阻塞磁盘操作放入工作线程，二进制响应避免逐字节 JSON 序列化。

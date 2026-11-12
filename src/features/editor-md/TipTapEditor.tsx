@@ -176,6 +176,8 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
   // 🔴 S08 起不再使用 50ms 时间窗：程序化内容设置（parseMarkdown）期间同步加锁，
   //    调用返回即解锁——界面宣布可输入后的第一笔真实按键立即生效
   const isInitializingRef = useRef<boolean>(true);
+  // 源码首开无需可视化初始化；独立的同步锁仅用于磁盘重载，普通撤销/重做仍走输入保存链。
+  const isReloadingContentRef = useRef(false);
 
   const settings = useSettingsStore((s) => s.settings);
   const typography = settings.typography;
@@ -335,7 +337,8 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     const updateListener = EditorView.updateListener.of((update) => {
       // 大纲等订阅者跟随源码的文档、选区与视口变化
       notifyMdSourceViewUpdate(update);
-      if (!update.docChanged) return;
+      // 外部重载只呈现磁盘正文，不能走真实输入的快照和自动保存链。
+      if (!update.docChanged || isReloadingContentRef.current) return;
       // 🔴 内容版本递增：源码模式真实修改同样推进 revision
       bumpDocumentRevision(docKey);
 
@@ -442,57 +445,73 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     // 源码首开和大文档不挂载 TipTap，仍必须注册适配器以支持重载磁盘正文。
     return registerDocumentHistoryAdapter(docKey, {
       applyEntry: (entry, navigation) => {
-        if (viewModeRef.current === 'source') {
-          if (!sourceViewRef.current) {
-            initSourceEditor(entry.content);
+        // 外部替换不产生输入快照或自动保存；以同步作用域覆盖两种内核，并在失败时恢复锁。
+        const wasInitializing = isInitializingRef.current;
+        const wasReloading = isReloadingContentRef.current;
+        if (navigation.externalReload) {
+          isInitializingRef.current = true;
+          isReloadingContentRef.current = true;
+          // 已被重载取代的输入定时器必须取消，避免解除冲突后旧任务再次触发写盘。
+          if (storeTimerRef.current) clearTimeout(storeTimerRef.current);
+          if (diskTimerRef.current) clearTimeout(diskTimerRef.current);
+          storeTimerRef.current = null;
+          diskTimerRef.current = null;
+        }
+        try {
+          if (viewModeRef.current === 'source') {
+            if (!sourceViewRef.current) {
+              initSourceEditor(entry.content);
+            }
+            const view = sourceViewRef.current;
+            if (!view) return;
+            const preferredSelection = navigation.selectionMode === 'source'
+              ? navigation.selection
+              : undefined;
+            // 可视化历史切到源码呈现时，用 Markdown 文本首差异位置作为可靠落点
+            const fallbackPosition = Math.min(navigation.changeOffset, entry.content.length);
+            const anchor = Math.max(0, Math.min(preferredSelection?.anchor ?? fallbackPosition, entry.content.length));
+            const head = Math.max(0, Math.min(preferredSelection?.head ?? anchor, entry.content.length));
+            view.dispatch({
+              changes: view.state.doc.toString() === entry.content
+                ? undefined
+                : { from: 0, to: view.state.doc.length, insert: entry.content },
+              selection: { anchor, head },
+              annotations: CodeMirrorTransaction.addToHistory.of(false),
+              scrollIntoView: !navigation.externalReload,
+            });
+            if (!navigation.externalReload) view.focus();
+            return;
           }
-          const view = sourceViewRef.current;
-          if (!view) return;
-          const preferredSelection = navigation.selectionMode === 'source'
+
+          if (!editor) throw new Error('可视化编辑器尚未就绪');
+          const previousVisualDocument = editor.state.doc;
+          if (hasMarkdownContentChanged(editor, entry.content)) {
+            // 统一历史应用属于导航而非新编辑，整篇替换明确排除出 TipTap 原生历史
+            parseMarkdown(editor, entry.content);
+          }
+          synchronizeCurrentDocumentHistoryContent(
+            docKey,
+            serializeMarkdown(editor),
+            'visual',
+          );
+          const preferredSelection = navigation.selectionMode === 'visual'
             ? navigation.selection
             : undefined;
-          // 可视化历史切到源码呈现时，用 Markdown 文本首差异位置作为可靠落点
-          const fallbackPosition = Math.min(navigation.changeOffset, entry.content.length);
-          const anchor = Math.max(0, Math.min(preferredSelection?.anchor ?? fallbackPosition, entry.content.length));
-          const head = Math.max(0, Math.min(preferredSelection?.head ?? anchor, entry.content.length));
-          view.dispatch({
-            changes: view.state.doc.toString() === entry.content
-              ? undefined
-              : { from: 0, to: view.state.doc.length, insert: entry.content },
-            selection: { anchor, head },
-            annotations: CodeMirrorTransaction.addToHistory.of(false),
-            scrollIntoView: true,
-          });
-          view.focus();
-          return;
+          // 跨源码历史时，比较解析前后的 ProseMirror 文档，避免把 Markdown 标记字符偏移直接当节点坐标
+          const visualChangePosition = previousVisualDocument.content.findDiffStart(editor.state.doc.content);
+          const maxPosition = editor.state.doc.content.size;
+          const fallbackPosition = visualChangePosition ?? Math.min(navigation.changeOffset, maxPosition);
+          const anchor = Math.max(1, Math.min(preferredSelection?.anchor ?? fallbackPosition, maxPosition));
+          const head = Math.max(1, Math.min(preferredSelection?.head ?? anchor, maxPosition));
+          // 外部重载时保留模态层焦点；普通撤销/重做仍滚动并聚焦到历史落点。
+          const chain = editor.chain().setTextSelection({ from: anchor, to: head });
+          if (!navigation.externalReload) chain.scrollIntoView().focus();
+          chain.run();
+          visualUndoDepthRef.current = prosemirrorUndoDepth(editor.state);
+        } finally {
+          isInitializingRef.current = wasInitializing;
+          isReloadingContentRef.current = wasReloading;
         }
-
-        if (!editor) throw new Error('可视化编辑器尚未就绪');
-        const previousVisualDocument = editor.state.doc;
-        if (hasMarkdownContentChanged(editor, entry.content)) {
-          // 统一历史应用属于导航而非新编辑，整篇替换明确排除出 TipTap 原生历史
-          parseMarkdown(editor, entry.content);
-        }
-        synchronizeCurrentDocumentHistoryContent(
-          docKey,
-          serializeMarkdown(editor),
-          'visual',
-        );
-        const preferredSelection = navigation.selectionMode === 'visual'
-          ? navigation.selection
-          : undefined;
-        // 跨源码历史时，比较解析前后的 ProseMirror 文档，避免把 Markdown 标记字符偏移直接当节点坐标
-        const visualChangePosition = previousVisualDocument.content.findDiffStart(editor.state.doc.content);
-        const maxPosition = editor.state.doc.content.size;
-        const fallbackPosition = visualChangePosition ?? Math.min(navigation.changeOffset, maxPosition);
-        const anchor = Math.max(1, Math.min(preferredSelection?.anchor ?? fallbackPosition, maxPosition));
-        const head = Math.max(1, Math.min(preferredSelection?.head ?? anchor, maxPosition));
-        editor
-          .chain()
-          .setTextSelection({ from: anchor, to: head })
-          .scrollIntoView()
-          .focus()
-          .run();
       },
     });
   }, [docKey, editor, initSourceEditor]);

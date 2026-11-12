@@ -44,6 +44,8 @@ export interface RecordDocumentChangeOptions {
 /** 撤销/重做应用快照时提供给当前编辑器的定位信息 */
 export interface DocumentHistoryNavigation {
   direction: 'undo' | 'redo';
+  /** 磁盘重载不作为用户输入，也不主动聚焦或滚动编辑器；普通历史导航保持原有行为。 */
+  externalReload?: boolean;
   /** 前后快照首个差异的文本偏移，跨编辑器内核时作为通用定位坐标 */
   changeOffset: number;
   /** 同一编辑器内核可直接恢复的精确光标位置 */
@@ -558,7 +560,7 @@ function moveHistory(docKey: string, offset: -1 | 1): boolean {
  * 追加为独立的历史分组并交给当前编辑器呈现，Ctrl+Z 可回到替换前；
  * 没有已挂载的编辑器时返回 false，由调用方提示。
  */
-export function applyDocumentContentAsChange(docKey: string, content: string): boolean {
+export function applyDocumentContentAsChange(docKey: string, content: string, options?: { externalReload?: boolean }): boolean {
   materializePending(docKey);
   const state = histories.get(docKey);
   const adapter = adapters.get(docKey);
@@ -573,6 +575,7 @@ export function applyDocumentContentAsChange(docKey: string, content: string): b
     adapter.applyEntry(toPublicEntry(state, state.index), {
       direction: 'redo',
       changeOffset: findFirstChangeOffset(previousContent, content),
+      externalReload: options?.externalReload,
     });
     state.forceNextGroup = true;
     state.lastEditMode = null;

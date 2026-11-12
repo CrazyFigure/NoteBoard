@@ -57,7 +57,8 @@ export async function reloadFromDisk(docKey: string, options?: { silent?: boolea
     if (capabilities) {
       const applied = capabilities.replaceContent
         ? capabilities.replaceContent(diskContent)
-        : applyDocumentContentAsChange(docKey, diskContent);
+        // 冲突弹窗关闭前不能与其焦点约束竞争；同步拉取的后台重载也不应抢焦点。
+        : applyDocumentContentAsChange(docKey, diskContent, { externalReload: true });
       if (!applied) {
         if (!silent) showToast('编辑器尚未就绪，当前内容和冲突保护已保留，请稍后重试', 'warning');
         return false;
