@@ -3,16 +3,18 @@
 // 24px 行、缩进 min(level-1,5)*12+8、字号阶梯、当前项高亮
 // 搜索过滤、h2/h3 折叠、双击就地重命名
 // 顶部可切换到「反链」：列出链接到当前文档的其它笔记；「图谱」：以当前笔记为中心的链接关系图
+// 大纲设为「编辑区内」时，右侧栏不再显示「文档大纲」页签，只保留反链与图谱
 // 详见 docs/09-开发路线图.md 9.2-9.10
 
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import { ChevronRight } from 'lucide-react';
 import type { Editor } from '@tiptap/core';
 import { Tooltip } from '../../components/Tooltip';
-import { useWindowStore } from '../../stores/windowStore';
-import { useHeadings, type HeadingItem } from './useHeadings';
-import { jumpToSourceHeading, renameSourceHeading, useMdSourceView, useSourceHeadings } from './useSourceHeadings';
+import { useSettingsStore } from '../../stores/settingsStore';
+import type { HeadingItem } from './useHeadings';
+import { renameSourceHeading } from './useSourceHeadings';
 import type { SourceHeadingItem } from './sourceHeadings';
+import { useOutlineNavigator } from './useOutlineNavigator';
 
 interface OutlinePanelProps {
   editor: Editor | null;
@@ -43,14 +45,15 @@ function getIndent(level: number): number {
 }
 
 export function OutlinePanel({ editor, docKey = null }: OutlinePanelProps) {
-  const viewMode = useWindowStore((s) => (docKey ? s.tabs.find((t) => t.key === docKey)?.viewMode : undefined));
-  const sourceView = useMdSourceView(docKey);
-  // 源码模式，或可视化内核尚未挂载（源码首开、大文档）时，以源码为大纲数据源
-  const sourceMode = Boolean(sourceView) && (viewMode === 'source' || !editor);
-  const visualOutline = useHeadings(sourceMode ? null : editor);
-  const sourceOutline = useSourceHeadings(sourceMode ? sourceView : null);
-  const { headings, activeId, setActiveId } = sourceMode ? sourceOutline : visualOutline;
-  const [tab, setTabState] = useState<OutlineTab>(lastOutlineTab);
+  // 大纲移到编辑区内时，右侧栏不再提取标题（数据源传空），只显示反链与图谱
+  const inlineOutline = useSettingsStore((s) => s.settings.editor.outlinePosition === 'inline');
+  const { headings, activeId, jumpTo, sourceMode, sourceView } = useOutlineNavigator(
+    inlineOutline ? null : editor,
+    inlineOutline ? null : docKey,
+  );
+  const [tabState, setTabState] = useState<OutlineTab>(lastOutlineTab);
+  // 「文档大纲」页签隐藏时退到反向链接，不改写用户上次的选择
+  const tab: OutlineTab = inlineOutline && tabState === 'outline' ? 'backlinks' : tabState;
   const setTab = useCallback((next: OutlineTab) => {
     lastOutlineTab = next;
     setTabState(next);
@@ -119,39 +122,7 @@ export function OutlinePanel({ editor, docKey = null }: OutlinePanelProps) {
   }, [headings, collapsed, searchQuery]);
 
   // 点击跳转
-  const handleHeadingClick = useCallback(
-    (heading: HeadingItem) => {
-      if (sourceMode && sourceView) {
-        jumpToSourceHeading(sourceView, heading as SourceHeadingItem);
-        setActiveId(heading.id);
-        return;
-      }
-      if (!editor) return;
-      const { pos } = heading;
-      const docSize = editor.state.doc.content.size;
-      const targetPos = Math.min(pos + 1, docSize);
-
-      editor.commands.focus();
-      editor.commands.setTextSelection(targetPos);
-
-      // 滚动到位置
-      requestAnimationFrame(() => {
-        try {
-          const dom = editor.view.nodeDOM(pos);
-          if (dom instanceof HTMLElement) {
-            dom.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          } else {
-            editor.commands.scrollIntoView();
-          }
-        } catch {
-          editor.commands.scrollIntoView();
-        }
-      });
-
-      setActiveId(heading.id);
-    },
-    [editor, setActiveId, sourceMode, sourceView],
-  );
+  const handleHeadingClick = jumpTo;
 
   // 双击编辑
   const handleDoubleClick = useCallback(
@@ -232,16 +203,18 @@ export function OutlinePanel({ editor, docKey = null }: OutlinePanelProps) {
         }}
       >
         <div className="nb-outline-tabs" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'outline'}
-            className={`nb-outline-tab${tab === 'outline' ? ' is-active' : ''}`}
-            data-sheet-keep=""
-            onClick={() => setTab('outline')}
-          >
-            文档大纲
-          </button>
+          {!inlineOutline && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'outline'}
+              className={`nb-outline-tab${tab === 'outline' ? ' is-active' : ''}`}
+              data-sheet-keep=""
+              onClick={() => setTab('outline')}
+            >
+              文档大纲
+            </button>
+          )}
           <button
             type="button"
             role="tab"

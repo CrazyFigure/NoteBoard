@@ -38,6 +38,7 @@ import { useWindowStore } from '../../stores/windowStore';
 import { getAutoSaveDelayMs, useSettingsStore } from '../../stores/settingsStore';
 import { on, off, emit } from '../../core/emitter';
 import { MarkdownModeToggle } from './MarkdownModeToggle';
+import { InlineOutline } from '../outline/InlineOutline';
 import { ReadingModeOverlay } from '../reading/ReadingModeOverlay';
 import { requestReadingMode } from '../reading/readingMode';
 import { useSharedReadonly } from '../account/sharedReadonly';
@@ -1016,6 +1017,9 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
 
       {/* 底部左侧模式切换器：可视化 / 源码模式，具备热区靠近唤出与 Hover、Active 状态反馈，仅对当前文档生效 */}
       {!isReading && !showLargeBanner && <MarkdownModeToggle viewMode={viewMode} onToggle={toggleViewMode} />}
+
+      {/* 编辑区内目录（设置为「编辑区内」时）：固定在编辑区一侧，沉浸阅读时同样显示 */}
+      {!showLargeBanner && <InlineOutline editor={editor} docKey={docKey} active={isActiveDocument} reading={isReading} />}
 
       {/* 沉浸阅读：进度条与退出按钮 */}
       {isReading && !showLargeBanner && <ReadingModeOverlay rootRef={editorRef} onExit={exitReading} />}

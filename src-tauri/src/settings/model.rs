@@ -230,6 +230,12 @@ pub struct EditorSettings {
     // 思维导图节点图片默认显示方式：original（原始比例）/ fill（宽度填充）
     #[serde(default = "default_mindmap_image_fit")]
     pub mindmap_image_fit: String,
+    // Markdown 大纲位置：sidebar（右侧栏）/ inline（编辑区内悬浮目录）
+    #[serde(default = "default_outline_position")]
+    pub outline_position: String,
+    // 编辑区内目录靠哪一侧：left / right
+    #[serde(default = "default_outline_inline_side")]
+    pub outline_inline_side: String,
     // 用户固定的自定义颜色（十六进制），按用途分组；旧配置缺失时为空
     #[serde(default)]
     pub custom_colors: CustomColorSettings,
@@ -269,6 +275,8 @@ impl Default for EditorSettings {
             mindmap_node_max_width: default_mindmap_node_max_width(),
             mindmap_text_align: default_mindmap_text_align(),
             mindmap_image_fit: default_mindmap_image_fit(),
+            outline_position: default_outline_position(),
+            outline_inline_side: default_outline_inline_side(),
             custom_colors: CustomColorSettings::default(),
         }
     }
@@ -475,6 +483,8 @@ fn default_tab_size() -> u32 { 2 }
 fn default_mindmap_node_max_width() -> u32 { 280 }
 fn default_mindmap_text_align() -> String { "left".to_string() }
 fn default_mindmap_image_fit() -> String { "original".to_string() }
+fn default_outline_position() -> String { "sidebar".to_string() }
+fn default_outline_inline_side() -> String { "left".to_string() }
 fn default_image_dir() -> String { "img".to_string() }
 fn default_large_file_mb() -> u32 { 50 }
 fn default_auto_save_delay_ms() -> u32 { 1000 }

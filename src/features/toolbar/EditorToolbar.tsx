@@ -4,7 +4,7 @@
 
 import React, { lazy, Suspense } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { BookOpen, ChevronUp, History } from 'lucide-react';
+import { BookOpen, ChevronUp, History, PanelRight } from 'lucide-react';
 import type { Editor } from '@tiptap/core';
 import type { Tab } from '../../stores/windowStore';
 import { useLayoutStore } from '../../stores/layoutStore';
@@ -25,8 +25,9 @@ interface EditorToolbarProps {
 
 export function EditorToolbar({ activeTab, activeEditor }: EditorToolbarProps) {
   // 工具栏不跟随菜单计数或窗口停靠状态重绘，避免一次菜单操作刷新整套格式按钮。
-  const { editorToolbarVisible, setEditorToolbarVisible, compactMode } = useLayoutStore(useShallow((s) => ({
+  const { editorToolbarVisible, setEditorToolbarVisible, compactMode, outlineVisible, toggleOutline } = useLayoutStore(useShallow((s) => ({
     editorToolbarVisible: s.editorToolbarVisible, setEditorToolbarVisible: s.setEditorToolbarVisible, compactMode: s.compactMode,
+    outlineVisible: s.outlineVisible, toggleOutline: s.toggleOutline,
   })));
 
   // 若当前无激活标签页、非文本格式或为纯前端工具视图（如文本对比），不渲染操作栏
@@ -95,7 +96,7 @@ export function EditorToolbar({ activeTab, activeEditor }: EditorToolbarProps) {
       ) : null}
       </Suspense>
 
-      {/* 右侧视图操作：导出（仅 Markdown）、沉浸阅读（Markdown、代码与 Mermaid / PlantUML / 信息图）与收起按钮 */}
+      {/* 右侧视图操作：导出（仅 Markdown）、右侧栏开关（仅 Markdown）、沉浸阅读（Markdown、代码与 Mermaid / PlantUML / 信息图）与收起按钮 */}
       <div style={{ marginLeft: compactMode ? 2 : 8, display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
         {!compactMode && (
           <>
@@ -106,6 +107,15 @@ export function EditorToolbar({ activeTab, activeEditor }: EditorToolbarProps) {
               shortcut="Ctrl+Alt+Z"
               onClick={() => openVersionHistory(activeTab.key)}
             />
+            {/* 右侧栏开关（仅 Markdown 有右侧栏）：与右把手共用可见性，展开时以激活态显示 */}
+            {activeTab.kind === 'markdown' && (
+              <ToolbarButton
+                icon={<PanelRight size={15} strokeWidth={2.2} />}
+                title={outlineVisible ? '收起右侧栏' : '展开右侧栏'}
+                active={outlineVisible}
+                onClick={toggleOutline}
+              />
+            )}
             <ToolbarButton
               icon={<BookOpen size={15} strokeWidth={2.2} />}
               title="沉浸阅读"

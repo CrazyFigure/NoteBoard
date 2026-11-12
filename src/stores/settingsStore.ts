@@ -111,6 +111,8 @@ export const DEFAULT_SETTINGS: Settings = {
     mindmapNodeMaxWidth: 280,
     mindmapTextAlign: 'left',
     mindmapImageFit: 'original',
+    outlinePosition: 'sidebar',
+    outlineInlineSide: 'left',
   },
   file: {
     autoSaveMarkdown: false,

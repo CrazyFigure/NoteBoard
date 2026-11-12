@@ -1154,6 +1154,41 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       onChange={(e) => setEditor({ detailsDefaultExpanded: e.target.checked })}
                     />
                   </div>
+
+                  {/* 大纲位置：右侧栏（默认）或编辑区内悬浮目录，后者可选靠左 / 靠右 */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                    <div>
+                      <div>Markdown 大纲位置</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>编辑区内目录固定显示，沉浸阅读时同样可用</div>
+                    </div>
+                    <SettingsSelect
+                      ariaLabel="Markdown 大纲位置"
+                      value={settings.editor.outlinePosition ?? 'sidebar'}
+                      options={[
+                        { value: 'sidebar', label: '右侧栏' },
+                        { value: 'inline', label: '编辑区内' },
+                      ]}
+                      onChange={(v) => setEditor({ outlinePosition: v })}
+                    />
+                  </div>
+
+                  {settings.editor.outlinePosition === 'inline' && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                      <div>
+                        <div>目录显示位置</div>
+                        <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>编辑区内目录靠哪一侧</div>
+                      </div>
+                      <SettingsSelect
+                        ariaLabel="目录显示位置"
+                        value={settings.editor.outlineInlineSide ?? 'left'}
+                        options={[
+                          { value: 'left', label: '左侧' },
+                          { value: 'right', label: '右侧' },
+                        ]}
+                        onChange={(v) => setEditor({ outlineInlineSide: v })}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* ── 3.3 Markdown 渲染增强 ── */}

@@ -375,6 +375,10 @@ export interface EditorSettings {
   mindmapTextAlign?: 'left' | 'center';
   // 思维导图节点图片默认显示方式：原始比例 / 宽度填充（缺省视为 original）
   mindmapImageFit?: 'original' | 'fill';
+  // Markdown 大纲位置：右侧栏 / 编辑区内悬浮目录（缺省视为 sidebar）
+  outlinePosition?: 'sidebar' | 'inline';
+  // 编辑区内目录靠哪一侧（缺省视为 left）
+  outlineInlineSide?: 'left' | 'right';
   // 用户固定的自定义颜色（十六进制小写），按用途分组；旧配置缺失时视为空
   customColors?: CustomColorSettings;
 }
