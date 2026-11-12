@@ -177,6 +177,8 @@ export function TitleBar() {
               alignItems: 'center',
               justifyContent: 'center',
               flexShrink: 0,
+              // 右侧伸入标签栏给激活标签圆弧预留的内边距，收窄图标与首个标签的间距（热区仍为 36px）
+              marginRight: -6,
               cursor: 'pointer',
               transition: 'all var(--transition-fast)',
             }}
