@@ -42,7 +42,7 @@ export function PluginFonts() {
     }
   };
 
-  return <section id="nb-plugin-fonts" className="nb-plugin-fonts">
+  return <section id="nb-plugin-fonts" className="nb-plugin-fonts" data-setting-id="pluginFonts">
     <div className="nb-plugin-fonts-heading">
       <div><h3>字体</h3><p>字体增强包 v{status?.version || '1.0.0'} · 两款一起下载，约 19 MB</p></div>
       <div className="nb-plugin-actions">

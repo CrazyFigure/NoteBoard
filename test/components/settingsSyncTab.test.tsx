@@ -96,16 +96,16 @@ describe('设置页同步与备份切换', () => {
     act(() => button!.click());
   }
 
-  it('全局最后一项默认开启阅读位置恢复，并允许手动关闭', async () => {
+  it('通用页「启动与会话」默认开启阅读位置恢复，并允许手动关闭', async () => {
     const previous = useSettingsStore.getState().settings;
     const setFile = vi.spyOn(useSettingsStore.getState(), 'setFile').mockResolvedValue(undefined);
     try {
       await act(async () => useSettingsStore.setState({ settings: structuredClone(DEFAULT_SETTINGS) }));
-      switchTab('全局');
-      const checkboxes = host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
+      switchTab('通用');
       const toggle = host.querySelector<HTMLInputElement>('[aria-label="重新打开时恢复上次阅读位置"]')!;
       expect(toggle).not.toBeNull();
-      expect(checkboxes[checkboxes.length - 1]).toBe(toggle);
+      // 与「保留最近文件」同在启动与会话分组
+      expect(toggle.closest('[data-setting-id="restoreReadingPosition"]')?.parentElement?.textContent).toContain('保留最近文件');
       expect(toggle.checked).toBe(true);
       await act(async () => toggle.click());
       expect(setFile).toHaveBeenCalledWith({ restoreReadingPosition: false });
@@ -170,7 +170,7 @@ describe('设置页同步与备份切换', () => {
     expect(host.textContent).not.toContain('正在加载同步设置');
 
     // 往返切换仍直接展示缓存表单，不因重新挂载回到加载占位。
-    switchTab('外观主题');
+    switchTab('外观');
     expect(host.querySelector('.nb-sync-panel')).toBeNull();
     switchTab('同步与备份');
     expect(host.textContent).toContain('开启多端同步');

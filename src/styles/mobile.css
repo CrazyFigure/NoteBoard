@@ -1123,14 +1123,29 @@ html[data-platform='mobile'] body {
   flex-direction: column;
 }
 
+/* 左栏改为顶部：搜索框单独一行，栏目导航在其下方横向滚动 */
+[data-platform='mobile'] .nb-settings-sidebar {
+  width: auto !important;
+  border-right: none !important;
+  border-bottom: 1px solid var(--editor-border);
+}
+
+[data-platform='mobile'] .nb-settings-search {
+  margin: 8px 8px 0;
+}
+
+[data-platform='mobile'] .nb-settings-search input {
+  min-height: 36px;
+  font-size: 14px;
+}
+
 [data-platform='mobile'] .nb-settings-nav {
   width: auto !important;
   flex-direction: row !important;
   gap: 4px !important;
   padding: 8px !important;
   overflow-x: auto;
-  border-right: none !important;
-  border-bottom: 1px solid var(--editor-border);
+  overflow-y: hidden !important;
   scrollbar-width: none;
 }
 

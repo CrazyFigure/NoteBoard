@@ -182,7 +182,7 @@ function SyncSection({ draft, update, flush }: { draft: SyncConfigFile; update: 
   );
 
   return (
-    <div className="nb-sync-card">
+    <div className="nb-sync-card" data-setting-id="sync">
       <div className="nb-sync-card-head">
         <div className="nb-sync-card-title">
           <Cloud size={15} />
@@ -321,7 +321,7 @@ function SyncSection({ draft, update, flush }: { draft: SyncConfigFile; update: 
 function ProviderSection({ draft, update }: { draft: SyncConfigFile; update: UpdateFn }) {
   const onChange = (provider: SyncProviderConfig) => update((c) => (c.sync.provider = provider));
   return (
-    <div className="nb-sync-card">
+    <div className="nb-sync-card" data-setting-id="syncMethod">
       <div className="nb-sync-card-head">
         <div className="nb-sync-card-title">
           <Cloud size={15} />
@@ -338,7 +338,7 @@ function ProviderSection({ draft, update }: { draft: SyncConfigFile; update: Upd
 
 function TimingSection({ draft, update, nextSyncAt }: { draft: SyncConfigFile; update: UpdateFn; nextSyncAt: number }) {
   return (
-    <div className="nb-sync-card">
+    <div className="nb-sync-card" data-setting-id="syncTiming">
       <div className="nb-sync-card-title">
         <Clock size={15} />
         <span>同步时机</span>
@@ -389,7 +389,7 @@ function TimingSection({ draft, update, nextSyncAt }: { draft: SyncConfigFile; u
 
 function TrashSection({ draft, update, onOpenTrash }: { draft: SyncConfigFile; update: UpdateFn; onOpenTrash: () => void }) {
   return (
-    <div className="nb-sync-card">
+    <div className="nb-sync-card" data-setting-id="trash">
       <div className="nb-sync-card-head">
         <div className="nb-sync-card-title">
           <Trash2 size={15} />
@@ -520,7 +520,7 @@ function BackupSection({ draft, update, flush }: { draft: SyncConfigFile; update
   };
 
   return (
-    <div className="nb-sync-card">
+    <div className="nb-sync-card" data-setting-id="backup">
       <div className="nb-sync-card-title">
         <Archive size={15} />
         <span>备份</span>

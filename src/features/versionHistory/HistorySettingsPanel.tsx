@@ -158,7 +158,7 @@ export function HistorySettingsPanel() {
         <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>历史记录</h3>
       </div>
 
-      <div className="nb-sync-card">
+      <div className="nb-sync-card" data-setting-id="historyMode">
         <div className="nb-sync-card-title">
           <History size={15} />
           <span>记录方式</span>
@@ -193,7 +193,7 @@ export function HistorySettingsPanel() {
       </div>
 
       {enabled && (
-        <div className="nb-sync-card">
+        <div className="nb-sync-card" data-setting-id="historyRetention">
           <div className="nb-sync-card-title">
             <HardDrive size={15} />
             <span>保留与空间</span>

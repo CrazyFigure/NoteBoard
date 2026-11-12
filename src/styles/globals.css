@@ -2895,6 +2895,136 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   font-family: inherit;
 }
 
+/* 设置左栏顶部的搜索框 */
+.nb-settings-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 14px 8px 4px;
+  flex-shrink: 0;
+}
+
+.nb-settings-search-icon {
+  position: absolute;
+  left: 9px;
+  color: var(--editor-text-muted);
+  pointer-events: none;
+}
+
+.nb-settings-search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 26px 6px 28px;
+  font-size: 12.5px;
+  font-family: inherit;
+  color: var(--editor-text);
+  background: var(--editor-bg);
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.nb-settings-search input:hover {
+  border-color: var(--editor-border-focus);
+}
+
+.nb-settings-search input:focus {
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 3px var(--editor-selection);
+}
+
+.nb-settings-search-clear {
+  position: absolute;
+  right: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--editor-text-muted);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-settings-search-clear:hover {
+  background: var(--toolbar-hover);
+  color: var(--editor-text);
+}
+
+.nb-settings-search-clear:active {
+  background: var(--toolbar-active);
+  transform: scale(0.9);
+}
+
+/* 设置搜索结果列表 */
+.nb-settings-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nb-settings-search-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  color: var(--editor-text);
+  background: var(--editor-surface);
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-settings-search-result:hover {
+  background: var(--toolbar-hover);
+  border-color: var(--editor-border-focus);
+}
+
+.nb-settings-search-result:active {
+  background: var(--toolbar-active);
+  transform: scale(0.99);
+}
+
+.nb-settings-search-result-path {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  color: var(--editor-text-muted);
+}
+
+.nb-settings-search-empty {
+  padding: 24px 0;
+  font-size: 13px;
+  color: var(--editor-text-muted);
+  text-align: center;
+}
+
+/* 搜索命中后对目标设置项的短暂高亮 */
+.nb-setting-flash {
+  border-radius: var(--radius-sm);
+  animation: nb-setting-flash 1.6s ease-out;
+}
+
+@keyframes nb-setting-flash {
+  0%,
+  45% {
+    background-color: var(--editor-selection);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-strong) 35%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 3px transparent;
+  }
+}
+
 /* 设置页排版分组底部的「效果预览」折叠块 */
 .nb-settings-preview {
   border-top: 1px dashed var(--editor-border);

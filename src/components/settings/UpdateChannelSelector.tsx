@@ -18,7 +18,7 @@ export function UpdateChannelSelector() {
   const setSystem = useSettingsStore((state) => state.setSystem);
 
   return (
-    <div className="nb-about-row">
+    <div className="nb-about-row" data-setting-id="updateChannel">
       <span>更新渠道</span>
       <Tooltip content={CHANNEL_HINT} side="top" sideOffset={4}>
         <div className="nb-about-segmented" role="radiogroup" aria-label="更新渠道">

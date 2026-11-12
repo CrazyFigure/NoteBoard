@@ -1,9 +1,9 @@
 // NoteBoard 设置中心模态弹窗
-// 外观主题切换（晨光/琥珀/墨夜/跟随系统） + 排版设置（字体/字号/行高/内容宽度） + 快捷键与关于
-// 详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
+// 通用 / 外观 / 排版与字体 / 编辑器 / 文件与保存 / 同步与备份 / 历史记录 / 插件和字体 / 快捷键 / 关于，左栏顶部提供设置搜索
+// 页名与搜索索引见 settingsSearchIndex.ts；详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud, ChevronRight, Monitor, History, PanelTop, UserRound, Users, Globe, RotateCcw } from 'lucide-react';
+import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud, ChevronRight, Monitor, History, PanelTop, UserRound, Users, Globe, RotateCcw, Search, RotateCw } from 'lucide-react';
 import { AUTO_SAVE_DELAY_MAX_MS, AUTO_SAVE_DELAY_MIN_MS, DEFAULT_SETTINGS, clampAutoSaveDelayMs, useSettingsStore, useTitleBarButtons } from '../../stores/settingsStore';
 import { ConfirmDialog } from '../../features/sync/SyncControls';
 import { THEMES } from '../../core/theme/themes';
@@ -20,10 +20,13 @@ import { SettingsSelect } from './SettingsSelect';
 import { TabSizeSelect } from './TabSizeSelect';
 import { ReleaseNotes } from './ReleaseNotes';
 import { UPDATE_CHANNEL_ORDER, UpdateChannelSelector } from './UpdateChannelSelector';
+import { AutoCheckUpdateToggle } from './AutoCheckUpdateToggle';
 import { RELEASE_CHANNELS } from '../../core/releaseChannel';
 import { Tooltip } from '../Tooltip';
 import type { ExplorerOpenMode, HtmlOpenMode, TitleBarButtons } from '../../core/ipc/types';
-import { IS_MOBILE_UI, IS_NATIVE_MOBILE, IS_WEB } from '../../core/platform';
+import { IS_MOBILE_UI, IS_WEB } from '../../core/platform';
+// 栏目元数据与设置搜索索引
+import { SHOW_ACCOUNT, SHOW_SYNC, SUPPORTS_SYSTEM_INTEGRATION, TAB_LABELS, searchSettings, type SettingsSearchEntry, type TabType } from './settingsSearchIndex';
 import { GlobalShortcutRecorder } from './GlobalShortcutRecorder';
 import { formatShortcut } from '../../core/shortcuts';
 // 设置窗口已在 App 中按需加载；同步面板及样式随窗口就绪，避免首次切换先显示加载占位。
@@ -33,7 +36,7 @@ import { PluginsPanel } from '../../features/plugins/PluginsPanel';
 // 网页多用户：账号与用户管理面板（原生端与公开部署不显示入口）
 import { AccountPanel } from '../../features/account/AccountPanel';
 import { UserManagementPanel } from '../../features/account/UserManagementPanel';
-import { isAdmin, isMultiUser } from '../../features/account/accountState';
+import { isAdmin } from '../../features/account/accountState';
 // 历史记录设置随设置窗口加载（只含设置表单，不含查看界面）
 import { HistorySettingsPanel } from '../../features/versionHistory/HistorySettingsPanel';
 import { useLayoutStore } from '../../stores/layoutStore';
@@ -48,14 +51,8 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type TabType = 'account' | 'users' | 'appearance' | 'typography' | 'editor' | 'file' | 'sync' | 'history' | 'plugins' | 'shortcuts' | 'general' | 'about';
-
-// 多端同步仅管理员可用：多用户部署中普通用户不显示同步页
-const SHOW_ACCOUNT = () => IS_WEB && isMultiUser();
-const SHOW_SYNC = () => !IS_WEB || !isMultiUser() || isAdmin();
-
-// 托盘与全局快捷键仅原生桌面端可用（网页与移动端没有系统托盘）
-const SUPPORTS_SYSTEM_INTEGRATION = !IS_NATIVE_MOBILE && !IS_WEB;
+// 搜索命中后对目标设置项的高亮时长
+const SETTING_FLASH_MS = 1600;
 
 // 标题栏可隐藏的按钮：检查更新仅桌面端，极窄模式仅桌面端支持时提供
 const TITLE_BAR_BUTTON_OPTIONS: { key: keyof TitleBarButtons; label: string; available: () => boolean }[] = [
@@ -66,12 +63,22 @@ const TITLE_BAR_BUTTON_OPTIONS: { key: keyof TitleBarButtons; label: string; ava
 ];
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<TabType>('appearance');
+  // 「通用」位于导航首位，首次打开默认进入；同一会话内再次打开沿用上次查看的栏目
+  const [activeTab, setActiveTab] = useState<TabType>('general');
+  // 设置搜索：有查询内容时右侧显示匹配结果，选中后跳到对应栏目并高亮该设置项
+  const [searchQuery, setSearchQuery] = useState('');
+  const [flashTarget, setFlashTarget] = useState<{ id: string; seq: number } | null>(null);
+  const searching = searchQuery.trim() !== '';
+  const searchResults = searching ? searchSettings(searchQuery) : [];
+  // 右侧实际渲染的栏目：显示搜索结果期间不渲染任何栏目
+  const shownTab: TabType | null = searching ? null : activeTab;
   const settingsTarget = useLayoutStore((state) => state.settingsTarget);
   // 打开入口携带目标，字体按钮与缺少查看器的文件页均能直达安装区域。
   useEffect(() => {
     if (!isOpen || !settingsTarget) return;
-    // 本地文件搜索面板的「前往设置」定位到全局页
+    // 一次性定位优先于搜索结果
+    setSearchQuery('');
+    // 本地文件搜索面板的「前往设置」定位到通用页
     setActiveTab(settingsTarget === 'history' ? 'history' : settingsTarget === 'localSearch' ? 'general' : 'plugins');
   }, [isOpen, settingsTarget]);
   // 关闭后清除一次性定位，普通设置入口沿用上次查看的栏目。
@@ -117,29 +124,55 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   // 「恢复默认」确认框的目标分区，null 表示未打开
   const [resetTarget, setResetTarget] = useState<'typography' | 'editor' | null>(null);
-  // 回车键互换在快捷键页设置，编辑器页恢复默认时保留，避免改动其它页的设置项
-  const editorDefaults = { ...DEFAULT_SETTINGS.editor, swapEnterKeys: settings.editor.swapEnterKeys ?? false };
+  // 回车键互换已移入编辑器页的 Markdown 分组，恢复默认时随编辑器设置一并重置
   const isTypographyDefault = matchesDefaults(settings.typography, DEFAULT_SETTINGS.typography);
-  const isEditorDefault = matchesDefaults(settings.editor, editorDefaults);
+  const isEditorDefault = matchesDefaults(settings.editor, DEFAULT_SETTINGS.editor);
 
   /** 将确认的分区整体写回默认值 */
   const handleConfirmReset = async () => {
     const target = resetTarget;
     setResetTarget(null);
     if (target === 'typography') await setTypography({ ...DEFAULT_SETTINGS.typography });
-    else if (target === 'editor') await setEditor(editorDefaults);
+    else if (target === 'editor') await setEditor({ ...DEFAULT_SETTINGS.editor });
     if (target) showToast('已恢复默认设置', 'success');
   };
 
   // 设置右侧内容区域的容器引用
   const contentRef = useRef<HTMLDivElement>(null);
 
-  // 切换设置 Tab 栏目或重新打开设置时，重置右侧内容区域的竖向滚动条至顶部
+  // 切换设置 Tab 栏目、进出搜索结果或重新打开设置时，重置右侧内容区域的竖向滚动条至顶部
   useEffect(() => {
     if (contentRef.current) {
       contentRef.current.scrollTop = 0;
     }
-  }, [activeTab, isOpen]);
+  }, [activeTab, isOpen, searching]);
+
+  /** 选中搜索结果：清空查询、切换栏目，并在下一帧定位高亮目标设置项 */
+  const jumpToSetting = (entry: SettingsSearchEntry) => {
+    setSearchQuery('');
+    setActiveTab(entry.tab);
+    setFlashTarget({ id: entry.id, seq: Date.now() });
+  };
+
+  // 定位放到下一帧：先让栏目渲染并完成上面的滚动归零，再滚动到目标（做法同 PluginsPanel）
+  useEffect(() => {
+    if (!flashTarget) return;
+    let element: HTMLElement | null = null;
+    let timer: number | undefined;
+    const frame = requestAnimationFrame(() => {
+      element = contentRef.current?.querySelector<HTMLElement>(`[data-setting-id="${flashTarget.id}"]`) ?? null;
+      // 面板中未展示的条目（如未开启时隐藏的分区）只切换栏目
+      if (!element) return;
+      element.scrollIntoView?.({ block: 'center' });
+      element.classList.add('nb-setting-flash');
+      timer = window.setTimeout(() => element?.classList.remove('nb-setting-flash'), SETTING_FLASH_MS);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+      element?.classList.remove('nb-setting-flash');
+    };
+  }, [flashTarget]);
 
   // 监听 Esc 键快速关闭设置模态弹窗
   useEffect(() => {
@@ -154,6 +187,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
+
+  /** 栏目导航按钮：页名取自 TAB_LABELS；点击时退出搜索结果，显示搜索结果期间不高亮任何栏目 */
+  const renderNavBtn = (tab: TabType, icon: React.ReactNode) => (
+    <NavBtn
+      active={!searching && activeTab === tab}
+      icon={icon}
+      label={TAB_LABELS[tab]}
+      onClick={() => { setSearchQuery(''); setActiveTab(tab); }}
+    />
+  );
 
   const currentThemeMode = settings.appearance.themeMode;
 
@@ -253,101 +296,72 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
         {/* 主体两栏内容（移动端改为顶部横向导航 + 下方内容） */}
         <div className="nb-settings-body" style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-          {/* 左侧导航栏 */}
+          {/* 左侧栏：顶部设置搜索 + 栏目导航 */}
           <div
-            className="nb-settings-nav"
+            className="nb-settings-sidebar"
             style={{
               width: 165,
               borderRight: '1px solid var(--editor-border)',
               background: 'var(--editor-surface)',
-              padding: '14px 8px',
               display: 'flex',
               flexDirection: 'column',
-              gap: 6,
               flexShrink: 0,
+              minHeight: 0,
             }}
           >
-            {SHOW_ACCOUNT() && (
-              <>
-                <NavBtn active={activeTab === 'account'} icon={<UserRound size={15} />} label="账号" onClick={() => setActiveTab('account')} />
-                {isAdmin() && <NavBtn active={activeTab === 'users'} icon={<Users size={15} />} label="用户管理" onClick={() => setActiveTab('users')} />}
-                <div className="nb-settings-nav-divider" style={{ height: 1, background: 'var(--editor-border)', margin: '2px 6px' }} />
-              </>
-            )}
-            <NavBtn
-              active={activeTab === 'appearance'}
-              icon={<Palette size={15} />}
-              label="外观主题"
-              onClick={() => setActiveTab('appearance')}
+            <SettingsSearchBox
+              value={searchQuery}
+              onChange={setSearchQuery}
+              onSubmit={() => { if (searchResults[0]) jumpToSetting(searchResults[0]); }}
             />
-            {/* 全局：新建入口布局各端通用；窗口与托盘仅原生桌面端在页内展示 */}
-            <NavBtn
-              active={activeTab === 'general'}
-              icon={<Monitor size={15} />}
-              label="全局"
-              onClick={() => setActiveTab('general')}
-            />
-            <NavBtn
-              active={activeTab === 'typography'}
-              icon={<Type size={15} />}
-              label="排版与字体"
-              onClick={() => setActiveTab('typography')}
-            />
-            <NavBtn
-              active={activeTab === 'editor'}
-              icon={<FileCode size={15} />}
-              label="编辑器"
-              onClick={() => setActiveTab('editor')}
-            />
-            <NavBtn
-              active={activeTab === 'file'}
-              icon={<Folder size={15} />}
-              label="文件与保存"
-              onClick={() => setActiveTab('file')}
-            />
-            {SHOW_SYNC() && (
-              <NavBtn
-                active={activeTab === 'sync'}
-                icon={<Cloud size={15} />}
-                label="同步与备份"
-                onClick={() => setActiveTab('sync')}
-              />
-            )}
-            <NavBtn
-              active={activeTab === 'history'}
-              icon={<History size={15} />}
-              label="历史记录"
-              onClick={() => setActiveTab('history')}
-            />
-            {/* 移动端没有物理键盘快捷键，隐藏该分组 */}
-            <NavBtn active={activeTab === 'plugins'} icon={<LayoutTemplate size={15} />} label="插件和字体" onClick={() => setActiveTab('plugins')} />
-            {/* 插件管理在桌面、移动与网页端使用相同入口。 */}
-            {!IS_MOBILE_UI && (
-              <NavBtn
-                active={activeTab === 'shortcuts'}
-                icon={<Keyboard size={15} />}
-                label="快捷键"
-                onClick={() => setActiveTab('shortcuts')}
-              />
-            )}
-            <NavBtn
-              active={activeTab === 'about'}
-              icon={<Info size={15} />}
-              label="关于"
-              onClick={() => setActiveTab('about')}
-            />
+            <div
+              className="nb-settings-nav"
+              style={{
+                padding: '6px 8px 14px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                flex: 1,
+                minHeight: 0,
+                overflowY: 'auto',
+              }}
+            >
+              {SHOW_ACCOUNT() && (
+                <>
+                  {renderNavBtn('account', <UserRound size={15} />)}
+                  {isAdmin() && renderNavBtn('users', <Users size={15} />)}
+                  <div className="nb-settings-nav-divider" style={{ height: 1, background: 'var(--editor-border)', margin: '2px 6px' }} />
+                </>
+              )}
+              {/* 通用：窗口与托盘、启动与会话、搜索、新建入口等跨编辑器的设置；托盘等仅原生桌面端在页内展示 */}
+              {renderNavBtn('general', <Monitor size={15} />)}
+              {renderNavBtn('appearance', <Palette size={15} />)}
+              {renderNavBtn('typography', <Type size={15} />)}
+              {renderNavBtn('editor', <FileCode size={15} />)}
+              {renderNavBtn('file', <Folder size={15} />)}
+              {SHOW_SYNC() && renderNavBtn('sync', <Cloud size={15} />)}
+              {renderNavBtn('history', <History size={15} />)}
+              {/* 插件管理在桌面、移动与网页端使用相同入口。 */}
+              {renderNavBtn('plugins', <LayoutTemplate size={15} />)}
+              {/* 移动端没有物理键盘快捷键，隐藏该分组 */}
+              {!IS_MOBILE_UI && renderNavBtn('shortcuts', <Keyboard size={15} />)}
+              {renderNavBtn('about', <Info size={15} />)}
+            </div>
           </div>
 
           {/* 右侧设置面板 */}
           <div ref={contentRef} className="nb-settings-content" style={{ flex: 1, padding: '24px 30px', overflowY: 'auto' }}>
-            {/* 1. 外观主题：页级仅保留标题，主题卡片继续展示配色说明。 */}
-            {activeTab === 'appearance' && (
+            {/* 0. 设置搜索结果：有查询内容时替代当前栏目 */}
+            {searching && <SettingsSearchResults results={searchResults} onSelect={jumpToSetting} />}
+
+            {/* 1. 外观：主题配色与标题栏按钮，主题卡片继续展示配色说明。 */}
+            {shownTab === 'appearance' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
                 <div>
                   <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>主题配色方案</h3>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
+                <div data-setting-id="theme" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
                   {/* 晨光 */}
                   <ThemeCard
                     title="晨光"
@@ -393,11 +407,33 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     onClick={() => setThemeMode('system')}
                   />
                 </div>
+
+                {/* 标题栏按钮：可选入口是否展示（移动端没有标题栏，不展示） */}
+                {!IS_MOBILE_UI && (
+                <div data-setting-id="titleBarButtons" style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
+                    <PanelTop size={15} color="var(--accent-strong)" />
+                    <span>标题栏按钮</span>
+                  </div>
+
+                  {TITLE_BAR_BUTTON_OPTIONS.filter((option) => option.available()).map((option) => (
+                    <div key={option.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
+                      <div>{option.label}</div>
+                      <input
+                        type="checkbox"
+                        aria-label={`标题栏显示${option.label}`}
+                        checked={titleBarButtons[option.key]}
+                        onChange={(e) => setLayout({ titleBarButtons: { ...titleBarButtons, [option.key]: e.target.checked } })}
+                      />
+                    </div>
+                  ))}
+                </div>
+                )}
               </div>
             )}
 
             {/* 2. 排版与字体：页级仅保留标题，具体排版规则由设置项说明。 */}
-            {activeTab === 'typography' && (
+            {shownTab === 'typography' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                   <h3 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>排版参数自定义</h3>
@@ -405,10 +441,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
 
                 {/* 应用字体包独立于安装包，设置页提供下载、修复、导入和删除的长期入口。 */}
-                <FontPackSettingsCard onOpen={() => { useLayoutStore.setState({settingsTarget:'fonts'}); setActiveTab('plugins'); }} />
+                <div data-setting-id="fontPack">
+                  <FontPackSettingsCard onOpen={() => { useLayoutStore.setState({settingsTarget:'fonts'}); setActiveTab('plugins'); }} />
+                </div>
 
                 {/* ── 2.1 软件界面 UI 排版 ── */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                <div data-setting-id="uiFont" style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
                       <LayoutTemplate size={15} color="var(--accent-strong)" />
@@ -490,7 +528,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
 
                 {/* ── 2.2 Markdown 正文排版 ── */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                <div data-setting-id="contentFont" style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
                     <FileText size={15} color="var(--accent-strong)" />
                     <span>Markdown 正文排版</span>
@@ -531,7 +569,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         style={{ width: '100%' }}
                       />
                     </div>
-                    <div style={formRowStyle}>
+                    <div data-setting-id="contentLineHeight" style={formRowStyle}>
                       <label style={labelStyle}>正文行高 ({settings.typography.contentLineHeight})</label>
                       <SettingsRange
                         min="1.3"
@@ -545,7 +583,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
 
                   {/* 正文段落间距：相邻段落（Enter 换段落）之间的空白高度；段内换行（Shift + Enter）不受影响 */}
-                  <div style={formRowStyle}>
+                  <div data-setting-id="paragraphSpacing" style={formRowStyle}>
                     <label style={labelStyle}>正文段落间距 ({settings.typography.contentParagraphSpacing ?? 14}px)</label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                       <SettingsRange
@@ -566,7 +604,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
 
                   {/* Markdown 编辑区最大宽度 */}
-                  <div style={formRowStyle}>
+                  <div data-setting-id="contentWidth" style={formRowStyle}>
                     <label style={labelStyle}>Markdown 编辑区最大宽度 (默认宽屏 92%)</label>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
                       {/* 预设档位按钮 */}
@@ -674,7 +712,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
 
                 {/* ── 2.3 代码与纯文本排版 ── */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                <div data-setting-id="monoFont" style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
                       <FileCode size={15} color="var(--accent-strong)" />
@@ -733,7 +771,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
 
                   {/* 代码 / 纯文本 / MD 源码编辑区边距：文本与顶部、行号槽、右侧之间的留白 */}
-                  <div style={formRowStyle}>
+                  <div data-setting-id="monoPadding" style={formRowStyle}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                       <div style={formRowStyle}>
                         <label style={labelStyle}>编辑区上下边距 ({settings.typography.monoPaddingY ?? 16}px)</label>
@@ -764,7 +802,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
 
                   {/* 代码与纯文本编辑区最大宽度 */}
-                  <div style={formRowStyle}>
+                  <div data-setting-id="monoWidth" style={formRowStyle}>
                     <label style={labelStyle}>代码 / 纯文本 / MD 源码编辑区最大宽度 (默认全宽 100%)</label>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
                       {/* 预设档位按钮 */}
@@ -883,7 +921,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
 
                 {/* ── 2.5 文件树排版（资源管理器） ── */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                <div data-setting-id="explorerFont" style={{ display: 'flex', flexDirection: 'column', gap: 18, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
                       <Folder size={15} color="var(--accent-strong)" />
@@ -990,22 +1028,22 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             )}
 
             {/* 3. 编辑器配置：页级仅保留标题，具体编辑行为由设置项说明。 */}
-            {activeTab === 'editor' && (
+            {shownTab === 'editor' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                   <h3 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>编辑器与代码设置</h3>
                   <ResetDefaultsButton disabled={isEditorDefault} onClick={() => setResetTarget('editor')} />
                 </div>
 
-                {/* ── 3.1 代码与纯文本展示 ── */}
+                {/* ── 3.1 代码与纯文本：显示项与缩进 ── */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
                     <FileCode size={15} color="var(--accent-strong)" />
-                    <span>代码与纯文本展示 (.txt / .sql / .json / .yaml 等)</span>
+                    <span>代码与纯文本 (.txt / .sql / .json / .yaml 等)</span>
                   </div>
 
                   {/* 显示空格（显示为点） */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
+                  <div data-setting-id="showWhitespace" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>显示空格（点）</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>将文本中的空格显示为轻柔圆点标记，制表符显示为箭头</div>
@@ -1018,7 +1056,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
 
                   {/* 显示换行符（↵） */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
+                  <div data-setting-id="showLineEndings" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>显示换行符号 (↵)</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>在各行末尾显示 ↵ 换行指示符号</div>
@@ -1031,7 +1069,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
 
                   {/* 显示行号 */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
+                  <div data-setting-id="showLineNumbers" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>显示行号</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>在左侧边栏展示代码行号及活动行高亮</div>
@@ -1044,7 +1082,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
 
                   {/* 软换行 */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
+                  <div data-setting-id="softWrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>软换行 (自动折行)</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>超出编辑器可视宽度时自动折行，避免横向滚动</div>
@@ -1057,7 +1095,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
 
                   {/* 缩进导线 */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
+                  <div data-setting-id="indentGuides" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>缩进参考导线</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>在代码层级之间显示垂直虚线导线</div>
@@ -1070,7 +1108,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
 
                   {/* 列编辑模式：关闭时已进入的编辑器立即退出 */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
+                  <div data-setting-id="columnEdit" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>列编辑模式</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>{formatShortcut('Alt')} + 拖动或中键拖动，多行同时编辑</div>
@@ -1081,16 +1119,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       onChange={(e) => setEditor({ enableColumnEdit: e.target.checked })}
                     />
                   </div>
-                </div>
 
-                {/* ── 3.2 缩进与编辑参数 ── */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
-                    <FileText size={15} color="var(--accent-strong)" />
-                    <span>缩进与通用选项</span>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                  {/* 缩进参数：作用于代码、纯文本与 Markdown 源码 */}
+                  <div data-setting-id="tabSize" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <div>
                       <div>Tab 缩进宽度</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>每个 Tab 对应的空格数量</div>
@@ -1102,7 +1133,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     />
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                  <div data-setting-id="insertSpaces" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <div>
                       <div>空格代替 Tab</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>按下 Tab 键时插入对应数量的空格</div>
@@ -1113,8 +1144,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       onChange={(e) => setEditor({ insertSpaces: e.target.checked })}
                     />
                   </div>
+                </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                {/* ── 3.2 Markdown：视图、展开状态、大纲、复制、回车与渲染增强 ── */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
+                    <FileText size={15} color="var(--accent-strong)" />
+                    <span>Markdown</span>
+                  </div>
+
+                  <div data-setting-id="defaultViewMode" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <div>
                       <div>Markdown 默认视图模式</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>新打开 Markdown 文档时的初始模式</div>
@@ -1131,7 +1170,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
 
                   {/* 可视化模式中代码块 / 折叠块的初始展开状态（仅影响显示，不写入文件） */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                  <div data-setting-id="codeBlockExpanded" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <div>
                       <div>代码块默认展开</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>关闭后可视化模式中的代码块默认收起，只显示语言与行数</div>
@@ -1143,7 +1182,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     />
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                  <div data-setting-id="detailsExpanded" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <div>
                       <div>折叠块默认展开</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>{'<details> 折叠块的初始状态；源码带 open 属性的始终展开'}</div>
@@ -1156,7 +1195,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
 
                   {/* 大纲位置：右侧栏（默认）/ 编辑区内左侧 / 编辑区内右侧；一个下拉同时写入位置与靠边两个字段 */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                  <div data-setting-id="outlinePosition" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <div>
                       <div>Markdown 大纲位置</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>编辑区内目录固定显示，沉浸阅读时同样可用</div>
@@ -1182,7 +1221,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
 
                   {/* Ctrl+C 的复制格式（实现见 features/editor-md/markdownClipboard.ts）；Ctrl+Shift+C 复制为另一种格式 */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                  <div data-setting-id="copyFormat" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <div>
                       <div>Markdown 复制格式</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>
@@ -1199,15 +1238,23 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       onChange={(v) => setEditor({ copyFormat: v })}
                     />
                   </div>
-                </div>
 
-                {/* ── 3.3 Markdown 渲染增强 ── */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--accent-strong)' }}>
-                    Markdown 增强功能
+                  {/* Enter 与 Shift+Enter 互换（规则实现见 features/editor-md/enterKeyBehavior.ts）；快捷键页的回车类按键随此设置显示 */}
+                  <div data-setting-id="swapEnterKeys" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                    <div>
+                      <div>Enter 与 Shift + Enter 互换</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>开启后 Enter 段内换行、Shift + Enter 换段落；代码块、表格、标题与空行不受影响</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      aria-label="Enter 与 Shift + Enter 互换"
+                      checked={settings.editor.swapEnterKeys ?? false}
+                      onChange={(e) => setEditor({ swapEnterKeys: e.target.checked })}
+                    />
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                  {/* ── Markdown 渲染增强 ── */}
+                  <div data-setting-id="enableMath" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <span>LaTeX 数学公式渲染 (KaTeX)</span>
                     <input
                       type="checkbox"
@@ -1216,7 +1263,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     />
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                  <div data-setting-id="enableMermaid" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <span>Mermaid 图表实时渲染</span>
                     <input
                       type="checkbox"
@@ -1225,7 +1272,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     />
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                  <div data-setting-id="blockHandle" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <span>悬浮块把手 (拖拽与菜单)</span>
                     <input
                       type="checkbox"
@@ -1235,13 +1282,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </div>
 
-                {/* ── 3.4 思维导图 ── */}
+                {/* ── 3.3 思维导图 ── */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--accent-strong)' }}>
                     思维导图
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13, padding: '2px 0' }}>
+                  <div data-setting-id="mindmapWidth" style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13, padding: '2px 0' }}>
                     <div>
                       <div>节点默认宽度</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>超出后自动换行；手动拉伸的节点不受影响</div>
@@ -1261,7 +1308,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                  <div data-setting-id="mindmapAlign" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <div>
                       <div>节点文字对齐</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>节点可在「节点样式」中单独设置</div>
@@ -1277,7 +1324,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     />
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                  <div data-setting-id="mindmapImage" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <div>
                       <div>节点图片显示</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>原始比例完整显示；宽度填充为固定高度裁切</div>
@@ -1297,14 +1344,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             )}
 
             {/* 4. 文件与保存设置：页级仅保留标题，保留保存策略等操作提示。 */}
-            {activeTab === 'file' && (
+            {shownTab === 'file' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                 <div>
                   <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>文件与保存设置</h3>
                 </div>
 
                 {/* ── 4.1 自动保存设置 ── */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                <div data-setting-id="autoSave" style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
                       <Save size={15} color="var(--accent-strong)" />
@@ -1406,15 +1453,15 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </div>
 
-                {/* ── 4.2 文件与目录管理 ── */}
+                {/* ── 4.2 文件树与打开：隐藏文件、打开方式与大文件提示 ── */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
                     <Folder size={15} color="var(--accent-strong)" />
-                    <span>文件树与会话选项</span>
+                    <span>文件树与打开</span>
                   </div>
 
                   {/* 显示隐藏文件 */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
+                  <div data-setting-id="showHiddenFiles" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
                       <div>显示隐藏文件 / 文件夹</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>在左侧文件树中显示以点（.）开头的隐藏文件或系统文件</div>
@@ -1426,21 +1473,25 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     />
                   </div>
 
-                  {/* 保留最近文件：启动时恢复到 Tab 栏，但当前页面仍停留 Home。 */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
+                  {/* 资源管理器：文件树中打开文件的方式（默认双击） */}
+                  <div data-setting-id="explorerOpenMode" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <div>
-                      <div>保留最近文件</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>默认开启；启动时自动恢复到 Tab 栏，当前页面仍显示 Home</div>
+                      <div>打开文件的方式</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>在左侧文件树中打开文件</div>
                     </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.file.restoreSession ?? true}
-                      onChange={(e) => setFile({ restoreSession: e.target.checked })}
+                    <SettingsSelect<ExplorerOpenMode>
+                      ariaLabel="打开文件的方式"
+                      value={settings.file.explorerOpenMode ?? 'double'}
+                      options={[
+                        { value: 'double', label: '双击打开' },
+                        { value: 'single', label: '单击打开' },
+                      ]}
+                      onChange={(v) => setFile({ explorerOpenMode: v })}
                     />
                   </div>
 
                   {/* 大文件确认阈值 */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                  <div data-setting-id="largeFile" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <div>
                       <div>大文件打开确认阈值 (MB)</div>
                       <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>超过此大小的文件在打开前将弹出性能提示</div>
@@ -1457,7 +1508,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
 
                 {/* ── 4.3 暂存目录设置 ── */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                <div data-setting-id="staging" style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, color: 'var(--editor-text)' }}>
                     <Folder size={15} color="var(--accent-strong)" />
                     <span>未保存文件暂存区</span>
@@ -1486,7 +1537,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
 
                 {/* ── 4.4 图片目录设置 ── */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                <div data-setting-id="imageDir" style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, color: 'var(--editor-text)' }}>
                     <ImageIcon size={15} color="var(--accent-strong)" />
                     <span>图片目录设置</span>
@@ -1510,21 +1561,22 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             )}
 
             {/* 5. 同步与备份：与其他页签一样直接渲染，配置未就绪的提示由面板自身处理。 */}
-            {activeTab === 'account' && <AccountPanel />}
-            {activeTab === 'users' && isAdmin() && <UserManagementPanel />}
-            {activeTab === 'sync' && SHOW_SYNC() && <SyncPanel />}
-            {activeTab === 'history' && <HistorySettingsPanel />}
-            {activeTab === 'plugins' && <PluginsPanel target={settingsTarget} />}
+            {/* 账号、用户管理与插件页整体作为搜索定位目标，外包一层承载 data-setting-id */}
+            {shownTab === 'account' && <div data-setting-id="account"><AccountPanel /></div>}
+            {shownTab === 'users' && isAdmin() && <div data-setting-id="users"><UserManagementPanel /></div>}
+            {shownTab === 'sync' && SHOW_SYNC() && <SyncPanel />}
+            {shownTab === 'history' && <HistorySettingsPanel />}
+            {shownTab === 'plugins' && <div data-setting-id="plugins"><PluginsPanel target={settingsTarget} /></div>}
 
-            {/* 全局：页级仅保留标题；新建入口各端通用，托盘行为仅原生桌面端展示。 */}
-            {activeTab === 'general' && (
+            {/* 通用：页级仅保留标题；启动与会话、新建入口各端通用，托盘与 HTML 链接仅原生桌面端展示。 */}
+            {shownTab === 'general' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
                 <div>
-                  <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>全局设置</h3>
+                  <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>通用设置</h3>
                 </div>
 
                 {SUPPORTS_SYSTEM_INTEGRATION && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                <div data-setting-id="closeToTray" style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
                     <Monitor size={15} color="var(--accent-strong)" />
                     <span>窗口与托盘</span>
@@ -1545,63 +1597,57 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
                 )}
 
-                {/* 本地文件搜索：开关与索引位置（文件夹 / 整个磁盘，可添加多个）；网页端为管理员开关的全局搜索 */}
-                {SUPPORTS_LOCAL_SEARCH && !IS_MOBILE_UI && (IS_WEB ? <WebSearchSettingsCard /> : <LocalSearchSettingsCard />)}
-
-                {/* 新建入口：主页与「+」菜单中哪些格式直接展示、哪些收进更多 */}
-                <div style={{ padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
-                  <CreateFormatsSettings />
-                </div>
-
-                {/* 标题栏按钮：可选入口是否展示（移动端没有标题栏，不展示） */}
-                {!IS_MOBILE_UI && (
+                {/* 启动与会话：启动时恢复上次打开的文件标签；阅读位置各端通用，与是否恢复标签独立，两者默认开启。 */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
-                    <PanelTop size={15} color="var(--accent-strong)" />
-                    <span>标题栏按钮</span>
+                    <RotateCw size={15} color="var(--accent-strong)" />
+                    <span>启动与会话</span>
                   </div>
 
-                  {TITLE_BAR_BUTTON_OPTIONS.filter((option) => option.available()).map((option) => (
-                    <div key={option.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                      <div>{option.label}</div>
-                      <input
-                        type="checkbox"
-                        checked={titleBarButtons[option.key]}
-                        onChange={(e) => setLayout({ titleBarButtons: { ...titleBarButtons, [option.key]: e.target.checked } })}
-                      />
-                    </div>
-                  ))}
-                </div>
-                )}
-
-                {/* 资源管理器：文件树中打开文件的方式（默认双击） */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
-                    <Folder size={15} color="var(--accent-strong)" />
-                    <span>资源管理器</span>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                  {/* 保留最近文件：启动时恢复到 Tab 栏，但当前页面仍停留 Home。 */}
+                  <div data-setting-id="restoreSession" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
                     <div>
-                      <div>打开文件的方式</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>在左侧文件树中打开文件</div>
+                      <div>保留最近文件</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>默认开启；启动时自动恢复到 Tab 栏，当前页面仍显示 Home</div>
                     </div>
-                    <SettingsSelect<ExplorerOpenMode>
-                      ariaLabel="打开文件的方式"
-                      value={settings.file.explorerOpenMode ?? 'double'}
-                      options={[
-                        { value: 'double', label: '双击打开' },
-                        { value: 'single', label: '单击打开' },
-                      ]}
-                      onChange={(v) => setFile({ explorerOpenMode: v })}
+                    <input
+                      type="checkbox"
+                      aria-label="保留最近文件"
+                      checked={settings.file.restoreSession ?? true}
+                      onChange={(e) => setFile({ restoreSession: e.target.checked })}
                     />
                   </div>
+
+                  <div data-setting-id="restoreReadingPosition" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
+                    <div>
+                      <div>重新打开时恢复上次阅读位置</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>恢复滚动位置、选区与 Markdown 视图模式</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      aria-label="重新打开时恢复上次阅读位置"
+                      checked={settings.file.restoreReadingPosition ?? true}
+                      onChange={(e) => setFile({ restoreReadingPosition: e.target.checked })}
+                    />
+                  </div>
+                </div>
+
+                {/* 本地文件搜索：开关与索引位置（文件夹 / 整个磁盘，可添加多个）；网页端为管理员开关的全局搜索 */}
+                {SUPPORTS_LOCAL_SEARCH && !IS_MOBILE_UI && (
+                  <div data-setting-id="localSearch">
+                    {IS_WEB ? <WebSearchSettingsCard /> : <LocalSearchSettingsCard />}
+                  </div>
+                )}
+
+                {/* 新建入口：主页与「+」菜单中哪些格式直接展示、哪些收进更多 */}
+                <div data-setting-id="createFormats" style={{ padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                  <CreateFormatsSettings />
                 </div>
 
                 {/* HTML 链接：笔记等文档中点击本地 HTML 链接时交给系统浏览器还是在本软件中分屏预览
                     （仅桌面端；资源管理器、拖入等入口始终在本软件打开，网页端与移动端始终应用内预览） */}
                 {SUPPORTS_SYSTEM_INTEGRATION && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                <div data-setting-id="htmlOpenMode" style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
                     <Globe size={15} color="var(--accent-strong)" />
                     <span>HTML 链接</span>
@@ -1624,24 +1670,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </div>
                 )}
-
-                {/* 阅读位置各端通用，与启动时是否恢复文件标签独立，默认开启。 */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)', fontSize: 13 }}>
-                  <div>重新打开时恢复上次阅读位置</div>
-                  <input
-                    type="checkbox"
-                    aria-label="重新打开时恢复上次阅读位置"
-                    checked={settings.file.restoreReadingPosition ?? true}
-                    onChange={(e) => setFile({ restoreReadingPosition: e.target.checked })}
-                  />
-                </div>
               </div>
             )}
 
             {/* 6. 快捷键指南：页级仅保留标题，具体操作说明保留在快捷键条目中。 */}
-            {activeTab === 'shortcuts' && (
+            {shownTab === 'shortcuts' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-                <div>
+                <div data-setting-id="shortcutList">
                   <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>快捷键一览</h3>
                 </div>
 
@@ -1680,7 +1715,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <ShortcutItem keyCombo="Ctrl + O" label="打开文件" />
                   <ShortcutItem keyCombo="Ctrl + Shift + O" label="打开文件夹" />
                   <ShortcutItem keyCombo="Ctrl + Shift + N" label="新建空窗口" />
-                  {SUPPORTS_LOCAL_SEARCH && <ShortcutItem keyCombo="Ctrl + Shift + F" label={IS_WEB ? '全局搜索' : '本地文件搜索'} tip={IS_WEB ? '搜索文件名与内容，需管理员在 设置 → 全局 中开启' : '搜索文件名与内容，需先在 设置 → 全局 中开启'} />}
+                  {SUPPORTS_LOCAL_SEARCH && <ShortcutItem keyCombo="Ctrl + Shift + F" label={IS_WEB ? '全局搜索' : '本地文件搜索'} tip={IS_WEB ? '搜索文件名与内容，需管理员在 设置 → 通用 中开启' : '搜索文件名与内容，需先在 设置 → 通用 中开启'} />}
                   <ShortcutItem keyCombo="Ctrl + S" label="保存当前文档" />
                   <ShortcutItem keyCombo="Ctrl + Shift + S" label="文档另存为" />
                   <ShortcutItem keyCombo="Ctrl + W" label="关闭当前标签页" />
@@ -1690,6 +1725,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   {/* 全局唤起：无默认值，由用户录制；与快捷键条目同高，录制按钮占据右侧按键位 */}
                   {SUPPORTS_SYSTEM_INTEGRATION && (
                     <div
+                      data-setting-id="globalShortcut"
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -1726,32 +1762,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                 {/* Markdown 回车类按键（规则实现见 features/editor-md/enterKeyBehavior.ts）；细节放在 tip 中，行内只留要点 */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-strong)', marginBottom: 4 }}>
-                    Markdown 回车类按键
-                  </div>
-                  {/* Enter 与 Shift+Enter 互换开关：与快捷键条目同高，复选框占据右侧按键位 */}
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 12,
-                      padding: '8px 12px',
-                      background: 'var(--editor-surface)',
-                      borderRadius: 'var(--radius-sm)',
-                      border: '1px solid var(--editor-border)',
-                      fontSize: 12,
-                    }}
-                  >
-                    <ShortcutLabel
-                      label="Enter 与 Shift + Enter 互换"
-                      tip="开启后 Enter 段内换行、Shift + Enter 换段落；代码块、表格、标题与空行不受影响"
-                    />
-                    <input
-                      type="checkbox"
-                      checked={settings.editor.swapEnterKeys ?? false}
-                      onChange={(e) => setEditor({ swapEnterKeys: e.target.checked })}
-                    />
+                  {/* Enter 与 Shift+Enter 互换开关位于编辑器页的 Markdown 分组，此处按键随设置显示 */}
+                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-strong)' }}>
+                      Markdown 回车类按键
+                    </div>
+                    <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>可在 编辑器 中互换 Enter 与 Shift + Enter</span>
                   </div>
                   <ShortcutItem
                     keyCombo={settings.editor.swapEnterKeys ? 'Shift + Enter' : 'Enter'}
@@ -1809,7 +1825,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             )}
 
             {/* 4. 关于 */}
-            {activeTab === 'about' && (
+            {shownTab === 'about' && (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 18, padding: '24px 0' }}>
                 <img src="/logo.ico" alt="NoteBoard Logo" width={56} height={56} />
                 <div>
@@ -1824,7 +1840,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
 
                 {/* 快捷操作：检测更新与 GitHub / 腾讯云 CNB 仓库 */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 12, marginTop: 8 }}>
+                <div data-setting-id="checkUpdate" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 12, marginTop: 8 }}>
                   <button
                     type="button"
                     className="nb-btn-secondary"
@@ -1931,6 +1947,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   ))}
                 </div>
 
+                {/* 自动检查更新：启动及每 5 分钟静默检查，默认开启；网页版由部署者更新，不显示 */}
+                {!IS_WEB && <AutoCheckUpdateToggle />}
+
                 {/* 更新渠道：检测更新、安装包、字体与插件的下载来源 */}
                 <UpdateChannelSelector />
 
@@ -1997,6 +2016,65 @@ function NavBtn({ active, icon, label, onClick }: { active: boolean; icon: React
       {icon}
       <span>{label}</span>
     </button>
+  );
+}
+
+/** 左栏顶部的设置搜索框：Enter 跳到第一条结果；有内容时 Esc 只清空查询，不关闭设置 */
+function SettingsSearchBox({ value, onChange, onSubmit }: { value: string; onChange: (value: string) => void; onSubmit: () => void }) {
+  return (
+    <div className="nb-settings-search">
+      <Search size={14} className="nb-settings-search-icon" aria-hidden />
+      <input
+        type="text"
+        value={value}
+        placeholder="搜索设置"
+        aria-label="搜索设置"
+        autoComplete="off"
+        spellCheck={false}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          // 输入法组字期间的回车用于上屏，不触发跳转
+          if (e.nativeEvent.isComposing) return;
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            onSubmit();
+          } else if (e.key === 'Escape' && value) {
+            // 阻止冒泡关闭设置弹窗，仅清空查询
+            e.stopPropagation();
+            onChange('');
+          }
+        }}
+      />
+      {value && (
+        <Tooltip content="清空搜索" side="bottom" sideOffset={4}>
+          <button type="button" className="nb-settings-search-clear" aria-label="清空搜索" onClick={() => onChange('')}>
+            <X size={12} />
+          </button>
+        </Tooltip>
+      )}
+    </div>
+  );
+}
+
+/** 设置搜索结果：每行「页名 › 分区」+ 设置项，点击跳转到对应栏目并高亮 */
+function SettingsSearchResults({ results, onSelect }: { results: SettingsSearchEntry[]; onSelect: (entry: SettingsSearchEntry) => void }) {
+  return (
+    <div className="nb-settings-search-results">
+      <h3 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 8px' }}>搜索结果</h3>
+      {results.length === 0 ? (
+        <div className="nb-settings-search-empty">没有匹配的设置</div>
+      ) : (
+        results.map((entry) => (
+          <button key={entry.id} type="button" className="nb-settings-search-result" onClick={() => onSelect(entry)}>
+            <span className="nb-settings-search-result-label">{entry.label}</span>
+            <span className="nb-settings-search-result-path">
+              {/* 分区名与页名相同时只显示一次 */}
+              {entry.section === TAB_LABELS[entry.tab] ? TAB_LABELS[entry.tab] : `${TAB_LABELS[entry.tab]} › ${entry.section}`}
+            </span>
+          </button>
+        ))
+      )}
+    </div>
   );
 }
 

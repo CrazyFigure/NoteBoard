@@ -6,12 +6,13 @@ import { RefreshCw, ExternalLink } from 'lucide-react';
 import { getRegisteredShortcuts } from '../../core/shortcuts';
 import * as ipc from '../../core/ipc/commands';
 import { useUpdateStore } from '../../stores/updateStore';
-import { useSettingsStore } from '../../stores/settingsStore';
 import { APP_VERSION } from '../../core/version';
 import { IS_WEB } from '../../core/platform';
 import { RELEASE_CHANNELS, type ReleaseChannelInfo } from '../../core/releaseChannel';
 import { Tooltip } from '../Tooltip';
 import { UPDATE_CHANNEL_ORDER, UpdateChannelSelector } from './UpdateChannelSelector';
+// 与设置中心「关于」页共用同一开关组件
+import { AutoCheckUpdateToggle } from './AutoCheckUpdateToggle';
 
 /** 仓库外链按钮：显示仓库路径，悬停提示完整地址 */
 function RepoLinkButton({ channel }: { channel: ReleaseChannelInfo }) {
@@ -29,27 +30,6 @@ function RepoLinkButton({ channel }: { channel: ReleaseChannelInfo }) {
         <ExternalLink size={13} />
       </button>
     </Tooltip>
-  );
-}
-
-/** 自动检查更新开关：关闭后不再启动及定时静默检查，手动检测不受影响 */
-function AutoCheckUpdateToggle() {
-  // 旧设置缺字段时视为开启
-  const enabled = useSettingsStore((s) => s.settings.system?.autoCheckUpdate !== false);
-  const setSystem = useSettingsStore((s) => s.setSystem);
-  return (
-    <div className="nb-about-row">
-      <Tooltip content="启动及每 5 分钟静默检查" side="top" sideOffset={4}>
-        <label className="nb-about-check">
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => void setSystem({ autoCheckUpdate: e.target.checked })}
-          />
-          <span>自动检查更新</span>
-        </label>
-      </Tooltip>
-    </div>
   );
 }
 

@@ -34,7 +34,7 @@ export function ReleaseNotes() {
   };
 
   return (
-    <section className="nb-release-notes">
+    <section className="nb-release-notes" data-setting-id="releaseNotes">
       <h3 className="nb-release-notes-heading">更新日志</h3>
       {RELEASE_NOTES.map((note) => {
         const open = expanded.has(note.version);
