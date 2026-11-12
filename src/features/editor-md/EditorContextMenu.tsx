@@ -7,8 +7,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import type { Editor } from '@tiptap/core';
 import { isInTable } from '@tiptap/pm/tables';
 import { applyTablePaste } from './tableClipboard';
-import { serializeSelectionPlainText } from './plainTextClipboard';
-import { showToast } from '../../stores/toastStore';
+import { ALTERNATE_COPY_SHORTCUT, copySelectionAs, getAlternateCopyFormat } from './markdownClipboard';
 import { DEFAULT_DETAILS_SUMMARY, insertDetailsContent, requestDetailsSummaryFocus } from './detailsExtension';
 import { insertColumnsBlock } from './columnsExtension';
 import { insertCalloutBlock } from './calloutExtension';
@@ -25,7 +24,7 @@ import { insertWikiLinkInEditor } from '../wikilink/wikiLinkActions';
 import { activeBlockAlign, canChangeBlockIndent, canSetBlockAlign, changeBlockIndent, setBlockAlign } from './blockFormat';
 import { ALIGN_OPTIONS, AlignIcon, INDENT_OPTIONS, TextColorIcon } from './formatPickers';
 import { TEXT_COLORS } from './markdownInlineMarks';
-import { useCustomColors } from '../../stores/settingsStore';
+import { useCustomColors, useSettingsStore } from '../../stores/settingsStore';
 import { mixHex } from '../../components/colorPicker/colorMath';
 import {
   Bold,
@@ -63,6 +62,7 @@ import {
   Scissors,
   Clipboard,
   ClipboardType,
+  ClipboardCopy,
   ChevronRight,
   RemoveFormatting,
   Smile,
@@ -152,6 +152,9 @@ export function EditorContextMenu({
   // 已固定的自定义颜色追加在内置色之后（取色盘在工具栏与悬浮菜单中，右键菜单只负责快速选用）
   const pinnedTextColors = useCustomColors('text');
   const pinnedHighlightColors = useCustomColors('highlight');
+  // 订阅复制格式设置，菜单打开期间切换设置也能即时更新「另一种格式复制」项
+  const copyFormat = useSettingsStore((s) => (s.settings.editor.copyFormat === 'plain' ? 'plain' : 'markdown'));
+  const alternateCopyFormat = getAlternateCopyFormat(editor, copyFormat);
   const textColorItems = [
     ...TEXT_COLORS,
     ...pinnedTextColors.map((color) => ({ name: color.toUpperCase(), color })),
@@ -260,8 +263,11 @@ export function EditorContextMenu({
     setActiveSubmenu(submenuKey);
   };
 
-  // 两种菜单都在“粘贴”下面提供纯文本复制；没有选区时禁用，避免误复制整篇。
-  const plainTextCopyButton = (
+  // 两种菜单都在“粘贴”下面提供另一种格式的复制（与 Ctrl+C 互补）：默认带格式时为纯文本复制，
+  // 设置为纯文本时改为带格式复制；嵌入式编辑器不受设置影响，始终为纯文本复制。没有选区时禁用，避免误复制整篇。
+  const alternateCopyLabel = alternateCopyFormat === 'plain' ? '纯文本复制' : '带格式复制';
+  const AlternateCopyIcon = alternateCopyFormat === 'plain' ? ClipboardType : ClipboardCopy;
+  const alternateCopyButton = (
     <button
       type="button"
       disabled={!hasSelection}
@@ -272,14 +278,8 @@ export function EditorContextMenu({
         if (hasSelection) e.currentTarget.style.background = 'var(--editor-selection-background, rgba(59, 130, 246, 0.12))';
       }}
       onClick={async () => {
-        const text = serializeSelectionPlainText(editor);
         onClose();
-        if (!text) return;
-        try {
-          await navigator.clipboard.writeText(text);
-        } catch {
-          showToast('纯文本复制失败，请检查剪贴板权限后重试', 'error');
-        }
+        await copySelectionAs(editor, alternateCopyFormat);
       }}
       onMouseEnter={(e) => {
         setActiveSubmenu(null);
@@ -288,8 +288,8 @@ export function EditorContextMenu({
       onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <ClipboardType size={15} color="var(--accent-500, #3b82f6)" />
-        <span>纯文本复制</span>
+        <AlternateCopyIcon size={15} color="var(--accent-500, #3b82f6)" />
+        <span>{formatShortcut(`${alternateCopyLabel} (${ALTERNATE_COPY_SHORTCUT})`)}</span>
       </div>
     </button>
   );
@@ -389,7 +389,7 @@ export function EditorContextMenu({
               </div>
             </button>
 
-            {plainTextCopyButton}
+            {alternateCopyButton}
 
             <div style={dividerStyle} />
 
@@ -701,7 +701,7 @@ export function EditorContextMenu({
               </div>
             </button>
 
-            {plainTextCopyButton}
+            {alternateCopyButton}
 
             <div style={dividerStyle} />
 

@@ -379,6 +379,8 @@ export interface EditorSettings {
   outlinePosition?: 'sidebar' | 'inline';
   // 编辑区内目录靠哪一侧（缺省视为 left）
   outlineInlineSide?: 'left' | 'right';
+  // Markdown 可视化模式 Ctrl+C 的复制格式：带格式（Markdown 源码）/ 纯文本（缺省视为 markdown）
+  copyFormat?: 'markdown' | 'plain';
   // 用户固定的自定义颜色（十六进制小写），按用途分组；旧配置缺失时视为空
   customColors?: CustomColorSettings;
 }

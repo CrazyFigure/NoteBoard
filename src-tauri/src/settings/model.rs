@@ -236,6 +236,9 @@ pub struct EditorSettings {
     // 编辑区内目录靠哪一侧：left / right
     #[serde(default = "default_outline_inline_side")]
     pub outline_inline_side: String,
+    // Markdown 可视化模式 Ctrl+C 的复制格式：markdown（带格式）/ plain（纯文本）
+    #[serde(default = "default_copy_format")]
+    pub copy_format: String,
     // 用户固定的自定义颜色（十六进制），按用途分组；旧配置缺失时为空
     #[serde(default)]
     pub custom_colors: CustomColorSettings,
@@ -277,6 +280,7 @@ impl Default for EditorSettings {
             mindmap_image_fit: default_mindmap_image_fit(),
             outline_position: default_outline_position(),
             outline_inline_side: default_outline_inline_side(),
+            copy_format: default_copy_format(),
             custom_colors: CustomColorSettings::default(),
         }
     }
@@ -485,6 +489,7 @@ fn default_mindmap_text_align() -> String { "left".to_string() }
 fn default_mindmap_image_fit() -> String { "original".to_string() }
 fn default_outline_position() -> String { "sidebar".to_string() }
 fn default_outline_inline_side() -> String { "left".to_string() }
+fn default_copy_format() -> String { "markdown".to_string() }
 fn default_image_dir() -> String { "img".to_string() }
 fn default_large_file_mb() -> u32 { 50 }
 fn default_auto_save_delay_ms() -> u32 { 1000 }

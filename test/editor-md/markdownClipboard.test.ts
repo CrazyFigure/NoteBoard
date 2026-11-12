@@ -1,10 +1,11 @@
 // 通过真实剪贴板事件验证复制与剪切，覆盖 Markdown 语法、局部选区、表格与撤销。
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Editor } from '@tiptap/core';
 import { CellSelection } from '@tiptap/pm/tables';
 import { buildExtensions } from '@/features/editor-md/extensions';
 import { buildCoreExtensions } from '@/features/editor-md/extensions/core';
-import { MarkdownClipboard } from '@/features/editor-md/markdownClipboard';
+import { AlternateCopyShortcut, MarkdownClipboard, getAlternateCopyFormat, getDefaultCopyFormat } from '@/features/editor-md/markdownClipboard';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { TableClipboard } from '@/features/editor-md/tableClipboard';
 import { parseMarkdown, serializeMarkdown } from '@/features/editor-md/serialize';
 
@@ -182,5 +183,83 @@ describe('Markdown 文档剪贴板', () => {
     const { text, data } = copySelection(editor);
     expect(text).toBe('正文');
     expect(data.get('text/html')).toContain('<strong>正文</strong>');
+  });
+});
+
+/** 在编辑区按下 Ctrl+Shift+C（测试环境按 Windows 修饰键） */
+function pressAlternateCopy(editor: Editor): KeyboardEvent {
+  const event = new KeyboardEvent('keydown', { key: 'C', code: 'KeyC', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true });
+  editor.view.dom.dispatchEvent(event);
+  return event;
+}
+
+describe('复制格式设置与另一种格式复制', () => {
+  const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  /** 替换系统剪贴板写入，记录快捷键写入的文本 */
+  function mockClipboard() {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    return writeText;
+  }
+  /** 带上快捷键扩展的编辑器 */
+  function createShortcutEditor(source: string, markdownClipboard = true): Editor {
+    const editor = new Editor({
+      element: document.createElement('div'),
+      extensions: [...buildCoreExtensions(), TableClipboard, ...(markdownClipboard ? [MarkdownClipboard] : []), AlternateCopyShortcut],
+      content: '',
+    });
+    editors.push(editor);
+    expect(parseMarkdown(editor, source)).toBe(true);
+    editor.commands.selectAll();
+    return editor;
+  }
+  const setCopyFormat = (copyFormat: 'markdown' | 'plain') => {
+    const state = useSettingsStore.getState();
+    useSettingsStore.setState({ settings: { ...state.settings, editor: { ...state.settings.editor, copyFormat } } });
+  };
+
+  afterEach(() => {
+    setCopyFormat('markdown');
+    if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+    else Reflect.deleteProperty(navigator, 'clipboard');
+  });
+
+  it('默认带格式，设置为纯文本后 Ctrl+C 去掉语法，剪切仍保留格式', () => {
+    const editor = createEditor('## 标题\n\n**粗体**');
+    expect(getDefaultCopyFormat()).toBe('markdown');
+    expect(copySelection(editor).text).toBe('## 标题\n\n**粗体**');
+    setCopyFormat('plain');
+    expect(copySelection(editor).text).toBe('标题\n\n粗体');
+    expect(copySelection(editor, 'cut').text).toBe('## 标题\n\n**粗体**');
+  });
+
+  it('Ctrl+Shift+C 复制为与设置相反的格式', async () => {
+    const writeText = mockClipboard();
+    const editor = createShortcutEditor('**粗体**');
+    expect(pressAlternateCopy(editor).defaultPrevented).toBe(true);
+    setCopyFormat('plain');
+    pressAlternateCopy(editor);
+    await Promise.resolve();
+    expect(writeText.mock.calls).toEqual([['粗体'], ['**粗体**']]);
+  });
+
+  it('只读模式可用，空选区不写剪贴板', async () => {
+    const writeText = mockClipboard();
+    const editor = createShortcutEditor('**粗体**');
+    editor.setEditable(false);
+    pressAlternateCopy(editor);
+    editor.commands.setTextSelection(1);
+    pressAlternateCopy(editor);
+    await Promise.resolve();
+    expect(writeText.mock.calls).toEqual([['粗体']]);
+  });
+
+  it('嵌入式编辑器不受设置影响，始终纯文本复制', () => {
+    const writeText = mockClipboard();
+    setCopyFormat('plain');
+    const editor = createShortcutEditor('**粗体**', false);
+    expect(getAlternateCopyFormat(editor)).toBe('plain');
+    pressAlternateCopy(editor);
+    expect(writeText).toHaveBeenCalledWith('粗体');
   });
 });

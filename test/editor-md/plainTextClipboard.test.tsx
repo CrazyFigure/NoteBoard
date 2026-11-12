@@ -9,6 +9,8 @@ import { serializeSelectionPlainText } from '@/features/editor-md/plainTextClipb
 import { EditorContextMenu } from '@/features/editor-md/EditorContextMenu';
 import { parseMarkdown } from '@/features/editor-md/serialize';
 import { useToastStore } from '@/stores/toastStore';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { MarkdownClipboard } from '@/features/editor-md/markdownClipboard';
 
 const editors: Editor[] = [];
 const roots: Array<{ root: Root; host: HTMLElement }> = [];
@@ -92,8 +94,10 @@ async function renderMenu(editor: Editor) {
   const onClose = vi.fn();
   await act(async () => root.render(<EditorContextMenu editor={editor} position={{ x: 10, y: 50 }} hasSelection={!editor.state.selection.empty} onClose={onClose} />));
   const buttons = Array.from(host.querySelectorAll('button'));
-  const button = buttons.find((item) => item.textContent === '纯文本复制')!;
+  const button = buttons.find((item) => item.textContent?.startsWith('纯文本复制'))!;
   expect(button).toBeTruthy();
+  // 菜单项带上快捷键提示（测试环境按 Windows 显示）
+  expect(button.textContent).toBe('纯文本复制 (Ctrl+Shift+C)');
   expect(buttons[buttons.indexOf(button) - 1].textContent).toContain('粘贴');
   expect(host.textContent).not.toContain('纯文本粘贴');
   return { button, onClose };
@@ -126,5 +130,35 @@ describe('纯文本复制右键菜单', () => {
     const { button } = await renderMenu(editor);
     await act(async () => button.click());
     expect(useToastStore.getState().toasts.at(-1)?.message).toContain('纯文本复制失败');
+  });
+});
+
+describe('复制格式为纯文本时的右键菜单', () => {
+  // 菜单此时仍挂载并订阅设置，复原设置需包在 act 中
+  afterEach(() => act(() => {
+    const state = useSettingsStore.getState();
+    useSettingsStore.setState({ settings: { ...state.settings, editor: { ...state.settings.editor, copyFormat: 'markdown' } } });
+  }));
+
+  it('Markdown 文档改为提供带格式复制，写入 Markdown 源码', async () => {
+    const state = useSettingsStore.getState();
+    useSettingsStore.setState({ settings: { ...state.settings, editor: { ...state.settings.editor, copyFormat: 'plain' } } });
+    const editor = new Editor({ extensions: [...buildCoreExtensions(), MarkdownClipboard], content: '' });
+    editors.push(editor);
+    expect(parseMarkdown(editor, '**正文**')).toBe(true);
+    editor.commands.selectAll();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push({ root, host });
+    await act(async () => root.render(<EditorContextMenu editor={editor} position={{ x: 10, y: 50 }} hasSelection onClose={vi.fn()} />));
+    const button = Array.from(host.querySelectorAll('button')).find((item) => item.textContent === '带格式复制 (Ctrl+Shift+C)')!;
+    expect(button).toBeTruthy();
+    expect(host.textContent).not.toContain('纯文本复制');
+    await act(async () => button.click());
+    expect(writeText).toHaveBeenCalledWith('**正文**');
   });
 });

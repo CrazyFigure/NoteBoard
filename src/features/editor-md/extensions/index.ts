@@ -23,7 +23,7 @@ import { WikiLink } from '../wikiLinkNode';
 import { WikiLinkSuggestion } from '../wikiLinkSuggestion';
 import { handleLinkClick } from '../linkHandler';
 import { TableClipboard } from '../tableClipboard';
-import { MarkdownClipboard } from '../markdownClipboard';
+import { AlternateCopyShortcut, MarkdownClipboard } from '../markdownClipboard';
 import { PasteFormatDetect } from '../pasteFormatDetect';
 import { ListEmptyItemBackspaceFix } from '../listItemBackspace';
 import { SelectionHighlight } from '../selectionHighlight';
@@ -235,6 +235,8 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
     TableClipboard,
     // Markdown 文档优先输出源码；表格粘贴增强继续由 TableClipboard 处理。
     ...(options?.markdownClipboard ? [MarkdownClipboard] : []),
+    // Ctrl+Shift+C 复制为另一种格式（Markdown 文档与 Ctrl+C 互补，嵌入式编辑器为纯文本）
+    AlternateCopyShortcut,
 
     // 查找/替换
     searchReplaceExtension(),

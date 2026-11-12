@@ -113,6 +113,7 @@ export const DEFAULT_SETTINGS: Settings = {
     mindmapImageFit: 'original',
     outlinePosition: 'sidebar',
     outlineInlineSide: 'left',
+    copyFormat: 'markdown',
   },
   file: {
     autoSaveMarkdown: false,

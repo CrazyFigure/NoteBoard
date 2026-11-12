@@ -1180,6 +1180,25 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       )}
                     />
                   </div>
+
+                  {/* Ctrl+C 的复制格式（实现见 features/editor-md/markdownClipboard.ts）；Ctrl+Shift+C 复制为另一种格式 */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
+                    <div>
+                      <div>Markdown 复制格式</div>
+                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>
+                        {formatShortcut('可视化模式 Ctrl+C 的复制格式，Ctrl+Shift+C 复制为另一种')}
+                      </div>
+                    </div>
+                    <SettingsSelect
+                      ariaLabel="Markdown 复制格式"
+                      value={settings.editor.copyFormat === 'plain' ? 'plain' : 'markdown'}
+                      options={[
+                        { value: 'markdown', label: '带格式' },
+                        { value: 'plain', label: '纯文本' },
+                      ]}
+                      onChange={(v) => setEditor({ copyFormat: v })}
+                    />
+                  </div>
                 </div>
 
                 {/* ── 3.3 Markdown 渲染增强 ── */}
@@ -1696,6 +1715,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                   <ShortcutItem keyCombo="/" label="Markdown 中触发斜杠快捷插入" />
                   <ShortcutItem keyCombo="Ctrl + /" label="切换可视化 / 源码模式" />
+                  {/* 复制格式随编辑器页「Markdown 复制格式」设置互换 */}
+                  <ShortcutItem
+                    keyCombo="Ctrl + Shift + C"
+                    label={settings.editor.copyFormat === 'plain' ? '带格式复制' : '纯文本复制'}
+                    tip={formatShortcut('Ctrl + C 按「Markdown 复制格式」设置复制，此快捷键复制为另一种')}
+                  />
+
                 </div>
 
                 {/* Markdown 回车类按键（规则实现见 features/editor-md/enterKeyBehavior.ts）；细节放在 tip 中，行内只留要点 */}
