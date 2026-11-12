@@ -1155,7 +1155,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     />
                   </div>
 
-                  {/* 大纲位置：右侧栏（默认）或编辑区内悬浮目录，后者可选靠左 / 靠右 */}
+                  {/* 大纲位置：右侧栏（默认）/ 编辑区内左侧 / 编辑区内右侧；一个下拉同时写入位置与靠边两个字段 */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <div>
                       <div>Markdown 大纲位置</div>
@@ -1163,32 +1163,23 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </div>
                     <SettingsSelect
                       ariaLabel="Markdown 大纲位置"
-                      value={settings.editor.outlinePosition ?? 'sidebar'}
+                      value={
+                        settings.editor.outlinePosition !== 'inline'
+                          ? 'sidebar'
+                          : settings.editor.outlineInlineSide === 'right' ? 'inline-right' : 'inline-left'
+                      }
                       options={[
                         { value: 'sidebar', label: '右侧栏' },
-                        { value: 'inline', label: '编辑区内' },
+                        { value: 'inline-left', label: '编辑区内左侧' },
+                        { value: 'inline-right', label: '编辑区内右侧' },
                       ]}
-                      onChange={(v) => setEditor({ outlinePosition: v })}
+                      onChange={(v) => setEditor(
+                        v === 'sidebar'
+                          ? { outlinePosition: 'sidebar' }
+                          : { outlinePosition: 'inline', outlineInlineSide: v === 'inline-right' ? 'right' : 'left' },
+                      )}
                     />
                   </div>
-
-                  {settings.editor.outlinePosition === 'inline' && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
-                      <div>
-                        <div>目录显示位置</div>
-                        <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>编辑区内目录靠哪一侧</div>
-                      </div>
-                      <SettingsSelect
-                        ariaLabel="目录显示位置"
-                        value={settings.editor.outlineInlineSide ?? 'left'}
-                        options={[
-                          { value: 'left', label: '左侧' },
-                          { value: 'right', label: '右侧' },
-                        ]}
-                        onChange={(v) => setEditor({ outlineInlineSide: v })}
-                      />
-                    </div>
-                  )}
                 </div>
 
                 {/* ── 3.3 Markdown 渲染增强 ── */}
