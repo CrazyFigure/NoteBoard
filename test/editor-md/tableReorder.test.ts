@@ -12,6 +12,7 @@ import {
   isTableReorderable,
   moveTableAxisTr,
   reorderIndexes,
+  resolveDropIndex,
   selectTableAxisTr,
 } from '../../src/features/editor-md/tableReorder';
 
@@ -56,6 +57,32 @@ describe('表格行列重排', () => {
   it('reorderIndexes：移除后插入到目标下标', () => {
     expect(reorderIndexes(4, 0, 2)).toEqual([1, 2, 0, 3]);
     expect(reorderIndexes(4, 3, 1)).toEqual([0, 3, 1, 2]);
+  });
+
+  describe('resolveDropIndex：拖动落点', () => {
+    // 三列等宽 0~100 / 100~200 / 200~300；位移已被限制在表格范围内
+    const columns = [{ start: 0, end: 100 }, { start: 100, end: 200 }, { start: 200, end: 300 }];
+    // 三行不等高：表头 0~40，正文 40~80、80~120
+    const rows = [{ start: 0, end: 40 }, { start: 40, end: 80 }, { start: 80, end: 120 }];
+
+    it('拖到第一个位置：位移到边界即可落到首位（修正前中心恰在中线、无法交换）', () => {
+      expect(resolveDropIndex(columns, 1, -100)).toBe(0);
+      expect(resolveDropIndex(columns, 2, -200)).toBe(0);
+    });
+
+    it('拖到最后一个位置：位移到边界即可落到末位（修正前同样无法交换）', () => {
+      expect(resolveDropIndex(rows, 1, 40)).toBe(2);
+      expect(resolveDropIndex(columns, 0, 200)).toBe(2);
+    });
+
+    it('前沿越过相邻元素中线才交换，未越过保持原位', () => {
+      expect(resolveDropIndex(columns, 1, -49)).toBe(1);
+      expect(resolveDropIndex(columns, 1, -51)).toBe(0);
+      expect(resolveDropIndex(columns, 1, 49)).toBe(1);
+      expect(resolveDropIndex(columns, 1, 51)).toBe(2);
+      expect(resolveDropIndex(columns, 0, 160)).toBe(2);
+      expect(resolveDropIndex(columns, 0, 0)).toBe(0);
+    });
   });
 
   it('移动正文行', () => {

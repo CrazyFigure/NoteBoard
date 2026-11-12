@@ -34,6 +34,31 @@ export function reorderIndexes(length: number, from: number, to: number): number
   return order;
 }
 
+/** 沿拖动方向的一段区间（行的上下沿 / 列的左右沿） */
+export interface AxisSegment {
+  start: number;
+  end: number;
+}
+
+/**
+ * 根据拖动位移计算落点序号
+ * 向后拖时以被拖元素的后沿、向前拖时以前沿越过相邻元素中线为准。
+ * 不能用被拖元素中心判断：位移被限制在表格范围内，拖到首 / 尾位置时中心最多恰好落在边缘元素中线上，
+ * 永远越不过去，导致无法移到第一个或最后一个位置。
+ */
+export function resolveDropIndex(segments: AxisSegment[], index: number, delta: number): number {
+  const source = segments[index];
+  const leading = source.start + delta;
+  const trailing = source.end + delta;
+  let target = index;
+  segments.forEach((segment, current) => {
+    const middle = (segment.start + segment.end) / 2;
+    if (current < index && leading < middle) target = Math.min(target, current);
+    if (current > index && trailing > middle) target = Math.max(target, current);
+  });
+  return target;
+}
+
 /** 单元格是否为表头单元格 */
 function isHeaderCell(cell: ProseMirrorNode): boolean {
   return cell.type.spec.tableRole === 'header_cell';

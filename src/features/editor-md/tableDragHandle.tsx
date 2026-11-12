@@ -20,7 +20,7 @@ import type { EditorState } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import { CellSelection } from '@tiptap/pm/tables';
 import { Tooltip } from '../../components/Tooltip';
-import { isTableReorderable, moveTableAxisTr, selectTableAxisTr, type TableAxis } from './tableReorder';
+import { isTableReorderable, moveTableAxisTr, resolveDropIndex, selectTableAxisTr, type TableAxis } from './tableReorder';
 import '../../styles/tableDragHandle.css';
 
 /** 超过此位移才进入拖动，避免单击把手时误触排序 */
@@ -431,21 +431,14 @@ export function TableDragHandles({ editor }: { editor: Editor | null }) {
     const offset = contentOffset(scrollParent);
     const pointer = axis === 'row' ? clientY + offset.y : clientX + offset.x;
     const source = segments[index];
-    const size = source.end - source.start;
     // 拖动元素限制在表格范围内
     const min = segments[0].start - source.start;
     const max = segments[segments.length - 1].end - source.end;
     const delta = Math.max(min, Math.min(max, pointer - session.startContent));
     session.delta = delta;
 
-    // 拖动元素中心越过相邻元素中线即交换
-    const center = source.start + delta + size / 2;
-    let target = index;
-    segments.forEach((segment, current) => {
-      const middle = (segment.start + segment.end) / 2;
-      if (current < index && center < middle) target = Math.min(target, current);
-      if (current > index && center > middle) target = Math.max(target, current);
-    });
+    // 拖动方向上的前沿越过相邻元素中线即交换（见 resolveDropIndex）
+    const target = resolveDropIndex(segments, index, delta);
     if (target !== session.target) {
       session.target = target;
       writeRules(session, index, true, true);
