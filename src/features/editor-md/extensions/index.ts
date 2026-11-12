@@ -23,6 +23,7 @@ import { WikiLink } from '../wikiLinkNode';
 import { WikiLinkSuggestion } from '../wikiLinkSuggestion';
 import { handleLinkClick } from '../linkHandler';
 import { TableClipboard } from '../tableClipboard';
+import { TableCrossDelete } from '../tableCrossDelete';
 import { AlternateCopyShortcut, MarkdownClipboard } from '../markdownClipboard';
 import { PasteFormatDetect } from '../pasteFormatDetect';
 import { ListEmptyItemBackspaceFix } from '../listItemBackspace';
@@ -233,6 +234,8 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // 表格及表格剪贴板增强（支持标准 TSV 复制与二维矩阵粘贴）
     TableClipboard,
+    // 跨表格边界的选区删除：完整选中的表格整块删除，部分选中只清空单元格，不留残缺表格
+    TableCrossDelete,
     // Markdown 文档优先输出源码；表格粘贴增强继续由 TableClipboard 处理。
     ...(options?.markdownClipboard ? [MarkdownClipboard] : []),
     // Ctrl+Shift+C 复制为另一种格式（Markdown 文档与 Ctrl+C 互补，嵌入式编辑器为纯文本）

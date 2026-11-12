@@ -6,6 +6,7 @@ import { Plugin } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import { getMarkdownManager, serializeMarkdownFromDoc } from './serialize';
 import { serializeSelectionPlainText } from './plainTextClipboard';
+import { deleteSelectionAcrossTables } from './tableCrossDelete';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { showToast } from '../../stores/toastStore';
 import { USES_COMMAND_KEY } from '../../core/platform';
@@ -143,7 +144,11 @@ export const MarkdownClipboard = Extension.create({
       event.clipboardData.clearData();
       event.clipboardData.setData('text/plain', text);
       event.preventDefault();
-      if (cut) view.dispatch(view.state.tr.deleteSelection().scrollIntoView().setMeta('uiEvent', 'cut'));
+      // 跨表格边界的选区按表格规则删除（见 tableCrossDelete.ts），其余走默认删除
+      if (cut) {
+        const tr = deleteSelectionAcrossTables(view.state) ?? view.state.tr.deleteSelection().scrollIntoView();
+        view.dispatch(tr.setMeta('uiEvent', 'cut'));
+      }
       return true;
     };
     return [new Plugin({
