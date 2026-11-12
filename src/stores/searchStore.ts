@@ -22,6 +22,12 @@ export interface SearchState {
   matchCount: number;
   /** 打开时应聚焦的输入框 */
   focusTarget: 'search' | 'replace' | null;
+  /**
+   * 聚焦请求序号：每次 openSearch 自增。
+   * 搜索栏已打开且聚焦目标不变时（如点回编辑区后再按 Ctrl+F），其余字段可能完全不变，
+   * 搜索栏据此序号重新聚焦输入框。
+   */
+  focusRequest: number;
 
   // ── 操作 Actions ──
   openSearch: (initialText?: string, focusTarget?: 'search' | 'replace') => void;
@@ -50,13 +56,15 @@ export function createSearchStore() {
     matchIndex: 0,
     matchCount: 0,
     focusTarget: 'search',
+    focusRequest: 0,
 
-    // 打开搜索栏，可传入初始搜索词与聚焦目标
+    // 打开搜索栏，可传入初始搜索词与聚焦目标；已打开时也会请求重新聚焦输入框
     openSearch: (initialText, focusTarget = 'search') => {
       set((state) => ({
         isOpen: true,
         searchText: initialText !== undefined ? initialText : state.searchText,
         focusTarget,
+        focusRequest: state.focusRequest + 1,
       }));
     },
 

@@ -2,7 +2,7 @@
 // 左右两个 CodeMirror 编辑器（复用 txt 编辑器观感）+ @codemirror/merge 实时差异高亮
 // 中缝双箭头按钮逐处采用（◀ 左侧采用右侧 / ▶ 右侧采用左侧），中缝可左右拖拽调整分栏（双击复位）
 // 纯前端工具视图：不落盘、不进 documentStore、不参与暂存/会话恢复（tab 关闭即释放）
-// 左右两侧各有一个独立的查找/替换栏（Ctrl+F / Ctrl+H 按光标所在侧打开）
+// 左右两侧各有一个独立的查找/替换栏（Ctrl+F / Ctrl+H / Ctrl+R 按光标所在侧打开）
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
@@ -450,7 +450,7 @@ export function TextDiffView({ docKey }: { docKey: string }) {
     };
   }, [docKey, restored]);
 
-  // Ctrl+F / Ctrl+H：按光标所在侧打开该侧搜索栏（焦点不在右侧时默认左侧）。
+  // Ctrl+F / Ctrl+H / Ctrl+R：按光标所在侧打开该侧搜索栏（焦点不在右侧时默认左侧）。
   // 全局快捷键对本视图不做处理（无文档搜索能力），这里在冒泡阶段接管；
   // 多个对比标签同时挂载时只有活动标签注册监听。
   useEffect(() => {
@@ -458,7 +458,7 @@ export function TextDiffView({ docKey }: { docKey: string }) {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
       const key = e.key.toLowerCase();
-      if (key !== 'f' && key !== 'h') return;
+      if (key !== 'f' && key !== 'h' && key !== 'r') return;
       const stage = stageRef.current;
       const mv = mergeRef.current;
       if (!stage || !mv) return;
@@ -470,7 +470,7 @@ export function TextDiffView({ docKey }: { docKey: string }) {
       const store = toRight ? searchStoreB : searchStoreA;
       const sel = view.state.selection.main;
       const selected = sel.empty ? '' : view.state.sliceDoc(sel.from, sel.to);
-      store.getState().openSearch(selected.trim() ? selected : undefined, key === 'h' ? 'replace' : 'search');
+      store.getState().openSearch(selected.trim() ? selected : undefined, key === 'f' ? 'search' : 'replace');
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);

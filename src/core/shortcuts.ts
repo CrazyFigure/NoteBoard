@@ -75,6 +75,12 @@ export function formatShortcut(text: string): string {
     .replace(/\bAlt\b/g, 'Option');
 }
 
+/**
+ * 替换文本快捷键的展示文案：Ctrl+H 与 Ctrl+R 均可打开替换。
+ * Mac 上 Cmd+H 被系统「隐藏应用」占用，因此展示 Cmd+R。
+ */
+export const REPLACE_SHORTCUT = USES_COMMAND_KEY ? 'Ctrl+R' : 'Ctrl+H';
+
 /** 判定是否为应屏蔽的浏览器默认系统/导航/刷新快捷键 */
 export function shouldPreventBrowserDefault(e: KeyboardEvent): boolean {
   const key = e.key;

@@ -275,19 +275,26 @@ export function AppShell(_props: { children?: React.ReactNode }) {
       description: '查找文本',
     });
 
-    // Ctrl+H 替换
+    // Ctrl+H / Ctrl+R 替换（Mac 上 Cmd+H 被系统「隐藏应用」占用，Cmd+R 作为主要入口）
+    const openReplace = () => {
+      const currentTab = useWindowStore.getState().activeTab();
+      if (!currentTab) return;
+      const capabilities = getEditorCapabilities(currentTab.key);
+      // 画板/思维导图/表格等无文本搜索能力的编辑器不打开搜索栏（打开也永远 0 匹配）
+      if (!capabilities?.search) return;
+      const selected = capabilities.getSelectedText();
+      const searchStore = useSearchStore.getState();
+      searchStore.openSearch(selected.trim() ? selected : undefined, 'replace');
+    };
     const unregCtrlH = registerShortcut({
       key: 'Ctrl+H',
-      action: () => {
-        const currentTab = useWindowStore.getState().activeTab();
-        if (!currentTab) return;
-        const capabilities = getEditorCapabilities(currentTab.key);
-        // 画板/思维导图/表格等无文本搜索能力的编辑器不打开搜索栏（打开也永远 0 匹配）
-        if (!capabilities?.search) return;
-        const selected = capabilities.getSelectedText();
-        const searchStore = useSearchStore.getState();
-        searchStore.openSearch(selected.trim() ? selected : undefined, 'replace');
-      },
+      action: openReplace,
+      scope: 'global',
+      description: '替换文本',
+    });
+    const unregCtrlR = registerShortcut({
+      key: 'Ctrl+R',
+      action: openReplace,
       scope: 'global',
       description: '替换文本',
     });
@@ -406,6 +413,7 @@ export function AppShell(_props: { children?: React.ReactNode }) {
       unregCtrlS();
       unregCtrlF();
       unregCtrlH();
+      unregCtrlR();
       unregCtrlW();
       unregToggleMdMode();
       unregExpandShiftAltF();

@@ -49,6 +49,7 @@ export function SearchReplaceBar({
     matchIndex,
     matchCount,
     focusTarget,
+    focusRequest,
     closeSearch,
     setSearchText,
     setReplaceText,
@@ -105,7 +106,7 @@ export function SearchReplaceBar({
     runSearch();
   }, [runSearch]);
 
-  // 打开搜索栏或切换聚焦目标时，自动聚焦并全选输入框内容
+  // 打开搜索栏、切换聚焦目标或再次请求打开（focusRequest 变化）时，自动聚焦并全选输入框内容
   useEffect(() => {
     if (!isOpen) return;
     const timer = setTimeout(() => {
@@ -122,7 +123,7 @@ export function SearchReplaceBar({
       }
     }, 20);
     return () => clearTimeout(timer);
-  }, [isOpen, focusTarget]);
+  }, [isOpen, focusTarget, focusRequest]);
 
   // 处理关闭与焦点回归
   const handleClose = useCallback(() => {

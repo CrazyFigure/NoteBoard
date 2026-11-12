@@ -28,7 +28,7 @@ import { IS_MOBILE_UI, IS_WEB } from '../../core/platform';
 // 栏目元数据与设置搜索索引
 import { SHOW_ACCOUNT, SHOW_SYNC, SUPPORTS_SYSTEM_INTEGRATION, TAB_LABELS, searchSettings, type SettingsSearchEntry, type TabType } from './settingsSearchIndex';
 import { GlobalShortcutRecorder } from './GlobalShortcutRecorder';
-import { formatShortcut } from '../../core/shortcuts';
+import { formatShortcut, REPLACE_SHORTCUT } from '../../core/shortcuts';
 // 设置窗口已在 App 中按需加载；同步面板及样式随窗口就绪，避免首次切换先显示加载占位。
 import { SyncPanel } from '../../features/sync/SyncPanel';
 // 插件管理随设置窗口加载，查看器重库仍由已安装包按需提供。
@@ -1704,7 +1704,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     查找与替换
                   </div>
                   <ShortcutItem keyCombo="Ctrl + F" label="查找文本" />
-                  <ShortcutItem keyCombo="Ctrl + H" label="替换文本" />
+                  {/* Mac 上 Cmd+H 被系统「隐藏应用」占用，只列出 Cmd+R */}
+                  <ShortcutItem keyCombo={REPLACE_SHORTCUT === 'Ctrl+R' ? 'Ctrl + R' : 'Ctrl + H / Ctrl + R'} label="替换文本" />
                 </div>
 
                 {/* 全局与文件操作 */}

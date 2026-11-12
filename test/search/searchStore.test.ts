@@ -41,6 +41,17 @@ describe('searchStore 搜索替换状态管理', () => {
     expect(state.focusTarget).toBe('replace');
   });
 
+  test('搜索栏已打开时再次 openSearch 仍会发出新的聚焦请求', () => {
+    const { openSearch } = useSearchStore.getState();
+    openSearch(undefined, 'search');
+    const first = useSearchStore.getState().focusRequest;
+    // 点回编辑区后再按 Ctrl+F：其余字段不变，只有聚焦请求序号变化
+    openSearch(undefined, 'search');
+    expect(useSearchStore.getState().focusRequest).toBe(first + 1);
+    openSearch(undefined, 'replace');
+    expect(useSearchStore.getState().focusRequest).toBe(first + 2);
+  });
+
   test('closeSearch 关闭搜索并清理焦点目标', () => {
     const { openSearch, closeSearch } = useSearchStore.getState();
     openSearch('test');

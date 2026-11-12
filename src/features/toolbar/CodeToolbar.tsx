@@ -36,7 +36,7 @@ import {
 // 🔴 S03：工具栏通过 core 能力注册表分发，不再从编辑器组件导入实例 getter
 import { getEditorCapabilities } from '../../core/editor/editorRegistry';
 import { off, on } from '../../core/emitter';
-import { formatShortcut } from '../../core/shortcuts';
+import { formatShortcut, REPLACE_SHORTCUT } from '../../core/shortcuts';
 import { USES_COMMAND_KEY } from '../../core/platform';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useSearchStore } from '../../stores/searchStore';
@@ -314,7 +314,7 @@ export function CodeToolbar({ docKey, language, compact = false, moreItems }: Co
         <ToolbarButton
           icon={<Replace size={15} />}
           title="替换文本"
-          shortcut="Ctrl+H"
+          shortcut={REPLACE_SHORTCUT}
           onClick={() => openSearch(undefined, 'replace')}
         />
       )}
@@ -358,7 +358,7 @@ export function CodeToolbar({ docKey, language, compact = false, moreItems }: Co
           <ToolbarDropdownItem
             icon={<Replace size={14} />}
             label="替换文本"
-            shortcut="Ctrl+H"
+            shortcut={REPLACE_SHORTCUT}
             onClick={runFromMore(() => openSearch(undefined, 'replace'))}
           />
           {moreItems && (
