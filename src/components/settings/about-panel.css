@@ -75,35 +75,3 @@
   cursor: pointer;
   accent-color: var(--accent-strong);
 }
-
-/* 仓库外链：来源标签 + 仓库路径 */
-.nb-about-repo-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--accent-strong);
-  font-size: 13px;
-  cursor: pointer;
-  text-decoration: underline;
-  transition: transform var(--transition-fast);
-}
-
-.nb-about-repo-link:hover {
-  transform: scale(1.03);
-}
-
-.nb-about-repo-link:active {
-  transform: scale(0.96);
-}
-
-.nb-about-repo-source {
-  padding: 0 5px;
-  border-radius: var(--radius-sm, 4px);
-  background: color-mix(in srgb, var(--accent-strong) 12%, transparent);
-  font-size: 11px;
-  line-height: 1.6;
-  text-decoration: none;
-}

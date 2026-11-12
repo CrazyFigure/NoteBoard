@@ -73,6 +73,7 @@ pub struct LocalSearchSettings {
 pub struct AppearanceSettings {
     #[serde(default = "default_theme_mode")]
     pub theme_mode: String,
+    // 以下两项仅为兼容旧配置保留（前端不再读取）：跟随系统固定浅色晨光、深色墨夜
     #[serde(default = "default_light_theme")]
     pub system_light_theme: String,
     #[serde(default = "default_dark_theme")]

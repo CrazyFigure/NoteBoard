@@ -302,6 +302,7 @@ export interface Settings {
 
 export interface AppearanceSettings {
   themeMode: ThemeMode;
+  // 以下两项仅为兼容旧配置保留，不再读取：跟随系统固定浅色晨光、深色墨夜
   systemLightTheme: ThemeId;
   systemDarkTheme: ThemeId;
 }

@@ -66,6 +66,7 @@ export const DEFAULT_SETTINGS: Settings = {
   revision: 0,
   appearance: {
     themeMode: 'system',
+    // 仅为兼容旧配置保留；跟随系统固定为晨光 / 墨夜（见 core/theme/applyTheme.ts）
     systemLightTheme: 'chen-guang',
     systemDarkTheme: 'mo-ye',
   },
@@ -207,8 +208,6 @@ interface SettingsStore {
 
   // ── 主题 ──
   setThemeMode: (mode: ThemeMode) => Promise<void>;
-  setSystemLightTheme: (theme: ThemeId) => Promise<void>;
-  setSystemDarkTheme: (theme: ThemeId) => Promise<void>;
 
   // ── 排版 ──
   setTypography: (patch: Partial<TypographySettings>) => Promise<void>;
@@ -235,11 +234,7 @@ interface SettingsStore {
 // ── 辅助：解析主题并应用 ──
 
 function resolveAndApply(s: Settings): ThemeId {
-  const resolved = resolveTheme(
-    s.appearance.themeMode,
-    s.appearance.systemLightTheme,
-    s.appearance.systemDarkTheme,
-  );
+  const resolved = resolveTheme(s.appearance.themeMode);
   applyTheme(resolved);
   applyTypography(s.typography);
   return resolved;
@@ -269,8 +264,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       // 系统主题跟随监听
       startSystemThemeListener(
         () => get().settings.appearance.themeMode === 'system',
-        loaded.appearance.systemLightTheme,
-        loaded.appearance.systemDarkTheme,
         (newResolved) => set({ resolvedTheme: newResolved }),
       );
 
@@ -305,8 +298,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     if (mode === 'system') {
       startSystemThemeListener(
         () => get().settings.appearance.themeMode === 'system',
-        updated.appearance.systemLightTheme,
-        updated.appearance.systemDarkTheme,
         (newResolved) => set({ resolvedTheme: newResolved }),
       );
     }
@@ -319,35 +310,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     }
   },
 
-  setSystemLightTheme: async (theme) => {
-    const current = get().settings;
-    const updated: Settings = {
-      ...current,
-      appearance: { ...current.appearance, systemLightTheme: theme },
-    };
-    const resolved = resolveAndApply(updated);
-    set({ settings: updated, resolvedTheme: resolved });
-    try {
-      await ipc.saveSettings(updated);
-    } catch (e) {
-      console.error('保存设置失败:', e);
-    }
-  },
-
-  setSystemDarkTheme: async (theme) => {
-    const current = get().settings;
-    const updated: Settings = {
-      ...current,
-      appearance: { ...current.appearance, systemDarkTheme: theme },
-    };
-    const resolved = resolveAndApply(updated);
-    set({ settings: updated, resolvedTheme: resolved });
-    try {
-      await ipc.saveSettings(updated);
-    } catch (e) {
-      console.error('保存设置失败:', e);
-    }
-  },
 
   setTypography: async (patch) => {
     const current = get().settings;

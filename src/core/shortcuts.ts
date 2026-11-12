@@ -166,8 +166,3 @@ export function initShortcuts(): () => void {
   window.addEventListener('keydown', handler, true);
   return () => window.removeEventListener('keydown', handler, true);
 }
-
-/** 获取全部已注册的快捷键（用于设置界面只读列表） */
-export function getRegisteredShortcuts(): readonly ShortcutEntry[] {
-  return registry;
-}

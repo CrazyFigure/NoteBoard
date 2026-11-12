@@ -11,22 +11,23 @@ const TYPOGRAPHY_KEY = 'nb.typography';
 
 // ── 主题解析 ──
 
+// 「跟随系统」固定映射：浅色用晨光，深色用墨夜。
+// 设置中的 appearance.systemLightTheme / systemDarkTheme 仅为兼容旧配置保留，不再读取。
+export const SYSTEM_LIGHT_THEME: ThemeId = 'chen-guang';
+export const SYSTEM_DARK_THEME: ThemeId = 'mo-ye';
+
 /**
  * 解析实际生效的主题 ID
- * 如果 themeMode === 'system'，根据 prefers-color-scheme 返回
+ * 如果 themeMode === 'system'，根据 prefers-color-scheme 返回晨光或墨夜
  */
-export function resolveTheme(
-  themeMode: ThemeMode,
-  systemLightTheme: ThemeId,
-  systemDarkTheme: ThemeId,
-): ThemeId {
+export function resolveTheme(themeMode: ThemeMode): ThemeId {
   if (themeMode !== 'system') {
     return themeMode;
   }
   const prefersDark =
     typeof window !== 'undefined' &&
     window.matchMedia('(prefers-color-scheme: dark)').matches;
-  return prefersDark ? systemDarkTheme : systemLightTheme;
+  return prefersDark ? SYSTEM_DARK_THEME : SYSTEM_LIGHT_THEME;
 }
 
 /**
@@ -309,8 +310,6 @@ let mediaQueryUnlisten: (() => void) | null = null;
  */
 export function startSystemThemeListener(
   isSystem: () => boolean,
-  systemLightTheme: ThemeId,
-  systemDarkTheme: ThemeId,
   onChange: (resolved: ThemeId) => void,
 ): void {
   stopSystemThemeListener();
@@ -318,7 +317,7 @@ export function startSystemThemeListener(
   const mq = window.matchMedia('(prefers-color-scheme: dark)');
   const handler = (e: MediaQueryListEvent) => {
     if (!isSystem()) return;
-    const resolved = e.matches ? systemDarkTheme : systemLightTheme;
+    const resolved = e.matches ? SYSTEM_DARK_THEME : SYSTEM_LIGHT_THEME;
     applyTheme(resolved);
     onChange(resolved);
   };
