@@ -28,6 +28,7 @@ import { AlternateCopyShortcut, MarkdownClipboard } from '../markdownClipboard';
 import { PasteFormatDetect } from '../pasteFormatDetect';
 import { ListEmptyItemBackspaceFix } from '../listItemBackspace';
 import { SelectionHighlight } from '../selectionHighlight';
+import { ReactSelectionTrackingBypass } from '../selectionPerformance';
 import { InlineEmojiRender } from '../inlineEmoji';
 import { MultiClickSelectionFix } from '../multiClickSelection';
 import { CollapsedBlockSelection } from '../collapsedBlockSelection';
@@ -217,6 +218,8 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
 
     // 选区可视化：完整选中的块（列表、代码块、折叠块、图片等）整体显示底板
     SelectionHighlight,
+    // 长文档大选区：React 提交时不再逐节点遍历正文计算选区偏移（全选后卡顿数秒的根因）
+    ReactSelectionTrackingBypass,
     // 粘贴 / 拖入 / 选择本地图片时，保存期间在插入位置显示预览与加载动画
     ImageUploadPlaceholder,
     // 正文表情：表情库内的 Unicode 表情显示为与表情面板一致的 Noto SVG（文件中仍是标准字符）

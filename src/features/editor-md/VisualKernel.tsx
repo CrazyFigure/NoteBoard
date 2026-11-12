@@ -38,6 +38,7 @@ import { getAutoSaveDelayMs } from '../../stores/settingsStore';
 import { registerHistoryMaterializeHook } from '../history/documentHistory';
 import { saveViewState } from '../session/editorSuspension';
 import { findVisualScrollContainer } from './visualScroller';
+import { releaseNativeSelectionWithin } from './selectionPerformance';
 
 interface VisualKernelProps {
   docKey: string;
@@ -265,6 +266,19 @@ export function VisualKernel({
       scrollContainer.removeEventListener('scroll', saveRecoveryCheckpoint);
     };
   }, [active, docKey, editor, isInitializingRef, visible]);
+
+  // 切走本标签时清除落在编辑器内的原生选区：隐藏保活标签会重算整棵子树样式，
+  // 全选长文档时选中范围内每个元素都要额外计算高亮样式，点击其它标签要卡近一秒。
+  // 必须在激活标签变化的同一时刻同步执行（早于 React 提交隐藏样式），因此直接订阅窗口状态，
+  // 不等待 active 上下文随渲染更新；ProseMirror 选区与整块底板保留，重新聚焦时恢复原生选区。
+  useEffect(() => {
+    if (!editor) return;
+    return useWindowStore.subscribe((state, prev) => {
+      // isDestroyed 在视图尚未挂载时同样为 true，此后访问 view.dom 是安全的
+      if (prev.activeKey !== docKey || state.activeKey === docKey || editor.isDestroyed) return;
+      releaseNativeSelectionWithin(editor.view.dom);
+    });
+  }, [docKey, editor]);
 
   // 打开超链接插入与编辑模态弹窗
   const handleOpenLinkModal = useCallback(() => {
