@@ -2,9 +2,9 @@
 // 三栏布局：资源管理器 | 编辑区 | 大纲
 // 详见 docs/07-UI布局与交互规范.md §1
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { Group, Panel, Separator } from 'react-resizable-panels';
+import { Group, Panel, Separator, useGroupRef } from 'react-resizable-panels';
 import type { PanelSize } from 'react-resizable-panels';
 import { TitleBar } from './titlebar/TitleBar';
 import { StatusBar } from './statusbar/StatusBar';
@@ -145,6 +145,71 @@ export function AppShell(_props: { children?: React.ReactNode }) {
   const sharedReadonlyActive = useSharedReadonly(activeTab?.key ?? '');
   // 极窄模式只保留编辑区：侧栏与大纲按渲染条件隐藏，不改写各自的可见性记忆
   const showSidePanels = !isShellHidden && !compactMode;
+  // 当前实际挂载的侧栏面板
+  const hasExplorerPanel = showSidePanels && explorerVisible;
+  const hasOutlinePanel = showSidePanels && outlineVisible && showOutline;
+  const groupRef = useGroupRef();
+  const groupElRef = useRef<HTMLDivElement | null>(null);
+
+  // 面板组合变化（开关大纲/资源管理器、Markdown 与其他格式互切）时，库会套用该组合上次缓存的百分比布局
+  // 或基于过期 store 宽度的 defaultSize，导致另一侧栏宽度跳变；这里按变化前的像素宽度恢复侧栏，差额全交给编辑区。
+  useLayoutEffect(() => {
+    // 快照须在库重新注册布局之前读取：重新注册时 onLayoutChanged 会把跳变后的宽度写进 ref
+    const explorerPx = Math.max(EXPLORER_MIN, Math.min(EXPLORER_MAX, explorerWidthRef.current));
+    const outlinePx = Math.max(OUTLINE_MIN, Math.min(OUTLINE_MAX, outlineWidthRef.current));
+    const expectedIds = [
+      ...(hasExplorerPanel ? ['nb-explorer'] : []),
+      'nb-editor',
+      ...(hasOutlinePanel ? ['nb-outline'] : []),
+    ];
+    let cancelled = false;
+    let rafId = 0;
+
+    const restore = (allowRetry: boolean) => {
+      if (cancelled) return;
+      const group = groupRef.current;
+      const groupEl = groupElRef.current;
+      if (!group || !groupEl) return;
+      const current = group.getLayout();
+      const ready =
+        Object.keys(current).length === expectedIds.length && expectedIds.every((id) => id in current);
+      // 新面板组合尚未注册完成时，下一帧再试一次
+      if (!ready) {
+        if (allowRetry) rafId = requestAnimationFrame(() => restore(false));
+        return;
+      }
+      // 库的百分比以各面板宽度之和为基数（不含分隔条）
+      let panelsPx = 0;
+      groupEl.querySelectorAll<HTMLElement>(':scope > [data-panel]').forEach((el) => {
+        panelsPx += el.offsetWidth;
+      });
+      if (panelsPx <= 0) return;
+
+      const explorerPct = hasExplorerPanel ? (explorerPx / panelsPx) * 100 : 0;
+      const outlinePct = hasOutlinePanel ? (outlinePx / panelsPx) * 100 : 0;
+      const pctById: Record<string, number> = {
+        'nb-explorer': explorerPct,
+        'nb-editor': 100 - explorerPct - outlinePct,
+        'nb-outline': outlinePct,
+      };
+      // ⚠️ 库校验布局时用 Object.values 按顺序对应面板，必须按左→右的面板顺序构造
+      const next: Record<string, number> = {};
+      for (const id of expectedIds) next[id] = pctById[id];
+      // 与当前布局相差不足 1px 时不改动，避免无意义的重排
+      const changed = expectedIds.some(
+        (id) => (Math.abs((current[id] ?? 0) - next[id]) / 100) * panelsPx > 1,
+      );
+      // setLayout 内部会按 min/max 约束校验，窗口过窄时自动收敛
+      if (changed) group.setLayout(next);
+    };
+
+    // 子 Panel 注册触发的 Group 重新注册在本次提交内同步完成，微任务里已是新组合的布局，且早于绘制
+    queueMicrotask(() => restore(true));
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(rafId);
+    };
+  }, [hasExplorerPanel, hasOutlinePanel, groupRef]);
 
   // 极窄模式标记写到根节点：各格式自带工具栏经全局样式统一切换为图标按钮、自动换行
   useEffect(() => {
@@ -392,6 +457,8 @@ export function AppShell(_props: { children?: React.ReactNode }) {
         {!isShellHidden && <HistoryHost />}
         <Group
           id="nb-layout"
+          groupRef={groupRef}
+          elementRef={groupElRef}
           orientation="horizontal"
           style={{ width: '100%', height: '100%' }}
           onLayoutChanged={(layout) => {
