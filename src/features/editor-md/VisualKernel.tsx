@@ -26,6 +26,7 @@ import {
 import { handlePastedImageFile } from './imagePaste';
 import { EditorBubbleMenu, TableToolbar } from './bubbleMenu';
 import { BlockDragHandle } from './blockDragHandle';
+import { TableDragHandles } from './tableDragHandle';
 import { PasteFormatPrompt } from './PasteFormatPrompt';
 import { EditorContextMenu } from './EditorContextMenu';
 import { LinkModal } from './LinkModal';
@@ -437,6 +438,8 @@ export function VisualKernel({
       {showEditingUi && editor && <EditorBubbleMenu editor={editor} onOpenLinkModal={handleOpenLinkModal} />}
       {showEditingUi && editor && <TableToolbar editor={editor} />}
       {showEditingUi && editor && <BlockDragHandle editor={editor} />}
+      {/* 表格行 / 列拖动把手：悬停或光标在单元格时出现 */}
+      {showEditingUi && editor && <TableDragHandles editor={editor} />}
       {showEditingUi && editor && <PasteFormatPrompt editor={editor} />}
       {showEditingUi && contextMenu && editor && (
         <EditorContextMenu

@@ -64,6 +64,7 @@ vi.mock('@tiptap/react', () => ({ useEditor: () => null, EditorContent: () => nu
 vi.mock('@/features/editor-md/extensions', () => ({ buildExtensions: () => [] }));
 vi.mock('@/features/editor-md/bubbleMenu', () => ({ EditorBubbleMenu: () => null, TableToolbar: () => null }));
 vi.mock('@/features/editor-md/blockDragHandle', () => ({ BlockDragHandle: () => null }));
+vi.mock('@/features/editor-md/tableDragHandle', () => ({ TableDragHandles: () => null }));
 vi.mock('@/features/editor-md/markdownAutoSave', () => ({ autoSaveDocument: vi.fn() }));
 vi.mock('@/core/emitter', () => ({ on: () => {}, off: () => {}, emit: () => {} }));
 vi.mock('@/core/shortcuts', () => ({ registerShortcut: () => () => {}, formatShortcut: (text: string) => text }));

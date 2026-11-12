@@ -21,6 +21,7 @@ vi.mock('@/features/editor-md/extensions', () => ({
 }));
 vi.mock('@/features/editor-md/bubbleMenu', () => ({ EditorBubbleMenu: () => null, TableToolbar: () => null }));
 vi.mock('@/features/editor-md/blockDragHandle', () => ({ BlockDragHandle: () => null }));
+vi.mock('@/features/editor-md/tableDragHandle', () => ({ TableDragHandles: () => null }));
 vi.mock('@/features/editor-md/PasteFormatPrompt', () => ({ PasteFormatPrompt: () => null }));
 vi.mock('@/features/editor-md/EditorContextMenu', () => ({ EditorContextMenu: () => null }));
 vi.mock('@/features/editor-md/LinkModal', () => ({ LinkModal: () => null }));

@@ -1,0 +1,173 @@
+/* Markdown 表格行 / 列拖动把手（tableDragHandle.tsx）
+   把手悬停或光标所在单元格时出现：行把手骑在表格左边框，列把手骑在表格上边框 */
+
+.nb-table-handle {
+  position: absolute;
+  z-index: 22;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--editor-border);
+  border-radius: 5px;
+  background: var(--editor-bg);
+  color: var(--editor-text-secondary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  -webkit-user-drag: none;
+  /* 中心点对齐坐标，切换行列时平滑滑动到新位置 */
+  transform: translate(-50%, -50%);
+  transition:
+    top 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    left 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    width 160ms ease,
+    height 160ms ease,
+    color 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+  animation: nb-table-handle-in 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.nb-table-handle.is-row {
+  width: 14px;
+  height: 22px;
+}
+
+.nb-table-handle.is-column {
+  width: 22px;
+  height: 14px;
+}
+
+.nb-table-handle svg {
+  display: block;
+  pointer-events: none;
+}
+
+/* 悬停：主题色实底，略微放大，提示可抓取 */
+.nb-table-handle:hover,
+.nb-table-handle.is-hovered {
+  border-color: var(--editor-accent);
+  background: var(--editor-accent);
+  color: #fff;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--editor-accent) 35%, transparent);
+}
+
+.nb-table-handle.is-row:hover,
+.nb-table-handle.is-row.is-hovered {
+  height: 26px;
+}
+
+.nb-table-handle.is-column:hover,
+.nb-table-handle.is-column.is-hovered {
+  width: 26px;
+}
+
+.nb-table-handle:active {
+  transform: translate(-50%, -50%) scale(0.94);
+}
+
+/* 拖动中：把手随行列移动，不做位置过渡（跟手），光标保持抓取态 */
+.nb-table-handle.is-dragging {
+  border-color: var(--editor-accent);
+  background: var(--editor-accent);
+  color: #fff;
+  cursor: grabbing;
+  transition: none;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--editor-accent) 40%, transparent);
+}
+
+/* 正文拖选期间把手不截获指针，避免打断选区延伸 */
+.nb-table-handle.is-passive {
+  pointer-events: none;
+}
+
+/* 悬停把手时标出将被操作的整行 / 整列；拖动时变为跟随指针的浮起框 */
+.nb-table-axis-frame {
+  position: absolute;
+  z-index: 21;
+  box-sizing: border-box;
+  border: 1.5px solid color-mix(in srgb, var(--editor-accent) 70%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--editor-accent) 6%, transparent);
+  pointer-events: none;
+  animation: nb-table-frame-in 140ms ease;
+}
+
+.nb-table-axis-frame.is-dragging {
+  border-color: var(--editor-accent);
+  background: transparent;
+  box-shadow:
+    0 12px 28px -10px color-mix(in srgb, var(--editor-accent) 45%, transparent),
+    0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* 松手落位：浮起框滑到最终位置后淡出 */
+.nb-table-axis-frame.is-settling {
+  border-color: var(--editor-accent);
+  background: transparent;
+  box-shadow: 0 0 0 0 transparent;
+  opacity: 0;
+  transition:
+    top 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    left 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 240ms ease,
+    opacity 200ms ease 120ms;
+}
+
+/* 拖动期间表格改用分离边框：折叠边框由表格统一绘制，不会随单元格位移，
+   改为每格只画右 / 下边框、表格补上 / 左边框，视觉与折叠边框一致 */
+.ProseMirror table[data-nb-table-dnd] {
+  border-collapse: separate;
+  border-spacing: 0;
+  border-top: 1px solid var(--editor-border);
+  border-left: 1px solid var(--editor-border);
+}
+
+.ProseMirror table[data-nb-table-dnd] > tbody > tr > th,
+.ProseMirror table[data-nb-table-dnd] > tbody > tr > td {
+  border-width: 0 1px 1px 0;
+  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* 落位瞬间切换文档顺序时关闭过渡，避免单元格从旧位置再滑一遍 */
+.ProseMirror table[data-nb-table-dnd][data-nb-table-dnd-phase='instant'] > tbody > tr > * {
+  transition: none !important;
+}
+
+.ProseMirror table[data-nb-table-dnd] .column-resize-handle {
+  display: none;
+}
+
+@keyframes nb-table-handle-in {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes nb-table-frame-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* 触屏没有悬停，把手无法按需出现，隐藏 */
+[data-platform='mobile'] .nb-table-handle,
+[data-platform='mobile'] .nb-table-axis-frame {
+  display: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nb-table-handle,
+  .nb-table-axis-frame,
+  .nb-table-axis-frame.is-settling,
+  .ProseMirror table[data-nb-table-dnd] > tbody > tr > * {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* 拖动中隐藏把手的悬浮提示（提示会跟随把手移动，干扰视线） */
+body[data-nb-table-dragging] .nb-tooltip-content {
+  visibility: hidden;
+}
