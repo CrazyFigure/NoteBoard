@@ -20,9 +20,17 @@
   align-items: flex-start;
 }
 
+/* 靠右时让出编辑区滚动条（globals.css 滚动条宽 10px），目录位于滚动条左侧 */
 .nb-inline-outline[data-side='right'] {
-  right: 10px;
+  right: 20px;
   align-items: flex-end;
+}
+
+/* 侧边留白：宿主写入变量，可视化滚动容器转为自身内边距；滚动条在内边距外侧，不被留白挤到目录内侧
+ * 源码模式的 .cm-scroller 在源码排版主题中同样读取这两个变量 */
+.nb-md-visual-scroller {
+  padding-left: var(--nb-io-gutter-left, 0px);
+  padding-right: var(--nb-io-gutter-right, 0px);
 }
 
 /* 沉浸阅读：避开顶部拖动条与右上角窗口控件热区，与正文首行大致对齐 */

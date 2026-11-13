@@ -1,6 +1,7 @@
 // NoteBoard 编辑区内目录（设置「Markdown 大纲位置」为「编辑区内」时显示）
 // 固定在编辑区左上 / 右上角，不随正文滚动；沉浸阅读时同样显示
-// 展开时为正文让出侧边留白：宿主内边距只改一次（一次重排），正文位移用 FLIP 合成层动画补间，长文档不卡顿
+// 展开时为正文让出侧边留白：滚动容器内边距只改一次（一次重排），正文位移用 FLIP 合成层动画补间，长文档不卡顿
+// 留白在滚动容器内侧，靠右时目录位于滚动条左侧，滚动条始终贴编辑区右边缘
 // 当前章节高亮、点击跳转与右侧栏大纲共用 useOutlineNavigator
 
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -25,6 +26,8 @@ const SHIFT_DURATION = 280;
 const SHIFT_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)';
 /** 展开状态按用户记忆（跨文档、跨重启），缺省展开 */
 const EXPANDED_STORAGE_KEY = 'nb.inlineOutline.expanded';
+/** 侧边留白写入宿主的 CSS 变量，由可视化 / 源码滚动容器转成自身内边距（见 inlineOutline.css 与源码排版主题） */
+const GUTTER_VARS = { left: '--nb-io-gutter-left', right: '--nb-io-gutter-right' } as const;
 
 type Side = 'left' | 'right';
 
@@ -85,8 +88,45 @@ function prefersReducedMotion(): boolean {
   return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
+/** 位移动画进行中的滚动容器：记录原横向溢出设置与未结束动画数，连续切换时只在最后一次结束后恢复 */
+const shiftingScrollers = new WeakMap<HTMLElement, { overflowX: string; pending: number }>();
+
 /**
- * 须作为编辑器根节点的直接子元素渲染：目录相对根节点定位，侧边留白也加在根节点上。
+ * 正文位移动画：留白在滚动容器内侧，只平移容器的子元素（正文、行号槽、选区层等），滚动条留在原位。
+ * 平移出的部分会撑出横向滚动条，动画期间临时关闭容器横向溢出。
+ */
+function shiftScrollerContent(scroller: HTMLElement, dx: number): void {
+  const children = Array.from(scroller.children).filter(
+    (child): child is HTMLElement => child instanceof HTMLElement && typeof child.animate === 'function',
+  );
+  if (children.length === 0) return;
+
+  let state = shiftingScrollers.get(scroller);
+  if (!state) {
+    state = { overflowX: scroller.style.overflowX, pending: 0 };
+    shiftingScrollers.set(scroller, state);
+    scroller.style.overflowX = 'hidden';
+  }
+  const tracked = state;
+  tracked.pending += 1;
+
+  const animations = children.map((child) =>
+    child.animate([{ transform: `translateX(${dx}px)` }, { transform: 'translateX(0)' }], {
+      duration: SHIFT_DURATION,
+      easing: SHIFT_EASING,
+    }),
+  );
+  // 动画结束或被新动画取代后，最后一批结束时恢复横向溢出设置
+  void Promise.allSettled(animations.map((animation) => animation.finished)).then(() => {
+    tracked.pending -= 1;
+    if (tracked.pending > 0) return;
+    scroller.style.overflowX = tracked.overflowX;
+    shiftingScrollers.delete(scroller);
+  });
+}
+
+/**
+ * 须作为编辑器根节点的直接子元素渲染：目录相对根节点定位，侧边留白以 CSS 变量写在根节点上、由滚动容器继承。
  * 根节点经目录自身的 parentElement 取得——父组件的 ref 要在子组件 layout effect 之后才赋值，首次挂载时还是空的。
  */
 interface InlineOutlineProps {
@@ -115,33 +155,29 @@ function InlineOutlineInner({ editor, docKey, active, reading, side }: InlineOut
   // 首次挂载直接套用留白，之后的展开 / 收起 / 换边才播放位移动画
   const appliedRef = useRef(false);
 
-  // 侧边留白：只改一次内边距，正文从旧位置平滑移到新位置
+  // 侧边留白：只改一次滚动容器内边距（滚动条在内边距外侧，目录因此位于滚动条内侧），正文从旧位置平滑移到新位置
   useLayoutEffect(() => {
     const host = panelRef.current?.parentElement;
     if (!host) return;
     const gutter = `${expanded ? EXPANDED_GUTTER : COLLAPSED_GUTTER}px`;
-    const own = side === 'left' ? 'paddingLeft' : 'paddingRight';
-    const other = side === 'left' ? 'paddingRight' : 'paddingLeft';
-    if (host.style[own] === gutter && !host.style[other]) return;
+    const own = GUTTER_VARS[side];
+    const other = GUTTER_VARS[side === 'left' ? 'right' : 'left'];
+    if (host.style.getPropertyValue(own) === gutter && !host.style.getPropertyValue(other)) return;
 
     const kernel = findVisibleKernel(host);
-    const animate = appliedRef.current && !!kernel?.content && !prefersReducedMotion();
+    const animate = appliedRef.current && !!kernel?.content && !!kernel.scroller && !prefersReducedMotion();
     const before = animate ? kernel!.content!.getBoundingClientRect().left : 0;
     const anchor = captureScrollAnchor(kernel?.scroller ?? null);
 
-    host.style[other] = '';
-    host.style[own] = gutter;
+    host.style.removeProperty(other);
+    host.style.setProperty(own, gutter);
     appliedRef.current = true;
     restoreScrollAnchor(anchor);
 
-    if (!animate || !kernel?.content) return;
-    // 位移加在整个内核容器上：正文本身位移会撑出横向滚动条，容器外层裁剪不会
+    if (!animate || !kernel?.content || !kernel.scroller) return;
     const dx = before - kernel.content.getBoundingClientRect().left;
-    if (Math.abs(dx) < 0.5 || typeof kernel.container.animate !== 'function') return;
-    kernel.container.animate(
-      [{ transform: `translateX(${dx}px)` }, { transform: 'translateX(0)' }],
-      { duration: SHIFT_DURATION, easing: SHIFT_EASING },
-    );
+    if (Math.abs(dx) < 0.5) return;
+    shiftScrollerContent(kernel.scroller, dx);
   }, [expanded, side]);
 
   // 卸载（关闭设置、切到极窄模式）时撤销留白
@@ -149,8 +185,8 @@ function InlineOutlineInner({ editor, docKey, active, reading, side }: InlineOut
     const host = panelRef.current?.parentElement;
     return () => {
       if (!host) return;
-      host.style.paddingLeft = '';
-      host.style.paddingRight = '';
+      host.style.removeProperty(GUTTER_VARS.left);
+      host.style.removeProperty(GUTTER_VARS.right);
     };
   }, []);
 
@@ -173,7 +209,7 @@ function InlineOutlineInner({ editor, docKey, active, reading, side }: InlineOut
     else if (bottom > list.scrollTop + list.clientHeight) list.scrollTo({ top: bottom - list.clientHeight + 8, behavior: 'smooth' });
   }, [activeId, expanded]);
 
-  // 目录与侧边留白都不在正文滚动容器内：在这些位置滚动滚轮时转交给正文；
+  // 目录浮在正文滚动容器之上、不在其内：在目录上滚动滚轮时转交给正文（留白在滚动容器内，原生即可滚动）；
   // 指针在目录列表上且列表还能朝该方向滚动时，留给列表自己滚
   useEffect(() => {
     const host = panelRef.current?.parentElement;
@@ -181,7 +217,7 @@ function InlineOutlineInner({ editor, docKey, active, reading, side }: InlineOut
     const handleWheel = (event: WheelEvent) => {
       const target = event.target as Node | null;
       const panel = panelRef.current;
-      if (target !== host && !(panel && target && panel.contains(target))) return;
+      if (!(panel && target && panel.contains(target))) return;
       const list = listRef.current;
       if (list && target && list.contains(target)) {
         const canScroll = event.deltaY < 0 ? list.scrollTop > 0 : list.scrollTop + list.clientHeight < list.scrollHeight - 1;

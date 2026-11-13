@@ -116,7 +116,11 @@ function createSourceTypographyTheme() {
       fontFamily: 'var(--mono-font-family)',
       fontSize: 'var(--mono-font-size)',
       // 百分比按编辑器宽度计算：两侧留白 = (编辑器宽 - 内容宽) / 2
-      paddingInline: 'max(0px, calc((100% - var(--mono-max-width, 100%)) / 2))',
+      // 编辑区内目录的侧边留白（--nb-io-gutter-*）先从可用宽度扣除，再加到对应一侧，滚动条仍贴编辑区边缘
+      paddingLeft:
+        'calc(max(0px, calc((100% - var(--nb-io-gutter-left, 0px) - var(--nb-io-gutter-right, 0px) - var(--mono-max-width, 100%)) / 2)) + var(--nb-io-gutter-left, 0px))',
+      paddingRight:
+        'calc(max(0px, calc((100% - var(--nb-io-gutter-left, 0px) - var(--nb-io-gutter-right, 0px) - var(--mono-max-width, 100%)) / 2)) + var(--nb-io-gutter-right, 0px))',
     },
     '.cm-content, .cm-line': {
       fontFamily: 'var(--mono-font-family)',

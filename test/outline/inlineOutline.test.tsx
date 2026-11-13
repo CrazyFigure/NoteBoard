@@ -34,7 +34,7 @@ afterEach(() => {
   setOutlineSettings('sidebar');
 });
 
-/** 模拟编辑器根节点：目录挂在它内部，留白加在它上面（首次挂载即生效，不依赖父组件 ref） */
+/** 模拟编辑器根节点：目录挂在它内部，留白变量写在它上面（首次挂载即生效，不依赖父组件 ref） */
 function renderInline() {
   const hostRef = createRef<HTMLDivElement>();
   function Host() {
@@ -55,7 +55,7 @@ describe('InlineOutline', () => {
     setOutlineSettings('sidebar');
     const hostRef = renderInline();
     expect(container.querySelector('.nb-inline-outline')).toBeNull();
-    expect(hostRef.current!.style.paddingLeft).toBe('');
+    expect(hostRef.current!.style.getPropertyValue('--nb-io-gutter-left')).toBe('');
   });
 
   it('编辑区内默认展开，点击开关收起并记住状态', () => {
@@ -63,7 +63,7 @@ describe('InlineOutline', () => {
     const hostRef = renderInline();
     const panel = container.querySelector('.nb-inline-outline')!;
     expect(panel.getAttribute('data-expanded')).toBe('true');
-    expect(hostRef.current!.style.paddingLeft).toBe('240px');
+    expect(hostRef.current!.style.getPropertyValue('--nb-io-gutter-left')).toBe('240px');
     expect(container.textContent).toContain('暂无标题');
 
     const toggle = container.querySelector<HTMLButtonElement>('.nb-inline-outline-toggle')!;
@@ -72,7 +72,7 @@ describe('InlineOutline', () => {
 
     expect(panel.getAttribute('data-expanded')).toBe('false');
     expect(toggle.getAttribute('aria-label')).toBe('展开目录');
-    expect(hostRef.current!.style.paddingLeft).toBe('48px');
+    expect(hostRef.current!.style.getPropertyValue('--nb-io-gutter-left')).toBe('48px');
     // 收起后列表不可聚焦、不响应指针
     expect(container.querySelector('.nb-inline-outline-list')!.hasAttribute('inert')).toBe(true);
     expect(localStorage.getItem('nb.inlineOutline.expanded')).toBe('0');
@@ -83,12 +83,12 @@ describe('InlineOutline', () => {
     const hostRef = renderInline();
     act(() => setOutlineSettings('inline', 'right'));
     expect(container.querySelector('.nb-inline-outline')!.getAttribute('data-side')).toBe('right');
-    expect(hostRef.current!.style.paddingRight).toBe('240px');
-    expect(hostRef.current!.style.paddingLeft).toBe('');
+    expect(hostRef.current!.style.getPropertyValue('--nb-io-gutter-right')).toBe('240px');
+    expect(hostRef.current!.style.getPropertyValue('--nb-io-gutter-left')).toBe('');
 
     act(() => setOutlineSettings('sidebar'));
     expect(container.querySelector('.nb-inline-outline')).toBeNull();
-    expect(hostRef.current!.style.paddingRight).toBe('');
+    expect(hostRef.current!.style.getPropertyValue('--nb-io-gutter-right')).toBe('');
   });
 
   it('极窄模式下不显示目录', () => {
@@ -96,7 +96,7 @@ describe('InlineOutline', () => {
     useLayoutStore.setState({ compactMode: true });
     const hostRef = renderInline();
     expect(container.querySelector('.nb-inline-outline')).toBeNull();
-    expect(hostRef.current!.style.paddingLeft).toBe('');
+    expect(hostRef.current!.style.getPropertyValue('--nb-io-gutter-left')).toBe('');
   });
 });
 
