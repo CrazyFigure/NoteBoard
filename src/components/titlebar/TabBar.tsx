@@ -3,6 +3,7 @@
 // 详见 docs/07-UI布局与交互规范.md §3
 
 import { useRef, useState, useEffect, useLayoutEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   DndContext,
   PointerSensor,
@@ -371,8 +372,8 @@ function TabItem({ tab, isActive, onActivate, onClose, nativeDragging, arriving 
         </div>
       </Tooltip>
 
-      {/* Tab 右键上下文菜单 */}
-      {menuPos && (
+      {/* 所有文档共用的 Tab 右键菜单挂到 body，避免受标签滚动容器层叠上下文限制而被编辑器工具栏遮挡。 */}
+      {menuPos && createPortal(
         <div
           ref={menuRef}
           style={{
@@ -603,7 +604,8 @@ function TabItem({ tab, isActive, onActivate, onClose, nativeDragging, arriving 
               </button>
             </>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
