@@ -32,6 +32,15 @@ interface ExplorerStore {
   expand: (path: string, children: FileTreeNode[]) => void;
   /** 收起目录 */
   collapse: (path: string) => void;
+  /** 收起全部已展开的目录（保留子节点缓存，再次展开时可立即显示） */
+  collapseAll: () => void;
+  /**
+   * 定时刷新结果批量回写：仅替换内容有变化的目录，并移除已被删除/改名的展开目录
+   * @param root 发起刷新时的根路径（根已切换则丢弃结果）
+   * @param fresh 目录 pathKey → 最新子节点
+   * @param goneDirs 已不存在的展开目录 pathKey（连同其后代一起收起并清除缓存）
+   */
+  applyRefresh: (root: string, fresh: Map<string, FileTreeNode[]>, goneDirs: string[]) => void;
   /** 设置根路径（跨目录时清空一切） */
   setRoot: (root: string, rootChildren: FileTreeNode[]) => void;
   /** 定位到文件（高亮并可选择触发滚动） */
@@ -91,6 +100,49 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
     });
   },
 
+  collapseAll: () => {
+    if (get().expanded.size === 0) return;
+    set({ expanded: new Map() });
+  },
+
+  applyRefresh: (root, fresh, goneDirs) => {
+    set((state) => {
+      // 刷新期间根目录已切换：结果作废
+      if (!state.root || pathKey(state.root) !== pathKey(root)) return {};
+
+      let newChildren: Map<string, FileTreeNode[]> | null = null;
+      for (const [key, nodes] of fresh) {
+        const prev = state.children.get(key);
+        const merged = mergeNodes(prev, nodes);
+        // 内容完全一致时保持原数组引用，避免整棵树无谓重渲染
+        if (merged === prev) continue;
+        newChildren ??= new Map(state.children);
+        newChildren.set(key, merged);
+      }
+
+      let newExpanded: Map<string, FileTreeNode[]> | null = null;
+      if (goneDirs.length > 0) {
+        newExpanded = new Map(state.expanded);
+        newChildren ??= new Map(state.children);
+        // 被删除或改名的目录：自身及所有后代一律收起并清除缓存
+        for (const gone of goneDirs) {
+          for (const key of [...newExpanded.keys()]) {
+            if (isSubPath(gone, key)) newExpanded.delete(key);
+          }
+          for (const key of [...newChildren.keys()]) {
+            if (isSubPath(gone, key)) newChildren.delete(key);
+          }
+        }
+      }
+
+      if (!newChildren && !newExpanded) return {};
+      return {
+        ...(newChildren ? { children: newChildren } : {}),
+        ...(newExpanded ? { expanded: newExpanded } : {}),
+      };
+    });
+  },
+
   setRoot: (root, rootChildren) => {
     const key = pathKey(root);
     set(() => {
@@ -146,5 +198,40 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
       loading: false,
     }),
 }));
+
+/** 判断两个节点内容是否一致 */
+function sameNode(a: FileTreeNode, b: FileTreeNode): boolean {
+  return (
+    a.path === b.path &&
+    a.name === b.name &&
+    a.isDir === b.isDir &&
+    a.kind === b.kind &&
+    a.size === b.size &&
+    a.mtime === b.mtime &&
+    a.isHidden === b.isHidden &&
+    a.isSymlink === b.isSymlink &&
+    a.readonly === b.readonly
+  );
+}
+
+/**
+ * 合并新旧子节点列表：未变化的节点复用旧对象（memo 的 TreeNode 不会重渲染），
+ * 整个列表都未变化时直接返回旧数组
+ */
+function mergeNodes(prev: FileTreeNode[] | undefined, next: FileTreeNode[]): FileTreeNode[] {
+  if (!prev) return next;
+  const prevByPath = new Map(prev.map((n) => [n.path, n]));
+  let changed = prev.length !== next.length;
+  const merged = next.map((n, i) => {
+    const old = prevByPath.get(n.path);
+    if (old && sameNode(old, n)) {
+      if (prev[i] !== old) changed = true;
+      return old;
+    }
+    changed = true;
+    return n;
+  });
+  return changed ? merged : prev;
+}
 
 export { sameKey, isSubPath, normalizePath, getPathChain };

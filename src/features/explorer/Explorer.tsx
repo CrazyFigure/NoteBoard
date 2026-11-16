@@ -4,11 +4,12 @@
 // 详见 docs/09-开发路线图.md 阶段5
 
 import { useState, useCallback } from 'react';
-import { FilePlus, FolderPlus, LocateFixed, RotateCw, FolderOpen, Search } from 'lucide-react';
+import { FilePlus, FolderPlus, LocateFixed, ChevronsDownUp, RotateCw, FolderOpen, Search } from 'lucide-react';
 import { useExplorerStore, isSubPath } from './explorerStore';
 import { useTreeData } from './useTreeData';
 import { useReveal } from './useReveal';
 import { useWatcher } from './useWatcher';
+import { usePeriodicRefresh } from './usePeriodicRefresh';
 import { TreeNode } from './TreeNode';
 import { openFolderDialog } from '../welcome/welcomeActions';
 import * as ipc from '../../core/ipc/commands';
@@ -30,7 +31,9 @@ import { SHARED_ROOT, isMultiUser, isSharedPath } from '../account/accountState'
 // ── Explorer 组件 ──
 
 export function Explorer() {
-  const { root, children, loading, setRoot, setRevealed } = useExplorerStore();
+  const { root, children, loading, setRoot, setRevealed, collapseAll } = useExplorerStore();
+  // 是否存在已展开的目录（无展开时“全部收起”按钮置灰）
+  const hasExpanded = useExplorerStore((s) => s.expanded.size > 0);
   const { loadChildren, revealPath } = useTreeData();
   const [creatingType, setCreatingType] = useState<'file' | 'folder' | null>(null);
   const [creatingName, setCreatingName] = useState('');
@@ -42,6 +45,9 @@ export function Explorer() {
 
   // 文件监听
   useWatcher();
+
+  // 后台每 10 秒刷新一次文件树（保持展开状态，已删除/改名的目录自动收起）
+  usePeriodicRefresh();
 
   // 与 explorerStore 使用相同身份规则，Linux 大写目录也能正确加载。
   const rootChildren = root ? children.get(pathKey(root)) : undefined;
@@ -203,6 +209,10 @@ export function Explorer() {
         <ActionButton label="定位当前打开的文件与目录" hue={ACTION_HUES.locate} onClick={handleLocateActive}>
           <LocateFixed size={15} />
         </ActionButton>
+        {/* 全部收起已展开的文件夹 */}
+        <ActionButton label="全部收起" hue={ACTION_HUES.collapseAll} onClick={collapseAll} disabled={!hasExpanded}>
+          <ChevronsDownUp size={15} />
+        </ActionButton>
         {/* 新建文件 */}
         {!virtualShared && (
           <ActionButton
@@ -342,6 +352,7 @@ export function Explorer() {
 // 标题栏按钮各自的色相；实际颜色在 explorer.css 中与主题文字色混合，适配明暗主题
 const ACTION_HUES = {
   locate: '#f43f5e',
+  collapseAll: '#06b6d4',
   newFile: '#3b82f6',
   newFolder: '#f59e0b',
   refresh: '#10b981',
@@ -354,11 +365,13 @@ interface ActionButtonProps {
   shortcut?: string;
   hue: string;
   onClick: () => void;
+  /** 禁用态：置灰且不响应悬停/点击 */
+  disabled?: boolean;
   children: React.ReactNode;
 }
 
 /** 标题栏彩色图标按钮：悬停/按下反馈由 .nb-explorer-action 提供 */
-function ActionButton({ label, shortcut, hue, onClick, children }: ActionButtonProps) {
+function ActionButton({ label, shortcut, hue, onClick, disabled, children }: ActionButtonProps) {
   return (
     <Tooltip content={label} shortcut={shortcut}>
       <button
@@ -366,6 +379,7 @@ function ActionButton({ label, shortcut, hue, onClick, children }: ActionButtonP
         aria-label={label}
         className="nb-explorer-action"
         style={{ '--nb-action-hue': hue } as React.CSSProperties}
+        disabled={disabled}
         onClick={onClick}
       >
         {children}
