@@ -3160,6 +3160,23 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                   </button>
                 </Tooltip>
 
+                {/* 普通节点可在当前节点后插入同级并进入编辑；根节点与概要主题没有同级。 */}
+                {!isMultiSelecting && !isRoot && !isSummaryTopic && (
+                  <Tooltip content="新增同级节点" shortcut="Enter" side="top" sideOffset={4}>
+                    <button
+                      type="button"
+                      className="nb-mindmap-toolbar-btn is-active-accent"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        createLinkedNode('sibling', n.node.id, false);
+                      }}
+                      aria-label="新增同级节点"
+                    >
+                      <ListPlus size={14} />
+                    </button>
+                  </Tooltip>
+                )}
+
                 {/* 添加子分支：复用统一快捷键徽标，在提示文字后展示 Tab。 */}
                 {!isMultiSelecting && (
                   <Tooltip content="添加子分支" shortcut="Tab" side="top" sideOffset={4}>
@@ -3173,23 +3190,6 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                       aria-label="添加子分支"
                     >
                       <Plus size={14} />
-                    </button>
-                  </Tooltip>
-                )}
-
-                {/* 普通节点可在当前节点后插入同级并进入编辑；根节点与概要主题没有同级。 */}
-                {!isMultiSelecting && !isRoot && !isSummaryTopic && (
-                  <Tooltip content="下方新增同级节点" shortcut="Enter" side="top" sideOffset={4}>
-                    <button
-                      type="button"
-                      className="nb-mindmap-toolbar-btn is-active-accent"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        createLinkedNode('sibling', n.node.id, false);
-                      }}
-                      aria-label="下方新增同级节点"
-                    >
-                      <ListPlus size={14} />
                     </button>
                   </Tooltip>
                 )}
