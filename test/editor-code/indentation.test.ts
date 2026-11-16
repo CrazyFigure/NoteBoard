@@ -1,6 +1,6 @@
 // 验证各类 CodeMirror 文档共用缩进设置、设置热更新及 Esc 后 Tab 不切换焦点。
 import { afterEach, describe, expect, it } from 'vitest';
-import { EditorState, type Extension } from '@codemirror/state';
+import { EditorSelection, EditorState, type Extension } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { indentUnit } from '@codemirror/language';
 import { undo } from '@codemirror/commands';
@@ -54,6 +54,48 @@ describe('各类文本文档统一 Tab 行为', () => {
     expect(view.state.doc.toString()).toBe('    ' + doc);
   });
 
+  it.each([
+    ['行首', 0], ['行中', 2], ['行尾', 4],
+  ] as const)('TXT 在%s光标处插入缩进，并可撤销', (_name, anchor) => {
+    setIndentation(4);
+    const view = createView('测试正文', []);
+    view.dispatch({ selection: { anchor } });
+    expect(pressKey(view, 'Tab').defaultPrevented).toBe(true);
+    expect(view.state.doc.toString()).toBe('测试正文'.slice(0, anchor) + '    ' + '测试正文'.slice(anchor));
+    expect(view.state.selection.main.anchor).toBe(anchor + 4);
+    expect(undo(view)).toBe(true);
+    expect(view.state.doc.toString()).toBe('测试正文');
+  });
+
+  it('TXT 在光标处插入真正的制表符，Esc 后也保留插入位置', () => {
+    setIndentation(4, false);
+    const view = createView('前文后文', []);
+    view.dispatch({ selection: { anchor: 2 } });
+    pressKey(view, 'Escape');
+    expect(pressKey(view, 'Tab').defaultPrevented).toBe(true);
+    expect(view.state.doc.toString()).toBe('前文\t后文');
+    expect(view.state.selection.main.anchor).toBe(3);
+  });
+
+  it('多个光标分别插入缩进，不移动到各自行首', () => {
+    setIndentation(2);
+    const view = createView('abcd\nefgh', [EditorState.allowMultipleSelections.of(true)]);
+    view.dispatch({ selection: EditorSelection.create([EditorSelection.cursor(2), EditorSelection.cursor(7)]) });
+    pressKey(view, 'Tab');
+    expect(view.state.doc.toString()).toBe('ab  cd\nef  gh');
+    expect(view.state.selection.ranges.map((range) => range.anchor)).toEqual([4, 11]);
+  });
+
+  it('选中文本时仍缩进各行，Shift+Tab 还原缩进并保留正文', () => {
+    setIndentation(2);
+    const view = createView('first\nsecond', []);
+    view.dispatch({ selection: { anchor: 1, head: 9 } });
+    pressKey(view, 'Tab');
+    expect(view.state.doc.toString()).toBe('  first\n  second');
+    pressKey(view, 'Tab', true);
+    expect(view.state.doc.toString()).toBe('first\nsecond');
+  });
+
   it('多个已打开实例即时更新宽度和制表符偏好，不清除撤销历史', () => {
     const first = createView('one');
     const second = createView('two');
@@ -62,8 +104,10 @@ describe('各类文本文档统一 Tab 行为', () => {
     for (const view of [first, second]) {
       expect(view.state.tabSize).toBe(8);
       expect(view.state.facet(indentUnit)).toBe('\t');
+      const before = view.state.doc.toString();
+      const anchor = view.state.selection.main.anchor;
       pressKey(view, 'Tab');
-      expect(view.state.doc.toString().startsWith('\t')).toBe(true);
+      expect(view.state.doc.toString()).toBe(before.slice(0, anchor) + '\t' + before.slice(anchor));
     }
     expect(undo(first)).toBe(true);
     expect(first.state.doc.toString()).toBe('  one');
