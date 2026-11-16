@@ -314,7 +314,7 @@ export function ConfirmDialog({
 /** 顶层只展示连接方式，具体厂商放入下拉，避免按钮数量随服务扩展不断增加。 */
 const PROVIDER_GROUPS = [
   { group: 'webdav', label: 'WebDAV', icon: Network },
-  { group: 'storage', label: '对象存储', icon: Cloud },
+  { group: 'storage', label: 'S3/对象存储', icon: Cloud },
   { group: 'git', label: 'Git 仓库', icon: GitBranch },
 ] as const;
 

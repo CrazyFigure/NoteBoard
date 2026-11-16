@@ -190,7 +190,7 @@ describe('设置页同步与备份切换', () => {
     const testConnection = vi.spyOn(ipc, 'syncTestConnection').mockResolvedValue('连接成功');
     act(() => root.render(<TooltipProvider><ProviderForm value={provider} onChange={change} /></TooltipProvider>));
     const radios = Array.from(host.querySelectorAll<HTMLButtonElement>('[role="radio"]'));
-    const selected = kind === 'webdav' ? 'WebDAV' : kind === 's3' ? '对象存储' : 'Git 仓库';
+    const selected = kind === 'webdav' ? 'WebDAV' : kind === 's3' ? 'S3/对象存储' : 'Git 仓库';
     expect(radios.find((radio) => radio.textContent === selected)!.getAttribute('aria-checked')).toBe('true');
     if (kind === 's3') {
       expect(host.querySelector('[aria-label="对象存储服务"]')!.textContent).toBe('通用 S3（AWS / R2 / MinIO）');
@@ -258,7 +258,7 @@ describe('设置页同步与备份切换', () => {
     const other = host.querySelector<HTMLButtonElement>('button[role="radio"][aria-checked="false"]')!;
     act(() => other.click());
     expect(host.querySelector('input[aria-label="Header 1 名称"]')).toBeNull();
-    const original = Array.from(host.querySelectorAll<HTMLButtonElement>('button[role="radio"]')).find((item) => item.textContent === (kind === 'webdav' ? 'WebDAV' : '对象存储'))!;
+    const original = Array.from(host.querySelectorAll<HTMLButtonElement>('button[role="radio"]')).find((item) => item.textContent === (kind === 'webdav' ? 'WebDAV' : 'S3/对象存储'))!;
     act(() => original.click());
     expect(host.querySelector<HTMLInputElement>('input[aria-label="Header 1 值"]')!.value).toBe('gateway-token');
   });
@@ -283,8 +283,8 @@ describe('设置页同步与备份切换', () => {
     }
     act(() => root.render(<TooltipProvider><Form /></TooltipProvider>));
     const radios = () => Array.from(host.querySelectorAll<HTMLButtonElement>('[role="radio"]'));
-    expect(radios().map((button) => button.textContent)).toEqual(['WebDAV', '对象存储', 'Git 仓库']);
-    act(() => radios().find((button) => button.textContent === '对象存储')!.click());
+    expect(radios().map((button) => button.textContent)).toEqual(['WebDAV', 'S3/对象存储', 'Git 仓库']);
+    act(() => radios().find((button) => button.textContent === 'S3/对象存储')!.click());
     const trigger = host.querySelector<HTMLButtonElement>('[role="combobox"]')!;
     expect(trigger.textContent).toBe('通用 S3（AWS / R2 / MinIO）');
     act(() => trigger.click());
@@ -363,15 +363,15 @@ describe('设置页同步与备份切换', () => {
     switchTab('同步与备份');
     const radio = (label: string, group = 0) => host.querySelectorAll('[role="radiogroup"][aria-label="同步方式"]')[group]
       && Array.from(host.querySelectorAll('[role="radiogroup"][aria-label="同步方式"]')[group].querySelectorAll<HTMLButtonElement>('[role="radio"]')).find((button) => button.textContent === label)!;
-    act(() => radio('对象存储')!.click());
+    act(() => radio('S3/对象存储')!.click());
     chooseStorage('华为云 OBS');
     const remote = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent === '云端（WebDAV / S3 / Git 仓库）')!;
     expect(remote).toBeDefined();
     await act(async () => remote.click());
-    act(() => radio('对象存储', 1)!.click());
+    act(() => radio('S3/对象存储', 1)!.click());
     chooseStorage('腾讯云 COS', 1);
-    expect(radio('对象存储')!.getAttribute('aria-checked')).toBe('true');
-    expect(radio('对象存储', 1)!.getAttribute('aria-checked')).toBe('true');
+    expect(radio('S3/对象存储')!.getAttribute('aria-checked')).toBe('true');
+    expect(radio('S3/对象存储', 1)!.getAttribute('aria-checked')).toBe('true');
     expect(host.querySelectorAll('[role="combobox"][aria-label="对象存储服务"]')[0].textContent).toBe('华为云 OBS');
     expect(host.querySelectorAll('[role="combobox"][aria-label="对象存储服务"]')[1].textContent).toBe('腾讯云 COS');
     // 表单卸载会 flush，验证两个入口最终使用各自独立的配置提交。
