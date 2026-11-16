@@ -80,6 +80,7 @@ import {
   Columns3,
 } from 'lucide-react';
 import { formatShortcut } from '../../core/shortcuts';
+import { useEditorActive } from '../../core/editor/EditorActivityContext';
 
 export interface CellRange {
   startRowId: string;
@@ -278,6 +279,10 @@ export function BitableGridView({
   onReorderColumns,
   onMoveRow,
 }: GridViewProps) {
+  // 切到后台后立即阻止延迟聚焦和剪贴板交互，保留原选区供返回时继续编辑。
+  const isEditorActive = useEditorActive();
+  const isEditorActiveRef = useRef(isEditorActive);
+  isEditorActiveRef.current = isEditorActive;
   // 当前打开列头菜单的列 ID（菜单改由 Portal 浮层渲染，需同时记录锚点与触发元素）
   const [columnMenu, setColumnMenu] = useState<{
     colId: string;
@@ -1347,6 +1352,8 @@ export function BitableGridView({
    */
   const focusClipboardProxy = useCallback(() => {
     window.setTimeout(() => {
+      // 定时器执行前可能已切换标签，后台代理不得抢走其它文件的焦点。
+      if (!isEditorActiveRef.current) return;
       const active = document.activeElement as HTMLElement | null;
       // 焦点停在隔离区面板上（如点了记录侧栏空白处）时不抢回焦点
       if (isInKeyboardScope(active)) return;
@@ -1363,12 +1370,17 @@ export function BitableGridView({
 
   // 选区变化后把焦点交还代理输入框，保证 Ctrl+C / Ctrl+X / Ctrl+V 始终有落点
   useEffect(() => {
+    if (!isEditorActive) return;
     focusClipboardProxy();
-  }, [selection, focusClipboardProxy]);
+  }, [selection, isEditorActive, focusClipboardProxy]);
 
   // 3. 键盘快捷键监听（方向键导航与 Shift 扩展、Ctrl+A 全选、删除、清空、取消选区；复制/剪切/粘贴交由原生剪贴板事件处理）
   useEffect(() => {
+    // 隐藏的保活表格不处理删除、层级调整、全选和方向键。
+    if (!isEditorActive) return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      // 代理自己消费方向键以滚动容器，仍需继续更新选区；其它已消费事件交给原处理者。
+      if (e.isComposing || (e.defaultPrevented && e.target !== clipboardProxyRef.current)) return;
       // 避免在单元格编辑框与列重命名框内触发表格级快捷键
       const active = document.activeElement as HTMLElement | null;
       // 焦点或按键目标在记录详情侧栏、多行文本弹层等隔离区内时一律不处理（防止 Backspace 删掉背后选中的行）
@@ -1483,6 +1495,7 @@ export function BitableGridView({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
+    isEditorActive,
     normalizedSelection,
     selection,
     selectableRows,
@@ -1635,6 +1648,7 @@ export function BitableGridView({
 
   // 代理输入框承接选中后的空格编辑，并手工转发浏览器不再处理的滚动键。
   const handleProxyKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!isEditorActiveRef.current) return;
     // 只响应单格选中时的独立空格；编辑框、弹层、组合键与输入法不走此入口。
     if (
       e.key === ' ' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey &&
@@ -1714,9 +1728,11 @@ export function BitableGridView({
       {/* 隐藏剪贴板代理输入框：承载原生 copy / cut / paste 事件，避免剪贴板读权限弹窗 */}
       <textarea
         ref={clipboardProxyRef}
+        data-bitable-clipboard-proxy=""
         aria-hidden
         tabIndex={-1}
         onCopy={(e) => {
+          if (!isEditorActiveRef.current) return;
           const payload = buildClipboardPayload();
           if (payload === null) return;
           e.clipboardData.setData('text/plain', payload);
@@ -1732,6 +1748,7 @@ export function BitableGridView({
           );
         }}
         onCut={(e) => {
+          if (!isEditorActiveRef.current) return;
           const payload = buildClipboardPayload();
           if (payload === null) return;
           e.clipboardData.setData('text/plain', payload);
@@ -1739,6 +1756,7 @@ export function BitableGridView({
           clearSelectedRange();
         }}
         onPaste={(e) => {
+          if (!isEditorActiveRef.current) return;
           const text = e.clipboardData.getData('text/plain');
           e.preventDefault();
           applyPaste(text);

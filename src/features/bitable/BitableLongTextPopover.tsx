@@ -10,6 +10,7 @@ import { X, Check } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 import { KEYBOARD_SCOPE_ATTR, stopReactPropagation } from './bitableUtils';
 import { formatShortcut } from '../../core/shortcuts';
+import { useEditorActive } from '../../core/editor/EditorActivityContext';
 
 interface LongTextPopoverProps {
   /** 所属列，用于取字段名与 Markdown 配置 */
@@ -46,6 +47,7 @@ export function BitableLongTextPopover({
   onCommit,
   onClose,
 }: LongTextPopoverProps) {
+  const isEditorActive = useEditorActive();
   const initial = value === null || value === undefined ? '' : String(value);
   // 草稿：弹层生命周期内独立维护，关闭时不污染文档
   const [draft, setDraft] = useState(initial);
@@ -76,6 +78,8 @@ export function BitableLongTextPopover({
    *    富文本正文里的 Esc 总会被 ProseMirror 标记 defaultPrevented，改由编辑器 onEscape 回调处理（见 handleEditorEscape）。
    */
   useEffect(() => {
+    // 弹层随所属表格保活时，不得接收其它文件的草稿保存或取消快捷键。
+    if (!isEditorActive) return;
     const handleSaveKey = (e: KeyboardEvent) => {
       if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return;
       // 图表源码、公式、HTML 块等节点内编辑框自有 Ctrl+Enter「完成」语义
@@ -96,7 +100,7 @@ export function BitableLongTextPopover({
       document.removeEventListener('keydown', handleSaveKey, true);
       window.removeEventListener('keydown', handleEscape);
     };
-  }, []);
+  }, [isEditorActive]);
 
   /**
    * 富文本正文中的 Esc（斜杠菜单未打开时由编辑器回调）

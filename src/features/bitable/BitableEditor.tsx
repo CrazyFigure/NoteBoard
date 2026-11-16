@@ -103,7 +103,6 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
   const readingFullscreen = useWindowFullscreen(readingWindowChrome);
   const readingDragRegion = readingWindowChrome && !IS_WEB && !readingFullscreen ? { 'data-tauri-drag-region': '' } : undefined;
   const setContent = useDocumentStore((s) => s.setContent);
-  const setDirty = useDocumentStore((s) => s.setDirty);
   const setTabDirty = useWindowStore((s) => s.setTabDirty);
 
   // 多维表格内部完整文档状态
@@ -161,14 +160,17 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
     initializeDocumentHistory(docKey, initialContent, 'bitable');
 
     const unregister = registerDocumentHistoryAdapter(docKey, {
-      applyEntry: (entry) => {
+      applyEntry: (entry, navigation) => {
         const parsed = parseBitableDocument(entry.content);
         dataRef.current = parsed;
         setData(parsed);
+        // 历史导航同样推进正文版本；撤销到保存基线时沿用 store 的比较结果清除小点。
+        bumpDocumentRevision(docKey);
         setContent(docKey, entry.content);
-        setDirty(docKey, true);
-        setTabDirty(docKey, true);
-        scheduleAutoSave(docKey);
+        const isDirty = useDocumentStore.getState().getDocument(docKey)?.isDirty ?? false;
+        setTabDirty(docKey, isDirty);
+        // 磁盘重载由外部变更流程对齐基线，不作为用户输入触发自动保存。
+        if (isDirty && !navigation.externalReload) scheduleAutoSave(docKey);
       },
     });
 
@@ -213,15 +215,17 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
       const nextDoc = typeof updater === 'function' ? updater(prev) : updater;
       if (!nextDoc || nextDoc === prev) return;
 
+      // 名称、选项和视图配置可能原样提交；比较实际正文，避免空操作推进历史和脏态。
+      const serialized = serializeBitableDocument(nextDoc);
+      if (serialized === serializeBitableDocument(prev)) return;
+
       dataRef.current = nextDoc;
       setData(nextDoc);
       // 🔴 S12：真实修改推进内容版本（会话屏障校验用）
       bumpDocumentRevision(docKey);
 
-      const serialized = serializeBitableDocument(nextDoc);
       setContent(docKey, serialized);
-      setDirty(docKey, true);
-      setTabDirty(docKey, true);
+      setTabDirty(docKey, useDocumentStore.getState().getDocument(docKey)?.isDirty ?? false);
       // auto 策略下停止编辑达到自动保存间隔后写盘
       scheduleAutoSave(docKey);
 
@@ -239,7 +243,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
         }, 0);
       }
     },
-    [docKey, setContent, setDirty, setTabDirty],
+    [docKey, setContent, setTabDirty],
   );
 
   // ── 🔴 S12：回收接入——能力注册表 + 挂载恢复 ──
@@ -281,8 +285,10 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
       instanceId,
       getRevision: () => getDocumentRevision(docKey),
       flush: async () => {
-        // 数据权威已在 store（commitChange 同步 setContent）；序列化兜底对齐
-        const content = serializeBitableDocument(dataRef.current);
+        // 真实编辑已同步进 store；只捕获已提交正文，避免切换视图或解析补全污染保存基线。
+        const content = useDocumentStore.getState().getDocument(docKey)?.content ?? null;
+        // 正文尚未加载时不提供可写快照，调用方继续保留未知正文保护。
+        if (content === null) return null;
         submitCapturedContent(docKey, { instanceId, revision: getDocumentRevision(docKey), content });
         return { docKey, instanceId, revision: getDocumentRevision(docKey), content };
       },
@@ -319,6 +325,12 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
     if (!restored || restored.kind !== 'bitable') return;
     if (restored.searchQuery) setSearchQuery(restored.searchQuery);
     if (restored.recordPanelRowId) setRecordPanelRowId(restored.recordPanelRowId);
+    // 恢复会话中的查看视图，保持它与正文镜像分离，不产生未保存提示。
+    if (restored.activeViewId && dataRef.current.views.some((view) => view.id === restored.activeViewId)) {
+      const restoredData = { ...dataRef.current, activeViewId: restored.activeViewId };
+      dataRef.current = restoredData;
+      setData(restoredData);
+    }
     if (restored.scrollTop > 0) {
       // 滚动容器在视图渲染完成后恢复
       const targetViewId = restored.activeViewId ?? dataRef.current.activeViewId;
@@ -710,6 +722,8 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
             const column = nextColumns[targetColIdx];
             const { value, column: updatedColumn } = coerceCellValue(column, raw);
             if (updatedColumn) nextColumns[targetColIdx] = updatedColumn;
+            // 粘贴原值不属于编辑，也不应仅因刷新记录时间而产生未保存提示。
+            if (areCellValuesEqual(nextRows[targetRowIdx][column.id], value)) return;
             nextRows[targetRowIdx] = {
               ...nextRows[targetRowIdx],
               [column.id]: value,
@@ -751,15 +765,17 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
           const col = nextColumns.find((c) => c.id === colId);
           if (!col) return;
 
+          let nextValue = value;
           if (typeof value === 'string') {
             const { value: coerced, column: updatedCol } = coerceCellValue(col, value);
             if (updatedCol) {
               nextColumns = nextColumns.map((c) => (c.id === colId ? updatedCol : c));
             }
-            row[colId] = coerced;
-          } else {
-            row[colId] = value;
+            nextValue = coerced;
           }
+          // 清空空单元格、重复填充或粘贴原值时保留原时间戳，交给统一提交过滤空操作。
+          if (areCellValuesEqual(row[colId], nextValue)) return;
+          row[colId] = nextValue;
           row._updatedAt = Date.now();
         });
 
@@ -893,7 +909,8 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
     (colId: string) => {
       commitChange((prev) => ({
         ...prev,
-        rows: prev.rows.map((r) => ({ ...r, [colId]: null })),
+        // 未填写的字段无需补写 null，避免清空整列时仅因空值表示不同而标记修改。
+        rows: prev.rows.map((r) => areCellValuesEqual(r[colId], null) ? r : { ...r, [colId]: null }),
       }));
     },
     [commitChange],
@@ -1118,9 +1135,16 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
 
   // 全局撤销/重做快捷键
   useEffect(() => {
+    // 后台标签保留编辑器与历史，但不得接收前台文件的撤销、重做。
+    if (!isEditorActive) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      // 多行文本富文本编辑器有自己的撤销栈，焦点在其中时不应同时撤销整张表
-      if (e.target instanceof Element && e.target.closest('.nb-bitable-rte')) return;
+      if (e.defaultPrevented || e.isComposing || e.altKey) return;
+      // 全局浮层和其它文件的输入不属于本表；文本输入框保留自身的撤销栈。
+      if (e.target instanceof Node && e.target !== document.body && e.target !== document.documentElement
+        && !editorRootRef.current?.contains(e.target)) return;
+      if (e.target instanceof Element
+        && !e.target.closest('[data-bitable-clipboard-proxy]')
+        && e.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         if (e.shiftKey) {
           e.preventDefault();
@@ -1136,7 +1160,7 @@ export function BitableEditor({ docKey }: BitableEditorProps) {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [docKey]);
+  }, [docKey, isEditorActive]);
 
   return (
     <div
