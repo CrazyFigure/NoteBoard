@@ -22,6 +22,13 @@ import { showToast } from '../../stores/toastStore';
 import { getEditorCapabilities } from '../../core/editor/editorRegistry';
 import type { SearchCapabilities } from '../../core/editor/editorTypes';
 
+// 替换按钮的两行文字样式：字号略小、行高紧凑，确保两行能放进 32px 高的按钮内
+const TWO_LINE_LABEL_STYLE: CSSProperties = {
+  fontSize: 11,
+  lineHeight: 1.15,
+  textAlign: 'left',
+};
+
 interface SearchReplaceBarProps {
   /** 搜索状态（缺省为全局单例） */
   store?: SearchStoreHook;
@@ -289,7 +296,7 @@ export function SearchReplaceBar({
             ref={searchInputRef}
             type="text"
             value={searchText}
-            placeholder="搜索..."
+            placeholder="搜索"
             onChange={(e) => setSearchText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
@@ -423,7 +430,7 @@ export function SearchReplaceBar({
           <input
             ref={replaceInputRef}
             type="text"
-            placeholder="替换文本..."
+            placeholder="替换文本"
             value={replaceText}
             onChange={(e) => setReplaceText(e.target.value)}
             onKeyDown={(e) => {
@@ -495,7 +502,8 @@ export function SearchReplaceBar({
             }}
           >
             <Replace size={13} />
-            <span>替换</span>
+            {/* 按钮文字拆成两行小字，节省横向空间 */}
+            <span style={TWO_LINE_LABEL_STYLE}>替换<br />一个</span>
           </button>
         </Tooltip>
 
@@ -542,7 +550,7 @@ export function SearchReplaceBar({
             aria-label="全部替换"
           >
             <Grid2X2 size={13} />
-            <span>全部</span>
+            <span style={TWO_LINE_LABEL_STYLE}>替换<br />全部</span>
           </button>
         </Tooltip>
       </div>
