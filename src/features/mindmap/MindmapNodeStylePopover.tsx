@@ -1,6 +1,7 @@
 // NoteBoard 思维导图单个节点样式浮层
 // 单独设置节点的标题对齐与图片显示方式；选中与设置默认值相同的选项时不单独保存，继续跟随设置。
 // 另可设置节点背景色与文字颜色（预设色 + 自定义取色），只作用于选中的节点本身。
+// 颜色与标题格式菜单同步：这里设置后会清除标题中对应的内联颜色，显示的是实际生效的颜色。
 // 浮层始终收在窗口内：展开取色盘等内容变高时自动上移，窗口放不下时内部滚动。
 // 详见 docs/09-开发路线图.md
 
@@ -30,6 +31,8 @@ interface MindmapNodeStylePopoverProps {
   /** 节点背景色 / 文字颜色（未设置为 undefined） */
   fillColor?: string;
   textColor?: string;
+  /** 标题中各段文字颜色不一致（部分文字设置了内联颜色）：不高亮任何色块 */
+  textColorMixed?: boolean;
   /** 同时设置的节点数（多选时 > 1） */
   targetCount: number;
   onTextAlignChange: (value: MindmapTextAlign | undefined) => void;
@@ -81,26 +84,30 @@ function ColorPresetGrid({
   variant,
   presets,
   value,
+  mixed = false,
   defaultLabel,
   onChange,
 }: {
   variant: 'fill' | 'text';
   presets: NodeColorPreset[];
   value: string | undefined;
+  /** 颜色不一致时「默认」也不高亮 */
+  mixed?: boolean;
   defaultLabel: string;
   onChange: (value: string | undefined) => void;
 }) {
   const active = value?.toLowerCase();
+  const isDefault = !active && !mixed;
   return (
     <div className="nb-mindmap-color-grid" role="radiogroup" aria-label={variant === 'fill' ? '背景颜色' : '文字颜色'}>
       <Tooltip content={defaultLabel} side="top" sideOffset={4} delayDuration={100}>
         <button
           type="button"
           role="radio"
-          aria-checked={!active}
+          aria-checked={isDefault}
           aria-label={defaultLabel}
           className="nb-mindmap-color-swatch is-default"
-          data-active={!active}
+          data-active={isDefault}
           onClick={() => onChange(undefined)}
         >
           <Ban size={12} />
@@ -140,6 +147,7 @@ export function MindmapNodeStylePopover({
   defaultImageFit,
   fillColor,
   textColor,
+  textColorMixed = false,
   targetCount,
   onTextAlignChange,
   onImageFitChange,
@@ -278,6 +286,7 @@ export function MindmapNodeStylePopover({
         variant="text"
         presets={NODE_TEXT_PRESETS}
         value={textColor}
+        mixed={textColorMixed}
         defaultLabel="默认文字颜色"
         onChange={onTextColorChange}
       />

@@ -48,15 +48,17 @@ import { appendWithLimit, getNodeFiles, getNodeImages, MAX_NODE_FILES, MAX_NODE_
 import { MindmapTitleEditor, type MindmapTitleEditorHandle, type TitleSelectionInfo } from './MindmapTitleEditor';
 import { MindmapTextFormatMenu, type FormatState } from './MindmapTextFormatMenu';
 import { MindmapNodeStylePopover } from './MindmapNodeStylePopover';
-import { readableTextOn } from './mindmapNodeColors';
+import { normalizeNodeColor, readableTextOn } from './mindmapNodeColors';
 import { ARROW_KEY_DIRECTIONS, findNavigationTarget, panToRevealRect } from './mindmapKeyboardNav';
 import { MindmapConfirmDialog } from './MindmapConfirmDialog';
 import {
   adjustMarksForTextChange,
-  commonColor,
+  effectiveColor,
   isStyleActive,
+  removeColorMarks,
   splitStyledRuns,
   styleToCss,
+  type ColorStyleKey,
   type MindTextMark,
   type StylePatch,
 } from './mindmapRichText';
@@ -1508,12 +1510,12 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   };
 
   /**
-   * 设置节点的对齐 / 图片显示方式 / 背景色 / 文字颜色（可多个，一次撤销步）；传 undefined 表示恢复跟随设置。
+   * 设置节点的对齐 / 图片显示方式（可多个，一次撤销步）；传 undefined 表示恢复跟随设置。
    * 只改选中节点本身，子节点与之后新建的节点不受影响
    */
   const setNodeStyleField = (
     ids: readonly string[],
-    field: 'textAlign' | 'imageFit' | 'fillColor' | 'textColor',
+    field: 'textAlign' | 'imageFit',
     value: string | undefined,
   ) => {
     updateTree((cloned) => {
@@ -1526,8 +1528,38 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     });
   };
 
+  /**
+   * 设置节点文字颜色 / 背景色（可多个，一次撤销步）；传 undefined 表示恢复默认。
+   * 颜色作用于整个节点，同时清除标题中对应的内联颜色（文字颜色 / 高亮），
+   * 保证节点样式浮层与格式菜单显示一致，不会出现两处各设一种颜色的情况
+   */
+  const setNodeColor = (ids: readonly string[], key: ColorStyleKey, value: string | undefined) => {
+    const field = key === 'color' ? 'textColor' : 'fillColor';
+    const color = value === undefined ? undefined : normalizeNodeColor(value);
+    updateTree((cloned) => {
+      for (const id of ids) {
+        updateNodeById(cloned, id, (node) => {
+          if (color === undefined) delete node[field];
+          else node[field] = color;
+          const marks = removeColorMarks(node.text.length, node.marks, key);
+          if (marks) node.marks = marks;
+          else delete node.marks;
+        });
+      }
+    });
+  };
+
   /** 格式菜单：对编辑框当前选区应用格式 */
   const handleFormatPatch = (patch: StylePatch) => {
+    const id = editingNodeIdRef.current;
+    const sel = formatSelection;
+    const length = sel?.draft.text.length ?? 0;
+    // 选中全部文字时设置颜色即设置节点颜色：写入节点并去掉草稿中的内联颜色，与节点样式浮层同步
+    if (patch.type === 'color' && id && sel && length > 0 && sel.from === 0 && sel.to === length) {
+      setNodeColor([id], patch.key, patch.value ?? undefined);
+      titleEditorRef.current?.applyPatch({ type: 'color', key: patch.key, value: null });
+      return;
+    }
     titleEditorRef.current?.applyPatch(patch);
   };
 
@@ -3702,21 +3734,44 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       {editingNodeId && formatSelection && (() => {
         const { draft, from, to } = formatSelection;
         const length = draft.text.length;
+        const editingNode = findNodeById(root, editingNodeId);
+        // 选中全部文字：颜色操作作用于整个节点（与节点样式浮层同步）
+        const wholeText = length > 0 && from === 0 && to === length;
         const state: FormatState = {
           bold: isStyleActive(length, draft.marks, from, to, 'bold'),
           italic: isStyleActive(length, draft.marks, from, to, 'italic'),
           underline: isStyleActive(length, draft.marks, from, to, 'underline'),
           strike: isStyleActive(length, draft.marks, from, to, 'strike'),
-          color: commonColor(length, draft.marks, from, to, 'color'),
-          highlight: commonColor(length, draft.marks, from, to, 'highlight'),
+          // 文字颜色显示实际生效值：没有内联颜色的文字取节点文字颜色
+          color: effectiveColor(length, draft.marks, from, to, 'color', editingNode?.textColor),
+          // 全选时显示节点背景色，部分选中时显示内联高亮
+          highlight: wholeText
+            ? { value: editingNode?.fillColor, mixed: false }
+            : effectiveColor(length, draft.marks, from, to, 'highlight'),
         };
-        return <MindmapTextFormatMenu rect={formatSelection.rect} state={state} onPatch={handleFormatPatch} />;
+        return (
+          <MindmapTextFormatMenu
+            rect={formatSelection.rect}
+            state={state}
+            wholeText={wholeText}
+            onPatch={handleFormatPatch}
+          />
+        );
       })()}
 
       {/* 单个节点样式浮层 */}
       {nodeStylePopover && (() => {
         const target = findNodeById(root, nodeStylePopover.nodeId);
         if (!target) return null;
+        // 文字颜色显示实际生效值：标题整体设置了内联颜色时同样能反映出来，与格式菜单一致
+        const textColorState = effectiveColor(
+          target.text.length,
+          target.marks,
+          0,
+          target.text.length,
+          'color',
+          target.textColor,
+        );
         return (
           <MindmapNodeStylePopover
             position={{ x: nodeStylePopover.x, y: nodeStylePopover.y }}
@@ -3727,12 +3782,13 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
             defaultTextAlign={defaultTextAlign}
             defaultImageFit={defaultImageFit}
             fillColor={target.fillColor}
-            textColor={target.textColor}
+            textColor={textColorState.value}
+            textColorMixed={textColorState.mixed}
             targetCount={getActionTargetIds(target.id).length}
             onTextAlignChange={(value) => setNodeStyleField(getActionTargetIds(target.id), 'textAlign', value)}
             onImageFitChange={(value) => setNodeStyleField(getActionTargetIds(target.id), 'imageFit', value)}
-            onFillColorChange={(value) => setNodeStyleField(getActionTargetIds(target.id), 'fillColor', value)}
-            onTextColorChange={(value) => setNodeStyleField(getActionTargetIds(target.id), 'textColor', value)}
+            onFillColorChange={(value) => setNodeColor(getActionTargetIds(target.id), 'highlight', value)}
+            onTextColorChange={(value) => setNodeColor(getActionTargetIds(target.id), 'color', value)}
             onClose={() => setNodeStylePopover(null)}
           />
         );

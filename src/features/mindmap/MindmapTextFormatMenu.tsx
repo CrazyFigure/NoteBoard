@@ -1,6 +1,8 @@
 // NoteBoard 思维导图标题选中文字后的格式悬浮菜单
 // 加粗 / 斜体 / 下划线 / 删除线 / 文字颜色 / 高亮背景 / 清除格式。
 // 菜单按钮在 mousedown 阶段阻止默认行为，保证编辑框不失焦、选区不丢失。
+// 颜色与节点样式浮层同步：选中全部文字时，文字颜色 / 背景即节点颜色，色板与浮层一致；
+// 部分选中时为内联颜色 / 高亮，显示的颜色为实际生效值（无内联颜色时取节点颜色）。
 // 详见 docs/09-开发路线图.md
 
 import React, { useState } from 'react';
@@ -18,12 +20,8 @@ import {
 } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 import { stopReactPropagation } from '../bitable/bitableUtils';
-import {
-  HIGHLIGHT_PRESETS,
-  TEXT_COLOR_PRESETS,
-  type StylePatch,
-  type ToggleStyleKey,
-} from './mindmapRichText';
+import { HIGHLIGHT_PRESETS, type ColorState, type StylePatch, type ToggleStyleKey } from './mindmapRichText';
+import { NODE_FILL_PRESETS, NODE_TEXT_PRESETS, textSwatchBackground } from './mindmapNodeColors';
 
 /** 当前选区的格式状态（用于按钮激活态） */
 export interface FormatState {
@@ -31,13 +29,17 @@ export interface FormatState {
   italic: boolean;
   underline: boolean;
   strike: boolean;
-  color?: string;
-  highlight?: string;
+  /** 实际生效的文字颜色 */
+  color: ColorState;
+  /** 部分选中时为内联高亮，选中全部文字时为节点背景色 */
+  highlight: ColorState;
 }
 
 interface MindmapTextFormatMenuProps {
   rect: { left: number; top: number; bottom: number; width: number };
   state: FormatState;
+  /** 是否选中了全部文字（此时颜色作用于整个节点） */
+  wholeText: boolean;
   onPatch: (patch: StylePatch) => void;
 }
 
@@ -54,15 +56,20 @@ const keepSelection = (e: React.MouseEvent | React.PointerEvent) => {
   stopReactPropagation(e);
 };
 
-export function MindmapTextFormatMenu({ rect, state, onPatch }: MindmapTextFormatMenuProps) {
+export function MindmapTextFormatMenu({ rect, state, wholeText, onPatch }: MindmapTextFormatMenuProps) {
   const [palette, setPalette] = useState<'color' | 'highlight' | null>(null);
   // 选区上方空间不足时改为显示在下方
   const placeBelow = rect.top < 56;
   const left = Math.min(Math.max(rect.left + rect.width / 2, 170), window.innerWidth - 170);
   const top = placeBelow ? rect.bottom + 8 : rect.top - 8;
 
-  const presets = palette === 'color' ? TEXT_COLOR_PRESETS : HIGHLIGHT_PRESETS;
-  const current = palette === 'color' ? state.color : state.highlight;
+  // 选中全部文字时背景色板换成节点背景预设，与节点样式浮层一致
+  const nodeFill = palette === 'highlight' && wholeText;
+  const presets = palette === 'color' ? NODE_TEXT_PRESETS : nodeFill ? NODE_FILL_PRESETS : HIGHLIGHT_PRESETS;
+  const currentState = palette === 'color' ? state.color : state.highlight;
+  const current = currentState.value?.toLowerCase();
+  const highlightLabel = wholeText ? '背景颜色' : '高亮背景';
+  const defaultLabel = palette === 'color' ? '默认颜色' : nodeFill ? '默认背景' : '无高亮';
 
   return createPortal(
     <div
@@ -103,19 +110,19 @@ export function MindmapTextFormatMenu({ rect, state, onPatch }: MindmapTextForma
             aria-label="文字颜色"
             onClick={() => setPalette((p) => (p === 'color' ? null : 'color'))}
           >
-            <Baseline size={14} style={{ color: state.color }} />
+            <Baseline size={14} style={{ color: state.color.value }} />
             <ChevronDown size={10} style={{ opacity: 0.6 }} />
           </button>
         </Tooltip>
-        <Tooltip content="高亮背景" side="top" sideOffset={6}>
+        <Tooltip content={highlightLabel} side="top" sideOffset={6}>
           <button
             type="button"
             className="nb-mindmap-format-btn is-wide"
             data-active={palette === 'highlight'}
-            aria-label="高亮背景"
+            aria-label={highlightLabel}
             onClick={() => setPalette((p) => (p === 'highlight' ? null : 'highlight'))}
           >
-            <Highlighter size={14} style={{ background: state.highlight, borderRadius: 2 }} />
+            <Highlighter size={14} style={{ background: state.highlight.value, borderRadius: 2 }} />
             <ChevronDown size={10} style={{ opacity: 0.6 }} />
           </button>
         </Tooltip>
@@ -132,15 +139,15 @@ export function MindmapTextFormatMenu({ rect, state, onPatch }: MindmapTextForma
         </Tooltip>
       </div>
 
-      {/* 颜色面板：文字颜色 / 高亮背景共用 */}
+      {/* 颜色面板：文字颜色 / 高亮背景共用；颜色不一致（mixed）时不高亮任何色块 */}
       {palette && (
-        <div className="nb-mindmap-format-palette" role="radiogroup" aria-label={palette === 'color' ? '文字颜色' : '高亮背景'}>
-          <Tooltip content={palette === 'color' ? '默认颜色' : '无高亮'} side="bottom" sideOffset={4}>
+        <div className="nb-mindmap-format-palette" role="radiogroup" aria-label={palette === 'color' ? '文字颜色' : highlightLabel}>
+          <Tooltip content={defaultLabel} side="bottom" sideOffset={4}>
             <button
               type="button"
               className="nb-mindmap-format-swatch"
-              data-active={!current}
-              aria-label={palette === 'color' ? '默认颜色' : '无高亮'}
+              data-active={!current && !currentState.mixed}
+              aria-label={defaultLabel}
               onClick={() => onPatch({ type: 'color', key: palette, value: null })}
             >
               <Ban size={12} />
@@ -151,12 +158,18 @@ export function MindmapTextFormatMenu({ rect, state, onPatch }: MindmapTextForma
               <button
                 type="button"
                 className="nb-mindmap-format-swatch"
-                data-active={current === preset.value}
+                data-active={current === preset.value.toLowerCase()}
                 aria-label={preset.name}
                 onClick={() => onPatch({ type: 'color', key: palette, value: preset.value })}
               >
                 {palette === 'color' ? (
-                  <span style={{ color: preset.value, fontWeight: 700, fontSize: 13 }}>A</span>
+                  // 白色 / 黑色等极端颜色加衬底，浅色 / 深色主题下都看得清
+                  <span
+                    className="nb-mindmap-format-text-swatch"
+                    style={{ color: preset.value, background: textSwatchBackground(preset.value) }}
+                  >
+                    A
+                  </span>
                 ) : (
                   <span className="nb-mindmap-format-chip" style={{ background: preset.value }} />
                 )}

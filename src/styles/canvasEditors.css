@@ -1238,8 +1238,25 @@
   display: flex;
   flex-wrap: wrap;
   gap: 3px;
+  /* 不参与菜单宽度计算：宽度跟随上方按钮行，色块多时换行（每行 8 个，与节点样式浮层一致） */
+  box-sizing: border-box;
+  width: 0;
+  min-width: 100%;
   padding: 4px 2px 2px;
   border-top: 1px solid var(--editor-border, #e2e8f0);
+}
+
+/* 文字颜色色样：衬底由 textSwatchBackground 决定，保证白色 / 黑色等可见 */
+.nb-mindmap-format-text-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .nb-mindmap-format-swatch {

@@ -133,6 +133,44 @@ export function commonColor(
   return first;
 }
 
+/** 颜色状态：value 为统一的颜色（undefined 表示默认色），mixed 表示区间内颜色不一致 */
+export interface ColorState {
+  value?: string;
+  mixed: boolean;
+}
+
+/**
+ * 区间内实际生效的颜色：逐字取内联颜色，没有内联颜色的字符取节点颜色 fallback。
+ * 格式菜单与节点样式浮层共用，保证两处显示的颜色一致
+ */
+export function effectiveColor(
+  length: number,
+  marks: readonly MindTextMark[] | undefined,
+  from: number,
+  to: number,
+  key: ColorStyleKey,
+  fallback?: string,
+): ColorState {
+  const base = fallback?.toLowerCase();
+  if (to <= from || length === 0) return { value: base, mixed: false };
+  const styles = toStyleArray(length, marks);
+  const pick = (i: number) => styles[i]?.[key]?.toLowerCase() ?? base;
+  const first = pick(from);
+  for (let i = from + 1; i < to; i += 1) if (pick(i) !== first) return { value: undefined, mixed: true };
+  return { value: first, mixed: false };
+}
+
+/** 去掉整段标题上的某种内联颜色（改由节点颜色统一控制）；无剩余标记时返回 undefined */
+export function removeColorMarks(
+  length: number,
+  marks: readonly MindTextMark[] | undefined,
+  key: ColorStyleKey,
+): MindTextMark[] | undefined {
+  if (!marks || marks.length === 0) return undefined;
+  const next = applyStylePatch(length, marks, 0, length, { type: 'color', key, value: null });
+  return next.length > 0 ? next : undefined;
+}
+
 /** 格式修改指令 */
 export type StylePatch =
   | { type: 'toggle'; key: ToggleStyleKey }
@@ -293,18 +331,7 @@ export function styleToCss(style: MindTextStyle, baseWeight: number): CSSPropert
   return css;
 }
 
-/** 文字颜色预设 */
-export const TEXT_COLOR_PRESETS = [
-  { value: '#ef4444', name: '红色' },
-  { value: '#f97316', name: '橙色' },
-  { value: '#ca8a04', name: '黄色' },
-  { value: '#16a34a', name: '绿色' },
-  { value: '#0891b2', name: '青色' },
-  { value: '#2563eb', name: '蓝色' },
-  { value: '#7c3aed', name: '紫色' },
-  { value: '#db2777', name: '粉色' },
-  { value: '#6b7280', name: '灰色' },
-];
+// 文字颜色预设与节点样式浮层共用 NODE_TEXT_PRESETS（见 mindmapNodeColors.ts），两处色板保持一致
 
 /** 高亮背景预设（半透明，浅色 / 深色主题下都可读） */
 export const HIGHLIGHT_PRESETS = [

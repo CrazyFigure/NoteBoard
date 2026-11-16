@@ -7,8 +7,10 @@ import {
   adjustMarksForTextChange,
   applyStylePatch,
   commonColor,
+  effectiveColor,
   isStyleActive,
   normalizeMarks,
+  removeColorMarks,
   restoreLineBreaks,
   splitStyledRuns,
   toSingleLineText,
@@ -39,6 +41,27 @@ describe('格式应用', () => {
     marks = applyStylePatch(5, marks, 0, 5, { type: 'color', key: 'color', value: null });
     expect(marks).toEqual([{ start: 1, end: 3, highlight: 'yellow' }]);
     expect(applyStylePatch(5, marks, 0, 5, { type: 'clear' })).toEqual([]);
+  });
+
+  test('effectiveColor：无内联颜色时取节点颜色，不一致时为 mixed', () => {
+    const marks: MindTextMark[] = [{ start: 0, end: 2, color: '#2563EB' }];
+    // 无内联颜色的字符取节点颜色
+    expect(effectiveColor(5, undefined, 0, 5, 'color', '#7c3aed')).toEqual({ value: '#7c3aed', mixed: false });
+    // 内联颜色优先，统一转小写
+    expect(effectiveColor(5, marks, 0, 2, 'color', '#7c3aed')).toEqual({ value: '#2563eb', mixed: false });
+    // 内联颜色与节点颜色混合
+    expect(effectiveColor(5, marks, 0, 5, 'color', '#7c3aed')).toEqual({ value: undefined, mixed: true });
+    // 都未设置时为默认色
+    expect(effectiveColor(5, undefined, 0, 5, 'color')).toEqual({ value: undefined, mixed: false });
+    // 空标题直接取节点颜色
+    expect(effectiveColor(0, undefined, 0, 0, 'color', '#ffffff')).toEqual({ value: '#ffffff', mixed: false });
+  });
+
+  test('removeColorMarks 只去掉指定的内联颜色', () => {
+    const marks: MindTextMark[] = [{ start: 0, end: 3, bold: true, color: '#ef4444', highlight: 'yellow' }];
+    expect(removeColorMarks(5, marks, 'color')).toEqual([{ start: 0, end: 3, bold: true, highlight: 'yellow' }]);
+    expect(removeColorMarks(5, [{ start: 0, end: 3, color: '#ef4444' }], 'color')).toBeUndefined();
+    expect(removeColorMarks(5, undefined, 'highlight')).toBeUndefined();
   });
 
   test('isStyleActive 要求区间内每个字符都具备', () => {
