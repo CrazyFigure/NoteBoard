@@ -1,8 +1,9 @@
-// NoteBoard 整理现有图片：在「文档同级目录」与「同步目录下的统一目录」之间迁移图片并改写引用
-// 范围：同步目录下的全部 Markdown 文档；只处理应用自身管理的图片：
-//  - 同级 → 统一：位于 `<文档目录>/<目录名>/` 下的图片，移动到 `<同步目录>/<目录名>/`（同一张图只移动一次）
-//  - 统一 → 同级：位于统一目录下的图片，复制（仅一个目录引用时直接移动）到各文档的同级目录
-// 两种模式共用同一个目录名：同步目录根下的文档，其同级目录就是统一目录，引用保持不动。
+// NoteBoard 整理现有图片：在「文档同级目录」与「统一目录」之间迁移图片并改写引用
+// 范围：扫描根目录（同步文件夹、当前打开的文件夹）下的全部 Markdown 文档；只处理应用自身管理的图片：
+//  - 同级 → 统一：位于 `<文档目录>/<目录名>/` 或旧统一目录下的图片，移动到统一目录（同一张图只移动一次）；
+//    更换统一目录位置（含开启同步 / 备份后移入同步文件夹）也走这一方向，旧统一目录作为来源
+//  - 统一 → 同级：位于统一目录（及旧统一目录）下的图片，复制（仅一个目录引用时直接移动）到各文档的同级目录
+// 两种模式共用同一个目录名：统一目录位置下的文档，其同级目录就是统一目录，引用保持不动。
 // 同名冲突先比较内容：完全相同直接复用（去重），不同则追加 `_1` 等后缀。
 // 执行顺序：文件操作 → 改写文档（只改写文件操作成功的引用）→ 回收多余源文件 → 清理搬空的目录；
 // 任何一步失败都不影响其他文件，未改写的引用仍指向原文件，保证不会出现断图。
@@ -11,7 +12,7 @@ import * as ipc from '../../core/ipc/commands';
 import { useDocumentStore } from '../../stores/documentStore';
 import { basenameOf, dirnameOf, isSubPath, joinPath, normalizePath, pathKey, relativePathBetween } from '../explorer/pathUtils';
 import { resolveRelativeDocPath } from './linkHandler';
-import { globalImageDir, siblingImageDir } from './imageStorage';
+import { siblingImageDir } from './imageStorage';
 import { rewriteImageRefs, scanImageRefs } from './imageRefs';
 
 /** 迁移方向 */
@@ -20,10 +21,14 @@ export type MigrationDirection = 'toGlobal' | 'toSibling';
 /** 迁移参数 */
 export interface MigrationOptions {
   direction: MigrationDirection;
-  /** 同步目录根 */
-  syncRoot: string;
+  /** 扫描这些目录下的全部 Markdown 文档（互相包含时只扫描外层） */
+  scanRoots: string[];
   /** 图片目录名称（同级与统一两种模式共用） */
   imageDirName: string | undefined;
+  /** 统一目录：同级 → 统一时为目标，统一 → 同级时为来源 */
+  globalDir: string;
+  /** 旧统一目录（更换位置前的目录），其中的图片同样视为来源 */
+  legacyGlobalDirs?: string[];
 }
 
 /** 规划阶段使用的只读文件访问（测试可替换为内存实现） */
@@ -74,7 +79,7 @@ export interface MigrationSkip {
 /** 迁移计划 */
 export interface MigrationPlan {
   options: MigrationOptions;
-  /** 迁移目标根目录（统一目录；反向迁移时为空） */
+  /** 统一目录 */
   globalDir: string;
   docs: Array<{ path: string; changes: MigrationRefChange[] }>;
   ops: MigrationFileOp[];
@@ -156,6 +161,23 @@ class PlanningCache {
   }
 }
 
+/** 去掉互相包含的扫描根目录，只保留最外层，避免同一文档被扫描两次 */
+export function outermostRoots(roots: Array<string | null | undefined>): string[] {
+  const normalized = roots.map((root) => normalizePath(root?.trim())).filter((root): root is string => !!root);
+  const result: string[] = [];
+  for (const root of normalized) {
+    if (normalized.some((other) => pathKey(other) !== pathKey(root) && isSubPath(other, root))) continue;
+    if (result.some((kept) => pathKey(kept) === pathKey(root))) continue;
+    result.push(root);
+  }
+  return result;
+}
+
+/** 路径位于目录内部（不含目录本身） */
+function isInside(dir: string, path: string): boolean {
+  return isSubPath(dir, path) && pathKey(dir) !== pathKey(path);
+}
+
 /** 一处待迁移的引用 */
 interface Candidate {
   doc: string;
@@ -175,8 +197,12 @@ export async function planImageMigration(
   fs: MigrationReadFs,
   onProgress?: MigrationProgress,
 ): Promise<MigrationPlan> {
-  const syncRoot = normalizePath(options.syncRoot);
-  const globalDir = globalImageDir(syncRoot, options.imageDirName) ?? '';
+  const globalDir = normalizePath(options.globalDir?.trim());
+  // 旧统一目录：与新目录相同的不算来源
+  const legacyDirs = (options.legacyGlobalDirs ?? [])
+    .map((dir) => normalizePath(dir?.trim()))
+    .filter((dir) => dir && pathKey(dir) !== pathKey(globalDir));
+  const scanRoots = outermostRoots(options.scanRoots);
   const plan: MigrationPlan = {
     options,
     globalDir,
@@ -187,10 +213,20 @@ export async function planImageMigration(
     emptyDirCandidates: [],
     stats: { scannedDocs: 0, docs: 0, images: 0, refs: 0, renamed: 0, deduped: 0 },
   };
-  if (!syncRoot || !globalDir) return plan;
+  if (!scanRoots.length || !globalDir) return plan;
 
   const cache = new PlanningCache(fs);
-  const docPaths = await fs.listMarkdownFiles(syncRoot);
+  // 汇总各扫描根目录下的文档（按路径去重）
+  const docPaths: string[] = [];
+  const seenDocs = new Set<string>();
+  for (const root of scanRoots) {
+    for (const doc of await fs.listMarkdownFiles(root)) {
+      const key = pathKey(doc);
+      if (seenDocs.has(key)) continue;
+      seenDocs.add(key);
+      docPaths.push(doc);
+    }
+  }
   plan.stats.scannedDocs = docPaths.length;
 
   // 1. 扫描全部文档，按源文件汇总全部本地引用（同一文档内同一地址只记一次）。
@@ -222,10 +258,11 @@ export async function planImageMigration(
       }
       entry.refs.push({ doc, docDir, oldSrc: ref.src });
       // 是否为本次需要迁移的图片
+      const inLegacy = legacyDirs.some((dir) => isInside(dir, source));
       if (options.direction === 'toGlobal') {
-        // 同级图片目录内、且不在统一目录内的图片
-        if (isSubPath(siblingDir, source) && pathKey(siblingDir) !== sourceKey && !isSubPath(globalDir, source)) entry.managed = true;
-      } else if (isSubPath(globalDir, source) && pathKey(globalDir) !== sourceKey) {
+        // 同级图片目录或旧统一目录内、且不在统一目录内的图片
+        if ((isInside(siblingDir, source) || inLegacy) && !isSubPath(globalDir, source)) entry.managed = true;
+      } else if (isInside(globalDir, source) || inLegacy) {
         entry.managed = true;
       }
     }

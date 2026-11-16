@@ -1,13 +1,14 @@
 // NoteBoard 「整理现有图片」对话框
 // 流程：扫描（只读）→ 预览统计与跳过明细 → 用户确认后执行 → 结果报告。
 // 迁移方向由当前图片存放模式决定：统一模式整理为「同级 → 统一」，同级模式整理为「统一 → 同级」。
+// 更换统一目录位置（含开启同步 / 备份后移入同步文件夹）时，旧统一目录作为额外来源一并迁移。
 
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, ArrowRight, CheckCircle2, Images, Loader2, X } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 import * as ipc from '../../core/ipc/commands';
 import { showToast } from '../../stores/toastStore';
-import { SYNC_TOAST_KEY } from '../../stores/syncStore';
+import { SYNC_TOAST_KEY, useSyncStore } from '../../stores/syncStore';
 import { useEscapeToClose } from '../sync/SyncControls';
 import { dirnameOf, pathKey } from '../explorer/pathUtils';
 import { refreshExplorerDir } from './imageActions';
@@ -15,6 +16,7 @@ import {
   createIpcReadFs,
   createIpcWriteFs,
   executeImageMigration,
+  outermostRoots,
   planImageMigration,
   type MigrationOptions,
   type MigrationPlan,
@@ -69,14 +71,19 @@ export function ImageMigrationDialog({ open, options, onClose }: { open: boolean
   // 对话框关闭或重新打开后，过期的扫描结果不再写入状态
   const runIdRef = useRef(0);
 
+  const canBackup = useSyncStore((s) => !!s.config?.sync.rootDir?.trim());
   const busy = phase === 'running';
   useEscapeToClose(open && !busy, onClose);
 
-  // 两种模式共用同一个目录名，只是所在位置不同
+  // 两种模式共用同一个目录名，只是所在位置不同；统一目录展示完整路径
   const dirLabel = `/${sanitizeDirName(options.imageDirName, DEFAULT_IMAGE_DIR_NAME)}`;
   const toGlobal = options.direction === 'toGlobal';
-  const fromLabel = toGlobal ? `各文档同级 ${dirLabel}` : `同步文件夹下的统一目录 ${dirLabel}`;
-  const toLabel = toGlobal ? `同步文件夹下的统一目录 ${dirLabel}` : `各文档同级 ${dirLabel}`;
+  const siblingLabel = `各文档同级 ${dirLabel}`;
+  const legacyDirs = (options.legacyGlobalDirs ?? []).filter((dir) => dir && pathKey(dir) !== pathKey(options.globalDir));
+  const globalLabel = `统一目录 ${options.globalDir}`;
+  const legacyLabel = legacyDirs.map((dir) => `原统一目录 ${dir}`).join('、');
+  const fromLabel = toGlobal ? [siblingLabel, legacyLabel].filter(Boolean).join('、') : [globalLabel, legacyLabel].filter(Boolean).join('、');
+  const toLabel = toGlobal ? globalLabel : siblingLabel;
 
   // 打开时扫描生成计划（只读）
   useEffect(() => {
@@ -161,17 +168,20 @@ export function ImageMigrationDialog({ open, options, onClose }: { open: boolean
 
         <div className="nb-sync-dialog-body">
           {/* 迁移方向 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', color: 'var(--editor-text)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', color: 'var(--editor-text)', wordBreak: 'break-all' }}>
             <span>{fromLabel}</span>
-            <ArrowRight size={14} color="var(--accent-strong)" />
+            <ArrowRight size={14} color="var(--accent-strong)" style={{ flexShrink: 0 }} />
             <span>{toLabel}</span>
+          </div>
+          <div style={{ fontSize: 12, wordBreak: 'break-all' }}>
+            扫描范围：{outermostRoots(options.scanRoots).join('、')}
           </div>
 
           {phase === 'planning' && (
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Loader2 size={14} className="nb-sync-spin" />
-                正在扫描同步文件夹中的 Markdown 文档（只读，不会改动任何文件）…
+                正在扫描 Markdown 文档（只读，不会改动任何文件）…
               </div>
               {progress.total > 0 && <ProgressBar progress={progress} />}
             </>
@@ -258,7 +268,8 @@ export function ImageMigrationDialog({ open, options, onClose }: { open: boolean
         </div>
 
         <div className="nb-sync-dialog-foot">
-          {phase === 'preview' && !nothingToDo && (
+          {/* 备份的是同步文件夹，未设置时不提供 */}
+          {phase === 'preview' && !nothingToDo && canBackup && (
             <button type="button" className="nb-btn-secondary" style={{ marginRight: 'auto' }} onClick={() => void backupNow()}>
               立即备份
             </button>

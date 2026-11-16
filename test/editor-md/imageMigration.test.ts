@@ -9,6 +9,7 @@ vi.mock('../../src/core/platform', async (original) => ({
 
 import {
   executeImageMigration,
+  outermostRoots,
   planImageMigration,
   type MigrationOptions,
   type MigrationReadFs,
@@ -29,7 +30,8 @@ function createMemoryFs(texts: Record<string, string>, images: Record<string, st
   const failRename = new Set<string>();
 
   const read: MigrationReadFs = {
-    listMarkdownFiles: async () => [...docs.values()].map((doc) => doc.path),
+    // 只列出扫描根目录内的文档
+    listMarkdownFiles: async (root) => [...docs.values()].map((doc) => doc.path).filter((path) => key(path).startsWith(`${key(root)}\\`)),
     readText: async (path) => docs.get(key(path))!.text,
     exists: async (path) => files.has(key(path)),
     readBytes: async (path) => {
@@ -75,8 +77,91 @@ function createMemoryFs(texts: Record<string, string>, images: Record<string, st
 }
 
 // 两种模式共用目录名 img：同级为 <文档目录>\img，统一为 C:\Notes\img
-const toGlobal: MigrationOptions = { direction: 'toGlobal', syncRoot: SYNC, imageDirName: 'img' };
+const toGlobal: MigrationOptions = { direction: 'toGlobal', scanRoots: [SYNC], imageDirName: 'img', globalDir: 'C:\\Notes\\img' };
 const toSibling: MigrationOptions = { ...toGlobal, direction: 'toSibling' };
+
+describe('outermostRoots', () => {
+  it('去掉空值、重复与被包含的目录', () => {
+    expect(outermostRoots(['C:\\Notes', '', null, 'c:\\notes\\a', 'C:\\Work', 'C:\\work\\'])).toEqual(['C:\\Notes', 'C:\\Work']);
+  });
+});
+
+describe('更换统一目录位置', () => {
+  it('旧统一目录（同步文件夹外）中的图片迁入新统一目录，搬空的旧目录被回收', async () => {
+    const fs = createMemoryFs(
+      {
+        'C:\\Notes\\a\\1.md': '![p](../../Pics/img/p.png)',
+        'C:\\Notes\\2.md': '![p](../Pics/img/p.png) ![q](./img/q.png)',
+      },
+      { 'C:\\Pics\\img\\p.png': 'P', 'C:\\Notes\\img\\q.png': 'Q' },
+    );
+    const plan = await planImageMigration({ ...toGlobal, legacyGlobalDirs: ['C:\\Pics\\img'] }, fs.read);
+    expect(plan.stats).toMatchObject({ docs: 2, images: 1, refs: 2 });
+    expect(plan.ops).toMatchObject([{ kind: 'move', from: 'C:\\Pics\\img\\p.png', to: 'C:\\Notes\\img\\p.png' }]);
+    const report = await executeImageMigration(plan, fs.write);
+    expect(report.errors).toEqual([]);
+    expect(fs.text('C:\\Notes\\a\\1.md')).toBe('![p](../img/p.png)');
+    expect(fs.text('C:\\Notes\\2.md')).toBe('![p](./img/p.png) ![q](./img/q.png)');
+    expect(fs.has('C:\\Pics\\img\\p.png')).toBe(false);
+    expect(report.removedDirs).toBe(1);
+  });
+
+  it('同一次整理同时处理同级图片与旧统一目录图片，同名不同内容自动改名', async () => {
+    const fs = createMemoryFs(
+      { 'C:\\Notes\\a\\1.md': '![x](./img/x.png) ![y](../../Pics/img/x.png)' },
+      { 'C:\\Notes\\a\\img\\x.png': 'A', 'C:\\Pics\\img\\x.png': 'B' },
+    );
+    const plan = await planImageMigration({ ...toGlobal, legacyGlobalDirs: ['C:\\Pics\\img'] }, fs.read);
+    expect(plan.stats).toMatchObject({ images: 2, renamed: 1 });
+    await executeImageMigration(plan, fs.write);
+    expect(fs.text('C:\\Notes\\a\\1.md')).toBe('![x](../img/x.png) ![y](../img/x_1.png)');
+  });
+
+  it('与新统一目录相同的旧目录被忽略', async () => {
+    const fs = createMemoryFs({ 'C:\\Notes\\a\\1.md': '![q](../img/q.png)' }, { 'C:\\Notes\\img\\q.png': 'Q' });
+    const plan = await planImageMigration({ ...toGlobal, legacyGlobalDirs: ['c:\\notes\\img'] }, fs.read);
+    expect(plan.ops).toEqual([]);
+  });
+
+  it('统一 → 同级时旧统一目录中的图片同样整理回同级目录', async () => {
+    const fs = createMemoryFs(
+      { 'C:\\Notes\\a\\1.md': '![p](../../Pics/img/p.png) ![q](../img/q.png)' },
+      { 'C:\\Pics\\img\\p.png': 'P', 'C:\\Notes\\img\\q.png': 'Q' },
+    );
+    const plan = await planImageMigration({ ...toSibling, legacyGlobalDirs: ['C:\\Pics\\img'] }, fs.read);
+    await executeImageMigration(plan, fs.write);
+    expect(fs.text('C:\\Notes\\a\\1.md')).toBe('![p](./img/p.png) ![q](./img/q.png)');
+    expect(fs.has('C:\\Notes\\a\\img\\p.png')).toBe(true);
+    expect(fs.has('C:\\Notes\\a\\img\\q.png')).toBe(true);
+  });
+});
+
+describe('扫描范围', () => {
+  it('未设置同步文件夹时扫描当前打开的文件夹，统一目录可在任意位置', async () => {
+    const fs = createMemoryFs(
+      { 'C:\\Work\\a\\1.md': '![x](./img/x.png)', 'C:\\Elsewhere\\2.md': '![y](./img/y.png)' },
+      { 'C:\\Work\\a\\img\\x.png': 'X', 'C:\\Elsewhere\\img\\y.png': 'Y' },
+    );
+    const plan = await planImageMigration({ ...toGlobal, scanRoots: ['C:\\Work'], globalDir: 'C:\\Pics\\img' }, fs.read);
+    expect(plan.stats).toMatchObject({ scannedDocs: 1, images: 1 });
+    await executeImageMigration(plan, fs.write);
+    expect(fs.text('C:\\Work\\a\\1.md')).toBe('![x](../../Pics/img/x.png)');
+    // 扫描范围外的文档不受影响
+    expect(fs.text('C:\\Elsewhere\\2.md')).toBe('![y](./img/y.png)');
+  });
+
+  it('多个扫描根目录互相包含时文档只处理一次', async () => {
+    const fs = createMemoryFs({ 'C:\\Notes\\a\\1.md': '![x](./img/x.png)' }, { 'C:\\Notes\\a\\img\\x.png': 'X' });
+    const plan = await planImageMigration({ ...toGlobal, scanRoots: ['C:\\Notes\\a', 'C:\\Notes'] }, fs.read);
+    expect(plan.stats).toMatchObject({ scannedDocs: 1, refs: 1 });
+  });
+
+  it('没有统一目录或扫描范围时返回空计划', async () => {
+    const fs = createMemoryFs({ 'C:\\Notes\\a\\1.md': '![x](./img/x.png)' }, { 'C:\\Notes\\a\\img\\x.png': 'X' });
+    expect((await planImageMigration({ ...toGlobal, globalDir: '' }, fs.read)).ops).toEqual([]);
+    expect((await planImageMigration({ ...toGlobal, scanRoots: [] }, fs.read)).stats.scannedDocs).toBe(0);
+  });
+});
 
 describe('同级 → 统一', () => {
   it('移动同级图片并改写为相对统一目录的路径，搬空的目录被回收；根目录文档已在统一目录内保持不动', async () => {

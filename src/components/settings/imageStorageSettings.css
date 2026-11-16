@@ -82,3 +82,57 @@
 .nb-image-mode-link:active {
   opacity: 0.6;
 }
+
+/* 统一目录位置：路径输入框 + 操作按钮 */
+.nb-image-mode-location {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.nb-image-mode-location-input {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--editor-text);
+  background: var(--editor-surface);
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-sm);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.nb-image-mode-location-input:focus {
+  border-color: var(--accent-strong);
+}
+
+/* 同步 / 备份已开启而统一目录在同步文件夹外：提示 + 迁移入口 */
+.nb-image-mode-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--editor-text);
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  border-radius: var(--radius-sm);
+}
+
+.nb-image-mode-warning-body {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+  word-break: break-all;
+}
+
+.nb-image-mode-warning-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

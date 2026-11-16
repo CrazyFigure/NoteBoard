@@ -26,6 +26,7 @@ import type { BackupInfo, SyncConfigFile, SyncProviderConfig } from '../../core/
 import { IS_MOBILE_UI, IS_WEB, USES_WINDOWS_PATHS } from '../../core/platform';
 import { describeSyncReport, SYNC_TOAST_KEY, useSyncStore } from '../../stores/syncStore';
 import { showToast } from '../../stores/toastStore';
+import { ImageDirOutsideSyncNotice, useImageDirOutsideSync } from '../../components/settings/ImageStorageSettingsCard';
 import { Collapsible, ConfirmDialog, errorText, formatDateTime, formatRelative, formatSize, NumberInput, ProviderForm, ToggleRow } from './SyncControls';
 import './sync.css';
 
@@ -73,6 +74,16 @@ export function SyncPanel() {
 
   // 关闭设置页时立即保存未落盘的输入
   useEffect(() => () => void flush(), [flush]);
+
+  // 开启同步 / 备份后统一图片目录落在同步文件夹外：状态由否变是时提醒一次，详细说明与迁移入口见页内提示
+  const imageDirOutside = useImageDirOutsideSync();
+  const imageDirOutsideRef = useRef(imageDirOutside);
+  useEffect(() => {
+    if (imageDirOutside && !imageDirOutsideRef.current) {
+      showToast('图片统一目录不在同步文件夹内，新图片将改存到同步文件夹，可在本页提示中一键迁移原有图片', 'warning', 6000);
+    }
+    imageDirOutsideRef.current = imageDirOutside;
+  }, [imageDirOutside]);
 
   // 表单最新值（update 基于它计算，避免在 setState 回调中产生副作用）
   const draftRef = useRef(draft);
@@ -287,6 +298,8 @@ function SyncSection({ draft, update, flush }: { draft: SyncConfigFile; update: 
           只有这个文件夹（含子文件夹）参与同步。多台设备请选择各自存放笔记的文件夹，首次同步时同名文件会自动配对。
           {IS_MOBILE_UI ? ' 使用手机存储中的文件夹需要先授予「所有文件访问权限」。' : ''}
         </small>
+        {/* 图片统一目录在同步文件夹外时提示并提供迁移 */}
+        <ImageDirOutsideSyncNotice />
       </div>
 
       <label className="nb-sync-field">

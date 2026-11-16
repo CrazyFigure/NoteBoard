@@ -70,11 +70,11 @@ function preloadSavedImage(path: string): Promise<void> {
   });
 }
 
-/** 落盘成功提示：统一模式回退到同级目录时，首次附带回退原因 */
+/** 落盘成功提示：统一模式回退到同级目录或改存同步文件夹时，首次附带说明 */
 function toastSaved(target: ImageTarget, action: string): void {
-  const notice = takeFallbackNotice(target.fallbackReason);
+  const notice = takeFallbackNotice(target.notice);
   if (notice) {
-    showToast(`图片已${action}至 ${target.label}。${notice}`, 'info', 6000);
+    showToast(`图片已${action}至 ${target.label}。${notice}`, 'info', 8000);
   } else {
     showToast(`图片已${action}至 ${target.label}`, 'success');
   }

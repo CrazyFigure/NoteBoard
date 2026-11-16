@@ -1538,7 +1538,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
 
                 {/* ── 4.4 图片目录设置：存放位置（文档同级 / 统一目录）与整理现有图片 ── */}
-                <ImageStorageSettingsCard onOpenSync={SHOW_SYNC() ? () => { setSearchQuery(''); setActiveTab('sync'); } : undefined} />
+                <ImageStorageSettingsCard />
               </div>
             )}
 

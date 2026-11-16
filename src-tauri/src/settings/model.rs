@@ -319,12 +319,15 @@ pub struct FileSettings {
     // 阅读位置与恢复标签列表独立；旧配置缺失时默认启用。
     #[serde(default = "default_true")]
     pub restore_reading_position: bool,
-    // 图片目录名称：同级模式为文档所在目录下的子文件夹，统一模式为同步目录根下的文件夹
+    // 图片目录名称：同级模式为文档所在目录下的子文件夹，统一模式为统一目录所在位置下的文件夹
     #[serde(default = "default_image_dir")]
     pub image_dir_name: String,
-    // 图片存放模式：sibling（文档同级子目录）/ global（同步目录下的统一目录）；旧配置缺失时保持同级
+    // 图片存放模式：sibling（文档同级子目录）/ global（统一目录）；旧配置缺失时保持同级
     #[serde(default = "default_image_storage_mode")]
     pub image_storage_mode: String,
+    // 统一目录所在位置（绝对路径）；为空时跟随同步文件夹
+    #[serde(default)]
+    pub image_global_root: String,
     #[serde(default = "default_large_file_mb")]
     pub large_file_confirm_mb: u32,
     // 暂存目录使用绝对路径；旧版设置缺失该字段时自动补为应用数据目录下的 staging。
@@ -355,6 +358,7 @@ impl Default for FileSettings {
             restore_reading_position: true,
             image_dir_name: "img".to_string(),
             image_storage_mode: default_image_storage_mode(),
+            image_global_root: String::new(),
             large_file_confirm_mb: 50,
             staging_directory: default_staging_directory(),
             explorer_open_mode: default_explorer_open_mode(),
@@ -615,6 +619,8 @@ mod tests {
         assert!(settings.file.restore_reading_position);
         // 旧版设置缺失图片存放模式时保持文档同级目录
         assert_eq!(settings.file.image_storage_mode, "sibling");
+        // 旧版设置缺失统一目录位置时跟随同步文件夹
+        assert_eq!(settings.file.image_global_root, "");
     }
 
     /// 阅读位置开关显式关闭后，保存和重新加载不能被默认开启覆盖。

@@ -119,7 +119,7 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
   { id: 'explorerOpenMode', tab: 'file', section: '文件树与打开', label: '打开文件的方式', keywords: ['单击', '双击', '资源管理器', '文件树'] },
   { id: 'largeFile', tab: 'file', section: '文件树与打开', label: '大文件打开确认阈值 (MB)', keywords: ['大文件', '性能提示'] },
   { id: 'staging', tab: 'file', section: '未保存文件暂存区', label: '未保存文件暂存区', keywords: ['暂存', '崩溃', '异常退出', '草稿', '恢复'] },
-  { id: 'imageDir', tab: 'file', section: '图片目录设置', label: '图片存放位置与目录名称', keywords: ['粘贴图片', 'img', '附件', '图片保存', '统一目录', '全局', 'assets', '迁移', '整理图片'] },
+  { id: 'imageDir', tab: 'file', section: '图片目录设置', label: '图片存放位置与目录名称', keywords: ['粘贴图片', 'img', '附件', '图片保存', '统一目录', '统一目录位置', '全局', 'assets', '迁移', '整理图片'] },
 
   // 同步与备份（面板内的卡片锚点）
   { id: 'sync', tab: 'sync', section: '多端同步', label: '开启多端同步', keywords: ['同步', '同步文件夹', '云'] },

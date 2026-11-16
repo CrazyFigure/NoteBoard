@@ -413,10 +413,12 @@ export interface FileSettings {
   restoreSession: boolean;
   // 重新打开 Markdown / 文本文件时恢复阅读位置；旧配置缺失时默认开启。
   restoreReadingPosition?: boolean;
-  // 图片目录名称（两种模式共用）：同级模式为文档所在目录下的子文件夹，统一模式为同步目录根下的文件夹
+  // 图片目录名称（两种模式共用）：同级模式为文档所在目录下的子文件夹，统一模式为统一目录所在位置下的文件夹
   imageDirName: string;
-  // 图片存放模式：sibling（文档同级子目录）/ global（同步目录下的统一目录）；旧配置缺失时视为 sibling
+  // 图片存放模式：sibling（文档同级子目录）/ global（统一目录）；旧配置缺失时视为 sibling
   imageStorageMode?: ImageStorageMode;
+  // 统一目录所在位置（绝对路径）；为空时跟随同步文件夹
+  imageGlobalRoot?: string;
   largeFileConfirmMb: number;
   // 未保存文件的用户可见暂存目录（绝对路径）
   stagingDirectory: string;
@@ -426,7 +428,7 @@ export interface FileSettings {
   htmlOpenMode?: HtmlOpenMode;
 }
 
-/** 图片存放模式：文档同级子目录 / 同步目录下的统一目录 */
+/** 图片存放模式：文档同级子目录 / 统一目录（位置可选，开启同步或备份时须在同步文件夹内） */
 export type ImageStorageMode = 'sibling' | 'global';
 
 /** 资源管理器打开文件的方式：双击 / 单击 */

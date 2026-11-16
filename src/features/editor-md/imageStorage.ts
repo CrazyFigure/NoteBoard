@@ -1,24 +1,29 @@
 // NoteBoard 图片落盘位置决策
 // 两种存放模式共用同一个目录名 settings.file.imageDirName（默认 img）：
 //  - sibling：文档同级子目录 `<文档目录>/<目录名>`（默认模式）
-//  - global：同步目录根下的统一目录 `<同步目录>/<目录名>`
+//  - global：统一目录 `<统一目录位置>/<目录名>`；位置可随时任选，留空时跟随同步文件夹
+// 同时开启同步 / 备份时，统一目录必须位于同步文件夹内才能随笔记一起同步与备份：
+// 设置的位置在同步文件夹外时，新图片改存同步文件夹下的同名目录，并提示用户迁移原有图片。
 // 无论哪种模式，写入 Markdown 的始终是「相对当前文档目录」的路径，
 // 保证同步到其它设备 / 平台（Windows、Android、网页）后仍能解析显示。
-// 统一模式下，文档不在同步目录内（含未设置同步目录、跨盘等无法相对的情况）时回退到同级目录。
+// 统一模式下无法得到统一目录（未设置位置）或无法相对（跨盘）时回退到同级目录。
 
-import type { ImageStorageMode } from '../../core/ipc/types';
+import type { ImageStorageMode, SyncConfigFile } from '../../core/ipc/types';
 import * as ipc from '../../core/ipc/commands';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useSyncStore } from '../../stores/syncStore';
 import { useExplorerStore } from '../explorer/explorerStore';
-import { isSubPath, joinPath, normalizePath, relativePathBetween } from '../explorer/pathUtils';
+import { isSubPath, joinPath, normalizePath, pathKey, relativePathBetween } from '../explorer/pathUtils';
 
 /** 图片目录默认名称（同级与统一两种模式共用） */
 export const DEFAULT_IMAGE_DIR_NAME = 'img';
 
-/** 统一模式回退到同级目录的原因 */
-export type ImageFallbackReason = 'no-sync-root' | 'outside-sync-root';
+/** 统一模式回退到同级目录的原因：未设置统一目录位置 / 与统一目录跨盘无法相对 */
+export type ImageFallbackReason = 'no-global-dir' | 'cross-drive';
+
+/** 插入图片时需要提示一次的情况：回退同级，或因同步 / 备份改存同步文件夹 */
+export type ImageNoticeReason = ImageFallbackReason | 'redirected-to-sync';
 
 /** 图片落盘目标 */
 export interface ImageTarget {
@@ -30,18 +35,43 @@ export interface ImageTarget {
   global: boolean;
   /** 提示文案中展示的目录名称 */
   label: string;
-  /** 统一模式下回退到同级目录的原因 */
-  fallbackReason?: ImageFallbackReason;
+  /** 需要提示用户的情况 */
+  notice?: ImageNoticeReason;
+}
+
+/** 同步配置中与图片目录相关的部分 */
+export interface SyncSnapshot {
+  /** 同步文件夹（未设置为空） */
+  root: string;
+  /** 多端同步或自动备份已开启：此时统一目录必须位于同步文件夹内 */
+  active: boolean;
+}
+
+/** 统一目录相关的设置输入 */
+export interface GlobalDirInput {
+  /** 统一目录所在位置；为空时跟随同步文件夹 */
+  globalRoot: string | undefined;
+  imageDirName: string | undefined;
+  sync: SyncSnapshot;
 }
 
 /** 计算图片目标所需的全部输入（纯数据，便于测试） */
-export interface ImageTargetInput {
+export interface ImageTargetInput extends GlobalDirInput {
   /** 文档所在目录（未保存文档为资源管理器根目录） */
   baseDir: string;
   mode: ImageStorageMode | undefined;
-  imageDirName: string | undefined;
-  /** 同步目录根（未设置为空） */
-  syncRoot: string | undefined;
+}
+
+/** 统一目录的解析结果 */
+export interface GlobalDirState {
+  /** 按用户设置得到的统一目录（未设置位置且无同步文件夹时为 null） */
+  configuredDir: string | null;
+  /** 实际使用的统一目录：同步 / 备份开启且设置的目录在同步文件夹外时，改为同步文件夹下的同名目录 */
+  effectiveDir: string | null;
+  /** 位置为空，跟随同步文件夹 */
+  followsSync: boolean;
+  /** 同步 / 备份已开启，但设置的统一目录不在同步文件夹内 */
+  outsideSync: boolean;
 }
 
 // Windows 文件名禁止字符与 ASCII 控制字符上限，目录名中统一替换为下划线
@@ -83,11 +113,27 @@ export function siblingImageDir(docDir: string, imageDirName: string | undefined
   return joinSegments(docDir, sanitizeDirSegments(imageDirName, DEFAULT_IMAGE_DIR_NAME));
 }
 
-/** 统一图片目录的绝对路径；未设置同步目录时返回 null */
-export function globalImageDir(syncRoot: string | null | undefined, imageDirName: string | undefined): string | null {
-  const root = normalizePath(syncRoot);
-  if (!root) return null;
-  return joinSegments(root, sanitizeDirSegments(imageDirName, DEFAULT_IMAGE_DIR_NAME));
+/** 位置目录下的图片目录绝对路径；位置为空时返回 null */
+export function globalImageDir(root: string | null | undefined, imageDirName: string | undefined): string | null {
+  const base = normalizePath(root?.trim());
+  if (!base) return null;
+  return joinSegments(base, sanitizeDirSegments(imageDirName, DEFAULT_IMAGE_DIR_NAME));
+}
+
+/** 同步配置快照：同步文件夹已设置，且多端同步或自动备份开启时视为「同步 / 备份已开启」 */
+export function syncSnapshotOf(config: SyncConfigFile | null | undefined): SyncSnapshot {
+  const root = config?.sync.rootDir?.trim() ?? '';
+  return { root, active: !!root && !!(config?.sync.enabled || config?.backup.autoEnabled) };
+}
+
+/** 解析统一目录：位置为空跟随同步文件夹；同步 / 备份开启时强制位于同步文件夹内 */
+export function resolveGlobalDir(input: GlobalDirInput): GlobalDirState {
+  const location = input.globalRoot?.trim() ?? '';
+  const followsSync = !location;
+  const configuredDir = globalImageDir(location || input.sync.root, input.imageDirName);
+  const syncDir = globalImageDir(input.sync.root, input.imageDirName);
+  const outsideSync = input.sync.active && !!configuredDir && !!syncDir && !isSubPath(input.sync.root, configuredDir);
+  return { configuredDir, effectiveDir: outsideSync ? syncDir : configuredDir, followsSync, outsideSync };
 }
 
 /** 相对路径写法统一以 `./` 或 `../` 开头，与现有 `./img/x.png` 风格保持一致 */
@@ -108,17 +154,17 @@ export function computeImageTarget(input: ImageTargetInput): ImageTarget {
   };
   if (input.mode !== 'global') return sibling;
 
-  const globalDir = globalImageDir(input.syncRoot, input.imageDirName);
-  if (!globalDir) return { ...sibling, fallbackReason: 'no-sync-root' };
-  // 文档必须位于同步目录内：同步到其它设备后相对路径依然成立
-  if (!isSubPath(input.syncRoot, input.baseDir)) return { ...sibling, fallbackReason: 'outside-sync-root' };
-  const relative = relativePathBetween(input.baseDir, globalDir);
-  if (relative === null) return { ...sibling, fallbackReason: 'outside-sync-root' };
+  const { effectiveDir, outsideSync } = resolveGlobalDir(input);
+  if (!effectiveDir) return { ...sibling, notice: 'no-global-dir' };
+  // Windows 跨盘无法写相对路径，退回同级目录保证可移植
+  const relative = relativePathBetween(input.baseDir, effectiveDir);
+  if (relative === null) return { ...sibling, notice: 'cross-drive' };
   return {
-    targetDir: globalDir,
+    targetDir: effectiveDir,
     linkDir: toLinkDir(relative),
     global: true,
     label: `统一目录 /${dirName}`,
+    ...(outsideSync ? { notice: 'redirected-to-sync' as const } : {}),
   };
 }
 
@@ -130,26 +176,30 @@ export function imageTargetPaths(target: ImageTarget, fileName: string): { linkP
   };
 }
 
-/** 读取同步目录根：同步 Store 尚未加载配置时主动拉取一次，失败视为未设置 */
-export async function getSyncRootDir(): Promise<string> {
+/** 两个目录是否相同（大小写与分隔符按平台规则比较） */
+export function sameDir(left: string | null | undefined, right: string | null | undefined): boolean {
+  return !!left && !!right && pathKey(left) === pathKey(right);
+}
+
+/** 读取同步配置：同步 Store 尚未加载配置时主动拉取一次，失败视为未设置 */
+export async function getSyncSnapshot(): Promise<SyncSnapshot> {
   const store = useSyncStore.getState();
-  let root = store.config?.sync.rootDir?.trim();
-  if (root !== undefined) return root;
+  if (store.config) return syncSnapshotOf(store.config);
   if (!store.initialized) {
     try {
       await store.init();
     } catch {
       // 初始化失败按未设置同步目录处理
     }
-    root = useSyncStore.getState().config?.sync.rootDir?.trim();
-    if (root !== undefined) return root;
+    const config = useSyncStore.getState().config;
+    if (config) return syncSnapshotOf(config);
   }
   // 网页端无同步权限时不再请求，避免无意义的错误
-  if (useSyncStore.getState().unavailableReason) return '';
+  if (useSyncStore.getState().unavailableReason) return syncSnapshotOf(null);
   try {
-    return (await ipc.syncGetConfig()).sync.rootDir?.trim() ?? '';
+    return syncSnapshotOf(await ipc.syncGetConfig());
   } catch {
-    return '';
+    return syncSnapshotOf(null);
   }
 }
 
@@ -168,29 +218,35 @@ export async function resolveImageTarget(docKey: string): Promise<ImageTarget | 
   if (!baseDir) return null;
   const file = useSettingsStore.getState().settings.file;
   const mode = file.imageStorageMode ?? 'sibling';
-  // 只有统一模式才需要同步目录，同级模式不触发任何同步配置读取
-  const syncRoot = mode === 'global' ? await getSyncRootDir() : '';
+  // 只有统一模式才需要同步配置，同级模式不触发任何同步配置读取
+  const sync = mode === 'global' ? await getSyncSnapshot() : syncSnapshotOf(null);
   return computeImageTarget({
     baseDir,
     mode,
     imageDirName: file.imageDirName,
-    syncRoot,
+    globalRoot: file.imageGlobalRoot,
+    sync,
   });
 }
 
-/** 已提示过的回退原因：每个会话每种原因只提示一次，避免反复打扰 */
-const notifiedFallbacks = new Set<ImageFallbackReason>();
+/** 已提示过的情况：每个会话每种情况只提示一次，避免反复打扰 */
+const notifiedReasons = new Set<ImageNoticeReason>();
 
-/** 回退说明；本会话已提示过时返回 null */
-export function takeFallbackNotice(reason: ImageFallbackReason | undefined): string | null {
-  if (!reason || notifiedFallbacks.has(reason)) return null;
-  notifiedFallbacks.add(reason);
-  return reason === 'no-sync-root'
-    ? '未设置同步文件夹，统一图片目录暂不可用，已存入文档同级目录'
-    : '当前文档不在同步文件夹内，已存入文档同级目录';
+/** 提示文案 */
+const NOTICE_TEXT: Record<ImageNoticeReason, string> = {
+  'no-global-dir': '尚未设置统一目录的位置，已存入文档同级目录，可在「设置 › 文件与保存 › 图片目录设置」中选择位置',
+  'cross-drive': '当前文档与统一目录不在同一磁盘，已存入文档同级目录',
+  'redirected-to-sync': '已开启同步 / 备份，统一目录需位于同步文件夹内，已存入同步文件夹下的统一目录；原有图片可在「设置 › 文件与保存 › 图片目录设置」中一键迁移',
+};
+
+/** 提示说明；本会话已提示过时返回 null */
+export function takeFallbackNotice(reason: ImageNoticeReason | undefined): string | null {
+  if (!reason || notifiedReasons.has(reason)) return null;
+  notifiedReasons.add(reason);
+  return NOTICE_TEXT[reason];
 }
 
-/** 测试用：重置已提示的回退原因 */
+/** 测试用：重置已提示的情况 */
 export function resetFallbackNoticesForTest(): void {
-  notifiedFallbacks.clear();
+  notifiedReasons.clear();
 }
