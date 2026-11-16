@@ -550,7 +550,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   const [editingNoteNodeId, setEditingNoteNodeId] = useState<string | null>(null);
   const [editNoteText, setEditNoteText] = useState('');
 
-  // 选中的节点与悬浮工具栏状态：selectedNodeId 为主选中（工具栏挂在它上面），
+  // 选中的节点与悬浮工具栏状态：selectedNodeId 为主选中（无悬停节点时显示它的工具栏），
   // multiSelectedIds 为 Ctrl / Cmd + 单击多选的全部节点（至少 2 个时才非空，含主选中）
   const [selectedNodeId, setPrimarySelectedId] = useState<string | null>(null);
   const [multiSelectedIds, setMultiSelectedIds] = useState<readonly string[]>(NO_IDS);
@@ -1043,15 +1043,17 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   };
 
   /**
-   * 新增节点并在一次树更新中提交当前编辑内容，随后把光标移动到新节点
+   * 新增节点并在一次树更新中提交当前编辑内容，随后按调用场景选中或编辑新节点
    * @param mode 'child' 新增子节点（Tab）；'sibling' 新增同级节点（Enter）
    * @param anchorId 基准节点 id
    * @param commitCurrent 是否顺带提交当前正在编辑的标题（从输入框内继续新增时为 true）
+   * @param modeAfterCreate 新节点进入编辑态，或只选中以便继续使用节点快捷键
    */
   const createLinkedNode = (
     mode: 'child' | 'sibling',
     anchorId: string,
     commitCurrent = false,
+    modeAfterCreate: 'edit' | 'select' = 'edit',
   ) => {
     // 根节点与概要主题没有同级，Enter 时退化为新增子节点
     const effectiveMode = mode === 'sibling' && (anchorId === root.id || summaryTopicRefs.has(anchorId)) ? 'child' : mode;
@@ -1079,10 +1081,12 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
 
     if (!inserted) return;
 
-    pendingSelectAllRef.current = newNode.id;
+    // 选中态 Tab 只切换选中节点；编辑态 Tab 与添加按钮仍直接进入新节点编辑。
+    const shouldEdit = modeAfterCreate === 'edit';
+    pendingSelectAllRef.current = shouldEdit ? newNode.id : null;
     setSelectedNodeId(newNode.id);
     setEditDraft({ text: '' });
-    setEditingNodeId(newNode.id);
+    setEditingNodeId(shouldEdit ? newNode.id : null);
   };
 
   // 保存最新 createLinkedNode 引用，供全局快捷键在稳定闭包中调用
@@ -2153,7 +2157,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   const beginEditNodeRef = useRef(beginEditNode);
   beginEditNodeRef.current = beginEditNode;
 
-  // 选中节点后：Tab 新增子节点，Enter 新增同级节点（两者均把光标移到新节点）
+  // 选中节点后：Tab 新增并选中子节点，Enter 新增同级节点并进入编辑
   // 方向键在节点间移动选中，空格进入标题编辑
   useEffect(() => {
     const handleShortcut = (e: KeyboardEvent) => {
@@ -2243,7 +2247,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
         setSelectedNodeId(selected);
       } else if (e.key === 'Tab') {
         e.preventDefault();
-        createLinkedNodeRef.current('child', selected, false);
+        createLinkedNodeRef.current('child', selected, false, 'select');
       } else if (e.key === 'Enter') {
         e.preventDefault();
         createLinkedNodeRef.current('sibling', selected, false);
@@ -2285,6 +2289,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       ref={containerRef}
       // 可聚焦（不进入 Tab 序列）：点选节点后焦点停在画布上，方向键 / 空格等快捷键随即可用
       tabIndex={-1}
+      // 全局焦点守卫先分发画布的 Tab 业务快捷键，再禁止浏览器默认焦点遍历。
+      data-tab-shortcuts="true"
       // 触屏界面没有修饰键，文件链接始终呈可点按的链接态
       className={IS_MOBILE_UI ? 'nb-touch-links' : undefined}
       onMouseDown={handleMouseDown}
@@ -2531,7 +2537,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
           // 概要主题：边框沿用分支色（与大括号同色），不能拖动
           const isSummaryTopic = Boolean(n.summaryOf);
           const isEditing = editingNodeId === n.node.id;
-          // 主选中节点挂工具栏；多选中的其余节点只显示选中描边
+          // 主选中节点提供无悬停时的工具栏；多选中的其余节点只显示选中描边
           const isPrimarySelected = selectedNodeId === n.node.id;
           const isSelected = isPrimarySelected || multiSelectedSet.has(n.node.id);
           const searchRanges = searchHighlight?.ranges.get(n.node.id);
@@ -2980,13 +2986,14 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
               {/* 悬停/选中节点浮动快捷工具栏 */}
               <div
                 className="nb-mindmap-node-toolbar"
+                // 样式统一裁定悬停与主选中优先级，确保节点工具栏同时只显示一个。
+                data-selected={isPrimarySelected || undefined}
                 style={{
                   position: 'absolute',
                   // 子节点向上展开时工具栏移到下方，避免与折叠按钮重叠（工具栏高 28px，与节点留 4px 间隙）
                   ...(n.childSide === 'top' ? { bottom: -32 } : { top: -32 }),
                   left: '50%',
                   transform: 'translateX(-50%)',
-                  display: isPrimarySelected ? 'flex' : 'none',
                   alignItems: 'center',
                   gap: 4,
                   padding: '2px 5px',

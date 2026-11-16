@@ -42,6 +42,23 @@ describe('全应用取消浏览器式 Tab 遍历', () => {
     } finally { window.removeEventListener('keydown', handler); }
   });
 
+  it('有 Tab 快捷键的可聚焦画布先处理按键，内部普通按钮仍提前取消遍历', () => {
+    const canvas = document.createElement('div');
+    canvas.tabIndex = -1;
+    canvas.dataset.tabShortcuts = 'true';
+    const button = document.createElement('button');
+    canvas.append(button);
+    document.body.append(canvas);
+    const alreadyCancelled: boolean[] = [];
+    const handler = (event: KeyboardEvent) => { alreadyCancelled.push(event.defaultPrevented); };
+    window.addEventListener('keydown', handler);
+    try {
+      expect(tab(canvas).defaultPrevented).toBe(true);
+      expect(tab(button).defaultPrevented).toBe(true);
+      expect(alreadyCancelled).toEqual([false, true]);
+    } finally { window.removeEventListener('keydown', handler); }
+  });
+
   it('保留带 Ctrl / Cmd / Alt 的系统组合键', () => {
     for (const modifiers of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }]) {
       expect(tab(document.body, modifiers).defaultPrevented).toBe(false);

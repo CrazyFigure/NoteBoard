@@ -7,6 +7,10 @@ vi.mock('@/components/Tooltip', () => ({ Tooltip: ({ children }: { children: Rea
 import { MindmapRenderer } from '@/features/mindmap/MindmapRenderer';
 import { getMindmapTheme } from '@/features/mindmap/mindmapTheme';
 import type { MindNode } from '@/features/mindmap/mindmapTypes';
+import { installTabNavigationGuard } from '@/core/tabNavigationGuard';
+
+// 包含真实入口安装的全局守卫，覆盖画布已聚焦时 Tab 被提前消费的冲突。
+installTabNavigationGuard();
 
 const createTree = (): MindNode => ({
   id: 'root', text: '中心', isExpanded: true,
@@ -100,6 +104,29 @@ describe('思维导图键盘操作', () => {
     // 焦点回到画布后方向键立即可用
     await press(document.activeElement!, 'ArrowUp');
     expect(selectedIds()).toEqual(['a']);
+  });
+
+  it.each(['root', 'b'])('选中 %s 后 Tab 创建并选中子节点，连续 Tab 不进入编辑', async (id) => {
+    await select(id);
+    const canvas = host.firstElementChild as HTMLElement;
+    expect((await press(canvas, 'Tab')).defaultPrevented).toBe(true);
+    const tree = onChange.mock.lastCall![0];
+    const parent = id === 'root' ? tree : tree.children.find((node) => node.id === id)!;
+    const child = parent.children.at(-1)!;
+    expect(child.text).toBe('');
+    expect(selectedIds()).toEqual([child.id]);
+    expect(host.querySelector('[role="textbox"]')).toBeNull();
+    expect(document.activeElement).toBe(canvas);
+
+    // 保持画布焦点后可连续创建下级节点，空格仍能主动进入新节点编辑。
+    await press(canvas, 'Tab');
+    const nextTree = onChange.mock.lastCall![0];
+    const nextParent = id === 'root' ? nextTree : nextTree.children.find((node) => node.id === id)!;
+    const grandchild = nextParent.children.at(-1)!.children[0];
+    expect(selectedIds()).toEqual([grandchild.id]);
+    expect(host.querySelector('[role="textbox"]')).toBeNull();
+    await press(canvas, ' ', { code: 'Space' });
+    expect(host.querySelector('[role="textbox"]')).not.toBeNull();
   });
 
   it('折叠 / 展开节点后该节点在屏幕上的位置不变', async () => {

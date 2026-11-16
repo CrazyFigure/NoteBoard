@@ -12,9 +12,11 @@ export function installTabNavigationGuard(): void {
     // 代码块工具栏等 contenteditable=false 区域仍属于普通控件，不能被编辑器外壳豁免。
     const textEditor = target?.closest('[contenteditable]')?.getAttribute('contenteditable') !== 'false'
       && target?.closest('.ProseMirror, .cm-content');
+    // 标明自带 Tab 业务快捷键的画布须先处理按键；仅豁免焦点所在元素，内部按钮仍按普通控件处理。
+    const ownsTabShortcut = target?.dataset.tabShortcuts === 'true';
     // 普通控件提前取消默认行为，弹窗和菜单的焦点管理也能看到已取消标记。
     // 可编辑内容须先交给内核，否则 ProseMirror 会跳过已取消的按键。
-    if (!textEditor && !target?.isContentEditable && target?.closest('input, textarea, button, select, a, [tabindex], [role="menuitem"], [role="tab"]')) {
+    if (!textEditor && !ownsTabShortcut && !target?.isContentEditable && target?.closest('input, textarea, button, select, a, [tabindex], [role="menuitem"], [role="tab"]')) {
       event.preventDefault();
     }
     // 捕获时追加本次事件的末尾监听：先让业务快捷键运行，再取消任何剩余的浏览器默认动作。

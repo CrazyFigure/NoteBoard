@@ -5,8 +5,14 @@
   opacity: 1 !important;
 }
 
-.nb-mindmap-node:hover .nb-mindmap-node-toolbar {
-  display: flex !important;
+/* 节点工具栏优先跟随鼠标；没有悬停节点时才保留主选中节点的工具栏。 */
+.nb-mindmap-node > .nb-mindmap-node-toolbar {
+  display: none;
+}
+
+.nb-mindmap-node:hover > .nb-mindmap-node-toolbar,
+.nb-mindmap-transform:not(:has(.nb-mindmap-node:hover)) > .nb-mindmap-node > .nb-mindmap-node-toolbar[data-selected='true'] {
+  display: flex;
 }
 
 /* 节点标题按行渲染：行内容已由布局引擎断好，禁止浏览器二次折行 */

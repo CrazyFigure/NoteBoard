@@ -375,12 +375,15 @@ describe('画布交互', () => {
     await select('st');
     await press('Tab');
     expect(latestTree().summaries![0].topic.children).toHaveLength(3);
-    // 新节点进入编辑：先在编辑框内 Esc 退出编辑，再选回概要主题按 Enter
-    await press('Escape', host.querySelector('[role="textbox"]')!);
+    // 选中态 Tab 只选中新节点，概要主题的 Enter 仍新增子节点并进入编辑。
+    expect(host.querySelector('[role="textbox"]')).toBeNull();
+    const childId = latestTree().summaries![0].topic.children[2].id;
+    expect(host.querySelector(`.nb-mindmap-node[data-node-id="${childId}"][data-selected]`)).not.toBeNull();
     await select('st');
     await press('Enter');
     expect(latestTree().summaries![0].topic.children).toHaveLength(4);
     expect(latestTree().children).toHaveLength(3);
+    expect(host.querySelector('[role="textbox"]')).not.toBeNull();
   });
 
   it('概要子树中的节点按 Enter 新增同级', async () => {
