@@ -11,7 +11,11 @@ import type { MindNode } from '@/features/mindmap/mindmapTypes';
 const createTree = (): MindNode => ({
   id: 'root', text: '中心', isExpanded: true,
   children: [
-    { id: 'a', text: '节点 A', isExpanded: true, children: [{ id: 'a1', text: '子节点', isExpanded: true, children: [] }] },
+    {
+      id: 'a', text: '节点 A', isExpanded: true,
+      // 多个子节点：折叠后整图排版会发生位移
+      children: ['a1', 'a2', 'a3', 'a4', 'a5'].map((id) => ({ id, text: `子节点 ${id}`, isExpanded: true, children: [] })),
+    },
     { id: 'b', text: '节点 B', isExpanded: true, children: [] },
   ],
 });
@@ -62,7 +66,8 @@ describe('思维导图键盘操作', () => {
   it('方向键在父子与同级之间移动选中', async () => {
     await select('a');
     expect((await press(document.body, 'ArrowRight')).defaultPrevented).toBe(true);
-    expect(selectedIds()).toEqual(['a1']);
+    // 进入与当前节点同一水平线上的中间子节点
+    expect(selectedIds()).toEqual(['a3']);
     await press(document.body, 'ArrowLeft');
     expect(selectedIds()).toEqual(['a']);
     await press(document.body, 'ArrowDown');
@@ -95,6 +100,25 @@ describe('思维导图键盘操作', () => {
     // 焦点回到画布后方向键立即可用
     await press(document.activeElement!, 'ArrowUp');
     expect(selectedIds()).toEqual(['a']);
+  });
+
+  it('折叠 / 展开节点后该节点在屏幕上的位置不变', async () => {
+    const screenPos = (id: string) => {
+      const layer = host.querySelector('.nb-mindmap-transform') as HTMLElement;
+      const match = /translate3d\((-?[\d.]+)px, (-?[\d.]+)px/.exec(layer.style.transform)!;
+      const el = nodeEl(id);
+      return { x: Number(match[1]) + parseFloat(el.style.left), y: Number(match[2]) + parseFloat(el.style.top) };
+    };
+    const before = screenPos('a');
+    const layoutBefore = parseFloat(nodeEl('a').style.top);
+    const fold = () => nodeEl('a').querySelector('.nb-mindmap-fold-btn') as HTMLElement;
+    await act(async () => { fold().click(); });
+    expect(onChange.mock.lastCall![0].children[0].isExpanded).toBe(false);
+    // 排版坐标确实变了，但屏幕位置保持不变
+    expect(parseFloat(nodeEl('a').style.top)).not.toBe(layoutBefore);
+    expect(screenPos('a')).toEqual(before);
+    await act(async () => { fold().click(); });
+    expect(screenPos('a')).toEqual(before);
   });
 
   it('节点颜色只改选中节点，不影响子节点', async () => {

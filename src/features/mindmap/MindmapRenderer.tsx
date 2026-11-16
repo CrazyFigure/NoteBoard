@@ -960,6 +960,25 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     commitPan(next);
   }, [contentBounds, viewportSize, zoom]);
 
+  // 折叠 / 展开节点后保持该节点在屏幕上的位置不变：按其排版前后的坐标差反向平移画布，
+  // 避免整图跳走、视野移出导图（在绘制前同步完成，不会闪动）
+  const foldAnchorRef = useRef<{ id: string; x: number; y: number; at: number } | null>(null);
+  useLayoutEffect(() => {
+    const anchor = foldAnchorRef.current;
+    if (!anchor) return;
+    foldAnchorRef.current = null;
+    // 只对紧随折叠的那次排版生效（只读视图等折叠未生效时，不影响之后无关的排版变化）
+    if (Date.now() - anchor.at > 1000) return;
+    const after = nodes.find((n) => n.node.id === anchor.id);
+    if (!after) return;
+    const dx = (after.x - anchor.x) * zoomRef.current;
+    const dy = (after.y - anchor.y) * zoomRef.current;
+    if (dx === 0 && dy === 0) return;
+    const next = { x: panRef.current.x - dx, y: panRef.current.y - dy };
+    panRef.current = next;
+    commitPan(next);
+  }, [nodes]);
+
   // 画布容器虽是 overflow:hidden，编辑节点时浏览器仍会滚动它把光标露出来，
   // 导致缩略图等绝对定位控件整体上移；视图位置只由 pan 决定，滚动一律复位
   useEffect(() => {
@@ -1011,6 +1030,13 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
 
   // 切换节点折叠
   const handleToggleExpand = (id: string) => {
+    // 折叠 / 展开后整图会重新排版（坐标整体平移），记下该节点当前位置，排版后把它留在屏幕原处
+    const anchor = nodes.find((n) => n.node.id === id);
+    if (anchor) {
+      foldAnchorRef.current = { id, x: anchor.x, y: anchor.y, at: Date.now() };
+      // 视为用户已操作过视图：不再因内容范围变化自动重新居中
+      autoCenterRef.current = { pan: { x: NaN, y: NaN }, zoom: zoomRef.current };
+    }
     updateTree((cloned) => {
       updateNodeById(cloned, id, (target) => { target.isExpanded = !target.isExpanded; });
     });
