@@ -163,6 +163,22 @@
   transform: scale(0.94);
 }
 
+/* 思维导图顶栏右侧按钮统一高度：以「概要」文本按钮（12px × 1.6 行高 + 4px 上下内边距 + 1px 边框 ≈ 29px）为基准，
+   缩放图标、样式下拉、阅读、导入、导出全部对齐；固定高度后紧凑模式隐藏文字时也不会塌缩 */
+.nb-mindmap-topbar-actions .nb-editor-icon-btn,
+.nb-mindmap-topbar-actions .nb-editor-toolbar-btn,
+.nb-mindmap-topbar-actions .nb-editor-primary-btn,
+.nb-mindmap-topbar-actions .nb-mindmap-style-trigger {
+  box-sizing: border-box;
+  height: 29px;
+}
+
+/* 图标按钮加高后保持接近方形，并与文本按钮圆角一致 */
+.nb-mindmap-topbar-actions .nb-editor-icon-btn {
+  min-width: 29px;
+  border-radius: 5px;
+}
+
 /* HTML 双栏编辑器分隔条：悬停浅色提示，拖动中强调色 */
 .nb-html-split-sash {
   background: transparent;

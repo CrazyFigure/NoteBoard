@@ -585,8 +585,8 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
           </div>
         </div>
 
-        {/* 右侧：缩放控制与 XMind 导入导出 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {/* 右侧：缩放控制与 XMind 导入导出（nb-mindmap-topbar-actions 统一按钮高度） */}
+        <div className="nb-mindmap-topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {viewMode === 'mindmap' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginRight: 6 }}>
               <Tooltip content="缩小画布" side="bottom" sideOffset={4}>
