@@ -592,30 +592,31 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
               <Tooltip content="缩小画布" side="bottom" sideOffset={4}>
                 <button
                   type="button"
-                  className="nb-editor-icon-btn"
+                  className="nb-editor-icon-btn nb-mindmap-zoom-btn"
                   onClick={() => setZoom((z) => Math.max(0.2, z - 0.15))}
                   aria-label="缩小画布"
                 >
-                  <ZoomOut size={13} />
+                  <ZoomOut size={15} />
                 </button>
               </Tooltip>
-              <span style={{ fontSize: 11, minWidth: 42, textAlign: 'center' }}>
+              {/* 缩放百分比：收窄最小宽度贴近两侧按钮；等宽数字避免缩放时宽度抖动 */}
+              <span style={{ fontSize: 12, minWidth: 36, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>
                 {Math.round(zoom * 100)}%
               </span>
               <Tooltip content="放大画布" side="bottom" sideOffset={4}>
                 <button
                   type="button"
-                  className="nb-editor-icon-btn"
+                  className="nb-editor-icon-btn nb-mindmap-zoom-btn"
                   onClick={() => setZoom((z) => Math.min(3, z + 0.15))}
                   aria-label="放大画布"
                 >
-                  <ZoomIn size={13} />
+                  <ZoomIn size={15} />
                 </button>
               </Tooltip>
               <Tooltip content="复位 100%" side="bottom" sideOffset={4}>
                 <button
                   type="button"
-                  className="nb-editor-icon-btn"
+                  className="nb-editor-icon-btn nb-mindmap-zoom-btn"
                   onClick={() => setZoom(1)}
                   aria-label="复位 100%"
                 >

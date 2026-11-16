@@ -179,6 +179,11 @@
   border-radius: 5px;
 }
 
+/* 缩小 / 放大 / 复位按钮：静止时无边框，与百分比数字视觉上连成一组；悬停时沿用通用的边框高亮 */
+.nb-mindmap-topbar-actions .nb-mindmap-zoom-btn:not(:hover) {
+  border-color: transparent;
+}
+
 /* HTML 双栏编辑器分隔条：悬停浅色提示，拖动中强调色 */
 .nb-html-split-sash {
   background: transparent;
