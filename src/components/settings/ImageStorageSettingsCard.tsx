@@ -12,12 +12,7 @@ import { IS_MOBILE_UI } from '../../core/platform';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useSyncStore } from '../../stores/syncStore';
 import { showToast } from '../../stores/toastStore';
-import {
-  DEFAULT_GLOBAL_IMAGE_DIR_NAME,
-  DEFAULT_IMAGE_DIR_NAME,
-  globalImageDir,
-  sanitizeDirName,
-} from '../../features/editor-md/imageStorage';
+import { DEFAULT_IMAGE_DIR_NAME, globalImageDir, sanitizeDirName } from '../../features/editor-md/imageStorage';
 import { ImageMigrationDialog } from '../../features/editor-md/ImageMigrationDialog';
 import type { MigrationOptions } from '../../features/editor-md/imageMigration';
 import './imageStorageSettings.css';
@@ -48,9 +43,9 @@ export function ImageStorageSettingsCard({ onOpenSync }: ImageStorageSettingsCar
   const [migration, setMigration] = useState<MigrationOptions | null>(null);
 
   const mode: ImageStorageMode = file.imageStorageMode ?? 'sibling';
-  const siblingName = sanitizeDirName(file.imageDirName, DEFAULT_IMAGE_DIR_NAME);
-  const globalName = sanitizeDirName(file.globalImageDirName, DEFAULT_GLOBAL_IMAGE_DIR_NAME);
-  const globalPath = globalImageDir(syncRoot, file.globalImageDirName);
+  // 两种模式共用同一个目录名，只是所在位置不同
+  const dirName = sanitizeDirName(file.imageDirName, DEFAULT_IMAGE_DIR_NAME);
+  const globalPath = globalImageDir(syncRoot, file.imageDirName);
   const globalAvailable = !!globalPath;
 
   /** 切换存放模式：只影响之后插入的图片 */
@@ -59,8 +54,8 @@ export function ImageStorageSettingsCard({ onOpenSync }: ImageStorageSettingsCar
     setFile({ imageStorageMode: next });
     showToast(
       next === 'global'
-        ? `之后插入的图片将存入统一目录 /${globalName}，已有图片不受影响`
-        : `之后插入的图片将存入文档同级 /${siblingName}，已有图片不受影响`,
+        ? `之后插入的图片将存入同步文件夹下的 /${dirName}，已有图片不受影响`
+        : `之后插入的图片将存入各文档同级的 /${dirName}，已有图片不受影响`,
       'success',
     );
   };
@@ -75,7 +70,6 @@ export function ImageStorageSettingsCard({ onOpenSync }: ImageStorageSettingsCar
       direction: mode === 'global' ? 'toGlobal' : 'toSibling',
       syncRoot,
       imageDirName: file.imageDirName,
-      globalDirName: file.globalImageDirName,
     });
   };
 
@@ -127,37 +121,28 @@ export function ImageStorageSettingsCard({ onOpenSync }: ImageStorageSettingsCar
         </div>
       </div>
 
-      {/* 同级目录名称 */}
-      {mode === 'sibling' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--editor-text)' }}>图片目录名称</div>
-          <div style={{ fontSize: 11, color: 'var(--editor-text-muted)', marginBottom: 2 }}>
-            自动在当前 Markdown 文档所在目录同一层创建的子文件夹名称（默认 <code>{DEFAULT_IMAGE_DIR_NAME}</code>）
-          </div>
-          <input
-            type="text"
-            value={file.imageDirName ?? DEFAULT_IMAGE_DIR_NAME}
-            onChange={(e) => setFile({ imageDirName: e.target.value })}
-            placeholder={DEFAULT_IMAGE_DIR_NAME}
-            style={inputStyle}
-          />
+      {/* 图片目录名称：两种模式共用，说明随模式切换 */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--editor-text)' }}>图片目录名称</div>
+        <div style={{ fontSize: 11, color: 'var(--editor-text-muted)', marginBottom: 2 }}>
+          {mode === 'global' ? (
+            <>同步文件夹根目录下的文件夹名称（默认 <code>{DEFAULT_IMAGE_DIR_NAME}</code>），随同步与备份一起保存；不在同步文件夹内的文档仍存入其同级的同名文件夹</>
+          ) : (
+            <>在当前 Markdown 文档所在目录同一层自动创建的子文件夹名称（默认 <code>{DEFAULT_IMAGE_DIR_NAME}</code>）</>
+          )}
         </div>
-      )}
+        <input
+          type="text"
+          value={file.imageDirName ?? DEFAULT_IMAGE_DIR_NAME}
+          onChange={(e) => setFile({ imageDirName: e.target.value })}
+          placeholder={DEFAULT_IMAGE_DIR_NAME}
+          style={inputStyle}
+        />
+      </div>
 
-      {/* 统一目录名称与位置 */}
+      {/* 统一目录的完整位置 */}
       {mode === 'global' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--editor-text)' }}>统一目录名称</div>
-          <div style={{ fontSize: 11, color: 'var(--editor-text-muted)', marginBottom: 2 }}>
-            位于同步文件夹根目录下（默认 <code>{DEFAULT_GLOBAL_IMAGE_DIR_NAME}</code>），随同步与备份一起保存。不在同步文件夹内的文档仍存入其同级 <code>/{siblingName}</code> 目录。
-          </div>
-          <input
-            type="text"
-            value={file.globalImageDirName ?? DEFAULT_GLOBAL_IMAGE_DIR_NAME}
-            onChange={(e) => setFile({ globalImageDirName: e.target.value })}
-            placeholder={DEFAULT_GLOBAL_IMAGE_DIR_NAME}
-            style={inputStyle}
-          />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: -6 }}>
           {globalPath ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <span className="nb-image-mode-path">{globalPath}</span>
@@ -188,8 +173,8 @@ export function ImageStorageSettingsCard({ onOpenSync }: ImageStorageSettingsCar
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 11, color: 'var(--editor-text-muted)', flex: '1 1 200px' }}>
           {mode === 'global'
-            ? `可将同步文件夹内各文档同级 /${siblingName} 中的图片整理到统一目录，并自动改写引用。`
-            : `可将统一目录 /${globalName} 中的图片整理回各文档的同级目录，并自动改写引用。`}
+            ? `可将同步文件夹内各文档同级 /${dirName} 中的图片整理到同步文件夹下的 /${dirName}，并自动改写引用。`
+            : `可将同步文件夹下 /${dirName} 中的图片整理回各文档同级的 /${dirName}，并自动改写引用。`}
         </div>
         <Tooltip content="需要先设置同步文件夹" side="top" sideOffset={4} disabled={!!syncRoot}>
           <span style={{ display: 'inline-flex' }}>

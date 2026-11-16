@@ -22,7 +22,6 @@ function target(baseDir: string, overrides: Partial<Parameters<typeof computeIma
     baseDir,
     mode: 'global',
     imageDirName: 'img',
-    globalDirName: 'assets',
     syncRoot: SYNC,
     ...overrides,
   });
@@ -41,19 +40,23 @@ describe('computeImageTarget', () => {
     expect(target('C:\\Notes', { mode: undefined }).global).toBe(false);
   });
 
-  it('统一模式：同步目录根下的文档引用 ./assets', () => {
+  it('统一模式：与同级模式共用目录名，同步目录根下的文档引用 ./img', () => {
     const result = target('C:\\Notes');
-    expect(result).toMatchObject({ targetDir: 'C:\\Notes\\assets', linkDir: './assets', global: true });
+    expect(result).toMatchObject({ targetDir: 'C:\\Notes\\img', linkDir: './img', global: true, label: '统一目录 /img' });
   });
 
   it('统一模式：多级子目录中的文档写入 ../ 相对路径', () => {
-    expect(target('C:\\Notes\\a').linkDir).toBe('../assets');
-    expect(target('C:\\notes\\a\\b\\c').linkDir).toBe('../../../assets');
+    expect(target('C:\\Notes\\a').linkDir).toBe('../img');
+    expect(target('C:\\notes\\a\\b\\c').linkDir).toBe('../../../img');
+  });
+
+  it('统一模式：自定义目录名同时作用于统一目录', () => {
+    expect(target('C:\\Notes\\a', { imageDirName: 'assets' })).toMatchObject({ targetDir: 'C:\\Notes\\assets', linkDir: '../assets' });
   });
 
   it('统一模式：位于统一目录内部的文档', () => {
-    expect(target('C:\\Notes\\assets').linkDir).toBe('.');
-    expect(target('C:\\Notes\\assets\\sub').linkDir).toBe('..');
+    expect(target('C:\\Notes\\img').linkDir).toBe('.');
+    expect(target('C:\\Notes\\img\\sub').linkDir).toBe('..');
   });
 
   it('统一模式：未设置同步目录时回退同级', () => {
@@ -69,7 +72,7 @@ describe('computeImageTarget', () => {
   });
 
   it('多级目录名按平台分隔符落盘、按 / 写入引用', () => {
-    const result = target('C:\\Notes\\a', { globalDirName: 'res/images' });
+    const result = target('C:\\Notes\\a', { imageDirName: 'res/images' });
     expect(result.targetDir).toBe('C:\\Notes\\res\\images');
     expect(result.linkDir).toBe('../res/images');
     const { linkPath, diskPath } = imageTargetPaths(result, '1_shot.png');

@@ -20,7 +20,7 @@ import {
   type MigrationPlan,
   type MigrationReport,
 } from './imageMigration';
-import { DEFAULT_GLOBAL_IMAGE_DIR_NAME, DEFAULT_IMAGE_DIR_NAME, sanitizeDirName } from './imageStorage';
+import { DEFAULT_IMAGE_DIR_NAME, sanitizeDirName } from './imageStorage';
 import '../sync/sync.css';
 
 /** 预览中最多列出的跳过明细条数 */
@@ -72,11 +72,11 @@ export function ImageMigrationDialog({ open, options, onClose }: { open: boolean
   const busy = phase === 'running';
   useEscapeToClose(open && !busy, onClose);
 
-  const siblingLabel = `/${sanitizeDirName(options.imageDirName, DEFAULT_IMAGE_DIR_NAME)}`;
-  const globalLabel = `/${sanitizeDirName(options.globalDirName, DEFAULT_GLOBAL_IMAGE_DIR_NAME)}`;
+  // 两种模式共用同一个目录名，只是所在位置不同
+  const dirLabel = `/${sanitizeDirName(options.imageDirName, DEFAULT_IMAGE_DIR_NAME)}`;
   const toGlobal = options.direction === 'toGlobal';
-  const fromLabel = toGlobal ? `文档同级 ${siblingLabel}` : `统一目录 ${globalLabel}`;
-  const toLabel = toGlobal ? `统一目录 ${globalLabel}` : `文档同级 ${siblingLabel}`;
+  const fromLabel = toGlobal ? `各文档同级 ${dirLabel}` : `同步文件夹下的统一目录 ${dirLabel}`;
+  const toLabel = toGlobal ? `同步文件夹下的统一目录 ${dirLabel}` : `各文档同级 ${dirLabel}`;
 
   // 打开时扫描生成计划（只读）
   useEffect(() => {

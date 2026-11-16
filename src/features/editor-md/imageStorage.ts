@@ -1,7 +1,7 @@
 // NoteBoard 图片落盘位置决策
-// 两种存放模式：
-//  - sibling：文档同级子目录（默认，目录名 settings.file.imageDirName，默认 img）
-//  - global：同步目录根下的统一目录（目录名 settings.file.globalImageDirName，默认 assets）
+// 两种存放模式共用同一个目录名 settings.file.imageDirName（默认 img）：
+//  - sibling：文档同级子目录 `<文档目录>/<目录名>`（默认模式）
+//  - global：同步目录根下的统一目录 `<同步目录>/<目录名>`
 // 无论哪种模式，写入 Markdown 的始终是「相对当前文档目录」的路径，
 // 保证同步到其它设备 / 平台（Windows、Android、网页）后仍能解析显示。
 // 统一模式下，文档不在同步目录内（含未设置同步目录、跨盘等无法相对的情况）时回退到同级目录。
@@ -14,10 +14,8 @@ import { useSyncStore } from '../../stores/syncStore';
 import { useExplorerStore } from '../explorer/explorerStore';
 import { isSubPath, joinPath, normalizePath, relativePathBetween } from '../explorer/pathUtils';
 
-/** 同级图片目录默认名称 */
+/** 图片目录默认名称（同级与统一两种模式共用） */
 export const DEFAULT_IMAGE_DIR_NAME = 'img';
-/** 统一图片目录默认名称 */
-export const DEFAULT_GLOBAL_IMAGE_DIR_NAME = 'assets';
 
 /** 统一模式回退到同级目录的原因 */
 export type ImageFallbackReason = 'no-sync-root' | 'outside-sync-root';
@@ -26,7 +24,7 @@ export type ImageFallbackReason = 'no-sync-root' | 'outside-sync-root';
 export interface ImageTarget {
   /** 图片写入的目录（绝对路径，平台分隔符） */
   targetDir: string;
-  /** 写入 Markdown 的目录前缀（相对文档目录，`/` 分隔，如 `./img`、`../assets`） */
+  /** 写入 Markdown 的目录前缀（相对文档目录，`/` 分隔，如 `./img`、`../img`） */
   linkDir: string;
   /** 是否实际使用了统一目录 */
   global: boolean;
@@ -42,7 +40,6 @@ export interface ImageTargetInput {
   baseDir: string;
   mode: ImageStorageMode | undefined;
   imageDirName: string | undefined;
-  globalDirName: string | undefined;
   /** 同步目录根（未设置为空） */
   syncRoot: string | undefined;
 }
@@ -87,10 +84,10 @@ export function siblingImageDir(docDir: string, imageDirName: string | undefined
 }
 
 /** 统一图片目录的绝对路径；未设置同步目录时返回 null */
-export function globalImageDir(syncRoot: string | null | undefined, globalDirName: string | undefined): string | null {
+export function globalImageDir(syncRoot: string | null | undefined, imageDirName: string | undefined): string | null {
   const root = normalizePath(syncRoot);
   if (!root) return null;
-  return joinSegments(root, sanitizeDirSegments(globalDirName, DEFAULT_GLOBAL_IMAGE_DIR_NAME));
+  return joinSegments(root, sanitizeDirSegments(imageDirName, DEFAULT_IMAGE_DIR_NAME));
 }
 
 /** 相对路径写法统一以 `./` 或 `../` 开头，与现有 `./img/x.png` 风格保持一致 */
@@ -101,16 +98,17 @@ function toLinkDir(relative: string): string {
 
 /** 根据设置与路径计算图片落盘目标（纯函数） */
 export function computeImageTarget(input: ImageTargetInput): ImageTarget {
-  const siblingSegments = sanitizeDirSegments(input.imageDirName, DEFAULT_IMAGE_DIR_NAME);
+  const segments = sanitizeDirSegments(input.imageDirName, DEFAULT_IMAGE_DIR_NAME);
+  const dirName = segments.join('/');
   const sibling: ImageTarget = {
-    targetDir: joinSegments(input.baseDir, siblingSegments),
-    linkDir: `./${siblingSegments.join('/')}`,
+    targetDir: joinSegments(input.baseDir, segments),
+    linkDir: `./${dirName}`,
     global: false,
-    label: `/${siblingSegments.join('/')}`,
+    label: `/${dirName}`,
   };
   if (input.mode !== 'global') return sibling;
 
-  const globalDir = globalImageDir(input.syncRoot, input.globalDirName);
+  const globalDir = globalImageDir(input.syncRoot, input.imageDirName);
   if (!globalDir) return { ...sibling, fallbackReason: 'no-sync-root' };
   // 文档必须位于同步目录内：同步到其它设备后相对路径依然成立
   if (!isSubPath(input.syncRoot, input.baseDir)) return { ...sibling, fallbackReason: 'outside-sync-root' };
@@ -120,7 +118,7 @@ export function computeImageTarget(input: ImageTargetInput): ImageTarget {
     targetDir: globalDir,
     linkDir: toLinkDir(relative),
     global: true,
-    label: `统一目录 /${sanitizeDirName(input.globalDirName, DEFAULT_GLOBAL_IMAGE_DIR_NAME)}`,
+    label: `统一目录 /${dirName}`,
   };
 }
 
@@ -176,7 +174,6 @@ export async function resolveImageTarget(docKey: string): Promise<ImageTarget | 
     baseDir,
     mode,
     imageDirName: file.imageDirName,
-    globalDirName: file.globalImageDirName,
     syncRoot,
   });
 }

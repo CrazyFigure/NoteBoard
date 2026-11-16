@@ -74,11 +74,12 @@ function createMemoryFs(texts: Record<string, string>, images: Record<string, st
   };
 }
 
-const toGlobal: MigrationOptions = { direction: 'toGlobal', syncRoot: SYNC, imageDirName: 'img', globalDirName: 'assets' };
+// 两种模式共用目录名 img：同级为 <文档目录>\img，统一为 C:\Notes\img
+const toGlobal: MigrationOptions = { direction: 'toGlobal', syncRoot: SYNC, imageDirName: 'img' };
 const toSibling: MigrationOptions = { ...toGlobal, direction: 'toSibling' };
 
 describe('同级 → 统一', () => {
-  it('移动同级图片并改写为相对统一目录的路径，搬空的目录被回收', async () => {
+  it('移动同级图片并改写为相对统一目录的路径，搬空的目录被回收；根目录文档已在统一目录内保持不动', async () => {
     const fs = createMemoryFs(
       {
         'C:\\Notes\\a\\note.md': '![x](./img/x.png)\n![remote](https://x.com/r.png)',
@@ -87,18 +88,19 @@ describe('同级 → 统一', () => {
       { 'C:\\Notes\\a\\img\\x.png': 'X', 'C:\\Notes\\img\\y.png': 'Y' },
     );
     const plan = await planImageMigration(toGlobal, fs.read);
-    expect(plan.stats).toMatchObject({ scannedDocs: 2, docs: 2, images: 2, refs: 2, deduped: 0, renamed: 0 });
-    expect(plan.ops.every((op) => op.kind === 'move')).toBe(true);
+    expect(plan.stats).toMatchObject({ scannedDocs: 2, docs: 1, images: 1, refs: 1, deduped: 0, renamed: 0 });
+    expect(plan.ops).toMatchObject([{ kind: 'move', to: 'C:\\Notes\\img\\x.png' }]);
 
     const report = await executeImageMigration(plan, fs.write);
     expect(report.errors).toEqual([]);
-    expect(report).toMatchObject({ files: 2, docs: 2, refs: 2 });
-    expect(fs.text('C:\\Notes\\a\\note.md')).toBe('![x](../assets/x.png)\n![remote](https://x.com/r.png)');
-    expect(fs.text('C:\\Notes\\root.md')).toBe('<img src="./assets/y.png" width="50%">');
-    expect(fs.has('C:\\Notes\\assets\\x.png')).toBe(true);
+    expect(report).toMatchObject({ files: 1, docs: 1, refs: 1 });
+    expect(fs.text('C:\\Notes\\a\\note.md')).toBe('![x](../img/x.png)\n![remote](https://x.com/r.png)');
+    expect(fs.text('C:\\Notes\\root.md')).toBe('<img src="img/y.png" width="50%">');
+    expect(fs.has('C:\\Notes\\img\\x.png')).toBe(true);
+    expect(fs.has('C:\\Notes\\img\\y.png')).toBe(true);
     expect(fs.has('C:\\Notes\\a\\img\\x.png')).toBe(false);
-    // 两个旧 img 目录都已搬空
-    expect(report.removedDirs).toBe(2);
+    // 子目录的旧 img 已搬空
+    expect(report.removedDirs).toBe(1);
   });
 
   it('其他目录的文档以不同写法引用同一张图时一并改写', async () => {
@@ -112,8 +114,8 @@ describe('同级 → 统一', () => {
     const plan = await planImageMigration(toGlobal, fs.read);
     expect(plan.stats).toMatchObject({ images: 1, refs: 2 });
     await executeImageMigration(plan, fs.write);
-    expect(fs.text('C:\\Notes\\a\\note.md')).toBe('![x](../assets/x.png)');
-    expect(fs.text('C:\\Notes\\b\\other.md')).toBe('![x](../assets/x.png)');
+    expect(fs.text('C:\\Notes\\a\\note.md')).toBe('![x](../img/x.png)');
+    expect(fs.text('C:\\Notes\\b\\other.md')).toBe('![x](../img/x.png)');
   });
 
   it('同名冲突：内容相同去重、内容不同追加后缀', async () => {
@@ -134,9 +136,9 @@ describe('同级 → 统一', () => {
     expect(plan.stats).toMatchObject({ images: 3, deduped: 1, renamed: 1 });
     const report = await executeImageMigration(plan, fs.write);
     expect(report.errors).toEqual([]);
-    expect(fs.text('C:\\Notes\\a\\1.md')).toBe('![s](../assets/shot.png)');
-    expect(fs.text('C:\\Notes\\b\\2.md')).toBe('![s](../assets/shot_1.png)');
-    expect(fs.text('C:\\Notes\\c\\3.md')).toBe('![s](../assets/shot.png)');
+    expect(fs.text('C:\\Notes\\a\\1.md')).toBe('![s](../img/shot.png)');
+    expect(fs.text('C:\\Notes\\b\\2.md')).toBe('![s](../img/shot_1.png)');
+    expect(fs.text('C:\\Notes\\c\\3.md')).toBe('![s](../img/shot.png)');
     // 去重的源文件被回收
     expect(fs.has('C:\\Notes\\c\\img\\shot.png')).toBe(false);
   });
@@ -144,12 +146,12 @@ describe('同级 → 统一', () => {
   it('统一目录已有相同内容的文件时直接复用', async () => {
     const fs = createMemoryFs(
       { 'C:\\Notes\\a\\1.md': '![s](./img/s.png)' },
-      { 'C:\\Notes\\a\\img\\s.png': 'S', 'C:\\Notes\\assets\\s.png': 'S' },
+      { 'C:\\Notes\\a\\img\\s.png': 'S', 'C:\\Notes\\img\\s.png': 'S' },
     );
     const plan = await planImageMigration(toGlobal, fs.read);
     expect(plan.ops).toMatchObject([{ kind: 'reuse' }]);
     await executeImageMigration(plan, fs.write);
-    expect(fs.text('C:\\Notes\\a\\1.md')).toBe('![s](../assets/s.png)');
+    expect(fs.text('C:\\Notes\\a\\1.md')).toBe('![s](../img/s.png)');
     expect(fs.has('C:\\Notes\\a\\img\\s.png')).toBe(false);
   });
 
@@ -173,14 +175,14 @@ describe('同级 → 统一', () => {
     const plan = await planImageMigration(toGlobal, fs.read);
     const report = await executeImageMigration(plan, fs.write);
     expect(report.errors).toEqual([]);
-    expect(fs.has('C:\\Notes\\assets\\s.png')).toBe(true);
+    expect(fs.has('C:\\Notes\\img\\s.png')).toBe(true);
     expect(fs.trashed).toContain('C:\\Notes\\a\\img\\s.png');
   });
 
   it('文档改写失败时不回收源文件，原引用仍可显示', async () => {
     const fs = createMemoryFs(
       { 'C:\\Notes\\a\\1.md': '![s](./img/s.png)', 'C:\\Notes\\a\\2.md': '![s](./img/s.png)' },
-      { 'C:\\Notes\\a\\img\\s.png': 'S', 'C:\\Notes\\assets\\s.png': 'S' },
+      { 'C:\\Notes\\a\\img\\s.png': 'S', 'C:\\Notes\\img\\s.png': 'S' },
     );
     const plan = await planImageMigration(toGlobal, fs.read);
     const failing: MigrationWriteFs = {
@@ -200,21 +202,21 @@ describe('同级 → 统一', () => {
 describe('统一 → 同级', () => {
   it('只被一个目录引用时直接移动', async () => {
     const fs = createMemoryFs(
-      { 'C:\\Notes\\a\\1.md': '![s](../assets/s.png)', 'C:\\Notes\\a\\2.md': '![s](../assets/s.png)' },
-      { 'C:\\Notes\\assets\\s.png': 'S' },
+      { 'C:\\Notes\\a\\1.md': '![s](../img/s.png)', 'C:\\Notes\\a\\2.md': '![s](../img/s.png)' },
+      { 'C:\\Notes\\img\\s.png': 'S' },
     );
     const plan = await planImageMigration(toSibling, fs.read);
     expect(plan.ops).toMatchObject([{ kind: 'move', to: 'C:\\Notes\\a\\img\\s.png' }]);
     await executeImageMigration(plan, fs.write);
     expect(fs.text('C:\\Notes\\a\\1.md')).toBe('![s](./img/s.png)');
     expect(fs.text('C:\\Notes\\a\\2.md')).toBe('![s](./img/s.png)');
-    expect(fs.has('C:\\Notes\\assets\\s.png')).toBe(false);
+    expect(fs.has('C:\\Notes\\img\\s.png')).toBe(false);
   });
 
   it('多个目录共享时分别复制，全部改写后回收原图', async () => {
     const fs = createMemoryFs(
-      { 'C:\\Notes\\a\\1.md': '![s](../assets/s.png)', 'C:\\Notes\\b\\c\\2.md': '![s](../../assets/s.png)' },
-      { 'C:\\Notes\\assets\\s.png': 'S' },
+      { 'C:\\Notes\\a\\1.md': '![s](../img/s.png)', 'C:\\Notes\\b\\c\\2.md': '![s](../../img/s.png)' },
+      { 'C:\\Notes\\img\\s.png': 'S' },
     );
     const plan = await planImageMigration(toSibling, fs.read);
     expect(plan.ops.map((op) => op.kind)).toEqual(['copy', 'copy']);
@@ -224,14 +226,37 @@ describe('统一 → 同级', () => {
     expect(fs.text('C:\\Notes\\b\\c\\2.md')).toBe('![s](./img/s.png)');
     expect(fs.has('C:\\Notes\\a\\img\\s.png')).toBe(true);
     expect(fs.has('C:\\Notes\\b\\c\\img\\s.png')).toBe(true);
-    expect(fs.trashed).toEqual(['C:\\Notes\\assets\\s.png']);
+    expect(fs.trashed).toEqual(['C:\\Notes\\img\\s.png']);
+  });
+
+  it('同步目录根下的文档同级目录就是统一目录：引用不动、原图保留，其他目录复制一份', async () => {
+    const fs = createMemoryFs(
+      { 'C:\\Notes\\root.md': '![s](./img/s.png)', 'C:\\Notes\\a\\1.md': '![s](../img/s.png)' },
+      { 'C:\\Notes\\img\\s.png': 'S' },
+    );
+    const plan = await planImageMigration(toSibling, fs.read);
+    expect(plan.ops).toMatchObject([{ kind: 'copy', to: 'C:\\Notes\\a\\img\\s.png' }]);
+    expect(plan.trash).toEqual([]);
+    const report = await executeImageMigration(plan, fs.write);
+    expect(report.errors).toEqual([]);
+    expect(fs.text('C:\\Notes\\root.md')).toBe('![s](./img/s.png)');
+    expect(fs.text('C:\\Notes\\a\\1.md')).toBe('![s](./img/s.png)');
+    expect(fs.has('C:\\Notes\\img\\s.png')).toBe(true);
+    expect(fs.trashed).toEqual([]);
+  });
+
+  it('只有根目录文档引用统一目录图片时无需整理', async () => {
+    const fs = createMemoryFs({ 'C:\\Notes\\root.md': '![s](./img/s.png)' }, { 'C:\\Notes\\img\\s.png': 'S' });
+    const plan = await planImageMigration(toSibling, fs.read);
+    expect(plan.ops).toEqual([]);
+    expect(plan.stats.images).toBe(0);
   });
 
   it('来回迁移后文档恢复原样', async () => {
     const original = '![x](./img/x.png)';
     const fs = createMemoryFs({ 'C:\\Notes\\a\\1.md': original }, { 'C:\\Notes\\a\\img\\x.png': 'X' });
     await executeImageMigration(await planImageMigration(toGlobal, fs.read), fs.write);
-    expect(fs.text('C:\\Notes\\a\\1.md')).toBe('![x](../assets/x.png)');
+    expect(fs.text('C:\\Notes\\a\\1.md')).toBe('![x](../img/x.png)');
     await executeImageMigration(await planImageMigration(toSibling, fs.read), fs.write);
     expect(fs.text('C:\\Notes\\a\\1.md')).toBe(original);
     expect(fs.has('C:\\Notes\\a\\img\\x.png')).toBe(true);

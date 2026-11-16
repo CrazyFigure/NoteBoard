@@ -413,11 +413,10 @@ export interface FileSettings {
   restoreSession: boolean;
   // 重新打开 Markdown / 文本文件时恢复阅读位置；旧配置缺失时默认开启。
   restoreReadingPosition?: boolean;
+  // 图片目录名称（两种模式共用）：同级模式为文档所在目录下的子文件夹，统一模式为同步目录根下的文件夹
   imageDirName: string;
   // 图片存放模式：sibling（文档同级子目录）/ global（同步目录下的统一目录）；旧配置缺失时视为 sibling
   imageStorageMode?: ImageStorageMode;
-  // 统一图片目录名称（位于同步目录根下）；旧配置缺失时视为 assets
-  globalImageDirName?: string;
   largeFileConfirmMb: number;
   // 未保存文件的用户可见暂存目录（绝对路径）
   stagingDirectory: string;

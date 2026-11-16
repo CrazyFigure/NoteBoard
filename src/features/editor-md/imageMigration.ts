@@ -1,7 +1,8 @@
 // NoteBoard 整理现有图片：在「文档同级目录」与「同步目录下的统一目录」之间迁移图片并改写引用
 // 范围：同步目录下的全部 Markdown 文档；只处理应用自身管理的图片：
-//  - 同级 → 统一：位于 `<文档目录>/<同级目录名>/` 下的图片，移动到统一目录（同一张图只移动一次）
+//  - 同级 → 统一：位于 `<文档目录>/<目录名>/` 下的图片，移动到 `<同步目录>/<目录名>/`（同一张图只移动一次）
 //  - 统一 → 同级：位于统一目录下的图片，复制（仅一个目录引用时直接移动）到各文档的同级目录
+// 两种模式共用同一个目录名：同步目录根下的文档，其同级目录就是统一目录，引用保持不动。
 // 同名冲突先比较内容：完全相同直接复用（去重），不同则追加 `_1` 等后缀。
 // 执行顺序：文件操作 → 改写文档（只改写文件操作成功的引用）→ 回收多余源文件 → 清理搬空的目录；
 // 任何一步失败都不影响其他文件，未改写的引用仍指向原文件，保证不会出现断图。
@@ -21,10 +22,8 @@ export interface MigrationOptions {
   direction: MigrationDirection;
   /** 同步目录根 */
   syncRoot: string;
-  /** 同级图片目录名称 */
+  /** 图片目录名称（同级与统一两种模式共用） */
   imageDirName: string | undefined;
-  /** 统一图片目录名称 */
-  globalDirName: string | undefined;
 }
 
 /** 规划阶段使用的只读文件访问（测试可替换为内存实现） */
@@ -177,7 +176,7 @@ export async function planImageMigration(
   onProgress?: MigrationProgress,
 ): Promise<MigrationPlan> {
   const syncRoot = normalizePath(options.syncRoot);
-  const globalDir = globalImageDir(syncRoot, options.globalDirName) ?? '';
+  const globalDir = globalImageDir(syncRoot, options.imageDirName) ?? '';
   const plan: MigrationPlan = {
     options,
     globalDir,
@@ -306,19 +305,26 @@ export async function planImageMigration(
 
   // 4. 逐个源文件生成文件操作与引用改写
   for (const { source, groups } of bySource.values()) {
-    const groupList = [...groups.values()];
+    // 源文件已位于目标目录内的引用（如同步目录根下的文档，其同级目录就是统一目录）保持不动，
+    // 此时源文件仍被引用，只能复制给其他目录，且不能回收
+    const groupList = [...groups.values()].filter((group) => !isSubPath(group.dir, source));
+    const keepSource = groupList.length < groups.size;
+    if (groupList.length === 0) {
+      plan.stats.images -= 1;
+      continue;
+    }
     // 只有一个目标目录时可直接移动；多个目录共享时逐个复制，最后回收源文件
-    const canMove = groupList.length === 1;
+    const canMove = groupList.length === 1 && !keepSource;
     const trashOps: number[] = [];
     const trashDocs = new Set<string>();
-    let needTrash = !canMove;
+    let needTrash = !canMove && !keepSource;
     for (const group of groupList) {
       const allocated = await allocate(group.dir, source);
       let op: MigrationFileOp;
       if (allocated.reuseOf || allocated.reuseDisk) {
         op = { id: nextId++, kind: 'reuse', from: source, to: allocated.path, dependsOn: allocated.reuseOf?.id };
         plan.stats.deduped += 1;
-        needTrash = true;
+        needTrash = !keepSource;
       } else {
         op = { id: nextId++, kind: canMove ? 'move' : 'copy', from: source, to: allocated.path };
         plannedTargets.set(pathKey(allocated.path), op);
