@@ -414,6 +414,10 @@ export interface FileSettings {
   // 重新打开 Markdown / 文本文件时恢复阅读位置；旧配置缺失时默认开启。
   restoreReadingPosition?: boolean;
   imageDirName: string;
+  // 图片存放模式：sibling（文档同级子目录）/ global（同步目录下的统一目录）；旧配置缺失时视为 sibling
+  imageStorageMode?: ImageStorageMode;
+  // 统一图片目录名称（位于同步目录根下）；旧配置缺失时视为 assets
+  globalImageDirName?: string;
   largeFileConfirmMb: number;
   // 未保存文件的用户可见暂存目录（绝对路径）
   stagingDirectory: string;
@@ -422,6 +426,9 @@ export interface FileSettings {
   // 文档中本地 HTML 链接的打开方式（缺省视为 browser 系统默认浏览器；仅桌面端生效）
   htmlOpenMode?: HtmlOpenMode;
 }
+
+/** 图片存放模式：文档同级子目录 / 同步目录下的统一目录 */
+export type ImageStorageMode = 'sibling' | 'global';
 
 /** 资源管理器打开文件的方式：双击 / 单击 */
 export type ExplorerOpenMode = 'double' | 'single';

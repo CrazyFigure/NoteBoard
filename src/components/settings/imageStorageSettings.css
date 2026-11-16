@@ -1,0 +1,84 @@
+/* NoteBoard 图片存放位置设置：两张可选卡片（文档同级 / 统一目录） */
+
+.nb-image-mode-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+}
+
+.nb-image-mode-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  text-align: left;
+  font: inherit;
+  color: var(--editor-text);
+  background: var(--editor-bg);
+  border: 1px solid var(--editor-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.08s ease;
+}
+
+.nb-image-mode-option:hover:not(:disabled) {
+  border-color: var(--accent-strong);
+  background: rgba(var(--accent-strong-rgb), 0.06);
+}
+
+.nb-image-mode-option:active:not(:disabled) {
+  transform: scale(0.98);
+  background: rgba(var(--accent-strong-rgb), 0.12);
+}
+
+.nb-image-mode-option.is-selected {
+  border-color: var(--accent-strong);
+  background: rgba(var(--accent-strong-rgb), 0.08);
+  box-shadow: inset 0 0 0 1px var(--accent-strong);
+}
+
+.nb-image-mode-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.nb-image-mode-option-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.nb-image-mode-option-desc {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--editor-text-muted);
+}
+
+.nb-image-mode-path {
+  font-size: 11px;
+  color: var(--editor-text-muted);
+  word-break: break-all;
+}
+
+.nb-image-mode-link {
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  color: var(--accent-strong);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.nb-image-mode-link:hover {
+  opacity: 0.8;
+}
+
+.nb-image-mode-link:active {
+  opacity: 0.6;
+}

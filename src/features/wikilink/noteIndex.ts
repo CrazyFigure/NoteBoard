@@ -9,7 +9,7 @@
 import * as ipc from '../../core/ipc/commands';
 import type { DocumentKind, FileTreeNode } from '../../core/ipc/types';
 import { useExplorerStore } from '../explorer/explorerStore';
-import { basenameOf, dirnameOf, isSubPath, normalizePath, pathKey, PATH_SEP } from '../explorer/pathUtils';
+import { basenameOf, dirnameOf, isSubPath, normalizePath, pathKey, PATH_SEP, relativePathBetween } from '../explorer/pathUtils';
 
 /** 单次扫描的文件数上限（超出后停止扫描，索引标记为不完整） */
 const MAX_INDEXED_FILES = 20000;
@@ -624,20 +624,8 @@ export function resolveAmongEntries(entries: NoteEntry[], target: string, fromPa
   return pickBest(entries.filter((entry) => entry.isMarkdown && entry.stem.toLowerCase() === lower), fromPath);
 }
 
-/** 两个路径的相对写法（`../a/b.md`，`/` 分隔）；不在同一盘符等无法相对时返回 null */
-export function relativePathBetween(fromDir: string, toPath: string): string | null {
-  const split = (path: string) => normalizePath(path).split(PATH_SEP).filter((part, index) => index === 0 || part);
-  const from = split(fromDir);
-  const to = split(toPath);
-  const same = (left: string, right: string) => (PATH_SEP === '\\' ? left.toLowerCase() === right.toLowerCase() : left === right);
-  if (!from.length || !to.length || !same(from[0], to[0])) return null;
-  let common = 0;
-  while (common < from.length && common < to.length && same(from[common], to[common])) common += 1;
-  const ups = from.length - common;
-  const rest = to.slice(common);
-  const parts = [...Array(ups).fill('..'), ...rest];
-  return parts.join('/');
-}
+// 相对路径计算已移至 pathUtils（图片落盘等模块共用），此处保留导出以兼容既有引用
+export { relativePathBetween };
 
 /**
  * 选中补全项后写入的链接目标：仓库内的文件用最短写法；

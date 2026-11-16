@@ -29,12 +29,12 @@ import {
 import { convertFileSrc } from '@tauri-apps/api/core';
 import * as ipc from '../../core/ipc/commands';
 import { IS_NATIVE_MOBILE, TARGET_PLATFORM } from '../../core/platform';
-import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
 import { showPrompt } from '../../stores/promptDialogStore';
-import { useExplorerStore } from '../explorer/explorerStore';
 import { basenameOf } from '../explorer/pathUtils';
+import type { Editor } from '@tiptap/core';
+import { documentBaseDir } from './rawHtmlBlockView';
 import { stopReactPropagation } from '../bitable/bitableUtils';
 import { handleLinkClick, isAbsoluteLocalPath, resolveRelativeDocPath } from './linkHandler';
 import { openDocument } from '../editor-code/orchestration/openDocument';
@@ -95,9 +95,9 @@ function describeImageFormat(rawSrc: string, absPath: string | null): string {
 
 /**
  * 解析图片的显示地址与本地绝对路径：
- * 网络地址 / Base64 原样使用；相对路径按当前文档目录（或工作区根目录）解析为本地文件。
+ * 网络地址 / Base64 原样使用；相对路径按节点所属文档目录（或工作区根目录）解析为本地文件。
  */
-function resolveImageSource(rawSrc: string): { display: string; absPath: string | null } {
+function resolveImageSource(rawSrc: string, editor: Editor | null): { display: string; absPath: string | null } {
   if (!rawSrc) return { display: '', absPath: null };
 
   // 1. 网络 URL 或 Base64
@@ -110,10 +110,8 @@ function resolveImageSource(rawSrc: string): { display: string; absPath: string 
     return { display: rawSrc, absPath: null };
   }
 
-  // 2. 本地相对路径或绝对路径
-  const activeKey = useWindowStore.getState().activeKey;
-  const currentDoc = activeKey ? useDocumentStore.getState().getDocument(activeKey) : null;
-  const baseDir = currentDoc?.dirPath || useExplorerStore.getState().root;
+  // 2. 本地相对路径或绝对路径：分屏时按节点所属文档的目录解析，而非另一侧的活动标签
+  const baseDir = documentBaseDir(editor);
   const absPath = baseDir ? resolveRelativeDocPath(baseDir, rawSrc) : isAbsoluteLocalPath(rawSrc) ? rawSrc : null;
   if (!absPath) return { display: rawSrc, absPath: null };
   try {
@@ -129,7 +127,7 @@ export function ImageComponent({ node, editor, updateAttributes, deleteNode }: N
   const [loadError, setLoadError] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   // 首次渲染就解析出图片地址：不再先渲染一个空 src 的 <img>（粘贴图片替换占位时会闪一下空白）
-  const [initialSource] = useState(() => resolveImageSource(node.attrs.src || ''));
+  const [initialSource] = useState(() => resolveImageSource(node.attrs.src || '', editor));
   const [resolvedDisplaySrc, setResolvedDisplaySrc] = useState<string>(initialSource.display);
   const [resolvedAbsPath, setResolvedAbsPath] = useState<string | null>(initialSource.absPath);
   const resolvedForRef = useRef<string>(node.attrs.src || '');
@@ -151,10 +149,10 @@ export function ImageComponent({ node, editor, updateAttributes, deleteNode }: N
     resolvedForRef.current = rawSrc;
     setLoadError(false);
     setNaturalSize(null);
-    const next = resolveImageSource(rawSrc);
+    const next = resolveImageSource(rawSrc, editor);
     setResolvedDisplaySrc(next.display);
     setResolvedAbsPath(next.absPath);
-  }, [rawSrc]);
+  }, [rawSrc, editor]);
 
   // 处理对齐样式
   const alignContainerStyle: React.CSSProperties = {

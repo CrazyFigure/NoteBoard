@@ -3,7 +3,7 @@
 // 页名与搜索索引见 settingsSearchIndex.ts；详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Image as ImageIcon, Cloud, ChevronRight, Monitor, History, PanelTop, UserRound, Users, Globe, RotateCcw, Search, RotateCw } from 'lucide-react';
+import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Cloud, ChevronRight, Monitor, History, PanelTop, UserRound, Users, Globe, RotateCcw, Search, RotateCw } from 'lucide-react';
 import { AUTO_SAVE_DELAY_MAX_MS, AUTO_SAVE_DELAY_MIN_MS, DEFAULT_SETTINGS, clampAutoSaveDelayMs, useSettingsStore, useTitleBarButtons } from '../../stores/settingsStore';
 import { ConfirmDialog } from '../../features/sync/SyncControls';
 import { THEMES } from '../../core/theme/themes';
@@ -15,6 +15,7 @@ import { APP_VERSION } from '../../core/version';
 import { open } from '@tauri-apps/plugin-dialog';
 import { showToast } from '../../stores/toastStore';
 import { FontPackSettingsCard } from './FontPackSettingsCard';
+import { ImageStorageSettingsCard } from './ImageStorageSettingsCard';
 import { SettingsRange } from './SettingsRange';
 import { SettingsSelect } from './SettingsSelect';
 import { TabSizeSelect } from './TabSizeSelect';
@@ -1536,27 +1537,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </div>
 
-                {/* ── 4.4 图片目录设置 ── */}
-                <div data-setting-id="imageDir" style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, color: 'var(--editor-text)' }}>
-                    <ImageIcon size={15} color="var(--accent-strong)" />
-                    <span>图片目录设置</span>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--editor-text)' }}>图片目录名称</div>
-                    <div style={{ fontSize: 11, color: 'var(--editor-text-muted)', marginBottom: 2 }}>
-                      插入或粘贴本地图片时，自动在当前 Markdown 文档所在目录同一层创建的子文件夹名称（默认 <code>img</code>）
-                    </div>
-                    <input
-                      type="text"
-                      value={settings.file.imageDirName ?? 'img'}
-                      onChange={(e) => setFile({ imageDirName: e.target.value })}
-                      placeholder="img"
-                      style={{ ...inputStyle, width: '100%', maxWidth: 280, padding: '6px 10px' }}
-                    />
-                  </div>
-                </div>
+                {/* ── 4.4 图片目录设置：存放位置（文档同级 / 统一目录）与整理现有图片 ── */}
+                <ImageStorageSettingsCard onOpenSync={SHOW_SYNC() ? () => { setSearchQuery(''); setActiveTab('sync'); } : undefined} />
               </div>
             )}
 

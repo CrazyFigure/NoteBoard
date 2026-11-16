@@ -64,7 +64,7 @@ export function updateImageSources(editor: Editor, oldSrc: string, newSrc: strin
 }
 
 /** 资源管理器已加载过该目录时重新读取，未展开的目录展开时自然是最新的 */
-async function refreshExplorerDir(dir: string): Promise<void> {
+export async function refreshExplorerDir(dir: string): Promise<void> {
   const explorer = useExplorerStore.getState();
   if (!explorer.getChildren(dir)) return;
   const showHidden = useSettingsStore.getState().settings.file.showHiddenFiles;

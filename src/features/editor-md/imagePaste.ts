@@ -1,5 +1,6 @@
 // NoteBoard 本地图片粘贴与拖拽落盘系统
-// 自动在 Markdown 文档所在目录同一层创建 /img 目录（名称可在设置修改）
+// 落盘位置由 imageStorage 决定：默认在 Markdown 文档同级创建 /img 目录（名称可在设置修改），
+// 也可切换为同步目录下的统一图片目录；Markdown 中始终写入相对文档目录的路径
 // 兼容新建未保存文档的 Base64 即时显示与提示，支持从本地对话框选择图片导入
 // 保存期间在插入位置显示图片预览与加载动画（imageUploadPlaceholder），完成后原位替换为正式图片
 
@@ -7,10 +8,7 @@ import type { Editor } from '@tiptap/core';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import * as ipc from '../../core/ipc/commands';
 import { beginImageInsertion } from './imageUploadPlaceholder';
-import { useDocumentStore } from '../../stores/documentStore';
-import { useSettingsStore } from '../../stores/settingsStore';
-import { useExplorerStore } from '../explorer/explorerStore';
-import { joinPath } from '../explorer/pathUtils';
+import { imageTargetPaths, resolveImageTarget, takeFallbackNotice, type ImageTarget } from './imageStorage';
 import { showToast } from '../../stores/toastStore';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readFile } from '@tauri-apps/plugin-fs';
@@ -72,21 +70,32 @@ function preloadSavedImage(path: string): Promise<void> {
   });
 }
 
+/** 落盘成功提示：统一模式回退到同级目录时，首次附带回退原因 */
+function toastSaved(target: ImageTarget, action: string): void {
+  const notice = takeFallbackNotice(target.fallbackReason);
+  if (notice) {
+    showToast(`图片已${action}至 ${target.label}。${notice}`, 'info', 6000);
+  } else {
+    showToast(`图片已${action}至 ${target.label}`, 'success');
+  }
+}
+
+/** 二进制写入失败时抛出可读错误 */
+function assertSaved(result: Awaited<ReturnType<typeof ipc.saveBinaryFile>>): void {
+  if (result.ok) return;
+  const errMsg = typeof result.error === 'string' ? result.error : JSON.stringify(result.error) || '保存图片失败';
+  throw new Error(errMsg);
+}
+
 /**
  * 处理粘贴/拖入的单个图片文件
- * 将图片保存到 Markdown 文档同级的 img/ 目录，或未保存时使用 Base64 兼容
+ * 将图片保存到设置指定的图片目录（文档同级或统一目录），或未保存时使用 Base64 兼容
  */
 export async function handlePastedImageFile(
   editor: Editor,
   file: File,
   docKey: string,
 ): Promise<void> {
-  const settings = useSettingsStore.getState().settings;
-  const imageDirName = (settings.file.imageDirName || 'img').trim() || 'img';
-
-  const currentDoc = useDocumentStore.getState().getDocument(docKey);
-  const docDirPath = currentDoc?.dirPath || useExplorerStore.getState().root;
-
   const ext = file.name.split('.').pop()?.toLowerCase() ?? 'png';
   const rawBaseName = file.name.replace(/\.[^.]+$/, '');
   const safeName = sanitizeFileName(rawBaseName) || 'image';
@@ -96,11 +105,16 @@ export async function handlePastedImageFile(
   // 立即在插入位置显示这张图的预览与加载动画，用户能确认粘贴已被接收
   const insertion = beginImageInsertion(editor, file);
 
+  // 解析落盘目标（统一模式可能需要读取同步配置，放在占位显示之后）
+  const target = await resolveImageTarget(docKey).catch((e) => {
+    console.error('解析图片目录失败:', e);
+    return null;
+  });
+
   // 1. 若文档已保存（拥有物理目录），直接写入本地磁盘图片目录
-  if (docDirPath) {
-    // 按平台分隔符拼接（Windows 反斜杠 / Android 正斜杠）
-    const targetDir = joinPath(docDirPath, imageDirName);
-    const targetPath = joinPath(targetDir, fileName);
+  if (target) {
+    // 按平台分隔符拼接磁盘路径（Windows 反斜杠 / Android 正斜杠），Markdown 引用统一为相对路径
+    const { linkPath, diskPath: targetPath } = imageTargetPaths(target, fileName);
 
     try {
       // 读取图片二进制字节流
@@ -108,18 +122,12 @@ export async function handlePastedImageFile(
       const bytes = new Uint8Array(arrayBuffer);
 
       // 调用 Rust 端以二进制正文写入（内部会自动 create_dir_all）
-      const result = await ipc.saveBinaryFile(targetPath, bytes);
+      assertSaved(await ipc.saveBinaryFile(targetPath, bytes));
 
-      if (result.ok) {
-        // 构建标准 Markdown 相对路径引用；先预解码再替换占位，避免闪烁
-        const relativePath = `./${imageDirName}/${fileName}`;
-        await preloadSavedImage(targetPath);
-        insertion.commit({ src: relativePath, alt: safeName });
-        showToast(`图片已保存至 /${imageDirName} 并插入`, 'success');
-      } else {
-        const errMsg = typeof result.error === 'string' ? result.error : JSON.stringify(result.error) || '保存图片失败';
-        throw new Error(errMsg);
-      }
+      // 先预解码再替换占位，避免闪烁
+      await preloadSavedImage(targetPath);
+      insertion.commit({ src: linkPath, alt: safeName });
+      toastSaved(target, '保存');
     } catch (e) {
       console.error('图片落盘失败，回退到 Base64:', e);
       // 写入失败时优雅回退到 Base64
@@ -137,7 +145,7 @@ export async function handlePastedImageFile(
     try {
       const base64Url = await fileToBase64(file);
       insertion.commit({ src: base64Url, alt: safeName });
-      showToast(formatShortcut(`图片已插入。当前文档尚未保存，建议按 Ctrl+S 保存文档以自动管理 /${imageDirName} 目录`), 'info');
+      showToast(formatShortcut('图片已插入。当前文档尚未保存，建议按 Ctrl+S 保存文档以自动管理图片目录'), 'info');
     } catch (e) {
       console.error('Base64 转换失败:', e);
       insertion.cancel();
@@ -147,7 +155,7 @@ export async function handlePastedImageFile(
 }
 
 /**
- * 弹出系统文件选择器选择本地图片，自动保存到当前文档同级 img 目录并返回图片路径与描述
+ * 弹出系统文件选择器选择本地图片，自动保存到设置指定的图片目录并返回图片路径与描述
  */
 export async function pickAndSaveLocalImage(
   docKey: string,
@@ -172,35 +180,34 @@ export async function pickAndSaveLocalImage(
 
     const filePath = selected;
     onPicked?.(filePath);
-    const currentDoc = useDocumentStore.getState().getDocument(docKey);
-    const docDirPath = currentDoc?.dirPath || useExplorerStore.getState().root;
-    const settings = useSettingsStore.getState().settings;
-    const imageDirName = (settings.file.imageDirName || 'img').trim() || 'img';
+    const target = await resolveImageTarget(docKey).catch((e) => {
+      console.error('解析图片目录失败:', e);
+      return null;
+    });
 
-    // 若文档有物理路径，复制到文档所在的 /img 目录
-    if (docDirPath) {
+    // 若文档有物理路径，复制到设置指定的图片目录（文档同级或统一目录）
+    if (target) {
       const sourceFileName = filePath.split(/[\\/]/).pop() || 'image.png';
       const ext = sourceFileName.split('.').pop()?.toLowerCase() ?? 'png';
       const safeBaseName = sanitizeFileName(sourceFileName.replace(/\.[^.]+$/, '')) || 'image';
       const newFileName = `${Date.now()}_${safeBaseName}.${ext}`;
 
-      const targetPath = joinPath(joinPath(docDirPath, imageDirName), newFileName);
+      const { linkPath, diskPath: targetPath } = imageTargetPaths(target, newFileName);
 
       try {
-        // 读取本地文件二进制字节并写入目标位置
+        // 读取本地文件二进制字节并写入目标位置；写入失败同样按复制失败处理
         const fileBytes = await readFile(filePath);
-        await ipc.saveBinaryFile(targetPath, fileBytes);
+        assertSaved(await ipc.saveBinaryFile(targetPath, fileBytes));
       } catch (e) {
         // 复制失败时直接引用源文件，而不是插入一个并不存在的相对路径
         console.warn('复制本地图片失败，改为以源文件路径插入:', e);
-        showToast(`图片未能导入 /${imageDirName}，已引用原文件`, 'warning');
+        showToast(`图片未能导入 ${target.label}，已引用原文件`, 'warning');
         return { src: filePath, alt: safeBaseName };
       }
 
-      const relativePath = `./${imageDirName}/${newFileName}`;
       await preloadSavedImage(targetPath);
-      showToast(`图片已导入至 /${imageDirName}`, 'success');
-      return { src: relativePath, alt: safeBaseName };
+      toastSaved(target, '导入');
+      return { src: linkPath, alt: safeBaseName };
     } else {
       // 未保存文档直接使用选择的文件路径
       const fileName = filePath.split(/[\\/]/).pop() || 'image';
@@ -215,7 +222,7 @@ export async function pickAndSaveLocalImage(
 }
 
 /**
- * 弹出系统文件选择器选择本地图片并导入到当前文档同级 img 目录
+ * 弹出系统文件选择器选择本地图片并导入到设置指定的图片目录
  */
 export async function insertLocalImageWithDialog(
   editor: Editor,

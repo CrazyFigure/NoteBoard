@@ -14,6 +14,8 @@ import { Tooltip } from '../../components/Tooltip';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { useExplorerStore } from '../explorer/explorerStore';
+import type { Editor } from '@tiptap/core';
+import { findMdDocKeyByEditor } from './editorInstances';
 import { handleRenderedHtmlLinkClick, isAbsoluteLocalPath, resolveRelativeDocPath } from './linkHandler';
 import { ISOLATED_BODY_CLASS, renderRawHtmlPreview } from './rawHtmlRender';
 import { formatShortcut } from '../../core/shortcuts';
@@ -32,11 +34,21 @@ const EDITOR_PLACEHOLDER = formatShortcut('输入 HTML，例如：\n<p align="ce
 // 网络地址、内联数据与已转换的 asset 地址无需解析
 const PASSTHROUGH_SRC_PATTERN = /^(?:https?:|data:|blob:|asset:)/i;
 
-/** 当前文档所在目录（与图片节点一致：未保存的文档回退到资源管理器根目录） */
-function currentBaseDir(): string | null {
-  const activeKey = useWindowStore.getState().activeKey;
-  const currentDoc = activeKey ? useDocumentStore.getState().getDocument(activeKey) : null;
+/**
+ * 文档所在目录（图片节点共用；未保存的文档回退到资源管理器根目录）。
+ * 传入编辑器时优先按其所属文档解析：分屏打开不同目录的文档时，`../assets/x.png` 等相对路径
+ * 不能按另一侧的活动标签解析；编辑器尚未登记（首帧渲染）时退回活动标签。
+ */
+export function documentBaseDir(editor?: Editor | null): string | null {
+  const ownerKey = editor ? findMdDocKeyByEditor(editor) : null;
+  const docKey = ownerKey ?? useWindowStore.getState().activeKey;
+  const currentDoc = docKey ? useDocumentStore.getState().getDocument(docKey) : null;
   return currentDoc?.dirPath || useExplorerStore.getState().root || null;
+}
+
+/** 当前活动文档所在目录 */
+function currentBaseDir(): string | null {
+  return documentBaseDir(null);
 }
 
 /** 本地图片路径转换为 webview 可加载的 asset 地址（双链嵌入按被嵌入笔记的目录解析时同样使用） */
@@ -121,7 +133,7 @@ export function RawHtmlBlockComponent({ node, editor, getPos, selected, updateAt
   const [editing, setEditing] = useState(() => raw === '' && editor.isEditable);
   const [draft, setDraft] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const baseDir = currentBaseDir();
+  const baseDir = documentBaseDir(editor);
   const preview = useMemo(
     () => renderRawHtmlPreview(raw, (src) => resolveLocalSrc(src, baseDir), { isolate: true }),
     [raw, baseDir],

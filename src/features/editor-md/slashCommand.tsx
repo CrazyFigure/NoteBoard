@@ -553,7 +553,7 @@ const RAW_HTML_LEAF: LeafCommandItem = {
 const IMAGE_LOCAL_LEAF: LeafCommandItem = {
   id: 'image',
   label: '本地图片',
-  description: '选择本地图片并自动保存到文档 /img 目录',
+  description: '选择本地图片并自动保存到图片目录',
   shortcutHint: '/img',
   icon: <ImageIcon size={17} />,
   aliases: ['tupian', 'tp', 'image', 'img', 'photo', 'picture', 'bendi'],

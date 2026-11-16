@@ -87,6 +87,14 @@ export function getMdTipTapEditor(docKey: string): Editor | undefined {
   return mdTipTapEditors.get(docKey);
 }
 
+/** 反查可视化实例所属文档（分屏时节点视图据此按自身文档目录解析相对路径；未注册返回 null） */
+export function findMdDocKeyByEditor(editor: Editor): string | null {
+  for (const [docKey, instance] of mdTipTapEditors) {
+    if (instance === editor) return docKey;
+  }
+  return null;
+}
+
 /** 查询源码模式实例（未挂载返回 undefined） */
 export function getMdSourceView(docKey: string): EditorView | undefined {
   return mdSourceViews.get(docKey);

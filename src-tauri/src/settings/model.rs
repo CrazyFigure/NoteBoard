@@ -321,6 +321,12 @@ pub struct FileSettings {
     pub restore_reading_position: bool,
     #[serde(default = "default_image_dir")]
     pub image_dir_name: String,
+    // 图片存放模式：sibling（文档同级子目录）/ global（同步目录下的统一目录）；旧配置缺失时保持同级
+    #[serde(default = "default_image_storage_mode")]
+    pub image_storage_mode: String,
+    // 统一图片目录名称（位于同步目录根下）
+    #[serde(default = "default_global_image_dir")]
+    pub global_image_dir_name: String,
     #[serde(default = "default_large_file_mb")]
     pub large_file_confirm_mb: u32,
     // 暂存目录使用绝对路径；旧版设置缺失该字段时自动补为应用数据目录下的 staging。
@@ -350,6 +356,8 @@ impl Default for FileSettings {
             restore_session: true,
             restore_reading_position: true,
             image_dir_name: "img".to_string(),
+            image_storage_mode: default_image_storage_mode(),
+            global_image_dir_name: default_global_image_dir(),
             large_file_confirm_mb: 50,
             staging_directory: default_staging_directory(),
             explorer_open_mode: default_explorer_open_mode(),
@@ -492,6 +500,8 @@ fn default_outline_position() -> String { "sidebar".to_string() }
 fn default_outline_inline_side() -> String { "left".to_string() }
 fn default_copy_format() -> String { "markdown".to_string() }
 fn default_image_dir() -> String { "img".to_string() }
+fn default_image_storage_mode() -> String { "sibling".to_string() }
+fn default_global_image_dir() -> String { "assets".to_string() }
 fn default_large_file_mb() -> u32 { 50 }
 fn default_auto_save_delay_ms() -> u32 { 1000 }
 fn default_explorer_open_mode() -> String { "double".to_string() }
@@ -607,6 +617,9 @@ mod tests {
         // 旧版设置缺失 HTML 链接打开方式时保持系统浏览器打开
         assert_eq!(settings.file.html_open_mode, "browser");
         assert!(settings.file.restore_reading_position);
+        // 旧版设置缺失图片存放模式时保持文档同级目录，统一目录名取默认 assets
+        assert_eq!(settings.file.image_storage_mode, "sibling");
+        assert_eq!(settings.file.global_image_dir_name, "assets");
     }
 
     /// 阅读位置开关显式关闭后，保存和重新加载不能被默认开启覆盖。

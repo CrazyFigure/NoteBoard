@@ -6,7 +6,7 @@ import type { NodeViewRendererProps } from '@tiptap/core';
 import type { NodeView } from '@tiptap/pm/view';
 import { handleRenderedHtmlLinkClick } from './linkHandler';
 import { renderRawHtmlPreview } from './rawHtmlRender';
-import { resolveDocumentImageSrc } from './rawHtmlBlockView';
+import { documentBaseDir, resolveLocalSrc } from './rawHtmlBlockView';
 
 const IMAGE_TAG_PATTERN = /<img\b/i;
 
@@ -19,9 +19,11 @@ function createSourceView(raw: string): NodeView {
   return { dom };
 }
 
-export function createRawHtmlInlineView({ node }: NodeViewRendererProps): NodeView {
+export function createRawHtmlInlineView({ node, editor }: NodeViewRendererProps): NodeView {
   const raw = String(node.attrs.raw ?? '');
-  const preview = IMAGE_TAG_PATTERN.test(raw) ? renderRawHtmlPreview(raw, resolveDocumentImageSrc) : null;
+  // 按节点所属文档的目录解析图片（分屏时不受另一侧活动标签影响）
+  const baseDir = IMAGE_TAG_PATTERN.test(raw) ? documentBaseDir(editor) : null;
+  const preview = IMAGE_TAG_PATTERN.test(raw) ? renderRawHtmlPreview(raw, (src) => resolveLocalSrc(src, baseDir)) : null;
   if (preview?.kind !== 'render') return createSourceView(raw);
 
   const dom = document.createElement('span');

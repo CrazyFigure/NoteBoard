@@ -124,6 +124,21 @@ export function dirnameOf(p: string): string {
   return norm.substring(0, index);
 }
 
+/** 两个路径的相对写法（`../a/b.md`，`/` 分隔）；不在同一盘符等无法相对时返回 null */
+export function relativePathBetween(fromDir: string, toPath: string): string | null {
+  const split = (path: string) => normalizePath(path).split(PATH_SEP).filter((part, index) => index === 0 || part);
+  const from = split(fromDir);
+  const to = split(toPath);
+  const same = (left: string, right: string) => (PATH_SEP === '\\' ? left.toLowerCase() === right.toLowerCase() : left === right);
+  if (!from.length || !to.length || !same(from[0], to[0])) return null;
+  let common = 0;
+  while (common < from.length && common < to.length && same(from[common], to[common])) common += 1;
+  const ups = from.length - common;
+  const rest = to.slice(common);
+  const parts = [...Array(ups).fill('..'), ...rest];
+  return parts.join('/');
+}
+
 /** 取文件名（兼容两种分隔符） */
 export function basenameOf(p: string): string {
   const parts = p.split(/[/\\]/).filter(Boolean);
