@@ -28,6 +28,8 @@ export interface SearchState {
    * 搜索栏据此序号重新聚焦输入框。
    */
   focusRequest: number;
+  /** 替换区（第二行替换输入框与按钮）是否展开 */
+  replaceExpanded: boolean;
 
   // ── 操作 Actions ──
   openSearch: (initialText?: string, focusTarget?: 'search' | 'replace') => void;
@@ -39,6 +41,7 @@ export interface SearchState {
   setIsRegex: (val: boolean) => void;
   setMatchStats: (current: number, total: number) => void;
   setFocusTarget: (target: 'search' | 'replace' | null) => void;
+  setReplaceExpanded: (val: boolean) => void;
 }
 
 /**
@@ -57,14 +60,17 @@ export function createSearchStore() {
     matchCount: 0,
     focusTarget: 'search',
     focusRequest: 0,
+    replaceExpanded: false,
 
     // 打开搜索栏，可传入初始搜索词与聚焦目标；已打开时也会请求重新聚焦输入框
+    // 以搜索方式打开（Ctrl+F）时折叠替换区，以替换方式打开（Ctrl+H）时展开替换区
     openSearch: (initialText, focusTarget = 'search') => {
       set((state) => ({
         isOpen: true,
         searchText: initialText !== undefined ? initialText : state.searchText,
         focusTarget,
         focusRequest: state.focusRequest + 1,
+        replaceExpanded: focusTarget === 'replace',
       }));
     },
 
@@ -96,6 +102,9 @@ export function createSearchStore() {
 
     // 设置焦点目标
     setFocusTarget: (target) => set({ focusTarget: target }),
+
+    // 手动展开/折叠替换区（搜索栏左上角折叠按钮）
+    setReplaceExpanded: (val) => set({ replaceExpanded: val }),
   }));
 }
 

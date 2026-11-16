@@ -1100,6 +1100,11 @@ html[data-platform='mobile'] body {
   max-width: none !important;
 }
 
+/* 查找替换浮层左上角的折叠按钮：移动端加宽，便于手指点击 */
+[data-platform='mobile'] .nb-search-bar .nb-search-toggle {
+  width: 28px !important;
+}
+
 /* ── 共享组件在移动端的适配 ── */
 
 /* 设置：全屏页，顶部横向导航 */

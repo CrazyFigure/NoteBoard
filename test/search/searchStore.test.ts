@@ -52,6 +52,22 @@ describe('searchStore 搜索替换状态管理', () => {
     expect(useSearchStore.getState().focusRequest).toBe(first + 2);
   });
 
+  test('以搜索方式打开时折叠替换区，以替换方式打开时展开替换区', () => {
+    const { openSearch, setReplaceExpanded } = useSearchStore.getState();
+    // Ctrl+H：展开替换区
+    openSearch(undefined, 'replace');
+    expect(useSearchStore.getState().replaceExpanded).toBe(true);
+    // Ctrl+F：即使替换区已展开也自动折叠
+    openSearch(undefined, 'search');
+    expect(useSearchStore.getState().replaceExpanded).toBe(false);
+    // 左上角折叠按钮可手动切换
+    setReplaceExpanded(true);
+    expect(useSearchStore.getState().replaceExpanded).toBe(true);
+    // 缺省聚焦目标视为搜索方式
+    openSearch('x');
+    expect(useSearchStore.getState().replaceExpanded).toBe(false);
+  });
+
   test('closeSearch 关闭搜索并清理焦点目标', () => {
     const { openSearch, closeSearch } = useSearchStore.getState();
     openSearch('test');
