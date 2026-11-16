@@ -32,6 +32,10 @@ export interface MindNode {
   textAlign?: MindmapTextAlign;
   // 图片显示方式；未设置时跟随设置
   imageFit?: MindmapImageFit;
+  // 节点背景色（十六进制）；未设置时跟随配色主题，不向子节点继承
+  fillColor?: string;
+  // 节点文字颜色（十六进制）；未设置时跟随主题，设置了背景色则自动取对比色
+  textColor?: string;
   // 概要（大括号）：挂在父节点上覆盖一段连续子节点；跨父时挂在共同祖先上覆盖同层后代
   summaries?: MindSummary[];
   // 外框：挂在父节点上圈住一段连续子节点及其子树；跨父时挂在共同祖先上圈住同层后代

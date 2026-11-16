@@ -48,6 +48,8 @@ import { appendWithLimit, getNodeFiles, getNodeImages, MAX_NODE_FILES, MAX_NODE_
 import { MindmapTitleEditor, type MindmapTitleEditorHandle, type TitleSelectionInfo } from './MindmapTitleEditor';
 import { MindmapTextFormatMenu, type FormatState } from './MindmapTextFormatMenu';
 import { MindmapNodeStylePopover } from './MindmapNodeStylePopover';
+import { readableTextOn } from './mindmapNodeColors';
+import { ARROW_KEY_DIRECTIONS, findNavigationTarget, panToRevealRect } from './mindmapKeyboardNav';
 import { MindmapConfirmDialog } from './MindmapConfirmDialog';
 import {
   adjustMarksForTextChange,
@@ -361,6 +363,9 @@ const MINIMAP_MIN_NODE_PX = 1.5;
 /** 首次显示整图居中后，中心主题与画布边缘至少保留的距离 */
 const INITIAL_ROOT_MARGIN = 24;
 
+/** 方向键选中的节点移回画面时与边缘保留的距离（含节点上方的快捷工具栏） */
+const KEYBOARD_REVEAL_MARGIN = 48;
+
 /** 联系线颜色：未选中为次级文字色，选中为强调色 */
 const RELATION_COLOR = 'var(--editor-text-secondary, #64748b)';
 const ACCENT_COLOR = 'var(--editor-accent, #3b82f6)';
@@ -665,6 +670,19 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     pendingSelectAllRef.current = null;
     setFormatSelection(null);
   }, [editingNodeId]);
+  // Enter / Esc 结束编辑后把焦点交还画布：方向键、空格等节点快捷键可立即继续使用。
+  // 等编辑框卸载后再聚焦，避免提前抢走焦点触发编辑框 blur 而重复提交
+  const refocusCanvasRef = useRef(false);
+  useEffect(() => {
+    if (editingNodeId || !refocusCanvasRef.current) return;
+    refocusCanvasRef.current = false;
+    const container = containerRef.current;
+    const active = document.activeElement;
+    // 结束编辑的同时焦点已移到别处（如点击了其他输入框）时不抢回
+    if (container && (!active || active === document.body || container.contains(active))) {
+      container.focus({ preventScroll: true });
+    }
+  }, [editingNodeId]);
 
   // 编辑中的草稿与拉伸中的宽度实时参与排版
   const textOverrides = useMemo(
@@ -741,6 +759,9 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   }, [root]);
   const summaryTopicRefsRef = useRef(summaryTopicRefs);
   summaryTopicRefsRef.current = summaryTopicRefs;
+  // 最新布局节点：供键盘导航在稳定闭包中读取
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
 
   // 布局仍覆盖全部已展开节点，只有真正的节点和连线 DOM 按视口裁剪。
   const viewport = useMemo(() => getMindmapViewport(panRef.current, zoom, viewportSize.width, viewportSize.height), [pan, zoom, viewportSize]);
@@ -1456,8 +1477,15 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     return r ? { x: r.mid.x - 80, y: r.mid.y - 13, width: 160 } : null;
   };
 
-  /** 设置节点的对齐 / 图片显示方式（可多个，一次撤销步）；传 undefined 表示恢复跟随设置 */
-  const setNodeStyleField = (ids: readonly string[], field: 'textAlign' | 'imageFit', value: string | undefined) => {
+  /**
+   * 设置节点的对齐 / 图片显示方式 / 背景色 / 文字颜色（可多个，一次撤销步）；传 undefined 表示恢复跟随设置。
+   * 只改选中节点本身，子节点与之后新建的节点不受影响
+   */
+  const setNodeStyleField = (
+    ids: readonly string[],
+    field: 'textAlign' | 'imageFit' | 'fillColor' | 'textColor',
+    value: string | undefined,
+  ) => {
     updateTree((cloned) => {
       for (const id of ids) {
         updateNodeById(cloned, id, (node) => {
@@ -2070,7 +2098,37 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [resetNodeDrag]);
 
+  /** 键盘选中节点：节点超出画面时平移最小距离，让它（连同上方工具栏）重新露出来 */
+  const selectNodeByKeyboard = (target: LayoutNode) => {
+    setSelectedNodeId(target.node.id);
+    const container = containerRef.current;
+    if (!container) return;
+    const next = panToRevealRect(
+      panRef.current,
+      target,
+      zoomRef.current,
+      container.clientWidth,
+      container.clientHeight,
+      KEYBOARD_REVEAL_MARGIN,
+    );
+    if (next !== panRef.current) setPan(next);
+  };
+  const selectNodeByKeyboardRef = useRef(selectNodeByKeyboard);
+  selectNodeByKeyboardRef.current = selectNodeByKeyboard;
+
+  /** 进入节点标题编辑（与双击相同，光标置于末尾） */
+  const beginEditNode = (id: string) => {
+    const target = nodesRef.current.find((n) => n.node.id === id);
+    if (!target) return;
+    setSelectedNodeId(id);
+    setEditDraft({ text: target.node.text, marks: target.node.marks });
+    setEditingNodeId(id);
+  };
+  const beginEditNodeRef = useRef(beginEditNode);
+  beginEditNodeRef.current = beginEditNode;
+
   // 选中节点后：Tab 新增子节点，Enter 新增同级节点（两者均把光标移到新节点）
+  // 方向键在节点间移动选中，空格进入标题编辑
   useEffect(() => {
     const handleShortcut = (e: KeyboardEvent) => {
       // 已由编辑框处理或用于输入法上屏的按键不能创建节点；长按 Enter 也不能越过刚结束的编辑态。
@@ -2109,9 +2167,43 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
         return;
       }
 
+      // 方向键与空格只在焦点位于本画布（或未落在任何控件上）且画布可见时响应：
+      // 保活的隐藏导图、文件树等其他面板的方向键不能被拦截
+      const navDirection = ARROW_KEY_DIRECTIONS[e.key];
+      const isSpace = e.key === ' ' || e.code === 'Space';
+      if (navDirection || isSpace) {
+        const container = containerRef.current;
+        if (!container || container.getClientRects().length === 0) return;
+        if (el && el !== document.body && !container.contains(el) && !el.contains(container)) return;
+      }
+
       const selected = selectedNodeIdRef.current;
-      if (!selected) return;
+      if (!selected) {
+        // 未选中节点时，焦点在画布内按方向键先选中中心主题
+        if (navDirection && el && containerRef.current?.contains(el)) {
+          e.preventDefault();
+          const rootLayout = nodesRef.current.find((n) => n.level === 0 && !n.summaryOf);
+          if (rootLayout) selectNodeByKeyboardRef.current(rootLayout);
+        }
+        return;
+      }
       const multi = multiSelectedIdsRef.current;
+
+      // 方向键：按画面方向移动选中节点（多选时从主选中节点出发并退回单选）
+      if (navDirection) {
+        if (e.shiftKey) return;
+        e.preventDefault();
+        const target = findNavigationTarget(nodesRef.current, selected, navDirection);
+        if (target) selectNodeByKeyboardRef.current(target);
+        return;
+      }
+      // 空格：进入当前节点的标题编辑（光标置于末尾）
+      if (isSpace) {
+        e.preventDefault();
+        if (e.repeat || e.shiftKey) return;
+        beginEditNodeRef.current(selected);
+        return;
+      }
 
       // Mac 键盘的 delete 键对应 Backspace，同样用于删除节点（多选时批量删除）
       if (e.key === 'Delete' || (USES_COMMAND_KEY && e.key === 'Backspace')) {
@@ -2165,6 +2257,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   return (
     <div
       ref={containerRef}
+      // 可聚焦（不进入 Tab 序列）：点选节点后焦点停在画布上，方向键 / 空格等快捷键随即可用
+      tabIndex={-1}
       // 触屏界面没有修饰键，文件链接始终呈可点按的链接态
       className={IS_MOBILE_UI ? 'nb-touch-links' : undefined}
       onMouseDown={handleMouseDown}
@@ -2186,6 +2280,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
         position: 'relative',
         cursor: isDraggingNode ? 'grabbing' : isPanning ? 'grabbing' : connectFrom ? 'crosshair' : 'default',
         background: 'var(--editor-bg, #ffffff)',
+        // 画布获得焦点时不显示焦点框（选中状态由节点描边表示）
+        outline: 'none',
         userSelect: 'none',
         // 触屏手势（平移 / 双指缩放）全部由画布自行处理，禁止浏览器默认滚动与页面缩放
         touchAction: 'none',
@@ -2422,6 +2518,13 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
           const nodeSurface = theme.nodeTint
             ? `color-mix(in srgb, ${nodeColor} ${theme.nodeTint}%, var(--editor-surface, #ffffff))`
             : 'var(--editor-surface, #ffffff)';
+          // 节点自定义颜色：背景色覆盖主题底色；文字颜色未设置时在自定义背景上自动取对比色
+          const customFill = n.node.fillColor;
+          const customText = n.node.textColor;
+          const baseBackground = customFill ?? (isRoot ? theme.rootBackground : nodeSurface);
+          const resolvedTextColor = customText ?? (customFill ? readableTextOn(customFill) : isRoot ? theme.rootText : 'var(--editor-text, #1e293b)');
+          // 主题表面色上的自定义文字颜色交给样式表处理（深色主题下提亮）
+          const tintTextByTheme = Boolean(customText && !customFill && !isRoot);
           const hasIcon = Boolean(n.node.icon);
           const hasNote = Boolean(n.node.note);
           const nodeImages = getNodeImages(n.node);
@@ -2455,10 +2558,14 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
               data-selected={isSelected || undefined}
               // 中心主题为主题色底，附件图标改用文字色保证对比度
               data-root={isRoot || undefined}
+              data-text-tint={tintTextByTheme || undefined}
               onPointerDown={(e) => handleNodePointerDown(e, n)}
               onClick={(e) => {
                 e.stopPropagation();
                 if (isDraggingNode) return;
+                // 焦点仍停在画布外（部分 WebView 点击普通元素不转移焦点）时交给画布，方向键 / 空格随即可用
+                const container = containerRef.current;
+                if (container && !container.contains(document.activeElement)) container.focus({ preventScroll: true });
                 // 连接模式：点击的节点即联系线终点
                 if (connectFrom) {
                   finishConnect(n.node.id);
@@ -2492,19 +2599,15 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: hasNote || hasImage || hasFiles ? 'flex-start' : 'center',
-                background: isDropTargetInside
-                  ? isRoot
-                    ? theme.rootBackground
-                    : 'rgba(59, 130, 246, 0.12)'
-                  : isRoot
-                    ? theme.rootBackground
-                    : nodeSurface,
-                color: isRoot
-                  ? theme.rootText
-                  : 'var(--editor-text, #1e293b)',
+                background: isDropTargetInside && !isRoot && !customFill
+                  ? 'rgba(59, 130, 246, 0.12)'
+                  : baseBackground,
+                // 由样式表着色时不写内联颜色（内联优先级更高会覆盖主题适配）
+                color: tintTextByTheme ? undefined : resolvedTextColor,
+                ...(tintTextByTheme ? ({ '--nb-node-text': customText } as React.CSSProperties) : null),
                 border: isRoot
                   ? isSelected || isDropTargetInside
-                    ? `2px solid ${theme.rootText}`
+                    ? `2px solid ${resolvedTextColor}`
                     : 'none'
                   : isDropTargetInside
                     ? '2px solid var(--editor-accent, #3b82f6)'
@@ -2619,7 +2722,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                     fontSize={textStyle.fontSize}
                     fontWeight={textStyle.fontWeight}
                     lineHeight={textStyle.lineHeight}
-                    color={isRoot ? theme.rootText : 'inherit'}
+                    color={isRoot ? resolvedTextColor : 'inherit'}
                     textAlign={textAlign}
                     minHeight={n.titleLines.length * textStyle.lineHeight}
                     // 软键盘可能连续上屏并确认，同步草稿引用，保证确认时保存的是最新文字。
@@ -2630,11 +2733,16 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                     // 编辑时 Tab 仍新增子节点；Enter 只确认并选中当前节点，再按一次才新增同级节点。
                     onTab={() => createLinkedNode('child', n.node.id, true)}
                     onConfirm={() => {
+                      // 退出编辑后焦点回到画布，节点保持选中，可继续用方向键 / 空格操作
+                      refocusCanvasRef.current = true;
                       handleFinishEdit(n.node.id);
                       setSelectedNodeId(n.node.id);
                     }}
                     onPasteImage={(file) => addNodeImagesFromFiles(n.node.id, [file])}
-                    onEscape={() => handleFinishEdit(n.node.id)}
+                    onEscape={() => {
+                      refocusCanvasRef.current = true;
+                      handleFinishEdit(n.node.id);
+                    }}
                     onBlur={() => handleFinishEdit(n.node.id)}
                     onSelectionChange={setFormatSelection}
                   />
@@ -2671,12 +2779,17 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                     style={{
                       fontSize: 11,
                       lineHeight: `${NOTE_LINE_HEIGHT}px`,
-                      color: isRoot ? 'rgba(255, 255, 255, 0.85)' : 'var(--editor-text-secondary, #64748b)',
+                      // 自定义了背景 / 根节点文字颜色时备注跟随节点文字色，保证对比度
+                      color: customFill || (isRoot && customText)
+                        ? 'inherit'
+                        : isRoot ? 'rgba(255, 255, 255, 0.85)' : 'var(--editor-text-secondary, #64748b)',
                       textAlign: 'left',
                       width: '100%',
                       marginTop: 3,
                       paddingTop: 3,
-                      borderTop: isRoot ? '1px solid rgba(255, 255, 255, 0.2)' : '1px solid var(--editor-border, #f1f5f9)',
+                      borderTop: customFill
+                        ? '1px solid color-mix(in srgb, currentColor 25%, transparent)'
+                        : isRoot ? '1px solid rgba(255, 255, 255, 0.2)' : '1px solid var(--editor-border, #f1f5f9)',
                       opacity: 0.9,
                       cursor: 'pointer',
                       flexShrink: 0,
@@ -2843,13 +2956,13 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                 className="nb-mindmap-node-toolbar"
                 style={{
                   position: 'absolute',
-                  // 子节点向上展开时工具栏移到下方，避免与折叠按钮重叠
-                  ...(n.childSide === 'top' ? { bottom: -28 } : { top: -28 }),
+                  // 子节点向上展开时工具栏移到下方，避免与折叠按钮重叠（工具栏高 28px，与节点留 4px 间隙）
+                  ...(n.childSide === 'top' ? { bottom: -32 } : { top: -32 }),
                   left: '50%',
                   transform: 'translateX(-50%)',
                   display: isPrimarySelected ? 'flex' : 'none',
                   alignItems: 'center',
-                  gap: 3,
+                  gap: 4,
                   padding: '2px 5px',
                   background: 'var(--editor-surface, #ffffff)',
                   border: '1px solid var(--editor-border, #cbd5e1)',
@@ -2878,7 +2991,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                     }}
                     aria-label="设置图标"
                   >
-                    <Smile size={12} />
+                    <Smile size={14} />
                   </button>
                 </Tooltip>
 
@@ -2897,7 +3010,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                         }}
                         aria-label="添加/编辑备注"
                       >
-                        <FileText size={12} />
+                        <FileText size={14} />
                       </button>
                     </Tooltip>
 
@@ -2921,7 +3034,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                         }}
                         aria-label="添加图片"
                       >
-                        <ImageIcon size={12} />
+                        <ImageIcon size={14} />
                       </button>
                     </Tooltip>
 
@@ -2940,7 +3053,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                         }}
                         aria-label="链接文件"
                       >
-                        <Link2 size={12} />
+                        <Link2 size={14} />
                       </button>
                     </Tooltip>
                   </>
@@ -2958,16 +3071,16 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                       }}
                       aria-label="重置宽度"
                     >
-                      <MoveHorizontal size={12} />
+                      <MoveHorizontal size={14} />
                     </button>
                   </Tooltip>
                 )}
 
-                {/* 节点样式：单独设置标题对齐与图片显示方式 */}
-                <Tooltip content="节点样式" side="top" sideOffset={4}>
+                {/* 节点样式：单独设置标题对齐、图片显示方式、背景色与文字颜色（多选时批量设置） */}
+                <Tooltip content="节点样式与颜色" side="top" sideOffset={4}>
                   <button
                     type="button"
-                    className={`nb-mindmap-toolbar-btn${n.node.textAlign || n.node.imageFit ? ' is-active-accent' : ''}`}
+                    className={`nb-mindmap-toolbar-btn${n.node.textAlign || n.node.imageFit || n.node.fillColor || n.node.textColor ? ' is-active-accent' : ''}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -2977,7 +3090,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                     }}
                     aria-label="节点样式"
                   >
-                    <Settings2 size={12} />
+                    <Settings2 size={14} />
                   </button>
                 </Tooltip>
 
@@ -2993,7 +3106,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                       }}
                       aria-label="添加子分支"
                     >
-                      <Plus size={12} />
+                      <Plus size={14} />
                     </button>
                   </Tooltip>
                 )}
@@ -3010,7 +3123,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                       }}
                       aria-label="删除节点"
                     >
-                      <Trash2 size={12} />
+                      <Trash2 size={14} />
                     </button>
                   </Tooltip>
                 )}
@@ -3327,7 +3440,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                   onClick={() => beginEditStructure(selectedStructure)}
                   aria-label={editLabel}
                 >
-                  <Pencil size={12} />
+                  <Pencil size={14} />
                 </button>
               </Tooltip>
               <Tooltip content="删除" shortcut={USES_COMMAND_KEY ? 'Backspace' : 'Delete'} side="top" sideOffset={4}>
@@ -3337,7 +3450,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                   onClick={() => deleteStructure(selectedStructure)}
                   aria-label="删除"
                 >
-                  <Trash2 size={12} />
+                  <Trash2 size={14} />
                 </button>
               </Tooltip>
             </div>
@@ -3580,8 +3693,13 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
             hasImage={target.images?.length === 1}
             defaultTextAlign={defaultTextAlign}
             defaultImageFit={defaultImageFit}
+            fillColor={target.fillColor}
+            textColor={target.textColor}
+            targetCount={getActionTargetIds(target.id).length}
             onTextAlignChange={(value) => setNodeStyleField(getActionTargetIds(target.id), 'textAlign', value)}
             onImageFitChange={(value) => setNodeStyleField(getActionTargetIds(target.id), 'imageFit', value)}
+            onFillColorChange={(value) => setNodeStyleField(getActionTargetIds(target.id), 'fillColor', value)}
+            onTextColorChange={(value) => setNodeStyleField(getActionTargetIds(target.id), 'textColor', value)}
             onClose={() => setNodeStylePopover(null)}
           />
         );

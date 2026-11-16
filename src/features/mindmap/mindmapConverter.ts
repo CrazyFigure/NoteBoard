@@ -14,6 +14,7 @@ import type {
   XMindSheet,
 } from './mindmapTypes';
 import { normalizeMarks } from './mindmapRichText';
+import { normalizeNodeColor } from './mindmapNodeColors';
 import { appendWithLimit, fileLinkName, MAX_NODE_FILES, MAX_NODE_IMAGES, normalizeNodeFiles, normalizeNodeImages } from './mindmapAttachments';
 import { normalizeNodeStructures, pruneMindmapStructures, resolveRangeIndexes } from './mindmapStructures';
 import { cloneMindmapTree, findMindNode, findMindNodeParent, getMindmapTreeStats, getTopLevelMindNodeIds, mapMindmapTree, stringifyMindmapJson, walkMindNodes } from './mindmapTree';
@@ -148,6 +149,9 @@ function normalizeNode(node: Partial<MindNode>): MindNode {
     marks: normalizeMarks(source.marks, (source.text || '').length),
     textAlign: source.textAlign === 'left' || source.textAlign === 'center' ? source.textAlign : undefined,
     imageFit: source.imageFit === 'original' || source.imageFit === 'fill' ? source.imageFit : undefined,
+    // 节点背景色 / 文字颜色只接受十六进制色
+    fillColor: normalizeNodeColor(source.fillColor),
+    textColor: normalizeNodeColor(source.textColor),
     // 概要 / 外框 / 联系线只保留结构合法的条目；概要主题子树按同一规则规范化
     ...normalizeNodeStructures(source, normalizeNode),
     isExpanded: source.isExpanded !== false,

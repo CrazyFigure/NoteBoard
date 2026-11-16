@@ -14,6 +14,7 @@ import type {
 import { boldWeight, splitStyledRuns } from './mindmapRichText';
 import type { MindmapTheme } from './mindmapTheme';
 import { fileLinkName } from './mindmapAttachments';
+import { readableTextOn } from './mindmapNodeColors';
 import {
   computeMindmapLayout,
   titleBlockHeight,
@@ -361,7 +362,11 @@ function drawNode(
     ctx.shadowBlur = shadow.blur;
   }
   roundRectPath(ctx, rect.x, rect.y, rect.w, rect.h, radius);
-  if (isRoot) {
+  // 节点自定义背景色优先于主题底色
+  const customFill = n.node.fillColor;
+  if (customFill) {
+    ctx.fillStyle = customFill;
+  } else if (isRoot) {
     ctx.fillStyle = resolveFill(ctx, theme.rootBackground, rect);
   } else {
     ctx.fillStyle = theme.nodeTint ? mixColors(branchColor, surface, theme.nodeTint) : surface;
@@ -378,7 +383,17 @@ function drawNode(
     ctx.stroke();
   }
 
-  const textColor = isRoot ? theme.rootText : resolveCssVars('var(--editor-text, #1e293b)');
+  // 文字颜色：节点设置优先；只设背景色时自动取对比色；主题表面上的自定义文字色在深色主题下提亮（与画布显示一致）
+  const customText = n.node.textColor;
+  const textColor = customText
+    ? !customFill && !isRoot && typeof document !== 'undefined' && document.documentElement.dataset.theme === 'mo-ye'
+      ? mixColors(customText, '#ffffff', 68)
+      : customText
+    : customFill
+      ? readableTextOn(customFill)
+      : isRoot ? theme.rootText : resolveCssVars('var(--editor-text, #1e293b)');
+  // 备注跟随自定义文字色（半透明分隔线），否则沿用主题配色
+  const followsNodeText = Boolean(customFill || (isRoot && customText));
   const hasNote = n.noteLines.length > 0;
   const nodeImages = n.node.images ?? [];
   const hasImage = nodeImages.length > 0;
@@ -446,13 +461,16 @@ function drawNode(
   // 5. 备注：分隔线 + 浅色小字
   if (hasNote) {
     const dividerY = cursorY + 3;
-    ctx.fillStyle = isRoot ? 'rgba(255, 255, 255, 0.2)' : resolveCssVars('var(--editor-border, #f1f5f9)');
+    ctx.save();
+    if (customFill) ctx.globalAlpha = 0.25;
+    ctx.fillStyle = customFill ? textColor : isRoot ? 'rgba(255, 255, 255, 0.2)' : resolveCssVars('var(--editor-border, #f1f5f9)');
     ctx.fillRect(contentLeft, dividerY, contentWidth, 1);
+    ctx.restore();
     ctx.save();
     ctx.globalAlpha = 0.9;
     ctx.font = buildFont(NOTE_FONT_SIZE, 400, fontFamily);
     ctx.textAlign = 'left';
-    ctx.fillStyle = isRoot ? 'rgba(255, 255, 255, 0.85)' : resolveCssVars('var(--editor-text-secondary, #64748b)');
+    ctx.fillStyle = followsNodeText ? textColor : isRoot ? 'rgba(255, 255, 255, 0.85)' : resolveCssVars('var(--editor-text-secondary, #64748b)');
     const notesTop = dividerY + 1 + 3;
     n.noteLines.forEach((line, idx) => {
       if (line) ctx.fillText(line, contentLeft, notesTop + idx * NOTE_LINE_HEIGHT + NOTE_LINE_HEIGHT / 2);

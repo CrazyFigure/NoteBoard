@@ -24,8 +24,8 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  padding: 3px;
-  border-radius: 4px;
+  padding: 4px;
+  border-radius: 5px;
   color: var(--editor-text-secondary, #64748b);
   transition: background var(--transition-fast, 120ms ease), color var(--transition-fast, 120ms ease), transform var(--transition-fast, 120ms ease);
 }
@@ -1308,6 +1308,87 @@
   border-radius: 7px;
   background: var(--editor-bg, #f1f5f9);
   border: 1px solid var(--editor-border, #e2e8f0);
+}
+
+/* 节点样式浮层：多选数量与内部滚动 */
+.nb-mindmap-popover-count {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--editor-accent, #3b82f6);
+}
+
+.nb-mindmap-node-style-popover {
+  overscroll-behavior: contain;
+}
+
+/* 节点颜色预设色板：每行 8 格，按浮层宽度等分 */
+.nb-mindmap-color-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.nb-mindmap-color-swatch {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  border: 1px solid var(--editor-border, #e2e8f0);
+  background: var(--editor-surface, #ffffff);
+  color: var(--editor-text-secondary, #64748b);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform var(--transition-fast, 120ms ease), box-shadow var(--transition-fast, 120ms ease);
+}
+
+.nb-mindmap-color-swatch[data-variant='fill'] {
+  background: var(--nb-swatch-color);
+  border-color: color-mix(in srgb, var(--nb-swatch-color) 80%, #000000);
+}
+
+.nb-mindmap-color-swatch[data-variant='text'] {
+  color: var(--nb-swatch-color);
+}
+
+.nb-mindmap-color-swatch:hover {
+  transform: scale(1.1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  z-index: 1;
+}
+
+.nb-mindmap-color-swatch:active {
+  transform: scale(0.94);
+}
+
+.nb-mindmap-color-swatch[data-active='true'] {
+  outline: 2px solid var(--editor-accent, #3b82f6);
+  outline-offset: 1px;
+}
+
+.nb-mindmap-color-swatch.is-default[data-active='true'] {
+  color: var(--editor-accent, #3b82f6);
+}
+
+.nb-mindmap-popover-custom {
+  margin-top: 6px;
+}
+
+/* 节点设置了文字颜色（无背景色）时：深色主题下向白色提亮，与 Markdown 字体颜色一致，文件中仍保存原色 */
+.nb-mindmap-node[data-text-tint] {
+  color: var(--nb-node-text);
+}
+
+:root[data-theme="mo-ye"] .nb-mindmap-node[data-text-tint] {
+  color: color-mix(in srgb, var(--nb-node-text) 68%, #ffffff);
 }
 
 /* 思维导图二次确认对话框 */
