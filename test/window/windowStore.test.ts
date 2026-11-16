@@ -30,6 +30,66 @@ describe('windowStore tab 关闭操作', () => {
     });
   });
 
+  // 直接关闭与保存/放弃修改后的确认关闭，应遵循相同的相邻标签选择规则。
+  describe.each(['直接关闭', '确认关闭'] as const)('%s 后的激活标签', (closeMode) => {
+    it.each([
+      { name: '关闭中间标签优先激活前一个', keys: ['tab1', 'tab2', 'tab3', 'tab4'], active: 'tab3', closing: 'tab3', expected: 'tab2' },
+      { name: '关闭第一个标签改为激活后一个', keys: ['tab1', 'tab2', 'tab3'], active: 'tab1', closing: 'tab1', expected: 'tab2' },
+      { name: '关闭最后一个标签激活前一个', keys: ['tab1', 'tab2', 'tab3'], active: 'tab3', closing: 'tab3', expected: 'tab2' },
+      { name: '关闭非当前标签保留激活项', keys: ['tab1', 'tab2', 'tab3'], active: 'tab3', closing: 'tab2', expected: 'tab3' },
+      { name: '关闭唯一标签清空激活项', keys: ['tab1'], active: 'tab1', closing: 'tab1', expected: null },
+      { name: '主页关闭后台标签继续停留主页', keys: ['tab1', 'tab2'], active: null, closing: 'tab2', expected: null },
+    ])('$name', ({ keys, active, closing, expected }) => {
+      useWindowStore.setState({
+        tabs: keys.map((key) => ({ ...createMockTab(key), isDirty: closeMode === '确认关闭' })),
+        activeKey: active,
+      });
+
+      useWindowStore.getState().requestCloseTab(closing);
+      if (closeMode === '确认关闭') {
+        // 未确认前不能提前移除标签或切换当前文档。
+        expect(useWindowStore.getState().activeKey).toBe(active);
+        expect(useWindowStore.getState().pendingCloseKeys).toEqual([closing]);
+        useWindowStore.getState().confirmCloseBatch([closing]);
+      }
+
+      const state = useWindowStore.getState();
+      expect(state.tabs.map((tab) => tab.key)).toEqual(keys.filter((key) => key !== closing));
+      expect(state.activeKey).toBe(expected);
+      expect(state.pendingCloseKeys).toEqual([]);
+    });
+
+    it('拖动排序后按当前排列选择前一个标签', () => {
+      useWindowStore.setState({
+        tabs: ['tab1', 'tab2', 'tab3', 'tab4'].map((key) => createMockTab(key)),
+        activeKey: 'tab3',
+      });
+      useWindowStore.getState().reorderTabs(3, 2);
+
+      if (closeMode === '确认关闭') {
+        useWindowStore.getState().confirmCloseBatch(['tab3']);
+      } else {
+        useWindowStore.getState().requestCloseTab('tab3');
+      }
+
+      expect(useWindowStore.getState().activeKey).toBe('tab4');
+    });
+  });
+
+  it.each([
+    { closing: ['tab3', 'tab4'], expected: 'tab2' },
+    { closing: ['tab1', 'tab2', 'tab3', 'tab4'], expected: 'tab5' },
+  ])('确认关闭多个标签时选择最近的存留邻居：$expected', ({ closing, expected }) => {
+    useWindowStore.setState({
+      tabs: ['tab1', 'tab2', 'tab3', 'tab4', 'tab5'].map((key) => createMockTab(key)),
+      activeKey: 'tab4',
+    });
+
+    useWindowStore.getState().confirmCloseBatch(closing);
+
+    expect(useWindowStore.getState().activeKey).toBe(expected);
+  });
+
   it('连续标记相同脏态不广播窗口更新，真正翻转时才通知', () => {
     useWindowStore.setState({ tabs: [createMockTab('typing')], activeKey: 'typing' });
     let updates = 0;

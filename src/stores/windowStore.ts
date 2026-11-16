@@ -201,6 +201,18 @@ function getCurrentWindowLabelSafe(): string | null {
   }
 }
 
+/** 关闭当前标签时优先选中左侧最近的存留标签，没有左侧标签时再选右侧；后台关闭不切换。 */
+function resolveActiveKeyAfterClose(tabs: Tab[], activeKey: string | null, closingKeys: readonly string[]): string | null {
+  if (activeKey === null || !closingKeys.includes(activeKey)) return activeKey;
+  const activeIndex = tabs.findIndex((tab) => tab.key === activeKey);
+  // 按当前标签顺序向左查找，批量关闭时跳过同批次移除的标签。
+  for (let index = activeIndex - 1; index >= 0; index -= 1) {
+    if (!closingKeys.includes(tabs[index].key)) return tabs[index].key;
+  }
+  // 左侧没有存留项时，第一个存留标签即为右侧邻居；全部关闭则回到主页。
+  return tabs.find((tab) => !closingKeys.includes(tab.key))?.key ?? null;
+}
+
 export const useWindowStore = create<WindowStore>((set, get) => ({
   tabs: [],
   activeKey: null,
@@ -232,11 +244,7 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
       const idx = state.tabs.findIndex((t) => t.key === key);
       if (idx < 0) return {};
       const newTabs = state.tabs.filter((t) => t.key !== key);
-      let newActive = state.activeKey;
-      if (state.activeKey === key) {
-        // 激活相邻 tab
-        newActive = newTabs[Math.min(idx, newTabs.length - 1)]?.key ?? null;
-      }
+      const newActive = resolveActiveKeyAfterClose(state.tabs, state.activeKey, [key]);
       return { tabs: newTabs, activeKey: newActive };
     });
     // 🔴 R04/R13/N04：统一清理（注销归属 + 释放会话 + 条件删除文档；幂等、恰一次）
@@ -466,10 +474,8 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
   confirmCloseBatch: (keys) => {
     set((state) => {
       const newTabs = state.tabs.filter((t) => !keys.includes(t.key));
-      let newActive = state.activeKey;
-      if (state.activeKey && keys.includes(state.activeKey)) {
-        newActive = newTabs[0]?.key ?? null;
-      }
+      // 保存、放弃修改或暂存后关闭，与直接关闭使用同一套激活规则。
+      const newActive = resolveActiveKeyAfterClose(state.tabs, state.activeKey, keys);
       return { tabs: newTabs, activeKey: newActive, pendingCloseKeys: [], isWindowClosing: false };
     });
     // 🔴 R04/R13/N04：批量关闭同样注销归属与释放会话（每个标签恰一次）
