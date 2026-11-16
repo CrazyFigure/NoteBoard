@@ -3162,7 +3162,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
 
                 {/* 普通节点可在当前节点后插入同级并进入编辑；根节点与概要主题没有同级。 */}
                 {!isMultiSelecting && !isRoot && !isSummaryTopic && (
-                  <Tooltip content="新增同级节点" shortcut="Enter" side="top" sideOffset={4}>
+                  <Tooltip content="添加同级节点" shortcut="Enter" side="top" sideOffset={4}>
                     <button
                       type="button"
                       className="nb-mindmap-toolbar-btn is-active-accent"
@@ -3170,7 +3170,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                         e.stopPropagation();
                         createLinkedNode('sibling', n.node.id, false);
                       }}
-                      aria-label="新增同级节点"
+                      aria-label="添加同级节点"
                     >
                       <ListPlus size={14} />
                     </button>
