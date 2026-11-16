@@ -3127,9 +3127,9 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                   </button>
                 </Tooltip>
 
-                {/* 添加子分支 */}
+                {/* 添加子分支：复用统一快捷键徽标，在提示文字后展示 Tab。 */}
                 {!isMultiSelecting && (
-                  <Tooltip content="添加子分支" side="top" sideOffset={4}>
+                  <Tooltip content="添加子分支" shortcut="Tab" side="top" sideOffset={4}>
                     <button
                       type="button"
                       className="nb-mindmap-toolbar-btn is-active-accent"
@@ -3146,7 +3146,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
 
                 {/* 删除节点（根节点不可删除；多选时删除全部选中节点；概要主题即删除概要） */}
                 {!isRoot && (
-                  <Tooltip content={isMultiSelecting ? '删除选中节点' : isSummaryTopic ? '删除概要' : '删除节点'} side="top" sideOffset={4}>
+                  <Tooltip content={isMultiSelecting ? '删除选中节点' : isSummaryTopic ? '删除概要' : '删除节点'} shortcut={USES_COMMAND_KEY ? 'Backspace' : 'Delete'} side="top" sideOffset={4}>
                     <button
                       type="button"
                       className="nb-mindmap-toolbar-btn is-danger"
@@ -3213,8 +3213,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                 </Tooltip>
               )}
 
-              {/* 悬停添加子节点按钮 */}
-              <Tooltip content="添加子分支" side="right" sideOffset={4}>
+              {/* 悬停添加子节点按钮：与浮动工具栏展示相同的 Tab 提示。 */}
+              <Tooltip content="添加子分支" shortcut="Tab" side="right" sideOffset={4}>
                 <button
                   type="button"
                   className="nb-node-add-btn"
@@ -3621,7 +3621,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
               autoFocus
               rows={5}
               value={editNoteText}
-              placeholder="输入备注内容 (浅色次级文字展示)..."
+              placeholder="输入备注内容 (浅色次级文字展示)"
               onChange={(e) => setEditNoteText(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
