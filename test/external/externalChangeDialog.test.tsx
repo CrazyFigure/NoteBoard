@@ -47,6 +47,17 @@ describe('磁盘修改弹窗', () => {
     act(() => useDocumentStore.getState().setDirty(KEY, true));
     expect(document.body.textContent).toContain('当前有未保存的修改');
   });
+  it('后缀变化显示真实原因，仍提供重载与另存且保护未保存内容', () => {
+    act(() => {
+      useDocumentStore.getState().setExternalStatus(KEY, 'renamed');
+      useDocumentStore.getState().setDirty(KEY, true);
+    });
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('文件后缀已更改');
+    expect(document.body.textContent).toContain('按新后缀打开文件');
+    expect(document.body.textContent).toContain('当前有未保存的修改');
+    expect(button('重新加载')).toBeDefined();
+    expect(button('另存为')).toBeDefined();
+  });
   it('重载失败保留提示并支持重试，快速双击只调用一次', async () => {
     vi.mocked(reloadFromDisk).mockResolvedValue(false);
     await act(async () => { button('重新加载').click(); button('重新加载').click(); });

@@ -31,6 +31,7 @@ import { showToast } from '../../stores/toastStore';
 import * as ipc from '../../core/ipc/commands';
 import { syncTrashPath, useSyncStore } from '../../stores/syncStore';
 import { sameKey, pathKey, dirnameOf, joinPath } from './pathUtils';
+import { renameOpenFile } from './renameOpenFile';
 import { IS_WEB } from '../../core/platform';
 // 网页多用户：共享入口、共享标记与共享路径内的操作限制
 import { isMultiUser, isSharedPath } from '../account/accountState';
@@ -389,14 +390,13 @@ const TreeNodeImpl = memo(function TreeNodeImpl({
       const wikiLinks = await import('../wikilink/renameLinks');
       const linkPlan = await wikiLinks.planWikiLinkRenameSafely(node.path, node.isDir);
 
-      await ipc.renamePath(node.path, newPath);
+      if (node.isDir) await ipc.renamePath(node.path, newPath);
+      else await renameOpenFile(node.path, newPath, trimmed);
       // 服务端会让共享随改名移动，刷新本地共享标记
       if (IS_WEB && isMultiUser()) void useShareStore.getState().refresh().catch(() => undefined);
 
       if (!node.isDir) {
-        // 单文件：同步迁移已打开文档 store 与 Tab 标签页
-        useDocumentStore.getState().renameDocument(node.path, newPath, trimmed, parentDir);
-        useWindowStore.getState().updateTabPath(node.path, newPath, trimmed);
+        // 单文件会话已由 renameOpenFile 迁移，此处只更新文件树定位。
         if (isRevealed) {
           setRevealed(newPath, false);
         }

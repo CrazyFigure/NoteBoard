@@ -385,7 +385,7 @@ export async function queuedAutoSave(docKey: string, content: string): Promise<v
   // 只有 auto 策略才自动保存
   if (targetDoc.savePolicy !== 'auto') return;
   // 外部变更/断开状态不自动保存
-  if (targetDoc.externalStatus === 'modified' || targetDoc.externalStatus === 'deleted') return;
+  if (targetDoc.externalStatus === 'modified' || targetDoc.externalStatus === 'deleted' || targetDoc.externalStatus === 'renamed') return;
   // 与基线一致无需保存
   const baseline = getBaseline(docKey);
   if (baseline.isClean(content)) {
@@ -407,7 +407,7 @@ export async function queuedAutoSave(docKey: string, content: string): Promise<v
     const doc = useDocumentStore.getState().getDocument(docKey);
     if (!doc) return;
     if (doc.savePolicy !== 'auto') return;
-    if (doc.externalStatus === 'modified' || doc.externalStatus === 'deleted') return;
+    if (doc.externalStatus === 'modified' || doc.externalStatus === 'deleted' || doc.externalStatus === 'renamed') return;
     const result = await ipc.writeDocument(docKey, content, encoding, eol);
     // 写盘 I/O 返回后再次校验：等待磁盘期间会话换代则不推进基线/暂存清理
     if (!isSessionCurrent(docKey, generation)) return;

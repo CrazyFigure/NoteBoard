@@ -138,6 +138,8 @@ export async function recheckDocument(docKey: string): Promise<void> {
     if (getSessionGeneration(docKey) !== generationAtStart || latestDocRechecks.get(docKey) !== checkId) return;
     const docNow = useDocumentStore.getState().getDocument(docKey);
     if (!docNow || useWindowStore.getState().isTransferring(docKey)) return;
+    // 改后缀后正文通常完全相同，不能以此解除等待重新解析的保护。
+    if (docNow.externalStatus === 'renamed') return;
     // 读取期间又完成了保存：旧读盘结果不能与新基线比较，改为重新安排核对。
     if (docNow.baselineContent !== baselineAtStart) {
       scheduleDocumentRecheck(docKey);

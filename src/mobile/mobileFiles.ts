@@ -10,6 +10,7 @@ import * as ipc from '../core/ipc/commands';
 import type { FileTreeNode } from '../core/ipc/types';
 import { openDocument } from '../features/editor-code/orchestration/openDocument';
 import { markOpenDocumentDeleted } from '../features/external/missingFileGuard';
+import { renameOpenFile } from '../features/explorer/renameOpenFile';
 import { basenameOf, dirnameOf, isSubPath, joinPath, sameKey } from '../features/explorer/pathUtils';
 import { useDocumentStore } from '../stores/documentStore';
 import { useWindowStore } from '../stores/windowStore';
@@ -170,12 +171,11 @@ export async function renameEntry(node: FileTreeNode, newName: string): Promise<
     // 重命名前收集指向它的双链，迁移完成后询问并更新（与桌面资源管理器一致）
     const wikiLinks = await import('../features/wikilink/renameLinks');
     const linkPlan = await wikiLinks.planWikiLinkRenameSafely(node.path, node.isDir);
-    await ipc.renamePath(node.path, newPath);
     if (!node.isDir) {
-      // 单文件：同步迁移已打开文档 store 与标签
-      useDocumentStore.getState().renameDocument(node.path, newPath, trimmed, parentDir);
-      useWindowStore.getState().updateTabPath(node.path, newPath, trimmed);
+      // 移动列表与桌面文件树共用保稿、排空写入和后缀重载流程。
+      await renameOpenFile(node.path, newPath, trimmed);
     } else {
+      await ipc.renamePath(node.path, newPath);
       // 目录：批量迁移该目录下所有已打开文档与标签
       useDocumentStore.getState().renameDirectory(node.path, newPath);
       useWindowStore.getState().renameTabsDirectory(node.path, newPath);

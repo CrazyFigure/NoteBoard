@@ -84,16 +84,18 @@ describe('磁盘冲突处理事务', () => {
     expect(useDocumentStore.getState().getDocument(KEY)?.content).toBe('my edits');
   });
 
-  it('取消另存和选择原路径均不写盘；普通保存也不绕过冲突', async () => {
+  it.each(['modified', 'renamed'] as const)('%s：取消另存和选择原路径均不写盘，普通保存不绕过保护', async (status) => {
+    useDocumentStore.getState().setExternalStatus(KEY, status);
     vi.mocked(save).mockResolvedValueOnce(null).mockResolvedValueOnce('c:/NOTES/conflict.md');
     expect(await saveAs(KEY, '')).toBe(false);
     expect(await saveAs(KEY, '')).toBe(false);
     expect(await saveDocument(KEY)).toBe(false);
     expect(ipc.writeDocument).not.toHaveBeenCalled();
-    expect(useDocumentStore.getState().getDocument(KEY)?.externalStatus).toBe('modified');
+    expect(useDocumentStore.getState().getDocument(KEY)?.externalStatus).toBe(status);
   });
 
-  it('另存成功只写新路径，迁移后的正文保留未保存编辑', async () => {
+  it.each(['modified', 'renamed'] as const)('%s：另存成功只写新路径，迁移后的正文保留未保存编辑', async (status) => {
+    useDocumentStore.getState().setExternalStatus(KEY, status);
     vi.mocked(save).mockResolvedValue(TARGET);
     expect(await saveAs(KEY, 'stale content')).toBe(true);
     expect(ipc.writeDocument).toHaveBeenCalledExactlyOnceWith(TARGET, 'my edits', 'utf8', 'lf');

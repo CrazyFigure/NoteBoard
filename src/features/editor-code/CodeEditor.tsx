@@ -483,7 +483,10 @@ export function CodeEditor({ docKey }: CodeEditorProps) {
 
     return () => {
       // 卸载前同步刷新权威内容，避免快速切换标签时 500ms 防抖尚未落入 store 而丢字
-      if (getEditorCapabilities(docKey)?.instanceId === instanceId && useDocumentStore.getState().hasDocument(docKey)) {
+      const remainingDoc = useDocumentStore.getState().getDocument(docKey);
+      // 后缀重载已提交新格式时，旧实例卸载不能把原格式正文写回新镜像。
+      if (getEditorCapabilities(docKey)?.instanceId === instanceId
+        && remainingDoc?.kind === currentDoc.kind && remainingDoc.language === currentDoc.language) {
         const latestContent = flushPendingSourceSnapshot(docKey) ?? view.state.doc.toString();
         useDocumentStore.getState().setContent(docKey, latestContent);
       } else if (!useDocumentStore.getState().hasDocument(docKey)) {

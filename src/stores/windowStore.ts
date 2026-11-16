@@ -5,7 +5,7 @@
 import { create } from 'zustand';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { DocumentKind } from '../core/ipc/types';
-import { normalizePath, pathKey, PATH_SEP } from '../features/explorer/pathUtils';
+import { normalizePath, pathKey, sameKey, PATH_SEP } from '../features/explorer/pathUtils';
 // 🔴 R4-05/D05：disposeTabLifecycleAsync 独立入口需终结 documents 记录
 //    （documentStore 不依赖 windowStore——单向依赖无循环）
 import { useDocumentStore } from './documentStore';
@@ -425,7 +425,9 @@ export const useWindowStore = create<WindowStore>((set, get) => ({
       tabs: state.tabs.map((t) =>
         t.key === key
           // 另存为建立了新的有效磁盘路径，同时解除原文件删除/断开状态。
-          ? { ...t, path: newPath, displayName: newDisplayName, key: newPath, externalStatus: 'clean', isDetached: false }
+          ? { ...t, path: newPath, displayName: newDisplayName, key: newPath, externalStatus: 'clean', isDetached: false,
+            // 未加载的恢复标签下次必须读取改名后的路径，暂存副本仍沿用独立路径。
+            lazySource: t.lazySource && sameKey(t.lazySource, t.path) ? newPath : t.lazySource }
           : t,
       ),
       activeKey: state.activeKey === key ? newPath : state.activeKey,

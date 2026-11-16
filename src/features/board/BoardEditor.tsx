@@ -662,7 +662,8 @@ function BoardEditorInner({ docKey }: BoardEditorProps) {
     return () => {
       // 防抖尚未触发时也要把画板最新快照写回内存，避免切换标签丢失操作
       const latestScene = sceneRef.current;
-      if (latestScene) {
+      // 改后缀切换编辑器后，旧画板卸载只清理计时器，不覆盖新格式的正文。
+      if (latestScene && useDocumentStore.getState().getDocument(docKey)?.kind === 'board') {
         useDocumentStore.getState().setContent(docKey, serializeScene(latestScene));
       }
       if (storeTimerRef.current) clearTimeout(storeTimerRef.current);

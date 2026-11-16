@@ -17,13 +17,15 @@ export function ExternalChangeDialog() {
   useExternalFileChanges();
   const tab = useWindowStore((state) => state.tabs.find((item) => item.key === state.activeKey));
   const status = useDocumentStore((state) => tab ? state.documents.get(tab.key)?.externalStatus : null);
-  if (!tab || tab.isDetached || status !== 'modified') return null;
+  if (!tab || tab.isDetached || (status !== 'modified' && status !== 'renamed')) return null;
   // 标签切换时重建操作状态，异步旧操作不会把错误或忙碌状态带给新文档。
   return createPortal(<ChangeConfirmation key={tab.key} tab={tab} />, document.body);
 }
 
 function ChangeConfirmation({ tab }: { tab: Tab }) {
   const dirty = useDocumentStore((state) => state.documents.get(tab.key)?.isDirty);
+  // 后缀改变与正文冲突使用同一保护流程，但提示必须说明实际原因。
+  const extensionChanged = useDocumentStore((state) => state.documents.get(tab.key)?.externalStatus === 'renamed');
   const [action, setAction] = useState<'reload' | 'saveAs' | null>(null);
   const [error, setError] = useState('');
   const saveAsRef = useRef<HTMLButtonElement>(null);
@@ -78,8 +80,10 @@ function ChangeConfirmation({ tab }: { tab: Tab }) {
           <div className="nb-prompt-head">
             <div className="nb-prompt-icon"><RefreshCw size={18} /></div>
             <div className="nb-prompt-heading">
-              <Dialog.Title className="nb-prompt-title">文件在磁盘上已更改</Dialog.Title>
-              <Dialog.Description className="nb-prompt-desc">检测到其他程序更新了此文件，请选择要保留的内容。</Dialog.Description>
+              <Dialog.Title className="nb-prompt-title">{extensionChanged ? '文件后缀已更改' : '文件在磁盘上已更改'}</Dialog.Title>
+              <Dialog.Description className="nb-prompt-desc">{extensionChanged
+                ? '重新加载以按新后缀打开文件，或将当前编辑内容另存为新文件。'
+                : '检测到其他程序更新了此文件，请选择要保留的内容。'}</Dialog.Description>
             </div>
           </div>
           <div className="nb-prompt-body">

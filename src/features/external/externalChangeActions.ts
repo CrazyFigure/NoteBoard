@@ -14,11 +14,13 @@ import { getEditorCapabilities } from '../../core/editor/editorRegistry';
 import { getBaseline } from '../editor-md/serialize';
 import {
   applyDocumentContentAsChange,
+  clearDocumentHistory,
   initializeDocumentHistory,
 } from '../history/documentHistory';
 import { showToast } from '../../stores/toastStore';
 import { flushPendingSourceSnapshot, flushPendingVisualSnapshot } from '../editor-md/visualSnapshot';
 import { drainDocumentWrites, getSessionGeneration } from '../session/documentSession';
+import { resolveEditorKind } from '../editor-host/editorLoaders';
 
 /**
  * 🔴 R3-10：重新加载——确认并应用磁盘内容到当前会话。
@@ -44,17 +46,24 @@ export async function reloadFromDisk(docKey: string, options?: { silent?: boolea
     // 先物化 J2 暂存（未物化输入不落历史孤儿）
     flushPendingSourceSnapshot(docKey);
     flushPendingVisualSnapshot(docKey);
-    // 应用磁盘内容：store 镜像 + 基线 + 历史（DocumentPayload.content 类型含 null——
-    // 读盘成功路径必为字符串；null 视为失败保持冲突状态）
+    // 应用磁盘内容：store 镜像 + 基线 + 历史；可编辑格式必须返回字符串正文。
     const diskContent = payload.content;
-    if (diskContent == null) {
+    // 图片、Office 等只读查看器本来就没有文本正文，改后缀时仍应能切换过去。
+    const contentless = payload.kind === 'image' || payload.kind === 'preview' || payload.kind === 'unsupported';
+    if (diskContent == null && !contentless) {
       if (!silent) showToast('读取到的文件内容为空引用，冲突状态保留', 'error');
       return false;
     }
     // 先把正文应用到已挂载内核，成功后再提交基线；仅改 store 会留下旧 CodeMirror /
     // TipTap / 画板内容，并在下一次输入或卸载时把旧内容写回。
     const capabilities = getEditorCapabilities(docKey);
-    if (capabilities) {
+    const typeChanged = doc.kind !== payload.kind || doc.language !== payload.language;
+    const editorChanged = resolveEditorKind(doc) !== resolveEditorKind(payload);
+    if (editorChanged) {
+      // 新格式不能交给旧编辑器解析；新宿主从镜像初始化，旧格式历史不跨解析器复用。
+      clearDocumentHistory(docKey);
+      if (diskContent != null) initializeDocumentHistory(docKey, diskContent, 'code');
+    } else if (capabilities && diskContent != null) {
       const applied = capabilities.replaceContent
         ? capabilities.replaceContent(diskContent)
         // 冲突弹窗关闭前不能与其焦点约束竞争；同步拉取的后台重载也不应抢焦点。
@@ -63,14 +72,20 @@ export async function reloadFromDisk(docKey: string, options?: { silent?: boolea
         if (!silent) showToast('编辑器尚未就绪，当前内容和冲突保护已保留，请稍后重试', 'warning');
         return false;
       }
-    } else {
+    } else if (diskContent != null) {
       // 后台已回收的文档下次挂载直接读取新镜像，不保留旧正文的时间线。
       initializeDocumentHistory(docKey, diskContent, 'code');
     }
     // 同步外部版本的编码、行尾和权限，避免后续保存仍使用旧文件属性。
     store.upsertFromPayload({ ...payload, key: docKey });
-    store.updateBaseline(docKey, diskContent, payload.mtime, payload.size);
-    getBaseline(docKey).updateBaseline(diskContent);
+    if (diskContent != null) {
+      store.updateBaseline(docKey, diskContent, payload.mtime, payload.size);
+      getBaseline(docKey).updateBaseline(diskContent);
+    }
+    // 宿主按标签类型选择编辑器；新格式使用默认视图，普通正文重载保留当前模式。
+    useWindowStore.setState((state) => ({ tabs: state.tabs.map((tab) => tab.key === docKey
+      ? { ...tab, kind: payload.kind, language: payload.language, viewMode: typeChanged ? null : tab.viewMode }
+      : tab) }));
     store.setDirty(docKey, false);
     useWindowStore.getState().setTabDirty(docKey, false);
     // 解除冲突（文档与标签双侧）

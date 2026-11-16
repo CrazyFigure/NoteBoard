@@ -11,6 +11,7 @@ import {
   clearDocumentHistory,
 } from '../features/history/documentHistory';
 import { normalizePath, pathKey, PATH_SEP } from '../features/explorer/pathUtils';
+import { extFromPath } from '../core/docKind';
 
 export interface Document {
   /** 规范化路径 key */
@@ -129,6 +130,8 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
 
   upsertFromPayload: (payload) => {
     const existing = get().documents.get(payload.key);
+    // 后缀重载可能切换编辑器，保存策略和大文档判定须按新类型重新计算。
+    const typeChanged = existing && (existing.kind !== payload.kind || existing.language !== payload.language);
     const doc: Document = {
       key: payload.key,
       displayName: payload.displayName,
@@ -142,10 +145,11 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
       mtime: payload.mtime,
       readonly: payload.readonly,
       isDirty: existing?.isDirty ?? false,
-      savePolicy: existing?.savePolicy ?? resolveSavePolicy(payload.kind, payload.language),
-      baselineContent: existing?.baselineContent ?? payload.content,
+      savePolicy: typeChanged ? resolveSavePolicy(payload.kind, payload.language)
+        : existing?.savePolicy ?? resolveSavePolicy(payload.kind, payload.language),
+      baselineContent: typeChanged ? payload.content : existing?.baselineContent ?? payload.content,
       externalStatus: 'clean',
-      largeDocVerdict: existing?.largeDocVerdict ?? null,
+      largeDocVerdict: typeChanged ? null : existing?.largeDocVerdict ?? null,
     };
 
     set((state) => {
@@ -255,6 +259,8 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
         key: newKey,
         displayName: newDisplayName,
         dirPath: newDirPath,
+        // 保留旧类型与未保存正文，待用户确认重载后再采用新后缀的解析方式。
+        externalStatus: extFromPath(doc.displayName) !== extFromPath(newDisplayName) ? 'renamed' : doc.externalStatus,
       });
       return { documents: newMap };
     });

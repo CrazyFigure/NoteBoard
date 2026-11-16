@@ -915,8 +915,10 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     return () => {
       // 组件卸载前立即刷新当前模式的最新内容，防止快速切换标签页导致防抖镜像落后
       // 🔴 J2：先物化 visual/source 暂存快照（同步序列化——组末端与镜像一次对齐）
-      const materializedVisual = flushPendingVisualSnapshot(docKey);
-      const materializedSource = flushPendingSourceSnapshot(docKey);
+      // 改后缀已换成其它格式时只释放资源，不把旧 Markdown 正文写回新文档。
+      const remainsMarkdown = useDocumentStore.getState().getDocument(docKey)?.kind === 'markdown';
+      const materializedVisual = remainsMarkdown ? flushPendingVisualSnapshot(docKey) : null;
+      const materializedSource = remainsMarkdown ? flushPendingSourceSnapshot(docKey) : null;
       const currentMode = useWindowStore.getState().getTab(docKey)?.viewMode ?? viewModeRef.current;
       const latestContent = currentMode === 'source' && sourceViewRef.current
         ? materializedSource
@@ -925,7 +927,7 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
           ?? (tipTapEditorRef.current
             ? serializeMarkdown(tipTapEditorRef.current)
             : useDocumentStore.getState().getDocument(docKey)?.content ?? '');
-      if (materializedVisual === null && materializedSource === null) {
+      if (remainsMarkdown && materializedVisual === null && materializedSource === null) {
         useDocumentStore.getState().setContent(docKey, latestContent);
       }
       initializedDocKeyRef.current = null;
