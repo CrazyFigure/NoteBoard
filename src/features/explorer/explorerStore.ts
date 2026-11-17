@@ -47,6 +47,8 @@ interface ExplorerStore {
   setRevealed: (path: string | null, shouldScroll?: boolean) => void;
   /** 增量更新子节点（监听刷新用） */
   updateChildren: (path: string, children: FileTreeNode[]) => void;
+  /** 加载更多：将 nextBatch 追加到 dirPath 对应的子节点末尾，newRemaining > 0 时在末尾补充加载更多占位节点 */
+  appendChildren: (dirPath: string, nextBatch: FileTreeNode[], newRemaining: number) => void;
   /** 全量重扫（Flag::Rescan 降级） */
   rescan: (rootChildren: FileTreeNode[]) => void;
   /** 设置 loading */
@@ -170,6 +172,37 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
     set((state) => {
       const newChildren = new Map(state.children);
       newChildren.set(key, children);
+      return { children: newChildren };
+    });
+  },
+
+  appendChildren: (dirPath, nextBatch, newRemaining) => {
+    const key = pathKey(dirPath);
+    set((state) => {
+      const current = state.children.get(key);
+      if (!current) return {};
+      // 过滤掉旧的溢出占位节点，追加新批次，按需添加新占位
+      const realNodes = current.filter((n) => !n.path.startsWith('nb:overflow:'));
+      const updated: FileTreeNode[] = [
+        ...realNodes,
+        ...nextBatch,
+        ...(newRemaining > 0
+          ? [
+              {
+                path: `nb:overflow:${newRemaining}:${dirPath}`,
+                name: `加载更多（剩余 ${newRemaining} 个）`,
+                isDir: false,
+                kind: null,
+                size: null,
+                mtime: null,
+                isHidden: false,
+                isSymlink: false,
+              } as FileTreeNode,
+            ]
+          : []),
+      ];
+      const newChildren = new Map(state.children);
+      newChildren.set(key, updated);
       return { children: newChildren };
     });
   },

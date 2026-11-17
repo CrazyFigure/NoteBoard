@@ -8,6 +8,7 @@ import type { FileTreeNode } from '../../core/ipc/types';
 import { useExplorerStore } from './explorerStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { pathKey, dirnameOf } from './pathUtils';
+import { sliceToPage, OVERFLOW_PREFIX, PAGE_SIZE } from './useTreeData';
 
 /** 刷新间隔（毫秒） */
 const REFRESH_INTERVAL_MS = 10_000;
@@ -24,7 +25,11 @@ export async function refreshVisibleTree(): Promise<void> {
   // 根目录读取失败（网络中断、根被移除等）时放弃本轮，避免误收起
   let rootNodes: FileTreeNode[];
   try {
-    rootNodes = await ipc.readDir(root, showHidden);
+    const rawRoot = await ipc.readDir(root, showHidden);
+    // 保留根目录已加载的分页数量，刷新后不缩减用户已展开的内容
+    const rootCurrent = useExplorerStore.getState().getChildren(root) ?? [];
+    const rootVisible = rootCurrent.filter((n) => !n.path.startsWith(OVERFLOW_PREFIX)).length;
+    rootNodes = sliceToPage(rawRoot, root, Math.max(PAGE_SIZE, rootVisible));
   } catch {
     return;
   }
@@ -63,7 +68,11 @@ export async function refreshVisibleTree(): Promise<void> {
     const results = await Promise.all(
       level.map(async (dir) => {
         try {
-          return { dir, nodes: await ipc.readDir(dir.path, showHidden) };
+          const rawNodes = await ipc.readDir(dir.path, showHidden);
+          // 保留该目录已加载的分页数量
+          const dirCurrent = useExplorerStore.getState().getChildren(dir.path) ?? [];
+          const dirVisible = dirCurrent.filter((n) => !n.path.startsWith(OVERFLOW_PREFIX)).length;
+          return { dir, nodes: sliceToPage(rawNodes, dir.path, Math.max(PAGE_SIZE, dirVisible)) };
         } catch {
           // 单个子目录读取失败（可能是瞬时错误）时保持现状，下一轮再判断
           return { dir, nodes: null };

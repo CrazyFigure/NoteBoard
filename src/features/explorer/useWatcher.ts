@@ -8,6 +8,7 @@ import { onExplorerRefresh, onExplorerRescan } from '../../core/ipc/events';
 import { useExplorerStore } from './explorerStore';
 // 🔴 S14：真实目录监听走 plugin-fs 中心 watcher（引用计数，多视图共用）
 import { watchDirectory } from './directoryWatcher';
+import { sliceToPage, OVERFLOW_PREFIX, PAGE_SIZE } from './useTreeData';
 
 /**
  * 文件监听 hook
@@ -33,22 +34,25 @@ export function useWatcher() {
   // 监听刷新事件
   useEffect(() => {
     const unlistenRefresh = onExplorerRefresh(async ({ dir }) => {
-      // 增量刷新：重新加载该目录的子节点
+      // 增量刷新：重新加载该目录的子节点；保留用户已加载的分页数量
       try {
         const showHidden = true; // 从设置 store 取，但这里简化
-        const children = await ipc.readDir(dir, showHidden);
-        updateChildren(dir, children);
+        const freshNodes = await ipc.readDir(dir, showHidden);
+        const current = useExplorerStore.getState().getChildren(dir) ?? [];
+        const currentVisible = current.filter((n) => !n.path.startsWith(OVERFLOW_PREFIX)).length;
+        const keepCount = Math.max(PAGE_SIZE, currentVisible);
+        updateChildren(dir, sliceToPage(freshNodes, dir, keepCount));
       } catch (e) {
         console.error('增量刷新失败:', dir, e);
       }
     });
 
     const unlistenRescan = onExplorerRescan(async ({ root: rescanRoot }) => {
-      // 全量重扫
+      // 全量重扫：重置首屏
       try {
         const showHidden = true;
-        const children = await ipc.readDir(rescanRoot, showHidden);
-        rescan(children);
+        const freshNodes = await ipc.readDir(rescanRoot, showHidden);
+        rescan(sliceToPage(freshNodes, rescanRoot));
       } catch (e) {
         console.error('全量重扫失败:', rescanRoot, e);
       }

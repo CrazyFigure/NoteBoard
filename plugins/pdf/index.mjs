@@ -51,7 +51,8 @@ export async function mount({container,name,bytes,source,signal,reading}) {
       if(top+before<=view.viewport.scrollTop)view.viewport.scrollTop+=item.element.offsetHeight-before;
       const viewport=page.getViewport({scale:item.scale});
       const canvas=el('canvas'),text=el('div','textLayer');
-      const pixel=Math.min(devicePixelRatio||1,2,Math.sqrt(2400000/(viewport.width*viewport.height)));
+      // 像素比：不超过 dpr/2，同时限制单页像素数（≤16MP）以控制内存；但不低于 1，否则 Canvas 小于 CSS 尺寸会被拉伸模糊
+      const pixel=Math.min(devicePixelRatio||1,2,Math.max(1,Math.sqrt(16000000/(viewport.width*viewport.height))));
       canvas.width=Math.max(1,Math.floor(viewport.width*pixel));canvas.height=Math.max(1,Math.floor(viewport.height*pixel));
       holder.task=page.render({canvasContext:canvas.getContext('2d'),viewport,transform:pixel===1?null:[pixel,0,0,pixel,0,0]});
       await holder.task.promise;if(stale())return;
