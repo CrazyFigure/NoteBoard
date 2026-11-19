@@ -1,8 +1,9 @@
 // Markdown 文档复制、剪切共用文件序列化规则，避免富文本 HTML 或缺少语法的正文进入剪贴板。
 // Ctrl+C 按设置「复制格式」输出 Markdown 源码或纯文本；Ctrl+Shift+C（Mac 为 Cmd+Shift+C）复制为另一种格式。
 import { Extension, type Editor } from '@tiptap/core';
-import { Fragment, type ResolvedPos, type Slice } from '@tiptap/pm/model';
-import { Plugin } from '@tiptap/pm/state';
+import { Fragment, type Node as ProseMirrorNode, type ResolvedPos, type Slice } from '@tiptap/pm/model';
+import { AllSelection, NodeSelection, Plugin } from '@tiptap/pm/state';
+import { CellSelection } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 import { getMarkdownManager, serializeMarkdownFromDoc } from './serialize';
 import { serializeSelectionPlainText } from './plainTextClipboard';
@@ -78,15 +79,104 @@ export const AlternateCopyShortcut = Extension.create({
   },
 });
 
+// 选区完全落在其内部（或从内部向外跨出、未选中容器开头）时应剥离的结构容器
+const ENCLOSING_CONTAINER_TYPES = new Set([
+  'detailsBlock',
+  'calloutBlock',
+  'columnsBlock',
+  'columnBlock',
+  'githubAlert',
+  'blockquote',
+  'table',
+  'tableRow',
+  'tableCell',
+  'tableHeader',
+]);
+
+const LIST_CONTAINER_TYPES = new Set(['bulletList', 'orderedList', 'taskList']);
+const LIST_ITEM_TYPES = new Set(['listItem', 'taskItem']);
+
 /** 开放切片沿用祖先列表的起点，需加上选区前被裁掉的项数，避免复制第八项却输出第七项。 */
 function restoreListStart(content: Fragment, from: ResolvedPos, openDepth: number, depth = 1): Fragment {
   const first = content.firstChild;
-  if (!first || depth > openDepth || first.type !== from.node(depth).type) return content;
+  if (!first || openDepth <= 0 || depth > from.depth || first.type !== from.node(depth).type) return content;
   const attrs = first.type.name === 'orderedList'
     ? { ...first.attrs, start: Number(first.attrs.start ?? 1) + from.index(depth) }
     : first.attrs;
-  const children = restoreListStart(first.content, from, openDepth, depth + 1);
+  const children = restoreListStart(first.content, from, openDepth - 1, depth + 1);
   return content.replaceChild(0, first.type.create(attrs, children, first.marks));
+}
+
+/** 剥离块节点上的对齐与缩进属性，还原为普通段落/标题（用于未选中完整块格式的场景）。 */
+function stripBlockFormatAttrs(node: ProseMirrorNode): Record<string, unknown> {
+  const attrs = { ...node.attrs };
+  if ('textAlign' in attrs) attrs.textAlign = null;
+  if ('indent' in attrs) attrs.indent = 0;
+  return attrs;
+}
+
+/**
+ * 选区从某文本块中间开始时，把开放首链最内层被截断的标题或带对齐/缩进的段落降级为普通段落，
+ * 避免未选中开头格式却带出 `### ` 或 `<div align="center">`。
+ */
+function flattenClippedLeadingBlock(content: Fragment, openStart: number): Fragment {
+  const first = content.firstChild;
+  if (!first || openStart <= 0) return content;
+  if (openStart === 1 && first.isTextblock) {
+    const paragraphType = first.type.schema.nodes.paragraph;
+    if (!paragraphType) return content;
+    return content.replaceChild(0, paragraphType.create(null, first.content));
+  }
+  const updated = flattenClippedLeadingBlock(first.content, openStart - 1);
+  return updated === first.content ? content : content.replaceChild(0, first.copy(updated));
+}
+
+/**
+ * 构造单文本块选区的剪贴板内容：
+ * - 仅选中段内局部文字：一律降级为普通段落，只保留行内格式（粗体/斜体/代码/链接等），不携带任何块/容器格式；
+ * - 选中单个文本块的全部文字：剥离外层未选中的结构容器（折叠块、高亮块、分栏、提示块、引用、表格单元格等），
+ *   仅在单独的完整列表项或独立标题时保留列表标记/标题级别。
+ */
+function buildSingleTextblockClipboardContent(editor: Editor): Fragment | string {
+  const { schema, selection } = editor.state;
+  const { $from, $to } = selection;
+  const parent = $from.parent;
+
+  // 代码块内拖选或首次 Ctrl+A 全选代码文字时，直接复制代码原文，不包裹代码围栏
+  if (parent.type.spec.code) {
+    return parent.textBetween($from.parentOffset, $to.parentOffset, '\n');
+  }
+
+  const isPartial = selection.from > $from.start() || selection.to < $from.end();
+  const inlineContent = parent.content.cut($from.parentOffset, $to.parentOffset);
+  if (isPartial) {
+    return Fragment.from(schema.nodes.paragraph.create(null, inlineContent));
+  }
+
+  // 选中单个列表项的唯一段落全文时，保留该项对应的列表标记与编号（但不向上带出外层折叠块或未选中的父项）
+  if ($from.depth >= 2) {
+    const itemDepth = $from.depth - 1;
+    const itemNode = $from.node(itemDepth);
+    const listDepth = itemDepth - 1;
+    if (LIST_ITEM_TYPES.has(itemNode.type.name) && itemNode.childCount === 1 && listDepth >= 1) {
+      const listNode = $from.node(listDepth);
+      if (LIST_CONTAINER_TYPES.has(listNode.type.name)) {
+        const listAttrs = listNode.type.name === 'orderedList'
+          ? { ...listNode.attrs, start: Number(listNode.attrs.start ?? 1) + $from.index(listDepth) }
+          : listNode.attrs;
+        const paragraph = schema.nodes.paragraph.create(null, inlineContent);
+        const item = itemNode.type.create(itemNode.attrs, Fragment.from(paragraph), itemNode.marks);
+        return Fragment.from(listNode.type.create(listAttrs, Fragment.from(item), listNode.marks));
+      }
+    }
+  }
+
+  // 独立标题的完整文本保留标题级别（去掉未选中的外层容器与对齐/缩进）
+  if (parent.type.name === 'heading') {
+    return Fragment.from(parent.type.create(stripBlockFormatAttrs(parent), inlineContent));
+  }
+
+  return Fragment.from(schema.nodes.paragraph.create(null, inlineContent));
 }
 
 /** 片段缺少表头时用首个选中行承载 Markdown 表头，避免文件序列化规则凭空补出一行。 */
@@ -111,10 +201,60 @@ function prepareClipboardTables(content: Fragment): Fragment {
   return Fragment.from(nodes);
 }
 
-/** 将选区补成可独立序列化的文档；单元格选区等切片需要补回表格、段落或列表容器。 */
+/** 将选区补成可独立序列化的文档；按实际选中范围剥离未选中的外层块/容器格式，单元格选区等切片补回表格容器。 */
 function serializeClipboardMarkdown(editor: Editor, slice: Slice): string {
   const { doc, schema, selection } = editor.state;
-  let content = restoreListStart(slice.content, selection.$from, slice.openStart);
+  const isStructuralSelection =
+    selection instanceof AllSelection
+    || selection instanceof NodeSelection
+    || selection instanceof CellSelection;
+
+  let content: Fragment;
+  if (!isStructuralSelection && selection.$from.sameParent(selection.$to)) {
+    const single = buildSingleTextblockClipboardContent(editor);
+    if (typeof single === 'string') return single;
+    content = single;
+  } else if (!isStructuralSelection) {
+    // 跨块文本选区：剥离将整个选区包裹在内的外层容器（折叠块、高亮块、分栏、提示块、引用、单元格、单个列表项），
+    // 若跨多个同级列表项则保留该列表容器并修正起始编号
+    let nextContent = slice.content;
+    let openStart = slice.openStart;
+    let openEnd = slice.openEnd;
+    let baseDepth = 1;
+    const sharedDepth = selection.$from.sharedDepth(selection.to);
+    const keepSharedList = sharedDepth > 0 && LIST_CONTAINER_TYPES.has(selection.$from.node(sharedDepth).type.name);
+    const unwrapCount = keepSharedList ? sharedDepth - 1 : sharedDepth;
+    for (let step = 0; step < unwrapCount; step += 1) {
+      if (nextContent.childCount !== 1 || openStart <= 0 || openEnd <= 0 || !nextContent.firstChild) break;
+      nextContent = nextContent.firstChild.content;
+      openStart -= 1;
+      openEnd -= 1;
+      baseDepth += 1;
+    }
+
+    // 选区从结构容器内部开始并向外跨出时，用户并未选中容器开头（如折叠标题），展开该开放首容器
+    while (
+      openStart > 0
+      && nextContent.firstChild
+      && ENCLOSING_CONTAINER_TYPES.has(nextContent.firstChild.type.name)
+    ) {
+      const rest: ProseMirrorNode[] = [];
+      for (let idx = 1; idx < nextContent.childCount; idx += 1) rest.push(nextContent.child(idx));
+      nextContent = nextContent.firstChild.content.append(Fragment.from(rest));
+      openStart -= 1;
+      baseDepth += 1;
+    }
+
+    // 首块从文本中间起选时，剥离首块的标题或对齐/缩进格式
+    if (selection.from > selection.$from.start()) {
+      nextContent = flattenClippedLeadingBlock(nextContent, openStart);
+    }
+
+    content = restoreListStart(nextContent, selection.$from, openStart, baseDepth);
+  } else {
+    content = restoreListStart(slice.content, selection.$from, slice.openStart);
+  }
+
   for (let depth = selection.$from.depth; !doc.type.validContent(content) && depth > 0; depth -= 1) {
     const parent = selection.$from.node(depth);
     if (parent.type.validContent(content)) content = Fragment.from(parent.copy(content));

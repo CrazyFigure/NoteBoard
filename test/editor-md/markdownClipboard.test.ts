@@ -80,16 +80,108 @@ describe('Markdown 文档剪贴板', () => {
     expect(copySelection(editor).text).toBe('**粗体**');
   });
 
-  it('局部标题文字保留标题级别', () => {
-    const editor = createEditor('### 标题的一部分');
+  it('标题中段局部复制只保留文字与行内格式，整行选中才保留标题级别', () => {
+    const editor = createEditor('### 标题的**一部分**');
     selectText(editor, '一部分');
-    expect(copySelection(editor).text).toBe('### 一部分');
+    expect(copySelection(editor).text).toBe('**一部分**');
+    selectText(editor, '标题的');
+    expect(copySelection(editor).text).toBe('标题的');
+    const heading = editor.state.doc.firstChild!;
+    editor.commands.setTextSelection({ from: 1, to: 1 + heading.content.size });
+    expect(copySelection(editor).text).toBe('### 标题的**一部分**');
   });
 
-  it('从有序列表中途复制时保留选中项的编号', () => {
-    const editor = createEditor('7. 第七项\n8. 第八项\n9. 第九项');
-    selectText(editor, '第八项');
-    expect(copySelection(editor).text).toBe('8. 第八项');
+  it('列表项中段局部复制只保留文字，整项选中才保留列表编号与标记', () => {
+    const editor = createEditor('7. 第七项\n8. 第八项文字\n9. 第九项');
+    selectText(editor, '第八');
+    expect(copySelection(editor).text).toBe('第八');
+    selectText(editor, '第八项文字');
+    expect(copySelection(editor).text).toBe('8. 第八项文字');
+  });
+
+  it('折叠块内局部或跨段复制不携带折叠块外框，全选/整块选中才保留折叠块', () => {
+    const source = '<details>\n<summary>折叠标题</summary>\n\n第一段**重点**内容\n\n第二段正文\n\n</details>\n\n外部段落';
+    const editor = createEditor(source);
+
+    // 1. 段内局部选中：只保留行内格式，不带 <details>
+    selectText(editor, '重点');
+    expect(copySelection(editor).text).toBe('**重点**');
+
+    // 2. 折叠块内整行单段选中：未选中折叠标题与外框，只复制段落内容
+    selectText(editor, '第二段正文');
+    expect(copySelection(editor).text).toBe('第二段正文');
+
+    // 3. 折叠块内跨两段选中：剥离未选中的折叠块外框
+    let p1From = -1;
+    let p2To = -1;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.isText && node.text?.includes('第一段')) p1From = pos;
+      if (node.isText && node.text?.includes('第二段正文')) p2To = pos + node.text.length;
+    });
+    editor.commands.setTextSelection({ from: p1From, to: p2To });
+    expect(copySelection(editor).text).toBe('第一段**重点**内容\n\n第二段正文');
+
+    // 4. 从折叠块内向外部段落跨出：未选中折叠块开头，不带出 <details>
+    let outerTo = -1;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.isText && node.text === '外部段落') outerTo = pos + node.text.length;
+    });
+    editor.commands.setTextSelection({ from: p2To - 2, to: outerTo });
+    expect(copySelection(editor).text).toBe('正文\n\n外部段落');
+
+    // 5. 全选整篇文档仍完整保留折叠块
+    editor.commands.selectAll();
+    expect(copySelection(editor).text).toBe(source);
+  });
+
+  it('高亮块、提示块、引用、居中段落、单元格与代码块内局部复制只复制正文与行内格式', () => {
+    const calloutEditor = createEditor('<div class="nb-callout" data-color="blue" data-icon="info">\n\n前文**高亮块**后文\n\n</div>');
+    selectText(calloutEditor, '高亮块');
+    expect(copySelection(calloutEditor).text).toBe('**高亮块**');
+
+    const alertEditor = createEditor('> [!NOTE]\n> 前文**提示**后文');
+    selectText(alertEditor, '提示');
+    expect(copySelection(alertEditor).text).toBe('**提示**');
+
+    const quoteEditor = createEditor('> 前文**引用**后文');
+    selectText(quoteEditor, '引用');
+    expect(copySelection(quoteEditor).text).toBe('**引用**');
+
+    const alignEditor = createEditor('<div align="center">\n\n前文**居中**后文\n\n</div>');
+    selectText(alignEditor, '居中');
+    expect(copySelection(alignEditor).text).toBe('**居中**');
+
+    const tableEditor = createEditor('| 列一 | 列二 |\n| --- | --- |\n| 前文**单元格**后文 | 乙 |');
+    selectText(tableEditor, '单元格');
+    expect(copySelection(tableEditor).text).toBe('**单元格**');
+
+    const codeEditor = createEditor('```ts\nconst answer = 42;\n```');
+    selectText(codeEditor, 'answer = 42');
+    expect(copySelection(codeEditor).text).toBe('answer = 42');
+  });
+
+  it('折叠块内跨多个列表项选中时剥离折叠块但保留列表与起始编号', () => {
+    const editor = createEditor('<details>\n<summary>清单</summary>\n\n1. 第一项\n2. 第二项\n3. 第三项\n\n</details>');
+    let from = -1;
+    let to = -1;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.isText && node.text === '第二项') from = pos;
+      if (node.isText && node.text === '第三项') to = pos + node.text.length;
+    });
+    editor.commands.setTextSelection({ from, to });
+    expect(copySelection(editor).text).toBe('2. 第二项\n3. 第三项');
+  });
+
+  it('从标题中间起选跨到下一段时，首段不带出标题前缀', () => {
+    const editor = createEditor('### 第一节标题\n\n下一段正文');
+    let from = -1;
+    let to = -1;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.isText && node.text?.includes('标题')) from = pos + node.text.indexOf('标题');
+      if (node.isText && node.text === '下一段正文') to = pos + 3;
+    });
+    editor.commands.setTextSelection({ from, to });
+    expect(copySelection(editor).text).toBe('标题\n\n下一段');
   });
 
   it('复制列表子项保留列表与嵌套关系，且不带入未选中的正文', () => {
