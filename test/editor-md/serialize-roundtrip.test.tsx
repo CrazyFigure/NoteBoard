@@ -364,4 +364,115 @@ describe('serialize 真实往返集成（真实 TipTap Editor）', () => {
     expect(editor.getText()).toBe(text);
     editor.destroy();
   });
+
+  it('文档其他段落存在必要转义或特殊路径时，表名下划线与孤立反引号不会被过度转义', () => {
+    const editor = createEditor();
+    const paragraphs = [
+      '干扰项：a*b*c、~~删除线~~、`字面代码`、_字面斜体_、List<String>、C:\\Users\\.gemini\\file.txt、\\（中文）、[字面链接](https://example.com)',
+      'recipe_region 区域表、',
+      'recipe_region_pcu PCU表、',
+      'recipe_step  EOP表(设备操作)',
+      'recipe_step_param  参数表',
+      'recipe_device 设备表',
+      'recipe_db_offset  下发偏移量模板表',
+      'recipe_db_download_template 下发DB块模板表',
+      'recipe_db_distribute_log 下发日志表',
+      'recipe_material 物料表',
+      '表_名_称 与 _prefix 与 a _ b',
+      'suffix_ 与 _prefix',
+      '在文字中插入 ` 符号，以及 `` 双反引号',
+      '算式 2*3、a * b、~50% 和 ~60%、a < b、x<y、[普通方括号]',
+    ];
+
+    editor.commands.setContent({
+      type: 'doc',
+      content: paragraphs.map((text) => ({
+        type: 'paragraph',
+        content: [{ type: 'text', text }],
+      })),
+    });
+
+    const serialized = serializeMarkdown(editor);
+    const lines = serialized.split('\n\n');
+
+    // 表名中的词内下划线与孤立符号必须保持干净源码，绝不被其他段落的必要转义连坐
+    expect(lines[1]).toBe('recipe_region 区域表、');
+    expect(lines[2]).toBe('recipe_region_pcu PCU表、');
+    expect(lines[3]).toBe('recipe_step  EOP表(设备操作)');
+    expect(lines[4]).toBe('recipe_step_param  参数表');
+    expect(lines[5]).toBe('recipe_device 设备表');
+    expect(lines[6]).toBe('recipe_db_offset  下发偏移量模板表');
+    expect(lines[7]).toBe('recipe_db_download_template 下发DB块模板表');
+    expect(lines[8]).toBe('recipe_db_distribute_log 下发日志表');
+    expect(lines[9]).toBe('recipe_material 物料表');
+    expect(lines[10]).toBe('表_名_称 与 _prefix 与 a _ b');
+    expect(lines[11]).toBe('suffix_ 与 _prefix');
+    expect(lines[12]).toBe('在文字中插入 ` 符号，以及 `` 双反引号');
+    expect(lines[13]).toBe('算式 2*3、a * b、~50% 和 ~60%、a < b、x<y、[普通方括号]');
+
+    // 重新解析后所有段落的纯文本必须完全无损往返
+    parseMarkdown(editor, serialized);
+    const roundtripped = (editor.getJSON().content ?? []).map((node) =>
+      (node.content ?? []).map((child) => ('text' in child ? child.text ?? '' : '')).join(''),
+    );
+    expect(roundtripped).toEqual(paragraphs);
+    editor.destroy();
+  });
+
+  it('行内代码后的孤立反引号不转义，行内代码前的孤立反引号保留必要转义', () => {
+    const editor = createEditor();
+    editor.commands.setContent({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: '使用 ' },
+            { type: 'text', text: 'git', marks: [{ type: 'code' }] },
+            { type: 'text', text: ' 后插入 ` 符号' },
+          ],
+        },
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: '在前面插入 ` 然后 ' },
+            { type: 'text', text: 'git', marks: [{ type: 'code' }] },
+          ],
+        },
+      ],
+    });
+
+    const serialized = serializeMarkdown(editor);
+    const [afterCode, beforeCode] = serialized.split('\n\n');
+    expect(afterCode).toBe('使用 `git` 后插入 ` 符号');
+    expect(beforeCode).toBe('在前面插入 \\` 然后 `git`');
+
+    // 重新解析后两段的行内代码标记与字面反引号均保持原语义
+    const snapshot = editor.state.doc;
+    parseMarkdown(editor, serialized);
+    expect(editor.state.doc.eq(snapshot)).toBe(true);
+    editor.destroy();
+  });
+
+  it('行首字面星号列表、分隔线与代码围栏仍做结构性必要转义以防往返变形', () => {
+    const editor = createEditor();
+    const lines = ['* 不是列表', '***', '___', '```js', '~~~'];
+    editor.commands.setContent({
+      type: 'doc',
+      content: lines.map((text) => ({
+        type: 'paragraph',
+        content: [{ type: 'text', text }],
+      })),
+    });
+
+    const serialized = serializeMarkdown(editor);
+    parseMarkdown(editor, serialized);
+    const types = (editor.getJSON().content ?? []).map((node) => node.type);
+    const texts = (editor.getJSON().content ?? []).map((node) =>
+      (node.content ?? []).map((child) => ('text' in child ? child.text ?? '' : '')).join(''),
+    );
+    expect(types).toEqual(['paragraph', 'paragraph', 'paragraph', 'paragraph', 'paragraph']);
+    expect(texts).toEqual(lines);
+    editor.destroy();
+  });
 });

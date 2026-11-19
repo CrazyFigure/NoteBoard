@@ -13,111 +13,507 @@ import { formatWikiLinkMarkdown } from '../wikilink/wikiLinkSyntax';
 import { INVISIBLE_CHARACTER_ENTITIES, isDecodableEntitySuffix, usesInvisibleCharacterEntities } from './markdownHtmlEntities';
 import { captureMarkdownBlockTokens } from './markdownBlockStart';
 import { preserveSourceBlockSpacing } from './markdownBlockSpacing';
-import { buildPreservedSerializationJson, buildSourceBlocks, recordTopLevelTokens, type PreservableNode } from './markdownSourcePreserve';
+import { buildPreservedSerializationJson, buildSourceBlocks, recordTopLevelTokens, SOURCE_ORPHAN_AFTER_ATTR, SOURCE_ORPHAN_ATTR, SOURCE_RAW_ATTR, type PreservableNode } from './markdownSourcePreserve';
 
 // CommonMark 允许反斜杠转义的 ASCII 标点；这些字符前的双反斜杠不能擅自折叠，
 // 否则原本可见的反斜杠会在下一次解析时被当成转义符吞掉。
 const COMMONMARK_ESCAPABLE_PUNCTUATION = new Set(
   [...'!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'],
 );
-const TIPTAP_MARKDOWN_SPECIAL_CHARACTERS = new Set(['`', '*', '_', '[', ']', '~']);
-// Unicode 标点与符号类别用于发现“可能是转义前缀”的反斜杠，不按具体字符逐项维护。
+// Unicode 标点与符号类别，按 CommonMark §6.2 判定强调/删除线定界符的左右侧翼条件。
 const UNICODE_PUNCTUATION_OR_SYMBOL = /[\p{P}\p{S}]/u;
 
 // `&` 之后若紧跟会被解码的实体（如 `gt;`、`#39;`），该 `&` 必须保持编码（判断见 isDecodableEntitySuffix）
 
-// ── 结构性必要转义 ──
-// 全局转义集合刻意保持最小（避免往返中转义累积）；但少数字面量字符在特定位置不转义就会改变文档结构：
-// 行首的 `#`、`-`、`+`、`1.`，表格单元格内的 `|`，以及会构成行内公式的 `$`。
-// 序列化前在 JSON 中于这些字符前插入哨兵（私有区字符，用户文本中不会出现），
-// 转义器把哨兵替换为"必要转义标记"，冗余转义清理不会把该标记当作候选，最后才还原为反斜杠。
-// 这样必要转义既不会被清理掉，也不会让"全有或全无"的批量清理因它们失败而整体保留冗余转义。
+// ── 按上下文精确转义（结构性必要转义 + 候选行内转义） ──
+// 不再对普通文本中的所有 `` ` ``、`_`、`*`、`[`、`]`、`~` 无条件加反斜杠：
+// 1. 仅在特定行首/表格/公式等位置会改变文档结构的字面量插入结构哨兵，清理阶段永不移除；
+// 2. 仅在文本块内确实可能配对成强调、删除线、行内代码或链接/双链/脚注的符号前插入行内哨兵，
+//    表名中的 `recipe_region`、孤立的 `` ` `` / `*` / `~` / `[text]` 等从源头原样输出，
+//    不会因为文档别处存在必要转义而被整篇连坐残留 `\_` 或 `` \` ``。
 const STRUCTURAL_ESCAPE_SENTINEL = '';
 const STRUCTURAL_ESCAPE_MARK = '';
+// 避开 rawMarkdownSegments 占用的 \uE002 / \uE003
+const INLINE_ESCAPE_SENTINEL = '\uE004';
 
-// 行首会被识别为块结构的字面量：ATX 标题、无序列表、有序列表、分隔线/Setext 下划线
+// 行首会被识别为块结构的字面量：ATX 标题、无序列表、有序列表、分隔线/Setext 下划线、代码围栏、引用定义
 const LINE_START_HEADING = /^([ \t]{0,3})(#{1,6})(?=[ \t]|$)/;
-const LINE_START_BULLET = /^([ \t]{0,3})([-+])(?=[ \t]|$)/;
+const LINE_START_BULLET = /^([ \t]{0,3})([-+*])(?=[ \t]|$)/;
 const LINE_START_ORDERED = /^([ \t]{0,3}\d{1,9})([.)])(?=[ \t]|$)/;
-const LINE_START_RULE = /^([ \t]{0,3})([-=])(?=[-= \t]*$)/;
+const LINE_START_RULE = /^([ \t]{0,3})(?:([-=])(?=[-= \t]*$)|(\*)(?=[* \t]*\*[ \t]*\*[* \t]*$)|(_)(?=[_ \t]*_[ \t]*_[_ \t]*$))/;
+const LINE_START_FENCE = /^([ \t]{0,3})(`{3,}|~{3,})/;
+const LINE_START_LINK_DEF = /^([ \t]{0,3})\[[^\]]+\]:/;
+
+// 行内 HTML 标签 / 注释 / 自动链接检测，供 `&lt;` 精确还原使用（仅在真的会触发 HTML 或自动链接时保留 `&lt;`）
+const HTML_TAG_AFTER_LT = /^(?:!--|\?[a-zA-Z]|![a-zA-Z[]|\/?[a-zA-Z][a-zA-Z0-9-]*(?:\s+[a-zA-Z_:][\w:.-]*(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*\/?>)/;
+const AUTOLINK_AFTER_LT = /^(?:[a-zA-Z][a-zA-Z0-9+.-]{1,31}:[^\s<>]*>|[^\s<>]+@[^\s<>]+>)/;
 
 interface SerializableJsonNode {
   type?: string;
   text?: string;
+  marks?: Array<{ type?: string; attrs?: Record<string, unknown> }>;
+  attrs?: Record<string, unknown>;
   content?: SerializableJsonNode[];
   [key: string]: unknown;
 }
 
-/** 在单行行首的块结构字面量前插入哨兵。 */
-function markLineStart(line: string): string {
-  // 行首字面量 [ 若转义为 \[，会与 LaTeX 块公式冲突；使用实体保护，避免再次打开时改变结构。
-  line = line.replace(/^([ \t]{0,3})\[/, (_match, prefix: string) => prefix + emitRawSegment('&#91;'));
-  for (const pattern of [LINE_START_HEADING, LINE_START_ORDERED, LINE_START_BULLET, LINE_START_RULE]) {
-    const match = pattern.exec(line);
-    if (match) {
-      const prefixLength = match[1].length;
-      return line.slice(0, prefixLength) + STRUCTURAL_ESCAPE_SENTINEL + line.slice(prefixLength);
-    }
+type EscapeKind = 'inline' | 'structural' | 'entityLeftBracket';
+
+const ESCAPE_PRIORITY: Record<EscapeKind, number> = {
+  inline: 1,
+  structural: 2,
+  entityLeftBracket: 3,
+};
+
+/** 写入指定位置的转义类型，保留优先级更高的保护方式（如行首 `&#91;` 优先于 `\[`）。 */
+function recordEscape(map: Map<number, EscapeKind>, index: number, kind: EscapeKind): void {
+  const previous = map.get(index);
+  if (!previous || ESCAPE_PRIORITY[kind] > ESCAPE_PRIORITY[previous]) {
+    map.set(index, kind);
   }
-  return line;
 }
 
-/** 文本节点按需插入哨兵：atLineStart 表示该节点起始处位于 Markdown 行首。 */
-function markTextNode(
-  text: string,
-  atLineStart: boolean,
-  inTableCell: boolean,
-  wouldFormInlineMath: (value: string) => boolean,
-): string {
-  let output = text
-    .split('\n')
-    .map((line, index) => (index > 0 || atLineStart ? markLineStart(line) : line))
-    .join('\n');
-  if (inTableCell) output = output.replace(/\|/g, `${STRUCTURAL_ESCAPE_SENTINEL}|`);
-  if (output.includes('$') && wouldFormInlineMath(text)) {
-    output = output.replace(/\$/g, `${STRUCTURAL_ESCAPE_SENTINEL}$`);
+/** CommonMark 空白判定：行首/行尾（undefined）视作空白。 */
+function isCommonMarkSpace(character: string | undefined): boolean {
+  return !character || /\s/.test(character);
+}
+
+/** CommonMark 标点/符号判定（Unicode P/S 类别）。 */
+function isCommonMarkPunctuation(character: string | undefined): boolean {
+  return !!character && UNICODE_PUNCTUATION_OR_SYMBOL.test(character);
+}
+
+/** 判断文档是否存在链接引用定义（存在时普通 `[标签]` 可能被解析为引用式链接）。 */
+function hasLinkReferenceDefinitions(doc: SerializableJsonNode): boolean {
+  const attrs = doc.attrs;
+  if (typeof attrs?.[SOURCE_ORPHAN_AFTER_ATTR] === 'string' && attrs[SOURCE_ORPHAN_AFTER_ATTR]) return true;
+  const sourceBlocks = attrs?.sourceBlocks as { entries?: Array<{ defsEffective?: boolean }>; tailDefsEffective?: boolean } | null | undefined;
+  if (sourceBlocks?.tailDefsEffective) return true;
+  if (sourceBlocks?.entries?.some((entry) => entry.defsEffective)) return true;
+  return (doc.content ?? []).some((child) => {
+    const childAttrs = child.attrs;
+    return typeof childAttrs?.[SOURCE_ORPHAN_ATTR] === 'string' && Boolean(childAttrs[SOURCE_ORPHAN_ATTR]);
+  });
+}
+
+interface TextSegmentInfo {
+  childIndex: number;
+  text: string;
+  hasMarks: boolean;
+  isCode: boolean;
+  inLink: boolean;
+  inEmStrong: boolean;
+  inStrike: boolean;
+  /** 序列化后该文本节点前/后是否直接紧邻标记语法或原子节点（用于边界侧翼判定） */
+  prevBoundary: string | undefined;
+  nextBoundary: string | undefined;
+}
+
+interface DelimiterRun {
+  childIndex: number;
+  start: number;
+  length: number;
+  canOpen: boolean;
+  canClose: boolean;
+}
+
+/** 判断某位置左侧相邻的字符（跨出文本节点时按边界情况推断）。 */
+function prevCharOf(segment: TextSegmentInfo, offset: number): string | undefined {
+  return offset > 0 ? segment.text[offset - 1] : segment.prevBoundary;
+}
+
+/** 判断某位置右侧相邻的字符（跨出文本节点时按边界情况推断）。 */
+function nextCharOf(segment: TextSegmentInfo, offset: number): string | undefined {
+  return offset < segment.text.length ? segment.text[offset] : segment.nextBoundary;
+}
+
+/** 在文本块内按需标记参与配对的强调/删除线定界符，避免把词内下划线或孤立符号误转义。 */
+function markPairedDelimiterRuns(
+  runs: DelimiterRun[],
+  escapesByChild: Map<number, Map<number, EscapeKind>>,
+  hasActiveOuterOpen: boolean,
+  hasActiveOuterClose: boolean,
+): void {
+  if (runs.length === 0) return;
+  let firstOpener = -1;
+  let lastCloser = -1;
+  for (let index = 0; index < runs.length; index += 1) {
+    if (firstOpener < 0 && runs[index].canOpen) firstOpener = index;
+    if (runs[index].canClose) lastCloser = index;
   }
-  return output;
+  const pairable = firstOpener >= 0 && lastCloser > firstOpener;
+  for (let index = 0; index < runs.length; index += 1) {
+    const run = runs[index];
+    const participates =
+      (pairable && ((run.canOpen && index < lastCloser) || (run.canClose && index > firstOpener)))
+      || (hasActiveOuterOpen && run.canClose)
+      || (hasActiveOuterClose && run.canOpen);
+    if (!participates) continue;
+    const map = escapesByChild.get(run.childIndex)!;
+    for (let offset = run.start; offset < run.start + run.length; offset += 1) {
+      recordEscape(map, offset, 'inline');
+    }
+  }
+}
+
+/** 判断某文本节点是否带有指定类型的标记。 */
+function hasMarkType(node: SerializableJsonNode, markTypes: readonly string[]): boolean {
+  return Array.isArray(node.marks) && node.marks.some((mark) => typeof mark.type === 'string' && markTypes.includes(mark.type));
 }
 
 /**
- * 深拷贝文档 JSON，并为结构性必要转义插入哨兵。
- * 只处理段落（列表项、引用、表格中的文字最终都落在段落里），标题等节点的正文前已有块前缀，无需处理。
+ * 针对单个文本块（段落或标题）做结构性与行内上下文转义分析。
+ * 所有判定均为线性扫描，不引入额外解析开销，且各块相互隔离。
+ */
+function markTextblockEscapes(
+  node: SerializableJsonNode,
+  allowLineStart: boolean,
+  inTableCell: boolean,
+  wouldFormInlineMath: (value: string) => boolean,
+  hasLinkDefs: boolean,
+): SerializableJsonNode {
+  const children = node.content;
+  if (!children || children.length === 0) return { ...node };
+
+  const escapesByChild = new Map<number, Map<number, EscapeKind>>();
+  const lineStartBrackets = new Set<string>();
+  const segments: TextSegmentInfo[] = [];
+
+  // 记录行内代码、强调、删除线标记及双链节点位置，供跨节点上下文判定使用
+  let lastCodeChildIndex = -1;
+  let hasWikiLinkAtom = false;
+  // 若已有强调/删除线标记的闭合符紧贴非空白后文，则可能充当后续字面定界符的左翼；反之开符紧贴非空白前文则可能充当右翼
+  let hasEmStrongLeftFlankingClose = false;
+  let hasEmStrongRightFlankingOpen = false;
+  let hasStrikeLeftFlankingClose = false;
+  let hasStrikeRightFlankingOpen = false;
+
+  const isPlainTextChild = (child: SerializableJsonNode | undefined): child is SerializableJsonNode & { text: string } =>
+    child?.type === 'text' && typeof child.text === 'string';
+
+  for (let ci = 0; ci < children.length; ci += 1) {
+    const child = children[ci];
+    if (child.type === 'wikiLink') {
+      hasWikiLinkAtom = true;
+      continue;
+    }
+    if (!isPlainTextChild(child)) continue;
+
+    const isCode = hasMarkType(child, ['code']);
+    if (isCode) {
+      lastCodeChildIndex = ci;
+      continue;
+    }
+
+    const inEmStrong = hasMarkType(child, ['bold', 'italic']);
+    const inStrike = hasMarkType(child, ['strike']);
+    const inLink = hasMarkType(child, ['link']);
+    const hasMarks = Array.isArray(child.marks) && child.marks.length > 0;
+
+    // 计算节点首尾在序列化后的相邻字符：跨标记或原子节点时保守视作标点（如 `*`、`>`、`[`）
+    const prevChild = children[ci - 1];
+    const nextChild = children[ci + 1];
+    const prevBoundary =
+      !prevChild || prevChild.type === 'hardBreak'
+        ? undefined
+        : '*';
+    const nextBoundary =
+      !nextChild || nextChild.type === 'hardBreak'
+        ? undefined
+        : '*';
+
+    if (inEmStrong) {
+      if (isPlainTextChild(prevChild) && !hasMarkType(prevChild, ['bold', 'italic']) && !isCommonMarkSpace(prevChild.text.at(-1))) {
+        hasEmStrongRightFlankingOpen = true;
+      }
+      if (isPlainTextChild(nextChild) && !hasMarkType(nextChild, ['bold', 'italic']) && !isCommonMarkSpace(nextChild.text[0])) {
+        hasEmStrongLeftFlankingClose = true;
+      }
+    }
+    if (inStrike) {
+      if (isPlainTextChild(prevChild) && !hasMarkType(prevChild, ['strike']) && !isCommonMarkSpace(prevChild.text.at(-1))) {
+        hasStrikeRightFlankingOpen = true;
+      }
+      if (isPlainTextChild(nextChild) && !hasMarkType(nextChild, ['strike']) && !isCommonMarkSpace(nextChild.text[0])) {
+        hasStrikeLeftFlankingClose = true;
+      }
+    }
+
+    escapesByChild.set(ci, new Map());
+    segments.push({
+      childIndex: ci,
+      text: child.text,
+      hasMarks,
+      isCode,
+      inLink,
+      inEmStrong,
+      inStrike,
+      prevBoundary,
+      nextBoundary,
+    });
+  }
+
+  if (segments.length === 0) return { ...node };
+
+  // ── 阶段 A：行首块级结构必要转义（仅普通段落生效） ──
+  if (allowLineStart) {
+    let atLineStart = true;
+    for (let ci = 0; ci < children.length; ci += 1) {
+      const child = children[ci];
+      if (child.type === 'hardBreak') {
+        atLineStart = true;
+        continue;
+      }
+      if (isPlainTextChild(child)) {
+        const map = escapesByChild.get(ci);
+        const hasMarks = Array.isArray(child.marks) && child.marks.length > 0;
+        if (map) {
+          let lineOffset = 0;
+          const lines = child.text.split('\n');
+          for (let lineIdx = 0; lineIdx < lines.length; lineIdx += 1) {
+            const line = lines[lineIdx];
+            const isStart = lineIdx > 0 || (atLineStart && !hasMarks);
+            if (isStart) {
+              const leadingBracket = /^([ \t]{0,3})\[/.exec(line);
+              if (leadingBracket) {
+                lineStartBrackets.add(`${ci}:${lineOffset + leadingBracket[1].length}`);
+              }
+              if (LINE_START_LINK_DEF.test(line)) {
+                const match = LINE_START_LINK_DEF.exec(line)!;
+                recordEscape(map, lineOffset + match[1].length, 'entityLeftBracket');
+              } else {
+                for (const pattern of [LINE_START_HEADING, LINE_START_ORDERED, LINE_START_BULLET, LINE_START_RULE, LINE_START_FENCE]) {
+                  const match = pattern.exec(line);
+                  if (match) {
+                    recordEscape(map, lineOffset + match[1].length, 'structural');
+                    break;
+                  }
+                }
+              }
+            }
+            lineOffset += line.length + 1;
+          }
+        }
+        atLineStart = false;
+      } else {
+        atLineStart = false;
+      }
+    }
+  }
+
+  // ── 阶段 B：表格管道符 `|` 与行内公式 `$` 必要转义 ──
+  for (const segment of segments) {
+    const map = escapesByChild.get(segment.childIndex)!;
+    if (inTableCell && segment.text.includes('|')) {
+      for (let idx = 0; idx < segment.text.length; idx += 1) {
+        if (segment.text[idx] === '|') recordEscape(map, idx, 'structural');
+      }
+    }
+    if (segment.text.includes('$') && wouldFormInlineMath(segment.text)) {
+      for (let idx = 0; idx < segment.text.length; idx += 1) {
+        if (segment.text[idx] === '$') recordEscape(map, idx, 'structural');
+      }
+    }
+  }
+
+  // ── 阶段 C：行内符号上下文分析（_ / * / ~ / ` / [ / ]） ──
+  const underscoreRuns: DelimiterRun[] = [];
+  const asteriskRuns: DelimiterRun[] = [];
+  const tildeRuns1: DelimiterRun[] = [];
+  const tildeRuns2: DelimiterRun[] = [];
+  const backtickRuns: Array<{ childIndex: number; start: number; length: number }> = [];
+  const backtickCountByLength = new Map<number, number>();
+
+  for (const segment of segments) {
+    const { text, childIndex } = segment;
+    const map = escapesByChild.get(childIndex)!;
+    let index = 0;
+    while (index < text.length) {
+      const ch = text[index];
+      if (ch === '_' || ch === '*' || ch === '~') {
+        let end = index + 1;
+        while (end < text.length && text[end] === ch) end += 1;
+        const length = end - index;
+        const prev = prevCharOf(segment, index);
+        const next = nextCharOf(segment, end);
+        const leftFlanking = !isCommonMarkSpace(next) && (!isCommonMarkPunctuation(next) || isCommonMarkSpace(prev) || isCommonMarkPunctuation(prev));
+        const rightFlanking = !isCommonMarkSpace(prev) && (!isCommonMarkPunctuation(prev) || isCommonMarkSpace(next) || isCommonMarkPunctuation(next));
+
+        if (ch === '_') {
+          // 词内下划线（如 recipe_region、表_名）既不能开也不能闭强调，直接跳过
+          const canOpen = leftFlanking && (!rightFlanking || isCommonMarkPunctuation(prev));
+          const canClose = rightFlanking && (!leftFlanking || isCommonMarkPunctuation(next));
+          if (canOpen || canClose) {
+            underscoreRuns.push({ childIndex, start: index, length, canOpen, canClose });
+          }
+        } else if (ch === '*') {
+          if (leftFlanking || rightFlanking) {
+            if (segment.inEmStrong) {
+              // 处于粗体/斜体内部的侧翼星号可能提前闭合外层标记，直接标记转义
+              for (let pos = index; pos < end; pos += 1) recordEscape(map, pos, 'inline');
+            } else {
+              asteriskRuns.push({ childIndex, start: index, length, canOpen: leftFlanking, canClose: rightFlanking });
+            }
+          }
+        } else if (length <= 2 && (leftFlanking || rightFlanking)) {
+          // GFM 删除线仅识别 1 或 2 个波浪线；连续 3 个及以上在行中不会形成删除线
+          if (length === 2 && segment.inStrike) {
+            for (let pos = index; pos < end; pos += 1) recordEscape(map, pos, 'inline');
+          } else {
+            const target = length === 1 ? tildeRuns1 : tildeRuns2;
+            target.push({ childIndex, start: index, length, canOpen: leftFlanking, canClose: rightFlanking });
+          }
+        }
+        index = end;
+        continue;
+      }
+
+      if (ch === '`') {
+        let end = index + 1;
+        while (end < text.length && text[end] === '`') end += 1;
+        const length = end - index;
+        backtickRuns.push({ childIndex, start: index, length });
+        backtickCountByLength.set(length, (backtickCountByLength.get(length) ?? 0) + 1);
+        index = end;
+        continue;
+      }
+
+      if (segment.inLink && (ch === '[' || ch === ']')) {
+        // 链接文字内的方括号可能破坏 `[label](href)` 边界
+        const kind: EscapeKind = ch === '[' && lineStartBrackets.has(`${childIndex}:${index}`) ? 'entityLeftBracket' : 'inline';
+        recordEscape(map, index, kind);
+      }
+
+      index += 1;
+    }
+  }
+
+  markPairedDelimiterRuns(underscoreRuns, escapesByChild, false, false);
+  markPairedDelimiterRuns(asteriskRuns, escapesByChild, hasEmStrongLeftFlankingClose, hasEmStrongRightFlankingOpen);
+  markPairedDelimiterRuns(tildeRuns1, escapesByChild, false, false);
+  markPairedDelimiterRuns(tildeRuns2, escapesByChild, hasStrikeLeftFlankingClose, hasStrikeRightFlankingOpen);
+
+  // 反引号：只有同长度出现两次及以上，或单反引号位于已有行内代码之前（可能抢占其开定界符）时才需要转义
+  for (const run of backtickRuns) {
+    const pairsWithLiteral = (backtickCountByLength.get(run.length) ?? 0) >= 2;
+    const collidesWithLaterCode = run.length === 1 && run.childIndex < lastCodeChildIndex;
+    if (!pairsWithLiteral && !collidesWithLaterCode) continue;
+    const map = escapesByChild.get(run.childIndex)!;
+    for (let pos = run.start; pos < run.start + run.length; pos += 1) {
+      recordEscape(map, pos, 'inline');
+    }
+  }
+
+  // 方括号：拼接块内非链接普通文本的位置映射，仅对可能触发双链/脚注/行内链接/引用链接的 `[` 转义
+  let combined = '';
+  const charOwners: Array<{ childIndex: number; offset: number } | null> = [];
+  for (let ci = 0; ci < children.length; ci += 1) {
+    const child = children[ci];
+    if (child.type === 'wikiLink') {
+      // 双链节点自身携带 `]]`，可能与前文字面 `[[` 形成闭合
+      combined += '\u0000]]';
+      charOwners.push(null, null, null);
+      continue;
+    }
+    if (!isPlainTextChild(child)) {
+      combined += '\u0000';
+      charOwners.push(null);
+      continue;
+    }
+    if (hasMarkType(child, ['code', 'link'])) {
+      combined += '\u0000';
+      charOwners.push(null);
+      continue;
+    }
+    for (let offset = 0; offset < child.text.length; offset += 1) {
+      combined += child.text[offset];
+      charOwners.push({ childIndex: ci, offset });
+    }
+  }
+
+  if (combined.includes('[')) {
+    const lastDoubleClose = hasWikiLinkAtom ? combined.length : combined.lastIndexOf(']]');
+    const lastLinkClose = combined.lastIndexOf('](');
+    const lastSingleClose = hasLinkDefs ? combined.lastIndexOf(']') : -1;
+
+    const markBracketAt = (pos: number) => {
+      const owner = charOwners[pos];
+      if (!owner) return;
+      const map = escapesByChild.get(owner.childIndex);
+      if (!map) return;
+      // 行首字面 `[` 若需转义，统一用 `&#91;` 避免与 LaTeX 块公式 `\[...\]` 冲突
+      const kind: EscapeKind = lineStartBrackets.has(`${owner.childIndex}:${owner.offset}`) ? 'entityLeftBracket' : 'inline';
+      recordEscape(map, owner.offset, kind);
+    };
+
+    for (let pos = 0; pos < combined.length; pos += 1) {
+      if (combined[pos] !== '[') continue;
+      // 双链 `[[...]]`：仅转义每个连续开括号中必要的 `[`，普通 `[[a]]` 只保护首个 `[`
+      if (combined[pos + 1] === '[' && pos + 1 < lastDoubleClose) {
+        markBracketAt(pos);
+        if (combined[pos + 2] !== '[') pos += 1;
+        continue;
+      }
+      // 脚注引用 `[^id]`
+      if (combined[pos + 1] === '^' && /^\[\^[^\]\s]+\]/.test(combined.slice(pos))) {
+        markBracketAt(pos);
+        continue;
+      }
+      // 行内链接 / 图片 `[...](...)` 或存在引用定义时的 `[ref]`
+      if (pos < lastLinkClose || pos < lastSingleClose) {
+        markBracketAt(pos);
+      }
+    }
+  }
+
+  // ── 阶段 D：将记录的哨兵/实体写回文本节点 ──
+  const content = children.map((child, ci) => {
+    const map = escapesByChild.get(ci);
+    if (!map || map.size === 0 || !isPlainTextChild(child)) return { ...child };
+    let out = '';
+    for (let idx = 0; idx < child.text.length; idx += 1) {
+      const kind = map.get(idx);
+      if (kind === 'entityLeftBracket') {
+        out += emitRawSegment('&#91;');
+      } else if (kind === 'structural') {
+        out += STRUCTURAL_ESCAPE_SENTINEL + child.text[idx];
+      } else if (kind === 'inline') {
+        out += INLINE_ESCAPE_SENTINEL + child.text[idx];
+      } else {
+        out += child.text[idx];
+      }
+    }
+    return { ...child, text: out };
+  });
+
+  return { ...node, content };
+}
+
+/**
+ * 深拷贝文档 JSON，并为结构性与上下文必要的行内转义插入哨兵。
+ * 段落启用行首块级与行内分析；标题已有 `#` 前缀，仅做行内分析；代码块与保留原文块直接跳过。
  */
 function markStructuralEscapes(
   node: SerializableJsonNode,
   wouldFormInlineMath: (value: string) => boolean,
   inTableCell = false,
+  hasLinkDefs = false,
 ): SerializableJsonNode {
+  if (node.type === 'codeBlock' || typeof node.attrs?.[SOURCE_RAW_ATTR] === 'string') return { ...node };
   const isCell = inTableCell || node.type === 'tableCell' || node.type === 'tableHeader';
   if (!node.content) return { ...node };
 
-  if (node.type !== 'paragraph') {
-    return {
-      ...node,
-      content: node.content.map((child) => markStructuralEscapes(child, wouldFormInlineMath, isCell)),
-    };
+  if (node.type === 'paragraph') {
+    return markTextblockEscapes(node, !isCell, isCell, wouldFormInlineMath, hasLinkDefs);
+  }
+  if (node.type === 'heading') {
+    return markTextblockEscapes(node, false, isCell, wouldFormInlineMath, hasLinkDefs);
   }
 
-  // 段落：首个文本节点与硬换行后的文本节点位于行首（表格单元格内不存在块级行首语义）
-  let atLineStart = !isCell;
-  const content = node.content.map((child) => {
-    if (child.type === 'hardBreak') {
-      atLineStart = !isCell;
-      return { ...child };
-    }
-    if (child.type === 'text' && typeof child.text === 'string') {
-      const hasMarks = Array.isArray(child.marks) && child.marks.length > 0;
-      // 带行内代码标记的文本按原样输出，不能插入哨兵
-      const isCode = hasMarks && (child.marks as Array<{ type?: string }>).some((mark) => mark.type === 'code');
-      const marked = isCode ? child.text : markTextNode(child.text, atLineStart && !hasMarks, isCell, wouldFormInlineMath);
-      atLineStart = false;
-      return { ...child, text: marked };
-    }
-    atLineStart = false;
-    return { ...child };
-  });
-  return { ...node, content };
+  return {
+    ...node,
+    content: node.content.map((child) => markStructuralEscapes(child, wouldFormInlineMath, isCell, hasLinkDefs)),
+  };
 }
 
 /** 把结构性必要转义标记还原为反斜杠（冗余转义清理完成后调用）。 */
@@ -129,7 +525,8 @@ function finalizeStructuralEscapes(markdown: string): string {
 
 /**
  * 转义普通文本中的 Markdown 标记，同时避免把 Windows 路径等安全反斜杠无条件翻倍。
- * 反斜杠仅在行尾或 CommonMark 可转义标点前需要自我转义；字母、数字、中文前可原样保留。
+ * 反斜杠仅在行尾、哨兵前或 CommonMark 可转义标点前需要自我转义；字母、数字、中文前可原样保留。
+ * 普通符号（_、`、*、[、]、~）仅在上下文分析器插入哨兵时才输出转义，不再盲目全量加反斜杠。
  */
 function escapeMarkdownText(text: string, invisibleAsEntities = false): string {
   let output = '';
@@ -140,11 +537,18 @@ function escapeMarkdownText(text: string, invisibleAsEntities = false): string {
       output += STRUCTURAL_ESCAPE_MARK;
       continue;
     }
+    if (character === INLINE_ESCAPE_SENTINEL) {
+      // 候选行内转义：转为反斜杠，后续仍可由冗余转义清理在安全时移除
+      output += '\\';
+      continue;
+    }
     if (character === '\\') {
       const nextCharacter = text[index + 1];
       const mustEscapeBackslash =
         nextCharacter === undefined
         || nextCharacter === '\n'
+        || nextCharacter === STRUCTURAL_ESCAPE_SENTINEL
+        || nextCharacter === INLINE_ESCAPE_SENTINEL
         || COMMONMARK_ESCAPABLE_PUNCTUATION.has(nextCharacter);
       output += mustEscapeBackslash ? '\\\\' : '\\';
       continue;
@@ -155,9 +559,7 @@ function escapeMarkdownText(text: string, invisibleAsEntities = false): string {
       output += invisibleEntity;
       continue;
     }
-    output += TIPTAP_MARKDOWN_SPECIAL_CHARACTERS.has(character)
-      ? `\\${character}`
-      : character;
+    output += character;
   }
   return output;
 }
@@ -209,11 +611,11 @@ function mapOutsideInlineCode(
       closing = findBacktickRun(line, closing.end);
     }
 
-    // 未闭合反引号不是可靠的代码边界，保守保留其后的源码，避免错误改写
+    // 没有等长闭合反引号时，该反引号串只是普通字面文本而非行内代码，需继续处理其后的普通正文
     if (!closing) {
-      output += transform(line.slice(cursor, opening.start), output);
-      output += line.slice(opening.start);
-      break;
+      output += transform(line.slice(cursor, opening.end), output);
+      cursor = opening.end;
+      continue;
     }
 
     output += transform(line.slice(cursor, opening.start), output);
@@ -230,16 +632,10 @@ interface MarkdownCleanupCandidate {
   replacement: string;
 }
 
-/** 判断指定 UTF-16 位置起始的完整 Unicode 字符是否属于标点或符号。 */
-function isUnicodePunctuationOrSymbol(text: string, index: number): boolean {
-  const codePoint = text.codePointAt(index);
-  return codePoint !== undefined
-    && UNICODE_PUNCTUATION_OR_SYMBOL.test(String.fromCodePoint(codePoint));
-}
-
 /**
  * 收集普通文本中可尝试清理的转义，跳过代码围栏与行内代码中的原始内容。
- * 方括号、强调符等是否真的可以去掉反斜杠，将由后续同一 Markdown 解析器做语义校验。
+ * 跳过成对双反斜杠 `\\`（表示字面反斜杠）与非 CommonMark 可转义字符（如 `\¥`、`\→`），
+ * 避免误删用户原本输入的反斜杠并连带导致整篇语义校验失败。
  */
 function collectMarkdownCleanupCandidates(markdown: string): MarkdownCleanupCandidate[] {
   const candidates: MarkdownCleanupCandidate[] = [];
@@ -270,17 +666,21 @@ function collectMarkdownCleanupCandidates(markdown: string): MarkdownCleanupCand
       const opening = findBacktickRun(rawLine, cursor);
       const segmentEnd = opening?.start ?? rawLine.length;
 
-      // 按 Unicode 类别发现潜在转义，不依赖方括号、星号等具体字符枚举。
       for (let index = cursor; index < segmentEnd; index += 1) {
-        if (
-          rawLine[index] === '\\'
-          && isUnicodePunctuationOrSymbol(rawLine, index + 1)
-        ) {
-          candidates.push({
-            start: lineOffset + index,
-            end: lineOffset + index + 1,
-            replacement: '',
-          });
+        if (rawLine[index] === '\\') {
+          const next = rawLine[index + 1];
+          // `\\` 表示一个字面反斜杠，必须成对跳过，绝不能当作冗余转义清理
+          if (next === '\\') {
+            index += 1;
+            continue;
+          }
+          if (next !== undefined && COMMONMARK_ESCAPABLE_PUNCTUATION.has(next)) {
+            candidates.push({
+              start: lineOffset + index,
+              end: lineOffset + index + 1,
+              replacement: '',
+            });
+          }
           continue;
         }
 
@@ -301,8 +701,11 @@ function collectMarkdownCleanupCandidates(markdown: string): MarkdownCleanupCand
       while (closing && closing.length !== opening.length) {
         closing = findBacktickRun(rawLine, closing.end);
       }
-      // 未闭合反引号后的边界不可靠，保守停止清理该行剩余内容。
-      if (!closing) break;
+      // 没有等长闭合反引号时，该反引号串属于普通文本，继续扫描其后内容
+      if (!closing) {
+        cursor = opening.end;
+        continue;
+      }
       cursor = closing.end;
     }
 
@@ -378,6 +781,7 @@ function removeRedundantMarkdownEscapes(
     try {
       // 语义校验时把必要转义标记还原为真实反斜杠，保证解析结果与最终输出一致
       const parsed = manager.parse!(restoreForParse(candidateMarkdown));
+      deduplicateParsedMarkdownMarks(parsed as ParsedMarkdownNode);
       // 末尾换行等文档级属性不来自正文解析，比较前沿用参考文档的属性
       if (referenceDoc.attrs) parsed.attrs = { ...referenceDoc.attrs };
       const parsedDoc = nodeFromJSON(parsed);
@@ -406,6 +810,7 @@ function removeRedundantMarkdownEscapes(
  * 主要规则：
  * 1. `&` 还原为普通字符，避免 shell 重定向在往返后出现 `&amp;`；
  * 2. 仅在不会变成块引用标记的位置还原 `>`；
+ * 3. 仅在不会触发 HTML 标签、注释或自动链接的位置还原 `<`；
  * 代码围栏和行内代码保持原样，避免把代码中原本就存在的实体文本误解码。
  */
 export function normalizeSerializedMarkdown(markdown: string): string {
@@ -431,11 +836,11 @@ export function normalizeSerializedMarkdown(markdown: string): string {
       }
 
       return mapOutsideInlineCode(rawLine, (segment, linePrefix) => {
-        // amp 与 gt 必须在同一轮扫描中还原：`&amp;&gt;` 恢复为 `&>`；
+        // amp、lt 与 gt 必须在同一轮扫描中还原：`&amp;&gt;` 恢复为 `&>`；
         // 分两轮会把字面量 `&gt;`（编码为 `&amp;gt;`）先还原成 `&gt;` 再误解码为 `>`
         let restored = '';
         let cursor = 0;
-        for (const match of segment.matchAll(/&(amp|gt);/g)) {
+        for (const match of segment.matchAll(/&(amp|lt|gt);/g)) {
           const offset = match.index ?? 0;
           restored += segment.slice(cursor, offset);
           cursor = offset + match[0].length;
@@ -446,6 +851,17 @@ export function normalizeSerializedMarkdown(markdown: string): string {
             continue;
           }
           const prefix = linePrefix + restored;
+          if (match[1] === 'lt') {
+            // 仅在后文会构成 HTML 标签/注释/自动链接或行首块级 HTML 时保留 `&lt;`，其余（如 `a < b`、`x<y`）直接还原为 `<`
+            const trailingDecoded = segment.slice(cursor).replace(/&gt;/g, '>');
+            const isBlockHtmlStart = /^(?: {0,3}(?:(?:>|[-+*]|\d+[.)])(?:[ \t]+|$)))* {0,3}$/.test(prefix)
+              && /^\/?[a-zA-Z]/.test(trailingDecoded);
+            const mustKeepLt = isBlockHtmlStart
+              || HTML_TAG_AFTER_LT.test(trailingDecoded)
+              || AUTOLINK_AFTER_LT.test(trailingDecoded);
+            restored += mustKeepLt ? match[0] : '<';
+            continue;
+          }
           // 行首或列表/引用容器开头的 `>` 会改变 Markdown 块结构，必须继续保留实体
           const isBlockQuoteMarker = /^(?: {0,3}(?:(?:>|[-+*]|\d+[.)])(?:[ \t]+|$)))* {0,3}$/.test(prefix);
           restored += isBlockQuoteMarker ? match[0] : '>';
@@ -554,12 +970,18 @@ function inlineAtomsToRawText(node: SerializableJsonNode, inTableCell = false): 
   return { ...node, content: node.content.map((child) => inlineAtomsToRawText(child, isCell)) };
 }
 
-/** 序列化前的 JSON 预处理：插入结构性必要转义哨兵（不修改编辑器中的真实文档）。 */
+/** 序列化前的 JSON 预处理：先按上下文插入结构与行内转义哨兵，再将行内原子节点转为受保护片段（不修改编辑器中的真实文档）。 */
 function prepareJsonForSerialization(json: ReturnType<Editor['getJSON']>): ReturnType<Editor['getJSON']> {
-  return markStructuralEscapes(
-    trimDroppedTrailingWhitespace(withoutEmptyRawHtmlBlocks(inlineAtomsToRawText(withoutTrailingPlaceholder(json as SerializableJsonNode)))),
+  const cleaned = trimDroppedTrailingWhitespace(
+    withoutEmptyRawHtmlBlocks(withoutTrailingPlaceholder(json as SerializableJsonNode)),
+  );
+  const marked = markStructuralEscapes(
+    cleaned,
     textWouldFormInlineMath,
-  ) as ReturnType<Editor['getJSON']>;
+    false,
+    hasLinkReferenceDefinitions(cleaned),
+  );
+  return inlineAtomsToRawText(marked) as ReturnType<Editor['getJSON']>;
 }
 
 // 任务列表由独立 tokenizer 解析，末项行尾空格会被保留，不在此列
