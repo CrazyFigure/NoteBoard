@@ -61,6 +61,8 @@ tauri-plugin-window-state = "2"
 tauri-plugin-global-shortcut = "~2.3"
 trash = "5"
 font-kit = "0.14"
+# 桌面更新包沿用 Tauri 签名格式，流式校验大文件以降低内存占用。
+minisign-verify = "0.3"
 # 复制图片到剪贴板：原生端直接解码本地图片（4K JPEG 约 30 毫秒），避免经 IPC 传输数十 MB 像素
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico"] }
 

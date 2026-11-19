@@ -5,6 +5,27 @@
 
 !include "${__FILEDIR__}\file-associations.nsh"
 
+!macro NSIS_HOOK_PREINSTALL
+  ; 应用内更新先让旧进程保存状态并正常退出，再让安装器写入程序文件。
+  Push $0
+  Push $1
+  ClearErrors
+  ${GetOptions} $CMDLINE "/NB_PID=" $0
+  ${IfNot} ${Errors}
+    System::Call 'kernel32::OpenProcess(i 0x00100000, i 0, i r0) p .r1'
+    ${If} $1 != 0
+      System::Call 'kernel32::WaitForSingleObject(p r1, i 30000) i .r0'
+      System::Call 'kernel32::CloseHandle(p r1)'
+      ${If} $0 != 0
+        MessageBox MB_ICONSTOP "无法等待旧版 NoteBoard 退出。请关闭旧版后重试更新。"
+        Abort
+      ${EndIf}
+    ${EndIf}
+  ${EndIf}
+  Pop $1
+  Pop $0
+!macroend
+
 !macro NSIS_HOOK_POSTINSTALL
   ; 清理旧版内置更新器遗留的批处理，防止卸载旧版并安装完成后再次启动 NoteBoard
   ; 仅处理系统临时目录中的更新脚本，不触碰 %APPDATA%\NoteBoard 用户数据

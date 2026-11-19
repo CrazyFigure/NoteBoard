@@ -147,6 +147,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 公钥随正式程序编译；私钥只交给后续签名步骤。
+          NOTEBOARD_UPDATE_PUBLIC_KEY: ${{ vars.NOTEBOARD_UPDATE_PUBLIC_KEY }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: NoteBoard ${{ github.ref_name }}
@@ -184,6 +186,32 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${env:GITHUB_REF_NAME}" "${{ steps.portable.outputs.path }}" --clobber
+
+      - name: Sign Windows update packages
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTEBOARD_UPDATE_PUBLIC_KEY: ${{ vars.NOTEBOARD_UPDATE_PUBLIC_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          PORTABLE_ASSET: ${{ steps.portable.outputs.path }}
+        run: |
+          if ([bool]$env:NOTEBOARD_UPDATE_PUBLIC_KEY -xor [bool]$env:TAURI_SIGNING_PRIVATE_KEY) {
+            throw '桌面更新签名需要同时配置公钥变量和私钥 Secret'
+          }
+          if (-not $env:NOTEBOARD_UPDATE_PUBLIC_KEY) { exit 0 }
+          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $installer = @(Get-ChildItem src-tauri/target/release/bundle/nsis -File -Filter '*-setup.exe')
+          if ($installer.Count -ne 1) { throw '未找到唯一的 Windows NSIS 安装包' }
+          $updateInstaller = Join-Path $env:RUNNER_TEMP "NoteBoard_${version}_windows_x64-setup.exe"
+          # 签名绑定 Release 文件名，安装包必须以与 tauri-action 上传时相同的名称签名。
+          Copy-Item -LiteralPath $installer[0].FullName -Destination $updateInstaller
+          foreach ($asset in @($updateInstaller, $env:PORTABLE_ASSET)) {
+            node scripts/sign-update-asset.mjs $asset
+            if ($LASTEXITCODE -ne 0) { throw '更新包签名失败' }
+          }
+          gh release upload $env:GITHUB_REF_NAME "$updateInstaller.sig" "$env:PORTABLE_ASSET.sig" --clobber
 
   # Windows 与安卓安装包上传后同步到腾讯云 CNB 镜像；macOS / Linux 包由各自工作流上传后再补同步。
   sync-cnb:

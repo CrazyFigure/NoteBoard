@@ -11,8 +11,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-// 仅桌面端需要启动安装器进程或系统打开命令
-#[cfg(desktop)]
+// macOS / Linux 使用系统命令打开外链。
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
@@ -193,6 +193,7 @@ fn select_update_installer_asset(assets: &[GitHubReleaseAsset]) -> Option<GitHub
 }
 
 /// 清理并规范化安装包保存文件名，防止路径遍历与特殊字符
+#[cfg(mobile)]
 fn sanitize_asset_file_name(asset_name: &str) -> String {
     let sanitized: String = asset_name
         .chars()
@@ -214,17 +215,6 @@ fn sanitize_asset_file_name(asset_name: &str) -> String {
     } else {
         sanitized
     }
-}
-
-/// 校验更新安装包下载地址合法性
-#[cfg(not(mobile))]
-fn is_valid_update_download_url(url: &str) -> bool {
-    let normalized = url.trim().to_ascii_lowercase();
-    (normalized.starts_with("https://") || normalized.starts_with("http://"))
-        && if cfg!(target_os = "windows") { normalized.ends_with(".exe") || normalized.ends_with(".msi") }
-            else if cfg!(target_os = "macos") { normalized.ends_with(".dmg") }
-            else { normalized.ends_with(".appimage") || normalized.ends_with(".deb") }
-        && !normalized.chars().any(|character| character.is_control())
 }
 
 /// 校验更新安装包下载地址合法性（移动端：仅接受 HTTPS 的 APK）
@@ -258,6 +248,7 @@ pub(crate) fn build_direct_http_client(total_timeout: Duration) -> Result<reqwes
 }
 
 /// 检查本地文件是否已存在且大小完全匹配 Release 预期大小
+#[cfg(mobile)]
 fn installer_path_matches_expected_size(
     path: &Path,
     expected_size: Option<u64>,
@@ -306,6 +297,9 @@ async fn download_update_installer(
         .map_err(|e| e.to_string())?
         .error_for_status()
         .map_err(|e| e.to_string())?;
+
+    // 签名桌面包不采用前端提供的大小；可用时由响应头提供进度的总字节数。
+    let expected_size = expected_size.or_else(|| response.content_length()).filter(|size| *size > 0);
 
     let mut temp_file = fs::File::create(&temp_installer_path).map_err(|e| e.to_string())?;
     let mut downloaded_size = 0_u64;
@@ -403,8 +397,8 @@ async fn launch_mobile_installer(app_handle: &AppHandle, installer_path: &Path) 
     }
 }
 
-/// 更新安装包缓存目录（桌面为系统临时目录，移动端为应用私有缓存目录）
-fn update_cache_dir() -> PathBuf {
+/// 更新包暂存在当前应用配置对应的缓存目录。
+pub(super) fn update_cache_dir() -> PathBuf {
     crate::app_dirs::cache_dir().join("NoteBoard-updates")
 }
 
@@ -458,42 +452,6 @@ fn remove_stale_update_files(update_dir: &Path, keep: &Path) {
             let _ = fs::remove_file(path);
         }
     }
-}
-
-/// 直接唤起安装包；安装后的启动行为完全交给安装器完成页的用户选项决定
-#[cfg(target_os = "windows")]
-fn spawn_update_installer(installer_path: &Path) -> std::io::Result<()> {
-    let extension = installer_path
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-
-    // EXE 安装包直接启动，MSI 安装包交给系统安装服务，避免经 cmd 中转产生黑框和二次启动竞态
-    if extension == "exe" {
-        Command::new(installer_path).spawn()?;
-    } else if extension == "msi" {
-        Command::new("msiexec.exe")
-            .arg("/i")
-            .arg(installer_path)
-            .spawn()?;
-    } else {
-        return Err(std::io::Error::new(
-            ErrorKind::InvalidInput,
-            "不支持的安装包格式",
-        ));
-    }
-
-    Ok(())
-}
-
-/// Unix 交由系统打开安装包所在目录，由用户完成覆盖安装；不直接执行下载的文件。
-#[cfg(all(desktop, not(target_os = "windows")))]
-fn spawn_update_installer(installer_path: &Path) -> std::io::Result<()> {
-    let parent = installer_path.parent().unwrap_or(installer_path);
-    let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
-    Command::new(opener).arg(parent).spawn()?;
-    Ok(())
 }
 
 /// 请求当前渠道的 Release 列表元数据并保存状态、限流头与正文；桌面支持忽略系统 HTTP 代理。
@@ -722,7 +680,7 @@ pub async fn check_for_updates(
     let releases = parse_release_response(response)?;
     // 列表满页时，更早的未安装版本可能落在下一页，需提示前端日志不完整
     let page_full = releases.len() >= GITHUB_RELEASE_PAGE_SIZE;
-    // 免安装版不下载运行安装包，避免在旁边另装一份安装版
+    // 免安装版使用独立附件，避免下载和运行 NSIS 安装包。
     let portable = crate::app_dirs::portable_data_root().is_some();
     let (release, older_pending) = collect_pending_releases(releases, &current_version, |release| {
         release_has_platform_package(release, portable)
@@ -749,6 +707,16 @@ pub async fn check_for_updates(
     let release_notes_truncated =
         update_available && page_full && older_pending.len() + 1 >= GITHUB_RELEASE_PAGE_SIZE;
     let release_url = release_page_url(&release, channel);
+    #[cfg(desktop)]
+    let update_asset = super::desktop::package_for_release(&app, &release.tag_name)
+        .filter(|name| {
+            let signature = format!("{name}.sig");
+            release.assets.iter().any(|asset| asset.name == signature)
+        })
+        .and_then(|name| release.assets.iter().find(|asset| asset.name == name));
+    #[cfg(mobile)]
+    let update_asset: Option<&GitHubReleaseAsset> = None;
+    let installer_size = update_asset.or(installer_asset.as_ref()).and_then(|asset| asset.size);
 
     Ok(UpdateCheckResult {
         current_version,
@@ -761,16 +729,18 @@ pub async fn check_for_updates(
         installer_download_url: installer_asset
             .as_ref()
             .map(|asset| asset.browser_download_url.clone()),
-        installer_size: installer_asset.and_then(|asset| asset.size),
+        installer_size,
         release_body: release.body,
         release_notes,
         release_notes_truncated,
         portable,
+        can_update_in_place: update_asset.is_some(),
+        update_channel: channel.as_str().into(),
     })
 }
 
 /// 优先系统代理下载，遇到 403 回退直连重试
-async fn download_installer_with_fallback(
+pub(super) async fn download_installer_with_fallback(
     app_handle: &AppHandle,
     download_url: &str,
     installer_path: &Path,
@@ -798,7 +768,8 @@ async fn download_installer_with_fallback(
     Ok(())
 }
 
-/// 下载并执行安装包升级
+/// Android 下载 APK 并调起系统安装器；桌面端安装仅使用签名更新命令。
+#[cfg(mobile)]
 #[tauri::command]
 pub async fn download_and_install_update(
     app_handle: AppHandle,
@@ -810,12 +781,8 @@ pub async fn download_and_install_update(
     if !is_valid_update_download_url(normalized_url) {
         return Err("无效的更新安装包下载地址".to_string());
     }
-    if crate::app_dirs::portable_data_root().is_some() {
-        return Err("免安装版请前往 Release 页面下载新版本".to_string());
-    }
-
     let safe_file_name = sanitize_asset_file_name(&asset_name);
-    // 下载至缓存目录下的更新子目录（桌面为系统临时目录，移动端为应用私有缓存目录）
+    // 下载到应用私有缓存目录，供 Android FileProvider 授权系统安装器访问。
     let update_dir = update_cache_dir();
     fs::create_dir_all(&update_dir).map_err(|error| error.to_string())?;
     let installer_path: PathBuf = update_dir.join(safe_file_name);
@@ -832,28 +799,8 @@ pub async fn download_and_install_update(
     // 移动端：应用内下载 APK 后调起系统安装器。
     // 不再交给浏览器下载：部分浏览器（如 Edge）由外部 Intent 发起的 APK 下载会卡在 99% 无法完成。
     // 也不主动退出：系统覆盖安装时会自动结束旧进程，用户取消安装则继续使用当前版本。
-    #[cfg(mobile)]
-    {
-        launch_mobile_installer(&app_handle, &installer_path).await?;
-        return Ok(installer_path.to_string_lossy().to_string());
-    }
-
-    #[cfg(not(mobile))]
-    {
-        spawn_update_installer(&installer_path).map_err(|error| error.to_string())?;
-
-        // 延迟 600ms 退出当前实例，让前端收到成功结果，并为安装器释放程序文件与单实例资源
-        // Windows 安装器需要释放当前程序；Unix 打开目录后继续保留应用，等待用户手动安装。
-        #[cfg(target_os = "windows")]
-        let handle_clone = app_handle.clone();
-        #[cfg(target_os = "windows")]
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(600));
-            handle_clone.exit(0);
-        });
-
-        Ok(installer_path.to_string_lossy().to_string())
-    }
+    launch_mobile_installer(&app_handle, &installer_path).await?;
+    Ok(installer_path.to_string_lossy().to_string())
 }
 
 /// 在系统默认浏览器中打开外部链接

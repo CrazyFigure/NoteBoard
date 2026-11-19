@@ -652,8 +652,12 @@ export interface UpdateCheckResult {
   releaseNotes?: UpdateReleaseNote[];
   // 未安装版本超出单页 Release 列表，更早的日志需前往 Release 页面查看
   releaseNotesTruncated?: boolean;
-  // Windows 免安装版：不提供安装包，引导前往 Release 页面下载
+  // 当前是否为 Windows 免安装版
   portable?: boolean;
+  // 当前安装方式有匹配的签名更新包，允许应用内安装并重启
+  canUpdateInPlace?: boolean;
+  // 检查本次更新时使用的发布渠道
+  updateChannel?: UpdateChannel;
 }
 
 // 单个版本的更新日志条目

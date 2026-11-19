@@ -137,6 +137,9 @@ pub fn run() {
     #[cfg(desktop)]
     let builder = builder.plugin(window::global_shortcut::plugin());
 
+    #[cfg(desktop)]
+    let builder = builder.manage(updater::desktop::DesktopUpdateState::default());
+
     // Android 原生桥接（所有文件访问权限、外部文件收件、系统分享）
     #[cfg(target_os = "android")]
     let builder = builder.plugin(mobile_bridge::plugin());
@@ -252,7 +255,12 @@ pub fn run() {
             plugins::plugin_command,
             // updater
             updater::commands::check_for_updates,
+            #[cfg(mobile)]
             updater::commands::download_and_install_update,
+            #[cfg(desktop)]
+            updater::desktop::stage_desktop_update,
+            #[cfg(desktop)]
+            updater::desktop::apply_desktop_update,
             updater::commands::open_external_url,
             // 性能诊断（未启用时为 no-op）
             perf::commands::record_web_spans,

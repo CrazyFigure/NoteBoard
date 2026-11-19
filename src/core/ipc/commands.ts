@@ -508,7 +508,7 @@ export function checkForUpdates(channel?: UpdateChannel): Promise<UpdateCheckRes
   return invoke<UpdateCheckResult>('check_for_updates', { channel });
 }
 
-// 下载更新安装包并在落盘后启动安装器
+// Android 下载 APK 并调起系统安装器。
 export function downloadAndInstallUpdate(params: {
   downloadUrl: string;
   assetName: string;
@@ -519,6 +519,15 @@ export function downloadAndInstallUpdate(params: {
     assetName: params.assetName,
     installerSize: params.installerSize ?? null,
   });
+}
+
+// 桌面先下载并验证官方更新包，再从同一个窗口应用已准备的更新。
+export function stageDesktopUpdate(version: string, channel: UpdateChannel): Promise<string> {
+  return invoke<string>('stage_desktop_update', { version, channel });
+}
+
+export function applyDesktopUpdate(id: string): Promise<void> {
+  return invoke<void>('apply_desktop_update', { id });
 }
 
 // 使用系统默认浏览器打开外部超链接

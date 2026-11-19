@@ -20,9 +20,6 @@ export const IS_WEB = TARGET_PLATFORM === 'web';
 /** macOS 标题栏透明叠加在页面上，保留原生红绿灯按钮；标题栏需为其左侧留白，且不再绘制自定义窗口控制。 */
 export const USES_MAC_TRAFFIC_LIGHTS = TARGET_PLATFORM === 'macos';
 
-/** macOS / Linux 更新时只下载安装包，由用户手动安装。 */
-export const USES_MANUAL_UPDATE_INSTALL = TARGET_PLATFORM === 'macos' || TARGET_PLATFORM === 'linux';
-
 /** Mac 的主修饰键为 Command；网页端根据访问设备判断，不受服务器系统影响。 */
 export const USES_COMMAND_KEY = TARGET_PLATFORM === 'macos' || IS_WEB && typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 

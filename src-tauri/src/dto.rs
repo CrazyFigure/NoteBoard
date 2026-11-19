@@ -564,9 +564,15 @@ pub struct UpdateCheckResult {
     // 未安装版本过多、超出单页 Release 列表时为 true，前端提示前往 Release 页面查看更早日志
     #[serde(default)]
     pub release_notes_truncated: bool,
-    // 当前为 Windows 免安装版：不提供安装包，前端引导前往 Release 页面手动下载
+    // 当前为 Windows 免安装版；缺少签名更新包时，引导手动下载同类程序。
     #[serde(default)]
     pub portable: bool,
+    // 当前运行方式与正式版附件均支持签名校验后的一键更新。
+    #[serde(default)]
+    pub can_update_in_place: bool,
+    // 检查结果使用的渠道；安装期间固定使用此渠道，避免被后续设置修改影响。
+    #[serde(default)]
+    pub update_channel: String,
 }
 
 // 单个版本的更新日志条目

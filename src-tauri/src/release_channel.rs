@@ -17,6 +17,14 @@ pub enum ReleaseChannel {
 }
 
 impl ReleaseChannel {
+    /// 返回设置与 IPC 使用的渠道值。
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Github => "github",
+            Self::Cnb => "cnb",
+        }
+    }
+
     /// 设置值只认 "cnb"，缺失或未知值一律回到默认 GitHub
     pub fn from_setting(value: &str) -> Self {
         if value.trim().eq_ignore_ascii_case("cnb") {

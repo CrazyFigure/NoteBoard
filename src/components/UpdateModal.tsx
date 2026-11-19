@@ -18,10 +18,13 @@ import { Tooltip } from './Tooltip';
 import { UpdateReleaseNotes } from './UpdateReleaseNotes';
 import type { UpdateCheckResult, UpdateDownloadProgress, UpdateReleaseNote } from '../core/ipc/types';
 import * as ipc from '../core/ipc/commands';
-import { IS_MOBILE_UI, IS_NATIVE_MOBILE, USES_MANUAL_UPDATE_INSTALL } from '../core/platform';
+import { IS_MOBILE_UI, IS_NATIVE_MOBILE, TARGET_PLATFORM } from '../core/platform';
 import { useBackDismiss } from '../mobile/components';
 import { resumeSnapshotTracking, saveCurrentWindowSnapshot } from '../features/session/closedWindowSession';
+import { flushDocument } from '../features/session/documentSession';
+import { hasUnsavedWork } from '../features/staging/stagingPolicy';
 import { RELEASE_CHANNELS, alternateUpdateChannel, useUpdateChannel } from '../core/releaseChannel';
+import { useWindowStore } from '../stores/windowStore';
 import './update-modal.css';
 
 interface UpdateModalProps {
@@ -64,12 +67,16 @@ export function UpdateModal({
   checking = false,
   onRecheck,
 }: UpdateModalProps) {
-  const [downloading, setDownloading] = useState(false);
+  const [phase, setPhase] = useState<'downloading' | 'installing' | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<UpdateDownloadProgress | null>(null);
   const [installError, setInstallError] = useState<string | null>(null);
   // 当前已保存的下载渠道，检测成功后随可用渠道自动切换。
-  const channel = useUpdateChannel();
+  const selectedChannel = useUpdateChannel();
+  const channel = result?.updateChannel ?? selectedChannel;
   const channelLabel = RELEASE_CHANNELS[channel].label;
+  const downloading = phase !== null;
+  const oneClickUpdate = Boolean(result?.canUpdateInPlace && !IS_NATIVE_MOBILE);
+  const canInstallApk = TARGET_PLATFORM === 'android' && Boolean(result?.installerDownloadUrl && result.installerAssetName);
 
   // 移动端返回键关闭弹窗（下载中不响应，避免中断进度展示）
   useBackDismiss(IS_MOBILE_UI && isOpen && !downloading, onClose);
@@ -87,23 +94,37 @@ export function UpdateModal({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, downloading, onClose]);
 
+  // 确认并写入退出前快照时，拦住会穿透遮罩层的编辑器键盘操作。
+  useEffect(() => {
+    if (phase !== 'installing') return;
+    const preventEditorShortcut = (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    window.addEventListener('keydown', preventEditorShortcut, true);
+    return () => window.removeEventListener('keydown', preventEditorShortcut, true);
+  }, [phase]);
+
   // 监听 Tauri 后端推送的下载进度事件
   useEffect(() => {
     if (!isOpen) {
-      setDownloading(false);
+      setPhase(null);
       setDownloadProgress(null);
       setInstallError(null);
       return;
     }
 
     let unlisten: UnlistenFn | undefined;
+    let disposed = false;
     listen<UpdateDownloadProgress>('noteboard-update-download-progress', (event) => {
       setDownloadProgress(event.payload);
     }).then((fn) => {
-      unlisten = fn;
-    });
+      if (disposed) fn();
+      else unlisten = fn;
+    }).catch((error: unknown) => console.error('无法监听更新进度:', error));
 
     return () => {
+      disposed = true;
       if (unlisten) {
         unlisten();
       }
@@ -142,41 +163,50 @@ export function UpdateModal({
     ];
   }, [result]);
 
-  // 处理下载并执行安装
+  // 桌面先下载校验，临近重启再检查未保存内容并写会话；Android 使用系统安装流程。
   const handleDownloadAndInstall = async () => {
-    if (!result?.installerDownloadUrl || !result?.installerAssetName) {
-      return;
-    }
-    // 桌面端安装器启动后进程会被直接结束、不走窗口关闭流程，先记录当前打开的文件以便更新后恢复
-    if (!IS_NATIVE_MOBILE) {
-      try {
-        await saveCurrentWindowSnapshot();
-      } catch (err) {
-        console.error('更新前保存最近文件快照失败:', err);
-      }
-    }
+    if (!result || downloading) return;
+    let snapshotFrozen = false;
+    setPhase('downloading');
+    setDownloadProgress(null);
+    setInstallError(null);
     try {
-      setDownloading(true);
-      setInstallError(null);
+      if (oneClickUpdate) {
+        const id = await ipc.stageDesktopUpdate(result.latestVersion, channel);
+        setPhase('installing');
+        const tabs = useWindowStore.getState().tabs;
+        // 等编辑器提交最新内容，避免防抖尚未同步的修改绕过关闭保护。
+        await Promise.all(tabs.map((tab) => flushDocument(tab.key, 'close')));
+        if (useWindowStore.getState().tabs.some((tab) => hasUnsavedWork(tab.key))) {
+          throw new Error('请先保存未保存的文档，再重试更新');
+        }
+        snapshotFrozen = true;
+        await saveCurrentWindowSnapshot();
+        await ipc.applyDesktopUpdate(id);
+        return;
+      }
+      if (!canInstallApk || !result.installerDownloadUrl || !result.installerAssetName) {
+        setPhase(null);
+        return;
+      }
       await ipc.downloadAndInstallUpdate({
         downloadUrl: result.installerDownloadUrl,
         assetName: result.installerAssetName,
         installerSize: result.installerSize,
       });
-      // 安装器成功启动后关闭弹窗
+      // Android 安装器成功打开后恢复弹窗交互，退出时机由系统决定。
+      setPhase(null);
       onClose();
     } catch (err: unknown) {
-      // 安装未启动、应用继续使用：恢复增量记录
-      if (!IS_NATIVE_MOBILE) resumeSnapshotTracking();
+      // 应用继续运行时，恢复会话增量记录与重试入口。
+      if (snapshotFrozen) resumeSnapshotTracking();
       const msg = err instanceof Error ? err.message : String(err);
-      // 移动端失败时引导改用浏览器从 Release 页面下载
       setInstallError(
-        IS_NATIVE_MOBILE
+        canInstallApk
           ? `安装包下载或安装失败：${msg}。可点击「Release 页面」在浏览器中下载。`
-          : `安装包下载或启动失败：${msg}`,
+          : `更新未完成：${msg}`,
       );
-    } finally {
-      setDownloading(false);
+      setPhase(null);
     }
   };
 
@@ -190,8 +220,8 @@ export function UpdateModal({
   if (!isOpen) return null;
 
   const showDetail = Boolean(result?.updateAvailable && !checkError && !checking);
-  // 免安装版不在应用内下载安装，主按钮改为前往当前渠道的 Release 页面
-  const portableUpdate = Boolean(showDetail && result?.portable);
+  // 缺少适用的签名包时使用 Release 页面，包括旧发行版和系统管理的安装。
+  const manualUpdate = showDetail && !oneClickUpdate && !canInstallApk;
   const latestDate = formatDate(result?.publishedAt);
 
   return (
@@ -406,9 +436,9 @@ export function UpdateModal({
                       {result.releaseNotesTruncated ? `${releaseNotes.length}+` : releaseNotes.length} 个版本待更新
                     </span>
                   )}
-                  {portableUpdate ? (
+                  {manualUpdate ? (
                     <span className="nb-update-hero-size">
-                      <span className="nb-update-hero-label">免安装版需手动下载替换</span>
+                      <span className="nb-update-hero-label">此版本可前往 Release 页面手动更新</span>
                     </span>
                   ) : (
                     <span className="nb-update-hero-size">
@@ -454,9 +484,9 @@ export function UpdateModal({
                       color: 'var(--editor-text-muted)',
                     }}
                   >
-                    <span>{progressPercent >= 100 ? '下载完成，正在启动安装程序' : '正在下载安装包'}</span>
+                    <span>{phase === 'installing' ? '正在安装更新，即将重启' : progressPercent >= 100 ? '下载完成，正在准备安装' : '正在下载安装包'}</span>
                     <span>
-                      {downloadProgress
+                      {phase === 'installing' ? null : downloadProgress
                         ? `${formatBytes(downloadProgress.downloadedBytes)} / ${formatBytes(
                             downloadProgress.totalBytes
                           )} (${progressPercent}%)`
@@ -464,7 +494,7 @@ export function UpdateModal({
                     </span>
                   </div>
                   <div className="nb-update-progress-track">
-                    <div className="nb-update-progress-bar" style={{ width: `${progressPercent}%` }} />
+                    <div className="nb-update-progress-bar" style={{ width: `${phase === 'installing' ? 100 : progressPercent}%` }} />
                   </div>
                 </div>
               )}
@@ -501,8 +531,8 @@ export function UpdateModal({
             {showDetail ? '稍后' : '关闭'}
           </button>
 
-          {/* 打开 Release 页面（免安装版由主按钮承担，避免重复） */}
-          {result?.releaseUrl && !portableUpdate && (
+          {/* 手动更新由主按钮打开 Release 页面。 */}
+          {result?.releaseUrl && !manualUpdate && (
             <button
               type="button"
               className="nb-btn-secondary"
@@ -542,8 +572,8 @@ export function UpdateModal({
             </button>
           )}
 
-          {/* 免安装版：前往当前渠道的 Release 页面下载 */}
-          {portableUpdate && result && (
+          {/* 手动更新：前往当前渠道的 Release 页面下载。 */}
+          {manualUpdate && result?.releaseUrl && (
             <button
               type="button"
               className="nb-btn-primary"
@@ -562,12 +592,12 @@ export function UpdateModal({
             </button>
           )}
 
-          {/* 下载并安装升级 */}
-          {showDetail && !portableUpdate && (
+          {/* 桌面单击后依次下载、安装并重启，Android 单击后进入系统安装器。 */}
+          {showDetail && (oneClickUpdate || canInstallApk) && (
             <button
               type="button"
               className="nb-btn-primary"
-              disabled={downloading || !result?.installerDownloadUrl}
+              disabled={downloading}
               onClick={handleDownloadAndInstall}
               style={{
                 display: 'flex',
@@ -575,14 +605,13 @@ export function UpdateModal({
                 gap: 6,
                 padding: '6px 16px',
                 fontSize: 12,
-                cursor: downloading || !result?.installerDownloadUrl ? 'not-allowed' : 'pointer',
+                cursor: downloading ? 'not-allowed' : 'pointer',
                 fontWeight: 500,
                 opacity: downloading ? 0.7 : 1,
               }}
             >
               <Download size={14} />
-              {/* 移动端同样在应用内下载 APK，完成后由系统安装器完成升级 */}
-              <span>{downloading ? '正在下载' : USES_MANUAL_UPDATE_INSTALL ? '下载安装包' : '下载并安装'}</span>
+              <span>{phase === 'installing' ? '正在安装' : downloading ? '正在下载' : oneClickUpdate ? '一键更新' : '下载并安装'}</span>
             </button>
           )}
         </div>
