@@ -87,6 +87,14 @@ windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Thre
 webview2-com = "0.38"
 windows-core = "0.61"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# Markdown 导出 PDF：通过 WKWebView + NSPrintOperation 直接输出分页 A4 PDF，版本复用 wry 依赖树已锁定的 objc2 生态
+objc2 = { version = "0.6.4", features = ["exception"] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFCGTypes"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "objc2-core-foundation", "NSDictionary", "NSGeometry", "NSObject", "NSString", "NSURL", "NSValue"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "objc2-core-foundation", "NSPrintInfo", "NSPrintOperation", "NSResponder", "NSView", "NSWindow"] }
+objc2-web-kit = { version = "0.3.2", default-features = false, features = ["std", "objc2-core-foundation", "objc2-app-kit", "WKPreferences", "WKWebView", "WKWebViewConfiguration"] }
+
 [target.'cfg(target_os = "linux")'.dependencies]
 # WebKitGTK 页面进程退出后自动重载（web-process-terminated 信号），版本须与 tauri/wry 使用的保持一致
 webkit2gtk = { version = "2.0", features = ["v2_20"] }

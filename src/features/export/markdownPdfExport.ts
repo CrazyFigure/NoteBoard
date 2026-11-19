@@ -3,8 +3,8 @@
 // 设计要点：
 // 1. 不另起渲染管线：直接克隆可视化编辑器已渲染的正文 DOM（含公式、图表、代码高亮），
 //    挂到 body 下的独立打印容器，配合仅在导出期间生效的 @media print 样式隐藏应用界面。
-// 2. Windows 桌面端走 Rust print_window_to_pdf（WebView2 PrintToPdf），选好路径后直接写盘；
-//    网页端与其他平台回退到 window.print()，由用户在系统打印对话框中选择「另存为 PDF」。
+// 2. 桌面三端（Windows WebView2 / macOS WKWebView / Linux WebKitGTK）均走 Rust print_window_to_pdf，
+//    选好路径后直接写盘；网页端回退到 window.print()，由用户在浏览器打印预览中另存为 PDF。
 // 3. 公式与图表平时只在进入视口时渲染，导出前先强制激活全部离屏块并等待渲染静止，
 //    否则 PDF 里会残留未渲染的占位。
 // 4. 暗色主题导出时改用亮色主题变量：纸张页边距固定为白色，深色正文铺在白纸上观感很差。
@@ -31,8 +31,9 @@ const LIGHT_THEME_ID: ThemeId = 'chen-guang';
 /** 等待离屏块渲染的上限与判定静止的时长 */
 const RENDER_SETTLE_TIMEOUT_MS = 8000;
 const RENDER_QUIET_MS = 300;
-/** 单张图片加载等待上限 */
+/** 单张图片与字体加载等待上限 */
 const IMAGE_LOAD_TIMEOUT_MS = 5000;
+const FONT_READY_TIMEOUT_MS = 3000;
 
 /** 屏幕上隐藏的打印容器宽度：A4 去掉左右页边距后的近似宽度，供图表等按宽度布局 */
 const SCREEN_LAYOUT_WIDTH = 688;
@@ -59,10 +60,20 @@ const PRINT_STYLE_TEXT = `
 #${PRINT_ROOT_ID} img,
 #${PRINT_ROOT_ID} tr,
 #${PRINT_ROOT_ID} .nb-diagram-container,
-#${PRINT_ROOT_ID} .nb-infographic-container { break-inside: avoid; }
+#${PRINT_ROOT_ID} .nb-infographic-container {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
 #${PRINT_ROOT_ID} h1, #${PRINT_ROOT_ID} h2, #${PRINT_ROOT_ID} h3,
-#${PRINT_ROOT_ID} h4, #${PRINT_ROOT_ID} h5, #${PRINT_ROOT_ID} h6 { break-after: avoid; }
+#${PRINT_ROOT_ID} h4, #${PRINT_ROOT_ID} h5, #${PRINT_ROOT_ID} h6 {
+  page-break-after: avoid;
+  break-after: avoid;
+}
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 15mm 14mm;
+  }
   html.${EXPORTING_CLASS},
   html.${EXPORTING_CLASS} body {
     /* 页边距区域的底色取自 color-scheme 而非 body 背景，暗色主题下必须改回 light 才是白纸 */
@@ -76,6 +87,7 @@ const PRINT_STYLE_TEXT = `
   html.${EXPORTING_CLASS} #${PRINT_ROOT_ID} {
     position: static;
     left: auto;
+    top: auto;
     width: auto;
   }
 }
@@ -87,13 +99,18 @@ export interface MarkdownPdfExportOptions {
   defaultPath: string;
 }
 
+/** 判定当前运行环境是否走原生直接写盘导出 PDF（Windows / macOS / Linux 桌面端均支持） */
+export function supportsDirectPdfExport(tauriRuntime = isTauri(), platform = TARGET_PLATFORM): boolean {
+  return tauriRuntime && (platform === 'windows' || platform === 'macos' || platform === 'linux');
+}
+
 /**
  * 把 Markdown 可视化编辑器的正文导出为 PDF
- * @returns 用户取消另存为时返回 null；直出时返回导出文件信息；
- *   回退到系统打印时 path 为 null（结果由用户在打印对话框中决定）
+ * @returns 直出成功时返回导出文件信息；用户取消另存为，或网页端回退到浏览器打印框
+ *   （浏览器无法感知用户在打印框内是保存还是取消）时返回 null
  */
 export async function exportMarkdownPdf(editor: Editor, options: MarkdownPdfExportOptions): Promise<ExportedFile | null> {
-  const direct = isTauri() && TARGET_PLATFORM === 'windows';
+  const direct = supportsDirectPdfExport();
 
   // 1. 直出模式先选保存路径，用户取消则不做任何渲染准备
   let targetPath: string | null = null;
@@ -119,13 +136,17 @@ export async function exportMarkdownPdf(editor: Editor, options: MarkdownPdfExpo
     // 4. 输出 PDF
     if (direct && targetPath) {
       await ipc.printWindowToPdf(targetPath);
-    } else {
-      await printWithDialog();
+      return {
+        path: targetPath,
+        fileName: targetPath.split(/[\\/]/).pop() || defaultPath,
+      };
     }
-    return {
-      path: targetPath,
-      fileName: (targetPath ?? defaultPath).split(/[\\/]/).pop() || defaultPath,
-    };
+
+    // 浏览器打印对话框以 document.title 作为「另存为 PDF」默认文件名，这里传入去扩展名的文档标题
+    const suggestedTitle = (defaultPath.split(/[\\/]/).pop() || defaultPath).replace(/\.pdf$/i, '');
+    await printWithDialog(suggestedTitle);
+    // 浏览器无法告知用户在打印框内是保存还是取消，不返回导出文件以免误弹「已导出 PDF」成功提示
+    return null;
   } finally {
     unmountPrintRoot(root);
   }
@@ -184,7 +205,10 @@ async function waitForPrintAssets(root: HTMLElement): Promise<void> {
     }),
   );
   try {
-    await document.fonts.ready;
+    // 字体加载加超时上限，避免损坏或迟滞的字体请求无限卡住导出
+    if (document.fonts?.ready) {
+      await Promise.race([document.fonts.ready, delay(FONT_READY_TIMEOUT_MS)]);
+    }
   } catch {
     // 字体加载失败不阻断导出，使用回退字体
   }
@@ -342,19 +366,68 @@ function applyPrintPalette(root: HTMLElement): void {
 
 // ── 系统打印回退 ──
 
-/** 唤起系统打印对话框，等待打印流程结束后再清理容器 */
-function printWithDialog(): Promise<void> {
-  return new Promise((resolve) => {
+/** 唤起系统/浏览器打印对话框，期间临时同步文档标题以提供更干净的默认 PDF 文件名 */
+function printWithDialog(suggestedTitle?: string): Promise<void> {
+  return new Promise((resolve, reject) => {
     let done = false;
+    let seenPrintMedia = false;
+    const mediaQuery = typeof window.matchMedia === 'function' ? window.matchMedia('print') : null;
+    const previousTitle = document.title;
+    const titleChanged = Boolean(suggestedTitle) && suggestedTitle !== previousTitle;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    if (titleChanged && suggestedTitle) {
+      document.title = suggestedTitle;
+    }
+
+    const cleanup = () => {
+      window.removeEventListener('afterprint', finish);
+      mediaQuery?.removeEventListener?.('change', onMediaChange);
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (titleChanged) {
+        document.title = previousTitle;
+      }
+    };
+
     const finish = () => {
       if (done) return;
       done = true;
-      window.removeEventListener('afterprint', finish);
+      cleanup();
       resolve();
     };
+
+    const fail = (error: unknown) => {
+      if (done) return;
+      done = true;
+      cleanup();
+      reject(error);
+    };
+
+    // 部分 WebKit 环境不会触发 afterprint，但 print 媒体查询在退出打印时会切回 false
+    const onMediaChange = (event: MediaQueryListEvent) => {
+      if (event.matches) {
+        seenPrintMedia = true;
+      } else if (seenPrintMedia) {
+        finish();
+      }
+    };
+
     window.addEventListener('afterprint', finish);
-    window.print();
+    mediaQuery?.addEventListener?.('change', onMediaChange);
     // 多数浏览器 print() 会阻塞到对话框关闭；不阻塞且不触发 afterprint 的环境给足时间再清理
-    setTimeout(finish, 60_000);
+    timer = setTimeout(finish, 60_000);
+
+    try {
+      // Tauri macOS 等环境下 window.print() 会被覆写为异步 IPC，必须捕获拒绝结果以免白等 60 秒后误判完成
+      const result = window.print() as unknown;
+      if (result && typeof (result as PromiseLike<unknown>).then === 'function') {
+        void Promise.resolve(result).catch(fail);
+      }
+    } catch (error) {
+      fail(error);
+    }
   });
 }
