@@ -1249,7 +1249,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <input
                       type="checkbox"
                       aria-label="Enter 与 Shift + Enter 互换"
-                      checked={settings.editor.swapEnterKeys ?? false}
+                      checked={settings.editor.swapEnterKeys ?? true}
                       onChange={(e) => setEditor({ swapEnterKeys: e.target.checked })}
                     />
                   </div>
@@ -1753,12 +1753,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>可在 编辑器 中互换 Enter 与 Shift + Enter</span>
                   </div>
                   <ShortcutItem
-                    keyCombo={settings.editor.swapEnterKeys ? 'Shift + Enter' : 'Enter'}
+                    keyCombo={(settings.editor.swapEnterKeys ?? true) ? 'Shift + Enter' : 'Enter'}
                     label="换段落"
                     tip="新建段落或列表新项，源码中以空行分隔；在空行上再按一次，跳出列表、引用、提示块、高亮块、折叠块"
                   />
                   <ShortcutItem
-                    keyCombo={settings.editor.swapEnterKeys ? 'Enter' : 'Shift + Enter'}
+                    keyCombo={(settings.editor.swapEnterKeys ?? true) ? 'Enter' : 'Shift + Enter'}
                     label="段内换行"
                     tip="不新建段落、没有段落间距，源码中为行尾两个空格；标题中与空行上等同换段落"
                   />

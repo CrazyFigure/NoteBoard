@@ -1,6 +1,6 @@
 // 网页构建专属平台适配：替换 Tauri 的 IPC / 文件选择器 / 窗口接口。
 // 原生构建不会引用本文件，服务器文件使用虚拟 POSIX 路径，浏览器本地文件需显式上传。
-import { DEFAULT_SETTINGS } from '../stores/settingsStore';
+import { DEFAULT_SETTINGS, migrateSettings } from '../stores/settingsStore';
 import type { FileTreeNode, Settings, OpenRequestItemDto } from '../core/ipc/types';
 import { useDocumentStore } from '../stores/documentStore';
 import { installWebClipboardFallback } from './clipboard';
@@ -230,7 +230,24 @@ export async function invoke<T>(command: string, rawArgs: Record<string, unknown
     }
     case 'load_settings': {
       const saved = await request<Partial<Settings> | null>(command);
-      result = { ...DEFAULT_SETTINGS, ...saved, appearance: { ...DEFAULT_SETTINGS.appearance, ...saved?.appearance }, typography: { ...DEFAULT_SETTINGS.typography, ...saved?.typography }, editor: { ...DEFAULT_SETTINGS.editor, ...saved?.editor }, file: { ...DEFAULT_SETTINGS.file, stagingDirectory: `${ROOT}/.staging`, ...saved?.file }, layout: { ...DEFAULT_SETTINGS.layout, ...saved?.layout }, system: { ...DEFAULT_SETTINGS.system, ...saved?.system } };
+      // 已保存的旧设置若缺失 schemaVersion，视为 v1 以便触发一次性迁移；全新用户直接采用当前默认版本
+      const merged: Settings = {
+        ...DEFAULT_SETTINGS,
+        ...saved,
+        schemaVersion: saved ? (saved.schemaVersion ?? 1) : DEFAULT_SETTINGS.schemaVersion,
+        appearance: { ...DEFAULT_SETTINGS.appearance, ...saved?.appearance },
+        typography: { ...DEFAULT_SETTINGS.typography, ...saved?.typography },
+        editor: { ...DEFAULT_SETTINGS.editor, ...saved?.editor },
+        file: { ...DEFAULT_SETTINGS.file, stagingDirectory: `${ROOT}/.staging`, ...saved?.file },
+        layout: { ...DEFAULT_SETTINGS.layout, ...saved?.layout },
+        system: { ...DEFAULT_SETTINGS.system, ...saved?.system },
+      };
+      const { settings: migratedSettings, migrated } = migrateSettings(merged);
+      if (migrated) {
+        // 将迁移后的设置异步落盘，避免老用户后续手动关闭后再次被迁移覆盖
+        void request('save_settings', { settings: migratedSettings }).catch(() => {});
+      }
+      result = migratedSettings;
       break;
     }
     case 'save_settings': result = await request(command, args); emit('nb://settings-changed', { ...args.settings as Settings, revision: result }); break;

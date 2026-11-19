@@ -129,7 +129,7 @@ describe('设置搜索与布局整理', () => {
     settings.file.restoreReadingPosition = false;
     settings.file.showHiddenFiles = true;
     settings.file.explorerOpenMode = 'single';
-    settings.editor.swapEnterKeys = true;
+    settings.editor.swapEnterKeys = false;
     settings.layout.titleBarButtons = { ...settings.layout.titleBarButtons, theme: false };
     await act(async () => useSettingsStore.setState({ settings }));
 
@@ -143,7 +143,7 @@ describe('设置搜索与布局整理', () => {
     expect(host.querySelector('[data-setting-id="explorerOpenMode"] [aria-label="打开文件的方式"]')!.textContent).toContain('单击打开');
 
     switchTab('编辑器');
-    expect(checkbox('swapEnterKeys').checked).toBe(true);
+    expect(checkbox('swapEnterKeys').checked).toBe(false);
 
     switchTab('外观');
     expect(host.querySelector<HTMLInputElement>('input[aria-label="标题栏显示切换主题"]')!.checked).toBe(false);
@@ -152,7 +152,7 @@ describe('设置搜索与布局整理', () => {
     // 快捷键页的回车类按键随互换设置显示
     switchTab('快捷键');
     const paragraph = Array.from(host.querySelectorAll('kbd')).find((kbd) => kbd.parentElement?.textContent?.includes('换段落'));
-    expect(paragraph!.textContent).toBe('Shift + Enter');
+    expect(paragraph!.textContent).toBe('Enter');
   });
 
   it('关于页显示「自动检查更新」：旧设置缺字段视为开启，可手动关闭', async () => {
@@ -171,7 +171,7 @@ describe('设置搜索与布局整理', () => {
 
   it('编辑器页恢复默认会一并重置 Enter 互换', async () => {
     const settings = structuredClone(DEFAULT_SETTINGS);
-    settings.editor.swapEnterKeys = true;
+    settings.editor.swapEnterKeys = false;
     await act(async () => useSettingsStore.setState({ settings }));
     const setEditor = vi.spyOn(useSettingsStore.getState(), 'setEditor').mockResolvedValue(undefined);
     switchTab('编辑器');
@@ -180,6 +180,6 @@ describe('设置搜索与布局整理', () => {
     act(() => reset.click());
     const confirm = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).filter((button) => button.textContent === '恢复默认').at(-1)!;
     await act(async () => confirm.click());
-    expect(setEditor).toHaveBeenCalledWith(expect.objectContaining({ swapEnterKeys: false }));
+    expect(setEditor).toHaveBeenCalledWith(expect.objectContaining({ swapEnterKeys: true }));
   });
 });

@@ -3,7 +3,10 @@
 // 读取容错：任一字段缺失用默认值填充，不整体丢弃
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+/// 当前设置结构版本：v2 起默认开启「Enter 与 Shift+Enter 互换」，并将旧版未勾选用户一次性迁移为开启
+pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 
 // 应用数据目录统一由 app_dirs 提供（兼容 Windows 安装版、免安装版及其他端的平台目录）。
 pub(crate) fn app_data_dir() -> PathBuf {
@@ -17,7 +20,8 @@ fn settings_path() -> PathBuf {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
-    #[serde(default = "default_schema_version")]
+    // 旧配置缺失 schemaVersion 时按 v1 处理，以便触发后续版本迁移
+    #[serde(default = "default_legacy_schema_version")]
     pub schema_version: u32,
     #[serde(default)]
     pub revision: u64,
@@ -43,7 +47,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            schema_version: 1,
+            schema_version: CURRENT_SCHEMA_VERSION,
             revision: 0,
             appearance: AppearanceSettings::default(),
             typography: TypographySettings::default(),
@@ -219,8 +223,8 @@ pub struct EditorSettings {
     // 可视化模式中折叠块 <details> 默认展开（默认 false；源码带 open 属性时始终展开）
     #[serde(default)]
     pub details_default_expanded: bool,
-    // 可视化模式中 Enter 与 Shift+Enter 互换：Enter 段内换行、Shift+Enter 换段落（默认 false）
-    #[serde(default)]
+    // 可视化模式中 Enter 与 Shift+Enter 互换：Enter 段内换行、Shift+Enter 换段落（默认 true）
+    #[serde(default = "default_true")]
     pub swap_enter_keys: bool,
     // 思维导图节点最大宽度（px），超出后自动换行；手动拉伸过的节点不受影响
     #[serde(default = "default_mindmap_node_max_width")]
@@ -275,7 +279,7 @@ impl Default for EditorSettings {
             enable_column_edit: true,
             code_block_default_expanded: true,
             details_default_expanded: false,
-            swap_enter_keys: false,
+            swap_enter_keys: true,
             mindmap_node_max_width: default_mindmap_node_max_width(),
             mindmap_text_align: default_mindmap_text_align(),
             mindmap_image_fit: default_mindmap_image_fit(),
@@ -467,7 +471,8 @@ impl Default for SystemSettings {
 }
 
 // 默认值函数
-fn default_schema_version() -> u32 { 1 }
+// 旧版配置文件若缺少 schemaVersion 字段，默认按 v1 反序列化以触发一次性迁移
+fn default_legacy_schema_version() -> u32 { 1 }
 fn default_theme_mode() -> String { "system".to_string() }
 fn default_light_theme() -> String { "chen-guang".to_string() }
 fn default_dark_theme() -> String { "mo-ye".to_string() }
@@ -513,21 +518,45 @@ pub fn default_staging_directory() -> String {
 fn default_ui_scale() -> u32 { 100 }
 fn default_update_channel() -> String { "github".to_string() }
 
-/// 读取设置（容错：缺字段填默认，损坏文件不 panic）
+/// 按结构版本执行一次性设置迁移；返回是否发生变更
+pub(crate) fn migrate(settings: &mut Settings) -> bool {
+    let mut changed = false;
+    if settings.schema_version < 2 {
+        // v1 → v2：默认开启「Enter 与 Shift+Enter 互换」，老用户原有未勾选状态一并开启
+        settings.editor.swap_enter_keys = true;
+        settings.schema_version = CURRENT_SCHEMA_VERSION;
+        changed = true;
+    }
+    changed
+}
+
+/// 读取设置（容错：缺字段填默认，损坏文件不 panic；旧版本配置自动执行一次性迁移并写回）
 pub fn load() -> Settings {
-    let path = settings_path();
+    load_from_path(&settings_path(), crate::app_dirs::portable_data_root().is_some())
+}
+
+/// 从指定路径读取设置并在需要时执行结构迁移（拆分出来便于单元测试验证落盘行为）
+fn load_from_path(path: &Path, portable: bool) -> Settings {
     if !path.exists() {
         return Settings::default();
     }
 
-    let content = match std::fs::read_to_string(&path) {
+    let content = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(_) => return Settings::default(),
     };
 
     // 尝试解析，失败则备份 + 返回默认
     match serde_json::from_str::<Settings>(&content) {
-        Ok(s) => s,
+        Ok(mut s) => {
+            if migrate(&mut s) {
+                // 迁移完成后静默写回磁盘（不递增 revision，写入失败不影响读取）
+                if let Ok(json) = serialize_settings_for_disk(&s, portable) {
+                    let _ = crate::fsio::write::atomic_write(path, json.as_bytes());
+                }
+            }
+            s
+        }
         Err(_) => {
             // 损坏文件备份
             let backup = path.with_extension(format!("corrupt-{}.json",
@@ -535,7 +564,7 @@ pub fn load() -> Settings {
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_secs()));
-            let _ = std::fs::rename(&path, &backup);
+            let _ = std::fs::rename(path, &backup);
             Settings::default()
         }
     }
@@ -548,6 +577,9 @@ pub fn save(settings: &mut Settings) -> Result<u64, String> {
     if !dir.exists() {
         std::fs::create_dir_all(&dir).map_err(|e| format!("创建数据目录失败: {}", e))?;
     }
+
+    // 落盘时统一写入当前最新结构版本，避免已由用户显式修改的配置再次触发旧迁移
+    settings.schema_version = settings.schema_version.max(CURRENT_SCHEMA_VERSION);
 
     // revision 递增
     settings.revision += 1;
@@ -672,5 +704,48 @@ mod tests {
             .expect("部分字段应能补全");
         assert!(!partial.layout.title_bar_buttons.theme);
         assert!(partial.layout.title_bar_buttons.home);
+    }
+
+    /// 新用户默认开启「Enter 与 Shift+Enter 互换」且结构版本为 v2
+    #[test]
+    fn swap_enter_keys_defaults_on_for_new_settings() {
+        let settings = Settings::default();
+        assert_eq!(settings.schema_version, CURRENT_SCHEMA_VERSION);
+        assert!(settings.editor.swap_enter_keys);
+    }
+
+    /// 旧版（v1 或缺失 schemaVersion）即使显式保存了 swapEnterKeys=false，加载时也会一次性迁移为 true 并落盘；
+    /// 迁移后用户再手动取消勾选，重新加载不会被再次覆盖。
+    #[test]
+    fn legacy_settings_migrate_swap_enter_keys_once_and_respect_subsequent_opt_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+
+        // 场景 1：v1 老用户此前未勾选（显式保存了 false）
+        std::fs::write(&path, r#"{"schemaVersion":1,"revision":7,"editor":{"swapEnterKeys":false}}"#).unwrap();
+        let migrated = load_from_path(&path, false);
+        assert_eq!(migrated.schema_version, CURRENT_SCHEMA_VERSION);
+        assert!(migrated.editor.swap_enter_keys);
+        assert_eq!(migrated.revision, 7);
+
+        // 确认磁盘上的 settings.json 已升级为 v2 且 swapEnterKeys=true
+        let persisted: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(persisted["schemaVersion"], CURRENT_SCHEMA_VERSION);
+        assert_eq!(persisted["editor"]["swapEnterKeys"], true);
+
+        // 场景 2：升级后用户手动取消勾选，再次加载保持 false
+        let mut opted_out = migrated;
+        opted_out.editor.swap_enter_keys = false;
+        let json = serialize_settings_for_disk(&opted_out, false).unwrap();
+        std::fs::write(&path, json).unwrap();
+        let reloaded = load_from_path(&path, false);
+        assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
+        assert!(!reloaded.editor.swap_enter_keys);
+
+        // 场景 3：更早版本连 schemaVersion 都没有且 swapEnterKeys=false，同样迁移开启
+        std::fs::write(&path, r#"{"editor":{"swapEnterKeys":false}}"#).unwrap();
+        let legacy_no_ver = load_from_path(&path, false);
+        assert_eq!(legacy_no_ver.schema_version, CURRENT_SCHEMA_VERSION);
+        assert!(legacy_no_ver.editor.swap_enter_keys);
     }
 }

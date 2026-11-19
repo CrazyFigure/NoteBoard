@@ -37,9 +37,9 @@ const CONTAINER_TYPES = new Set([
 /** 正在重放 Enter 时跳过本扩展的处理，交给其余扩展的原有 Enter 逻辑 */
 let replayingEnter = false;
 
-/** 是否开启「Enter 与 Shift+Enter 互换」 */
+/** 是否开启「Enter 与 Shift+Enter 互换」（缺省视为开启） */
 function isSwapped(): boolean {
-  return useSettingsStore.getState().settings.editor.swapEnterKeys === true;
+  return useSettingsStore.getState().settings.editor.swapEnterKeys !== false;
 }
 
 /** 斜杠菜单等联想浮层打开时，Enter 用于确认候选项，本扩展不接管 */

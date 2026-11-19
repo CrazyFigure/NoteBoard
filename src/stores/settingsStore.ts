@@ -60,9 +60,12 @@ export function getAutoSaveDelayMs(): number {
   return clampAutoSaveDelayMs(useSettingsStore.getState().settings.file?.autoSaveDelayMs);
 }
 
+// 当前设置结构版本：v2 起默认开启「Enter 与 Shift + Enter 互换」，并将旧版未勾选用户一次性迁移为开启
+export const CURRENT_SETTINGS_SCHEMA_VERSION = 2;
+
 // 网页适配层复用同一套默认值，避免新部署和桌面端的设置模型逐渐分叉。
 export const DEFAULT_SETTINGS: Settings = {
-  schemaVersion: 1,
+  schemaVersion: CURRENT_SETTINGS_SCHEMA_VERSION,
   revision: 0,
   appearance: {
     themeMode: 'system',
@@ -108,7 +111,7 @@ export const DEFAULT_SETTINGS: Settings = {
     enableColumnEdit: true,
     codeBlockDefaultExpanded: true,
     detailsDefaultExpanded: false,
-    swapEnterKeys: false,
+    swapEnterKeys: true,
     mindmapNodeMaxWidth: 280,
     mindmapTextAlign: 'left',
     mindmapImageFit: 'original',
@@ -233,6 +236,25 @@ interface SettingsStore {
   _applyRemoteUpdate: (s: Settings) => void;
 }
 
+/** 按结构版本执行一次性设置迁移，老版本设置默认开启 Enter 与 Shift + Enter 互换 */
+export function migrateSettings(input: Settings): { settings: Settings; migrated: boolean } {
+  const version = typeof input.schemaVersion === 'number' ? input.schemaVersion : 1;
+  if (version < 2) {
+    return {
+      settings: {
+        ...input,
+        schemaVersion: CURRENT_SETTINGS_SCHEMA_VERSION,
+        editor: {
+          ...input.editor,
+          swapEnterKeys: true,
+        },
+      },
+      migrated: true,
+    };
+  }
+  return { settings: input, migrated: false };
+}
+
 // ── 辅助：解析主题并应用 ──
 
 function resolveAndApply(s: Settings): ThemeId {
@@ -255,7 +277,17 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     try {
       // 🔴 R11：设置读取与字体服务完全解耦——不再 Promise.all 等待字体 init；
       // 字体服务由 App 独立启动（fire-and-forget），verifying/激活不阻塞设置与渲染。
-      const loaded = await ipc.loadSettings();
+      const rawLoaded = await ipc.loadSettings();
+      if (!rawLoaded) {
+        throw new Error('加载到的设置为空');
+      }
+      // 兜底执行版本迁移（桌面端已在 Rust 迁移，此处兼顾非桌面或自定义加载源）
+      const { settings: loaded, migrated } = migrateSettings(rawLoaded);
+      if (migrated) {
+        void ipc.saveSettings(loaded).catch((e) => {
+          console.error('保存迁移后的设置失败:', e);
+        });
+      }
       // 字体服务独立启动（失败不影响设置加载）
       void useFontPackStore.getState().init().catch((e) => {
         console.error('字体服务初始化失败:', e);
