@@ -10,11 +10,11 @@ import { EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { EditorBubbleMenu } from '../../src/features/editor-md/bubbleMenu';
 
-const bubbleProps = vi.hoisted(() => [] as Array<{ shouldShow: unknown; options: unknown; pluginKey: unknown }>);
+const bubbleProps = vi.hoisted(() => [] as Array<{ shouldShow: unknown; options: unknown; pluginKey: unknown; style: unknown }>);
 
 vi.mock('@tiptap/react/menus', () => ({
-  BubbleMenu: (props: { shouldShow: unknown; options: unknown; pluginKey: unknown; children: React.ReactNode }) => {
-    bubbleProps.push({ shouldShow: props.shouldShow, options: props.options, pluginKey: props.pluginKey });
+  BubbleMenu: (props: { shouldShow: unknown; options: unknown; pluginKey: unknown; style?: unknown; children: React.ReactNode }) => {
+    bubbleProps.push({ shouldShow: props.shouldShow, options: props.options, pluginKey: props.pluginKey, style: props.style });
     return props.children;
   },
 }));
@@ -55,6 +55,9 @@ it('父组件重复渲染时 BubbleMenu 的事务配置引用应保持稳定', a
     expect(bubbleProps).toHaveLength(8);
     expect(new Set(bubbleProps.map((item) => item.shouldShow)).size).toBe(1);
     expect(new Set(bubbleProps.map((item) => item.options)).size).toBe(1);
+    expect(new Set(bubbleProps.map((item) => item.style)).size).toBe(1);
+    // 外层浮层必须具备高于块选区底板（.nb-sel-block::after，z-index: 1）的层叠层级，防止菜单被选区染色
+    expect((bubbleProps[0].style as { zIndex?: number } | undefined)?.zIndex).toBeGreaterThanOrEqual(1000);
   } finally {
     await act(async () => root.unmount());
     host.remove();

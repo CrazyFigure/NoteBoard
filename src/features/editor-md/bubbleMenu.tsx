@@ -403,6 +403,9 @@ function isCellSelection(selection: unknown): boolean {
   );
 }
 
+/** 悬浮菜单外层容器样式：独立提升层叠顺序，避免被整块选区底板（.nb-sel-block::after）覆盖染色；模块级常量保持引用稳定 */
+const BUBBLE_MENU_CONTAINER_STYLE: CSSProperties = { zIndex: 1000 };
+
 /** 选中文本浮层菜单组件 */
 export function EditorBubbleMenu({
   editor,
@@ -537,6 +540,7 @@ export function EditorBubbleMenu({
       pluginKey={pluginKey}
       shouldShow={shouldShow}
       options={bubbleMenuOptions}
+      style={BUBBLE_MENU_CONTAINER_STYLE}
     >
       <div
         className="nb-bubble-menu"
