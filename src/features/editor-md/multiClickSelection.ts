@@ -186,6 +186,16 @@ function wordRangeForClick(
 }
 
 /**
+ * 判断点击目标是否落在编辑器内部某个不可编辑节点视图岛屿（如内嵌思维导图）及其内嵌输入控件中。
+ * 沉浸阅读模式下 editorDom 自身也是 contenteditable="false"，需排除 editorDom 本身以保留正文多击选词。
+ */
+export function isInsideNonEditableIsland(editorDom: Element, target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  const nonEditable = target.closest('[contenteditable="false"]');
+  return Boolean(nonEditable && nonEditable !== editorDom && editorDom.contains(nonEditable));
+}
+
+/**
  * 处理一次双击 / 三击，已接管（并阻止了原生选词）时返回 true。
  * 三击的结果与 ProseMirror 默认三击一致（整段文字），这里接管是为了覆盖空隙点击与下文所述的事件截断。
  */
@@ -193,8 +203,11 @@ function handleMultiClick(view: EditorView, event: MouseEvent): boolean {
   // 只处理不带修饰键的左键双击 / 三击，扩选、多选等仍走原生逻辑
   if (event.button !== 0 || (event.detail !== 2 && event.detail !== 3)) return false;
   if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return false;
-  // 节点内的输入框（图表源码、公式等）由多行文本框的全局修正处理；按钮、图标等控件保留自身的双击行为
-  if (event.target instanceof Element && event.target.closest('input, textarea, select, button, [role="button"]')) {
+  // 节点内的输入框（图表源码、公式等）或独立不可编辑节点视图（如内嵌思维导图及其标题编辑框）保留自身的双击/三击行为
+  if (
+    (event.target instanceof Element && event.target.closest('input, textarea, select, button, [role="button"]')) ||
+    isInsideNonEditableIsland(view.dom, event.target)
+  ) {
     return false;
   }
 

@@ -1200,6 +1200,8 @@
   cursor: text;
   user-select: text;
   -webkit-user-select: text;
+  /* 移动端进入编辑后允许在文字内拖拽原生选区手柄，不受外层画布 touch-action: none 限制 */
+  touch-action: auto;
 }
 
 /* 思维导图文本选区统一样式：覆盖 .ProseMirror 默认选区与 .nb-sel-block 透明抑制，确保独立导图与 Markdown 内嵌导图完全一致且高对比可读 */

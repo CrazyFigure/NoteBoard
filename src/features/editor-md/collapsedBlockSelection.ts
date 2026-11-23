@@ -27,6 +27,7 @@ import { Extension } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, Selection, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
+import { isInsideNonEditableIsland } from './multiClickSelection';
 
 /** 收起状态的可折叠块外壳标记：代码块、折叠块收起时设置在 NodeViewWrapper 上 */
 export const COLLAPSED_BLOCK_ATTR = 'data-nb-collapsed';
@@ -296,9 +297,14 @@ export const CollapsedBlockSelection = Extension.create({
 
           const onDown = (event: PointerEvent) => {
             if (event.button !== 0 || event.pointerType === 'touch') return;
-            // 从不可编辑区域（收起块标题栏、按钮、图片等）按下不会开始原生拖选，不跟踪
+            // 从不可编辑区域（收起块标题栏、按钮、图片及内嵌导图内部嵌套输入控件等）按下不会开始原生拖选，不跟踪
             const target = event.target instanceof Element ? event.target : null;
-            if (target?.closest('[contenteditable]')?.getAttribute('contenteditable') === 'false') return;
+            if (
+              target?.closest('[contenteditable]')?.getAttribute('contenteditable') === 'false' ||
+              isInsideNonEditableIsland(view.dom, target)
+            ) {
+              return;
+            }
             onCancel();
             start = { x: event.clientX, y: event.clientY };
             window.addEventListener('pointermove', onMove, true);

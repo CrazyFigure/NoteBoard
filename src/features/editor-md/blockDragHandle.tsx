@@ -270,7 +270,12 @@ export function BlockDragHandle({
     if (!editor) return;
     const editorDom = editor.view.dom;
     const handleMouseDown = (event: MouseEvent) => {
-      if (event.button === 0) setIsTextSelecting(true);
+      if (event.button !== 0) return;
+      // 内嵌导图内部拖拽/选字不触发外层正文拖选抑制状态
+      if (event.target instanceof Element && event.target.closest('[data-md-mindmap-interactive], .nb-md-mindmap-container')) {
+        return;
+      }
+      setIsTextSelecting(true);
     };
     const handleMouseUp = () => setIsTextSelecting(false);
     editorDom.addEventListener('mousedown', handleMouseDown);

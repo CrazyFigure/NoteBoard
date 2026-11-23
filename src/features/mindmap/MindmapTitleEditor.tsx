@@ -28,6 +28,8 @@ export interface TitleSelectionInfo {
 export interface MindmapTitleEditorHandle {
   /** 对当前选区应用格式 */
   applyPatch: (patch: StylePatch) => void;
+  /** 全选当前节点标题全部文字 */
+  selectAll: () => void;
 }
 
 interface MindmapTitleEditorProps {
@@ -208,6 +210,17 @@ export const MindmapTitleEditor = forwardRef<MindmapTitleEditorHandle, MindmapTi
       };
     }, [emitSelection]);
 
+    /** 全选当前编辑框内全部标题文字（不选中末尾占位换行）并同步悬浮格式菜单 */
+    const selectAllText = useCallback(() => {
+      const root = rootRef.current;
+      if (!root) return;
+      // 保留原有无滚动聚焦行为，确保从卡片留白三击或外部触发时选区稳定落入编辑框
+      root.focus({ preventScroll: true });
+      const draft = readDom(root);
+      selectRange(root, 0, draft.text.length);
+      emitSelection();
+    }, [emitSelection]);
+
     /** 对当前选区应用格式：更新 marks 后重建 DOM 并恢复原选区 */
     const applyPatch = useCallback(
       (patch: StylePatch) => {
@@ -225,7 +238,7 @@ export const MindmapTitleEditor = forwardRef<MindmapTitleEditorHandle, MindmapTi
       [readSelection, emitSelection],
     );
 
-    useImperativeHandle(ref, () => ({ applyPatch }), [applyPatch]);
+    useImperativeHandle(ref, () => ({ applyPatch, selectAll: selectAllText }), [applyPatch, selectAllText]);
 
     /** 以纯文本替换当前选区：含换行时自行拼接并重建 DOM（浏览器原生插入换行的结构各端不一致） */
     const insertPlainText = useCallback(
@@ -299,12 +312,7 @@ export const MindmapTitleEditor = forwardRef<MindmapTitleEditorHandle, MindmapTi
         if (key === 'a') {
           e.preventDefault();
           e.stopPropagation();
-          const root = rootRef.current;
-          if (root) {
-            const draft = readDom(root);
-            selectRange(root, 0, draft.text.length);
-            emitSelection();
-          }
+          selectAllText();
           return;
         }
         const toggle = key === 'b' ? 'bold' : key === 'i' ? 'italic' : key === 'u' ? 'underline' : null;
@@ -314,6 +322,14 @@ export const MindmapTitleEditor = forwardRef<MindmapTitleEditorHandle, MindmapTi
           applyPatch({ type: 'toggle', key: toggle });
         }
       }
+    };
+
+    // 三击统一全选当前节点纯文本，避免各端浏览器在嵌套 contenteditable 中跨行漏选或选中末尾占位换行
+    const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+      if (e.button !== 0 || e.detail !== 3 || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      selectAllText();
     };
 
     // 粘贴图片：交给外部上传 / 替换节点图片；否则只取纯文本（保留换行）
@@ -333,10 +349,12 @@ export const MindmapTitleEditor = forwardRef<MindmapTitleEditorHandle, MindmapTi
         className="nb-mindmap-title-editor"
         contentEditable="plaintext-only"
         suppressContentEditableWarning
+        data-nb-allow-autofocus=""
         role="textbox"
         aria-label="编辑节点标题"
         spellCheck={false}
         onInput={handleInput}
+        onMouseDown={handleMouseDown}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
         onDrop={(e) => e.preventDefault()}

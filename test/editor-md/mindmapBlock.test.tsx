@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createRoot, type Root } from 'react-dom/client';
 import { Editor } from '@tiptap/core';
+import { EditorContent } from '@tiptap/react';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -472,6 +473,7 @@ describe('Markdown 内嵌思维导图', () => {
     const vividBranch = host.querySelector<HTMLElement>('[data-node-id="n2"]')!;
 
     expect(canvas).not.toBeNull();
+    expect(canvas?.hasAttribute('data-nb-focus-scope')).toBe(true);
     expect(transform.dataset.editingText).toBeUndefined();
     expect(rootNode.dataset.vividSurface).toBe('true');
     expect(plainBranch.dataset.vividSurface).toBeUndefined();
@@ -509,6 +511,7 @@ describe('Markdown 内嵌思维导图', () => {
 
     // 按 Ctrl+A 仅全选当前节点文字且不退出编辑态
     const titleEditor = rootNode.querySelector<HTMLElement>('.nb-mindmap-title-editor')!;
+    expect(titleEditor.hasAttribute('data-nb-allow-autofocus')).toBe(true);
     const ctrlAEvent = new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true, cancelable: true });
     await act(async () => {
       titleEditor.dispatchEvent(ctrlAEvent);
@@ -516,6 +519,35 @@ describe('Markdown 内嵌思维导图', () => {
     expect(ctrlAEvent.defaultPrevented).toBe(true);
     expect(rootNode.querySelector('.nb-mindmap-title-editor')).not.toBeNull();
     expect(window.getSelection()?.toString()).toBe('项目规划');
+
+    // 三击标题文字框与三击节点留白均全选文本且保持编辑态，不退出编辑
+    window.getSelection()?.removeAllRanges();
+    const tripleEditorEvent = new MouseEvent('mousedown', { button: 0, detail: 3, bubbles: true, cancelable: true });
+    await act(async () => {
+      titleEditor.dispatchEvent(tripleEditorEvent);
+    });
+    expect(tripleEditorEvent.defaultPrevented).toBe(true);
+    expect(rootNode.querySelector('.nb-mindmap-title-editor')).not.toBeNull();
+    expect(window.getSelection()?.toString()).toBe('项目规划');
+
+    window.getSelection()?.removeAllRanges();
+    const triplePaddingEvent = new MouseEvent('mousedown', { button: 0, detail: 3, bubbles: true, cancelable: true });
+    await act(async () => {
+      rootNode.dispatchEvent(triplePaddingEvent);
+    });
+    expect(triplePaddingEvent.defaultPrevented).toBe(true);
+    expect(rootNode.querySelector('.nb-mindmap-title-editor')).not.toBeNull();
+    expect(window.getSelection()?.toString()).toBe('项目规划');
+
+    // 编辑中双击单词选词时，不得重新初始化草稿覆盖未提交内容
+    await act(async () => {
+      titleEditor.textContent = '临时草稿';
+      titleEditor.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {
+      rootNode.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    });
+    expect(titleEditor.textContent).toBe('临时草稿');
 
     // 按 Escape 退出编辑后恢复节点浮动工具栏与添加按钮
     await act(async () => {
@@ -551,5 +583,119 @@ describe('Markdown 内嵌思维导图', () => {
     const fullscreenRule = css.match(/\.nb-md-mindmap-fullscreen\s*\{[^}]+\}/)?.[0] ?? '';
     expect(fullscreenRule).toContain('font-family: var(--ui-font-family');
     expect(fullscreenRule).toContain('white-space: normal');
+
+    // 编辑框放开触控手势，确保移动端不阻塞文本选区拖动
+    const titleEditorRule = css.match(/\.nb-mindmap-title-editor\s*\{[^}]+\}/)?.[0] ?? '';
+    expect(titleEditorRule).toContain('touch-action: auto');
+  });
+
+  it('MultiClickSelectionFix 放行内嵌导图等不可编辑节点视图内的三击，不影响正文与只读模式段落三击', async () => {
+    const editor = new Editor({
+      extensions: buildExtensions('mindmap-multiclick'),
+      content: {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: '前段文本' }] },
+          { type: 'mindmapBlock', attrs: { code: createDefaultMindmapCode('中心主题') } },
+          { type: 'paragraph', content: [{ type: 'text', text: '后段文本' }] },
+        ],
+      },
+    });
+    await act(async () => {
+      root.render(<EditorContent editor={editor} />);
+    });
+
+    try {
+      const { view } = editor;
+      // 找到第一段与最后一段文本位置
+      const firstParaPos = 2;
+      let lastParaPos = 2;
+      editor.state.doc.descendants((node, pos) => {
+        if (node.isText && node.text === '后段文本') lastParaPos = pos + 1;
+      });
+      editor.commands.setTextSelection(firstParaPos);
+
+      vi.spyOn(view, 'posAtCoords').mockImplementation(({ left }) => ({
+        pos: left > 100 ? lastParaPos : firstParaPos,
+        inside: left > 100 ? lastParaPos - 1 : 0,
+      }));
+      vi.spyOn(view, 'coordsAtPos').mockReturnValue({ left: 0, right: 80, top: 0, bottom: 20 });
+
+      // 验证真实渲染出的 [data-mindmap-block] 不可编辑岛屿存在，并在交互容器内挂载嵌套标题编辑框
+      const island = view.dom.querySelector<HTMLElement>('[data-mindmap-block] [contenteditable="false"]')!;
+      expect(island).not.toBeNull();
+      const interactiveHost = document.createElement('div');
+      interactiveHost.dataset.mdMindmapInteractive = 'true';
+      const nestedEditor = document.createElement('div');
+      nestedEditor.className = 'nb-mindmap-title-editor';
+      nestedEditor.contentEditable = 'plaintext-only';
+      nestedEditor.tabIndex = 0;
+      nestedEditor.textContent = '中心主题';
+      interactiveHost.appendChild(nestedEditor);
+      island.appendChild(interactiveHost);
+      nestedEditor.focus();
+
+      // 在内嵌导图标题框上连续派发单击/双击/三击：MultiClickSelectionFix 与 stopEvent 必须放行
+      for (const detail of [1, 2, 3]) {
+        const event = new MouseEvent('mousedown', {
+          button: 0,
+          detail,
+          clientX: 10,
+          clientY: 10,
+          bubbles: true,
+          cancelable: true,
+        });
+        nestedEditor.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(false);
+        expect(document.activeElement).toBe(nestedEditor);
+        expect(editor.state.selection.from).toBe(firstParaPos);
+        expect(editor.state.selection.to).toBe(firstParaPos);
+      }
+
+      // 普通正文段落上三击：仍由 MultiClickSelectionFix 接管选中整段文本
+      const paragraphs = view.dom.querySelectorAll('p');
+      const lastParagraph = paragraphs[paragraphs.length - 1]!;
+      const paraTriple = new MouseEvent('mousedown', {
+        button: 0,
+        detail: 3,
+        clientX: 120,
+        clientY: 20,
+        bubbles: true,
+        cancelable: true,
+      });
+      lastParagraph.dispatchEvent(paraTriple);
+      expect(paraTriple.defaultPrevented).toBe(true);
+      expect(editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to)).toBe('后段文本');
+
+      // 只读模式（view.dom 自身为 contenteditable="false"）：正文段落三击仍生效，内嵌导图岛屿仍放行
+      await act(async () => {
+        editor.setEditable(false);
+      });
+      editor.commands.setTextSelection(firstParaPos);
+      const roIslandTriple = new MouseEvent('mousedown', {
+        button: 0,
+        detail: 3,
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+        cancelable: true,
+      });
+      nestedEditor.dispatchEvent(roIslandTriple);
+      expect(roIslandTriple.defaultPrevented).toBe(false);
+
+      const roParaTriple = new MouseEvent('mousedown', {
+        button: 0,
+        detail: 3,
+        clientX: 120,
+        clientY: 20,
+        bubbles: true,
+        cancelable: true,
+      });
+      lastParagraph.dispatchEvent(roParaTriple);
+      expect(roParaTriple.defaultPrevented).toBe(true);
+      expect(editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to)).toBe('后段文本');
+    } finally {
+      editor.destroy();
+    }
   });
 });

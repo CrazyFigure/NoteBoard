@@ -470,6 +470,10 @@ export function EditorBubbleMenu({
     let frame = 0;
     const handleMouseDown = (e: MouseEvent) => {
       if (e.button !== 0) return;
+      // 内嵌导图等独立交互区不触发外层 Markdown 气泡菜单拖选态
+      if (e.target instanceof Element && e.target.closest('[data-md-mindmap-interactive], .nb-md-mindmap-container')) {
+        return;
+      }
       pointerSelectingRef.current = true;
     };
     const handleMouseUp = () => {

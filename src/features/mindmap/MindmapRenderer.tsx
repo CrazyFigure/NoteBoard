@@ -1794,6 +1794,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       target.closest('button') ||
       target.closest('input') ||
       target.closest('textarea') ||
+      target.closest('.nb-mindmap-title-editor') ||
       target.closest('[data-mindmap-image]') ||
       target.closest('[data-mindmap-file]') ||
       target.closest('[data-resize-handle]')
@@ -2394,6 +2395,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       tabIndex={-1}
       // 全局焦点守卫先分发画布的 Tab 业务快捷键，再禁止浏览器默认焦点遍历。
       data-tab-shortcuts="true"
+      // 移动端聚焦范围边界：节点双击进入编辑后允许标题框程序化聚焦
+      data-nb-focus-scope=""
       data-readonly={readOnly ? 'true' : undefined}
       // 触屏界面没有修饰键，文件链接始终呈可点按的链接态
       className={IS_MOBILE_UI ? 'nb-mindmap-canvas nb-touch-links' : 'nb-mindmap-canvas'}
@@ -2703,6 +2706,22 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
               data-vivid-surface={isVividSurface ? 'true' : undefined}
               data-text-tint={tintTextByTheme || undefined}
               onPointerDown={(e) => handleNodePointerDown(e, n)}
+              onMouseDown={(e) => {
+                // 编辑态下点击节点内留白（如内边距或卡片边缘）时阻止编辑器失焦退出，三击留白同步全选标题
+                if (!isEditing || e.button !== 0) return;
+                const target = e.target as HTMLElement;
+                if (
+                  target.closest('.nb-mindmap-title-editor') ||
+                  target.closest('button, input, textarea, [data-mindmap-image], [data-mindmap-file], [data-resize-handle], .nb-mindmap-note')
+                ) {
+                  return;
+                }
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.detail >= 3 && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                  titleEditorRef.current?.selectAll();
+                }
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 if (isDraggingNode) return;
@@ -2721,7 +2740,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
               }}
               onDoubleClick={(e) => {
                 e.stopPropagation();
-                if (readOnly) return;
+                // 编辑中双击某个单词用于原生选词，不可重新初始化草稿覆盖未提交修改
+                if (readOnly || isEditing) return;
                 // 双击图片、文件链接或拉伸手柄不进入标题编辑
                 const target = e.target as HTMLElement;
                 if (
