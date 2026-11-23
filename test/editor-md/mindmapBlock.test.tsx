@@ -3,6 +3,8 @@
 // 内嵌键盘聚焦隔离、内联纵向滚轮放行、纯文本剪贴板、多维表格占位、工具栏可视化/源码插入。
 
 import React, { act } from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { createRoot, type Root } from 'react-dom/client';
 import { Editor } from '@tiptap/core';
 import { EditorState } from '@codemirror/state';
@@ -431,5 +433,106 @@ describe('Markdown 内嵌思维导图', () => {
       unregisterMdSourceView(sourceKey);
       view.destroy();
     }
+  });
+
+  it('节点编辑态隐藏悬浮工具栏与添加按钮，中心主题内阴影不挤占宽度且正确标记明暗底色', async () => {
+    const theme = getMindmapTheme('classic');
+    const vividBranchTree: MindNode = {
+      ...SAMPLE_TREE,
+      children: [
+        { id: 'n1', text: '普通分支', isExpanded: true, children: [] },
+        { id: 'n2', text: '深蓝分支', fillColor: '#3b82f6', isExpanded: true, children: [] },
+      ],
+    };
+
+    await act(async () => {
+      root.render(
+        <div style={{ width: 800, height: 420 }}>
+          <MindmapRenderer
+            root={vividBranchTree}
+            onChange={() => {}}
+            zoom={1}
+            onZoomChange={() => {}}
+            layout="right"
+            theme={theme}
+            edgeStyle={theme.edgeStyle}
+            maxNodeWidth={300}
+            defaultTextAlign="left"
+            defaultImageFit="original"
+            embedded={true}
+          />
+        </div>,
+      );
+    });
+
+    const canvas = host.querySelector<HTMLElement>('.nb-mindmap-canvas');
+    const transform = host.querySelector<HTMLElement>('.nb-mindmap-transform')!;
+    const rootNode = host.querySelector<HTMLElement>('[data-node-id="root"]')!;
+    const plainBranch = host.querySelector<HTMLElement>('[data-node-id="n1"]')!;
+    const vividBranch = host.querySelector<HTMLElement>('[data-node-id="n2"]')!;
+
+    expect(canvas).not.toBeNull();
+    expect(transform.dataset.editingText).toBeUndefined();
+    expect(rootNode.dataset.vividSurface).toBe('true');
+    expect(plainBranch.dataset.vividSurface).toBeUndefined();
+    expect(vividBranch.dataset.vividSurface).toBe('true');
+    expect(rootNode.querySelector('.nb-mindmap-node-toolbar')).not.toBeNull();
+    expect(rootNode.querySelector('.nb-node-add-btn')).not.toBeNull();
+
+    // 单击选中中心主题，再用双击进入编辑：中心主题保持无外边框，内环通过 boxShadow inset 绘制
+    await act(async () => rootNode.click());
+    expect(rootNode.style.borderStyle === 'none' || rootNode.style.border === 'none' || rootNode.style.borderWidth === '0px' || rootNode.style.border === '').toBe(true);
+    expect(rootNode.style.boxShadow).toContain('inset 0 0 0 2px');
+
+    await act(async () => {
+      rootNode.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    });
+    expect(transform.dataset.editingText).toBe('true');
+    expect(rootNode.dataset.editing).toBe('true');
+    expect(rootNode.querySelector('.nb-mindmap-title-editor')).not.toBeNull();
+    expect(rootNode.querySelector('.nb-mindmap-node-toolbar')).toBeNull();
+    expect(rootNode.querySelector('.nb-node-add-btn')).toBeNull();
+
+    // 按 Ctrl+A 仅全选当前节点文字且不退出编辑态
+    const titleEditor = rootNode.querySelector<HTMLElement>('.nb-mindmap-title-editor')!;
+    const ctrlAEvent = new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true, cancelable: true });
+    await act(async () => {
+      titleEditor.dispatchEvent(ctrlAEvent);
+    });
+    expect(ctrlAEvent.defaultPrevented).toBe(true);
+    expect(rootNode.querySelector('.nb-mindmap-title-editor')).not.toBeNull();
+    expect(window.getSelection()?.toString()).toBe('项目规划');
+
+    // 按 Escape 退出编辑后恢复节点浮动工具栏与添加按钮
+    await act(async () => {
+      titleEditor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    });
+    expect(transform.dataset.editingText).toBeUndefined();
+    expect(rootNode.dataset.editing).toBeUndefined();
+    expect(rootNode.querySelector('.nb-mindmap-node-toolbar')).not.toBeNull();
+    expect(rootNode.querySelector('.nb-node-add-btn')).not.toBeNull();
+  });
+
+  it('样式表包含导图选区高优先级覆盖、暗色与反白规则以及 ProseMirror 排版隔离', () => {
+    const css = readFileSync(resolve('src', 'styles', 'canvasEditors.css'), 'utf8');
+
+    // 编辑态统一隐藏全部节点工具栏与添加按钮
+    expect(css).toContain(".nb-mindmap-transform[data-editing-text='true'] .nb-mindmap-node-toolbar");
+    expect(css).toContain(".nb-mindmap-transform[data-editing-text='true'] .nb-node-add-btn");
+
+    // 高优先级选区覆盖（覆盖 ProseMirror 默认选区与 nb-sel-block 透明抑制，并适配墨夜深色与深底反白）
+    expect(css).toContain('.nb-mindmap-canvas .nb-mindmap-title-editor::selection');
+    expect(css).toContain('.ProseMirror:not(.ProseMirror-hideselection) .nb-sel-block .nb-mindmap-canvas .nb-mindmap-title-editor::selection');
+    expect(css).toContain(':root[data-theme="mo-ye"] .nb-mindmap-canvas .nb-mindmap-title-editor::selection');
+    expect(css).toContain(".nb-mindmap-canvas .nb-mindmap-node[data-vivid-surface='true'] .nb-mindmap-title-editor::selection");
+
+    // 内嵌导图容器与全屏层隔绝 ProseMirror 正文字体与空白继承
+    const containerRule = css.match(/\.nb-md-mindmap-container\s*\{[^}]+\}/)?.[0] ?? '';
+    expect(containerRule).toContain('font-family: var(--ui-font-family');
+    expect(containerRule).toContain('white-space: normal');
+
+    const fullscreenRule = css.match(/\.nb-md-mindmap-fullscreen\s*\{[^}]+\}/)?.[0] ?? '';
+    expect(fullscreenRule).toContain('font-family: var(--ui-font-family');
+    expect(fullscreenRule).toContain('white-space: normal');
   });
 });

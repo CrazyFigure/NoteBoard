@@ -2396,7 +2396,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       data-tab-shortcuts="true"
       data-readonly={readOnly ? 'true' : undefined}
       // 触屏界面没有修饰键，文件链接始终呈可点按的链接态
-      className={IS_MOBILE_UI ? 'nb-touch-links' : undefined}
+      className={IS_MOBILE_UI ? 'nb-mindmap-canvas nb-touch-links' : 'nb-mindmap-canvas'}
       onMouseDown={handleMouseDown}
       onPointerDownCapture={handleTouchPointerDownCapture}
       onPointerMoveCapture={handleTouchPointerMoveCapture}
@@ -2437,6 +2437,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
       <div
         ref={transformLayerRef}
         className="nb-mindmap-transform"
+        data-editing-text={editingNodeId ? 'true' : undefined}
         style={{
           position: 'absolute',
           // 统一用合成层平移；连续输入不叠加过渡插值，避免触控板平移时出现拖尾。
@@ -2661,6 +2662,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
           const resolvedTextColor = customText ?? (customFill ? readableTextOn(customFill) : isRoot ? theme.rootText : 'var(--editor-text, #1e293b)');
           // 主题表面色上的自定义文字颜色交给样式表处理（深色主题下提亮）
           const tintTextByTheme = Boolean(customText && !customFill && !isRoot);
+          // 深色或饱和色底卡片（中心主题及白字自定义背景）标记为 vivid，供文本选区采用反白高对比样式
+          const isVividSurface = customFill ? readableTextOn(customFill) === '#ffffff' : isRoot;
           const hasIcon = Boolean(n.node.icon);
           const hasNote = Boolean(n.node.note);
           const nodeImages = getNodeImages(n.node);
@@ -2692,8 +2695,12 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
               data-diff={diffMarks?.get(n.node.id)}
               // 选中态供样式使用：触屏没有悬停，选中节点时显示图片 / 文件的移除按钮
               data-selected={isSelected || undefined}
+              // 正在编辑该节点文字时隐藏其专属操作控件，避免遮挡或误触
+              data-editing={isEditing ? 'true' : undefined}
               // 中心主题为主题色底，附件图标改用文字色保证对比度
               data-root={isRoot || undefined}
+              // 深色或饱和色底卡片供样式表选择反白高对比文本选区
+              data-vivid-surface={isVividSurface ? 'true' : undefined}
               data-text-tint={tintTextByTheme || undefined}
               onPointerDown={(e) => handleNodePointerDown(e, n)}
               onClick={(e) => {
@@ -2742,10 +2749,9 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                 // 由样式表着色时不写内联颜色（内联优先级更高会覆盖主题适配）
                 color: tintTextByTheme ? undefined : resolvedTextColor,
                 ...(tintTextByTheme ? ({ '--nb-node-text': customText } as React.CSSProperties) : null),
+                // 中心主题保持无外边框，选中双环通过内阴影绘制，避免新增 2px 边框缩减内容宽度引发意外折行
                 border: isRoot
-                  ? isSelected || isDropTargetInside
-                    ? `2px solid ${resolvedTextColor}`
-                    : 'none'
+                  ? 'none'
                   : isDropTargetInside
                     ? '2px solid var(--editor-accent, #3b82f6)'
                     : isSourceOrDescendant
@@ -2753,9 +2759,13 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                       : `1.5px solid ${isSelected ? 'var(--editor-accent, #3b82f6)' : isLevel1 || isSummaryTopic ? nodeColor : 'var(--editor-border, #cbd5e1)'}`,
                 borderRadius: isRoot ? 10 : 8,
                 boxShadow: isDropTargetInside
-                  ? '0 0 0 2.5px var(--editor-accent, #3b82f6), 0 0 20px rgba(59, 130, 246, 0.45)'
+                  ? isRoot
+                    ? `inset 0 0 0 2px ${resolvedTextColor}, 0 0 0 2.5px var(--editor-accent, #3b82f6), 0 0 20px rgba(59, 130, 246, 0.45)`
+                    : '0 0 0 2.5px var(--editor-accent, #3b82f6), 0 0 20px rgba(59, 130, 246, 0.45)'
                   : isSelected
-                    ? '0 0 0 2px var(--editor-accent, #3b82f6), 0 8px 20px rgba(0, 0, 0, 0.12)'
+                    ? isRoot
+                      ? `inset 0 0 0 2px ${resolvedTextColor}, 0 0 0 2px var(--editor-accent, #3b82f6), 0 8px 20px rgba(0, 0, 0, 0.12)`
+                      : '0 0 0 2px var(--editor-accent, #3b82f6), 0 8px 20px rgba(0, 0, 0, 0.12)'
                     : isRoot
                       ? theme.rootShadow
                       : '0 2px 6px rgba(0, 0, 0, 0.05)',
@@ -3090,8 +3100,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                 </div>
               )}
 
-              {/* 悬停/选中节点浮动快捷工具栏（只读态隐藏） */}
-              {!readOnly && (
+              {/* 悬停/选中节点浮动快捷工具栏（只读态与编辑文字时隐藏，避免遮挡文字格式菜单） */}
+              {!readOnly && !isEditing && (
               <div
                 className="nb-mindmap-node-toolbar"
                 // 样式统一裁定悬停与主选中优先级，确保节点工具栏同时只显示一个。
@@ -3339,8 +3349,8 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                 </Tooltip>
               )}
 
-              {/* 悬停添加子节点按钮：与浮动工具栏展示相同的 Tab 提示（只读态隐藏） */}
-              {!readOnly && (
+              {/* 悬停添加子节点按钮：与浮动工具栏展示相同的 Tab 提示（只读态与编辑文字时隐藏） */}
+              {!readOnly && !isEditing && (
                 <Tooltip content="添加子分支" shortcut="Tab" side="right" sideOffset={4}>
                   <button
                     type="button"

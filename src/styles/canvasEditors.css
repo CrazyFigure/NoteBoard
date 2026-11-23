@@ -15,6 +15,17 @@
   display: flex;
 }
 
+/* 编辑节点标题期间隐藏所有节点的悬浮工具栏与添加按钮，避免与文字格式悬浮菜单重叠或拖拽选字时误触发 */
+.nb-mindmap-transform[data-editing-text='true'] .nb-mindmap-node-toolbar {
+  display: none !important;
+}
+
+.nb-mindmap-transform[data-editing-text='true'] .nb-node-add-btn {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 /* 节点标题按行渲染：行内容已由布局引擎断好，禁止浏览器二次折行 */
 .nb-mindmap-title-line {
   white-space: pre;
@@ -1192,6 +1203,57 @@
   -webkit-user-select: text;
 }
 
+/* 思维导图文本选区统一样式：覆盖 .ProseMirror 默认选区与 .nb-sel-block 透明抑制，确保独立导图与 Markdown 内嵌导图完全一致且高对比可读 */
+.nb-mindmap-canvas .nb-mindmap-title-editor::selection,
+.nb-mindmap-canvas .nb-mindmap-title-editor *::selection,
+.nb-mindmap-canvas input::selection,
+.nb-mindmap-canvas textarea::selection,
+.ProseMirror:not(.ProseMirror-hideselection) .nb-mindmap-canvas .nb-mindmap-title-editor::selection,
+.ProseMirror:not(.ProseMirror-hideselection) .nb-mindmap-canvas .nb-mindmap-title-editor *::selection,
+.ProseMirror:not(.ProseMirror-hideselection) .nb-mindmap-canvas input::selection,
+.ProseMirror:not(.ProseMirror-hideselection) .nb-mindmap-canvas textarea::selection,
+.ProseMirror:not(.ProseMirror-hideselection) .nb-sel-block .nb-mindmap-canvas .nb-mindmap-title-editor::selection,
+.ProseMirror:not(.ProseMirror-hideselection) .nb-sel-block .nb-mindmap-canvas .nb-mindmap-title-editor *::selection,
+.ProseMirror:not(.ProseMirror-hideselection) .nb-sel-block .nb-mindmap-canvas input::selection,
+.ProseMirror:not(.ProseMirror-hideselection) .nb-sel-block .nb-mindmap-canvas textarea::selection {
+  background-color: var(--accent-strong, var(--editor-accent, #3b82f6));
+  color: #ffffff;
+}
+
+/* 墨夜深色主题下普通卡片采用高对比深蓝选区，避免亮蓝底配白字对比度不足 */
+:root[data-theme="mo-ye"] .nb-mindmap-canvas .nb-mindmap-title-editor::selection,
+:root[data-theme="mo-ye"] .nb-mindmap-canvas .nb-mindmap-title-editor *::selection,
+:root[data-theme="mo-ye"] .nb-mindmap-canvas input::selection,
+:root[data-theme="mo-ye"] .nb-mindmap-canvas textarea::selection,
+:root[data-theme="mo-ye"] .ProseMirror:not(.ProseMirror-hideselection) .nb-mindmap-canvas .nb-mindmap-title-editor::selection,
+:root[data-theme="mo-ye"] .ProseMirror:not(.ProseMirror-hideselection) .nb-mindmap-canvas .nb-mindmap-title-editor *::selection,
+:root[data-theme="mo-ye"] .ProseMirror:not(.ProseMirror-hideselection) .nb-mindmap-canvas input::selection,
+:root[data-theme="mo-ye"] .ProseMirror:not(.ProseMirror-hideselection) .nb-mindmap-canvas textarea::selection,
+:root[data-theme="mo-ye"] .ProseMirror:not(.ProseMirror-hideselection) .nb-sel-block .nb-mindmap-canvas .nb-mindmap-title-editor::selection,
+:root[data-theme="mo-ye"] .ProseMirror:not(.ProseMirror-hideselection) .nb-sel-block .nb-mindmap-canvas .nb-mindmap-title-editor *::selection,
+:root[data-theme="mo-ye"] .ProseMirror:not(.ProseMirror-hideselection) .nb-sel-block .nb-mindmap-canvas input::selection,
+:root[data-theme="mo-ye"] .ProseMirror:not(.ProseMirror-hideselection) .nb-sel-block .nb-mindmap-canvas textarea::selection {
+  background-color: #2563eb;
+  color: #ffffff;
+}
+
+/* 中心主题及深色/高饱和自定义背景卡片：采用反白高对比选区，避免同色相撞并覆盖所有主题 */
+.nb-mindmap-canvas .nb-mindmap-node[data-vivid-surface='true'] .nb-mindmap-title-editor::selection,
+.nb-mindmap-canvas .nb-mindmap-node[data-vivid-surface='true'] .nb-mindmap-title-editor *::selection,
+.ProseMirror:not(.ProseMirror-hideselection) .nb-mindmap-canvas .nb-mindmap-node[data-vivid-surface='true'] .nb-mindmap-title-editor::selection,
+.ProseMirror:not(.ProseMirror-hideselection) .nb-mindmap-canvas .nb-mindmap-node[data-vivid-surface='true'] .nb-mindmap-title-editor *::selection,
+.ProseMirror:not(.ProseMirror-hideselection) .nb-sel-block .nb-mindmap-canvas .nb-mindmap-node[data-vivid-surface='true'] .nb-mindmap-title-editor::selection,
+.ProseMirror:not(.ProseMirror-hideselection) .nb-sel-block .nb-mindmap-canvas .nb-mindmap-node[data-vivid-surface='true'] .nb-mindmap-title-editor *::selection,
+:root[data-theme="mo-ye"] .nb-mindmap-canvas .nb-mindmap-node[data-vivid-surface='true'] .nb-mindmap-title-editor::selection,
+:root[data-theme="mo-ye"] .nb-mindmap-canvas .nb-mindmap-node[data-vivid-surface='true'] .nb-mindmap-title-editor *::selection,
+:root[data-theme="mo-ye"] .ProseMirror:not(.ProseMirror-hideselection) .nb-mindmap-canvas .nb-mindmap-node[data-vivid-surface='true'] .nb-mindmap-title-editor::selection,
+:root[data-theme="mo-ye"] .ProseMirror:not(.ProseMirror-hideselection) .nb-mindmap-canvas .nb-mindmap-node[data-vivid-surface='true'] .nb-mindmap-title-editor *::selection,
+:root[data-theme="mo-ye"] .ProseMirror:not(.ProseMirror-hideselection) .nb-sel-block .nb-mindmap-canvas .nb-mindmap-node[data-vivid-surface='true'] .nb-mindmap-title-editor::selection,
+:root[data-theme="mo-ye"] .ProseMirror:not(.ProseMirror-hideselection) .nb-sel-block .nb-mindmap-canvas .nb-mindmap-node[data-vivid-surface='true'] .nb-mindmap-title-editor *::selection {
+  background-color: rgba(255, 255, 255, 0.92);
+  color: #0f172a;
+}
+
 /* 选中文字后的格式悬浮菜单 */
 .nb-mindmap-format-menu {
   position: fixed;
@@ -1509,6 +1571,13 @@
   position: relative;
   display: flex;
   flex-direction: column;
+  /* 隔绝 ProseMirror 正文字体与空白符继承，使内嵌导图与独立 .mindmap 画布度量完全一致 */
+  font-family: var(--ui-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Noto Sans SC', Roboto, sans-serif);
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: normal;
+  word-spacing: normal;
+  white-space: normal;
   border: 1px solid var(--editor-border, #e2e8f0);
   border-radius: var(--radius-md, 8px);
   background: var(--editor-surface, #ffffff);
@@ -1607,6 +1676,12 @@
   z-index: 99990;
   display: flex;
   flex-direction: column;
+  font-family: var(--ui-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Noto Sans SC', Roboto, sans-serif);
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: normal;
+  word-spacing: normal;
+  white-space: normal;
   background: var(--editor-bg, #ffffff);
   padding-top: var(--nb-m-safe-top, 0px);
   padding-bottom: var(--nb-m-safe-bottom, 0px);

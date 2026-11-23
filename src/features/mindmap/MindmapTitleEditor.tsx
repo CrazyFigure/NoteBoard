@@ -294,11 +294,23 @@ export const MindmapTitleEditor = forwardRef<MindmapTitleEditorHandle, MindmapTi
         e.preventDefault();
         propsRef.current.onEscape();
       } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
-        // 常用格式快捷键：Ctrl+B 加粗 / Ctrl+I 斜体 / Ctrl+U 下划线
+        // 节点内全选与常用格式快捷键：Ctrl+A 仅全选当前节点标题，阻止外层 Markdown 编辑器接管并失焦
         const key = e.key.toLowerCase();
+        if (key === 'a') {
+          e.preventDefault();
+          e.stopPropagation();
+          const root = rootRef.current;
+          if (root) {
+            const draft = readDom(root);
+            selectRange(root, 0, draft.text.length);
+            emitSelection();
+          }
+          return;
+        }
         const toggle = key === 'b' ? 'bold' : key === 'i' ? 'italic' : key === 'u' ? 'underline' : null;
         if (toggle) {
           e.preventDefault();
+          e.stopPropagation();
           applyPatch({ type: 'toggle', key: toggle });
         }
       }
