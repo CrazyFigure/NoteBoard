@@ -223,6 +223,9 @@ pub struct EditorSettings {
     // 可视化模式中折叠块 <details> 默认展开（默认 false；源码带 open 属性时始终展开）
     #[serde(default)]
     pub details_default_expanded: bool,
+    // 多维表格中子任务默认收起（默认 false，即默认展开；仅影响显示，不写入文件）
+    #[serde(default)]
+    pub bitable_subtask_default_collapsed: bool,
     // 思维导图节点最大宽度（px），超出后自动换行；手动拉伸过的节点不受影响
     #[serde(default = "default_mindmap_node_max_width")]
     pub mindmap_node_max_width: u32,
@@ -276,6 +279,7 @@ impl Default for EditorSettings {
             enable_column_edit: true,
             code_block_default_expanded: true,
             details_default_expanded: false,
+            bitable_subtask_default_collapsed: false,
             mindmap_node_max_width: default_mindmap_node_max_width(),
             mindmap_text_align: default_mindmap_text_align(),
             mindmap_image_fit: default_mindmap_image_fit(),
@@ -666,6 +670,19 @@ mod tests {
         let disabled: Settings = serde_json::from_str(r#"{"editor":{"enableColumnEdit":false}}"#).unwrap();
         let restored: Settings = serde_json::from_str(&serde_json::to_string(&disabled).unwrap()).unwrap();
         assert!(!restored.editor.enable_column_edit);
+    }
+
+    /// 旧版设置缺少多维表格子任务默认收起开关时默认关闭；显式开启后保存和重新加载不被默认值覆盖。
+    #[test]
+    fn bitable_subtask_default_collapsed_defaults_off_and_round_trips() {
+        let legacy: Settings = serde_json::from_str(r#"{"editor":{"softWrap":false}}"#).unwrap();
+        assert!(!legacy.editor.bitable_subtask_default_collapsed);
+        let enabled: Settings =
+            serde_json::from_str(r#"{"editor":{"bitableSubtaskDefaultCollapsed":true}}"#).unwrap();
+        assert!(enabled.editor.bitable_subtask_default_collapsed);
+        let restored: Settings =
+            serde_json::from_str(&serde_json::to_string(&enabled).unwrap()).unwrap();
+        assert!(restored.editor.bitable_subtask_default_collapsed);
     }
 
     /// 旧版设置不含 system 分组时，托盘与全局快捷键均保持关闭

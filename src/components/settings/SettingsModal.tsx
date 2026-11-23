@@ -3,7 +3,7 @@
 // 页名与搜索索引见 settingsSearchIndex.ts；详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Cloud, ChevronRight, Monitor, History, PanelTop, UserRound, Users, Globe, RotateCcw, Search, RotateCw, Home, FoldHorizontal, type LucideIcon } from 'lucide-react';
+import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Cloud, ChevronRight, Monitor, History, PanelTop, UserRound, Users, Globe, RotateCcw, Search, RotateCw, Home, FoldHorizontal, Table as TableIcon, type LucideIcon } from 'lucide-react';
 import { AUTO_SAVE_DELAY_MAX_MS, AUTO_SAVE_DELAY_MIN_MS, DEFAULT_SETTINGS, clampAutoSaveDelayMs, useSettingsStore, useTitleBarButtons } from '../../stores/settingsStore';
 import { ConfirmDialog } from '../../features/sync/SyncControls';
 import { THEMES } from '../../core/theme/themes';
@@ -1293,6 +1293,24 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       onChange={(v) => setEditor({ mindmapImageFit: v })}
                     />
                   </div>
+                </div>
+
+                {/* ── 3.4 多维表格 ── */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
+                    <TableIcon size={15} color="var(--accent-strong)" />
+                    <span>多维表格</span>
+                  </div>
+
+                  {/* 多维表格树形子任务的初始收起状态（仅影响显示，不写入文件） */}
+                  <SettingsToggleRow
+                    settingId="bitableSubtaskCollapsed"
+                    compact
+                    title="子任务默认收起"
+                    description="开启后打开多维表格时子任务默认收起，需点击箭头展开"
+                    checked={settings.editor.bitableSubtaskDefaultCollapsed ?? false}
+                    onChange={(checked) => setEditor({ bitableSubtaskDefaultCollapsed: checked })}
+                  />
                 </div>
               </div>
             )}

@@ -111,6 +111,13 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
   { id: 'mindmapWidth', tab: 'editor', section: '思维导图', label: '节点默认宽度', keywords: ['脑图', '导图'] },
   { id: 'mindmapAlign', tab: 'editor', section: '思维导图', label: '节点文字对齐', keywords: ['脑图', '导图', '居中'] },
   { id: 'mindmapImage', tab: 'editor', section: '思维导图', label: '节点图片显示', keywords: ['脑图', '导图', '图片裁切'] },
+  {
+    id: 'bitableSubtaskCollapsed',
+    tab: 'editor',
+    section: '多维表格',
+    label: '子任务默认收起',
+    keywords: ['多维表格', '子任务', '折叠', '收起', '展开', '默认展开', '默认收起', '树形', '层级'],
+  },
 
   // 文件与保存
   { id: 'autoSave', tab: 'file', section: '自动保存设置', label: '自动保存与保存间隔', keywords: ['保存', '间隔', '自动'] },

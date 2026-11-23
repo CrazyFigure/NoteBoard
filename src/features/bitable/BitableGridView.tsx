@@ -22,6 +22,7 @@ import { BitableContextMenu } from './BitableContextMenu';
 import { usePointerReorder } from './usePointerReorder';
 import { useColumnResize } from './useColumnResize';
 import { limitFrozenCount, useMobileViewportWidth } from './useMobileLayout';
+import { findIndentParentId, useSubtaskCollapse } from './useSubtaskCollapse';
 import { getFieldTypeMeta, FieldSelectButton } from './BitableFieldMeta';
 import { SortRulesPanel } from './BitableSortPanel';
 import { Tooltip } from '../../components/Tooltip';
@@ -300,8 +301,8 @@ export function BitableGridView({
   } | null>(null);
   const datetimeItemRef = useRef<HTMLButtonElement>(null);
 
-  // 折叠的行 ID 集合
-  const [collapsedRowIds, setCollapsedRowIds] = useState<Set<string>>(new Set());
+  // 树形子任务展开/收起状态（初始默认行为由设置控制）
+  const { isRowCollapsed, toggleCollapse, ensureExpanded } = useSubtaskCollapse();
 
   // 折叠的分组键集合：分组行本身可见，其下数据行被隐藏
   const [collapsedGroupKeys, setCollapsedGroupKeys] = useState<Set<string>>(new Set());
@@ -452,7 +453,7 @@ export function BitableGridView({
       for (const r of children) {
         counter++;
         const hasKids = (parentToChildren.get(r.id) || []).length > 0;
-        const isCollapsed = collapsedRowIds.has(r.id);
+        const isCollapsed = isRowCollapsed(r.id);
 
         result.push({
           row: r,
@@ -471,20 +472,27 @@ export function BitableGridView({
 
     traverse(undefined, 0);
     return result;
-  }, [rows, collapsedRowIds]);
+  }, [rows, isRowCollapsed]);
 
-  // 切换折叠/展开
-  const toggleCollapse = (rowId: string) => {
-    setCollapsedRowIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(rowId)) {
-        next.delete(rowId);
-      } else {
-        next.add(rowId);
-      }
-      return next;
-    });
-  };
+  // 添加或降级子任务前确保对应父行处于展开状态，避免子任务操作后立刻被默认收起隐藏
+  const handleAddSubRowWithExpand = useCallback(
+    (parentRowId: string) => {
+      if (!onAddSubRow) return;
+      ensureExpanded(parentRowId);
+      onAddSubRow(parentRowId);
+    },
+    [onAddSubRow, ensureExpanded],
+  );
+
+  const handleIndentRowWithExpand = useCallback(
+    (rowId: string) => {
+      if (!onIndentRow) return;
+      const targetParentId = findIndentParentId(rows, rowId);
+      if (targetParentId) ensureExpanded(targetParentId);
+      onIndentRow(rowId);
+    },
+    [onIndentRow, rows, ensureExpanded],
+  );
 
   // 2. 按分组字段把扁平树行组织为「分组标题 + 数据行」列表
   const groupColumn = useMemo(
@@ -1486,7 +1494,7 @@ export function BitableGridView({
           if (e.shiftKey) {
             if (onOutdentRow) onOutdentRow(targetRowId);
           } else if (onIndentRow) {
-            onIndentRow(targetRowId);
+            handleIndentRowWithExpand(targetRowId);
           }
         }
       }
@@ -1505,6 +1513,7 @@ export function BitableGridView({
     clearSelectedRange,
     onOutdentRow,
     onIndentRow,
+    handleIndentRowWithExpand,
   ]);
   // 4. 拖拽调整列宽
   const handleResizeStart = (e: React.PointerEvent<HTMLDivElement>, col: BitableColumn) => {
@@ -2953,7 +2962,7 @@ export function BitableGridView({
                             type="button"
                             aria-label="降级为子任务"
                             className="nb-bitable-row-action-btn"
-                            onClick={() => onIndentRow(row.id)}
+                            onClick={() => handleIndentRowWithExpand(row.id)}
                             style={{ color: 'var(--editor-text, #334155)' }}
                           >
                             <IndentIncrease size={14} />
@@ -2966,7 +2975,7 @@ export function BitableGridView({
                             type="button"
                             aria-label="添加子任务"
                             className="nb-bitable-row-action-btn"
-                            onClick={() => onAddSubRow(row.id)}
+                            onClick={() => handleAddSubRowWithExpand(row.id)}
                             style={{ color: 'var(--editor-accent, #3b82f6)' }}
                           >
                             <CornerDownRight size={14} />

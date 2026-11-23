@@ -23,6 +23,7 @@ import { BITABLE_PALETTE, getOptionColor } from './bitableConverter';
 import { usePointerReorder } from './usePointerReorder';
 import { fitPaneWidths, useMobileViewportWidth } from './useMobileLayout';
 import { useColumnResize } from './useColumnResize';
+import { findIndentParentId, useSubtaskCollapse } from './useSubtaskCollapse';
 import { useCnHolidays } from './holidayCn';
 import { Tooltip } from '../../components/Tooltip';
 import { showToast } from '../../stores/toastStore';
@@ -303,8 +304,8 @@ export function BitableGanttView({
   // 行悬浮：空行展示「点击排期」的虚线加号
   const [hoverRowId, setHoverRowId] = useState<string | null>(null);
 
-  // ── 左侧固定面板的树展开 / 分组折叠（与表格视图一致的交互语义） ──
-  const [collapsedRowIds, setCollapsedRowIds] = useState<Set<string>>(new Set());
+  // ── 左侧固定面板的树展开 / 分组折叠（与表格视图一致的交互语义，默认收起状态由设置控制） ──
+  const { isRowCollapsed, toggleCollapse, ensureExpanded } = useSubtaskCollapse();
   const [collapsedGroupKeys, setCollapsedGroupKeys] = useState<Set<string>>(new Set());
 
   // ── 冻结面板的单元格交互（选区 / 右键 / 自动填充 / 剪贴板） ──
@@ -387,14 +388,14 @@ export function BitableGanttView({
       (parentToChildren.get(parentId) || []).forEach((r) => {
         counter += 1;
         const hasKids = (parentToChildren.get(r.id) || []).length > 0;
-        const isCollapsed = collapsedRowIds.has(r.id);
+        const isCollapsed = isRowCollapsed(r.id);
         result.push({ row: r, depth, hasChildren: hasKids, isCollapsed, rowNumber: counter });
         if (hasKids && !isCollapsed) traverse(r.id, depth + 1);
       });
     };
     traverse(undefined, 0);
     return result;
-  }, [rows, collapsedRowIds]);
+  }, [rows, isRowCollapsed]);
 
   const groupColumn = useMemo(
     () => columns.find((c) => c.id === groupByColumnId),
@@ -598,15 +599,25 @@ export function BitableGanttView({
     return target.insertIdx - offset + 1;
   }, [rowDrag, rowSlots, resolveRowDropTarget]);
 
-  // ── 折叠 / 展开 ──
-  const toggleCollapse = (rowId: string) => {
-    setCollapsedRowIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(rowId)) next.delete(rowId);
-      else next.add(rowId);
-      return next;
-    });
-  };
+  // ── 折叠 / 展开（添加或降级子任务时确保目标父行自动展开） ──
+  const handleAddSubRowWithExpand = useCallback(
+    (parentRowId: string) => {
+      if (!onAddSubRow) return;
+      ensureExpanded(parentRowId);
+      onAddSubRow(parentRowId);
+    },
+    [onAddSubRow, ensureExpanded],
+  );
+
+  const handleIndentRowWithExpand = useCallback(
+    (rowId: string) => {
+      if (!onIndentRow) return;
+      const targetParentId = findIndentParentId(rows, rowId);
+      if (targetParentId) ensureExpanded(targetParentId);
+      onIndentRow(rowId);
+    },
+    [onIndentRow, rows, ensureExpanded],
+  );
 
   const toggleGroupCollapse = (key: string) => {
     setCollapsedGroupKeys((prev) => {
@@ -2357,7 +2368,7 @@ export function BitableGanttView({
                               type="button"
                               aria-label="降级为子任务"
                               className="nb-bitable-row-action-btn"
-                              onClick={() => onIndentRow(row.id)}
+                              onClick={() => handleIndentRowWithExpand(row.id)}
                               style={{ color: 'var(--editor-text, #334155)' }}
                             >
                               <IndentIncrease size={14} />
@@ -2370,7 +2381,7 @@ export function BitableGanttView({
                               type="button"
                               aria-label="添加子任务"
                               className="nb-bitable-row-action-btn"
-                              onClick={() => onAddSubRow(row.id)}
+                              onClick={() => handleAddSubRowWithExpand(row.id)}
                               style={{ color: 'var(--editor-accent, #3b82f6)' }}
                             >
                               <CornerDownRight size={14} />

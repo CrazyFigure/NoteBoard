@@ -111,6 +111,7 @@ export const DEFAULT_SETTINGS: Settings = {
     enableColumnEdit: true,
     codeBlockDefaultExpanded: true,
     detailsDefaultExpanded: false,
+    bitableSubtaskDefaultCollapsed: false,
     mindmapNodeMaxWidth: 280,
     mindmapTextAlign: 'left',
     mindmapImageFit: 'original',

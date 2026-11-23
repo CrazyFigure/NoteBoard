@@ -368,6 +368,8 @@ export interface EditorSettings {
   codeBlockDefaultExpanded?: boolean;
   // 可视化模式中折叠块 <details> 默认展开（缺省视为 false；源码带 open 属性时始终展开）
   detailsDefaultExpanded?: boolean;
+  // 多维表格中子任务默认收起（缺省视为 false，即默认展开；仅影响显示，不写入文件）
+  bitableSubtaskDefaultCollapsed?: boolean;
   // 思维导图节点最大宽度（px），超出后自动换行；缺省视为 280
   mindmapNodeMaxWidth?: number;
   // 思维导图节点标题默认对齐（缺省视为 left）

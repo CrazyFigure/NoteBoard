@@ -222,4 +222,32 @@ describe('设置搜索与布局整理', () => {
     expect(aboutCheck.classList.contains('is-off')).toBe(true);
     expect(aboutCheck.querySelector<HTMLInputElement>('input[role="switch"]')).not.toBeNull();
   });
+
+  it('搜索并切换多维表格「子任务默认收起」开关：缺字段视为关闭，开启后提交 editor 配置', async () => {
+    typeQuery('子任务默认收起');
+    const result = Array.from(host.querySelectorAll<HTMLButtonElement>('.nb-settings-search-result'))
+      .find((button) => button.textContent?.includes('子任务默认收起'));
+    expect(result).toBeDefined();
+    expect(result!.textContent).toContain('编辑器 › 多维表格');
+    act(() => result!.click());
+    await nextFrame();
+    expect(activeNavLabel()).toBe('编辑器');
+
+    const row = host.querySelector('[data-setting-id="bitableSubtaskCollapsed"]')!;
+    expect(row).not.toBeNull();
+    expect(row.classList.contains('nb-setting-flash')).toBe(true);
+
+    // 模拟缺少该字段的旧设置文件，确认缺省视为关闭（即子任务默认展开）
+    const setEditor = vi.spyOn(useSettingsStore.getState(), 'setEditor').mockResolvedValue(undefined);
+    const legacy = structuredClone(DEFAULT_SETTINGS);
+    delete (legacy.editor as { bitableSubtaskDefaultCollapsed?: boolean }).bitableSubtaskDefaultCollapsed;
+    await act(async () => useSettingsStore.setState({ settings: legacy }));
+
+    const toggle = host.querySelector<HTMLInputElement>('[data-setting-id="bitableSubtaskCollapsed"] input[role="switch"]')!;
+    expect(toggle.checked).toBe(false);
+    expect(host.querySelector('[data-setting-id="bitableSubtaskCollapsed"]')?.classList.contains('is-off')).toBe(true);
+
+    await act(async () => toggle.click());
+    expect(setEditor).toHaveBeenCalledWith({ bitableSubtaskDefaultCollapsed: true });
+  });
 });
