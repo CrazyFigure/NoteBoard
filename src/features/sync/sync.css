@@ -61,9 +61,21 @@ label.nb-sync-row {
   min-width: 0;
 }
 
-.nb-sync-row input[type='checkbox'] {
-  flex-shrink: 0;
-  cursor: pointer;
+.nb-sync-row-label {
+  color: var(--editor-text);
+  transition: color var(--transition-fast);
+}
+
+.nb-sync-row .nb-sync-muted {
+  transition: color var(--transition-fast);
+}
+
+.nb-sync-row.is-off .nb-sync-row-label {
+  color: var(--switch-label-off);
+}
+
+.nb-sync-row.is-off .nb-sync-muted {
+  color: var(--switch-desc-off);
 }
 
 .nb-sync-row-inline {

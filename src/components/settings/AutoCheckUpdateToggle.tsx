@@ -3,6 +3,7 @@
 
 import { useSettingsStore } from '../../stores/settingsStore';
 import { Tooltip } from '../Tooltip';
+import { SettingsSwitch } from './SettingsSwitch';
 import './about-panel.css';
 
 export function AutoCheckUpdateToggle() {
@@ -12,12 +13,12 @@ export function AutoCheckUpdateToggle() {
   return (
     <div className="nb-about-row" data-setting-id="autoCheckUpdate">
       <Tooltip content="启动及每 5 分钟静默检查" side="top" sideOffset={4}>
-        <label className="nb-about-check">
-          <input
-            type="checkbox"
-            aria-label="自动检查更新"
+        <label className={`nb-about-check${enabled ? '' : ' is-off'}`}>
+          <SettingsSwitch
+            size="sm"
+            ariaLabel="自动检查更新"
             checked={enabled}
-            onChange={(e) => void setSystem({ autoCheckUpdate: e.target.checked })}
+            onChange={(checked) => void setSystem({ autoCheckUpdate: checked })}
           />
           <span>自动检查更新</span>
         </label>

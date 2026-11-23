@@ -5,6 +5,7 @@ import { initializePlugins, usePluginStore } from '../../stores/pluginStore';
 import { OFFICIAL_PLUGINS, isNewerPluginVersion, type PluginId } from './pluginTypes';
 import pluginChangelog from './pluginChangelog.json';
 import { Tooltip } from '../../components/Tooltip';
+import { SettingsSwitch } from '../../components/settings/SettingsSwitch';
 import { PluginFonts } from './PluginFonts';
 import { ProgressRing } from './ProgressRing';
 import { canManageInstance } from '../account/accountState';
@@ -81,7 +82,15 @@ export function PluginsPanel({ target }: { target?: string | null }) {
             {(current.invalid || update) && <button type="button" className="nb-plugin-button primary" disabled={!!busy} onClick={() => void act('install', item.id)}>
               {installing && <ProgressRing percent={percent} />}{installing ? percent == null ? '正在下载' : `${percent}%` : current.invalid ? '重新下载' : '更新'}
             </button>}
-            <label className="nb-plugin-enable"><input type="checkbox" checked={current.enabled} disabled={!!busy || current.invalid} onChange={(event) => void act('toggle', item.id, event.target.checked)} />启用</label>
+            <label className={`nb-plugin-enable${current.enabled ? '' : ' is-off'}`}>
+              <SettingsSwitch
+                size="sm"
+                checked={current.enabled}
+                disabled={!!busy || current.invalid}
+                onChange={(checked) => void act('toggle', item.id, checked)}
+              />
+              <span>启用</span>
+            </label>
             <Tooltip content="卸载插件"><button type="button" className="nb-plugin-button icon" aria-label={`卸载${item.name}`} disabled={!!busy} onClick={() => setRemoveId(item.id)}><Trash2 size={14} /></button></Tooltip>
           </>}
         </div>

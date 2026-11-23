@@ -4,6 +4,7 @@ import { useEffect, useId, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronRight, Cloud, ExternalLink, Eye, EyeOff, GitBranch, HelpCircle, Loader2, Network, PlugZap, Plus, X } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 import { SettingsSelect } from '../../components/settings/SettingsSelect';
+import { SettingsSwitch } from '../../components/settings/SettingsSwitch';
 import * as ipc from '../../core/ipc/commands';
 import type { GitRepoConfig, HttpHeader, ObjectStorageKind, S3Config, SyncProviderConfig, SyncProviderKind } from '../../core/ipc/types';
 
@@ -83,7 +84,7 @@ export function Collapsible({
   );
 }
 
-// ── 开关行（说明文字在左，数值输入与复选框统一放在行末） ──
+// ── 开关行（说明文字在左，数值输入与开关统一放在行末；关闭态文字柔化变浅） ──
 
 export function ToggleRow({
   title,
@@ -96,20 +97,20 @@ export function ToggleRow({
   desc?: React.ReactNode;
   checked: boolean;
   onChange: (checked: boolean) => void;
-  /** 复选框之前的附加控件（例如「每 30 分钟」） */
+  /** 开关之前的附加控件（例如「每 30 分钟」） */
   extra?: React.ReactNode;
 }) {
   const id = useId();
   return (
-    <div className="nb-sync-row">
-      {/* 说明文字不绑定复选框：只有点击复选框本身才切换开关，aria-labelledby 保留无障碍名称 */}
+    <div className={`nb-sync-row${checked ? '' : ' is-off'}`}>
+      {/* 说明文字不绑定开关：只有点击开关本身才切换，aria-labelledby 保留无障碍名称 */}
       <div id={id} className="nb-sync-row-label">
         <div>{title}</div>
         {desc && <div className="nb-sync-muted">{desc}</div>}
       </div>
       <div className="nb-sync-row-inline">
         {extra}
-        <input type="checkbox" aria-labelledby={id} checked={checked} onChange={(e) => onChange(e.target.checked)} />
+        <SettingsSwitch ariaLabelledBy={id} checked={checked} onChange={onChange} />
       </div>
     </div>
   );

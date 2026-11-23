@@ -430,6 +430,19 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   --history-item-hover-bg: #eef2f6;
   --history-item-active-bg: #eff6ff;
   --history-month-text: #64748b;
+
+  /* 开关控件与关闭态柔化文字 */
+  --switch-track-off: #cbd5e1;
+  --switch-track-off-hover: #94a3b8;
+  --switch-track-off-border: rgba(15, 23, 42, 0.08);
+  --switch-track-on: var(--accent-strong);
+  --switch-track-on-hover: #2563eb;
+  --switch-thumb-off: #ffffff;
+  --switch-thumb-on: #ffffff;
+  --switch-thumb-shadow: 0 1px 3px rgba(15, 23, 42, 0.22), 0 1px 1px rgba(15, 23, 42, 0.12);
+  --switch-label-off: #5c6b80;
+  --switch-desc-off: #a6b4c5;
+  --switch-icon-bg: #f1f5f9;
 }
 
 /* ═════════════════════════════════════════════════════════
@@ -584,6 +597,19 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   --history-item-hover-bg: #E5E2D8;
   --history-item-active-bg: #FDF0EB;
   --history-month-text: #6B6860;
+
+  /* 开关控件与关闭态柔化文字 */
+  --switch-track-off: #d1ccbd;
+  --switch-track-off-hover: #b8b2a0;
+  --switch-track-off-border: rgba(62, 55, 47, 0.10);
+  --switch-track-on: var(--accent-strong);
+  --switch-track-on-hover: #b05534;
+  --switch-thumb-off: #fffdf9;
+  --switch-thumb-on: #fffdf9;
+  --switch-thumb-shadow: 0 1px 3px rgba(62, 55, 47, 0.24), 0 1px 1px rgba(62, 55, 47, 0.12);
+  --switch-label-off: #66635b;
+  --switch-desc-off: #a8a49c;
+  --switch-icon-bg: #eae7dc;
 }
 
 /* ═════════════════════════════════════════════════════════
@@ -740,6 +766,19 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
   --history-item-hover-bg: #242429;
   --history-item-active-bg: #172033;
   --history-month-text: #a1a1aa;
+
+  /* 开关控件与关闭态柔化文字 */
+  --switch-track-off: #34343a;
+  --switch-track-off-hover: #46464f;
+  --switch-track-off-border: rgba(255, 255, 255, 0.08);
+  --switch-track-on: var(--accent-strong);
+  --switch-track-on-hover: #7bb4fc;
+  --switch-thumb-off: #d4d4d8;
+  --switch-thumb-on: #ffffff;
+  --switch-thumb-shadow: 0 1px 3px rgba(0, 0, 0, 0.48), 0 0 0 0.5px rgba(0, 0, 0, 0.25);
+  --switch-label-off: #9c9ca6;
+  --switch-desc-off: #63636c;
+  --switch-icon-bg: #26262b;
 }
 
 /* 各端文字编辑区的正文与空白统一使用 I 形鼠标指针；仅通过继承生效，保留链接、按钮及拖拽控件的专用样式。 */
@@ -3284,6 +3323,184 @@ input[type="checkbox"]:not(.nb-raw-checkbox):focus-visible {
 .nb-settings-select-check {
   flex-shrink: 0;
   color: var(--accent-strong);
+}
+
+/* 设置页现代化滑动开关：底层使用原生 checkbox (role="switch") 保留键盘与无障碍语义 */
+.nb-settings-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.nb-settings-switch.is-sm {
+  width: 32px;
+  height: 18px;
+}
+
+.nb-settings-switch-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.nb-settings-switch-input:disabled {
+  cursor: not-allowed;
+}
+
+.nb-settings-switch-track {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--switch-track-off);
+  box-shadow: inset 0 0 0 1px var(--switch-track-off-border);
+  transition: background-color 180ms ease, box-shadow 180ms ease, opacity 150ms ease;
+}
+
+.nb-settings-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--switch-thumb-off);
+  box-shadow: var(--switch-thumb-shadow);
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), width 140ms ease, background-color 160ms ease;
+}
+
+.nb-settings-switch.is-sm .nb-settings-switch-thumb {
+  width: 14px;
+  height: 14px;
+}
+
+.nb-settings-switch-input:checked + .nb-settings-switch-track {
+  background: var(--switch-track-on);
+  box-shadow: inset 0 0 0 1px transparent;
+}
+
+.nb-settings-switch-input:checked + .nb-settings-switch-track .nb-settings-switch-thumb {
+  background: var(--switch-thumb-on);
+  transform: translateX(16px);
+}
+
+.nb-settings-switch.is-sm .nb-settings-switch-input:checked + .nb-settings-switch-track .nb-settings-switch-thumb {
+  transform: translateX(14px);
+}
+
+.nb-settings-switch-input:hover:not(:disabled) + .nb-settings-switch-track {
+  background: var(--switch-track-off-hover);
+}
+
+.nb-settings-switch-input:checked:hover:not(:disabled) + .nb-settings-switch-track {
+  background: var(--switch-track-on-hover);
+}
+
+.nb-settings-switch-input:active:not(:disabled) + .nb-settings-switch-track .nb-settings-switch-thumb {
+  width: 19px;
+}
+
+.nb-settings-switch-input:checked:active:not(:disabled) + .nb-settings-switch-track .nb-settings-switch-thumb {
+  width: 19px;
+  transform: translateX(13px);
+}
+
+.nb-settings-switch.is-sm .nb-settings-switch-input:active:not(:disabled) + .nb-settings-switch-track .nb-settings-switch-thumb {
+  width: 17px;
+}
+
+.nb-settings-switch.is-sm .nb-settings-switch-input:checked:active:not(:disabled) + .nb-settings-switch-track .nb-settings-switch-thumb {
+  width: 17px;
+  transform: translateX(11px);
+}
+
+.nb-settings-switch-input:focus-visible + .nb-settings-switch-track {
+  outline: 2px solid var(--editor-border-focus);
+  outline-offset: 2px;
+}
+
+.nb-settings-switch.is-disabled .nb-settings-switch-track {
+  opacity: 0.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nb-settings-switch-track,
+  .nb-settings-switch-thumb {
+    transition: none;
+  }
+}
+
+/* 设置开关行：关闭时文字与前置图标柔和变浅，拉开状态对比 */
+.nb-settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.nb-settings-toggle-row.is-compact {
+  padding: 2px 0;
+}
+
+.nb-settings-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.nb-settings-toggle-text {
+  min-width: 0;
+}
+
+.nb-settings-toggle-title {
+  color: var(--editor-text);
+  transition: color var(--transition-fast);
+}
+
+.nb-settings-toggle-desc {
+  font-size: 11px;
+  color: var(--editor-text-muted);
+  transition: color var(--transition-fast);
+}
+
+.nb-settings-toggle-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--switch-icon-bg);
+  color: var(--editor-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: color var(--transition-fast), opacity var(--transition-fast), background-color var(--transition-fast);
+}
+
+.nb-settings-toggle-row.is-off .nb-settings-toggle-title {
+  color: var(--switch-label-off);
+}
+
+.nb-settings-toggle-row.is-off .nb-settings-toggle-desc {
+  color: var(--switch-desc-off);
+}
+
+.nb-settings-toggle-row.is-off .nb-settings-toggle-icon {
+  color: var(--switch-label-off);
+  opacity: 0.65;
 }
 
 /* 语法高亮 token */

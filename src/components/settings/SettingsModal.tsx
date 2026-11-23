@@ -3,7 +3,7 @@
 // 页名与搜索索引见 settingsSearchIndex.ts；详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Cloud, ChevronRight, Monitor, History, PanelTop, UserRound, Users, Globe, RotateCcw, Search, RotateCw } from 'lucide-react';
+import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Cloud, ChevronRight, Monitor, History, PanelTop, UserRound, Users, Globe, RotateCcw, Search, RotateCw, Home, FoldHorizontal, type LucideIcon } from 'lucide-react';
 import { AUTO_SAVE_DELAY_MAX_MS, AUTO_SAVE_DELAY_MIN_MS, DEFAULT_SETTINGS, clampAutoSaveDelayMs, useSettingsStore, useTitleBarButtons } from '../../stores/settingsStore';
 import { ConfirmDialog } from '../../features/sync/SyncControls';
 import { THEMES } from '../../core/theme/themes';
@@ -18,6 +18,7 @@ import { FontPackSettingsCard } from './FontPackSettingsCard';
 import { ImageStorageSettingsCard } from './ImageStorageSettingsCard';
 import { SettingsRange } from './SettingsRange';
 import { SettingsSelect } from './SettingsSelect';
+import { SettingsToggleRow } from './SettingsSwitch';
 import { TabSizeSelect } from './TabSizeSelect';
 import { ReleaseNotes } from './ReleaseNotes';
 import { UPDATE_CHANNEL_ORDER, UpdateChannelSelector } from './UpdateChannelSelector';
@@ -55,12 +56,12 @@ interface SettingsModalProps {
 // 搜索命中后对目标设置项的高亮时长
 const SETTING_FLASH_MS = 1600;
 
-// 标题栏可隐藏的按钮：检查更新仅桌面端，极窄模式仅桌面端支持时提供
-const TITLE_BAR_BUTTON_OPTIONS: { key: keyof TitleBarButtons; label: string; available: () => boolean }[] = [
-  { key: 'home', label: '回到主界面', available: () => true },
-  { key: 'checkUpdate', label: '检查更新', available: () => !IS_WEB },
-  { key: 'theme', label: '切换主题', available: () => true },
-  { key: 'compactMode', label: '极窄模式', available: supportsCompactMode },
+// 标题栏可隐藏的按钮：检查更新仅桌面端，极窄模式仅桌面端支持时提供；图标与标题栏实际按钮保持一致
+const TITLE_BAR_BUTTON_OPTIONS: { key: keyof TitleBarButtons; label: string; icon: LucideIcon; available: () => boolean }[] = [
+  { key: 'home', label: '回到主界面', icon: Home, available: () => true },
+  { key: 'checkUpdate', label: '检查更新', icon: RefreshCw, available: () => !IS_WEB },
+  { key: 'theme', label: '切换主题', icon: Palette, available: () => true },
+  { key: 'compactMode', label: '极窄模式', icon: FoldHorizontal, available: supportsCompactMode },
 ];
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
@@ -417,17 +418,19 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <span>标题栏按钮</span>
                   </div>
 
-                  {TITLE_BAR_BUTTON_OPTIONS.filter((option) => option.available()).map((option) => (
-                    <div key={option.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                      <div>{option.label}</div>
-                      <input
-                        type="checkbox"
-                        aria-label={`标题栏显示${option.label}`}
+                  {TITLE_BAR_BUTTON_OPTIONS.filter((option) => option.available()).map((option) => {
+                    const Icon = option.icon;
+                    return (
+                      <SettingsToggleRow
+                        key={option.key}
+                        title={option.label}
+                        icon={<Icon size={14} />}
+                        ariaLabel={`标题栏显示${option.label}`}
                         checked={titleBarButtons[option.key]}
-                        onChange={(e) => setLayout({ titleBarButtons: { ...titleBarButtons, [option.key]: e.target.checked } })}
+                        onChange={(checked) => setLayout({ titleBarButtons: { ...titleBarButtons, [option.key]: checked } })}
                       />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 )}
               </div>
@@ -1044,82 +1047,58 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
 
                   {/* 显示空格（显示为点） */}
-                  <div data-setting-id="showWhitespace" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                    <div>
-                      <div>显示空格（点）</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>将文本中的空格显示为轻柔圆点标记，制表符显示为箭头</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.editor.showWhitespace ?? false}
-                      onChange={(e) => setEditor({ showWhitespace: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    settingId="showWhitespace"
+                    title="显示空格（点）"
+                    description="将文本中的空格显示为轻柔圆点标记，制表符显示为箭头"
+                    checked={settings.editor.showWhitespace ?? false}
+                    onChange={(checked) => setEditor({ showWhitespace: checked })}
+                  />
 
                   {/* 显示换行符（↵） */}
-                  <div data-setting-id="showLineEndings" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                    <div>
-                      <div>显示换行符号 (↵)</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>在各行末尾显示 ↵ 换行指示符号</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.editor.showLineEndings ?? false}
-                      onChange={(e) => setEditor({ showLineEndings: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    settingId="showLineEndings"
+                    title="显示换行符号 (↵)"
+                    description="在各行末尾显示 ↵ 换行指示符号"
+                    checked={settings.editor.showLineEndings ?? false}
+                    onChange={(checked) => setEditor({ showLineEndings: checked })}
+                  />
 
                   {/* 显示行号 */}
-                  <div data-setting-id="showLineNumbers" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                    <div>
-                      <div>显示行号</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>在左侧边栏展示代码行号及活动行高亮</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.editor.showLineNumbers}
-                      onChange={(e) => setEditor({ showLineNumbers: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    settingId="showLineNumbers"
+                    title="显示行号"
+                    description="在左侧边栏展示代码行号及活动行高亮"
+                    checked={settings.editor.showLineNumbers}
+                    onChange={(checked) => setEditor({ showLineNumbers: checked })}
+                  />
 
                   {/* 软换行 */}
-                  <div data-setting-id="softWrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                    <div>
-                      <div>软换行 (自动折行)</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>超出编辑器可视宽度时自动折行，避免横向滚动</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.editor.softWrap}
-                      onChange={(e) => setEditor({ softWrap: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    settingId="softWrap"
+                    title="软换行 (自动折行)"
+                    description="超出编辑器可视宽度时自动折行，避免横向滚动"
+                    checked={settings.editor.softWrap}
+                    onChange={(checked) => setEditor({ softWrap: checked })}
+                  />
 
                   {/* 缩进导线 */}
-                  <div data-setting-id="indentGuides" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                    <div>
-                      <div>缩进参考导线</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>在代码层级之间显示垂直虚线导线</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.editor.showIndentGuides}
-                      onChange={(e) => setEditor({ showIndentGuides: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    settingId="indentGuides"
+                    title="缩进参考导线"
+                    description="在代码层级之间显示垂直虚线导线"
+                    checked={settings.editor.showIndentGuides}
+                    onChange={(checked) => setEditor({ showIndentGuides: checked })}
+                  />
 
                   {/* 列编辑模式：关闭时已进入的编辑器立即退出 */}
-                  <div data-setting-id="columnEdit" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                    <div>
-                      <div>列编辑模式</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>{formatShortcut('Alt')} + 拖动或中键拖动，多行同时编辑</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.editor.enableColumnEdit !== false}
-                      onChange={(e) => setEditor({ enableColumnEdit: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    settingId="columnEdit"
+                    title="列编辑模式"
+                    description={`${formatShortcut('Alt')} + 拖动或中键拖动，多行同时编辑`}
+                    checked={settings.editor.enableColumnEdit !== false}
+                    onChange={(checked) => setEditor({ enableColumnEdit: checked })}
+                  />
 
                   {/* 缩进参数：作用于代码、纯文本与 Markdown 源码 */}
                   <div data-setting-id="tabSize" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
@@ -1134,17 +1113,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     />
                   </div>
 
-                  <div data-setting-id="insertSpaces" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
-                    <div>
-                      <div>空格代替 Tab</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>按下 Tab 键时插入对应数量的空格</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.editor.insertSpaces}
-                      onChange={(e) => setEditor({ insertSpaces: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    settingId="insertSpaces"
+                    compact
+                    title="空格代替 Tab"
+                    description="按下 Tab 键时插入对应数量的空格"
+                    checked={settings.editor.insertSpaces}
+                    onChange={(checked) => setEditor({ insertSpaces: checked })}
+                  />
                 </div>
 
                 {/* ── 3.2 Markdown：视图、展开状态、大纲、复制、回车与渲染增强 ── */}
@@ -1171,29 +1147,23 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
 
                   {/* 可视化模式中代码块 / 折叠块的初始展开状态（仅影响显示，不写入文件） */}
-                  <div data-setting-id="codeBlockExpanded" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
-                    <div>
-                      <div>代码块默认展开</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>关闭后可视化模式中的代码块默认收起，只显示语言与行数</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.editor.codeBlockDefaultExpanded ?? true}
-                      onChange={(e) => setEditor({ codeBlockDefaultExpanded: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    settingId="codeBlockExpanded"
+                    compact
+                    title="代码块默认展开"
+                    description="关闭后可视化模式中的代码块默认收起，只显示语言与行数"
+                    checked={settings.editor.codeBlockDefaultExpanded ?? true}
+                    onChange={(checked) => setEditor({ codeBlockDefaultExpanded: checked })}
+                  />
 
-                  <div data-setting-id="detailsExpanded" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
-                    <div>
-                      <div>折叠块默认展开</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>{'<details> 折叠块的初始状态；源码带 open 属性的始终展开'}</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.editor.detailsDefaultExpanded ?? false}
-                      onChange={(e) => setEditor({ detailsDefaultExpanded: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    settingId="detailsExpanded"
+                    compact
+                    title="折叠块默认展开"
+                    description="<details> 折叠块的初始状态；源码带 open 属性的始终展开"
+                    checked={settings.editor.detailsDefaultExpanded ?? false}
+                    onChange={(checked) => setEditor({ detailsDefaultExpanded: checked })}
+                  />
 
                   {/* 大纲位置：右侧栏（默认）/ 编辑区内左侧 / 编辑区内右侧；一个下拉同时写入位置与靠边两个字段 */}
                   <div data-setting-id="outlinePosition" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
@@ -1241,32 +1211,29 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
 
                   {/* ── Markdown 渲染增强 ── */}
-                  <div data-setting-id="enableMath" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
-                    <span>LaTeX 数学公式渲染 (KaTeX)</span>
-                    <input
-                      type="checkbox"
-                      checked={settings.editor.enableMath}
-                      onChange={(e) => setEditor({ enableMath: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    settingId="enableMath"
+                    compact
+                    title="LaTeX 数学公式渲染 (KaTeX)"
+                    checked={settings.editor.enableMath}
+                    onChange={(checked) => setEditor({ enableMath: checked })}
+                  />
 
-                  <div data-setting-id="enableMermaid" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
-                    <span>Mermaid 图表实时渲染</span>
-                    <input
-                      type="checkbox"
-                      checked={settings.editor.enableMermaid}
-                      onChange={(e) => setEditor({ enableMermaid: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    settingId="enableMermaid"
+                    compact
+                    title="Mermaid 图表实时渲染"
+                    checked={settings.editor.enableMermaid}
+                    onChange={(checked) => setEditor({ enableMermaid: checked })}
+                  />
 
-                  <div data-setting-id="blockHandle" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
-                    <span>悬浮块把手 (拖拽与菜单)</span>
-                    <input
-                      type="checkbox"
-                      checked={settings.editor.enableBlockHandle}
-                      onChange={(e) => setEditor({ enableBlockHandle: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    settingId="blockHandle"
+                    compact
+                    title="悬浮块把手 (拖拽与菜单)"
+                    checked={settings.editor.enableBlockHandle}
+                    onChange={(checked) => setEditor({ enableBlockHandle: checked })}
+                  />
                 </div>
 
                 {/* ── 3.3 思维导图 ── */}
@@ -1356,88 +1323,53 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
 
                   {/* Markdown 笔记自动保存 */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                    <div>
-                      <div>Markdown 笔记 (.md / .markdown)</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.file.autoSaveMarkdown ?? false}
-                      onChange={(e) => setFile({ autoSaveMarkdown: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    title="Markdown 笔记 (.md / .markdown)"
+                    checked={settings.file.autoSaveMarkdown ?? false}
+                    onChange={(checked) => setFile({ autoSaveMarkdown: checked })}
+                  />
 
                   {/* 自由画板自动保存：新建画板默认 .excalidraw，.board / .canvas 同为 Excalidraw 场景 */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                    <div>
-                      <div>自由画板 (.excalidraw / .board / .canvas)</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.file.autoSaveBoard ?? false}
-                      onChange={(e) => setFile({ autoSaveBoard: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    title="自由画板 (.excalidraw / .board / .canvas)"
+                    checked={settings.file.autoSaveBoard ?? false}
+                    onChange={(checked) => setFile({ autoSaveBoard: checked })}
+                  />
 
                   {/* 思维导图自动保存（.xmind 打开时转换为未保存副本，另存后才参与自动保存） */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                    <div>
-                      <div>思维导图 (.mindmap / .mm)</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.file.autoSaveMindmap ?? false}
-                      onChange={(e) => setFile({ autoSaveMindmap: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    title="思维导图 (.mindmap / .mm)"
+                    checked={settings.file.autoSaveMindmap ?? false}
+                    onChange={(checked) => setFile({ autoSaveMindmap: checked })}
+                  />
 
                   {/* Draw.io 图表自动保存 */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                    <div>
-                      <div>Draw.io 图表 (.drawio / .dio)</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.file.autoSaveDrawio ?? false}
-                      onChange={(e) => setFile({ autoSaveDrawio: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    title="Draw.io 图表 (.drawio / .dio)"
+                    checked={settings.file.autoSaveDrawio ?? false}
+                    onChange={(checked) => setFile({ autoSaveDrawio: checked })}
+                  />
 
                   {/* 多维表格自动保存 */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                    <div>
-                      <div>多维表格 (.bitable / .table)</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.file.autoSaveBitable ?? false}
-                      onChange={(e) => setFile({ autoSaveBitable: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    title="多维表格 (.bitable / .table)"
+                    checked={settings.file.autoSaveBitable ?? false}
+                    onChange={(checked) => setFile({ autoSaveBitable: checked })}
+                  />
 
                   {/* 信息图自动保存：未单独设置过时沿用「代码与文本」开关 */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                    <div>
-                      <div>信息图 (.infographic / .ig)</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.file.autoSaveInfographic ?? settings.file.autoSaveOther ?? false}
-                      onChange={(e) => setFile({ autoSaveInfographic: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    title="信息图 (.infographic / .ig)"
+                    checked={settings.file.autoSaveInfographic ?? settings.file.autoSaveOther ?? false}
+                    onChange={(checked) => setFile({ autoSaveInfographic: checked })}
+                  />
 
                   {/* 代码与文本自动保存 */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                    <div>
-                      <div>代码与文本 (.txt / .sql / .json / .yaml 等)</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.file.autoSaveOther ?? false}
-                      onChange={(e) => setFile({ autoSaveOther: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    title="代码与文本 (.txt / .sql / .json / .yaml 等)"
+                    checked={settings.file.autoSaveOther ?? false}
+                    onChange={(checked) => setFile({ autoSaveOther: checked })}
+                  />
                 </div>
 
                 {/* ── 4.2 文件树与打开：隐藏文件、打开方式与大文件提示 ── */}
@@ -1448,17 +1380,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
 
                   {/* 显示隐藏文件 */}
-                  <div data-setting-id="showHiddenFiles" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                    <div>
-                      <div>显示隐藏文件 / 文件夹</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>在左侧文件树中显示以点（.）开头的隐藏文件或系统文件</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.file.showHiddenFiles ?? false}
-                      onChange={(e) => setFile({ showHiddenFiles: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    settingId="showHiddenFiles"
+                    title="显示隐藏文件 / 文件夹"
+                    description="在左侧文件树中显示以点（.）开头的隐藏文件或系统文件"
+                    checked={settings.file.showHiddenFiles ?? false}
+                    onChange={(checked) => setFile({ showHiddenFiles: checked })}
+                  />
 
                   {/* 资源管理器：文件树中打开文件的方式（默认双击） */}
                   <div data-setting-id="explorerOpenMode" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
@@ -1551,17 +1479,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
 
                   {/* 关闭到托盘：开启后关闭按钮仅隐藏窗口，内容留在内存中，因此不弹未保存确认 */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                    <div>
-                      <div>关闭按钮最小化到托盘</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>关闭时隐藏到托盘，不弹保存确认；从托盘菜单退出</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.system.closeToTray ?? false}
-                      onChange={(e) => setSystem({ closeToTray: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    title="关闭按钮最小化到托盘"
+                    description="关闭时隐藏到托盘，不弹保存确认；从托盘菜单退出"
+                    checked={settings.system.closeToTray ?? false}
+                    onChange={(checked) => setSystem({ closeToTray: checked })}
+                  />
                 </div>
                 )}
 
@@ -1573,31 +1496,23 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
 
                   {/* 保留最近文件：启动时恢复到 Tab 栏，但当前页面仍停留 Home。 */}
-                  <div data-setting-id="restoreSession" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                    <div>
-                      <div>保留最近文件</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>默认开启；启动时自动恢复到 Tab 栏，当前页面仍显示 Home</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      aria-label="保留最近文件"
-                      checked={settings.file.restoreSession ?? true}
-                      onChange={(e) => setFile({ restoreSession: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    settingId="restoreSession"
+                    title="保留最近文件"
+                    description="默认开启；启动时自动恢复到 Tab 栏，当前页面仍显示 Home"
+                    ariaLabel="保留最近文件"
+                    checked={settings.file.restoreSession ?? true}
+                    onChange={(checked) => setFile({ restoreSession: checked })}
+                  />
 
-                  <div data-setting-id="restoreReadingPosition" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                    <div>
-                      <div>重新打开时恢复上次阅读位置</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>恢复滚动位置、选区与 Markdown 视图模式</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      aria-label="重新打开时恢复上次阅读位置"
-                      checked={settings.file.restoreReadingPosition ?? true}
-                      onChange={(e) => setFile({ restoreReadingPosition: e.target.checked })}
-                    />
-                  </div>
+                  <SettingsToggleRow
+                    settingId="restoreReadingPosition"
+                    title="重新打开时恢复上次阅读位置"
+                    description="恢复滚动位置、选区与 Markdown 视图模式"
+                    ariaLabel="重新打开时恢复上次阅读位置"
+                    checked={settings.file.restoreReadingPosition ?? true}
+                    onChange={(checked) => setFile({ restoreReadingPosition: checked })}
+                  />
                 </div>
 
                 {/* 本地文件搜索：开关与索引位置（文件夹 / 整个磁盘，可添加多个）；网页端为管理员开关的全局搜索 */}

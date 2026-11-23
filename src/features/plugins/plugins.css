@@ -35,10 +35,10 @@
 .nb-plugin-changelog-version { display:flex; align-items:baseline; gap:8px; color:var(--editor-text); font-weight:600; }
 .nb-plugin-changelog-version span { color:var(--editor-text-muted); font-weight:400; font-size:11px; }
 .nb-plugin-changelog p { margin:2px 0 0; line-height:1.6; }
-.nb-plugin-enable { display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; padding:5px 8px; border-radius:6px; white-space:nowrap; }
+.nb-plugin-enable { display:flex; align-items:center; gap:7px; font-size:13px; color:var(--editor-text); cursor:pointer; padding:5px 8px; border-radius:6px; white-space:nowrap; transition:color var(--transition-fast),background var(--transition-fast); }
+.nb-plugin-enable.is-off { color:var(--switch-label-off); }
 .nb-plugin-enable:hover { background:var(--toolbar-hover); }
 .nb-plugin-enable:active { background:var(--toolbar-active); }
-.nb-plugin-enable input { accent-color:var(--editor-accent); width:15px; height:15px; }
 
 /* 按钮 */
 .nb-plugin-button { display:inline-flex; gap:6px; align-items:center; justify-content:center; height:30px; border:1px solid var(--control-border); border-radius:6px; padding:0 11px; background:var(--editor-bg); color:var(--editor-text); font:inherit; font-size:13px; white-space:nowrap; cursor:pointer; transition:background 120ms,transform 120ms,filter 120ms; }

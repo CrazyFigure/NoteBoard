@@ -182,4 +182,44 @@ describe('设置搜索与布局整理', () => {
     await act(async () => confirm.click());
     expect(setEditor).toHaveBeenCalledWith(expect.objectContaining({ showLineNumbers: true }));
   });
+
+  it('设置开关渲染为现代化 switch 控件，关闭态行带 is-off 且标题栏按钮带前置图标', async () => {
+    const settings = structuredClone(DEFAULT_SETTINGS);
+    settings.editor.showLineNumbers = false;
+    settings.system.autoCheckUpdate = false;
+    settings.layout.titleBarButtons = { ...settings.layout.titleBarButtons, theme: false };
+    await act(async () => useSettingsStore.setState({ settings }));
+
+    switchTab('外观');
+    const titleBarCard = host.querySelector('[data-setting-id="titleBarButtons"]')!;
+    const titleBarRows = Array.from(titleBarCard.querySelectorAll('.nb-settings-toggle-row'));
+    expect(titleBarRows.length).toBe(4);
+    expect(titleBarRows.every((row) => row.querySelector('.nb-settings-toggle-icon svg') !== null)).toBe(true);
+    const themeSwitch = host.querySelector<HTMLInputElement>('input[role="switch"][aria-label="标题栏显示切换主题"]')!;
+    const homeSwitch = host.querySelector<HTMLInputElement>('input[role="switch"][aria-label="标题栏显示回到主界面"]')!;
+    expect(themeSwitch.closest('.nb-settings-switch')).not.toBeNull();
+    expect(themeSwitch.closest('.nb-settings-toggle-row')?.classList.contains('is-off')).toBe(true);
+    expect(homeSwitch.closest('.nb-settings-toggle-row')?.classList.contains('is-off')).toBe(false);
+
+    const setEditor = vi.spyOn(useSettingsStore.getState(), 'setEditor').mockResolvedValue(undefined);
+    switchTab('编辑器');
+    const lineNumbersRow = host.querySelector('[data-setting-id="showLineNumbers"]')!;
+    const lineNumbersSwitch = lineNumbersRow.querySelector<HTMLInputElement>('input[role="switch"]')!;
+    expect(lineNumbersSwitch.checked).toBe(false);
+    expect(lineNumbersRow.classList.contains('is-off')).toBe(true);
+    await act(async () => lineNumbersSwitch.click());
+    expect(setEditor).toHaveBeenCalledWith({ showLineNumbers: true });
+    // 验证状态更新为开启后，该行移除 is-off 柔化类名
+    await act(async () => {
+      const updated = structuredClone(useSettingsStore.getState().settings);
+      updated.editor.showLineNumbers = true;
+      useSettingsStore.setState({ settings: updated });
+    });
+    expect(host.querySelector('[data-setting-id="showLineNumbers"]')?.classList.contains('is-off')).toBe(false);
+
+    switchTab('关于');
+    const aboutCheck = host.querySelector('[data-setting-id="autoCheckUpdate"] .nb-about-check')!;
+    expect(aboutCheck.classList.contains('is-off')).toBe(true);
+    expect(aboutCheck.querySelector<HTMLInputElement>('input[role="switch"]')).not.toBeNull();
+  });
 });

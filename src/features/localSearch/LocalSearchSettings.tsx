@@ -14,6 +14,7 @@ import { useLocalSearchSettings, useSettingsStore } from '../../stores/settingsS
 import { useSyncStore } from '../../stores/syncStore';
 import { showToast } from '../../stores/toastStore';
 import { Tooltip } from '../../components/Tooltip';
+import { SettingsSwitch } from '../../components/settings/SettingsSwitch';
 import { canManageInstance } from '../account/accountState';
 import { useLocalSearchStore } from './localSearchStore';
 import './localSearch.css';
@@ -87,21 +88,20 @@ export function LocalSearchSettingsCard() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
-            <Search size={15} color="var(--accent-strong)" />
+      <div className={`nb-settings-toggle-row${enabled ? '' : ' is-off'}`} style={{ gap: 12, padding: 0 }}>
+        <div className="nb-settings-toggle-text">
+          <div className="nb-settings-toggle-title" style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
+            <Search size={15} color={enabled ? 'var(--accent-strong)' : 'var(--switch-label-off)'} style={{ transition: 'color var(--transition-fast)' }} />
             <span>本地文件搜索</span>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--editor-text-muted)', marginTop: 4 }}>
+          <div className="nb-settings-toggle-desc" style={{ marginTop: 4 }}>
             {formatShortcut('Ctrl + Shift + F')} 搜索文件名与内容
           </div>
         </div>
-        <input
-          type="checkbox"
-          aria-label="本地文件搜索"
+        <SettingsSwitch
+          ariaLabel="本地文件搜索"
           checked={enabled}
-          onChange={(e) => void handleToggle(e.target.checked)}
+          onChange={(checked) => void handleToggle(checked)}
         />
       </div>
 
@@ -175,22 +175,21 @@ export function WebSearchSettingsCard() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
-            <Search size={15} color="var(--accent-strong)" />
+      <div className={`nb-settings-toggle-row${enabled ? '' : ' is-off'}`} style={{ gap: 12, padding: 0 }}>
+        <div className="nb-settings-toggle-text">
+          <div className="nb-settings-toggle-title" style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
+            <Search size={15} color={enabled ? 'var(--accent-strong)' : 'var(--switch-label-off)'} style={{ transition: 'color var(--transition-fast)' }} />
             <span>全局搜索</span>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--editor-text-muted)', marginTop: 4 }}>
+          <div className="nb-settings-toggle-desc" style={{ marginTop: 4 }}>
             {formatShortcut('Ctrl + Shift + F')} 搜索文件名与内容 · {hint}
           </div>
         </div>
-        <input
-          type="checkbox"
-          aria-label="全局搜索"
+        <SettingsSwitch
+          ariaLabel="全局搜索"
           checked={enabled}
           disabled={!available || !manageable || saving}
-          onChange={(e) => void handleToggle(e.target.checked)}
+          onChange={(checked) => void handleToggle(checked)}
         />
       </div>
     </div>

@@ -48,17 +48,22 @@
   cursor: default;
 }
 
-/* 复选开关：整行可点，悬停高亮、按下轻缩 */
+/* 开关项：整行可点，悬停高亮、按下轻缩；关闭态文字柔和变浅 */
 .nb-about-check {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 1px 6px 1px 2px;
-  margin-left: -2px;
+  gap: 8px;
+  padding: 3px 8px 3px 4px;
+  margin-left: -4px;
   border-radius: var(--radius-sm, 4px);
+  color: var(--editor-text);
   cursor: pointer;
   user-select: none;
-  transition: all var(--transition-fast);
+  transition: background-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.nb-about-check.is-off {
+  color: var(--switch-label-off);
 }
 
 .nb-about-check:hover {
@@ -68,10 +73,4 @@
 .nb-about-check:active {
   background: var(--toolbar-active);
   transform: scale(0.97);
-}
-
-.nb-about-check input {
-  margin: 0;
-  cursor: pointer;
-  accent-color: var(--accent-strong);
 }
