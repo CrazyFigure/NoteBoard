@@ -5,13 +5,12 @@
   opacity: 1 !important;
 }
 
-/* 节点工具栏优先跟随鼠标；没有悬停节点时才保留主选中节点的工具栏。 */
+/* 节点浮动工具栏仅在主选中节点时显示，悬停其他节点不触发也不干扰已选中节点的工具栏。 */
 .nb-mindmap-node > .nb-mindmap-node-toolbar {
   display: none;
 }
 
-.nb-mindmap-node:hover > .nb-mindmap-node-toolbar,
-.nb-mindmap-transform:not(:has(.nb-mindmap-node:hover)) > .nb-mindmap-node > .nb-mindmap-node-toolbar[data-selected='true'] {
+.nb-mindmap-node > .nb-mindmap-node-toolbar[data-selected='true'] {
   display: flex;
 }
 

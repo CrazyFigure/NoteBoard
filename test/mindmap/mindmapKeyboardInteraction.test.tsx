@@ -163,4 +163,50 @@ describe('思维导图键盘操作', () => {
     expect(onChange.mock.lastCall![0].children[0].textColor).toBe('#ef4444');
     expect(onChange.mock.lastCall![0].children[0].fillColor).toBe('#fee2e2');
   });
+
+  it('节点悬浮工具栏仅在选中时展示，鼠标悬停其他节点不显示也不干扰原选中菜单', async () => {
+    const toolbars = () => host.querySelectorAll('.nb-mindmap-node > .nb-mindmap-node-toolbar');
+    const toolbarOn = (id: string) => nodeEl(id).querySelector('.nb-mindmap-node-toolbar') as HTMLElement | null;
+
+    // 初始未选中任何节点时不渲染工具栏；鼠标移动到节点上也不触发显示
+    expect(toolbars()).toHaveLength(0);
+    await act(async () => {
+      nodeEl('a').dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      nodeEl('a').dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }));
+    });
+    expect(toolbars()).toHaveLength(0);
+
+    // 选中节点 a 后仅节点 a 渲染工具栏，鼠标移动到其他节点仍保留原工具栏且其他节点不显示
+    await select('a');
+    expect(toolbars()).toHaveLength(1);
+    expect(toolbarOn('a')?.dataset.selected).toBe('true');
+    expect(toolbarOn('b')).toBeNull();
+    expect(toolbarOn('root')).toBeNull();
+
+    await act(async () => {
+      nodeEl('b').dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      nodeEl('b').dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }));
+      nodeEl('root').dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    });
+    expect(toolbars()).toHaveLength(1);
+    expect(toolbarOn('a')).not.toBeNull();
+    expect(toolbarOn('b')).toBeNull();
+
+    // 多选时仅主选中节点渲染工具栏并展示已选数量
+    await act(async () => {
+      nodeEl('b').dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true, metaKey: true }));
+    });
+    expect(selectedIds()).toEqual(['a', 'b']);
+    expect(toolbars()).toHaveLength(1);
+    expect(toolbarOn('b')?.textContent).toContain('已选 2 个');
+    expect(toolbarOn('a')).toBeNull();
+
+    // 点击空白画布取消选中后全部节点工具栏隐藏
+    const canvas = host.querySelector('.nb-mindmap-canvas') as HTMLElement;
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }));
+    });
+    expect(selectedIds()).toEqual([]);
+    expect(toolbars()).toHaveLength(0);
+  });
 });

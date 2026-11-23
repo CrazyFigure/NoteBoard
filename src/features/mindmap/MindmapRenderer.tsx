@@ -563,7 +563,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
   const [editingNoteNodeId, setEditingNoteNodeId] = useState<string | null>(null);
   const [editNoteText, setEditNoteText] = useState('');
 
-  // 选中的节点与悬浮工具栏状态：selectedNodeId 为主选中（无悬停节点时显示它的工具栏），
+  // 选中的节点与悬浮工具栏状态：selectedNodeId 为主选中（仅该节点展示浮动工具栏），
   // multiSelectedIds 为 Ctrl / Cmd + 单击多选的全部节点（至少 2 个时才非空，含主选中）
   const [selectedNodeId, setPrimarySelectedId] = useState<string | null>(null);
   const [multiSelectedIds, setMultiSelectedIds] = useState<readonly string[]>(NO_IDS);
@@ -2642,7 +2642,7 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
           // 概要主题：边框沿用分支色（与大括号同色），不能拖动
           const isSummaryTopic = Boolean(n.summaryOf);
           const isEditing = editingNodeId === n.node.id;
-          // 主选中节点提供无悬停时的工具栏；多选中的其余节点只显示选中描边
+          // 仅主选中节点展示浮动工具栏；多选中的其余节点只显示选中描边
           const isPrimarySelected = selectedNodeId === n.node.id;
           const isSelected = isPrimarySelected || multiSelectedSet.has(n.node.id);
           const searchRanges = searchHighlight?.ranges.get(n.node.id);
@@ -3100,12 +3100,12 @@ export const MindmapRenderer = forwardRef<MindmapRendererHandle, MindmapRenderer
                 </div>
               )}
 
-              {/* 悬停/选中节点浮动快捷工具栏（只读态与编辑文字时隐藏，避免遮挡文字格式菜单） */}
-              {!readOnly && !isEditing && (
+              {/* 仅选中节点展示浮动快捷工具栏（只读态、未选中与编辑文字时隐藏，避免悬停干扰或遮挡文字格式菜单） */}
+              {!readOnly && !isEditing && isPrimarySelected && (
               <div
                 className="nb-mindmap-node-toolbar"
-                // 样式统一裁定悬停与主选中优先级，确保节点工具栏同时只显示一个。
-                data-selected={isPrimarySelected || undefined}
+                // 仅主选中节点渲染并展示工具栏，不受鼠标悬停其他节点干扰。
+                data-selected="true"
                 style={{
                   position: 'absolute',
                   // 子节点向上展开时工具栏移到下方，避免与折叠按钮重叠（工具栏高 28px，与节点留 4px 间隙）

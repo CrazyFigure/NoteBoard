@@ -476,11 +476,25 @@ describe('Markdown 内嵌思维导图', () => {
     expect(rootNode.dataset.vividSurface).toBe('true');
     expect(plainBranch.dataset.vividSurface).toBeUndefined();
     expect(vividBranch.dataset.vividSurface).toBe('true');
-    expect(rootNode.querySelector('.nb-mindmap-node-toolbar')).not.toBeNull();
+    // 未选中任何节点时不渲染悬浮工具栏，悬停节点同样不显示
+    expect(rootNode.querySelector('.nb-mindmap-node-toolbar')).toBeNull();
+    expect(plainBranch.querySelector('.nb-mindmap-node-toolbar')).toBeNull();
     expect(rootNode.querySelector('.nb-node-add-btn')).not.toBeNull();
 
-    // 单击选中中心主题，再用双击进入编辑：中心主题保持无外边框，内环通过 boxShadow inset 绘制
+    // 单击选中中心主题，仅选中节点渲染工具栏；鼠标移到其他节点不显示也不干扰原工具栏；双击进入编辑时保持中心主题内阴影绘制
     await act(async () => rootNode.click());
+    const rootToolbar = rootNode.querySelector<HTMLElement>('.nb-mindmap-node-toolbar');
+    expect(rootToolbar).not.toBeNull();
+    expect(rootToolbar?.dataset.selected).toBe('true');
+    expect(plainBranch.querySelector('.nb-mindmap-node-toolbar')).toBeNull();
+
+    await act(async () => {
+      plainBranch.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      plainBranch.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }));
+    });
+    expect(rootNode.querySelector('.nb-mindmap-node-toolbar')).not.toBeNull();
+    expect(plainBranch.querySelector('.nb-mindmap-node-toolbar')).toBeNull();
+
     expect(rootNode.style.borderStyle === 'none' || rootNode.style.border === 'none' || rootNode.style.borderWidth === '0px' || rootNode.style.border === '').toBe(true);
     expect(rootNode.style.boxShadow).toContain('inset 0 0 0 2px');
 
@@ -516,7 +530,10 @@ describe('Markdown 内嵌思维导图', () => {
   it('样式表包含导图选区高优先级覆盖、暗色与反白规则以及 ProseMirror 排版隔离', () => {
     const css = readFileSync(resolve('src', 'styles', 'canvasEditors.css'), 'utf8');
 
-    // 编辑态统一隐藏全部节点工具栏与添加按钮
+    // 节点工具栏仅在选中时展示，不被节点悬停触发或干扰；编辑态统一隐藏全部节点工具栏与添加按钮
+    expect(css).toContain(".nb-mindmap-node > .nb-mindmap-node-toolbar[data-selected='true']");
+    expect(css).not.toContain('.nb-mindmap-node:hover > .nb-mindmap-node-toolbar');
+    expect(css).not.toContain(':has(.nb-mindmap-node:hover)');
     expect(css).toContain(".nb-mindmap-transform[data-editing-text='true'] .nb-mindmap-node-toolbar");
     expect(css).toContain(".nb-mindmap-transform[data-editing-text='true'] .nb-node-add-btn");
 
