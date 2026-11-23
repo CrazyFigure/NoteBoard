@@ -46,7 +46,9 @@ import {
   BarChart3,
   Smile,
   Ellipsis,
+  Network,
 } from 'lucide-react';
+import { createDefaultMindmapCode } from '../editor-md/mindmapBlockDefault';
 import {
   ToolbarButton,
   ToolbarDivider,
@@ -420,6 +422,25 @@ export function MarkdownToolbar({
     editor.chain().focus().insertContent({
       type: 'infographicBlock',
       attrs: { code: tmpl },
+    }).run();
+  };
+
+  // 插入思维导图（导图模式，围栏语言为 mindmap）
+  const handleInsertMindmap = () => {
+    setInsertDropdownOpen(false);
+    const code = createDefaultMindmapCode();
+    if (isSourceMode) {
+      const mindmapSnippet = `\n\`\`\`mindmap\n${code}\n\`\`\`\n`;
+      executeSourceAction((view) => {
+        const { from } = view.state.selection.main;
+        view.dispatch({ changes: { from, to: from, insert: mindmapSnippet } });
+      });
+      return;
+    }
+    if (!editor) return;
+    editor.chain().focus().insertContent({
+      type: 'mindmapBlock',
+      attrs: { code },
     }).run();
   };
 
@@ -1096,6 +1117,11 @@ export function MarkdownToolbar({
                 icon={<BarChart3 size={14} color="#3b82f6" />}
                 label="Infographic 现代信息图"
                 onClick={handleInsertInfographic}
+              />
+              <ToolbarDropdownItem
+                icon={<Network size={14} color="#f97316" />}
+                label="思维导图"
+                onClick={handleInsertMindmap}
               />
             </>
           }

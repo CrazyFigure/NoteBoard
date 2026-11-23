@@ -43,6 +43,7 @@ describe('Markdown 往返：原文逐字保留', () => {
     ['C++ 与等号比较不被误识别', 'C++ and C++ rock\n\nif a == b and c == d'],
     ['中文语境高亮与下划线', '文字==高亮==文字 ++下划线++'],
     ['Mermaid 围栏', 'before\n\n```mermaid\ngraph TD\n  A --> B\n```\n\nafter'],
+    ['Mindmap 围栏', 'before\n\n```mindmap\n{"version":1,"root":{"id":"root","text":"中心","children":[]},"layout":"right","theme":"classic"}\n```\n\nafter'],
     ['GitHub 提示块', '> [!NOTE]\n> hello\n>\n> world\n\nafter'],
     ['嵌套代码围栏', '````md\n```js\nx\n```\n````'],
     ['硬换行后的行首字面量', 'line one  \n\\- after break'],
@@ -94,7 +95,7 @@ describe('Markdown 往返：语义保持', () => {
 });
 
 describe('Markdown 往返：从菜单插入的块不丢失', () => {
-  it('Mermaid / 提示块 / PlantUML / 信息图均能序列化', () => {
+  it('Mermaid / 提示块 / PlantUML / 信息图 / 思维导图均能序列化', () => {
     editor.commands.setContent({
       type: 'doc',
       content: [
@@ -103,6 +104,7 @@ describe('Markdown 往返：从菜单插入的块不丢失', () => {
         { type: 'githubAlert', attrs: { kind: 'tip' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hi' }] }] },
         { type: 'plantumlBlock', attrs: { code: '@startuml\nA->B\n@enduml' } },
         { type: 'infographicBlock', attrs: { code: 'infographic list' } },
+        { type: 'mindmapBlock', attrs: { code: '{"version":1,"root":{"id":"root","text":"中心","children":[]}}' } },
       ],
     });
     const output = serializeMarkdown(editor);
@@ -112,12 +114,13 @@ describe('Markdown 往返：从菜单插入的块不丢失', () => {
       '> [!TIP]\n> hi',
       '```plantuml\n@startuml\nA->B\n@enduml\n```',
       '```infographic\ninfographic list\n```',
+      '```mindmap\n{"version":1,"root":{"id":"root","text":"中心","children":[]}}\n```',
     ].join('\n\n'));
 
-    // 重新打开：Mermaid / 信息图 / 提示块还原为预览节点；PlantUML 不自动远程渲染，保持代码块
+    // 重新打开：Mermaid / 信息图 / 思维导图 / 提示块还原为预览节点；PlantUML 不自动远程渲染，保持代码块
     parseMarkdown(editor, output);
     const types = (editor.getJSON().content ?? []).map((node) => node.type);
-    expect(types).toEqual(['paragraph', 'mermaidBlock', 'githubAlert', 'codeBlock', 'infographicBlock']);
+    expect(types).toEqual(['paragraph', 'mermaidBlock', 'githubAlert', 'codeBlock', 'infographicBlock', 'mindmapBlock']);
   });
 
   it('代码块内容含三反引号时自动加长围栏', () => {

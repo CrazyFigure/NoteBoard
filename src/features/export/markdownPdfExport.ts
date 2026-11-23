@@ -60,7 +60,8 @@ const PRINT_STYLE_TEXT = `
 #${PRINT_ROOT_ID} img,
 #${PRINT_ROOT_ID} tr,
 #${PRINT_ROOT_ID} .nb-diagram-container,
-#${PRINT_ROOT_ID} .nb-infographic-container {
+#${PRINT_ROOT_ID} .nb-infographic-container,
+#${PRINT_ROOT_ID} .nb-md-mindmap-container {
   page-break-inside: avoid;
   break-inside: avoid;
 }
@@ -294,14 +295,16 @@ function cleanupClone(clone: HTMLElement): void {
   clone.classList.remove('ProseMirror-focused');
 
   // 图表块顶部是纯操作条（标题 + 编辑/复制/导出按钮），整条移除
-  clone.querySelectorAll('.nb-diagram-container, .nb-infographic-container').forEach((container) => {
+  clone.querySelectorAll('.nb-diagram-container, .nb-infographic-container, .nb-md-mindmap-container').forEach((container) => {
     const header = container.firstElementChild;
-    if (header && header.querySelector('button')) header.remove();
+    if (header && (header.classList.contains('nb-md-mindmap-topbar') || header.querySelector('button'))) {
+      header.remove();
+    }
   });
 
   clone
     .querySelectorAll(
-      'button, .nb-block-drag-handle, .nb-block-drop-indicator, .ProseMirror-gapcursor, input[type="file"]',
+      'button, .nb-block-drag-handle, .nb-block-drop-indicator, .ProseMirror-gapcursor, input[type="file"], .nb-mindmap-history-bar, .nb-md-mindmap-resize-handle, [data-minimap], .nb-mindmap-node-toolbar, .nb-node-add-btn, .nb-mindmap-resize-handle',
     )
     .forEach((el) => el.remove());
   // 代码块头部只保留语言名称，去掉语言选择的下拉箭头

@@ -149,6 +149,7 @@ const DIAGRAM_FENCE_LABELS: Record<string, string> = {
   plantuml: 'PlantUML 图表',
   puml: 'PlantUML 图表',
   infographic: 'Infographic 信息图',
+  mindmap: '思维导图',
 };
 
 /** GitHub 提示块首行标记，独占一行（与笔记本解析规则一致） */

@@ -684,6 +684,11 @@ export function clearAllDocumentHistories(): void {
   }
 }
 
+/** 判断指定文档是否已注册统一文档历史 */
+export function hasDocumentHistory(docKey: string): boolean {
+  return Boolean(docKey) && histories.has(docKey);
+}
+
 /** 仅测试/诊断：窥视内部存储状态 */
 export function __debugGetState(docKey: string): DocumentHistoryState | undefined {
   return histories.get(docKey);

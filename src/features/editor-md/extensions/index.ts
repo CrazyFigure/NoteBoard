@@ -13,6 +13,7 @@ import { MathInline, MathBlock } from '../katexExtensions';
 import { MermaidBlock } from '../mermaidExtension';
 import { PlantUmlBlock } from '../../plantuml/plantumlExtension';
 import { InfographicBlock } from '../infographicExtension';
+import { MindmapBlock } from '../mindmapBlockExtension';
 import { GitHubAlert } from '../alertExtension';
 import { DetailsBlock } from '../detailsExtension';
 import { ColumnBlock, ColumnsBlock } from '../columnsExtension';
@@ -80,9 +81,9 @@ const LinkClickHandler = Extension.create<LinkClickHandlerOptions>({
           handleDOMEvents: {
             click(view, event) {
               const target = event.target as HTMLElement | null;
-              // 渲染后的原始 HTML（HTML 块 / 行内 HTML）中的链接由其节点视图自行处理（见 handleRenderedHtmlLinkClick）：
+              // 渲染后的原始 HTML（HTML 块 / 行内 HTML）和内嵌思维导图中的链接由其节点视图自行处理：
               // click 不是 ProseMirror 内置处理的事件，自定义处理器不经过节点视图 stopEvent 过滤，需在此显式让出
-              if (target?.closest(RENDERED_RAW_HTML_SELECTOR)) return false;
+              if (target?.closest(RENDERED_RAW_HTML_SELECTOR) || target?.closest('.nb-md-mindmap-container')) return false;
               const anchor = target?.closest('a');
               if (anchor) {
                 const href = anchor.getAttribute('href');
@@ -120,7 +121,7 @@ const LinkClickHandler = Extension.create<LinkClickHandlerOptions>({
             auxclick(_view, event) {
               // 拦截鼠标中键等辅助按键，防止触发原生导航
               const target = event.target as HTMLElement | null;
-              if (target?.closest(RENDERED_RAW_HTML_SELECTOR)) return false;
+              if (target?.closest(RENDERED_RAW_HTML_SELECTOR) || target?.closest('.nb-md-mindmap-container')) return false;
               const anchor = target?.closest('a');
               if (anchor) {
                 event.preventDefault();
@@ -188,11 +189,12 @@ export interface BuildExtensionsOptions {
 export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): Extensions {
   const useDocumentHistory = options?.documentHistory !== false;
   // 只按节点名称补充视图；核心扩展的顺序、属性默认值和 Markdown 规则均保持原样。
-  const views = new Map([EnhancedImageBlock, CodeBlockView, MathInline, MathBlock, MermaidBlock, PlantUmlBlock, InfographicBlock, GitHubAlert, DetailsBlock, ColumnsBlock, ColumnBlock, CalloutBlock, RawHtmlInline, RawHtmlBlock, WikiLink, MarkdownTableView].map((extension) => [extension.name, extension]));
+  const views = new Map([EnhancedImageBlock, CodeBlockView, MathInline, MathBlock, MermaidBlock, PlantUmlBlock, InfographicBlock, MindmapBlock, GitHubAlert, DetailsBlock, ColumnsBlock, ColumnBlock, CalloutBlock, RawHtmlInline, RawHtmlBlock, WikiLink, MarkdownTableView].map((extension) => [extension.name, extension]));
   const core = buildCoreExtensions(options).map((extension) => {
     const view = views.get(extension.name);
-    // 配置沿用核心实例；双链的文档身份仅供主线程跳转，不进入后台解析状态。
-    return view ? view.configure({ ...extension.options, ...(extension.name === 'wikiLink' ? { docKey } : {}) }) : extension;
+    // 配置沿用核心实例；双链与内嵌思维导图的文档身份仅供主线程使用，不进入后台解析状态。
+    const withDocKey = extension.name === 'wikiLink' || extension.name === 'mindmapBlock';
+    return view ? view.configure({ ...extension.options, ...(withDocKey ? { docKey } : {}) }) : extension;
   });
   return [
     ...core,

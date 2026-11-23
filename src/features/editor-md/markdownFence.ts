@@ -10,9 +10,10 @@ import { emitRawSegment } from './rawMarkdownSegments';
  * PlantUML 依赖远程渲染服务，打开他人文档时不自动转换，避免未经确认就把内容发送到外部服务器；
  * 它仅在序列化时输出为 ```plantuml 围栏，重新打开后以普通代码块呈现。
  */
-export const PREVIEW_FENCE_LANGUAGES: Record<string, 'mermaidBlock' | 'infographicBlock'> = {
+export const PREVIEW_FENCE_LANGUAGES: Record<string, 'mermaidBlock' | 'infographicBlock' | 'mindmapBlock'> = {
   mermaid: 'mermaidBlock',
   infographic: 'infographicBlock',
+  mindmap: 'mindmapBlock',
 };
 
 /**

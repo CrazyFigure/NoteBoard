@@ -18,6 +18,7 @@ import { insertRawHtmlContent } from './rawHtmlBlockView';
 import { InlineEmojiGrid, insertInlineEmoji } from './inlineEmoji';
 import { insertLocalImageWithDialog } from './imagePaste';
 import { DEFAULT_INFOGRAPHIC_CODE } from '../infographic/infographicTemplates';
+import { createDefaultMindmapCode } from './mindmapBlockDefault';
 import { promptImageUrl, promptLinkUrl } from '../../components/promptPresets';
 import { useWindowStore } from '../../stores/windowStore';
 import { insertWikiLinkInEditor } from '../wikilink/wikiLinkActions';
@@ -69,6 +70,7 @@ import {
   Waypoints,
   X,
   Type,
+  Network,
 } from 'lucide-react';
 import { formatShortcut } from '../../core/shortcuts';
 
@@ -1475,6 +1477,12 @@ export function EditorContextMenu({
                   icon: <BarChart3 size={15} color="#3b82f6" />,
                   // 默认信息图模板与工具栏、斜杠命令共用
                   content: { type: 'infographicBlock', attrs: { code: DEFAULT_INFOGRAPHIC_CODE } },
+                },
+                {
+                  key: 'mindmap',
+                  label: '思维导图',
+                  icon: <Network size={15} color="#f97316" />,
+                  content: { type: 'mindmapBlock', attrs: { code: createDefaultMindmapCode() } },
                 },
               ].map((m) => (
                 <button

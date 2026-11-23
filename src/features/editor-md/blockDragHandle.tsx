@@ -49,6 +49,8 @@ const BLOCK_TYPE_LABELS: Record<string, string> = {
   horizontalRule: '分隔线',
   image: '图片',
   mermaidBlock: 'Mermaid 图表',
+  infographicBlock: '信息图',
+  mindmapBlock: '思维导图',
   mathBlock: '公式块',
   githubAlert: 'GitHub 提示块',
   detailsBlock: '折叠块',

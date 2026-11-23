@@ -42,7 +42,9 @@ import {
   Columns4,
   Highlighter,
   Smile,
+  Network,
 } from 'lucide-react';
+import { createDefaultMindmapCode } from './mindmapBlockDefault';
 import { insertLocalImageWithDialog } from './imagePaste';
 import { promptImageUrl } from '../../components/promptPresets';
 import { useWindowStore } from '../../stores/windowStore';
@@ -357,6 +359,20 @@ const MATH_LEAFS: LeafCommandItem[] = [
     keywords: '信息图 infographic info xinxitu 指标 看板 时间线 流程 对比 漏斗 象限',
     action: (editor, range) => {
       editor.chain().focus().deleteRange(range).insertContent({ type: 'infographicBlock', attrs: { code: DEFAULT_INFOGRAPHIC_CODE } }).run();
+    },
+  },
+  {
+    id: 'mindmap',
+    label: '思维导图',
+    description: '可视化节点导图，支持多种结构布局与主题配色',
+    groupId: 'math',
+    groupLabel: '公式与图表',
+    shortcutHint: '/mindmap',
+    icon: <Network size={17} color="#f97316" />,
+    aliases: ['mindmap', 'siwei', 'siweidaotu', 'swdt', 'naotu', 'nt', 'daotu', 'dt', 'xmind'],
+    keywords: '思维导图 脑图 导图 mindmap xmind siweidaotu naotu',
+    action: (editor, range) => {
+      editor.chain().focus().deleteRange(range).insertContent({ type: 'mindmapBlock', attrs: { code: createDefaultMindmapCode() } }).run();
     },
   },
 ];
@@ -699,7 +715,7 @@ const ROOT_GROUPS: GroupCommandItem[] = [
   {
     id: 'math',
     label: '公式与图表',
-    description: 'KaTeX 数学公式与 Mermaid 流程图',
+    description: 'KaTeX 数学公式、Mermaid 流程图与思维导图',
     shortcutHint: '/math, /tb',
     icon: <Workflow size={17} />,
     isGroup: true,

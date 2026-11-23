@@ -6,20 +6,8 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   ListTree,
   Network,
-  Download,
-  Upload,
-  ZoomIn,
-  ZoomOut,
-  RotateCcw,
-  FileText,
-  ChevronDown,
-  Image as ImageIcon,
-  MoveHorizontal,
   Undo2,
   Redo2,
-  Braces,
-  SquareDashed,
-  Spline,
 } from 'lucide-react';
 import type {
   MindNode,
@@ -32,29 +20,31 @@ import {
   parseMindmapDocument,
   parseMindmapDocumentMeta,
   serializeMindmapDocument,
-  exportToXmindZip,
-  markdownToMindNode,
-  mindNodeToMarkdown,
   DEFAULT_MINDMAP_LAYOUT,
   DEFAULT_MINDMAP_THEME,
 } from './mindmapConverter';
 import { getMindmapTheme } from './mindmapTheme';
-import { Dropdown, DropdownItem, MindmapStyleControls } from './MindmapStyleControls';
-import { exportMindmapImageBlob, type MindmapImageFormat } from './mindmapImageExport';
+import { type MindmapImageFormat } from './mindmapImageExport';
 import { clampNodeMaxWidth, FALLBACK_FONT_FAMILY } from './mindmapTextMeasure';
+import {
+  clearNodeWidths,
+  exportMindmapAsImage,
+  exportMindmapAsMarkdown,
+  exportMindmapAsXmind,
+  hasCustomNodeWidth,
+  readMindmapImportFile,
+} from './mindmapActions';
+import { MindmapCanvasToolbar } from './MindmapCanvasToolbar';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { OutlinerEditor } from './OutlinerEditor';
 import { MindmapRenderer, type MindmapRendererHandle, type MindmapSelectionInfo } from './MindmapRenderer';
 import { createInitialMindmapView } from './mindmapView';
-import { cloneMindmapTree, getMindmapTreeStats, walkMindNodes } from './mindmapTree';
-import { confirmMindmapImport, requestMindmapChoice } from './MindmapImportDialog';
 import { getSessionGeneration } from '../session/documentSession';
 import { Tooltip } from '../../components/Tooltip';
 import { useDocumentStore } from '../../stores/documentStore';
 import { useWindowStore } from '../../stores/windowStore';
 import { showToast } from '../../stores/toastStore';
-import { showExportError, showExportSuccess } from '../../stores/exportResultStore';
-import { buildExportFileName, exportBlobWithDialog } from '../export/chartExport';
+import { buildExportFileName } from '../export/chartExport';
 import {
   initializeDocumentHistory,
   registerDocumentHistoryAdapter,
@@ -88,19 +78,6 @@ interface MindmapEditorProps {
 }
 
 type ViewMode = 'outliner' | 'mindmap';
-
-/** 树中是否存在手动拉伸过宽度的节点 */
-function hasCustomNodeWidth(node: MindNode): boolean {
-  for (const current of walkMindNodes(node)) if (typeof current.width === 'number') return true;
-  return false;
-}
-
-/** 返回移除所有手动宽度后的新树（不修改原树） */
-function clearNodeWidths(node: MindNode): MindNode {
-  const cloned = cloneMindmapTree(node);
-  for (const current of walkMindNodes(cloned)) delete current.width;
-  return cloned;
-}
 
 /** TipTap 无关的实例代际序号：同 docKey 重挂载递增（注册表删除保护） */
 let nextMindmapInstanceId = 0;
@@ -167,21 +144,9 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
     : buildExportFileName(doc?.displayName, '思维导图');
   // 撤销 / 重做可用状态（画布左下角按钮）
   const { canUndo, canRedo } = useDocumentHistory(docKey);
-  const [exportOpen, setExportOpen] = useState(false);
   // 画布命令句柄与当前选中节点（顶部「概要 / 外框 / 联系线」按钮使用）
   const rendererRef = useRef<MindmapRendererHandle>(null);
   const [selection, setSelection] = useState<MindmapSelectionInfo>({ nodeIds: [], includesRoot: false });
-  // 概要 / 外框需选中非中心主题的节点；联系线需恰好选中一个节点
-  const canAddRange = selection.nodeIds.length > 0 && !selection.includesRoot;
-  const canConnect = selection.nodeIds.length === 1;
-  /** 顶部插入按钮：条件不满足时提示怎么选，而不是静默无反应 */
-  const runInsert = (enabled: boolean, hint: string, action: () => void) => {
-    if (!enabled) {
-      showToast(hint, 'info');
-      return;
-    }
-    action();
-  };
   // 🔴 S12：最新状态引用（capabilities flush/captureViewState 同步读取，不依赖渲染闭包）
   const rootNodeRef = useRef<MindNode>(rootNode);
   rootNodeRef.current = rootNode;
@@ -396,86 +361,29 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
   }, [docKey]);
 
   // 导出为 .xmind 文件（弹系统另存为对话框）
-  const handleExportXmind = async () => {
-    try {
-      const blob = await exportToXmindZip(rootNode);
-      const defaultFilename = `${exportBaseName}.xmind`;
-      const filters = [
-        { name: 'XMind 思维导图 (*.xmind)', extensions: ['xmind'] },
-        { name: '全部文件 (*.*)', extensions: ['*'] },
-      ];
-      // 唤起原生对话框保存文件
-      const saved = await exportBlobWithDialog(blob, defaultFilename, filters);
-      if (saved) {
-        showExportSuccess(saved, '已导出 XMind 文件');
-      }
-    } catch (err) {
-      console.error('导出 XMind 失败:', err);
-      showExportError(err, '导出 XMind 失败');
-    }
-  };
+  const handleExportXmind = () => exportMindmapAsXmind(rootNode, exportBaseName);
 
   // 导出为 Markdown 大纲（弹系统另存为对话框）
-  const handleExportMarkdown = async () => {
-    try {
-      const md = mindNodeToMarkdown(rootNode);
-      const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
-      const defaultFilename = `${exportBaseName}.md`;
-      const filters = [
-        { name: 'Markdown 大纲 (*.md)', extensions: ['md'] },
-        { name: '全部文件 (*.*)', extensions: ['*'] },
-      ];
-      // 唤起原生对话框保存文件
-      const saved = await exportBlobWithDialog(blob, defaultFilename, filters);
-      if (saved) {
-        showExportSuccess(saved, '已导出 Markdown 大纲');
-      }
-    } catch (err) {
-      console.error('导出 Markdown 失败:', err);
-      showExportError(err, '导出 Markdown 失败');
-    }
-  };
+  const handleExportMarkdown = () => exportMindmapAsMarkdown(rootNode, exportBaseName);
 
   // 导出为 PNG / JPG 图片：按当前布局与配色独立排版绘制，内容自动居中
-  const handleExportImage = async (format: MindmapImageFormat) => {
-    try {
-      const scope = await requestMindmapChoice('选择图片导出范围', [
-        { value: 'current', label: '按当前展开／折叠状态导出' },
-        { value: 'all', label: '临时展开全部节点后导出' },
-      ], '导出图片');
-      if (scope === null) return;
-      // 图片范围独立于视口裁剪；临时展开副本，不改变文件正文与当前画布状态。
-      const imageRoot = scope === 'all' ? cloneMindmapTree(rootNodeRef.current) : displayedRootRef.current;
-      if (scope === 'all') for (const node of walkMindNodes(imageRoot)) node.isExpanded = true;
-      const fontFamily =
-        (rootElRef.current && window.getComputedStyle(rootElRef.current).fontFamily) ||
-        FALLBACK_FONT_FAMILY;
-      const blob = await exportMindmapImageBlob({
-        root: imageRoot,
-        layout,
-        theme,
-        edgeStyle: resolvedEdgeStyle,
-        maxNodeWidth,
-        defaultTextAlign,
-        defaultImageFit,
-        fontFamily,
-        format,
-      });
-      const extension = format === 'jpeg' ? 'jpg' : 'png';
-      const filters = [
-        format === 'jpeg'
-          ? { name: 'JPG 图片 (*.jpg)', extensions: ['jpg', 'jpeg'] }
-          : { name: 'PNG 图片 (*.png)', extensions: ['png'] },
-        { name: '全部文件 (*.*)', extensions: ['*'] },
-      ];
-      const saved = await exportBlobWithDialog(blob, `${exportBaseName}.${extension}`, filters);
-      if (saved) {
-        showExportSuccess(saved, `已导出 ${extension.toUpperCase()} 图片`);
-      }
-    } catch (err) {
-      console.error('导出图片失败:', err);
-      showExportError(err, '导出图片失败');
-    }
+  const handleExportImage = (format: MindmapImageFormat) => {
+    const fontFamily =
+      (rootElRef.current && window.getComputedStyle(rootElRef.current).fontFamily) ||
+      FALLBACK_FONT_FAMILY;
+    return exportMindmapAsImage({
+      root: rootNodeRef.current,
+      displayedRoot: displayedRootRef.current,
+      layout,
+      theme,
+      edgeStyle: resolvedEdgeStyle,
+      maxNodeWidth,
+      defaultTextAlign,
+      defaultImageFit,
+      fontFamily,
+      format,
+      baseName: exportBaseName,
+    });
   };
 
   // 导入 .xmind 或 Markdown 大纲文件（替换当前导图，可撤销）
@@ -483,38 +391,14 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = ''; // 重置 file input，允许重复导入同一文件
-    const isXmind = /\.xmind$/i.test(file.name);
     const generation = getSessionGeneration(docKey);
-    if (!isXmind && file.size > 20 * 1024 * 1024
-      && !await confirmMindmapImport(['Markdown 正文超过 20 MB，继续解析可能耗时较长并占用较多内存'])) return;
-
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        const importedRoot = isXmind
-          ? await (await import('./xmindImportFlow')).importXmindWithDialogs(reader.result as ArrayBuffer)
-          : markdownToMindNode(String(reader.result ?? ''));
-        if (!importedRoot) return;
-        if (!isXmind) {
-          const stats = getMindmapTreeStats(importedRoot);
-          const risks: string[] = [];
-          if (stats.nodeCount > 50_000) risks.push(`节点数为 ${stats.nodeCount}，超过 50,000 个，继续可能耗时较长`);
-          if (stats.maxDepth > 500) risks.push(`层级深度为 ${stats.maxDepth}，超过 500 层，继续可能耗时较长`);
-          if (!await confirmMindmapImport(risks)) return;
-        }
-        // 对话框期间关闭或重开同一路径时，旧导入结果不得回写新会话。
-        if (!useDocumentStore.getState().hasDocument(docKey) || getSessionGeneration(docKey) !== generation) return;
-        handleRootChange(importedRoot);
-        setAutoCollapse(true);
-        showToast(isXmind ? '成功导入 XMind 思维导图' : '成功导入 Markdown 大纲');
-      } catch (err) {
-        console.error('导入失败:', err);
-        showToast(err instanceof Error ? err.message : '导入失败，文件格式可能不支持', 'error');
-      }
-    };
-    reader.onerror = () => showToast('读取导入文件失败', 'error');
-    if (isXmind) reader.readAsArrayBuffer(file);
-    else reader.readAsText(file);
+    const result = await readMindmapImportFile(file);
+    if (!result) return;
+    // 对话框期间关闭或重开同一路径时，旧导入结果不得回写新会话
+    if (!useDocumentStore.getState().hasDocument(docKey) || getSessionGeneration(docKey) !== generation) return;
+    handleRootChange(result.root);
+    setAutoCollapse(true);
+    showToast(result.isXmind ? '成功导入 XMind 思维导图' : '成功导入 Markdown 大纲');
   };
 
   return (
@@ -530,23 +414,10 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
       }}
     >
       {/* 顶部工具栏：模式切换 + 导入导出 + 缩放 */}
-      <div
-        className="nb-editor-topbar"
-        style={{
-          height: 40,
-          minHeight: 40,
-          display: isReading ? 'none' : 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 14px',
-          borderBottom: '1px solid var(--editor-border, #e2e8f0)',
-          background: 'var(--editor-surface, #f8fafc)',
-          userSelect: 'none',
-          fontSize: 12,
-        }}
-      >
-        {/* 左侧：导图 / 大纲双模切换胶囊 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <MindmapCanvasToolbar
+        hidden={isReading}
+        showCanvasControls={viewMode === 'mindmap'}
+        leftSlot={
           <div
             style={{
               display: 'flex',
@@ -583,196 +454,26 @@ export function MindmapEditor({ docKey }: MindmapEditorProps) {
               </button>
             </Tooltip>
           </div>
-        </div>
-
-        {/* 右侧：缩放控制与 XMind 导入导出（nb-mindmap-topbar-actions 统一按钮高度） */}
-        <div className="nb-mindmap-topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {viewMode === 'mindmap' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginRight: 6 }}>
-              <Tooltip content="缩小画布" side="bottom" sideOffset={4}>
-                <button
-                  type="button"
-                  className="nb-editor-icon-btn nb-mindmap-zoom-btn"
-                  onClick={() => setZoom((z) => Math.max(0.2, z - 0.15))}
-                  aria-label="缩小画布"
-                >
-                  <ZoomOut size={15} />
-                </button>
-              </Tooltip>
-              {/* 缩放百分比：收窄最小宽度贴近两侧按钮；等宽数字避免缩放时宽度抖动 */}
-              <span style={{ fontSize: 12, minWidth: 36, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>
-                {Math.round(zoom * 100)}%
-              </span>
-              <Tooltip content="放大画布" side="bottom" sideOffset={4}>
-                <button
-                  type="button"
-                  className="nb-editor-icon-btn nb-mindmap-zoom-btn"
-                  onClick={() => setZoom((z) => Math.min(3, z + 0.15))}
-                  aria-label="放大画布"
-                >
-                  <ZoomIn size={15} />
-                </button>
-              </Tooltip>
-              <Tooltip content="复位 100%" side="bottom" sideOffset={4}>
-                <button
-                  type="button"
-                  className="nb-editor-icon-btn nb-mindmap-zoom-btn"
-                  onClick={() => setZoom(1)}
-                  aria-label="复位 100%"
-                >
-                  <RotateCcw size={13} />
-                </button>
-              </Tooltip>
-              {/* 重置全部节点宽度：恢复为设置中的默认宽度 */}
-              <Tooltip
-                content={hasCustomWidths ? '重置全部节点宽度' : '没有手动调整过宽度的节点'}
-                side="bottom"
-                sideOffset={4}
-              >
-                <button
-                  type="button"
-                  className="nb-editor-icon-btn"
-                  onClick={handleResetAllWidths}
-                  disabled={!hasCustomWidths}
-                  aria-label="重置全部节点宽度"
-                  style={{ opacity: hasCustomWidths ? 1 : 0.4, cursor: hasCustomWidths ? 'pointer' : 'default' }}
-                >
-                  <MoveHorizontal size={13} />
-                </button>
-              </Tooltip>
-            </div>
-          )}
-
-          {/* 插入概要 / 外框 / 联系线（仅导图模式，作用于选中的节点） */}
-          {viewMode === 'mindmap' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Tooltip content="为选中节点添加概要（Shift / Ctrl 多选同层节点，可跨父节点）" side="bottom" sideOffset={4}>
-                <button
-                  type="button"
-                  className="nb-editor-toolbar-btn"
-                  aria-disabled={!canAddRange}
-                  style={{ opacity: canAddRange ? 1 : 0.5 }}
-                  onClick={() => runInsert(canAddRange, '先选中一个或多个同层节点（中心主题除外）', () => rendererRef.current?.addSummary())}
-                >
-                  <Braces size={13} />
-                  <span>概要</span>
-                </button>
-              </Tooltip>
-              <Tooltip content="为选中节点添加外框（Shift / Ctrl 多选同层节点，可跨父节点）" side="bottom" sideOffset={4}>
-                <button
-                  type="button"
-                  className="nb-editor-toolbar-btn"
-                  aria-disabled={!canAddRange}
-                  style={{ opacity: canAddRange ? 1 : 0.5 }}
-                  onClick={() => runInsert(canAddRange, '先选中一个或多个同层节点（中心主题除外）', () => rendererRef.current?.addBoundary())}
-                >
-                  <SquareDashed size={13} />
-                  <span>外框</span>
-                </button>
-              </Tooltip>
-              <Tooltip content="从选中节点拉一条联系线，再点击目标节点" side="bottom" sideOffset={4}>
-                <button
-                  type="button"
-                  className="nb-editor-toolbar-btn"
-                  aria-disabled={!canConnect}
-                  style={{ opacity: canConnect ? 1 : 0.5 }}
-                  onClick={() => runInsert(canConnect, '先选中一个起点节点', () => rendererRef.current?.startConnect())}
-                >
-                  <Spline size={13} />
-                  <span>联系线</span>
-                </button>
-              </Tooltip>
-            </div>
-          )}
-
-          {/* 布局、连线样式与配色主题切换（仅导图模式） */}
-          {viewMode === 'mindmap' && (
-            <MindmapStyleControls
-              layout={layout}
-              themeId={themeId}
-              edgeStyle={edgeStyle}
-              onLayoutChange={(nextLayout) => handleStyleChange({ layout: nextLayout })}
-              onThemeChange={(nextTheme) => handleStyleChange({ theme: nextTheme })}
-              onEdgeStyleChange={(nextEdgeStyle) => handleStyleChange({ edgeStyle: nextEdgeStyle ?? null })}
-            />
-          )}
-
-          {/* 沉浸阅读 */}
-          <ReadingModeButton docKey={docKey} className="nb-editor-icon-btn" />
-
-          {/* 导入：XMind 或 Markdown 大纲 */}
-          <Tooltip content="导入 XMind 或 Markdown 文件" side="bottom" sideOffset={4}>
-            <label className="nb-editor-toolbar-btn">
-              <Upload size={13} />
-              <span>导入</span>
-              <input
-                type="file"
-                accept=".xmind,.md,.markdown"
-                style={{ display: 'none' }}
-                onChange={handleImportFile}
-              />
-            </label>
-          </Tooltip>
-
-          {/* 导出：XMind / Markdown / PNG / JPG */}
-          <Dropdown
-            open={exportOpen}
-            onOpenChange={setExportOpen}
-            menuStyle={{ minWidth: 180 }}
-            trigger={
-              <Tooltip content="导出为其他格式" side="bottom" sideOffset={4}>
-                <span className="nb-editor-primary-btn" role="button" aria-haspopup="menu" aria-expanded={exportOpen}>
-                  <Download size={13} />
-                  <span>导出</span>
-                  <ChevronDown size={12} style={{ opacity: 0.85 }} />
-                </span>
-              </Tooltip>
-            }
-          >
-            <DropdownItem
-              onClick={() => {
-                setExportOpen(false);
-                void handleExportXmind();
-              }}
-            >
-              <Network size={14} />
-              <span style={{ flex: 1 }}>XMind</span>
-              <span style={{ fontSize: 11, opacity: 0.55 }}>.xmind</span>
-            </DropdownItem>
-            <DropdownItem
-              onClick={() => {
-                setExportOpen(false);
-                void handleExportMarkdown();
-              }}
-            >
-              <FileText size={14} />
-              <span style={{ flex: 1 }}>Markdown</span>
-              <span style={{ fontSize: 11, opacity: 0.55 }}>.md</span>
-            </DropdownItem>
-            <div style={{ height: 1, margin: '4px 6px', background: 'var(--editor-border, #e2e8f0)' }} />
-            <DropdownItem
-              onClick={() => {
-                setExportOpen(false);
-                void handleExportImage('png');
-              }}
-            >
-              <ImageIcon size={14} />
-              <span style={{ flex: 1 }}>PNG 图片</span>
-              <span style={{ fontSize: 11, opacity: 0.55 }}>.png</span>
-            </DropdownItem>
-            <DropdownItem
-              onClick={() => {
-                setExportOpen(false);
-                void handleExportImage('jpeg');
-              }}
-            >
-              <ImageIcon size={14} />
-              <span style={{ flex: 1 }}>JPG 图片</span>
-              <span style={{ fontSize: 11, opacity: 0.55 }}>.jpg</span>
-            </DropdownItem>
-          </Dropdown>
-        </div>
-      </div>
+        }
+        zoom={zoom}
+        onZoomChange={setZoom}
+        onResetZoom={() => setZoom(1)}
+        hasCustomWidths={hasCustomWidths}
+        onResetAllWidths={handleResetAllWidths}
+        selection={selection}
+        onAddSummary={() => rendererRef.current?.addSummary()}
+        onAddBoundary={() => rendererRef.current?.addBoundary()}
+        onStartConnect={() => rendererRef.current?.startConnect()}
+        layout={layout}
+        themeId={themeId}
+        edgeStyle={edgeStyle}
+        onStyleChange={handleStyleChange}
+        onImportFile={handleImportFile}
+        onExportXmind={() => void handleExportXmind()}
+        onExportMarkdown={() => void handleExportMarkdown()}
+        onExportImage={(format) => void handleExportImage(format)}
+        extraActions={<ReadingModeButton docKey={docKey} className="nb-editor-icon-btn" />}
+      />
 
       {/* 主视图区域 */}
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>

@@ -1504,6 +1504,150 @@
   outline-offset: 2px;
 }
 
+/* ── Markdown 内嵌思维导图 ── */
+.nb-md-mindmap-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--editor-border, #e2e8f0);
+  border-radius: var(--radius-md, 8px);
+  background: var(--editor-surface, #ffffff);
+  overflow: visible;
+  transition: border-color var(--transition-fast, 120ms ease), box-shadow var(--transition-fast, 120ms ease);
+}
+
+/* 内嵌顶栏在中窄正文栏下允许自动换行，同时保留下拉菜单不被裁切 */
+.nb-md-mindmap-topbar {
+  height: auto !important;
+  min-height: 38px !important;
+  flex-wrap: wrap;
+  row-gap: 6px;
+  column-gap: 8px;
+  padding: 5px 10px !important;
+  border-top-left-radius: calc(var(--radius-md, 8px) - 1px);
+  border-top-right-radius: calc(var(--radius-md, 8px) - 1px);
+}
+
+.nb-md-mindmap-topbar > div {
+  flex-wrap: wrap;
+  row-gap: 6px;
+  min-width: 0;
+}
+
+.nb-md-mindmap-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--editor-text, #1e293b);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.nb-md-mindmap-viewport {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  overflow: hidden;
+}
+
+.nb-md-mindmap-viewport:last-child {
+  border-bottom-left-radius: calc(var(--radius-md, 8px) - 1px);
+  border-bottom-right-radius: calc(var(--radius-md, 8px) - 1px);
+}
+
+/* 内联底部高度调整手柄（带 Hover / Active 反馈） */
+.nb-md-mindmap-resize-handle {
+  position: relative;
+  height: 10px;
+  cursor: ns-resize;
+  user-select: none;
+  background: var(--editor-surface, #f8fafc);
+  border-top: 1px solid var(--editor-border, #e2e8f0);
+  border-bottom-left-radius: calc(var(--radius-md, 8px) - 1px);
+  border-bottom-right-radius: calc(var(--radius-md, 8px) - 1px);
+  transition: background-color var(--transition-fast, 120ms ease);
+}
+
+.nb-md-mindmap-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 36px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--editor-border, #cbd5e1);
+  transform: translate(-50%, -50%);
+  transition: width var(--transition-fast, 120ms ease), background-color var(--transition-fast, 120ms ease);
+}
+
+.nb-md-mindmap-resize-handle:hover,
+.nb-md-mindmap-resize-handle[data-dragging='true'] {
+  background: var(--toolbar-hover, rgba(59, 130, 246, 0.06));
+}
+
+.nb-md-mindmap-resize-handle:hover::after,
+.nb-md-mindmap-resize-handle[data-dragging='true']::after {
+  width: 52px;
+  background: var(--editor-accent, #3b82f6);
+}
+
+.nb-md-mindmap-resize-handle:active {
+  background: var(--toolbar-active, rgba(59, 130, 246, 0.14));
+}
+
+/* 全屏编辑浮层：覆盖整个窗口并适配移动端安全区 */
+.nb-md-mindmap-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 99990;
+  display: flex;
+  flex-direction: column;
+  background: var(--editor-bg, #ffffff);
+  padding-top: var(--nb-m-safe-top, 0px);
+  padding-bottom: var(--nb-m-safe-bottom, 0px);
+}
+
+.nb-md-mindmap-fullscreen > .nb-md-mindmap-topbar {
+  border-radius: 0;
+}
+
+.nb-md-mindmap-fullscreen-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  color: var(--editor-text-secondary, #64748b);
+  font-size: 13px;
+}
+
+/* 移动端内嵌导图：收窄顶栏间距，保证触控按钮可点击且不溢出 */
+[data-platform='mobile'] .nb-md-mindmap-topbar {
+  padding: 6px 8px !important;
+  gap: 6px;
+}
+
+[data-platform='mobile'] .nb-md-mindmap-topbar .nb-mindmap-topbar-actions {
+  gap: 6px !important;
+}
+
+/* 极窄窗口下内嵌导图标识只保留图标，留出操作按钮空间 */
+[data-compact='true'] .nb-md-mindmap-badge > span {
+  display: none;
+}
+
+/* ProseMirror 块级选中整块导图时的高亮边框 */
+.ProseMirror .ProseMirror-selectednode .nb-md-mindmap-container,
+.ProseMirror [data-mindmap-block].ProseMirror-selectednode .nb-md-mindmap-container {
+  border-color: var(--editor-accent, #3b82f6);
+  box-shadow: 0 0 0 1px var(--editor-accent, #3b82f6);
+}
+
 /* ── 多维表格 (Bitable) 按钮与交互元素状态反馈 ── */
 
 /* 通用按钮过渡与基础交互 */

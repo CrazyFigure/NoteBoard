@@ -4,6 +4,36 @@ import type { Fragment, Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { parseWikiLinkInner, wikiLinkLabel } from '../wikilink/wikiLinkSyntax';
 import { getMarkdownManager } from './serialize';
 
+/** 提取思维导图围栏源码的纯文本缩进大纲（不引入重型导图模块）；非 JSON 格式原样返回 */
+function mindmapPlainText(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith('{')) return raw;
+  try {
+    const parsed = JSON.parse(trimmed) as { root?: unknown };
+    const root = parsed?.root as { text?: unknown; children?: unknown[] } | undefined;
+    if (!root || typeof root.text !== 'string') return raw;
+    const lines: string[] = [];
+    const stack: Array<{ node: { text?: unknown; children?: unknown[] }; depth: number }> = [
+      { node: root, depth: 0 },
+    ];
+    while (stack.length > 0) {
+      const { node, depth } = stack.pop()!;
+      const label = typeof node.text === 'string' ? node.text.trim() : '';
+      if (label) lines.push(`${'  '.repeat(depth)}${label}`);
+      const children = Array.isArray(node.children) ? node.children : [];
+      for (let i = children.length - 1; i >= 0; i -= 1) {
+        const child = children[i];
+        if (child && typeof child === 'object') {
+          stack.push({ node: child as { text?: unknown; children?: unknown[] }, depth: depth + 1 });
+        }
+      }
+    }
+    return lines.join('\n');
+  } catch {
+    return raw;
+  }
+}
+
 /** HTML 只提取静态文字；不挂载到页面，不执行脚本，并保留段落、换行和图片说明。 */
 function htmlPlainText(raw: string): string {
   const fragment = document.createElement('template');
@@ -46,6 +76,7 @@ export function serializeSelectionPlainText(editor: Editor): string {
     if (name === 'image' || name === 'imageBlock') return String(attrs.alt || attrs.title || attrs.src || '');
     if (name === 'mathInline' || name === 'mathBlock') return String(attrs.latex ?? '');
     if (['mermaidBlock', 'plantumlBlock', 'infographicBlock'].includes(name)) return String(attrs.code ?? '');
+    if (name === 'mindmapBlock') return mindmapPlainText(String(attrs.code ?? ''));
     if (name === 'rawHtmlBlock' || name === 'rawHtmlInline') return htmlPlainText(String(attrs.raw ?? ''));
     if (name === 'footnoteReference') return String(attrs.id ?? '');
     if (name === 'frontMatter') return String(attrs.raw ?? '').replace(/^---\r?\n/, '').replace(/\r?\n---\s*$/, '');

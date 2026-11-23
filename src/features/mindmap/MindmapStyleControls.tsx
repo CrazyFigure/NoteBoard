@@ -3,7 +3,7 @@
 // 布局下拉为缩略图卡片网格（9 种结构），底部附连线样式选择（跟随主题 / 曲线 / 直线 / 折线）。
 // 详见 docs/09-开发路线图.md
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Check,
   ChevronDown,
@@ -266,6 +266,7 @@ export function Dropdown({
   menuStyle?: React.CSSProperties;
 }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -278,6 +279,26 @@ export function Dropdown({
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [open, onOpenChange]);
 
+  // 窄屏（移动端 / 极窄窗口 / 嵌套窄容器）防溢出：将越出左右视口边缘 8px 的菜单水平夹回可视区域
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!open || !el) return;
+    el.style.transform = '';
+    const rect = el.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const viewportWidth = window.innerWidth;
+    let shift = 0;
+    if (rect.right > viewportWidth - 8) {
+      shift = viewportWidth - 8 - rect.right;
+    }
+    if (rect.left + shift < 8) {
+      shift = 8 - rect.left;
+    }
+    if (shift !== 0) {
+      el.style.transform = `translateX(${Math.round(shift)}px)`;
+    }
+  }, [open]);
+
   return (
     <div ref={wrapperRef} style={{ position: 'relative' }}>
       <div onClick={() => onOpenChange(!open)} style={{ cursor: 'pointer' }}>
@@ -285,12 +306,14 @@ export function Dropdown({
       </div>
       {open && (
         <div
+          ref={menuRef}
           role="menu"
           style={{
             position: 'absolute',
             top: 'calc(100% + 6px)',
             right: 0,
             minWidth: 160,
+            maxWidth: 'calc(100vw - 24px)',
             padding: 4,
             background: 'var(--editor-surface, #ffffff)',
             border: '1px solid var(--editor-border, #e2e8f0)',

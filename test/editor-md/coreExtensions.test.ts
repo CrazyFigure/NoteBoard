@@ -51,7 +51,7 @@ describe('Markdown 核心与完整扩展等价', () => {
     '- 第一项\n  - 两空格子项\n\n    续段\n\n7. 编号\n8. 下一项\n\n- [x] 任务\n  - [ ] 子任务\n',
     '| 项目 | 说明 |\n| --- | --- |\n| 一 | **重点**与 $x$ |\n\n> [!TIP]\n> **提示**\n>\n> 第二段\n',
     '[[笔记|别名]] **![[图片.png]]** 与 $\\frac{a}{b}$\n\n$$\n\\sum_i x_i\n$$\n',
-    '````ts\nconst s = "```"\n````\n\n```mermaid\ngraph TD; A-->B\n```\n\n```plantuml\n@startuml\nA->B\n@enduml\n```\n\n```infographic\n标题\n```\n',
+    '````ts\nconst s = "```"\n````\n\n```mermaid\ngraph TD; A-->B\n```\n\n```plantuml\n@startuml\nA->B\n@enduml\n```\n\n```infographic\n标题\n```\n\n```mindmap\n{"version":1,"root":{"id":"root","text":"中心","children":[]},"layout":"right","theme":"classic"}\n```\n',
     '[![徽章](img/a.png "标题")](https://example.com)\n\n<img src="img/b.png" width="50%" align="left">\n\n文字<kbd>Ctrl</kbd>与&nbsp;[^注]\n\n[^注]: 脚注正文\n',
     '<div class="custom">\n\n**保留 HTML**\n\n</div>\n\n<div align="center">\n\n居中段落\n\n</div>\n',
     detailsSourceBlock('**折叠内容**\n\n- 子项'), columnsSourceSnippet(2), calloutSourceSnippet(),

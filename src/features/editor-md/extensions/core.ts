@@ -19,6 +19,7 @@ import { MathInlineCore as MathInline, MathBlockCore as MathBlock } from '../mat
 import { MermaidBlockCore as MermaidBlock } from '../mermaidCore';
 import { PlantUmlBlockCore as PlantUmlBlock } from '../../plantuml/plantumlCore';
 import { InfographicBlockCore as InfographicBlock } from '../infographicCore';
+import { MindmapBlockCore as MindmapBlock } from '../mindmapBlockCore';
 import { GitHubAlertCore as GitHubAlert } from '../alertCore';
 import { DetailsBlockCore as DetailsBlock } from '../detailsCore';
 import { ColumnBlockCore as ColumnBlock, ColumnsBlockCore as ColumnsBlock } from '../columnsCore';
@@ -324,6 +325,9 @@ export function buildCoreExtensions(options?: CoreExtensionsOptions): Extensions
 
     // Infographic 现代化信息图
     InfographicBlock,
+
+    // Mindmap 内嵌思维导图
+    MindmapBlock,
 
     // GitHub Alerts
     GitHubAlert,
