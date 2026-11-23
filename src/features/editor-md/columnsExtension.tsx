@@ -25,7 +25,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react';
 import { contentReactNodeViewRenderer } from './contentNodeView';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import { TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
+import { TextSelection, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import { AlignHorizontalSpaceAround, Minus, Plus, Trash2, Ungroup } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
@@ -468,39 +468,7 @@ export const ColumnsBlock = ColumnsBlockCore.extend({
   addNodeView() {
     return contentReactNodeViewRenderer(ColumnsComponent);
   },
-
-  addKeyboardShortcuts() {
-    return {
-      Enter: ({ editor }) => exitColumnsFromEmptyParagraph(editor.state, (tr) => editor.view.dispatch(tr)),
-    };
-  }
 });
-
-/**
- * 最后一栏末尾的空段落中按回车：删除该空段落并跳出到分栏块后方
- * （触屏没有方向键，分栏块位于文末时否则无法跳出）。与折叠块的跳出规则一致。导出供测试使用。
- */
-export function exitColumnsFromEmptyParagraph(state: EditorState, dispatch: (tr: Transaction) => void): boolean {
-  const { $from, empty } = state.selection;
-  if (!empty || $from.depth < 3) return false;
-  const paragraph = $from.parent;
-  if (paragraph.type.name !== 'paragraph' || paragraph.content.size > 0) return false;
-  const columnDepth = $from.depth - 1;
-  const column = $from.node(columnDepth);
-  const columns = $from.node(columnDepth - 1);
-  if (column.type.name !== 'columnBlock' || columns.type.name !== 'columnsBlock') return false;
-  // 只处理最后一栏；栏内只有一个段落时保持默认行为，避免一按回车就把空栏删光
-  if ($from.index(columnDepth - 1) !== columns.childCount - 1 || column.childCount < 2) return false;
-  if ($from.index(columnDepth) !== column.childCount - 1) return false;
-
-  const paragraphStart = $from.before();
-  const tr = state.tr.delete(paragraphStart, paragraphStart + paragraph.nodeSize);
-  const insertPos = tr.mapping.map($from.after(columnDepth - 1));
-  tr.insert(insertPos, state.schema.nodes.paragraph.create());
-  tr.setSelection(TextSelection.create(tr.doc, insertPos + 1));
-  dispatch(tr.scrollIntoView());
-  return true;
-}
 
 /** 源码模式插入的标准写法片段（各栏均分，附占位文字） */
 export function columnsSourceSnippet(count: number): string {

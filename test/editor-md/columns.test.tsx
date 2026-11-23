@@ -3,7 +3,6 @@
 
 import { afterAll, describe, expect, it } from 'vitest';
 import { Editor } from '@tiptap/core';
-import type { EditorState } from '@tiptap/pm/state';
 import { buildExtensions } from '../../src/features/editor-md/extensions';
 import { parseMarkdown, serializeMarkdown } from '../../src/features/editor-md/serialize';
 import {
@@ -11,7 +10,6 @@ import {
   columnsSourceSnippet,
   createColumnsContent,
   equalizeColumns,
-  exitColumnsFromEmptyParagraph,
   insertColumnsBlock,
   matchColumnsBlock,
   removeLastColumn,
@@ -178,43 +176,6 @@ describe('分栏：可视化插入与操作', () => {
     });
     expect(removeLastColumn(editor, 0)).toBe(true);
     expect(serializeMarkdown(editor)).toBe(columns(col('33.3', 'a'), col('66.6', 'b\n\nc')));
-  });
-
-  it('最后一栏末尾空段落按回车跳出到分栏块后方', () => {
-    editor.commands.setContent({
-      type: 'doc',
-      content: [
-        {
-          type: 'columnsBlock',
-          content: [
-            { type: 'columnBlock', attrs: { width: 50 }, content: [{ type: 'paragraph' }] },
-            {
-              type: 'columnBlock',
-              attrs: { width: 50 },
-              content: [{ type: 'paragraph', content: [{ type: 'text', text: 'a' }] }, { type: 'paragraph' }],
-            },
-          ],
-        },
-      ],
-    });
-    const block = editor.state.doc.firstChild!;
-    // 光标放到最后一栏的末尾空段落：分栏块结束(-1)、栏结束(-1)、段落内(-1)
-    editor.commands.setTextSelection(block.nodeSize - 3);
-    let next: EditorState | null = null;
-    expect(exitColumnsFromEmptyParagraph(editor.state, (tr) => {
-      next = editor.state.apply(tr);
-    })).toBe(true);
-    const result = next as unknown as EditorState;
-    const types: string[] = [];
-    result.doc.forEach((node) => types.push(node.type.name));
-    expect(types).toEqual(['columnsBlock', 'paragraph']);
-    expect(result.selection.$from.depth).toBe(1);
-  });
-
-  it('非最后一栏的空段落不拦截回车', () => {
-    editor.commands.setContent({ type: 'doc', content: [createColumnsContent(2)] });
-    editor.commands.setTextSelection(3);
-    expect(exitColumnsFromEmptyParagraph(editor.state, () => undefined)).toBe(false);
   });
 
   it('源码模式插入片段本身是标准写法', () => {

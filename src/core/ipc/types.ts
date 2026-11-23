@@ -368,8 +368,6 @@ export interface EditorSettings {
   codeBlockDefaultExpanded?: boolean;
   // 可视化模式中折叠块 <details> 默认展开（缺省视为 false；源码带 open 属性时始终展开）
   detailsDefaultExpanded?: boolean;
-  // 可视化模式中 Enter 与 Shift+Enter 互换：Enter 段内换行、Shift+Enter 换段落（缺省视为 true）
-  swapEnterKeys?: boolean;
   // 思维导图节点最大宽度（px），超出后自动换行；缺省视为 280
   mindmapNodeMaxWidth?: number;
   // 思维导图节点标题默认对齐（缺省视为 left）

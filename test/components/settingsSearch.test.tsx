@@ -88,13 +88,11 @@ describe('设置搜索与布局整理', () => {
     expect(host.querySelector('[data-setting-id="showLineNumbers"]')!.classList.contains('nb-setting-flash')).toBe(true);
   });
 
-  it('搜索「回车」能找到已移到编辑器页的 Enter 互换，回车直接跳到第一条', async () => {
-    const input = typeQuery('回车');
-    expect(host.querySelector('.nb-settings-search-result')!.textContent).toContain('Enter 与 Shift + Enter 互换');
-    act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
-    await nextFrame();
-    expect(activeNavLabel()).toBe('编辑器');
-    expect(host.querySelector('[data-setting-id="swapEnterKeys"] input[type="checkbox"]')).not.toBeNull();
+  it('回车互换不再出现在设置搜索和编辑器页', () => {
+    typeQuery('Enter 与 Shift + Enter 互换');
+    expect(host.textContent).toContain('没有匹配的设置');
+    switchTab('编辑器');
+    expect(host.querySelector('[data-setting-id="swapEnterKeys"]')).toBeNull();
   });
 
   it('没有匹配时显示空状态', () => {
@@ -129,7 +127,7 @@ describe('设置搜索与布局整理', () => {
     settings.file.restoreReadingPosition = false;
     settings.file.showHiddenFiles = true;
     settings.file.explorerOpenMode = 'single';
-    settings.editor.swapEnterKeys = false;
+    settings.editor.showLineNumbers = false;
     settings.layout.titleBarButtons = { ...settings.layout.titleBarButtons, theme: false };
     await act(async () => useSettingsStore.setState({ settings }));
 
@@ -143,16 +141,18 @@ describe('设置搜索与布局整理', () => {
     expect(host.querySelector('[data-setting-id="explorerOpenMode"] [aria-label="打开文件的方式"]')!.textContent).toContain('单击打开');
 
     switchTab('编辑器');
-    expect(checkbox('swapEnterKeys').checked).toBe(false);
+    expect(checkbox('showLineNumbers').checked).toBe(false);
 
     switchTab('外观');
     expect(host.querySelector<HTMLInputElement>('input[aria-label="标题栏显示切换主题"]')!.checked).toBe(false);
     expect(host.querySelector<HTMLInputElement>('input[aria-label="标题栏显示回到主界面"]')!.checked).toBe(true);
 
-    // 快捷键页的回车类按键随互换设置显示
+    // 快捷键页固定显示可视化模式的回车规则。
     switchTab('快捷键');
     const paragraph = Array.from(host.querySelectorAll('kbd')).find((kbd) => kbd.parentElement?.textContent?.includes('换段落'));
     expect(paragraph!.textContent).toBe('Enter');
+    const lineBreak = Array.from(host.querySelectorAll('kbd')).find((kbd) => kbd.parentElement?.textContent?.includes('段内换行'));
+    expect(lineBreak!.textContent).toBe('Shift + Enter');
   });
 
   it('关于页显示「自动检查更新」：旧设置缺字段视为开启，可手动关闭', async () => {
@@ -169,9 +169,9 @@ describe('设置搜索与布局整理', () => {
     expect(setSystem).toHaveBeenCalledWith({ autoCheckUpdate: false });
   });
 
-  it('编辑器页恢复默认会一并重置 Enter 互换', async () => {
+  it('编辑器页恢复默认会重置行号设置', async () => {
     const settings = structuredClone(DEFAULT_SETTINGS);
-    settings.editor.swapEnterKeys = false;
+    settings.editor.showLineNumbers = false;
     await act(async () => useSettingsStore.setState({ settings }));
     const setEditor = vi.spyOn(useSettingsStore.getState(), 'setEditor').mockResolvedValue(undefined);
     switchTab('编辑器');
@@ -180,6 +180,6 @@ describe('设置搜索与布局整理', () => {
     act(() => reset.click());
     const confirm = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).filter((button) => button.textContent === '恢复默认').at(-1)!;
     await act(async () => confirm.click());
-    expect(setEditor).toHaveBeenCalledWith(expect.objectContaining({ swapEnterKeys: true }));
+    expect(setEditor).toHaveBeenCalledWith(expect.objectContaining({ showLineNumbers: true }));
   });
 });

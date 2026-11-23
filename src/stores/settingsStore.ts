@@ -60,8 +60,8 @@ export function getAutoSaveDelayMs(): number {
   return clampAutoSaveDelayMs(useSettingsStore.getState().settings.file?.autoSaveDelayMs);
 }
 
-// 当前设置结构版本：v2 起默认开启「Enter 与 Shift + Enter 互换」，并将旧版未勾选用户一次性迁移为开启
-export const CURRENT_SETTINGS_SCHEMA_VERSION = 2;
+// v3 移除 Markdown 回车互换设置，旧版本保存的值一并清理。
+export const CURRENT_SETTINGS_SCHEMA_VERSION = 3;
 
 // 网页适配层复用同一套默认值，避免新部署和桌面端的设置模型逐渐分叉。
 export const DEFAULT_SETTINGS: Settings = {
@@ -111,7 +111,6 @@ export const DEFAULT_SETTINGS: Settings = {
     enableColumnEdit: true,
     codeBlockDefaultExpanded: true,
     detailsDefaultExpanded: false,
-    swapEnterKeys: true,
     mindmapNodeMaxWidth: 280,
     mindmapTextAlign: 'left',
     mindmapImageFit: 'original',
@@ -236,23 +235,18 @@ interface SettingsStore {
   _applyRemoteUpdate: (s: Settings) => void;
 }
 
-/** 按结构版本执行一次性设置迁移，老版本设置默认开启 Enter 与 Shift + Enter 互换 */
+/** 清理旧版设置中的回车互换字段，保留其余编辑器设置。 */
 export function migrateSettings(input: Settings): { settings: Settings; migrated: boolean } {
   const version = typeof input.schemaVersion === 'number' ? input.schemaVersion : 1;
-  if (version < 2) {
-    return {
-      settings: {
-        ...input,
-        schemaVersion: CURRENT_SETTINGS_SCHEMA_VERSION,
-        editor: {
-          ...input.editor,
-          swapEnterKeys: true,
-        },
-      },
-      migrated: true,
-    };
+  if (version >= CURRENT_SETTINGS_SCHEMA_VERSION && !Object.hasOwn(input.editor, 'swapEnterKeys')) {
+    return { settings: input, migrated: false };
   }
-  return { settings: input, migrated: false };
+  const editor: EditorSettings & { swapEnterKeys?: unknown } = { ...input.editor };
+  delete editor.swapEnterKeys;
+  return {
+    settings: { ...input, schemaVersion: Math.max(version, CURRENT_SETTINGS_SCHEMA_VERSION), editor },
+    migrated: true,
+  };
 }
 
 // ── 辅助：解析主题并应用 ──
@@ -442,8 +436,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   },
 
   _applyRemoteUpdate: async (remote) => {
-    const resolved = resolveAndApply(remote);
-    set({ settings: remote, resolvedTheme: resolved });
+    // 跨窗口收到的旧设置也按同一规则清理，不回写以免触发循环广播。
+    const { settings } = migrateSettings(remote);
+    const resolved = resolveAndApply(settings);
+    set({ settings, resolvedTheme: resolved });
     try {
       const { useDocumentStore } = await import('./documentStore');
       useDocumentStore.getState().syncSavePolicies();

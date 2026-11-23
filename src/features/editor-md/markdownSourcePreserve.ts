@@ -484,8 +484,14 @@ export function buildPreservedSerializationJson(doc: PreservableNode): Preserved
     }
     const entry = entries[entryIndex];
     const groupEnd = position + entry.count;
-    // 相邻：文首对应首条目，或紧跟原前驱条目（首条目出现在中间时一定不相邻）
-    const adjacent = position === 0 ? entryIndex === 0 : entryIndex > 0 && previousVerbatimEntry === entryIndex - 1;
+    const previous = position > 0 ? children[emitted[position - 1]] : undefined;
+    // 文末空行已对应实际空段。即使前一块被编辑，仍可逐字写回没有定义或正文的原始空行。
+    const keepTrailingSpace = entry.space === true && entryIndex === entries.length - 1 && groupEnd === emitted.length
+      && previous && (previous.type.name !== 'paragraph' || previous.childCount > 0)
+      && /^[\n \t]*$/.test(entry.gap + entry.raw + record.tail);
+    // 相邻：文首对应首条目，或紧跟原前驱条目；文末的纯空行只依赖它仍位于文末。
+    const adjacent = keepTrailingSpace
+      || (position === 0 ? entryIndex === 0 : entryIndex > 0 && previousVerbatimEntry === entryIndex - 1);
     // 原为最后一块且可能未闭合（围栏、HTML 等）而后面出现了新内容：按规则重写以免吞掉后文
     const followedWhenLast = entryIndex === entries.length - 1 && groupEnd < emitted.length
       && !SELF_TERMINATING_TYPES.has(children[emitted[position]].type.name);

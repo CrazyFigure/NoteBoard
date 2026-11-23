@@ -3,13 +3,11 @@
 
 import { afterAll, describe, expect, it } from 'vitest';
 import { Editor } from '@tiptap/core';
-import type { EditorState } from '@tiptap/pm/state';
 import { buildExtensions } from '../../src/features/editor-md/extensions';
 import { parseMarkdown, serializeMarkdown } from '../../src/features/editor-md/serialize';
 import {
   DEFAULT_DETAILS_SUMMARY,
   DETAILS_SOURCE_SNIPPET,
-  exitDetailsFromEmptyParagraph,
   insertDetailsContent,
   matchDetailsBlock,
 } from '../../src/features/editor-md/detailsExtension';
@@ -163,42 +161,6 @@ describe('折叠块：菜单插入', () => {
     expect(from).toBeGreaterThan(detailsPos);
     expect(from).toBeLessThan(detailsPos + details.nodeSize);
     expect(serializeMarkdown(editor)).toBe('before\n\n<details>\n<summary>标题</summary>\n\n</details>');
-  });
-
-  it('正文末尾空段落按回车跳出到折叠块后方', () => {
-    editor.commands.setContent({
-      type: 'doc',
-      content: [
-        {
-          type: 'detailsBlock',
-          attrs: { summary: 'x' },
-          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'a' }] }, { type: 'paragraph' }],
-        },
-      ],
-    });
-    // 光标放到折叠块内最后一个空段落
-    const details = editor.state.doc.firstChild!;
-    editor.commands.setTextSelection(details.nodeSize - 2);
-    let next: EditorState | null = null;
-    expect(exitDetailsFromEmptyParagraph(editor.state, (tr) => {
-      next = editor.state.apply(tr);
-    })).toBe(true);
-    const result = next as unknown as EditorState;
-    const types: string[] = [];
-    result.doc.forEach((node) => types.push(node.type.name));
-    expect(types).toEqual(['detailsBlock', 'paragraph']);
-    expect(result.doc.firstChild!.childCount).toBe(1);
-    expect(result.selection.$from.depth).toBe(1);
-    expect(result.selection.$from.parent.type.name).toBe('paragraph');
-  });
-
-  it('非末尾空段落或唯一段落时不拦截回车', () => {
-    editor.commands.setContent({
-      type: 'doc',
-      content: [{ type: 'detailsBlock', attrs: { summary: 'x' }, content: [{ type: 'paragraph' }] }],
-    });
-    editor.commands.setTextSelection(2);
-    expect(exitDetailsFromEmptyParagraph(editor.state, () => undefined)).toBe(false);
   });
 
   it('源码模式插入片段本身是标准写法', () => {

@@ -1,16 +1,12 @@
 // NoteBoard 回车类按键统一行为（可视化模式）
 //
-//   Enter        换段落：新段落 / 列表新项；空行再按一次跳出列表、引用、提示块、高亮块、折叠块；
-//                代码块内为换行，末尾连按三次跳出（以上沿用各扩展原有逻辑）
+//   Enter        新建段落或列表项，从空列表项退出列表；引用、折叠等容器内的新段落留在当前块，代码块内直接换行；
 //   Shift+Enter  段内换行（Markdown 硬换行，源码为行尾两个空格）；代码块内为换行；
 //                标题不能包含换行、空行没有可换的内容 → 都按 Enter 处理
 //   Ctrl+Enter   跳出：在光标所在的最内层容器块（代码块、表格、列表、引用、提示块、高亮块、折叠块、分栏）下方新建段落；
 //                不在容器内时在当前段落 / 标题下方新建段落，不拆分当前内容
 //   Alt+Enter    不做任何操作
 //   表格单元格   Enter 与 Shift+Enter 都是单元格内换行（Markdown 表格单元格只能占一行，换行以 <br> 保存）
-//
-// 设置「Enter 与 Shift+Enter 互换」开启时，正文中两键对调：Enter 段内换行、Shift+Enter 换段落；
-// 代码块、表格、标题、空行不受影响（按上面的规则处理）。
 //
 // 修正的问题：Shift+Enter 在代码块中会直接跳出、在标题中插入的换行保存后会把后半截挤出标题、
 // 在空行中插入的换行保存后丢失；Ctrl+Enter 原与 Shift+Enter 重复；表格中 Enter 拆出的多段在保存后变成 <br>，前后不一致。
@@ -19,7 +15,6 @@ import { Extension, type Editor } from '@tiptap/core';
 import type { ResolvedPos } from '@tiptap/pm/model';
 import { NodeSelection, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { SuggestionPluginKey } from '@tiptap/suggestion';
-import { useSettingsStore } from '../../stores/settingsStore';
 
 /** Ctrl+Enter 可以跳出的容器块（列表按整个列表跳出，分栏按整组分栏跳出） */
 const CONTAINER_TYPES = new Set([
@@ -34,13 +29,8 @@ const CONTAINER_TYPES = new Set([
   'table',
 ]);
 
-/** 正在重放 Enter 时跳过本扩展的处理，交给其余扩展的原有 Enter 逻辑 */
-let replayingEnter = false;
-
-/** 是否开启「Enter 与 Shift+Enter 互换」（缺省视为开启） */
-function isSwapped(): boolean {
-  return useSettingsStore.getState().settings.editor.swapEnterKeys !== false;
-}
+/** 具有独立正文的容器，空段回车仍在容器内换段；列表保留空项退出规则。 */
+const PARAGRAPH_CONTAINERS = new Set(['blockquote', 'githubAlert', 'calloutBlock', 'detailsBlock', 'columnBlock']);
 
 /** 斜杠菜单等联想浮层打开时，Enter 用于确认候选项，本扩展不接管 */
 function isSuggestionActive(state: EditorState): boolean {
@@ -66,16 +56,11 @@ function canInsertHardBreak(state: EditorState): boolean {
   return parent.content.size > 0;
 }
 
-/** 以普通 Enter 重放一次按键，走各扩展原有的换段落 / 跳出逻辑 */
+/** 标题或空行按 Shift+Enter 时，沿用普通 Enter 的换段落逻辑。 */
 function replayEnter(editor: Editor): boolean {
   const { view } = editor;
   const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
-  replayingEnter = true;
-  try {
-    view.someProp('handleKeyDown', (handler) => handler(view, event));
-  } finally {
-    replayingEnter = false;
-  }
+  view.someProp('handleKeyDown', (handler) => handler(view, event));
   return true;
 }
 
@@ -132,21 +117,28 @@ export const EnterKeyBehavior = Extension.create({
   addKeyboardShortcuts() {
     return {
       Enter: ({ editor }) => {
-        if (replayingEnter || isSuggestionActive(editor.state)) return false;
-        const { $from } = editor.state.selection;
-        if (editor.state.selection instanceof TextSelection && isInTableCell($from)) return lineBreakInCell(editor);
-        // 互换模式：有内容的正文行中 Enter 为段内换行，其余情况走原有 Enter 逻辑
-        if (isSwapped() && canInsertHardBreak(editor.state)) return editor.commands.setHardBreak();
+        if (isSuggestionActive(editor.state)) return false;
+        const { selection } = editor.state;
+        const { $from } = selection;
+        if (!(selection instanceof TextSelection)) return false;
+        // 代码块内直接换行，避免下游的三次回车退出或外层列表拆项。
+        if ($from.parent.type.spec.code) return editor.commands.newlineInCode();
+        if (isInTableCell($from)) return lineBreakInCell(editor);
+        // 默认回车会尝试抬升空块，直接拆分容器正文中的空段可在块内连续留白。
+        if (selection.empty && $from.depth > 1 && $from.parent.type.name === 'paragraph'
+          && $from.parent.content.size === 0 && PARAGRAPH_CONTAINERS.has($from.node(-1).type.name)) {
+          return editor.commands.splitBlock();
+        }
         return false;
       },
       'Shift-Enter': ({ editor }) => {
-        if (replayingEnter || isSuggestionActive(editor.state)) return false;
+        if (isSuggestionActive(editor.state)) return false;
         const { selection } = editor.state;
         // 代码块内 Shift+Enter 也是换行，不再跳出代码块
         if (selection.$from.parent.type.spec.code) return editor.commands.newlineInCode();
         if (selection instanceof TextSelection && isInTableCell(selection.$from)) return lineBreakInCell(editor);
-        // 互换模式下 Shift+Enter 为换段落；标题、空行无法段内换行，同样按 Enter 处理
-        if (isSwapped() || !canInsertHardBreak(editor.state)) return replayEnter(editor);
+        // 标题和空行无法段内换行，交给 Enter 的换段落规则。
+        if (!canInsertHardBreak(editor.state)) return replayEnter(editor);
         return editor.commands.setHardBreak();
       },
       'Mod-Enter': ({ editor }) => {

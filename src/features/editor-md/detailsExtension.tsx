@@ -15,7 +15,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react';
 import { contentReactNodeViewRenderer } from './contentNodeView';
-import { TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
+import { TextSelection } from '@tiptap/pm/state';
 import { ChevronRight } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -157,37 +157,7 @@ export const DetailsBlock = DetailsBlockCore.extend({
   addNodeView() {
     return contentReactNodeViewRenderer(DetailsComponent);
   },
-
-  addKeyboardShortcuts() {
-    return {
-      Enter: ({ editor }) => exitDetailsFromEmptyParagraph(editor.state, (tr) => editor.view.dispatch(tr)),
-    };
-  }
 });
-
-/**
- * 正文末尾的空段落中按回车：删除该空段落并跳出到折叠块后方
- * （触屏没有方向键，折叠块位于文末时否则无法跳出）。导出供测试使用。
- */
-export function exitDetailsFromEmptyParagraph(state: EditorState, dispatch: (tr: Transaction) => void): boolean {
-  const { $from, empty } = state.selection;
-  if (!empty || $from.depth < 2) return false;
-  const paragraph = $from.parent;
-  if (paragraph.type.name !== 'paragraph' || paragraph.content.size > 0) return false;
-  const detailsDepth = $from.depth - 1;
-  const details = $from.node(detailsDepth);
-  // 只有一个段落时保持默认行为（在正文内换行），避免一按回车就把空折叠块的正文删光
-  if (details.type.name !== 'detailsBlock' || details.childCount < 2) return false;
-  if ($from.index(detailsDepth) !== details.childCount - 1) return false;
-
-  const paragraphStart = $from.before();
-  const tr = state.tr.delete(paragraphStart, paragraphStart + paragraph.nodeSize);
-  const insertPos = tr.mapping.map($from.after(detailsDepth));
-  tr.insert(insertPos, state.schema.nodes.paragraph.create());
-  tr.setSelection(TextSelection.create(tr.doc, insertPos + 1));
-  dispatch(tr.scrollIntoView());
-  return true;
-}
 
 /** 插入一个折叠块并聚焦其标题（菜单、斜杠命令、工具栏共用） */
 export function insertDetailsContent() {

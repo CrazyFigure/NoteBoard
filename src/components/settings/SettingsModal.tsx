@@ -1240,20 +1240,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     />
                   </div>
 
-                  {/* Enter 与 Shift+Enter 互换（规则实现见 features/editor-md/enterKeyBehavior.ts）；快捷键页的回车类按键随此设置显示 */}
-                  <div data-setting-id="swapEnterKeys" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
-                    <div>
-                      <div>Enter 与 Shift + Enter 互换</div>
-                      <div style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>开启后 Enter 段内换行、Shift + Enter 换段落；代码块、表格、标题与空行不受影响</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      aria-label="Enter 与 Shift + Enter 互换"
-                      checked={settings.editor.swapEnterKeys ?? true}
-                      onChange={(e) => setEditor({ swapEnterKeys: e.target.checked })}
-                    />
-                  </div>
-
                   {/* ── Markdown 渲染增强 ── */}
                   <div data-setting-id="enableMath" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, padding: '2px 0' }}>
                     <span>LaTeX 数学公式渲染 (KaTeX)</span>
@@ -1745,20 +1731,18 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                 {/* Markdown 回车类按键（规则实现见 features/editor-md/enterKeyBehavior.ts）；细节放在 tip 中，行内只留要点 */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {/* Enter 与 Shift+Enter 互换开关位于编辑器页的 Markdown 分组，此处按键随设置显示 */}
                   <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-strong)' }}>
                       Markdown 回车类按键
                     </div>
-                    <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>可在 编辑器 中互换 Enter 与 Shift + Enter</span>
                   </div>
                   <ShortcutItem
-                    keyCombo={(settings.editor.swapEnterKeys ?? true) ? 'Shift + Enter' : 'Enter'}
+                    keyCombo="Enter"
                     label="换段落"
-                    tip="新建段落或列表新项，源码中以空行分隔；在空行上再按一次，跳出列表、引用、提示块、高亮块、折叠块"
+                    tip="在当前块内新建段落，列表自动续项。在空列表项上再按一次可退出列表"
                   />
                   <ShortcutItem
-                    keyCombo={(settings.editor.swapEnterKeys ?? true) ? 'Enter' : 'Shift + Enter'}
+                    keyCombo="Shift + Enter"
                     label="段内换行"
                     tip="不新建段落、没有段落间距，源码中为行尾两个空格；标题中与空行上等同换段落"
                   />
@@ -1771,7 +1755,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <ShortcutItem
                     keyCombo="Enter / Shift + Enter"
                     label="代码块、表格内换行"
-                    tip="代码块末尾连按三次 Enter 跳出；表格单元格内的换行保存为 <br>"
+                    tip="在代码块或当前单元格内换行，表格单元格内的换行保存为 <br>"
                   />
                   <ShortcutItem keyCombo="Enter" label="折叠块标题进入正文" />
                   <ShortcutItem

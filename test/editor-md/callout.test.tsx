@@ -3,13 +3,11 @@
 
 import { afterAll, describe, expect, it } from 'vitest';
 import { Editor } from '@tiptap/core';
-import type { EditorState } from '@tiptap/pm/state';
 import { buildExtensions } from '../../src/features/editor-md/extensions';
 import { parseMarkdown, serializeMarkdown } from '../../src/features/editor-md/serialize';
 import {
   calloutSourceSnippet,
   createCalloutContent,
-  exitCalloutFromEmptyParagraph,
   insertCalloutBlock,
   matchCalloutBlock,
   renderCalloutOpenTag,
@@ -153,36 +151,6 @@ describe('高亮块：可视化插入与操作', () => {
 
     expect(unwrapCallout(editor, 0)).toBe(true);
     expect(serializeMarkdown(editor)).toBe('a\n\nb');
-  });
-
-  it('末尾空段落按回车跳出到高亮块后方', () => {
-    editor.commands.setContent({
-      type: 'doc',
-      content: [
-        {
-          ...createCalloutContent(),
-          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'a' }] }, { type: 'paragraph' }],
-        },
-      ],
-    });
-    const block = editor.state.doc.firstChild!;
-    // 光标放到末尾空段落：高亮块结束(-1)、段落内(-1)
-    editor.commands.setTextSelection(block.nodeSize - 2);
-    let next: EditorState | null = null;
-    expect(exitCalloutFromEmptyParagraph(editor.state, (tr) => {
-      next = editor.state.apply(tr);
-    })).toBe(true);
-    const result = next as unknown as EditorState;
-    const types: string[] = [];
-    result.doc.forEach((node) => types.push(node.type.name));
-    expect(types).toEqual(['calloutBlock', 'paragraph']);
-    expect(result.selection.$from.depth).toBe(1);
-  });
-
-  it('只有一个空段落时不拦截回车', () => {
-    editor.commands.setContent({ type: 'doc', content: [createCalloutContent()] });
-    editor.commands.setTextSelection(2);
-    expect(exitCalloutFromEmptyParagraph(editor.state, () => undefined)).toBe(false);
   });
 
   it('源码模式插入片段本身是标准写法', () => {

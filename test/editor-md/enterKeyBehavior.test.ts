@@ -1,17 +1,103 @@
-// 回车类按键统一行为（enterKeyBehavior）：Ctrl+Enter「跳出到下方新建段落」的定位规则
-// 按键分发（Enter / Shift+Enter 与互换开关）依赖真实键盘事件，已在可视化模式中逐项验证
+// 通过编辑器的按键处理验证普通回车、块内回车与 Ctrl+Enter 的跳出位置。
 
-import { afterAll, describe, expect, it } from 'vitest';
-import { Editor } from '@tiptap/core';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Editor, type JSONContent } from '@tiptap/core';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { buildExtensions } from '../../src/features/editor-md/extensions';
+import { buildCoreExtensions } from '../../src/features/editor-md/extensions/core';
 import { parseMarkdown, serializeMarkdown } from '../../src/features/editor-md/serialize';
-import { insertParagraphBelow } from '../../src/features/editor-md/enterKeyBehavior';
+import { EnterKeyBehavior, insertParagraphBelow } from '../../src/features/editor-md/enterKeyBehavior';
 
 const editor = new Editor({ element: null, extensions: buildExtensions('enter-key-behavior-test'), content: '' });
 
 afterAll(() => {
   editor.destroy();
+});
+
+describe('可视化编辑器的回车按键', () => {
+  let mounted: Editor;
+
+  beforeEach(() => {
+    // 挂载真实键位插件。jsdom 不计算布局，跳过默认的光标滚动处理。
+    mounted = new Editor({
+      element: document.createElement('div'),
+      extensions: [...buildCoreExtensions(), EnterKeyBehavior],
+      editorProps: { handleScrollToSelection: () => true },
+    });
+  });
+
+  afterEach(() => mounted.destroy());
+
+  /** 将按键事件交给实际挂载的编辑器，检查浏览器默认行为已被接管。 */
+  function pressEnter(modifiers: KeyboardEventInit = {}) {
+    const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, ...modifiers });
+    mounted.view.dom.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  }
+
+  function typeText(text: string) {
+    mounted.view.dispatch(mounted.state.tr.insertText(text));
+  }
+
+  it('正文 Enter 换段，Shift+Enter 保留硬换行', () => {
+    parseMarkdown(mounted, '正文');
+    mounted.commands.setTextSelection(3);
+    pressEnter({ shiftKey: true });
+    typeText('续行');
+    pressEnter();
+    typeText('新段');
+    expect(serializeMarkdown(mounted)).toBe('正文  \n续行\n\n新段');
+  });
+
+  it('有序列表回车自动续号，切回源码保留原有的文末空行', () => {
+    const prefix = '正文\n\n-------\n\n1. 页面报错';
+    const tail = '\n'.repeat(8);
+    expect(parseMarkdown(mounted, (prefix + tail).replaceAll('\n', '\r\n'))).toBe(true);
+    const { doc } = mounted.state;
+    mounted.commands.setTextSelection(doc.child(0).nodeSize + doc.child(1).nodeSize + doc.child(2).nodeSize - 3);
+    pressEnter();
+    expect(mounted.state.doc.child(2).childCount).toBe(2);
+    expect(serializeMarkdown(mounted)).toBe(`${prefix}\n2. ${tail}`);
+    typeText('处理步骤');
+    const saved = serializeMarkdown(mounted);
+    expect(saved).toBe(`${prefix}\n2. 处理步骤${tail}`);
+    expect(parseMarkdown(mounted, saved)).toBe(true);
+    expect(mounted.state.doc.child(2).childCount).toBe(2);
+    expect(serializeMarkdown(mounted)).toBe(saved);
+  });
+
+  it.each(['blockquote', 'githubAlert', 'detailsBlock', 'calloutBlock', 'columnBlock'])('%s 内连续回车保持在当前块', (type) => {
+    const block: JSONContent = {
+      type,
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: '正文' }] }],
+    };
+    const topLevel = type === 'columnBlock' ? { type: 'columnsBlock', content: [block] } : block;
+    mounted.commands.setContent({ type: 'doc', content: [topLevel] });
+    mounted.commands.setTextSelection(type === 'columnBlock' ? 5 : 4);
+    pressEnter();
+    pressEnter();
+    pressEnter();
+    typeText('块内续写');
+    const { $from } = mounted.state.selection;
+    expect($from.node(-1).type.name).toBe(type);
+    expect($from.node(-1).childCount).toBe(4);
+    expect($from.parent.textContent).toBe('块内续写');
+  });
+
+  it.each([
+    ['顶层代码块', '', ''],
+    ['列表内代码块', '1. 列表项\n', '   '],
+  ])('%s 末尾连续回车保留所有换行', (_name, prefix, indent) => {
+    const source = (body: string) => prefix + ['```text', ...body.split('\n'), '```'].map((line) => indent + line).join('\n');
+    parseMarkdown(mounted, source('代码'));
+    mounted.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'codeBlock') mounted.commands.setTextSelection(pos + 1 + node.content.size);
+    });
+    for (let count = 0; count < 4; count++) pressEnter();
+    typeText('续行');
+    expect(mounted.state.selection.$from.parent.type.name).toBe('codeBlock');
+    expect(serializeMarkdown(mounted)).toBe(source('代码\n\n\n\n续行'));
+  });
 });
 
 /** 载入 Markdown，把光标放到标记文字之后，执行 Ctrl+Enter 的插入逻辑，返回结果 Markdown 与光标所在节点路径 */

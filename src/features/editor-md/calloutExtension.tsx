@@ -19,7 +19,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Reac
 import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react';
 import { contentReactNodeViewRenderer } from './contentNodeView';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import { TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
+import { TextSelection } from '@tiptap/pm/state';
 import { Smile, Trash2, Ungroup } from 'lucide-react';
 import { Tooltip } from '../../components/Tooltip';
 import { isSelectionInside } from './collapsibleState';
@@ -291,37 +291,7 @@ export const CalloutBlock = CalloutBlockCore.extend({
   addNodeView() {
     return contentReactNodeViewRenderer(CalloutComponent);
   },
-
-  addKeyboardShortcuts() {
-    return {
-      Enter: ({ editor }) => exitCalloutFromEmptyParagraph(editor.state, (tr) => editor.view.dispatch(tr)),
-    };
-  }
 });
-
-/**
- * 正文末尾的空段落中按回车：删除该空段落并跳出到高亮块后方
- * （触屏没有方向键，高亮块位于文末时否则无法跳出）。与折叠块的跳出规则一致。导出供测试使用。
- */
-export function exitCalloutFromEmptyParagraph(state: EditorState, dispatch: (tr: Transaction) => void): boolean {
-  const { $from, empty } = state.selection;
-  if (!empty || $from.depth < 2) return false;
-  const paragraph = $from.parent;
-  if (paragraph.type.name !== 'paragraph' || paragraph.content.size > 0) return false;
-  const calloutDepth = $from.depth - 1;
-  const callout = $from.node(calloutDepth);
-  // 只有一个段落时保持默认行为（在块内换行），避免一按回车就把空高亮块的正文删光
-  if (callout.type.name !== 'calloutBlock' || callout.childCount < 2) return false;
-  if ($from.index(calloutDepth) !== callout.childCount - 1) return false;
-
-  const paragraphStart = $from.before();
-  const tr = state.tr.delete(paragraphStart, paragraphStart + paragraph.nodeSize);
-  const insertPos = tr.mapping.map($from.after(calloutDepth));
-  tr.insert(insertPos, state.schema.nodes.paragraph.create());
-  tr.setSelection(TextSelection.create(tr.doc, insertPos + 1));
-  dispatch(tr.scrollIntoView());
-  return true;
-}
 
 /** 源码模式下以 body 为正文的高亮块标准写法（不含首尾空行） */
 export function calloutSourceBlock(body: string, preset?: Pick<CalloutPreset, 'color' | 'icon'>): string {

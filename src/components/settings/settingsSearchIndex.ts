@@ -105,7 +105,6 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
   { id: 'detailsExpanded', tab: 'editor', section: 'Markdown', label: '折叠块默认展开', keywords: ['details', '折叠'] },
   { id: 'outlinePosition', tab: 'editor', section: 'Markdown', label: 'Markdown 大纲位置', keywords: ['大纲', '目录', 'toc'] },
   { id: 'copyFormat', tab: 'editor', section: 'Markdown', label: 'Markdown 复制格式', keywords: ['复制', '纯文本', '带格式', 'ctrl+c'] },
-  { id: 'swapEnterKeys', tab: 'editor', section: 'Markdown', label: 'Enter 与 Shift + Enter 互换', keywords: ['回车', '换行', '换段落', 'shift+enter', '段内换行'] },
   { id: 'enableMath', tab: 'editor', section: 'Markdown', label: 'LaTeX 数学公式渲染 (KaTeX)', keywords: ['公式', 'katex', '数学'] },
   { id: 'enableMermaid', tab: 'editor', section: 'Markdown', label: 'Mermaid 图表实时渲染', keywords: ['流程图', '图表', '时序图'] },
   { id: 'blockHandle', tab: 'editor', section: 'Markdown', label: '悬浮块把手 (拖拽与菜单)', keywords: ['拖拽', '拖动段落', '把手'] },
