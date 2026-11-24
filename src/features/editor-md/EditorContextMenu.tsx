@@ -5,9 +5,7 @@
 
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import type { Editor } from '@tiptap/core';
-import { isInTable } from '@tiptap/pm/tables';
-import { applyTablePaste } from './tableClipboard';
-import { ALTERNATE_COPY_SHORTCUT, copySelectionAs, getAlternateCopyFormat } from './markdownClipboard';
+import { ALTERNATE_COPY_SHORTCUT, copySelectionAs, getAlternateCopyFormat, pasteFromClipboard } from './markdownClipboard';
 import { DEFAULT_DETAILS_SUMMARY, insertDetailsContent, requestDetailsSummaryFocus } from './detailsExtension';
 import { insertColumnsBlock } from './columnsExtension';
 import { insertCalloutBlock } from './calloutExtension';
@@ -365,19 +363,9 @@ export function EditorContextMenu({
             <button
               type="button"
               style={btnStyle}
-              onClick={async () => {
+              onClick={() => {
                 onClose();
-                try {
-                  const text = await navigator.clipboard.readText();
-                  if (text) {
-                    if (isInTable(editor.state) && applyTablePaste(editor, text)) {
-                      return;
-                    }
-                    editor.chain().focus().insertContent(text).run();
-                  }
-                } catch {
-                  document.execCommand('paste');
-                }
+                void pasteFromClipboard(editor);
               }}
               onMouseEnter={(e) => {
                 setActiveSubmenu(null);
@@ -677,19 +665,9 @@ export function EditorContextMenu({
             <button
               type="button"
               style={btnStyle}
-              onClick={async () => {
+              onClick={() => {
                 onClose();
-                try {
-                  const text = await navigator.clipboard.readText();
-                  if (text) {
-                    if (isInTable(editor.state) && applyTablePaste(editor, text)) {
-                      return;
-                    }
-                    editor.chain().focus().insertContent(text).run();
-                  }
-                } catch {
-                  document.execCommand('paste');
-                }
+                void pasteFromClipboard(editor);
               }}
               onMouseEnter={(e) => {
                 setActiveSubmenu(null);

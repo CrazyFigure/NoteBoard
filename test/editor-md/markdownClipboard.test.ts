@@ -5,6 +5,7 @@ import { CellSelection } from '@tiptap/pm/tables';
 import { buildExtensions } from '@/features/editor-md/extensions';
 import { buildCoreExtensions } from '@/features/editor-md/extensions/core';
 import { AlternateCopyShortcut, MarkdownClipboard, getAlternateCopyFormat, getDefaultCopyFormat } from '@/features/editor-md/markdownClipboard';
+import { MARKDOWN_CLIPBOARD_TYPE } from '@/features/editor-md/markdownClipboardData';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { TableClipboard } from '@/features/editor-md/tableClipboard';
 import { parseMarkdown, serializeMarkdown } from '@/features/editor-md/serialize';
@@ -17,6 +18,7 @@ function createEditor(source: string, markdownClipboard = true): Editor {
     element: document.createElement('div'),
     extensions: [...buildCoreExtensions(), TableClipboard, ...(markdownClipboard ? [MarkdownClipboard] : [])],
     content: '',
+    editorProps: { handleScrollToSelection: () => true },
   });
   editors.push(editor);
   expect(parseMarkdown(editor, source)).toBe(true);
@@ -36,6 +38,14 @@ function copySelection(editor: Editor, type: 'copy' | 'cut' = 'copy') {
   });
   editor.view.dom.dispatchEvent(event);
   return { data, event, text: data.get('text/plain') };
+}
+
+/** 使用编辑器实际的 paste 事件入口，保留剪贴板来源类型。 */
+function pasteSelection(editor: Editor, data: Map<string, string>): void {
+  const event = new Event('paste', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'clipboardData', { value: { getData: (mime: string) => data.get(mime) ?? '' } });
+  editor.view.dom.dispatchEvent(event);
+  expect(event.defaultPrevented).toBe(true);
 }
 
 /** 按正文定位局部文本，避免将 Markdown 标记长度误当成可视化文档位置。 */
@@ -69,9 +79,41 @@ describe('Markdown 文档剪贴板', () => {
     const before = editor.state.doc;
     const { text, data, event } = copySelection(editor);
     expect(text).toBe(source);
-    expect([...data.keys()]).toEqual(['text/plain']);
+    expect([...data.keys()]).toEqual(['text/plain', MARKDOWN_CLIPBOARD_TYPE]);
     expect(event.defaultPrevented).toBe(true);
     expect(editor.state.doc).toBe(before);
+  });
+
+  it.each([
+    '复制示例。 [https://example.test/recipe-editor](https://example.test/recipe-editor)',
+    '[**显示文字**](<https://example.test/a(b)> "链接标题") 和 **粗体**  \n续行',
+    '# 标题\n\n1. 第一项\n2. 第二项\n\n> 引用',
+    '保留反斜杠 \\路径\n\n`[字面](https://example.test)` 和 [[双链]]',
+  ])('带格式复制后直接粘贴回可视化编辑器：%s', (source) => {
+    const copied = copySelection(createEditor(source));
+    const destination = createEditor('');
+    pasteSelection(destination, copied.data);
+    expect(serializeMarkdown(destination)).toBe(copied.text);
+  });
+
+  it('只有纯文本类型时也能把显式链接粘成同一条链接', () => {
+    const text = '地址：[https://example.test/path](https://example.test/path)';
+    const destination = createEditor('前文');
+    destination.commands.setTextSelection(3);
+    pasteSelection(destination, new Map([['text/plain', text]]));
+    expect(destination.view.dom.querySelectorAll('a')).toHaveLength(1);
+    expect(destination.view.dom.querySelector('a')?.textContent).toBe('https://example.test/path');
+    expect(serializeMarkdown(destination)).toBe(`前文${text}`);
+  });
+
+  it('复制的 Markdown 表格粘到另一个表格时按单元格插入', () => {
+    const table = '| A | B |\n| --- | --- |\n| **甲** | 001 |';
+    const copied = copySelection(createEditor(table));
+    const destination = createEditor('| 原列 |\n| --- |\n| 原值 |');
+    selectText(destination, '原列');
+    pasteSelection(destination, copied.data);
+    expect(destination.view.dom.querySelector('table')?.textContent).toBe('AB甲001');
+    expect(destination.view.dom.querySelector('td strong')?.textContent).toBe('甲');
   });
 
   it('只复制局部粗体文字，不携带选区外正文和文件末尾换行', () => {
@@ -252,7 +294,7 @@ describe('Markdown 文档剪贴板', () => {
     selectText(editor, '选中文字');
     const { text, data } = copySelection(editor, 'cut');
     expect(text).toBe('**选中文字**');
-    expect([...data.keys()]).toEqual(['text/plain']);
+    expect([...data.keys()]).toEqual(['text/plain', MARKDOWN_CLIPBOARD_TYPE]);
     expect(serializeMarkdown(editor)).toBe('前文后文');
     expect(editor.commands.undo()).toBe(true);
     expect(editor.state.doc.eq(before)).toBe(true);

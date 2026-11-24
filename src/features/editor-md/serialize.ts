@@ -5,7 +5,7 @@
 // 不变式 I-13: 打开文件后，序列化的结果必须等于磁盘原文（否则"什么都没做就变脏"）
 // 不变式 I-14: 打开 → 切 visual → 切 source → tab 不出现脏圆点
 
-import type { Editor } from '@tiptap/core';
+import type { Editor, MarkdownToken } from '@tiptap/core';
 import { Selection } from '@tiptap/pm/state';
 import { textWouldFormInlineMath } from './mathSyntax';
 import { beginRawSegmentSession, emitRawSegment, endRawSegmentSession, restoreRawSegments } from './rawMarkdownSegments';
@@ -877,8 +877,9 @@ export function normalizeSerializedMarkdown(markdown: string): string {
 /** 按文档属性还原源文件末尾换行（未装配该属性或正文为空时原样返回）。 */
 function appendTrailingNewline(markdown: string, attrs: Record<string, unknown> | undefined): string {
   const trailing = typeof attrs?.trailingNewline === 'string' ? attrs.trailingNewline : '';
-  if (!trailing || markdown === '') return markdown;
-  return markdown.replace(/\n*$/, '') + trailing;
+  if (!trailing || markdown === '' || markdown.endsWith('\n')) return markdown;
+  // 多个文末空行已有段落节点或原文记录。这里只补文件终止符，避免覆盖新留白或恢复已删空段。
+  return `${markdown}\n`;
 }
 
 /** 记录源文本末尾的换行（CRLF 按 LF 计数，保存时由文档 EOL 设置统一转换）。 */
@@ -1206,7 +1207,10 @@ function deduplicateParsedMarkdownMarks(root: ParsedMarkdownNode): void {
  * 与整篇加载共用同一解析器与 mark 修复，并按 schema 显式校验；失败或未装配解析器时返回 null。
  * recordSource：整篇加载时在 attrs.sourceBlocks 记录顶层块原文，序列化时未编辑的块逐字写回。
  */
-export function parseMarkdownToJson(editor: Editor, markdown: string, options: { recordSource?: boolean } = {}): ReturnType<Editor['getJSON']> | null {
+export function parseMarkdownToJson(editor: Editor, markdown: string, options: {
+  recordSource?: boolean;
+  onTokens?: (tokens: readonly MarkdownToken[]) => void;
+} = {}): ReturnType<Editor['getJSON']> | null {
   const manager = getMarkdownManager(editor);
   const runParse = () => manager?.parse?.(markdown);
   const recordSource = options.recordSource === true && !!manager && supportsSourceBlocks(editor);
@@ -1220,7 +1224,11 @@ export function parseMarkdownToJson(editor: Editor, markdown: string, options: {
     : runParse);
   if (!parsed) return null;
   // 记录源文件块间距，与正文一同进入历史 / 快照；不重新分词，也不改动真实空段落。
-  if (tokens) preserveSourceBlockSpacing(parsed, tokens);
+  if (tokens) {
+    preserveSourceBlockSpacing(parsed, tokens);
+    // 粘贴格式检测借用本次词法结果区分裸网址和显式链接，无需二次解析。
+    options.onTokens?.(tokens);
+  }
   deduplicateParsedMarkdownMarks(parsed as ParsedMarkdownNode);
   const doc = editor.schema.nodeFromJSON(parsed);
   if (recordSource) {

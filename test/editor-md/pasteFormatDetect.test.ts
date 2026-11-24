@@ -85,6 +85,8 @@ describe('格式检测', () => {
     ['列表', '- 一\n- 二', 'markdown'],
     ['表格', '| a | b |\n| --- | --- |\n| 1 | 2 |', 'markdown'],
     ['粗体', '这是 **重点** 内容', 'markdown'],
+    ['显示文字与地址相同的显式链接', '地址 [https://example.test/a](https://example.test/a)', 'markdown'],
+    ['仅有段内硬换行', '第一行  \n第二行', 'markdown'],
     ['纯 HTML', '<p align="center">\n  <b>标题</b>\n</p>', 'html'],
     ['Markdown 夹 HTML', '# 标题\n\n<div align="center">居中</div>\n\n- 项', 'mixed'],
   ])('%s', (_name, text, kind) => {

@@ -159,8 +159,7 @@ describe('启用尾段插件后的辅助输入段落', () => {
       mounted.commands.setTextSelection(mounted.state.doc.content.size - 1);
       mounted.commands.splitBlock();
       expect(mounted.state.doc.content.content.slice(-2).every((node) => !node.attrs.sourceTrailingPlaceholder)).toBe(true);
-      // 多个空段沿用现有 &nbsp; 表示，确保再次解析时仍能区分作者主动留下的空段。
-      expect(serializeMarkdown(mounted)).toBe(`${source}\n\n\n\n&nbsp;`);
+      expect(serializeMarkdown(mounted)).toBe(`${source}\n\n\n\n`);
     } finally { mounted.destroy(); }
   });
 });

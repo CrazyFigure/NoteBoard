@@ -10,6 +10,7 @@ import { CellSelection } from '@tiptap/pm/tables';
 import { VisualKernel } from '@/features/editor-md/VisualKernel';
 import { TableClipboard } from '@/features/editor-md/tableClipboard';
 import { MarkdownClipboard } from '@/features/editor-md/markdownClipboard';
+import { MARKDOWN_CLIPBOARD_TYPE } from '@/features/editor-md/markdownClipboardData';
 import { handlePastedImageFile } from '@/features/editor-md/imagePaste';
 
 // 只裁掉无关浮层与扩展，保留真实 React 内核、ProseMirror 粘贴链路和表格插件。
@@ -131,7 +132,7 @@ describe('Markdown 可视化内核复制与剪切', () => {
     });
     await act(async () => { editor.view.dom.dispatchEvent(event); });
     expect(data.get('text/plain')).toBe('## 标题\n\n**正文**');
-    expect([...data.keys()]).toEqual(['text/plain']);
+    expect([...data.keys()]).toEqual(['text/plain', MARKDOWN_CLIPBOARD_TYPE]);
     expect(event.defaultPrevented).toBe(true);
     expect(editor.state.doc.textContent).toBe(type === 'copy' ? '标题正文' : '');
   });

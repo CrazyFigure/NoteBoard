@@ -261,6 +261,10 @@ export const RawHtmlInlineCore = Node.create({
     tokenize: (src) => {
       const match = INLINE_HTML_TAG_PATTERN.exec(src);
       if (!match) return undefined;
+      // 空续行的 <br> 与普通硬换行走同一节点，避免后台解析依赖 DOM 才能还原光标可到达的行。
+      if (match[1]?.toLowerCase() === 'br' && /^<br\s*\/?>$/i.test(match[0])) {
+        return { type: 'br', raw: match[0] };
+      }
       // 包裹图片的链接整体保留（开始标签以 `<a` 开头且不是结束标签）
       if (match[1]?.toLowerCase() === 'a' && match[0][1] !== '/') {
         const linkedImage = matchLinkedImage(src, match[0].length);

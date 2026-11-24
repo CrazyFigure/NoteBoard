@@ -3,7 +3,7 @@
 import { Extension, type Editor } from '@tiptap/core';
 import { Fragment, type Node as ProseMirrorNode, type ResolvedPos, type Slice } from '@tiptap/pm/model';
 import { AllSelection, NodeSelection, Plugin } from '@tiptap/pm/state';
-import { CellSelection } from '@tiptap/pm/tables';
+import { CellSelection, __pastedCells, isInTable } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 import { getMarkdownManager, serializeMarkdownFromDoc } from './serialize';
 import { serializeSelectionPlainText } from './plainTextClipboard';
@@ -11,6 +11,9 @@ import { deleteSelectionAcrossTables } from './tableCrossDelete';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { showToast } from '../../stores/toastStore';
 import { USES_COMMAND_KEY } from '../../core/platform';
+import { createConvertSlice } from './pasteFormatDetect';
+import { MARKDOWN_CLIPBOARD_TYPE, WEB_MARKDOWN_CLIPBOARD_TYPE } from './markdownClipboardData';
+import { applyTablePaste, executeTableMatrixPaste } from './tableClipboard';
 
 /** 复制格式：带格式（Markdown 源码）/ 纯文本 */
 export type CopyFormat = 'markdown' | 'plain';
@@ -42,10 +45,70 @@ export async function copySelectionAs(editor: Editor, format: CopyFormat): Promi
     : serializeClipboardMarkdown(editor, selection.content());
   if (!text) return;
   try {
+    // 右键与备用快捷键通过异步剪贴板 API 写入；保留不支持自定义类型时的纯文本兼容路径。
+    if (format === 'markdown' && typeof ClipboardItem !== 'undefined' && navigator.clipboard.write) {
+      try {
+        await navigator.clipboard.write([new ClipboardItem({
+          'text/plain': new Blob([text], { type: 'text/plain' }),
+          [WEB_MARKDOWN_CLIPBOARD_TYPE]: new Blob(['1'], { type: MARKDOWN_CLIPBOARD_TYPE }),
+        })]);
+        return;
+      } catch { /* 剪贴板实现可能只支持标准类型。 */ }
+    }
     await navigator.clipboard.writeText(text);
   } catch {
     showToast(`${format === 'plain' ? '纯文本' : '带格式'}复制失败，请检查剪贴板权限后重试`, 'error');
   }
+}
+
+/** 粘贴已知来自 Markdown 编辑器的片段，或识别无来源标记但确实含显式链接的正文。 */
+function pasteMarkdownSelection(editor: Editor, text: string, requireInlineLink = false): boolean {
+  const { state } = editor;
+  const { selection } = state;
+  const { from, to, $from } = selection;
+  if (!text || (requireInlineLink && !text.includes('](')) || $from.parent.type.spec.code
+    || (state.storedMarks ?? $from.marks()).some((mark) => mark.type.name === 'code')) return false;
+  const slice = createConvertSlice(editor, state, { from, to, text }, 'markdown', requireInlineLink);
+  if (!slice) return false;
+
+  if (isInTable(state)) {
+    // 整张 Markdown 表格按现有二维粘贴处理；单段文字可在普通光标处保留行内格式。
+    const cells = __pastedCells(slice);
+    if (cells) return executeTableMatrixPaste(editor.view, [], cells);
+    if (selection instanceof CellSelection || slice.content.childCount !== 1 || slice.openStart !== 1) return false;
+  }
+
+  // 已解析的 Markdown 不再运行 TipTap 纯文本粘贴规则，避免链接标签被重复识别或重写。
+  const tr = state.tr.replaceSelection(slice);
+  if (!tr.docChanged) return false;
+  editor.view.dispatch(tr.setMeta('preventAutolink', true).scrollIntoView());
+  return true;
+}
+
+/** 右键粘贴与快捷键共用 Markdown 解析，普通剪贴板文本继续走原生粘贴和格式提示。 */
+export async function pasteFromClipboard(editor: Editor): Promise<void> {
+  editor.view.focus();
+  if (document.execCommand?.('paste')) return;
+
+  let text = '';
+  let markdown = false;
+  try {
+    const item = (await navigator.clipboard.read()).find((entry) => entry.types.includes('text/plain'));
+    if (item) {
+      text = await (await item.getType('text/plain')).text();
+      markdown = item.types.includes(WEB_MARKDOWN_CLIPBOARD_TYPE) || item.types.includes(MARKDOWN_CLIPBOARD_TYPE);
+    }
+  } catch { /* 不支持读取扩展类型时，仍可读取普通文本。 */ }
+  if (!text) text = await navigator.clipboard?.readText().catch(() => '') ?? '';
+  if (!text || editor.isDestroyed || !editor.isEditable) return;
+  editor.view.focus();
+  if (markdown && hasMarkdownClipboard(editor) && pasteMarkdownSelection(editor, text)) return;
+  if (applyTablePaste(editor, text)) return;
+
+  // 提供原始文本，供可视化的粘贴格式检测与提示共用。
+  const data = new DataTransfer();
+  data.setData('text/plain', text);
+  editor.view.pasteText(text, new ClipboardEvent('paste', { clipboardData: data }));
 }
 
 /** 是否按下「另一种格式复制」：Windows / Linux / Android 为 Ctrl+Shift+C，Mac 为 Cmd+Shift+C（按物理键位，不受键盘布局影响） */
@@ -273,16 +336,20 @@ export const MarkdownClipboard = Extension.create({
   priority: 1000,
   addProseMirrorPlugins() {
     const editor = this.editor;
+    // 跟踪显式的纯文本粘贴按键，保留 Ctrl/Cmd+Shift+V 的原有用途。
+    let plainPaste = false;
     // 写入成功后才删除选区；只读模式让原生剪切保护生效，空选区不覆盖已有剪贴板。
     const writeSelection = (view: EditorView, event: ClipboardEvent): boolean => {
       const cut = event.type === 'cut';
       if ((cut && !view.editable) || view.state.selection.empty || !event.clipboardData) return false;
       // 复制按设置输出纯文本或源码；剪切始终保留格式，避免在文档内移动内容时丢失排版
-      const text = !cut && getDefaultCopyFormat() === 'plain'
+      const plain = !cut && getDefaultCopyFormat() === 'plain';
+      const text = plain
         ? serializeSelectionPlainText(editor)
         : serializeClipboardMarkdown(editor, view.state.selection.content());
       event.clipboardData.clearData();
       event.clipboardData.setData('text/plain', text);
+      if (!plain && text) event.clipboardData.setData(MARKDOWN_CLIPBOARD_TYPE, '1');
       event.preventDefault();
       // 跨表格边界的选区按表格规则删除（见 tableCrossDelete.ts），其余走默认删除
       if (cut) {
@@ -296,6 +363,23 @@ export const MarkdownClipboard = Extension.create({
         handleDOMEvents: {
           copy: writeSelection,
           cut: writeSelection,
+          keydown: (_view, event) => {
+            if (event.key.toLowerCase() === 'v') {
+              plainPaste = event.shiftKey && (USES_COMMAND_KEY ? event.metaKey : event.ctrlKey);
+            }
+            return false;
+          },
+          keyup: () => { plainPaste = false; return false; },
+          blur: () => { plainPaste = false; return false; },
+        },
+        handlePaste: (_view, event) => {
+          const plain = plainPaste;
+          plainPaste = false;
+          const data = event.clipboardData;
+          if (plain || !data) return false;
+          const marked = data.getData(MARKDOWN_CLIPBOARD_TYPE) || data.getData(WEB_MARKDOWN_CLIPBOARD_TYPE);
+          if (!marked && data.getData('text/html')) return false;
+          return pasteMarkdownSelection(editor, data.getData('text/plain'), !marked);
         },
       },
     })];

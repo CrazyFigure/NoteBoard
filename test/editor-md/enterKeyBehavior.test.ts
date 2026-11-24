@@ -39,14 +39,41 @@ describe('可视化编辑器的回车按键', () => {
     mounted.view.dispatch(mounted.state.tr.insertText(text));
   }
 
-  it('正文 Enter 换段，Shift+Enter 保留硬换行', () => {
+  it('正文单次 Enter 段内换行，紧接两次 Enter 换段', () => {
     parseMarkdown(mounted, '正文');
     mounted.commands.setTextSelection(3);
-    pressEnter({ shiftKey: true });
+    pressEnter();
     typeText('续行');
+    pressEnter();
     pressEnter();
     typeText('新段');
     expect(serializeMarkdown(mounted)).toBe('正文  \n续行\n\n新段');
+  });
+
+  it('换段后继续按 Enter，保存和重开都保留空段落且不生成实体', () => {
+    parseMarkdown(mounted, '正文\n');
+    mounted.commands.setTextSelection(3);
+    for (let count = 0; count < 5; count++) pressEnter();
+    expect(serializeMarkdown(mounted)).toBe(`正文${'\n'.repeat(8)}`);
+    typeText('新段');
+    const saved = serializeMarkdown(mounted);
+    expect(saved).toBe(`正文${'\n'.repeat(8)}新段\n`);
+    expect(parseMarkdown(mounted, saved)).toBe(true);
+    expect(mounted.state.doc.childCount).toBe(5);
+    expect(serializeMarkdown(mounted)).toBe(saved);
+  });
+
+  it('停在空续行切换源码后仍能继续在同一段输入', () => {
+    parseMarkdown(mounted, '正文');
+    mounted.commands.setTextSelection(3);
+    pressEnter();
+    const saved = serializeMarkdown(mounted);
+    expect(saved).toBe('正文<br>\n');
+    expect(parseMarkdown(mounted, saved)).toBe(true);
+    expect(mounted.state.doc.firstChild?.lastChild?.type.name).toBe('hardBreak');
+    mounted.commands.setTextSelection(4);
+    typeText('续行');
+    expect(serializeMarkdown(mounted)).toBe('正文  \n续行\n');
   });
 
   it('有序列表回车自动续号，切回源码保留原有的文末空行', () => {

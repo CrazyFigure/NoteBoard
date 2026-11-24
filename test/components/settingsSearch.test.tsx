@@ -149,7 +149,7 @@ describe('设置搜索与布局整理', () => {
 
     // 快捷键页固定显示可视化模式的回车规则。
     switchTab('快捷键');
-    const paragraph = Array.from(host.querySelectorAll('kbd')).find((kbd) => kbd.parentElement?.textContent?.includes('换段落'));
+    const paragraph = Array.from(host.querySelectorAll('kbd')).find((kbd) => kbd.parentElement?.textContent?.includes('换行或续写列表'));
     expect(paragraph!.textContent).toBe('Enter');
     const lineBreak = Array.from(host.querySelectorAll('kbd')).find((kbd) => kbd.parentElement?.textContent?.includes('段内换行'));
     expect(lineBreak!.textContent).toBe('Shift + Enter');

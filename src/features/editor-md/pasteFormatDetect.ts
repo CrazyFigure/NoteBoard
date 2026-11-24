@@ -3,7 +3,7 @@
 // 提示组件（PasteFormatPrompt）据此检测其中的 Markdown / HTML 语法，询问是否转换为格式。
 // 粘贴范围在下一次修改文档（含撤销、转换本身）或主动关闭时清除，提示随之消失。
 
-import type { Editor } from '@tiptap/core';
+import type { Editor, MarkdownToken } from '@tiptap/core';
 import { Extension } from '@tiptap/core';
 import { closeHistory } from '@tiptap/pm/history';
 import { DOMParser as ProseMirrorDOMParser, Fragment, Slice, type Node as ProseMirrorNode } from '@tiptap/pm/model';
@@ -168,13 +168,20 @@ export function isHtmlSource(text: string): boolean {
   return !outside.split('\n').some((line) => MARKDOWN_BLOCK_LINE.test(line));
 }
 
+/** 裸网址和同名 Markdown 链接解析结果相同，按实际分词判断是否含有显式行内语法。 */
+function hasExplicitInlineSyntax(tokens: readonly MarkdownToken[], linksOnly = false): boolean {
+  return tokens.some((token) => (!linksOnly && token.type === 'br') || (token.type === 'link' && token.raw?.startsWith('['))
+    || (token.tokens && hasExplicitInlineSyntax(token.tokens, linksOnly)));
+}
+
 /** 解析粘贴文本并检测格式；解析失败或无格式时返回 null */
 export function detectPastedFormat(editor: Editor, text: string): PastedFormat | null {
   if (isHtmlSource(text)) return { kind: 'html', modes: ['htmlBlock', 'richText'] };
   try {
-    const parsed = parseMarkdownToJson(editor, text) as JsonNodeLike | null;
+    let tokens: readonly MarkdownToken[] = [];
+    const parsed = parseMarkdownToJson(editor, text, { onTokens: (value) => { tokens = value; } }) as JsonNodeLike | null;
     if (!parsed?.content?.length) return null;
-    const kind = analyzeParsedFormat(parsed);
+    const kind = analyzeParsedFormat(parsed) ?? (hasExplicitInlineSyntax(tokens) ? 'markdown' : null);
     return kind ? { kind, modes: ['markdown'] } : null;
   } catch {
     return null;
@@ -194,11 +201,17 @@ export function toSingleHtmlBlockSource(text: string): string {
  * 按转换方式生成替换粘贴范围的切片。
  * editor 只用于取 Markdown 解析器；文档结构以传入的 state 为准。
  */
-export function createConvertSlice(editor: Editor, state: EditorState, range: PastedTextRange, mode: PasteConvertMode): Slice | null {
+export function createConvertSlice(editor: Editor, state: EditorState, range: PastedTextRange, mode: PasteConvertMode, requireInlineLink = false): Slice | null {
   try {
     if (mode === 'markdown') {
-      const parsed = parseMarkdownToJson(editor, range.text) as JsonNodeLike | null;
+      if (requireInlineLink && range.text.length > MAX_DETECT_LENGTH) return null;
+      let hasInlineLink = !requireInlineLink;
+      const parsed = parseMarkdownToJson(editor, range.text, requireInlineLink ? {
+        onTokens: (tokens) => { hasInlineLink = hasExplicitInlineSyntax(tokens, true); },
+      } : undefined) as JsonNodeLike | null;
       if (!parsed?.content?.length) return null;
+      // 系统只交付纯文本时，自动认领含显式链接的普通段落；标题、列表等外部文本继续由用户决定是否转换。
+      if (!hasInlineLink || (requireInlineLink && parsed.content.some((node) => node.type !== 'paragraph'))) return null;
       const fragment = Fragment.fromJSON(state.schema, parsed.content);
       // 首尾是普通段落时开放，与光标所在行合并（行内格式就地转换）；
       // 标题、列表等块保持闭合独立成块——开放会把它们的文字并入所在段落，`## 标题` 就只剩下「标题」

@@ -586,7 +586,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </div>
                   </div>
 
-                  {/* 正文段落间距：相邻段落（Enter 换段落）之间的空白高度；段内换行（Shift + Enter）不受影响 */}
+                  {/* 正文段落间距仅在新建段落时生效。 */}
                   <div data-setting-id="paragraphSpacing" style={formRowStyle}>
                     <label style={labelStyle}>正文段落间距 ({settings.typography.contentParagraphSpacing ?? 14}px)</label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -603,7 +603,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       </span>
                     </div>
                     <span style={{ fontSize: 11, color: 'var(--editor-text-muted)' }}>
-                      相邻段落之间的空白（Enter 换段落）；段内换行（Shift + Enter）没有段落间距
+                      相邻段落之间的空白，段内换行时无额外间距
                     </span>
                   </div>
 
@@ -1671,13 +1671,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                   <ShortcutItem
                     keyCombo="Enter"
-                    label="换段落"
-                    tip="在当前块内新建段落，列表自动续项。在空列表项上再按一次可退出列表"
+                    label="换行或续写列表"
+                    tip="正文按一次段内换行，再按一次换段，继续按可留空行。列表中自动续项，空列表项上按一次可退出"
                   />
                   <ShortcutItem
                     keyCombo="Shift + Enter"
                     label="段内换行"
-                    tip="不新建段落、没有段落间距，源码中为行尾两个空格；标题中与空行上等同换段落"
+                    tip="在同一段内换行，源码使用行尾两个空格。标题或空段中按此键会新建段落"
                   />
                   <ShortcutItem
                     keyCombo="Ctrl + Enter"

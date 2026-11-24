@@ -1,6 +1,6 @@
 // NoteBoard 回车类按键统一行为（可视化模式）
 //
-//   Enter        新建段落或列表项，从空列表项退出列表；引用、折叠等容器内的新段落留在当前块，代码块内直接换行；
+//   Enter        普通正文先段内换行，紧接着再按一次换段，继续按则增加空段；列表续项，代码块内直接换行；
 //   Shift+Enter  段内换行（Markdown 硬换行，源码为行尾两个空格）；代码块内为换行；
 //                标题不能包含换行、空行没有可换的内容 → 都按 Enter 处理
 //   Ctrl+Enter   跳出：在光标所在的最内层容器块（代码块、表格、列表、引用、提示块、高亮块、折叠块、分栏）下方新建段落；
@@ -71,6 +71,20 @@ function lineBreakInCell(editor: Editor): boolean {
   return editor.commands.setHardBreak();
 }
 
+/** 正文已有空的续行时，将其换行转换成段落边界；普通空段继续沿用拆段行为。 */
+function enterInBody(editor: Editor, selection: TextSelection): boolean {
+  const { $from, $to } = selection;
+  if ($from.depth !== 1 || $from.parent.type.name !== 'paragraph' || !$from.sameParent($to)) return false;
+  // 空段或整段选中时沿用原拆段行为，避免制造只含硬换行的段落。
+  if ($from.parentOffset === 0 && $to.parentOffset === $from.parent.content.size) return false;
+
+  if (selection.empty && $from.nodeBefore?.type.name === 'hardBreak') {
+    // 删除续行与拆段在同一事务内完成，保存、撤销都只看到一次编辑。
+    return editor.chain().deleteRange({ from: $from.pos - 1, to: $from.pos }).splitBlock().run();
+  }
+  return editor.commands.setHardBreak();
+}
+
 /**
  * Ctrl+Enter：在光标所在的最内层容器块（或当前文本块）下方新建空段落并移入光标。
  * 导出供测试使用。
@@ -124,6 +138,7 @@ export const EnterKeyBehavior = Extension.create({
         // 代码块内直接换行，避免下游的三次回车退出或外层列表拆项。
         if ($from.parent.type.spec.code) return editor.commands.newlineInCode();
         if (isInTableCell($from)) return lineBreakInCell(editor);
+        if ($from.depth === 1) return enterInBody(editor, selection);
         // 默认回车会尝试抬升空块，直接拆分容器正文中的空段可在块内连续留白。
         if (selection.empty && $from.depth > 1 && $from.parent.type.name === 'paragraph'
           && $from.parent.content.size === 0 && PARAGRAPH_CONTAINERS.has($from.node(-1).type.name)) {

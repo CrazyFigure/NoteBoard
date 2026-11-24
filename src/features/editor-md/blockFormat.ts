@@ -155,8 +155,15 @@ export const FormattedParagraph = Paragraph.extend({
     return { ...this.parent?.(), ...blockFormatAttributes() };
   },
   renderMarkdown(node, helpers, context) {
-    const parentRender = (this as unknown as { parent?: RenderMarkdown }).parent;
-    return wrapBlockFormat(node, parentRender?.(node, helpers, context) ?? '', context);
+    // 普通空段以块分隔符表示；只有无正文且带对齐或缩进的 div 需要显式占位。
+    const content = node.content ?? [];
+    // Markdown 的双空格只在两个有内容的行之间有效；边界和连续换行用 <br> 保存。
+    const inline = content.map((child, index) => child.type === 'hardBreak'
+      && (index === 0 || index === content.length - 1 || content[index + 1]?.type === 'hardBreak')
+      ? { type: 'rawHtmlInline', attrs: { raw: '<br>' } }
+      : child);
+    const rendered = inline.length ? helpers.renderChildren(inline) : '';
+    return wrapBlockFormat(node, rendered, context);
   },
 });
 

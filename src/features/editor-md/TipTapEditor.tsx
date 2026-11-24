@@ -45,6 +45,7 @@ import { useSharedReadonly } from '../account/sharedReadonly';
 import { useLayoutStore } from '../../stores/layoutStore';
 import { ExternalChangeBanner } from './ExternalChangeBanner';
 import { markdownPlainBracketExtension } from './sourcePlainBracket';
+import { tagSourceMarkdownCopy } from './markdownClipboardData';
 import { markdownWikiLinkExtension } from './sourceWikiLink';
 import {
   getCurrentDocumentHistoryContent,
@@ -433,6 +434,9 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
       state,
       parent: sourceDivRef.current,
     });
+    // 在 CodeMirror 写入剪贴板之后补上来源标记，原始源码仍由 CodeMirror 提供。
+    view.dom.addEventListener('copy', tagSourceMarkdownCopy);
+    view.dom.addEventListener('cut', tagSourceMarkdownCopy);
 
     // 注入源码模式排版配置
     const typographyExt = createSourceTypographyTheme();
