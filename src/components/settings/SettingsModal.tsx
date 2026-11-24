@@ -1672,12 +1672,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <ShortcutItem
                     keyCombo="Enter"
                     label="换行或续写列表"
-                    tip="正文按一次段内换行，再按一次换段，继续按可留空行。列表中自动续项，空列表项上按一次可退出"
+                    tip="正文按一次直接换行，源码中间没有空行。再按一次留一个空行并换段。列表中自动续项"
                   />
                   <ShortcutItem
                     keyCombo="Shift + Enter"
                     label="段内换行"
-                    tip="在同一段内换行，源码使用行尾两个空格。标题或空段中按此键会新建段落"
+                    tip="普通正文使用实际换行。标题或空段中按此键会新建段落"
                   />
                   <ShortcutItem
                     keyCombo="Ctrl + Enter"

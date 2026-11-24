@@ -130,9 +130,6 @@ function renderBlockChildren(node: JSONContent, helpers: MarkdownRendererHelpers
   if (typeof orphanAfter === 'string' && orphanAfter) output += (output ? '\n\n' : '') + emitRawSegment(orphanAfter);
   const tail = attrs?.[SOURCE_TAIL_ATTR];
   if (typeof tail === 'string' && tail) output += emitGap(tail);
-  // 文末输入中的续行用段尾 <br> 表示，源码也留出该行；已记录的原文仍逐字回写。
-  if (node.type === 'doc' && !tail && !orphanAfter && previous?.type === 'paragraph'
-    && previous.content?.at(-1)?.type === 'hardBreak') output += '\n';
   return output;
 }
 

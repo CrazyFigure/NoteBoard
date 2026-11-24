@@ -151,6 +151,8 @@ type RenderMarkdown = (node: JSONContent, helpers: MarkdownRendererHelpers, cont
 
 /** 段落：增加对齐 / 缩进属性，序列化时按需包裹 */
 export const FormattedParagraph = Paragraph.extend({
+  // DOM 输入时保留正文中的换行文本，避免浏览器回填时变成硬换行或空格。
+  whitespace: 'pre',
   addAttributes() {
     return { ...this.parent?.(), ...blockFormatAttributes() };
   },

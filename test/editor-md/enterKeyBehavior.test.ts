@@ -47,17 +47,17 @@ describe('可视化编辑器的回车按键', () => {
     pressEnter();
     pressEnter();
     typeText('新段');
-    expect(serializeMarkdown(mounted)).toBe('正文  \n续行\n\n新段');
+    expect(serializeMarkdown(mounted)).toBe('正文\n续行\n\n新段');
   });
 
   it('换段后继续按 Enter，保存和重开都保留空段落且不生成实体', () => {
-    parseMarkdown(mounted, '正文\n');
+    parseMarkdown(mounted, '正文');
     mounted.commands.setTextSelection(3);
     for (let count = 0; count < 5; count++) pressEnter();
     expect(serializeMarkdown(mounted)).toBe(`正文${'\n'.repeat(8)}`);
     typeText('新段');
     const saved = serializeMarkdown(mounted);
-    expect(saved).toBe(`正文${'\n'.repeat(8)}新段\n`);
+    expect(saved).toBe(`正文${'\n'.repeat(8)}新段`);
     expect(parseMarkdown(mounted, saved)).toBe(true);
     expect(mounted.state.doc.childCount).toBe(5);
     expect(serializeMarkdown(mounted)).toBe(saved);
@@ -68,12 +68,34 @@ describe('可视化编辑器的回车按键', () => {
     mounted.commands.setTextSelection(3);
     pressEnter();
     const saved = serializeMarkdown(mounted);
-    expect(saved).toBe('正文<br>\n');
+    expect(saved).toBe('正文\n');
     expect(parseMarkdown(mounted, saved)).toBe(true);
-    expect(mounted.state.doc.firstChild?.lastChild?.type.name).toBe('hardBreak');
+    expect(mounted.state.doc.firstChild?.textContent).toBe('正文\n');
     mounted.commands.setTextSelection(4);
     typeText('续行');
-    expect(serializeMarkdown(mounted)).toBe('正文  \n续行\n');
+    expect(serializeMarkdown(mounted)).toBe('正文\n续行');
+  });
+
+  it('源码中的单换行留在段内，空行才产生新段落', () => {
+    const source = '\n甲\n乙\n\n丙\n丁\n';
+    expect(parseMarkdown(mounted, source.replaceAll('\n', '\r\n'))).toBe(true);
+    expect(mounted.state.doc.childCount).toBe(2);
+    expect(mounted.state.doc.child(0).textContent).toBe('\n甲\n乙');
+    expect(mounted.state.doc.child(1).textContent).toBe('丙\n丁\n');
+    expect(serializeMarkdown(mounted)).toBe(source);
+    mounted.commands.setTextSelection(mounted.state.doc.content.size - 1);
+    mounted.commands.deleteRange({ from: mounted.state.selection.from - 1, to: mounted.state.selection.from });
+    expect(serializeMarkdown(mounted)).toBe(source.slice(0, -1));
+  });
+
+  it('正文 Shift+Enter 也只写入普通换行，和已有换行相邻时换段', () => {
+    parseMarkdown(mounted, '甲乙');
+    mounted.commands.setTextSelection(2);
+    pressEnter({ shiftKey: true });
+    expect(serializeMarkdown(mounted)).toBe('甲\n乙');
+    mounted.commands.setTextSelection(2);
+    pressEnter();
+    expect(serializeMarkdown(mounted)).toBe('甲\n\n乙');
   });
 
   it('有序列表回车自动续号，切回源码保留原有的文末空行', () => {

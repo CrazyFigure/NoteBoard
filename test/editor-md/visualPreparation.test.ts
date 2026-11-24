@@ -28,7 +28,8 @@ describe('大文档可视化准备', () => {
     expect(editor.schema.nodeFromJSON(prepared.document).toJSON().content).toEqual(editor.getJSON().content);
     expect(prepared.document.attrs?.sourceBlocks).toEqual(editor.state.doc.attrs.sourceBlocks);
     expect(prepared.document.attrs?.sourceBlocks).not.toBeNull();
-    expect(prepared.document.attrs?.trailingNewline).toBe('\n');
+    expect(prepared.document.attrs?.trailingNewline).toBe('');
+    expect(prepared.document.content?.at(-1)?.content?.at(-1)?.text).toBe('\n');
     expect(stages).toEqual(['parsing']);
     // 非规范写法（* 列表）不再整篇规范化：装载后未编辑时逐字写回原文
     const mounted = createEditor();

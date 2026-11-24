@@ -5,7 +5,7 @@
 // 不变式 I-13: 打开文件后，序列化的结果必须等于磁盘原文（否则"什么都没做就变脏"）
 // 不变式 I-14: 打开 → 切 visual → 切 source → tab 不出现脏圆点
 
-import type { Editor, MarkdownToken } from '@tiptap/core';
+import type { Editor, JSONContent, MarkdownToken } from '@tiptap/core';
 import { Selection } from '@tiptap/pm/state';
 import { textWouldFormInlineMath } from './mathSyntax';
 import { beginRawSegmentSession, emitRawSegment, endRawSegmentSession, restoreRawSegments } from './rawMarkdownSegments';
@@ -780,7 +780,9 @@ function removeRedundantMarkdownEscapes(
   const preservesDocument = (candidateMarkdown: string): boolean => {
     try {
       // 语义校验时把必要转义标记还原为真实反斜杠，保证解析结果与最终输出一致
-      const parsed = manager.parse!(restoreForParse(candidateMarkdown));
+      const { parsed, tokens } = captureMarkdownBlockTokens(manager.instance, () => manager.parse!(restoreForParse(candidateMarkdown)));
+      // 语义校验与打开文档使用相同的首尾换行规则，复用本次解析的词法结果。
+      if (tokens) restoreOuterParagraphBreaks(parsed, tokens);
       deduplicateParsedMarkdownMarks(parsed as ParsedMarkdownNode);
       // 末尾换行等文档级属性不来自正文解析，比较前沿用参考文档的属性
       if (referenceDoc.attrs) parsed.attrs = { ...referenceDoc.attrs };
@@ -882,8 +884,10 @@ function appendTrailingNewline(markdown: string, attrs: Record<string, unknown> 
   return `${markdown}\n`;
 }
 
-/** 记录源文本末尾的换行（CRLF 按 LF 计数，保存时由文档 EOL 设置统一转换）。 */
-function trailingNewlineOf(markdown: string): string {
+/** 记录正文节点之外的文末换行，正文已持有的续行可直接删除。 */
+function trailingNewlineOf(markdown: string, parsed: JSONContent): string {
+  const last = parsed.content?.at(-1);
+  if (last?.type === 'paragraph' && last.content?.at(-1)?.text?.endsWith('\n')) return '';
   const match = /(?:\r?\n)+$/.exec(markdown);
   return match ? '\n'.repeat(match[0].split('\n').length - 1) : '';
 }
@@ -1202,6 +1206,25 @@ function deduplicateParsedMarkdownMarks(root: ParsedMarkdownNode): void {
   root.content?.forEach(deduplicateParsedMarkdownMarks);
 }
 
+/** 恢复 Marked 在整篇文档首尾省略的单个正文换行。段间分隔与 Markdown 块语法仍由原解析器处理。 */
+function restoreOuterParagraphBreaks(parsed: JSONContent, tokens: readonly MarkdownToken[]): void {
+  const first = parsed.content?.[0];
+  if (first?.type === 'paragraph' && tokens[0]?.type === 'space' && tokens[0].raw === '\n'
+    && tokens[1]?.type === 'paragraph') {
+    const head = first.content?.[0];
+    if (head?.type === 'text' && !head.marks?.length) head.text = `\n${head.text}`;
+    else first.content = [{ type: 'text', text: '\n' }, ...(first.content ?? [])];
+  }
+
+  const last = parsed.content?.at(-1);
+  const token = tokens.at(-1);
+  if (last?.type !== 'paragraph' || token?.type !== 'paragraph' || !token.raw?.endsWith('\n')
+    || token.raw.endsWith('\n\n') || token.text?.endsWith('\n')) return;
+  const tail = last.content?.at(-1);
+  if (tail?.type === 'text' && !tail.marks?.length) tail.text += '\n';
+  else (last.content ??= []).push({ type: 'text', text: '\n' });
+}
+
 /**
  * 把一段 Markdown 解析为可直接插入编辑器的文档 JSON（不修改编辑器内容）。
  * 与整篇加载共用同一解析器与 mark 修复，并按 schema 显式校验；失败或未装配解析器时返回 null。
@@ -1225,6 +1248,7 @@ export function parseMarkdownToJson(editor: Editor, markdown: string, options: {
   if (!parsed) return null;
   // 记录源文件块间距，与正文一同进入历史 / 快照；不重新分词，也不改动真实空段落。
   if (tokens) {
+    restoreOuterParagraphBreaks(parsed, tokens);
     preserveSourceBlockSpacing(parsed, tokens);
     // 粘贴格式检测借用本次词法结果区分裸网址和显式链接，无需二次解析。
     options.onTokens?.(tokens);
@@ -1245,7 +1269,7 @@ function supportsSourceBlocks(editor: Editor): boolean {
 
 /** 补齐只来自原文的文档级属性，后台准备与主线程装载必须沿用相同规则。 */
 export function withMarkdownSourceAttributes(parsed: ReturnType<Editor['getJSON']>, markdown: string): ReturnType<Editor['getJSON']> {
-  return { ...parsed, attrs: { ...parsed.attrs, trailingNewline: trailingNewlineOf(markdown), invisibleCharEntities: usesInvisibleCharacterEntities(markdown) } };
+  return { ...parsed, attrs: { ...parsed.attrs, trailingNewline: trailingNewlineOf(markdown, parsed), invisibleCharEntities: usesInvisibleCharacterEntities(markdown) } };
 }
 
 /**
@@ -1303,7 +1327,7 @@ export function parseMarkdown(
       // setContent 只替换文档内容、不改 doc 节点属性：末尾换行等需单独写入文档属性（同一事务、不入历史）
       const docAttrSpecs = editor.schema.topNodeType.spec.attrs;
       if (docAttrSpecs?.trailingNewline) {
-        const trailing = trailingNewlineOf(markdown);
+        const trailing = trailingNewlineOf(markdown, parsed);
         chain.command(({ tr }) => {
           if (tr.doc.attrs.trailingNewline !== trailing) tr.setDocAttribute('trailingNewline', trailing);
           return true;

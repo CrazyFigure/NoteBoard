@@ -1,7 +1,7 @@
 // NoteBoard 回车类按键统一行为（可视化模式）
 //
 //   Enter        普通正文先段内换行，紧接着再按一次换段，继续按则增加空段；列表续项，代码块内直接换行；
-//   Shift+Enter  段内换行（Markdown 硬换行，源码为行尾两个空格）；代码块内为换行；
+//   Shift+Enter  普通正文插入源码换行；列表等容器内为硬换行，代码块内直接换行；
 //                标题不能包含换行、空行没有可换的内容 → 都按 Enter 处理
 //   Ctrl+Enter   跳出：在光标所在的最内层容器块（代码块、表格、列表、引用、提示块、高亮块、折叠块、分栏）下方新建段落；
 //                不在容器内时在当前段落 / 标题下方新建段落，不拆分当前内容
@@ -71,18 +71,29 @@ function lineBreakInCell(editor: Editor): boolean {
   return editor.commands.setHardBreak();
 }
 
-/** 正文已有空的续行时，将其换行转换成段落边界；普通空段继续沿用拆段行为。 */
+/** 普通正文使用原样的换行字符，相邻两次换行用一个真正的段落边界表达。 */
 function enterInBody(editor: Editor, selection: TextSelection): boolean {
   const { $from, $to } = selection;
   if ($from.depth !== 1 || $from.parent.type.name !== 'paragraph' || !$from.sameParent($to)) return false;
-  // 空段或整段选中时沿用原拆段行为，避免制造只含硬换行的段落。
+  // 空段或整段选中时沿用拆段行为。
   if ($from.parentOffset === 0 && $to.parentOffset === $from.parent.content.size) return false;
 
-  if (selection.empty && $from.nodeBefore?.type.name === 'hardBreak') {
-    // 删除续行与拆段在同一事务内完成，保存、撤销都只看到一次编辑。
-    return editor.chain().deleteRange({ from: $from.pos - 1, to: $from.pos }).splitBlock().run();
+  if (selection.empty) {
+    const before = $from.nodeBefore;
+    const followsBreak = before?.text?.endsWith('\n') || before?.type.name === 'hardBreak';
+    if (followsBreak || $from.nodeAfter?.text?.startsWith('\n')) {
+      // 消耗相邻续行并拆段，避免把两次换行留在同一个段落节点里。
+      const breakPos = followsBreak ? $from.pos - 1 : $from.pos;
+      return editor.chain().deleteRange({ from: breakPos, to: breakPos + 1 }).splitBlock().run();
+    }
   }
-  return editor.commands.setHardBreak();
+  // 换行字符不随标记写回源码，保留可拆分标记供下一行继续输入。
+  const { state, view } = editor;
+  const continuedMarks = state.storedMarks ?? ($to.parentOffset > 0 ? $from.marks() : []);
+  const tr = state.tr.replaceSelectionWith(state.schema.text('\n'), false);
+  tr.ensureMarks(continuedMarks.filter((mark) => editor.extensionManager.splittableMarks.includes(mark.type.name)));
+  view.dispatch(tr.scrollIntoView());
+  return true;
 }
 
 /**
@@ -152,6 +163,9 @@ export const EnterKeyBehavior = Extension.create({
         // 代码块内 Shift+Enter 也是换行，不再跳出代码块
         if (selection.$from.parent.type.spec.code) return editor.commands.newlineInCode();
         if (selection instanceof TextSelection && isInTableCell(selection.$from)) return lineBreakInCell(editor);
+        if (selection instanceof TextSelection && selection.$from.depth === 1 && selection.$from.parent.type.name === 'paragraph') {
+          return enterInBody(editor, selection) || replayEnter(editor);
+        }
         // 标题和空行无法段内换行，交给 Enter 的换段落规则。
         if (!canInsertHardBreak(editor.state)) return replayEnter(editor);
         return editor.commands.setHardBreak();
