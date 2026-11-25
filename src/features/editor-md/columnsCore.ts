@@ -1,6 +1,7 @@
 // 共享文档规则：后台解析与主线程使用同一份定义，禁止引入界面、store 或原生 API。
-import { Node, mergeAttributes } from '@tiptap/core';
+import { Node, mergeAttributes, type MarkdownToken } from '@tiptap/core';
 import { createIndexedBlockStart } from './markdownBlockStart';
+import { parseMarkdownBlockChildren } from './markdownBlockSpacing';
 import { emitRawSegment } from './rawMarkdownSegments';
 import { DIV_CLOSE_TAG, readDivBody } from './divBlockSyntax';
 import { SourceLines } from './sourceLines';
@@ -160,10 +161,9 @@ export const ColumnsBlockCore = Node.create({
 
   /** 将共享词法结果转换为文档节点，解析阶段不读取界面状态。 */
   parseMarkdown: (token, helpers) => {
-    const parseBlocks = helpers.parseBlockChildren ?? helpers.parseChildren;
-    const columns = (token.columns as Array<{ width: number; tokens: unknown[] }> | undefined) ?? [];
+    const columns = (token.columns as Array<{ width: number; tokens: MarkdownToken[] }> | undefined) ?? [];
     const content = columns.map((column) => {
-      const children = parseBlocks((column.tokens || []) as Parameters<typeof parseBlocks>[0]);
+      const children = parseMarkdownBlockChildren(column.tokens, helpers);
       // 栏内容约束为 block+，空栏补一个空段落
       return helpers.createNode('columnBlock', { width: column.width }, children.length > 0 ? children : [{ type: 'paragraph' }]);
     });

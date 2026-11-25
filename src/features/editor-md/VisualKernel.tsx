@@ -98,10 +98,11 @@ export function VisualKernel({
   // 扩展只随文档身份构建一次；输入、焦点、菜单和标签激活都不重新分配整套扩展。
   // 链接回调继续由模块级工厂创建，不能重新引入持有 editor 的组件闭包。
   const extensions = useMemo(() => buildExtensions(docKey, {
+    preserveLeadingListParagraph: true,
     onOpenLinkModal: makeLinkModalOpener(docKey),
     pasteFormatDetect: true,
     markdownClipboard: true,
-    disableRedundantShiftEnter: true,
+    markdownDocument: true,
   }), [docKey]);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
   // 超链接插入与编辑弹窗状态

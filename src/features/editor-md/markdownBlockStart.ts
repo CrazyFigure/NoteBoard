@@ -13,6 +13,19 @@ const sourceTokenCaptures = new WeakMap<object, { tokens?: Token[] }>();
 const CJK_BOLD_CLOSING_BOUNDARY = /[\p{P}\p{S}](?=\*\*(?!\*)\p{Script=Han})/gu;
 const EMPHASIS_DELIMITER_CHARACTERS = new Set(['*', '_', '\\', '`']);
 
+/** 相邻块的分隔符有时被拆在前块末尾和 space token 中。合并后才能按完整换行数恢复空段。 */
+function joinSplitBlockSpacing(tokens: Token[]): void {
+  for (let index = 1; index < tokens.length; index += 1) {
+    const space = tokens[index];
+    const previous = tokens[index - 1];
+    if (space.type !== 'space' || previous.type === 'space' || !previous.raw.endsWith('\n')) continue;
+    const boundary = previous.raw.indexOf('\n', previous.raw.trimEnd().length);
+    // 只移动 token 的原始边界，保留正文内容和完整源码，原文记录仍可逐字对齐。
+    space.raw = previous.raw.slice(boundary) + space.raw;
+    previous.raw = previous.raw.slice(0, boundary);
+  }
+}
+
 /**
  * 在 Marked 已保护代码、链接目标与转义内容的判定遮罩中放宽中文粗体闭合边界。
  * 只替换判定用字符，真实源码和 token.text 不变；保持 UTF-16 长度，避免补充平面符号导致位置偏移。
@@ -111,7 +124,11 @@ export function createIsolatedMarkdownParser(): typeof marked {
     override blockTokens(source: string, tokens?: Token[], lastParagraphClipped?: boolean): Token[] {
       const previous = contexts.get(this);
       contexts.set(this, { source, positions: new Map() });
-      try { return super.blockTokens(source, tokens, lastParagraphClipped); }
+      try {
+        const blocks = super.blockTokens(source, tokens, lastParagraphClipped);
+        joinSplitBlockSpacing(blocks);
+        return blocks;
+      }
       finally {
         if (previous) contexts.set(this, previous);
         else contexts.delete(this);

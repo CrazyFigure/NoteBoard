@@ -1,6 +1,7 @@
 // 共享文档规则：后台解析与主线程使用同一份定义，禁止引入界面、store 或原生 API。
 import { Node, mergeAttributes } from '@tiptap/core';
 import { createIndexedBlockStart } from './markdownBlockStart';
+import { parseMarkdownBlockChildren } from './markdownBlockSpacing';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { emitRawSegment } from './rawMarkdownSegments';
 import { DIV_CLOSE_TAG, readDivBody } from './divBlockSyntax';
@@ -143,8 +144,7 @@ export const CalloutBlockCore = Node.create({
 
   /** 将共享词法结果转换为文档节点，解析阶段不读取界面状态。 */
   parseMarkdown: (token, helpers) => {
-    const parseBlocks = helpers.parseBlockChildren ?? helpers.parseChildren;
-    const children = parseBlocks(token.tokens || []);
+    const children = parseMarkdownBlockChildren(token.tokens ?? [], helpers);
     // 内容约束为 block+，空高亮块补一个空段落
     return helpers.createNode(
       'calloutBlock',

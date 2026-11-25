@@ -1,11 +1,38 @@
 // 保留原文中省略的块间空行：只记录已解析为独立块的边界，不删除实际空段落或语法必需的分隔。
-import { Extension, Node, type JSONContent, type MarkdownRendererHelpers, type MarkdownToken } from '@tiptap/core';
+import { Extension, Node, type JSONContent, type MarkdownParseHelpers, type MarkdownRendererHelpers, type MarkdownToken } from '@tiptap/core';
 import { Blockquote } from '@tiptap/extension-blockquote';
 import { emitRawBlock, emitRawSegment } from './rawMarkdownSegments';
 import { readPreservedBlock, SOURCE_ORPHAN_AFTER_ATTR, SOURCE_TAIL_ATTR } from './markdownSourcePreserve';
 
 // 只处理能够明确判断 Markdown 边界的内置块；HTML、自定义容器等仍沿用原来的保守分隔。
 const SPACING_NODE_TYPES = ['paragraph', 'heading', 'blockquote', 'bulletList', 'orderedList', 'taskList', 'codeBlock', 'horizontalRule'];
+
+/** 恢复 Marked 在文档或容器首尾省略的单个段内换行，只检查首尾 token。 */
+export function restoreOuterParagraphBreaks(children: JSONContent[] | undefined, tokens: readonly MarkdownToken[]): void {
+  const first = children?.[0];
+  if (first?.type === 'paragraph' && tokens[0]?.type === 'space' && tokens[0].raw === '\n'
+    && tokens[1]?.type === 'paragraph') {
+    const head = first.content?.[0];
+    if (head?.type === 'text' && !head.marks?.length) head.text = `\n${head.text}`;
+    else first.content = [{ type: 'text', text: '\n' }, ...(first.content ?? [])];
+  }
+
+  const last = children?.at(-1);
+  const token = tokens.at(-1);
+  if (last?.type !== 'paragraph' || token?.type !== 'paragraph' || !token.raw?.endsWith('\n')
+    || token.raw.endsWith('\n\n') || token.text?.endsWith('\n')) return;
+  const tail = last.content?.at(-1);
+  if (tail?.type === 'text' && !tail.marks?.length) tail.text += '\n';
+  else (last.content ??= []).push({ type: 'text', text: '\n' });
+}
+
+/** 解析容器中已有的块级 token，同时保留正文边缘的段内换行。 */
+export function parseMarkdownBlockChildren(tokens: MarkdownToken[], helpers: MarkdownParseHelpers): JSONContent[] {
+  const parseBlocks = helpers.parseBlockChildren ?? helpers.parseChildren;
+  const children = parseBlocks(tokens);
+  restoreOuterParagraphBreaks(children, tokens);
+  return children;
+}
 
 /** 段落 / 标题使用 div 包裹排版时，标签边界仍需空行，不能套用普通 Markdown 的省略规则。 */
 function hasHtmlBlockFormat(node: JSONContent): boolean {
@@ -151,6 +178,9 @@ export const MarkdownDocument = Node.create({ name: 'doc', topNode: true, conten
 
 /** 引用内部使用相同边界规则；非空行加引用前缀，真正的空行仍保留为单独的 > 行。 */
 export const MarkdownBlockquote = Blockquote.extend({
+  parseMarkdown(token, helpers) {
+    return helpers.createNode('blockquote', undefined, parseMarkdownBlockChildren(token.tokens ?? [], helpers));
+  },
   renderMarkdown(node, helpers) {
     if (!node.content) return '';
     return renderBlockChildren(node, helpers).split('\n').map((line) => line.trim() === '' ? '>' : `> ${line}`).join('\n');

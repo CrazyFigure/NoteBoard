@@ -4,6 +4,9 @@ import { Editor } from '@tiptap/core';
 import { buildExtensions } from '../../src/features/editor-md/extensions';
 import { getMarkdownManager, parseMarkdown, serializeMarkdown, serializeMarkdownFromDoc } from '../../src/features/editor-md/serialize';
 import { createIsolatedMarkdownParser, captureMarkdownBlockTokens } from '../../src/features/editor-md/markdownBlockStart';
+import { renderCalloutOpenTag } from '../../src/features/editor-md/calloutCore';
+import { DEFAULT_CALLOUT_COLOR } from '../../src/features/editor-md/calloutSchema';
+import { COLUMNS_OPEN_TAG, renderColumnOpenTag } from '../../src/features/editor-md/columnsCore';
 
 const editor = new Editor({ element: null, extensions: buildExtensions('block-spacing'), content: '' });
 afterAll(() => editor.destroy());
@@ -134,5 +137,58 @@ describe('块间距词法捕获的生命周期', () => {
     });
     expect(outer.tokens).toBe(outer.parsed);
     expect(outer.tokens?.[0].type).toBe('heading');
+  });
+});
+
+describe('独立块旁边的可编辑空段', () => {
+  const tasks = '- [ ] hhh\n- [x] ash idew';
+  const quote = (body: string) => body.split('\n').map((line) => line ? `> ${line}` : '>').join('\n');
+
+  it.each([
+    { name: '文档', wrap: (body: string) => body, path: [] },
+    { name: '引用', wrap: quote, path: [0] },
+    { name: '提示块', wrap: (body: string) => `> [!NOTE]\n${quote(body)}`, path: [0] },
+    { name: '折叠块', wrap: (body: string) => `<details open>\n<summary>标题</summary>\n\n${body}\n\n</details>`, path: [0] },
+    { name: '高亮块', wrap: (body: string) => `${renderCalloutOpenTag(DEFAULT_CALLOUT_COLOR, '')}\n\n${body}\n\n</div>`, path: [0] },
+    { name: '分栏', wrap: (body: string) => `${COLUMNS_OPEN_TAG}\n${renderColumnOpenTag(50)}\n\n${body}\n\n</div>\n</div>`, path: [0, 0] },
+  ])('$name 保留任务列表前的独立空段', ({ wrap, path }) => {
+    // 分别检查容器顶端的留白和位于两个独立块之间的留白。
+    for (const prefix of ['', '前文\n\n']) {
+      const source = wrap(`${prefix}\n\n${tasks}`);
+      expect(roundTrip(source)).toBe(source);
+      const parent = path.reduce((node, index) => node.child(index), editor.state.doc);
+      const emptyIndex = prefix ? 1 : 0;
+      expect(parent.child(emptyIndex).type.name).toBe('paragraph');
+      expect(parent.child(emptyIndex).content.size).toBe(0);
+      expect(parent.child(emptyIndex + 1).type.name).toBe('taskList');
+      expect(parent.child(emptyIndex + 1).lastChild?.attrs.checked).toBe(true);
+    }
+  });
+
+  it.each([
+    ['标题', '## 标题'],
+    ['无序列表', '+ 项目'],
+    ['有序列表', '3. 项目'],
+    ['引用', '> 引用'],
+    ['代码块', '```js\nconst x = 1;\n```'],
+    ['表格', '| 表头 |\n| --- |\n| 内容 |'],
+    ['分隔线', '---'],
+    ['公式', '$$\nx\n$$'],
+    ['图片', '![说明](image.png)'],
+    ['脚注', '[^id]: 注释'],
+    ['原始 HTML', '<table><tr><td>内容</td></tr></table>'],
+  ])('%s 与任务列表之间的空段往返时不丢失', (_name, block) => {
+    for (const [before, after] of [[block, tasks], [tasks, block]]) {
+      // 两个换行只分隔块，四个换行额外放置一个可编辑的正文空段。
+      const normal = `${before}\n\n${after}`;
+      expect(roundTrip(normal)).toBe(normal);
+      expect(editor.state.doc.child(1).type.name).not.toBe('paragraph');
+
+      const withEmpty = `${before}\n\n\n\n${after}`;
+      expect(roundTrip(withEmpty)).toBe(withEmpty);
+      expect(editor.state.doc.child(1).type.name).toBe('paragraph');
+      expect(editor.state.doc.child(1).content.size).toBe(0);
+      expect(editor.state.doc.child(2).type.name).not.toBe('paragraph');
+    }
   });
 });

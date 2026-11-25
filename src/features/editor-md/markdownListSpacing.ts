@@ -330,11 +330,10 @@ function tokenizeTaskList(
 ): MarkdownToken | undefined {
   const tokenize = baseTaskTokenizer?.tokenize;
   if (!tokenize) return undefined;
-  // 这里只做与官方入口一致的快速排除，制表符缩进等合法输入仍由原 tokenizer 决定。
-  if (!/^\s*[-+*]\s+\[[ xX]\]\s+/.test(src)) return undefined;
+  // 仅从实际任务项行开始分词，前导空行交给 Marked 的空白 token 恢复可编辑的空段。
+  if (!/^[^\S\n]*[-+*]\s+\[[ xX]\]\s+/.test(src)) return undefined;
   const first = tokenizeTaskListRegion(tokenize, this, src, tokens, lexer);
-  // src 可能以前一块遗留的空行开头，按首个任务项所在行识别标记与缩进
-  const firstMarker = TASK_ITEM_MARKER.exec(src.replace(/^(?:[ \t]*\n)+/, ''));
+  const firstMarker = TASK_ITEM_MARKER.exec(src);
   if (!first || typeof first.raw !== 'string' || !firstMarker) return first;
 
   let raw = first.raw;

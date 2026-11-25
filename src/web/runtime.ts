@@ -194,7 +194,10 @@ export async function invoke<T>(command: string, rawArgs: Record<string, unknown
     case 'reveal_in_explorer': case 'open_staging_directory': {
       const dir = command === 'open_staging_directory' ? await request<string>('ensure_staging_directory') : String(args.path).split('/').slice(0, -1).join('/') || ROOT;
       const { useExplorerStore } = await import('../features/explorer/explorerStore');
+      const { useLayoutStore } = await import('../stores/layoutStore');
       useExplorerStore.getState().setRoot(dir, await request('read_dir', { path: dir, showHidden: true }));
+      // 显式在文件管理器中定位或打开暂存目录时，展开左侧栏以便查看目标目录
+      useLayoutStore.getState().setExplorerVisible(true);
       result = dir;
       break;
     }
@@ -239,7 +242,12 @@ export async function invoke<T>(command: string, rawArgs: Record<string, unknown
         typography: { ...DEFAULT_SETTINGS.typography, ...saved?.typography },
         editor: { ...DEFAULT_SETTINGS.editor, ...saved?.editor },
         file: { ...DEFAULT_SETTINGS.file, stagingDirectory: `${ROOT}/.staging`, ...saved?.file },
-        layout: { ...DEFAULT_SETTINGS.layout, ...saved?.layout },
+        layout: {
+          ...DEFAULT_SETTINGS.layout,
+          ...saved?.layout,
+          createFormats: { ...DEFAULT_SETTINGS.layout.createFormats, ...saved?.layout?.createFormats },
+          titleBarButtons: { ...DEFAULT_SETTINGS.layout.titleBarButtons, ...saved?.layout?.titleBarButtons },
+        },
         system: { ...DEFAULT_SETTINGS.system, ...saved?.system },
       };
       const { settings: migratedSettings, migrated } = migrateSettings(merged);

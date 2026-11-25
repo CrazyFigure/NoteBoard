@@ -1,6 +1,7 @@
 // 共享文档规则：后台解析与主线程使用同一份定义，禁止引入界面、store 或原生 API。
 import { Node, mergeAttributes } from '@tiptap/core';
 import { createIndexedBlockStart } from './markdownBlockStart';
+import { parseMarkdownBlockChildren } from './markdownBlockSpacing';
 import { emitRawSegment } from './rawMarkdownSegments';
 import { SourceLines } from './sourceLines';
 
@@ -188,8 +189,7 @@ export const DetailsBlockCore = Node.create({
 
   /** 将共享词法结果转换为文档节点，解析阶段不读取界面状态。 */
   parseMarkdown: (token, helpers) => {
-    const parseBlocks = helpers.parseBlockChildren ?? helpers.parseChildren;
-    const children = parseBlocks(token.tokens || []);
+    const children = parseMarkdownBlockChildren(token.tokens ?? [], helpers);
     // 节点内容约束为 block+，空正文补一个空段落
     return helpers.createNode(
       'detailsBlock',

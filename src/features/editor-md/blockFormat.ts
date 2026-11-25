@@ -18,6 +18,7 @@ import Paragraph from '@tiptap/extension-paragraph';
 import Heading from '@tiptap/extension-heading';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { createIndexedBlockStart } from './markdownBlockStart';
+import { parseMarkdownBlockChildren } from './markdownBlockSpacing';
 import { emitRawSegment } from './rawMarkdownSegments';
 import { DIV_CLOSE_TAG, readDivBody } from './divBlockSyntax';
 import { SourceLines } from './sourceLines';
@@ -184,22 +185,23 @@ export const BlockFormatSyntax = Extension.create({
     tokenize: (src, _tokens, lexer) => {
       const match = matchBlockFormat(src);
       if (!match) return undefined;
-      const block = singleFormattableBlock(lexer.blockTokens(match.body));
+      const tokens = lexer.blockTokens(match.body);
+      const block = singleFormattableBlock(tokens);
       if (!block) return undefined;
+      const leadingBreak = block.type === 'paragraph' && tokens[0]?.type === 'space' && tokens[0].raw === '\n';
       return {
         type: 'blockFormat',
         raw: match.raw,
         text: match.raw,
         align: match.align,
         indent: match.indent,
-        tokens: [block],
+        tokens: leadingBreak ? [tokens[0], block] : [block],
       };
     },
   },
 
   parseMarkdown: (token, helpers) => {
-    const parseBlocks = helpers.parseBlockChildren ?? helpers.parseChildren;
-    const children = parseBlocks(token.tokens || []);
+    const children = parseMarkdownBlockChildren(token.tokens ?? [], helpers);
     const [block] = children;
     if (children.length !== 1 || !FORMATTABLE_TYPES.has(String(block.type))) return children;
     return {

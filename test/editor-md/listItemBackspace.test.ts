@@ -7,6 +7,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { Editor, type JSONContent } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
+import { buildCoreExtensions } from '@/features/editor-md/extensions/core';
+import { parseMarkdown, serializeMarkdown } from '@/features/editor-md/serialize';
 import {
   ListEmptyItemBackspaceFix,
   removeEmptyListItem,
@@ -15,9 +17,9 @@ import {
 const editors: Editor[] = [];
 
 /** 用与生产一致的内置扩展集创建编辑器，可按需附加修复扩展 */
-function createEditor(content: string, withFix = true): Editor {
+function createEditor(content: string, withFix = true, preserveLeadingParagraph = false): Editor {
   const editor = new Editor({
-    extensions: withFix ? [StarterKit, ListEmptyItemBackspaceFix] : [StarterKit],
+    extensions: withFix ? [StarterKit, ListEmptyItemBackspaceFix.configure({ preserveLeadingParagraph })] : [StarterKit],
     content,
   });
   editors.push(editor);
@@ -32,7 +34,7 @@ function selectFirstEmptyListItem(editor: Editor): boolean {
     if (
       node.type.name === 'paragraph' &&
       node.content.size === 0 &&
-      editor.state.doc.resolve(pos).parent.type.name === 'listItem'
+      ['listItem', 'taskItem'].includes(editor.state.doc.resolve(pos).parent.type.name)
     ) {
       target = pos + 1;
       return false;
@@ -154,6 +156,14 @@ describe('可视化模式空列表项退格', () => {
     expect(textsOf(innerListOf(editor))).toEqual(EXPECTED_INNER_TEXTS);
   });
 
+  it('Markdown 内层首个空项仍只删除自身，后续同级项不会被重挂', () => {
+    const editor = createEditor('<ul><li><p>父项</p><ul><li><p></p></li><li><p>子项</p></li></ul></li></ul>', true, true);
+    expect(selectFirstEmptyListItem(editor)).toBe(true);
+    expect(pressBackspace(editor)).toBe(true);
+    expect(topListOf(editor)?.content).toHaveLength(1);
+    expect(textsOf(innerListOf(editor))).toEqual(['子项']);
+  });
+
   it('带子列表的空项不接管，避免连带丢失下级内容', () => {
     const html = [
       '<ul>',
@@ -188,5 +198,46 @@ describe('可视化模式空列表项退格', () => {
     const { $from } = editor.state.selection;
     expect($from.parent.textContent).toBe('同步盘：百度网盘。');
     expect($from.parentOffset).toBe($from.parent.content.size);
+  });
+});
+
+describe('Markdown 文档的列表首项退格', () => {
+  it.each([
+    ['taskList', '- [ ] \n- [ ] hhh\n- [x] ash idew', '\n\n- [ ] hhh\n- [x] ash idew'],
+    ['bulletList', '-\n- hhh\n- ash idew', '\n\n- hhh\n- ash idew'],
+    ['orderedList', '3. \n4. hhh\n5. ash idew', '\n\n3. hhh\n4. ash idew'],
+    ['blockquote', '> - [ ] \n> - [ ] hhh\n> - [x] ash idew', '>\n>\n> - [ ] hhh\n> - [x] ash idew'],
+  ])('%s 的首个空项变成同层正文，源码往返保留空段', (type, source, saved) => {
+    // 挂载文档解析核心和退格扩展，通过视图触发真实按键链及撤销/重做。
+    const editor = new Editor({
+      extensions: [...buildCoreExtensions(), ListEmptyItemBackspaceFix.configure({ preserveLeadingParagraph: true })],
+      editorProps: { handleScrollToSelection: () => true },
+    });
+    editors.push(editor);
+    expect(parseMarkdown(editor, source)).toBe(true);
+    expect(selectFirstEmptyListItem(editor)).toBe(true);
+    const before = editor.state.doc;
+    const event = new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true });
+    editor.view.dom.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+
+    const container = type === 'blockquote' ? editor.state.doc.firstChild! : editor.state.doc;
+    const { $from } = editor.state.selection;
+    // 剩余项目、复选状态及层级都应可再次从源码加载。
+    expect($from.parent).toBe(container.firstChild);
+    expect($from.parent.type.name).toBe('paragraph');
+    expect($from.parent.content.size).toBe(0);
+    expect(textsOf(container.child(1).toJSON())).toEqual(['hhh', 'ash idew']);
+    expect(serializeMarkdown(editor)).toBe(saved);
+    expect(editor.commands.undo()).toBe(true);
+    expect(editor.state.doc.eq(before)).toBe(true);
+    expect(editor.commands.redo()).toBe(true);
+    expect(serializeMarkdown(editor)).toBe(saved);
+    expect(parseMarkdown(editor, saved)).toBe(true);
+    const reopened = type === 'blockquote' ? editor.state.doc.firstChild! : editor.state.doc;
+    expect(reopened.firstChild?.type.name).toBe('paragraph');
+    expect(reopened.firstChild?.content.size).toBe(0);
+    expect(reopened.child(1).type.name).toBe(type === 'blockquote' ? 'taskList' : type);
+    expect(serializeMarkdown(editor)).toBe(saved);
   });
 });

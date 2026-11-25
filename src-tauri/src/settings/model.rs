@@ -384,6 +384,9 @@ pub struct LayoutSettings {
     // 标题栏可选按钮是否展示（默认全部展示）
     #[serde(default)]
     pub title_bar_buttons: TitleBarButtons,
+    // 左侧栏自动关闭（默认 false，保持默认展开；开启后在 Home 及打开文件时不自动展开，打开文件夹时仍展开）
+    #[serde(default)]
+    pub auto_close_explorer: bool,
 }
 
 impl Default for LayoutSettings {
@@ -393,6 +396,7 @@ impl Default for LayoutSettings {
             ui_scale: 100,
             create_formats: CreateFormatsLayout::default(),
             title_bar_buttons: TitleBarButtons::default(),
+            auto_close_explorer: false,
         }
     }
 }
@@ -715,6 +719,21 @@ mod tests {
             .expect("部分字段应能补全");
         assert!(!partial.layout.title_bar_buttons.theme);
         assert!(partial.layout.title_bar_buttons.home);
+    }
+
+    /// 旧版设置缺少左侧栏自动关闭开关时默认关闭（保持默认展开）；显式开启后保存和重新加载不被默认值覆盖。
+    #[test]
+    fn auto_close_explorer_defaults_off_and_round_trips() {
+        let legacy: Settings = serde_json::from_str(r#"{"layout":{"uiScale":110}}"#)
+            .expect("旧版设置应能补全左侧栏自动关闭默认值");
+        assert!(!legacy.layout.auto_close_explorer);
+
+        let enabled: Settings =
+            serde_json::from_str(r#"{"layout":{"autoCloseExplorer":true}}"#).unwrap();
+        assert!(enabled.layout.auto_close_explorer);
+        let restored: Settings =
+            serde_json::from_str(&serde_json::to_string(&enabled).unwrap()).unwrap();
+        assert!(restored.layout.auto_close_explorer);
     }
 
     /// 各旧版首次加载时清除回车互换字段，保留其他设置，且不递增 revision。

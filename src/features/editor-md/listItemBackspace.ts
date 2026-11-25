@@ -7,15 +7,11 @@
 //   "There are siblings after the lifted items, which must become children of the last item"）。
 //   于是用户只想删掉一个空节点，实际却把后面整段同级列表降了一级 —— 层级全乱。
 //
-// 期望：
-//   空列表项上的退格应该只删除这一个节点，后续同级项整体上移、层级保持不变。
-//
-// 方案：
-//   以高于内置 listKeymap（priority 默认 100）的优先级接管 Backspace，
-//   仅当「光标位于一个空的列表项中」且「其父列表还有其它兄弟项」时，直接删除该列表项节点；
-//   其余情况一律返回 false 交回原有逻辑，保证「非空列表项减少缩进」等标准行为不受影响。
+// Markdown 正文中，列表首个空项退格后退出列表，并在原处留下正文空段。
+// 内层列表的空项和其余同级空项仍直接删除，保留后续项目的层级。
 
 import { Extension, type Editor } from '@tiptap/core';
+import { liftListItem } from '@tiptap/pm/schema-list';
 import { Selection, type EditorState, type Transaction } from '@tiptap/pm/state';
 import type { Node as ProseMirrorNode, ResolvedPos } from '@tiptap/pm/model';
 
@@ -48,7 +44,7 @@ function isEmptyListItem(node: ProseMirrorNode): boolean {
 }
 
 /**
- * 删除光标所在的空列表项（不改变其余列表项的层级）。
+ * 处理光标所在的空列表项，保持其余列表项的层级。
  *
  * 处理条件（全部满足才接管，否则返回 false 交回默认逻辑）：
  * 1. 空选区且位于当前块开头；
@@ -56,11 +52,12 @@ function isEmptyListItem(node: ProseMirrorNode): boolean {
  * 3. 该列表项是空的（只有一个空文本块、无子列表）；
  * 4. 其父列表还有其它兄弟项 —— 只剩自身时删除会产生非法空列表。
  *
- * 命中后光标落到前一个同级列表项末尾，符合「退格删掉一整行」的直觉。
+ * Markdown 非嵌套列表的首项提升为正文空段，光标随段落移动。其余空项直接删除。
  */
 export function removeEmptyListItem(
   state: EditorState,
   dispatch?: (tr: Transaction) => void,
+  preserveLeadingParagraph = false,
 ): boolean {
   const { selection } = state;
 
@@ -78,8 +75,14 @@ export function removeEmptyListItem(
   if (listItem.depth !== $from.depth - 1) return false;
   if (!isEmptyListItem(listItem.node)) return false;
 
-  const parentList = $from.node(listItem.depth - 1);
+  const listDepth = listItem.depth - 1;
+  const parentList = $from.node(listDepth);
   if (parentList.childCount <= 1) return false;
+
+  // 用原生提升命令保留空段和光标。直接嵌在列表项里的子列表仍须避免提升后重挂后续同级项。
+  const listParent = $from.node(listDepth - 1);
+  if (preserveLeadingParagraph && $from.index(listDepth) === 0 && !LIST_ITEM_NODE_NAMES.includes(listParent.type.name)
+    && liftListItem(listItem.node.type)(state, dispatch)) return true;
 
   if (!dispatch) return true;
 
@@ -98,15 +101,19 @@ export function removeEmptyListItem(
   return true;
 }
 
-export const ListEmptyItemBackspaceFix = Extension.create({
+export const ListEmptyItemBackspaceFix = Extension.create<{ preserveLeadingParagraph: boolean }>({
   name: 'listEmptyItemBackspaceFix',
   // 必须高于内置 listKeymap，否则它的 Backspace 会先执行 liftListItem 把层级改乱
   priority: 1000,
 
+  addOptions() {
+    return { preserveLeadingParagraph: false };
+  },
+
   addKeyboardShortcuts() {
-    // 直接使用回调参数中的 editor，避免依赖扩展上下文绑定
+    const { preserveLeadingParagraph } = this.options;
     const run = ({ editor }: { editor: Editor }) =>
-      removeEmptyListItem(editor.state, (tr) => editor.view.dispatch(tr));
+      removeEmptyListItem(editor.state, (tr) => editor.view.dispatch(tr), preserveLeadingParagraph);
     return {
       Backspace: run,
       // 与内置 listKeymap 保持一致的按键覆盖范围（Windows 为 Ctrl+Backspace）

@@ -1,12 +1,15 @@
 // 通过编辑器的按键处理验证普通回车、块内回车与 Ctrl+Enter 的跳出位置。
 
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { Editor, type JSONContent } from '@tiptap/core';
+import { Editor } from '@tiptap/core';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { buildExtensions } from '../../src/features/editor-md/extensions';
 import { buildCoreExtensions } from '../../src/features/editor-md/extensions/core';
 import { parseMarkdown, serializeMarkdown } from '../../src/features/editor-md/serialize';
 import { EnterKeyBehavior, insertParagraphBelow } from '../../src/features/editor-md/enterKeyBehavior';
+import { renderCalloutOpenTag } from '../../src/features/editor-md/calloutCore';
+import { DEFAULT_CALLOUT_COLOR } from '../../src/features/editor-md/calloutSchema';
+import { COLUMNS_OPEN_TAG, renderColumnOpenTag } from '../../src/features/editor-md/columnsCore';
 
 const editor = new Editor({ element: null, extensions: buildExtensions('enter-key-behavior-test'), content: '' });
 
@@ -21,7 +24,7 @@ describe('可视化编辑器的回车按键', () => {
     // 挂载真实键位插件。jsdom 不计算布局，跳过默认的光标滚动处理。
     mounted = new Editor({
       element: document.createElement('div'),
-      extensions: [...buildCoreExtensions(), EnterKeyBehavior.configure({ disableRedundantShiftEnter: true })],
+      extensions: [...buildCoreExtensions(), EnterKeyBehavior.configure({ markdownDocument: true })],
       editorProps: { handleScrollToSelection: () => true },
     });
   });
@@ -101,10 +104,10 @@ describe('可视化编辑器的回车按键', () => {
     expect(serializeMarkdown(mounted)).toBe('甲\n\n乙');
   });
 
-  /** 把光标放到各样本块中「甲」之后，复用同一个实际按键入口。 */
-  function selectSampleText() {
+  /** 把光标放到样本文字之后，复用同一个实际按键入口。 */
+  function selectSampleText(text = '甲') {
     mounted.state.doc.descendants((node, pos) => {
-      if (node.isText && node.text === '甲') mounted.commands.setTextSelection(pos + node.nodeSize);
+      if (node.isText && node.text === text) mounted.commands.setTextSelection(pos + node.nodeSize);
     });
   }
 
@@ -126,7 +129,7 @@ describe('可视化编辑器的回车按键', () => {
   it.each([
     ['有序列表', '1. 甲'],
     ['任务列表', '- [ ] 甲'],
-    ['引用块', '> 甲'],
+    ['引用内的列表', '> 1. 甲'],
   ])('%s 中 Shift+Enter 仍在同一段中插入硬换行', (_label, source) => {
     parseMarkdown(mounted, source);
     selectSampleText();
@@ -154,22 +157,61 @@ describe('可视化编辑器的回车按键', () => {
     expect(serializeMarkdown(mounted)).toBe(saved);
   });
 
-  it.each(['blockquote', 'githubAlert', 'detailsBlock', 'calloutBlock', 'columnBlock'])('%s 内连续回车保持在当前块', (type) => {
-    const block: JSONContent = {
-      type,
-      content: [{ type: 'paragraph', content: [{ type: 'text', text: '正文' }] }],
-    };
-    const topLevel = type === 'columnBlock' ? { type: 'columnsBlock', content: [block] } : block;
-    mounted.commands.setContent({ type: 'doc', content: [topLevel] });
-    mounted.commands.setTextSelection(type === 'columnBlock' ? 5 : 4);
+  const quote = (body: string) => body.split('\n').map((line) => line ? `> ${line}` : '>').join('\n');
+
+  it.each([
+    ['blockquote', quote],
+    ['githubAlert', (body: string) => `> [!NOTE]\n${quote(body)}`],
+    ['detailsBlock', (body: string) => `<details open>\n<summary>标题</summary>\n\n${body}\n\n</details>`],
+    ['calloutBlock', (body: string) => `${renderCalloutOpenTag(DEFAULT_CALLOUT_COLOR, '')}\n\n${body}\n\n</div>`],
+    ['columnBlock', (body: string) => `${COLUMNS_OPEN_TAG}\n${renderColumnOpenTag(50)}\n\n${body}\n\n</div>\n</div>`],
+  ])('%s 内单次 Enter 换行，两次 Enter 分段，且源码往返保留换行', (type, wrap) => {
+    expect(parseMarkdown(mounted, wrap('甲'))).toBe(true);
+    selectSampleText();
+    pressEnter({ shiftKey: true });
+    expect(serializeMarkdown(mounted)).toBe(wrap('甲'));
+
     pressEnter();
+    expect(mounted.state.selection.$from.node(-1).childCount).toBe(1);
+    const pending = serializeMarkdown(mounted);
+    expect(pending).toBe(wrap('甲\n'));
+    expect(parseMarkdown(mounted, pending)).toBe(true);
+    selectSampleText('甲\n');
+    expect(mounted.state.selection.$from.parent.textContent).toBe('甲\n');
+    pressEnter({ shiftKey: true });
+    expect(serializeMarkdown(mounted)).toBe(pending);
+
     pressEnter();
+    expect(mounted.state.selection.$from.node(-1).childCount).toBe(2);
+    pressEnter({ shiftKey: true });
+    expect(mounted.state.selection.$from.node(-1).childCount).toBe(2);
     pressEnter();
-    typeText('块内续写');
+    typeText('乙');
     const { $from } = mounted.state.selection;
     expect($from.node(-1).type.name).toBe(type);
-    expect($from.node(-1).childCount).toBe(4);
-    expect($from.parent.textContent).toBe('块内续写');
+    expect($from.node(-1).childCount).toBe(3);
+    const saved = serializeMarkdown(mounted);
+    expect(saved).toBe(wrap('甲\n\n\n\n乙'));
+    expect(parseMarkdown(mounted, saved)).toBe(true);
+    selectSampleText('乙');
+    expect(mounted.state.selection.$from.node(-1).childCount).toBe(3);
+  });
+
+  it('引用内的列表仍用 Enter 续项', () => {
+    parseMarkdown(mounted, '> 1. 甲');
+    selectSampleText();
+    pressEnter();
+    typeText('乙');
+    expect(serializeMarkdown(mounted)).toBe('> 1. 甲\n> 2. 乙');
+  });
+
+  it('引用内的对齐段落在切换源码后保留首尾换行', () => {
+    const source = quote('<div align="center">\n\n\n甲\n\n\n</div>');
+    expect(parseMarkdown(mounted, source)).toBe(true);
+    const paragraph = mounted.state.doc.firstChild?.firstChild;
+    expect(paragraph?.attrs.textAlign).toBe('center');
+    expect(paragraph?.textContent).toBe('\n甲\n');
+    expect(serializeMarkdown(mounted)).toBe(source);
   });
 
   it.each([

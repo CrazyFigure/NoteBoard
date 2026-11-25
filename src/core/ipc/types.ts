@@ -509,6 +509,8 @@ export interface LayoutSettings {
   uiScale: number;
   createFormats: CreateFormatsLayout;
   titleBarButtons: TitleBarButtons;
+  /** 左侧栏自动关闭（缺省视为 false，保持默认展开；开启后在 Home 及打开文件时不自动展开，打开文件夹时仍会展开） */
+  autoCloseExplorer?: boolean;
 }
 
 /** 系统集成设置（仅桌面端生效） */

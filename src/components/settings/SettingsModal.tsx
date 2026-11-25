@@ -3,7 +3,7 @@
 // 页名与搜索索引见 settingsSearchIndex.ts；详见 docs/06-主题与设计规范.md 及 docs/07-UI布局与交互规范.md
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Cloud, ChevronRight, Monitor, History, PanelTop, UserRound, Users, Globe, RotateCcw, Search, RotateCw, Home, FoldHorizontal, Table as TableIcon, type LucideIcon } from 'lucide-react';
+import { X, Palette, Type, Keyboard, Info, Check, FileText, FileCode, Folder, LayoutTemplate, RefreshCw, ExternalLink, Save, Cloud, ChevronRight, Monitor, History, PanelTop, PanelLeft, UserRound, Users, Globe, RotateCcw, Search, RotateCw, Home, FoldHorizontal, Table as TableIcon, type LucideIcon } from 'lucide-react';
 import { AUTO_SAVE_DELAY_MAX_MS, AUTO_SAVE_DELAY_MIN_MS, DEFAULT_SETTINGS, clampAutoSaveDelayMs, useSettingsStore, useTitleBarButtons } from '../../stores/settingsStore';
 import { ConfirmDialog } from '../../features/sync/SyncControls';
 import { THEMES } from '../../core/theme/themes';
@@ -1533,6 +1533,26 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   />
                 </div>
 
+                {/* 左侧栏：仅桌面与网页外壳存在可折叠左侧栏，移动端不展示 */}
+                {!IS_MOBILE_UI && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '18px 20px', background: 'var(--editor-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--editor-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
+                    <PanelLeft size={15} color="var(--accent-strong)" />
+                    <span>左侧栏</span>
+                  </div>
+
+                  {/* 左侧栏自动关闭：开启后启动在 Home 及打开文件时不自动展开，打开文件夹时仍会展开 */}
+                  <SettingsToggleRow
+                    settingId="autoCloseExplorer"
+                    title="左侧栏自动关闭"
+                    description="默认关闭以保持展开；开启后在 Home 及打开文件时不自动展开，打开文件夹时仍会展开"
+                    ariaLabel="左侧栏自动关闭"
+                    checked={settings.layout?.autoCloseExplorer ?? false}
+                    onChange={(checked) => setLayout({ autoCloseExplorer: checked })}
+                  />
+                </div>
+                )}
+
                 {/* 本地文件搜索：开关与索引位置（文件夹 / 整个磁盘，可添加多个）；网页端为管理员开关的全局搜索 */}
                 {SUPPORTS_LOCAL_SEARCH && !IS_MOBILE_UI && (
                   <div data-setting-id="localSearch">
@@ -1670,13 +1690,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <div style={shortcutSubheadingStyle}>换行与分段</div>
                   <ShortcutItem
                     keyCombo="Enter"
-                    label="可视化正文换行与分段"
-                    tip="按一次在同一段换行，紧接着再按一次另起一段，在源码中留一个空行。普通正文中 Shift + Enter 不响应"
+                    label="正文与块内换行、分段"
+                    tip="适用于可视化正文，以及引用、提示块、高亮块、折叠块和分栏中的正文。按一次在段内换行，连续按两次另起一段，在 Markdown 中留一个空行。Shift + Enter 不响应"
                   />
                   <ShortcutItem
                     keyCombo="Enter"
-                    label="列表续项或块内换段"
-                    tip="列表中新增一项，在空列表项中退出列表。引用、提示块、高亮块、折叠块和分栏内新建段落"
+                    label="列表续项"
+                    tip="在列表中新增一项，在空列表项中退出列表"
                   />
                   <ShortcutItem
                     keyCombo="Enter"
@@ -1685,8 +1705,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   />
                   <ShortcutItem
                     keyCombo="Shift + Enter"
-                    label="列表项、引用等块内换行"
-                    tip="在有内容的列表项、引用、提示块、高亮块、折叠块正文和分栏中留在同一段，插入 Markdown 硬换行。标题或这里的空段落沿用 Enter 的规则"
+                    label="列表项内换行"
+                    tip="在有内容的列表项内插入硬换行，光标留在当前项。在空列表项中沿用 Enter 的退出规则"
                   />
                   <ShortcutItem
                     keyCombo="Shift + Enter"

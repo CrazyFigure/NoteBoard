@@ -172,14 +172,16 @@ export interface BuildExtensionsOptions {
    * 多维表格单元格等嵌入式编辑器没有独立的文档历史，需关闭以保留 TipTap 自带的短程撤销。
    */
   documentHistory?: boolean;
+  /** Markdown 文档的首个空列表项退格时保留正文空段。 */
+  preserveLeadingListParagraph?: boolean;
   /** 空文档占位文案 */
   placeholder?: string;
   /** 是否跟踪纯文本粘贴以提示转换 Markdown / HTML（md 文档可视化编辑器与多维表格多行文本编辑器启用，默认 false） */
   pasteFormatDetect?: boolean;
   /** Markdown 文档复制、剪切输出源码；嵌入式富文本编辑器仍沿用原有剪贴板规则。 */
   markdownClipboard?: boolean;
-  /** Markdown 文档可停用与 Enter 重复的 Shift+Enter 换行。 */
-  disableRedundantShiftEnter?: boolean;
+  /** 启用 Markdown 文档专用的正文与容器回车规则。 */
+  markdownDocument?: boolean;
   /** 是否启用双向链接 `[[笔记]]`（解析、补全与跳转；默认 true，多维表格单元格不需要仓库内跳转时关闭） */
   wikiLinks?: boolean;
 }
@@ -204,9 +206,8 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
     // 撤销/重做由文件级时间线统一接管，原生历史仅用于判断输入分组边界；
     // 嵌入式编辑器关闭接管后，Mod-z 等快捷键回落到 StarterKit 自带的撤销栈
     ...(useDocumentHistory ? [UnifiedDocumentHistoryKeys.configure({ docKey })] : []),
-    // 空列表项退格只删除该节点本身，避免内置 listKeymap 触发 liftListItem
-    // 把后面的同级列表项收编为子列表、导致层级整体错乱
-    ListEmptyItemBackspaceFix,
+    // 首个空列表项可改为正文，嵌套空项仍只删除自身以保持后续列表的层级。
+    ListEmptyItemBackspaceFix.configure({ preserveLeadingParagraph: options?.preserveLeadingListParagraph ?? false }),
     LinkClickHandler.configure({
       onOpenLinkModal: options?.onOpenLinkModal,
     }),
@@ -233,7 +234,7 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
     // 拖选经过收起的代码块 / 折叠块时整块选中，不被浏览器吸附到块外
     CollapsedBlockSelection,
     // 回车行为仍集中在同一扩展，多维表格等嵌入式编辑器未开启 Markdown 文档专用规则。
-    EnterKeyBehavior.configure({ disableRedundantShiftEnter: options?.disableRedundantShiftEnter ?? false }),
+    EnterKeyBehavior.configure({ markdownDocument: options?.markdownDocument ?? false }),
     // 全选：Ctrl+A 第一次选中当前文本块，再按一次全选文档
     SelectAllBehavior,
     // 正文 Tab 插入空格；块内已有快捷键优先，无法继续缩进或导航时也不触发浏览器焦点遍历。

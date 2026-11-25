@@ -26,6 +26,7 @@ import {
   stopSystemThemeListener,
 } from '../core/theme/applyTheme';
 import { useFontPackStore } from './fontPackStore';
+import { useLayoutStore } from './layoutStore';
 import { DEFAULT_CREATE_FORMATS } from '../features/welcome/createFormats';
 
 // ── 默认值 ──
@@ -148,6 +149,7 @@ export const DEFAULT_SETTINGS: Settings = {
       more: [...DEFAULT_CREATE_FORMATS.more],
     },
     titleBarButtons: { ...DEFAULT_TITLE_BAR_BUTTONS },
+    autoCloseExplorer: false,
   },
   system: {
     closeToTray: false,
@@ -289,6 +291,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       });
       const resolved = resolveAndApply(loaded);
       set({ settings: loaded, resolvedTheme: resolved, initialized: true });
+      // 开启“左侧栏自动关闭”时，启动默认不展开左侧栏（后续选择打开文件夹时仍会展开）
+      if (loaded.layout?.autoCloseExplorer) {
+        useLayoutStore.getState().setExplorerVisible(false);
+      }
 
       // 系统主题跟随监听
       startSystemThemeListener(
@@ -401,6 +407,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       layout: { ...current.layout, ...patch },
     };
     set({ settings: updated });
+    // 开启“左侧栏自动关闭”时立即收起当前左侧栏，提供即时反馈
+    if (patch.autoCloseExplorer === true) {
+      useLayoutStore.getState().setExplorerVisible(false);
+    }
     try {
       await ipc.saveSettings(updated);
     } catch (e) {
@@ -437,10 +447,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   },
 
   _applyRemoteUpdate: async (remote) => {
+    const prevAutoClose = Boolean(get().settings.layout?.autoCloseExplorer);
     // 跨窗口收到的旧设置也按同一规则清理，不回写以免触发循环广播。
     const { settings } = migrateSettings(remote);
     const resolved = resolveAndApply(settings);
     set({ settings, resolvedTheme: resolved });
+    // 其它窗口新开启“左侧栏自动关闭”时同步收起当前窗口左侧栏
+    if (!prevAutoClose && settings.layout?.autoCloseExplorer) {
+      useLayoutStore.getState().setExplorerVisible(false);
+    }
     try {
       const { useDocumentStore } = await import('./documentStore');
       useDocumentStore.getState().syncSavePolicies();

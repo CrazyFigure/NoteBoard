@@ -12,7 +12,7 @@ import { beginRawSegmentSession, emitRawSegment, endRawSegmentSession, restoreRa
 import { formatWikiLinkMarkdown } from '../wikilink/wikiLinkSyntax';
 import { INVISIBLE_CHARACTER_ENTITIES, isDecodableEntitySuffix, usesInvisibleCharacterEntities } from './markdownHtmlEntities';
 import { captureMarkdownBlockTokens } from './markdownBlockStart';
-import { preserveSourceBlockSpacing } from './markdownBlockSpacing';
+import { preserveSourceBlockSpacing, restoreOuterParagraphBreaks } from './markdownBlockSpacing';
 import { buildPreservedSerializationJson, buildSourceBlocks, recordTopLevelTokens, SOURCE_ORPHAN_AFTER_ATTR, SOURCE_ORPHAN_ATTR, SOURCE_RAW_ATTR, type PreservableNode } from './markdownSourcePreserve';
 
 // CommonMark 允许反斜杠转义的 ASCII 标点；这些字符前的双反斜杠不能擅自折叠，
@@ -782,7 +782,7 @@ function removeRedundantMarkdownEscapes(
       // 语义校验时把必要转义标记还原为真实反斜杠，保证解析结果与最终输出一致
       const { parsed, tokens } = captureMarkdownBlockTokens(manager.instance, () => manager.parse!(restoreForParse(candidateMarkdown)));
       // 语义校验与打开文档使用相同的首尾换行规则，复用本次解析的词法结果。
-      if (tokens) restoreOuterParagraphBreaks(parsed, tokens);
+      if (tokens) restoreOuterParagraphBreaks(parsed.content, tokens);
       deduplicateParsedMarkdownMarks(parsed as ParsedMarkdownNode);
       // 末尾换行等文档级属性不来自正文解析，比较前沿用参考文档的属性
       if (referenceDoc.attrs) parsed.attrs = { ...referenceDoc.attrs };
@@ -1206,25 +1206,6 @@ function deduplicateParsedMarkdownMarks(root: ParsedMarkdownNode): void {
   root.content?.forEach(deduplicateParsedMarkdownMarks);
 }
 
-/** 恢复 Marked 在整篇文档首尾省略的单个正文换行。段间分隔与 Markdown 块语法仍由原解析器处理。 */
-function restoreOuterParagraphBreaks(parsed: JSONContent, tokens: readonly MarkdownToken[]): void {
-  const first = parsed.content?.[0];
-  if (first?.type === 'paragraph' && tokens[0]?.type === 'space' && tokens[0].raw === '\n'
-    && tokens[1]?.type === 'paragraph') {
-    const head = first.content?.[0];
-    if (head?.type === 'text' && !head.marks?.length) head.text = `\n${head.text}`;
-    else first.content = [{ type: 'text', text: '\n' }, ...(first.content ?? [])];
-  }
-
-  const last = parsed.content?.at(-1);
-  const token = tokens.at(-1);
-  if (last?.type !== 'paragraph' || token?.type !== 'paragraph' || !token.raw?.endsWith('\n')
-    || token.raw.endsWith('\n\n') || token.text?.endsWith('\n')) return;
-  const tail = last.content?.at(-1);
-  if (tail?.type === 'text' && !tail.marks?.length) tail.text += '\n';
-  else (last.content ??= []).push({ type: 'text', text: '\n' });
-}
-
 /**
  * 把一段 Markdown 解析为可直接插入编辑器的文档 JSON（不修改编辑器内容）。
  * 与整篇加载共用同一解析器与 mark 修复，并按 schema 显式校验；失败或未装配解析器时返回 null。
@@ -1248,7 +1229,7 @@ export function parseMarkdownToJson(editor: Editor, markdown: string, options: {
   if (!parsed) return null;
   // 记录源文件块间距，与正文一同进入历史 / 快照；不重新分词，也不改动真实空段落。
   if (tokens) {
-    restoreOuterParagraphBreaks(parsed, tokens);
+    restoreOuterParagraphBreaks(parsed.content, tokens);
     preserveSourceBlockSpacing(parsed, tokens);
     // 粘贴格式检测借用本次词法结果区分裸网址和显式链接，无需二次解析。
     options.onTokens?.(tokens);

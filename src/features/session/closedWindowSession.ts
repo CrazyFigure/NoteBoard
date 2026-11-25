@@ -349,8 +349,14 @@ export async function restoreLastClosedWindow(): Promise<boolean> {
   if (restoredTabs.length > 0) {
     // 批量加入标签（不激活、不动 activeKey：恢复期间用户交互不被抢焦点；Home 保持首屏）
     useWindowStore.getState().addRestoredTabs(restoredTabs);
+    // 开启“左侧栏自动关闭”时，会话恢复停留在 Home 不自动展开左侧栏（保留启动期间用户主动打开文件夹的状态）
+    const autoCloseExplorer = useSettingsStore.getState().settings.layout?.autoCloseExplorer ?? false;
     // 标签描述符建立后再应用布局，避免资源管理器状态覆盖原窗口布局
-    useLayoutStore.getState().restoreFrom(windowSnapshot.layout);
+    useLayoutStore.getState().restoreFrom(
+      autoCloseExplorer
+        ? { ...windowSnapshot.layout, explorerVisible: useLayoutStore.getState().explorerVisible }
+        : windowSnapshot.layout,
+    );
     if (windowSnapshot.explorerRoot) {
       try {
         const rootState = await ipc.pathExists(windowSnapshot.explorerRoot);

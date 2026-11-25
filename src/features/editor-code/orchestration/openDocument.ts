@@ -29,7 +29,10 @@ function scheduleExplorerFollowUp(targetKey: string, dirPath: string): void {
   void (async () => {
     const activeKeyAtStart = useWindowStore.getState().activeKey;
     const rootAtStart = useExplorerStore.getState().root;
-    useLayoutStore.getState().setExplorerVisible(true);
+    // 仅在未开启“左侧栏自动关闭”时，打开文件后自动展开左侧栏定位目录
+    if (!useSettingsStore.getState().settings.layout?.autoCloseExplorer) {
+      useLayoutStore.getState().setExplorerVisible(true);
+    }
     try {
       const curRoot = useExplorerStore.getState().root;
       // 同根目录已加载：仅定位目标文件
