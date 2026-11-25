@@ -209,6 +209,7 @@ export function RawHtmlBlockComponent({ node, editor, getPos, selected, updateAt
         <textarea
           ref={textareaRef}
           className="nb-raw-html-textarea"
+          data-nb-markdown-block-source=""
           value={draft}
           placeholder={EDITOR_PLACEHOLDER}
           rows={Math.min(Math.max(draft.split('\n').length, 4), 24)}

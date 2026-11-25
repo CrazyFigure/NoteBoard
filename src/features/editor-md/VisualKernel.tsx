@@ -74,6 +74,14 @@ function makeLinkModalOpener(docKey: string): () => void {
   };
 }
 
+/** 标记过的块级源码框由浏览器处理换行，提前拦截其中与 Enter 重复的 Shift+Enter。 */
+function suppressBlockSourceShiftEnter(event: React.KeyboardEvent<HTMLDivElement>): void {
+  if (event.key !== 'Enter' || !event.shiftKey || event.ctrlKey || event.metaKey || event.altKey || event.nativeEvent.isComposing) return;
+  if (event.target instanceof HTMLTextAreaElement && event.target.hasAttribute('data-nb-markdown-block-source')) {
+    event.preventDefault();
+  }
+}
+
 export function VisualKernel({
   docKey,
   visible,
@@ -93,6 +101,7 @@ export function VisualKernel({
     onOpenLinkModal: makeLinkModalOpener(docKey),
     pasteFormatDetect: true,
     markdownClipboard: true,
+    disableRedundantShiftEnter: true,
   }), [docKey]);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; hasSelection: boolean } | null>(null);
   // 超链接插入与编辑弹窗状态
@@ -430,6 +439,7 @@ export function VisualKernel({
         position: 'relative',
         display: visible ? 'block' : 'none',
       }}
+      onKeyDownCapture={suppressBlockSourceShiftEnter}
       onContextMenu={(e) => {
         if (!editor || readOnly) return;
         e.preventDefault();

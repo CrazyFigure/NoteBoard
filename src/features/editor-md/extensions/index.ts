@@ -178,6 +178,8 @@ export interface BuildExtensionsOptions {
   pasteFormatDetect?: boolean;
   /** Markdown 文档复制、剪切输出源码；嵌入式富文本编辑器仍沿用原有剪贴板规则。 */
   markdownClipboard?: boolean;
+  /** Markdown 文档可停用与 Enter 重复的 Shift+Enter 换行。 */
+  disableRedundantShiftEnter?: boolean;
   /** 是否启用双向链接 `[[笔记]]`（解析、补全与跳转；默认 true，多维表格单元格不需要仓库内跳转时关闭） */
   wikiLinks?: boolean;
 }
@@ -230,8 +232,8 @@ export function buildExtensions(docKey = '', options?: BuildExtensionsOptions): 
     MultiClickSelectionFix,
     // 拖选经过收起的代码块 / 折叠块时整块选中，不被浏览器吸附到块外
     CollapsedBlockSelection,
-    // 回车类按键统一行为：Enter 换段落或续列表、Shift+Enter 段内换行、Ctrl+Enter 跳出到下方。
-    EnterKeyBehavior,
+    // 回车行为仍集中在同一扩展，多维表格等嵌入式编辑器未开启 Markdown 文档专用规则。
+    EnterKeyBehavior.configure({ disableRedundantShiftEnter: options?.disableRedundantShiftEnter ?? false }),
     // 全选：Ctrl+A 第一次选中当前文本块，再按一次全选文档
     SelectAllBehavior,
     // 正文 Tab 插入空格；块内已有快捷键优先，无法继续缩进或导航时也不触发浏览器焦点遍历。

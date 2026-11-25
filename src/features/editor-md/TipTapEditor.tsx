@@ -391,8 +391,9 @@ export function TipTapEditor({ docKey, onEditorReady }: TipTapEditorProps) {
     const state = EditorState.create({
       doc: content,
       extensions: [
-        // 最高优先级接管源码快捷键，禁止回落到 CodeMirror 的局部历史
+        // 最高优先级接管源码快捷键，阻止 CodeMirror 的局部历史和重复的 Shift+Enter 换行。
         Prec.highest(keymap.of([
+          { key: 'Shift-Enter', run: () => true },
           {
             key: 'Mod-z',
             run: () => {

@@ -1,12 +1,12 @@
 // NoteBoard 回车类按键统一行为（可视化模式）
 //
 //   Enter        普通正文先段内换行，紧接着再按一次换段，继续按则增加空段；列表续项，代码块内直接换行；
-//   Shift+Enter  普通正文插入源码换行；列表等容器内为硬换行，代码块内直接换行；
-//                标题不能包含换行、空行没有可换的内容 → 都按 Enter 处理
+//   Shift+Enter  列表等容器内为硬换行；Markdown 文档的普通正文、代码块与表格单元格内停用；
+//                标题和容器内空段仍按 Enter 的规则处理
 //   Ctrl+Enter   跳出：在光标所在的最内层容器块（代码块、表格、列表、引用、提示块、高亮块、折叠块、分栏）下方新建段落；
 //                不在容器内时在当前段落 / 标题下方新建段落，不拆分当前内容
 //   Alt+Enter    不做任何操作
-//   表格单元格   Enter 与 Shift+Enter 都是单元格内换行（Markdown 表格单元格只能占一行，换行以 <br> 保存）
+//   表格单元格   Enter 在单元格内换行（Markdown 表格单元格只能占一行，换行以 <br> 保存）
 //
 // 修正的问题：Shift+Enter 在代码块中会直接跳出、在标题中插入的换行保存后会把后半截挤出标题、
 // 在空行中插入的换行保存后丢失；Ctrl+Enter 原与 Shift+Enter 重复；表格中 Enter 拆出的多段在保存后变成 <br>，前后不一致。
@@ -134,10 +134,19 @@ export function insertParagraphBelow(state: EditorState, dispatch?: (tr: Transac
   return true;
 }
 
+interface EnterKeyBehaviorOptions {
+  /** 仅 Markdown 文档停用与 Enter 重复的换行，嵌入式编辑器保留原键位。 */
+  disableRedundantShiftEnter: boolean;
+}
+
 /** 回车类按键统一行为扩展；优先级高于各块扩展，保证规则集中在此处 */
-export const EnterKeyBehavior = Extension.create({
+export const EnterKeyBehavior = Extension.create<EnterKeyBehaviorOptions>({
   name: 'nbEnterKeyBehavior',
   priority: 1000,
+
+  addOptions() {
+    return { disableRedundantShiftEnter: false };
+  },
 
   addKeyboardShortcuts() {
     return {
@@ -160,11 +169,15 @@ export const EnterKeyBehavior = Extension.create({
       'Shift-Enter': ({ editor }) => {
         if (isSuggestionActive(editor.state)) return false;
         const { selection } = editor.state;
-        // 代码块内 Shift+Enter 也是换行，不再跳出代码块
-        if (selection.$from.parent.type.spec.code) return editor.commands.newlineInCode();
-        if (selection instanceof TextSelection && isInTableCell(selection.$from)) return lineBreakInCell(editor);
-        if (selection instanceof TextSelection && selection.$from.depth === 1 && selection.$from.parent.type.name === 'paragraph') {
-          return enterInBody(editor, selection) || replayEnter(editor);
+        const { $from } = selection;
+        const { disableRedundantShiftEnter } = this.options;
+        // 返回 true 吞掉键盘事件，阻止低优先级的硬换行扩展或浏览器再插入换行。
+        if ($from.parent.type.spec.code) return disableRedundantShiftEnter || editor.commands.newlineInCode();
+        if (selection instanceof TextSelection && isInTableCell($from)) {
+          return disableRedundantShiftEnter || lineBreakInCell(editor);
+        }
+        if (selection instanceof TextSelection && $from.depth === 1 && $from.parent.type.name === 'paragraph') {
+          return disableRedundantShiftEnter || enterInBody(editor, selection) || replayEnter(editor);
         }
         // 标题和空行无法段内换行，交给 Enter 的换段落规则。
         if (!canInsertHardBreak(editor.state)) return replayEnter(editor);

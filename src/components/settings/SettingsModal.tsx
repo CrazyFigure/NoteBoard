@@ -1664,39 +1664,49 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                 {/* Markdown 回车类按键（规则实现见 features/editor-md/enterKeyBehavior.ts）；细节放在 tip 中，行内只留要点 */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-strong)' }}>
-                      Markdown 回车类按键
-                    </div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-strong)', marginBottom: 4 }}>
+                    Markdown 回车类按键
                   </div>
+                  <div style={shortcutSubheadingStyle}>换行与分段</div>
                   <ShortcutItem
                     keyCombo="Enter"
-                    label="换行或续写列表"
-                    tip="正文按一次直接换行，源码中间没有空行。再按一次留一个空行并换段。列表中自动续项"
+                    label="可视化正文换行与分段"
+                    tip="按一次在同一段换行，紧接着再按一次另起一段，在源码中留一个空行。普通正文中 Shift + Enter 不响应"
+                  />
+                  <ShortcutItem
+                    keyCombo="Enter"
+                    label="列表续项或块内换段"
+                    tip="列表中新增一项，在空列表项中退出列表。引用、提示块、高亮块、折叠块和分栏内新建段落"
+                  />
+                  <ShortcutItem
+                    keyCombo="Enter"
+                    label="源码、代码块和表格换行"
+                    tip="Markdown 源码模式、代码块和有内容的表格单元格内用 Enter 换行，Shift + Enter 不响应。表格内换行保存为 <br>"
                   />
                   <ShortcutItem
                     keyCombo="Shift + Enter"
-                    label="段内换行"
-                    tip="普通正文使用实际换行。标题或空段中按此键会新建段落"
+                    label="列表项、引用等块内换行"
+                    tip="在有内容的列表项、引用、提示块、高亮块、折叠块正文和分栏中留在同一段，插入 Markdown 硬换行。标题或这里的空段落沿用 Enter 的规则"
                   />
+                  <ShortcutItem
+                    keyCombo="Shift + Enter"
+                    label="行内公式换行"
+                    tip="在行内公式编辑框内换行，按 Enter 完成编辑"
+                  />
+                  <div style={{ ...shortcutSubheadingStyle, marginTop: 8 }}>跳转与完成</div>
+                  <ShortcutItem keyCombo="Enter" label="折叠块标题进入正文" />
                   <ShortcutItem
                     keyCombo="Ctrl + Enter"
                     label="跳出到下方新段落"
                     tip="在所在的代码块、表格、列表、引用、提示块、高亮块、折叠块、分栏下方新建段落；普通段落则在其下方新建，不拆分当前内容"
                   />
-                  <ShortcutItem keyCombo="Alt + Enter" label="无作用" />
-                  <ShortcutItem
-                    keyCombo="Enter / Shift + Enter"
-                    label="代码块、表格内换行"
-                    tip="在代码块或当前单元格内换行，表格单元格内的换行保存为 <br>"
-                  />
-                  <ShortcutItem keyCombo="Enter" label="折叠块标题进入正文" />
                   <ShortcutItem
                     keyCombo="Ctrl + Enter / Esc"
                     label="源码编辑框完成 / 取消"
-                    tip="公式、Mermaid、信息图、HTML 块的源码编辑框；行内公式按 Enter 即完成"
+                    tip="多行源码框（块级公式、Mermaid、信息图、HTML）用 Enter 换行，Shift + Enter 不响应"
                   />
                   <ShortcutItem keyCombo="Ctrl + Enter / Esc" label="多维表格长文本保存 / 取消" />
+                  <ShortcutItem keyCombo="Alt + Enter" label="无作用" />
                 </div>
 
                 {/* 思维导图：导图模式在上、大纲模式在下，同一模式内相近的按键相邻

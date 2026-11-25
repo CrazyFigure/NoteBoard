@@ -319,6 +319,7 @@ function InfographicComponent({ node, updateAttributes, selected }: NodeViewProp
 
           <textarea
             ref={textareaRef}
+            data-nb-markdown-block-source=""
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
             placeholder="输入 Infographic 结构化配置 (YAML 或 JSON)..."

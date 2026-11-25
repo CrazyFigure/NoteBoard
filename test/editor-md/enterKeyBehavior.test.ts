@@ -21,7 +21,7 @@ describe('可视化编辑器的回车按键', () => {
     // 挂载真实键位插件。jsdom 不计算布局，跳过默认的光标滚动处理。
     mounted = new Editor({
       element: document.createElement('div'),
-      extensions: [...buildCoreExtensions(), EnterKeyBehavior],
+      extensions: [...buildCoreExtensions(), EnterKeyBehavior.configure({ disableRedundantShiftEnter: true })],
       editorProps: { handleScrollToSelection: () => true },
     });
   });
@@ -88,14 +88,53 @@ describe('可视化编辑器的回车按键', () => {
     expect(serializeMarkdown(mounted)).toBe(source.slice(0, -1));
   });
 
-  it('正文 Shift+Enter 也只写入普通换行，和已有换行相邻时换段', () => {
+  it('正文 Shift+Enter 不换行，也不会将已有续行变成段落分隔', () => {
     parseMarkdown(mounted, '甲乙');
     mounted.commands.setTextSelection(2);
     pressEnter({ shiftKey: true });
+    expect(serializeMarkdown(mounted)).toBe('甲乙');
+    pressEnter();
     expect(serializeMarkdown(mounted)).toBe('甲\n乙');
-    mounted.commands.setTextSelection(2);
+    pressEnter({ shiftKey: true });
+    expect(serializeMarkdown(mounted)).toBe('甲\n乙');
     pressEnter();
     expect(serializeMarkdown(mounted)).toBe('甲\n\n乙');
+  });
+
+  /** 把光标放到各样本块中「甲」之后，复用同一个实际按键入口。 */
+  function selectSampleText() {
+    mounted.state.doc.descendants((node, pos) => {
+      if (node.isText && node.text === '甲') mounted.commands.setTextSelection(pos + node.nodeSize);
+    });
+  }
+
+  it.each([
+    ['代码块', '```text\n甲\n```'],
+    ['表格单元格', '| 标题 |\n| --- |\n| 甲 |'],
+  ])('%s 中 Shift+Enter 被消费，Enter 仍换行', (_label, source) => {
+    parseMarkdown(mounted, source);
+    selectSampleText();
+    const before = mounted.state.doc;
+    const { from } = mounted.state.selection;
+    pressEnter({ shiftKey: true });
+    expect(mounted.state.doc).toBe(before);
+    expect(mounted.state.selection.from).toBe(from);
+    pressEnter();
+    expect(mounted.state.doc).not.toBe(before);
+  });
+
+  it.each([
+    ['有序列表', '1. 甲'],
+    ['任务列表', '- [ ] 甲'],
+    ['引用块', '> 甲'],
+  ])('%s 中 Shift+Enter 仍在同一段中插入硬换行', (_label, source) => {
+    parseMarkdown(mounted, source);
+    selectSampleText();
+    const { depth } = mounted.state.selection.$from;
+    pressEnter({ shiftKey: true });
+    const { $from } = mounted.state.selection;
+    expect($from.depth).toBe(depth);
+    expect($from.nodeBefore?.type.name).toBe('hardBreak');
   });
 
   it('有序列表回车自动续号，切回源码保留原有的文末空行', () => {

@@ -288,6 +288,7 @@ function MermaidComponent({ node, updateAttributes, selected, editor, getPos }: 
           </div>
           <textarea
             ref={textareaRef}
+            data-nb-markdown-block-source=""
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
             placeholder="输入 Mermaid 语法，例如:&#10;graph TD&#10;    A[开始] --> B[结束]"

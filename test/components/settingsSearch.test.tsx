@@ -147,12 +147,15 @@ describe('设置搜索与布局整理', () => {
     expect(host.querySelector<HTMLInputElement>('input[aria-label="标题栏显示切换主题"]')!.checked).toBe(false);
     expect(host.querySelector<HTMLInputElement>('input[aria-label="标题栏显示回到主界面"]')!.checked).toBe(true);
 
-    // 快捷键页固定显示可视化模式的回车规则。
+    // 快捷键页区分可视化正文、列表与块内的回车规则。
     switchTab('快捷键');
-    const paragraph = Array.from(host.querySelectorAll('kbd')).find((kbd) => kbd.parentElement?.textContent?.includes('换行或续写列表'));
-    expect(paragraph!.textContent).toBe('Enter');
-    const lineBreak = Array.from(host.querySelectorAll('kbd')).find((kbd) => kbd.parentElement?.textContent?.includes('段内换行'));
-    expect(lineBreak!.textContent).toBe('Shift + Enter');
+    const shortcut = (label: string) => Array.from(host.querySelectorAll('kbd'))
+      .find((kbd) => kbd.parentElement?.textContent?.includes(label))?.textContent;
+    expect(shortcut('可视化正文换行与分段')).toBe('Enter');
+    expect(shortcut('列表续项或块内换段')).toBe('Enter');
+    expect(shortcut('源码、代码块和表格换行')).toBe('Enter');
+    expect(shortcut('列表项、引用等块内换行')).toBe('Shift + Enter');
+    expect(shortcut('行内公式换行')).toBe('Shift + Enter');
   });
 
   it('关于页显示「自动检查更新」：旧设置缺字段视为开启，可手动关闭', async () => {

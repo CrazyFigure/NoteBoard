@@ -173,6 +173,8 @@ function MathComponent({ node, updateAttributes, selected }: NodeViewProps) {
       <NodeViewWrapper as={isBlock ? 'div' : 'span'} style={{ display: isBlock ? 'block' : 'inline-block' }}>
         <textarea
           ref={inputRef}
+          // 行内公式用 Enter 完成编辑，保留 Shift+Enter 作为换行键。
+          data-nb-markdown-block-source={isBlock ? '' : undefined}
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}
           onBlur={() => {
