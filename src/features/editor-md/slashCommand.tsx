@@ -4,10 +4,11 @@
 // 兼顾全局模糊搜索直达能力（如直接输入 /h2, /ts, /todo, /bg 快速匹配执行）
 // 详见 docs/09-开发路线图.md 8.7
 
-import { useState, useEffect, useRef, useCallback, type MutableRefObject, type ReactNode } from 'react';
+import { useState, useEffect, useRef, type MutableRefObject, type ReactNode } from 'react';
 import { ReactRenderer } from '@tiptap/react';
-import type { SuggestionProps } from '@tiptap/suggestion';
+import { findSuggestionMatch, type SuggestionProps } from '@tiptap/suggestion';
 import type { Editor, Range } from '@tiptap/core';
+import { canSplit } from '@tiptap/pm/transform';
 import {
   Heading,
   Heading1,
@@ -910,10 +911,9 @@ function prefersSlashDrillDown(): boolean {
 
 /** 斜杠命令菜单组件（支持右键风格的悬展式二级菜单） */
 function SlashMenu({
-  editor,
-  range,
+  command: executeLeaf,
   query,
-}: SuggestionProps) {
+}: SuggestionProps<unknown, LeafCommandItem>) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   // 当前鼠标或键盘悬展的二级分组 ID
   const [hoveredGroupId, setHoveredGroupId] = useState<string | null>(null);
@@ -1011,18 +1011,11 @@ function SlashMenu({
     }
   }, [subSelectedIndex, isFocusInSubmenu]);
 
-  // 执行具体叶子项
-  const executeLeaf = useCallback(
-    (leaf: LeafCommandItem) => {
-      leaf.action(editor, range);
-    },
-    [editor, range],
-  );
-
   // 键盘导航
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (displayedEntries.length === 0) return;
+      // 输入法组字期间，回车与方向键由输入法处理，避免误选插入命令。
+      if (e.isComposing || displayedEntries.length === 0) return;
 
       if (isFocusInSubmenu && activeGroup) {
         // ── 焦点在二级子菜单中 ──
@@ -1552,11 +1545,49 @@ function SlashMenu({
   );
 }
 
+/** 执行续行开头的命令时，把段内换行转为段落边界，并更新命令范围。 */
+function splitCommandLine(editor: Editor, range: Range): Range {
+  const { state } = editor;
+  const $trigger = state.doc.resolve(range.from);
+  if ($trigger.parent.type.name !== 'paragraph') return range;
+
+  // 保留触发符前的缩进，把行内节点视为正文，避免把行中命令当作续行开头。
+  const beforeTrigger = $trigger.parent.textBetween(0, $trigger.parentOffset, '', '\0');
+  const linePrefix = /\n[ \t]*$/.exec(beforeTrigger)?.[0];
+  if (!linePrefix) return range;
+
+  const breakPos = range.from - linePrefix.length;
+  const tr = state.tr.delete(breakPos, breakPos + 1);
+  if (!canSplit(tr.doc, breakPos)) return range;
+
+  tr.split(breakPos);
+  const newRange = { from: tr.mapping.map(range.from), to: tr.mapping.map(range.to) };
+  editor.view.dispatch(tr);
+  return newRange;
+}
+
 /** 斜杠命令 suggestion 配置 */
 export const slashSuggestion = {
   char: '/',
+  // 正文单次回车会在当前段落写入换行字符，续行开头也是触发位置。
+  allowedPrefixes: [' ', '\n'],
+  // 两种触发符共用一个联想状态，按光标前最近的触发符匹配，保留原字符和命令范围。
+  findSuggestionMatch: (config: Parameters<typeof findSuggestionMatch>[0]) => {
+    const text = config.$position.nodeBefore?.text;
+    if (!text) return null;
+
+    const slashIndex = text.lastIndexOf(config.char);
+    const commaIndex = text.lastIndexOf('、');
+    if (slashIndex === -1 && commaIndex === -1) return null;
+
+    return findSuggestionMatch({ ...config, char: commaIndex > slashIndex ? '、' : config.char });
+  },
   items: ({ query }: { query: string }) => {
     return searchLeafCommands(query).map((i) => ({ label: i.label, id: i.id }));
+  },
+  // 鼠标和键盘确认均从这里执行，打开、搜索或取消菜单时不改段落。
+  command: ({ editor, range, props }: { editor: Editor; range: Range; props: LeafCommandItem }) => {
+    props.action(editor, splitCommandLine(editor, range));
   },
   render: () => {
     let component: ReactRenderer | null = null;
