@@ -485,6 +485,10 @@ export function installTauriMock(): void {
       case 'plugin:window|set_fullscreen':
         mockFullscreen = Boolean(args.value);
         return null;
+      case 'plugin:window|set_title':
+        // 浏览器 ?mock=1 预览同步更新页面标签标题
+        document.title = String(args.value ?? 'NoteBoard');
+        return null;
       case 'plugin:window|minimize':
       case 'set_traffic_lights_hidden':
         return null;

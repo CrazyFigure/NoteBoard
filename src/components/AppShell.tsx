@@ -63,6 +63,7 @@ import { MissingFileDialog } from '../features/external/MissingFileDialog';
 import { ExternalChangeDialog } from '../features/external/ExternalChangeDialog';
 import { checkActiveDocumentStillExists } from '../features/external/missingFileGuard';
 import { isDocumentReading, requestReadingMode, supportsReadingMode, useWindowFullscreen } from '../features/reading/readingMode';
+import { useWindowTitleSync } from '../features/window/windowTitle';
 import { USES_MAC_TRAFFIC_LIGHTS } from '../core/platform';
 import { setTrafficLightsHidden } from '../core/ipc/commands';
 // 历史记录：挂载点只订阅开关，查看界面按需懒加载
@@ -135,6 +136,8 @@ export function AppShell(_props: { children?: React.ReactNode }) {
 
   // 右把手仅 Markdown 显示（不变式 I-17）
   const activeTab = tabs.find((t) => t.key === activeKey);
+  // 同步当前激活文件名到系统窗口标题（任务栏标签、预览窗口与浏览器标签页）
+  useWindowTitleSync(activeTab?.displayName ?? null);
   const showOutline = activeTab?.kind === 'markdown';
   // 仅活动画板可以接管应用外壳；切到其他格式时立即恢复常规布局
   const isBoardPresentationMode = boardPresentationMode && activeTab?.kind === 'board';

@@ -115,6 +115,16 @@ pub fn create_window(app: &tauri::AppHandle, label: String) -> Result<(), String
     create_window_at(app, label, None)
 }
 
+/// 返回桌面窗口默认标题；开发构建附带 Dev 后缀以区分正式安装版
+#[cfg(desktop)]
+pub fn default_window_title() -> &'static str {
+    if cfg!(debug_assertions) {
+        "NoteBoard Dev"
+    } else {
+        "NoteBoard"
+    }
+}
+
 /// 拖出标签时在松手附近建立窗口；Wayland 由合成器决定位置，不依赖全局坐标。
 #[cfg(desktop)]
 pub fn create_window_at(app: &tauri::AppHandle, label: String, position: Option<(i32, i32)>) -> Result<(), String> {
@@ -127,7 +137,7 @@ pub fn create_window_at(app: &tauri::AppHandle, label: String, position: Option<
             &l,
             tauri::WebviewUrl::App("index.html".into()),
         )
-        .title("NoteBoard")
+        .title(default_window_title())
         .inner_size(1200.0, 800.0)
         .min_inner_size(680.0, 480.0)
         // 仅 macOS 保留原生装饰以使用红绿灯按钮；Windows / Linux 使用自绘标题栏。

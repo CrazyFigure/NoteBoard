@@ -13,6 +13,7 @@ import { useWindowStore } from '../stores/windowStore';
 import { useSearchStore } from '../stores/searchStore';
 import { useLayoutStore } from '../stores/layoutStore';
 import { requestReadingMode } from '../features/reading/readingMode';
+import { useWindowTitleSync } from '../features/window/windowTitle';
 import { useSettingsStore } from '../stores/settingsStore';
 import { showToast } from '../stores/toastStore';
 import { ToastContainer } from '../components/Toast';
@@ -87,6 +88,8 @@ export function MobileShell() {
   useRestoredTabLoader(activeKey);
 
   const activeTab = tabs.find((tab) => tab.key === activeKey) ?? null;
+  // 仅编辑页显示当前文件名，回到首页时恢复应用名（主要作用于移动端网页标签页标题）
+  useWindowTitleSync(page === 'editor' ? (activeTab?.displayName ?? null) : null);
 
   // 启动：存储位置初始化 + 注册移动端"另存为"命名流程 + 处理冷启动时传入的外部文件
   useEffect(() => {
