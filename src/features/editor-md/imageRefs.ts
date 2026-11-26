@@ -4,6 +4,8 @@
 // 只返回本地路径；改写时只替换地址片段，原文其余部分保持不变。
 
 import { escapeHtmlAttribute, formatMarkdownDestination } from './imageCore';
+import { relativePathBetween, sameKey } from '../explorer/pathUtils';
+import { resolveRelativeDocPath } from './linkHandler';
 
 /** 原文中的一处图片引用 */
 export interface ImageRef {
@@ -221,14 +223,34 @@ export function formatImageRefSrc(ref: ImageRef, src: string): string {
  * replacements 的键为解码后的原地址；只改写命中的引用。
  */
 export function rewriteImageRefs(markdown: string, replacements: Map<string, string>): { text: string; count: number } {
+  return replaceImageRefs(markdown, (src) => replacements.get(src));
+}
+
+/** 只改地址片段，从后往前替换以保持前面的原文偏移。 */
+function replaceImageRefs(markdown: string, replacementFor: (src: string) => string | undefined): { text: string; count: number } {
   let text = markdown;
   let count = 0;
-  // 从后往前替换，前面的偏移不受影响
   for (const ref of scanImageRefs(markdown).reverse()) {
-    const next = replacements.get(ref.src);
+    const next = replacementFor(ref.src);
     if (next === undefined || next === ref.src) continue;
     text = text.slice(0, ref.from) + formatImageRefSrc(ref, next) + text.slice(ref.to);
     count += 1;
   }
   return { text, count };
+}
+
+/** 笔记的基准目录变化后，按新目录重写图片地址，继续引用原来已落盘的文件。 */
+export function rebaseImageRefs(markdown: string, fromDir: string, toDir: string): string {
+  if (sameKey(fromDir, toDir)) return markdown;
+  return replaceImageRefs(markdown, (src) => {
+    // 根路径、盘符与 file URL 已经有固定位置，无需跟随目录变化。
+    if (/^(?:[\\/]|[a-z]:[\\/]|file:)/i.test(src)) return undefined;
+    const absolute = resolveRelativeDocPath(fromDir, src);
+    const relative = relativePathBetween(toDir, absolute);
+    // Windows 跨盘无法构造相对路径，保留原文件的绝对地址，避免生成指向另一张图的链接。
+    const path = relative === null ? absolute.replace(/\\/g, '/') : relative;
+    const destination = relative !== null && !path.startsWith('../') ? `./${path}` : path;
+    // 路径解析时会解码百分号，重写时保护真实文件名里的百分号。
+    return destination.replace(/%/g, '%25');
+  }).text;
 }

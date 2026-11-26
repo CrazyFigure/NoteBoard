@@ -15,6 +15,7 @@ import { DEFAULT_DRAWIO_XML } from './syncDocumentContent';
 import { onDocumentSaved } from '../../staging/stagingManager';
 import { showToast } from '../../../stores/toastStore';
 import { noteSelfWrite } from '../../explorer/directoryWatcher';
+import { useExplorerStore } from '../../explorer/explorerStore';
 import { dirnameOf, pathKey } from '../../explorer/pathUtils';
 import { extractSourceHeadings } from '../../outline/sourceHeadings';
 // 🔴 R01/N02：保存未加载的恢复标签前先按需加载正文；正文出口统一前置屏障
@@ -398,7 +399,21 @@ export async function saveAs(originalKey: string, _content: string): Promise<boo
         showToast('无法获取文档正文，另存为已取消', 'warning');
         return false;
       }
-      const saveContent = (doc?.kind === 'drawio' && !snapshot.trim()) ? DEFAULT_DRAWIO_XML : snapshot;
+      const dirPath = dirnameOf(selectedPath) || selectedPath;
+      // 未命名笔记里的相对图片以工作区为基准；首存后按正文目录解析同一张图。
+      const draftImageDir = originalKey.startsWith('untitled:') && docNow?.kind === 'markdown' && kind === 'markdown'
+        ? docNow.dirPath || useExplorerStore.getState().root
+        : null;
+      let rebaseDraftImages: ((content: string) => string) | undefined;
+      if (draftImageDir && !samePathIdentity(draftImageDir, dirPath)) {
+        // 图片词法规则按需加载，加载期间原文档关闭时不得继续写入旧快照。
+        const { rebaseImageRefs } = await import('../../editor-md/imageRefs');
+        if (getSessionGeneration(originalKey) !== originalGeneration) return false;
+        rebaseDraftImages = (content) => rebaseImageRefs(content, draftImageDir, dirPath);
+      }
+      const saveContent = doc?.kind === 'drawio' && !snapshot.trim()
+        ? DEFAULT_DRAWIO_XML
+        : rebaseDraftImages?.(snapshot) ?? snapshot;
 
       // 第 3 步：写盘（目标 key 的每文档写队列内；保存后 autosave 以新 key 排队，
       //    防止旧内容迟到覆盖）。失败时保留权威内容、dirty、历史和原身份——不迁移。
@@ -423,12 +438,9 @@ export async function saveAs(originalKey: string, _content: string): Promise<boo
       //    临界区结束时再次读取——期间输入成为新会话的最终内容（不丢）
       const lateCaptured = await flushDocument(originalKey, 'save');
       const lateDoc = useDocumentStore.getState().getDocument(originalKey);
-      let finalContent = lateCaptured?.content ?? lateDoc?.content ?? null;
-      if (finalContent === null || finalContent === saveContent) finalContent = saveContent;
+      let finalContent = lateCaptured?.content ?? lateDoc?.content ?? snapshot;
 
       const displayName = selectedPath.split(/[\\/]/).pop() ?? selectedPath;
-      // 按平台分隔符取父目录（Windows 反斜杠 / Android 正斜杠）
-      const dirPath = dirnameOf(selectedPath) || selectedPath;
 
       if (originalKey !== selectedPath) {
         // 🔴 S09：文档身份迁移——会话版本/写队列随新 key 接管；旧 key 在途任务先排空，
@@ -462,10 +474,12 @@ export async function saveAs(originalKey: string, _content: string): Promise<boo
         }
         // 身份提交前才迁移历史：等待期间的新输入已物化到旧 key 的时间线。
         // 若在 await 注销前提前迁移，正文虽补上，最后一笔编辑却会遗留在旧历史中。
-        moveDocumentHistory(originalKey, selectedPath);
+        moveDocumentHistory(originalKey, selectedPath, rebaseDraftImages);
         useDocumentStore.getState().remove(originalKey);
       }
 
+      // 写盘与切换身份之间新增的图片同样需要换基准，基线仍是实际写盘的正文。
+      finalContent = finalContent === snapshot ? saveContent : rebaseDraftImages?.(finalContent) ?? finalContent;
       useDocumentStore.getState().upsertFromPayload({
         key: selectedPath,
         displayName,
@@ -492,8 +506,8 @@ export async function saveAs(originalKey: string, _content: string): Promise<boo
       // 🔴 N03：记录身份迁移——“保存并关闭”等调用方用实际新 key 继续后续流程
       lastSaveIdentityMove = { from: originalKey, to: selectedPath };
 
-      // 另存为会迁移文档 key，因此按原 key 清理先前的未命名暂存副本（内容证明）。
-      await onDocumentSaved(originalKey, saveContent);
+      // 暂存仍使用旧 key 与旧图片基准，按已写入磁盘的原始快照核对其内容证明。
+      await onDocumentSaved(originalKey, rebaseDraftImages ? snapshot : saveContent);
 
       // 事务成功：身份已提交给新 key——授权随迁移兑现（不再释放）
       newlyOwned = false;

@@ -8,6 +8,9 @@ import * as ipc from '@/core/ipc/commands';
 import { registerEditorCapabilities, resetEditorRegistryForTest } from '@/core/editor/editorRegistry';
 import { saveAs, saveDocument, setSaveAsPathPicker } from '@/features/editor-code/orchestration/saveDocument';
 import { discardPendingSourceSnapshot, stagePendingSourceSnapshot } from '@/features/editor-md/visualSnapshot';
+import { useExplorerStore } from '@/features/explorer/explorerStore';
+import { resolveRelativeDocPath } from '@/features/editor-md/linkHandler';
+import { scanImageRefs } from '@/features/editor-md/imageRefs';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useWindowStore } from '@/stores/windowStore';
 import { mobileSaveAsPicker, cancelSaveAs, resolveSaveAs, useMobileSaveAsStore } from '@/mobile/mobileSaveAs';
@@ -33,7 +36,7 @@ let root: Root | undefined;
 
 /** 建立真实 store 会话；仅替换磁盘、系统窗口等外部副作用。 */
 function seed(content: string, key = KEY, kind: 'markdown' | 'code' = 'markdown', displayName = '原文.md'): void {
-  useDocumentStore.getState().upsertFromPayload({ key, displayName, dirPath: 'C:/notes', kind,
+  useDocumentStore.getState().upsertFromPayload({ key, displayName, dirPath: key.startsWith('untitled:') ? '' : 'C:/notes', kind,
     language: kind === 'markdown' ? 'markdown' : 'plaintext', content, encoding: 'utf8', eol: 'lf',
     size: content.length, mtime: 0, readonly: false });
   useWindowStore.getState().openTab({ key, path: key, displayName, kind,
@@ -47,8 +50,39 @@ beforeEach(() => {
   setSaveAsPathPicker(null);
   useDocumentStore.setState({ documents: new Map() });
   useWindowStore.setState({ tabs: [], activeKey: null });
+  useExplorerStore.setState({ root: null });
   useMobileStore.setState({ currentFolder: '/workspace/notes', overlays: [] });
   vi.mocked(save).mockResolvedValue(null);
+});
+
+it('移动端命名首存采用 POSIX 目录，同时保留写入期间新增的图片和脏态', async () => {
+  const key = 'untitled:markdown-images-posix';
+  const workspace = '/storage/emulated/0/工作区';
+  const folder = `${workspace}/笔记`;
+  const target = `${folder}/记录.md`;
+  const firstImage = '![截图](./img/1795656247564_image.png)';
+  const lateImage = '\n\n![补图](<./img/100%2520 原图.png>)';
+  seed(firstImage, key);
+  useExplorerStore.setState({ root: workspace });
+  useMobileStore.setState({ currentFolder: folder });
+  setSaveAsPathPicker(mobileSaveAsPicker);
+  vi.mocked(ipc.registerDocument).mockResolvedValue({ type: 'ok' });
+  vi.mocked(ipc.writeDocument).mockImplementationOnce(async () => {
+    // 模拟 Markdown 写入期间编辑器完成第二张图片的插入。
+    useDocumentStore.getState().setContent(key, firstImage + lateImage);
+    return { ok: true, error: null, size: 50, mtime: 1 };
+  });
+  const saving = saveDocument(key);
+  await vi.waitFor(() => expect(useMobileSaveAsStore.getState().request).not.toBeNull());
+  resolveSaveAs('记录.md');
+
+  expect(await saving).toBe(true);
+  const saved = firstImage.replace('./img/', '../img/');
+  expect(ipc.writeDocument).toHaveBeenCalledWith(target, saved, 'utf8', 'lf');
+  const content = saved + lateImage.replace('./img/', '../img/');
+  expect(useDocumentStore.getState().getDocument(target)).toMatchObject({ content, baselineContent: saved, isDirty: true });
+  expect(useWindowStore.getState().getTab(target)?.isDirty).toBe(true);
+  expect(resolveRelativeDocPath(folder, scanImageRefs(content)[1].src)).toBe(`${workspace}/img/100%20 原图.png`);
 });
 
 afterEach(() => {

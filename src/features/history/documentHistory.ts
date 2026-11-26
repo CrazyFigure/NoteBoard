@@ -613,11 +613,35 @@ export function markDocumentHistoryModeBoundary(docKey: string): void {
   if (state) state.forceNextGroup = true;
 }
 
-/** 另存为后迁移整条历史，保证首次保存前后的内容仍可前后移动 */
-export function moveDocumentHistory(originalKey: string, nextKey: string): void {
+/** 另存为后迁移整条历史；正文基准变化时同步重写快照，再按原检查点结构编码。 */
+export function moveDocumentHistory(originalKey: string, nextKey: string, rewriteContent?: (content: string) => string): void {
   if (!originalKey || originalKey === nextKey) return;
   const state = histories.get(originalKey);
   if (state) {
+    if (rewriteContent) {
+      let previousOriginal = '';
+      let previous = '';
+      let previousChanged = false;
+      state.entries = state.entries.map((node) => {
+        // 按时间顺序各重建一次快照，未受影响的相邻节点可直接保留已有补丁。
+        const original = node.checkpoint ?? applyPatch(previousOriginal, node.patch!);
+        const content = rewriteContent(original);
+        const changed = content !== original;
+        // 源码坐标随路径长度变化，改用历史导航的差异定位；可视化节点坐标不受影响。
+        const rewritten = changed || previousChanged ? {
+          ...node,
+          checkpoint: node.checkpoint !== null ? content : null,
+          patch: node.patch ? diffText(previous, content) : null,
+          selection: node.mode === 'source' && changed ? undefined : node.selection,
+          undoSelection: node.mode === 'source' && previousChanged ? undefined : node.undoSelection,
+        } : node;
+        previousOriginal = original;
+        previous = content;
+        previousChanged = changed;
+        return rewritten;
+      });
+      state.lastMaterialized = null;
+    }
     histories.delete(originalKey);
     histories.set(nextKey, state);
     notifyHistoryChange(originalKey);
