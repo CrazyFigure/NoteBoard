@@ -5300,10 +5300,18 @@ button.nb-callout-icon:active {
 .nb-md-preparation-cancel:active { transform: translateY(1px); }
 @keyframes nb-md-preparation-spin { to { transform: rotate(360deg); } }
 @keyframes nb-md-preparation-travel { from { transform: translateX(-110%); } to { transform: translateX(380%); } }
-/* 大文档的离屏块跳过初次布局；仍保留真实 DOM、编辑与全文选择能力。 */
-.nb-md-large-visual .ProseMirror > * { content-visibility: auto; contain-intrinsic-size: auto 80px; }
-/* 单个列表也可能覆盖整篇文档，离屏项单独延后布局，原始层级和编号仍由同一列表管理。 */
-.nb-md-large-visual .ProseMirror li { content-visibility: auto; contain-intrinsic-size: auto 32px; }
+/* 大文档的离屏块跳过初次布局；普通列表容器允许靠外的圆点和长编号绘制。 */
+.nb-md-large-visual .ProseMirror > :not(ol, ul:not([data-type="taskList"])) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 80px;
+}
+
+/* 普通列表的标记绘制在 li 外侧，只延后布局项内的正文块；任务项的复选框在项内，可整体延后。 */
+.nb-md-large-visual .ProseMirror li[data-type="taskItem"],
+.nb-md-large-visual .ProseMirror li:not([data-type="taskItem"]) > :not(ul, ol) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 32px;
+}
 
 /* prefers-reduced-motion */
 @media (prefers-reduced-motion: reduce) {
